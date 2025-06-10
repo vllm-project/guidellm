@@ -1,6 +1,6 @@
 import json
 import random
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from itertools import cycle
 from pathlib import Path
 from typing import Any, Optional, TypedDict, Union
@@ -19,17 +19,35 @@ from guidellm.dataset.creator import ColumnInputTypes, DatasetCreator
 from guidellm.utils import EndlessTextCreator, IntegerRangeSampler, check_load_processor
 
 __all__ = [
+    "PrefixBucketConfig",
     "SyntheticDatasetConfig",
     "SyntheticDatasetCreator",
     "SyntheticTextItemsGenerator",
 ]
 
 
-class SyntheticDatasetConfig(BaseModel):
+class PrefixBucketConfig(BaseModel):
+    bucket_weight: int = Field(
+        description="Weight of this bucket in the overall distribution.",
+        gt=0,
+        default=100,
+    )
+    prefix_count: int = Field(
+        description="The number of unique prefixs to generate for this bucket.",
+        ge=1,
+        default=1,
+    )
     prefix_tokens: int = Field(
-        description="The number of shared prefix tokens to prepend to each prompt.",
+        description="The number of prefix tokens per-prompt for this bucket.",
         ge=0,
         default=0,
+    )
+
+
+class SyntheticDatasetConfig(BaseModel):
+    prefix_buckets: Optional[list[PrefixBucketConfig]] = Field(
+        description="Buckets for the prefix tokens distribution.",
+        default=None,
     )
     prompt_tokens: int = Field(
         description="The average number of text tokens generated for prompts.",
@@ -190,10 +208,8 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
         )
         # ensure diff distribution from output tokens
         rand = random.Random(self.random_seed + 2)  # noqa: S311
+        shared_prefix_iter = iter(self._create_prefixes(rand))
         unique_prefix_iter = cycle(self.processor.get_vocab().values())
-
-        prefix_index = rand.randint(0, len(self.text_creator.words))
-        prefix_tokens = self._create_prompt(self.config.prefix_tokens, prefix_index)
 
         for _, turns in zip(range(self.config.samples), turns_sampler):
             row: SyntheticDatasetRow = {
@@ -207,6 +223,7 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
                 output_tokens_sampler,
             ):
                 start_index = rand.randint(0, len(self.text_creator.words))
+                prefix_tokens = next(shared_prefix_iter, [])
                 # Append the prefix tokens only for the first turn
                 if i == 0:
                     prompt_text = self.processor.decode(
@@ -217,7 +234,7 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
                         skip_special_tokens=True,
                     )
                     row["prompt"].append(prompt_text)
-                    row["prompt_tokens_count"].append(self.config.prefix_tokens + prompt_tokens)
+                    row["prompt_tokens_count"].append(len(prefix_tokens) + prompt_tokens)
                     row["output_tokens_count"].append(output_tokens)
                 else:
                     prompt_text = self.processor.decode(
@@ -231,6 +248,36 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
                     row["output_tokens_count"].append(output_tokens)
 
             yield row
+
+    def _rand_start_index(self, rand: random.Random) -> int:
+        """Generate a random start index for text generation."""
+        return rand.randint(0, len(self.text_creator.words) - 1)
+
+    def _create_prefixes(self, rand: random.Random) -> Sequence[list[int]]:
+        """Create an iterator for shared prefix tokens."""
+        buckets = self.config.prefix_buckets
+
+        if not buckets:
+            return []
+
+        total_weight = sum(bucket.bucket_weight for bucket in buckets)
+        if total_weight <= 0:
+            raise ValueError("Total weight of prefix buckets must be greater than 0.")
+
+        prompts = []
+        for bucket in buckets:
+            for _ in range(bucket.prefix_count):
+                start_index = self._rand_start_index(rand)
+                prompt_tokens = self._create_prompt(bucket.prefix_tokens, start_index)
+                sample_percent = (
+                    bucket.bucket_weight / bucket.prefix_count / total_weight
+                )
+                sample_count = sample_percent * self.config.samples
+                for _ in range(int(round(sample_count))):
+                    prompts.append(prompt_tokens)
+
+        rand.shuffle(prompts)
+        return prompts
 
     def _create_prompt(
         self, prompt_tokens: int, start_index: int, unique_prefix: Optional[int] = None

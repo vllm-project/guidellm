@@ -4,6 +4,7 @@ from .file import FileDatasetCreator
 from .hf_datasets import HFDatasetsCreator
 from .in_memory import InMemoryDatasetCreator
 from .synthetic import (
+    PrefixBucketConfig,
     SyntheticDatasetConfig,
     SyntheticDatasetCreator,
     SyntheticTextItemsGenerator,
@@ -15,6 +16,7 @@ __all__ = [
     "FileDatasetCreator",
     "HFDatasetsCreator",
     "InMemoryDatasetCreator",
+    "PrefixBucketConfig",
     "SyntheticDatasetConfig",
     "SyntheticDatasetCreator",
     "SyntheticTextItemsGenerator",
