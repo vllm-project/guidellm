@@ -107,13 +107,20 @@ class GenerativeRequestLoader(RequestLoader):
         self._preserved_iter = None
 
     def __iter__(self) -> Iterator[GenerativeRequestSession]:
+        turns = 1
+
+        data_iter = self._create_requests()
+        while requests := [i for i, _ in zip(data_iter, range(turns))]:
+            yield GenerativeRequestSession(requests)
+
+    def _create_requests(self) -> Iterator[GenerationRequest]:
         scope_create_count = 0
 
         while (dataset_iter := self._get_dataset_iter(scope_create_count)) is not None:
             scope_create_count += 1
 
             for item in dataset_iter:
-                yield GenerativeRequestSession(self._create_request(item))
+                yield self._create_request(item)
 
             self._preserved_iter = None
 

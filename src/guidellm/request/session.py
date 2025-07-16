@@ -1,3 +1,4 @@
+import itertools
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 
@@ -34,22 +35,47 @@ class RequestSession(ABC, Generic[RequestT, ResponseT]):
 
 
 class GenerativeRequestSession(RequestSession[GenerationRequest, ResponseSummary]):
-    def __init__(self, request: GenerationRequest) -> None:
-        self.request = request
-        self._complete = False
+    def __init__(self, prompts: list[GenerationRequest]) -> None:
+        if not prompts:
+            raise ValueError("Prompts cannot be empty")
+
+        self.prompts = prompts
+        self.responses: list[str] = []
 
     def __len__(self) -> int:
-        return 1
+        return len(self.prompts)
 
     def get_next_request(self) -> GenerationRequest:
-        return self.request
+        completed_responses = len(self.responses)
+        base_request = self.prompts[completed_responses].model_copy(deep=True)
+        base_request.content = "".join(
+            itertools.chain.from_iterable(
+                zip((x.content for x in self.prompts), self.responses + [""])
+            )
+        )
+        base_request.stats["prompt_tokens"] = sum(
+            x.stats["prompt_tokens"] for x in self.prompts[: completed_responses + 1]
+        )
+        base_request.constraints["output_tokens"] = sum(
+            x.constraints["output_tokens"]
+            for x in self.prompts[: completed_responses + 1]
+        )
+
+        return base_request
 
     def get_next_delay(self) -> float:
         return 0.0
 
-    def push_response(self, response: ResponseSummary) -> None:  # noqa: ARG002
-        self._complete = True
+    def push_response(self, response: ResponseSummary) -> None:
+        if len(self.responses) < len(self.prompts):
+            if response.response_output_tokens is not None:
+                self.prompts[len(self.responses)].constraints["output_tokens"] = (
+                    response.response_output_tokens
+                )
+            self.responses.append(response.value)
+        else:
+            raise ValueError("Response list full")
 
     @property
     def complete(self) -> bool:
-        return self._complete
+        return len(self.responses) >= len(self.prompts)
