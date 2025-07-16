@@ -1,11 +1,12 @@
 import asyncio
 import math
-import multiprocessing
-import multiprocessing.queues
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from queue import Empty as QueueEmpty
+from queue import Queue
+from threading import Event
 from typing import (
     Any,
     Generic,
@@ -26,7 +27,12 @@ from guidellm.backend import (
 )
 from guidellm.objects import StandardBaseModel
 from guidellm.request import GenerationRequest
-from guidellm.scheduler.result import SchedulerRequestInfo
+from guidellm.request.session import RequestSession
+from guidellm.scheduler.result import (
+    MPQueues,
+    SchedulerRequestInfo,
+    WorkerProcessResult,
+)
 from guidellm.scheduler.types import RequestT, ResponseT
 
 __all__ = [
@@ -35,25 +41,7 @@ __all__ = [
     "RequestsWorker",
     "ResolveStatus",
     "WorkerDescription",
-    "WorkerProcessRequest",
-    "WorkerProcessResult",
 ]
-
-
-@dataclass
-class WorkerProcessRequest(Generic[RequestT]):
-    request: RequestT
-    start_time: float
-    timeout_time: float
-    queued_time: float
-
-
-@dataclass
-class WorkerProcessResult(Generic[RequestT, ResponseT]):
-    type_: Literal["request_scheduled", "request_start", "request_complete"]
-    request: RequestT
-    response: Optional[ResponseT]
-    info: SchedulerRequestInfo
 
 
 @dataclass
@@ -120,28 +108,25 @@ class RequestsWorker(ABC, Generic[RequestT, ResponseT]):
         """
         ...
 
-    async def get_request(
-        self, requests_queue: multiprocessing.Queue
-    ) -> Optional[WorkerProcessRequest[RequestT]]:
-        return await asyncio.to_thread(requests_queue.get)  # type: ignore[attr-defined]
-
     async def send_result(
         self,
-        results_queue: multiprocessing.Queue,
+        results_queue: Queue[WorkerProcessResult[RequestT, ResponseT]],
         result: WorkerProcessResult[RequestT, ResponseT],
     ):
         await asyncio.to_thread(results_queue.put, result)  # type: ignore[attr-defined]
 
     async def resolve_scheduler_request(
         self,
-        request: Any,
+        request_session: RequestSession[RequestT, ResponseT],
         queued_time: float,
         dequeued_time: float,
         start_time: float,
         timeout_time: float,
-        results_queue: multiprocessing.Queue,
+        results_queue: Queue[WorkerProcessResult[RequestT, ResponseT]],
         process_id: int,
-    ):
+    ) -> Any:
+        request = request_session.get_next_request()
+
         info = SchedulerRequestInfo(
             targeted_start_time=start_time,
             queued_time=queued_time,
@@ -185,74 +170,85 @@ class RequestsWorker(ABC, Generic[RequestT, ResponseT]):
         )
         asyncio.create_task(self.send_result(results_queue, result))
 
-    def process_loop_synchronous(
-        self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
-        process_id: int,
-    ):
-        async def _process_runner():
-            while (
-                process_request := await self.get_request(requests_queue)
-            ) is not None:
-                dequeued_time = time.time()
-
-                await self.resolve_scheduler_request(
-                    request=process_request.request,
-                    queued_time=process_request.queued_time,
-                    dequeued_time=dequeued_time,
-                    start_time=process_request.start_time,
-                    timeout_time=process_request.timeout_time,
-                    results_queue=results_queue,
-                    process_id=process_id,
-                )
-
-        try:
-            asyncio.run(_process_runner())
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                f"Error in worker process {process_id}: {exc}",
-                exc_info=True,
-                stack_info=True,
-            )
+        request_session.push_response(response)
+        return request_session
 
     def process_loop_asynchronous(
         self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
+        queues: MPQueues[RequestT, ResponseT],
+        stop_event: Event,
+        prioritize_sessions: bool,
         max_concurrency: int,
         process_id: int,
     ):
         async def _process_runner():
-            pending = asyncio.Semaphore(max_concurrency)
+            lock = asyncio.Semaphore(max_concurrency)
+            pending_sessions: list[RequestSession[RequestT, ResponseT]] = []
 
-            if pending.locked():
-                raise ValueError("Async worker called with max_concurrency < 1")
+            while True:
+                await asyncio.sleep(0)  # Yield control to the event loop
+                await lock.acquire()
 
-            while (
-                process_request := await self.get_request(requests_queue)
-            ) is not None:
-                dequeued_time = time.time()
+                request_session = None
+                try:
+                    request_session = (
+                        pending_sessions.pop()
+                        if pending_sessions
+                        else queues.requests.get_nowait()
+                    )
+                    dequeued_time = time.time()
+                    request_times = queues.times.get_nowait()
+                except (QueueEmpty, IndexError):
+                    # Requeue the session if we don't have a next time yet
+                    if request_session is not None:
+                        pending_sessions.append(request_session)
+                    lock.release()
+                    if stop_event.is_set():
+                        return  # Exit if stop event is set
+                    else:
+                        continue
 
-                await pending.acquire()
+                async def wait_then_requeue(
+                    session: RequestSession[RequestT, ResponseT],
+                ):
+                    # Wait to requeue the request session if it specifies a delay
+                    if delay := session.get_next_delay():
+                        await asyncio.sleep(delay)
 
-                def _task_done(_: asyncio.Task):
-                    nonlocal pending
-                    pending.release()
+                    # Push session to the stack
+                    pending_sessions.append(session)
+                    if prioritize_sessions:
+                        # Release the lock with the session on top of the stack
+                        lock.release()
+
+                def _request_callback(
+                    session_future: asyncio.Future[RequestSession[RequestT, ResponseT]],
+                ):
+                    # If we are prioritizing sessions, hold
+                    # the lock until the session is done
+                    nonlocal lock
+                    if not prioritize_sessions:
+                        lock.release()
+
+                    session = session_future.result()
+                    if not session.complete:
+                        asyncio.create_task(wait_then_requeue(session))
+                    elif prioritize_sessions:
+                        # no more requests in this session, release the lock
+                        lock.release()
 
                 task = asyncio.create_task(
                     self.resolve_scheduler_request(
-                        request=process_request.request,
-                        queued_time=process_request.queued_time,
+                        request_session=request_session,
+                        queued_time=request_times.queued_time,
                         dequeued_time=dequeued_time,
-                        start_time=process_request.start_time,
-                        timeout_time=process_request.timeout_time,
-                        results_queue=results_queue,
+                        start_time=request_times.start_time,
+                        timeout_time=request_times.timeout_time,
+                        results_queue=queues.responses,
                         process_id=process_id,
                     )
                 )
-                task.add_done_callback(_task_done)
-                await asyncio.sleep(0)  # enable start task immediately
+                task.add_done_callback(_request_callback)
 
         try:
             asyncio.run(_process_runner())
@@ -309,30 +305,19 @@ class GenerativeRequestsWorker(RequestsWorker[GenerationRequest, ResponseSummary
         """
         await self.backend.prepare_multiprocessing()
 
-    def process_loop_synchronous(
-        self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
-        process_id: int,
-    ):
-        asyncio.run(self.backend.validate())
-        super().process_loop_synchronous(
-            requests_queue=requests_queue,
-            results_queue=results_queue,
-            process_id=process_id,
-        )
-
     def process_loop_asynchronous(
         self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
+        queues: MPQueues[GenerationRequest, ResponseSummary],
+        stop_event: Event,
+        prioritize_sessions: bool,
         max_concurrency: int,
         process_id: int,
     ):
         asyncio.run(self.backend.validate())
         super().process_loop_asynchronous(
-            requests_queue=requests_queue,
-            results_queue=results_queue,
+            queues=queues,
+            stop_event=stop_event,
+            prioritize_sessions=prioritize_sessions,
             max_concurrency=max_concurrency,
             process_id=process_id,
         )
