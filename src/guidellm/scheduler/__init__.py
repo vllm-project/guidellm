@@ -22,7 +22,6 @@ from .worker import (
     RequestsWorker,
     ResolveStatus,
     WorkerDescription,
-    WorkerProcessRequest,
     WorkerProcessResult,
 )
 
@@ -46,7 +45,6 @@ __all__ = [
     "SynchronousStrategy",
     "ThroughputStrategy",
     "WorkerDescription",
-    "WorkerProcessRequest",
     "WorkerProcessResult",
     "strategy_display_str",
 ]

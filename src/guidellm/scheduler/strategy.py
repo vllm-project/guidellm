@@ -226,7 +226,9 @@ class ConcurrentStrategy(SchedulingStrategy):
         :return: {self.streams} for the concurrent scheduling strategy to limit
             the worker processes to the number of streams.
         """
-        return self.streams
+        cpu_cores = os.cpu_count() or 1
+
+        return min(max(1, cpu_cores - 1), self.streams)
 
     @property
     def queued_requests_limit(self) -> int:
