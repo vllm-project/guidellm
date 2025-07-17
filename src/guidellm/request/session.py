@@ -1,14 +1,15 @@
 import itertools
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from collections.abc import Sequence
+from typing import Generic
 
 from guidellm.backend.response import ResponseSummary
+from guidellm.config import settings
+from guidellm.preprocess.item import Item, ItemList
 from guidellm.request.request import GenerationRequest
+from guidellm.request.types import RequestT, ResponseT
 
 __all__ = ["GenerativeRequestSession", "RequestSession"]
-
-RequestT = TypeVar("RequestT")
-ResponseT = TypeVar("ResponseT")
 
 
 class RequestSession(ABC, Generic[RequestT, ResponseT]):
@@ -35,44 +36,60 @@ class RequestSession(ABC, Generic[RequestT, ResponseT]):
 
 
 class GenerativeRequestSession(RequestSession[GenerationRequest, ResponseSummary]):
-    def __init__(self, prompts: list[GenerationRequest]) -> None:
-        if not prompts:
+    def __init__(self, items: ItemList) -> None:
+        if len(items) < 1:
             raise ValueError("Prompts cannot be empty")
 
-        self.prompts = prompts
-        self.responses: list[str] = []
+        self.prompts: Sequence[Item] = items
+        self.responses: list[Item] = []
 
     def __len__(self) -> int:
         return len(self.prompts)
 
     def get_next_request(self) -> GenerationRequest:
         completed_responses = len(self.responses)
-        base_request = self.prompts[completed_responses].model_copy(deep=True)
-        base_request.content = "".join(
+
+        # FIXME: Can only handle string requests
+        content = "".join(
             itertools.chain.from_iterable(
-                zip((x.content for x in self.prompts), self.responses + [""])
+                (x.value, y.value)
+                for x, y in zip(self.prompts, self.responses + [Item(value="")])
             )
         )
-        base_request.stats["prompt_tokens"] = sum(
-            x.stats["prompt_tokens"] for x in self.prompts[: completed_responses + 1]
-        )
-        base_request.constraints["output_tokens"] = sum(
-            x.constraints["output_tokens"]
-            for x in self.prompts[: completed_responses + 1]
-        )
 
-        return base_request
+        prev_prompt_tokens = sum(
+            (x.prompt_tokens or 0) + (x.output_tokens or 0) for x in self.responses
+        )
+        prompt_tokens = (
+            self.prompts[completed_responses].prompt_tokens or 0
+        ) + prev_prompt_tokens
+
+        output_tokens = self.prompts[completed_responses].output_tokens
+
+        return GenerationRequest(
+            request_type=settings.preferred_route,
+            content=content,
+            stats=(
+                {"prompt_tokens": prompt_tokens} if prompt_tokens is not None else {}
+            ),
+            constraints=(
+                {"output_tokens": output_tokens} if output_tokens is not None else {}
+            ),
+        )
 
     def get_next_delay(self) -> float:
         return 0.0
 
     def push_response(self, response: ResponseSummary) -> None:
         if len(self.responses) < len(self.prompts):
-            if response.response_output_tokens is not None:
-                self.prompts[len(self.responses)].constraints["output_tokens"] = (
-                    response.response_output_tokens
-                )
-            self.responses.append(response.value)
+            resp = Item(
+                value=response.value,
+                prompt_tokens=response.response_prompt_tokens
+                or response.request_prompt_tokens,
+                output_tokens=response.response_output_tokens
+                or response.request_output_tokens,
+            )
+            self.responses.append(resp)
         else:
             raise ValueError("Response list full")
 

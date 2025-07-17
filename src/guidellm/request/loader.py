@@ -11,10 +11,9 @@ from typing import (
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
-from guidellm.config import settings
 from guidellm.dataset import ColumnInputTypes, load_dataset
 from guidellm.objects import StandardBaseModel
-from guidellm.request.request import GenerationRequest
+from guidellm.preprocess.item import ItemList
 from guidellm.request.session import GenerativeRequestSession
 
 __all__ = [
@@ -107,20 +106,13 @@ class GenerativeRequestLoader(RequestLoader):
         self._preserved_iter = None
 
     def __iter__(self) -> Iterator[GenerativeRequestSession]:
-        turns = 1
-
-        data_iter = self._create_requests()
-        while requests := [i for i, _ in zip(data_iter, range(turns))]:
-            yield GenerativeRequestSession(requests)
-
-    def _create_requests(self) -> Iterator[GenerationRequest]:
         scope_create_count = 0
 
         while (dataset_iter := self._get_dataset_iter(scope_create_count)) is not None:
             scope_create_count += 1
 
             for item in dataset_iter:
-                yield self._create_request(item)
+                yield GenerativeRequestSession(self._create_items(item))
 
             self._preserved_iter = None
 
@@ -268,25 +260,17 @@ class GenerativeRequestLoader(RequestLoader):
 
         return dataset_iter
 
-    def _create_request(self, item: dict[str, Any]) -> GenerationRequest:
-        prompt_tokens = (
-            item[self.column_mappings["prompt_tokens_count_column"]]
+    def _create_items(self, item: dict[str, Any]) -> ItemList:
+        prompts = list(item[self.column_mappings["prompt_column"]])
+        prompt_tokens: list[Optional[int]] = (
+            list(item[self.column_mappings["prompt_tokens_count_column"]])
             if "prompt_tokens_count_column" in self.column_mappings
-            else None
+            else [None]
         )
-        output_tokens = (
-            item[self.column_mappings["output_tokens_count_column"]]
+        output_tokens: list[Optional[int]] = (
+            list(item[self.column_mappings["output_tokens_count_column"]])
             if "output_tokens_count_column" in self.column_mappings
-            else None
+            else [None]
         )
 
-        return GenerationRequest(
-            request_type=settings.preferred_route,
-            content=item[self.column_mappings["prompt_column"]],
-            stats=(
-                {"prompt_tokens": prompt_tokens} if prompt_tokens is not None else {}
-            ),
-            constraints=(
-                {"output_tokens": output_tokens} if output_tokens is not None else {}
-            ),
-        )
+        return ItemList.from_lists(prompts, prompt_tokens, output_tokens)
