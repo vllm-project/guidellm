@@ -42,19 +42,3 @@ class ItemList(Sequence[Item[PromptT]]):
 
     def __len__(self) -> int:
         return len(self._items)
-
-    @classmethod
-    def from_lists(
-        cls,
-        prompts: list[PromptT],
-        prompts_tokens: list[Optional[int]],
-        outputs_tokens: list[Optional[int]],
-    ) -> "ItemList":
-        return cls(
-            *[
-                Item(value=prompt, output_tokens=in_t, prompt_tokens=out_t)
-                for prompt, in_t, out_t in zip(
-                    prompts, prompts_tokens, outputs_tokens, strict=True
-                )
-            ]
-        )

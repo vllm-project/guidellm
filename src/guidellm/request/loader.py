@@ -13,7 +13,7 @@ from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
 from guidellm.dataset import ColumnInputTypes, load_dataset
 from guidellm.objects import StandardBaseModel
-from guidellm.preprocess.item import ItemList
+from guidellm.preprocess.item import Item, ItemList
 from guidellm.request.session import GenerativeRequestSession
 
 __all__ = [
@@ -261,16 +261,24 @@ class GenerativeRequestLoader(RequestLoader):
         return dataset_iter
 
     def _create_items(self, item: dict[str, Any]) -> ItemList:
-        prompts = list(item[self.column_mappings["prompt_column"]])
-        prompt_tokens: list[Optional[int]] = (
-            list(item[self.column_mappings["prompt_tokens_count_column"]])
+        prompts = item[self.column_mappings["prompt_column"]]
+        prompt_tokens = (
+            item[self.column_mappings["prompt_tokens_count_column"]]
             if "prompt_tokens_count_column" in self.column_mappings
-            else [None]
+            else None
         )
-        output_tokens: list[Optional[int]] = (
-            list(item[self.column_mappings["output_tokens_count_column"]])
+        output_tokens = (
+            item[self.column_mappings["output_tokens_count_column"]]
             if "output_tokens_count_column" in self.column_mappings
-            else [None]
+            else None
         )
 
-        return ItemList.from_lists(prompts, prompt_tokens, output_tokens)
+        items = (
+            Item(value=prompt, output_tokens=out_t, prompt_tokens=in_t)
+            for prompt, in_t, out_t in zip(
+                prompts if isinstance(prompts, list) else [prompts],
+                prompt_tokens if isinstance(prompt_tokens, list) else [prompt_tokens],
+                output_tokens if isinstance(output_tokens, list) else [output_tokens],
+            )
+        )
+        return ItemList(*items)
