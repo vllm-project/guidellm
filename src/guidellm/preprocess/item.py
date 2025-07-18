@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Generic, Optional, TypeVar, Union
+from typing import Generic, Optional, TypeVar
 
 from pydantic import Field
 
@@ -10,7 +10,8 @@ PromptT = TypeVar("PromptT")
 
 class Item(StandardBaseModel, Generic[PromptT]):
     """
-    Represents a single item in a dataset, containing a prompt and its associated metadata.
+    Represents a single item in a dataset,
+    containing a prompt and its associated metadata.
     """
 
     value: PromptT = Field(
@@ -33,11 +34,13 @@ class ItemList(Sequence[Item[PromptT]]):
     Represents a list of items, each containing a prompt and its metadata.
     """
 
-    def __init__(self, *items: Item[PromptT], shared_prefix: Optional[PromptT] = None):
-        self.shared_prefix: Optional[PromptT] = shared_prefix
-        self._items: list[Item[PromptT]] = list(items)
+    shared_prefix: Optional[PromptT]
 
-    def __getitem__(self, key) -> Union[Item[PromptT], Sequence[Item[PromptT]]]:
+    def __init__(self, *items: Item[PromptT], shared_prefix: Optional[PromptT] = None):
+        self.shared_prefix = shared_prefix
+        self._items = list(items)
+
+    def __getitem__(self, key):
         return self._items[key]
 
     def __len__(self) -> int:
