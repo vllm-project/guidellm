@@ -1,7 +1,9 @@
 import itertools
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
-from typing import Generic
+from typing import TYPE_CHECKING, Generic
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from guidellm.backend.response import ResponseSummary
 from guidellm.config import settings
@@ -69,12 +71,8 @@ class GenerativeRequestSession(RequestSession[GenerationRequest, ResponseSummary
         return GenerationRequest(
             request_type=settings.preferred_route,
             content=content,
-            stats=(
-                {"prompt_tokens": prompt_tokens} if prompt_tokens is not None else {}
-            ),
-            constraints=(
-                {"output_tokens": output_tokens} if output_tokens is not None else {}
-            ),
+            stats=({"prompt_tokens": prompt_tokens} if prompt_tokens else {}),
+            constraints=({"output_tokens": output_tokens} if output_tokens else {}),
         )
 
     def get_next_delay(self) -> float:
