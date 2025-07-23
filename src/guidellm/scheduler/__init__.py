@@ -15,7 +15,6 @@ from .strategy import (
     ThroughputStrategy,
     strategy_display_str,
 )
-from .types import RequestT, ResponseT
 from .worker import (
     GenerativeRequestsWorker,
     GenerativeRequestsWorkerDescription,
@@ -31,10 +30,8 @@ __all__ = [
     "ConcurrentStrategy",
     "GenerativeRequestsWorker",
     "GenerativeRequestsWorkerDescription",
-    "RequestT",
     "RequestsWorker",
     "ResolveStatus",
-    "ResponseT",
     "Scheduler",
     "SchedulerRequestInfo",
     "SchedulerRequestResult",

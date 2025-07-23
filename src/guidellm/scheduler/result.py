@@ -8,8 +8,8 @@ from typing import (
 
 from guidellm.objects import StandardBaseModel
 from guidellm.request.session import RequestSession
+from guidellm.request.types import RequestT, ResponseT
 from guidellm.scheduler.strategy import SchedulingStrategy
-from guidellm.scheduler.types import RequestT, ResponseT
 
 __all__ = [
     "MPQueues",

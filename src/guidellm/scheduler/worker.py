@@ -28,12 +28,12 @@ from guidellm.backend import (
 from guidellm.objects import StandardBaseModel
 from guidellm.request import GenerationRequest
 from guidellm.request.session import RequestSession
+from guidellm.request.types import RequestT, ResponseT
 from guidellm.scheduler.result import (
     MPQueues,
     SchedulerRequestInfo,
     WorkerProcessResult,
 )
-from guidellm.scheduler.types import RequestT, ResponseT
 
 __all__ = [
     "GenerativeRequestsWorker",
