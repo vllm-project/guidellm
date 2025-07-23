@@ -18,6 +18,10 @@ from loguru import logger
 
 from guidellm.config import settings
 from guidellm.request.session import RequestSession
+from guidellm.request.types import (
+    RequestT,
+    ResponseT,
+)
 from guidellm.scheduler.result import (
     MPQueues,
     SchedulerRequestResult,
@@ -27,10 +31,6 @@ from guidellm.scheduler.result import (
     WorkerProcessResult,
 )
 from guidellm.scheduler.strategy import SchedulingStrategy
-from guidellm.scheduler.types import (
-    RequestT,
-    ResponseT,
-)
 from guidellm.scheduler.worker import (
     RequestsWorker,
 )
