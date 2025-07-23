@@ -15,6 +15,7 @@ from guidellm.benchmark.entrypoints import benchmark_with_scenario
 from guidellm.benchmark.scenario import GenerativeTextScenario, get_builtin_scenarios
 from guidellm.config import print_config
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
+from guidellm.preprocess.dataset_from_file import create_dataset_from_file, DatasetCreationError
 from guidellm.scheduler import StrategyType
 from guidellm.utils import DefaultGroupHandler
 from guidellm.utils import cli as cli_tools
@@ -491,6 +492,12 @@ def dataset(
     hub_dataset_id,
     random_seed,
 ):
+    """
+    Convert a dataset to have specific prompt and output token counts.
+
+    This creates a filtered and processed dataset where prompts and outputs
+    match specified token counts, useful for consistent benchmarking.
+    """
     process_dataset(
         data=data,
         output_path=output_path,
@@ -506,6 +513,57 @@ def dataset(
         hub_dataset_id=hub_dataset_id,
         random_seed=random_seed,
     )
+
+
+@preprocess.command("dataset-from-file", help="Create a dataset from a saved benchmark report file.")
+@click.argument(
+    "benchmark_file",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "-o",
+    "--output-path",
+    type=click.Path(file_okay=True, dir_okay=False, path_type=Path),
+    default=Path("dataset_from_benchmark.json"),
+    help="Output dataset file path.",
+)
+@click.option(
+    "--show-stats",
+    is_flag=True,
+    help="Show dataset statistics after creation.",
+)
+@click.option(
+    "--disable-console-outputs",
+    is_flag=True,
+    help="Set this flag to disable console output.",
+)
+def dataset_from_file(
+    benchmark_file,
+    output_path,
+    show_stats,
+    disable_console_outputs,
+):
+    """
+    Create a dataset from a saved benchmark report file.
+
+    This extracts prompts and their corresponding output token counts from
+    benchmark results to create an 'apples-to-apples' comparison dataset.
+
+    BENCHMARK_FILE: Path to the benchmark results JSON file.
+    """
+    try:
+        create_dataset_from_file(
+            benchmark_file=benchmark_file,
+            output_path=Path(output_path),
+            show_stats=show_stats,
+            enable_console=not disable_console_outputs,
+        )
+    except DatasetCreationError as e:
+        # To print clean error message without a traceback
+        if not disable_console_outputs:
+            click.echo(f"Error: {e}", err=True)
+        ctx = click.get_current_context()
+        ctx.exit(1)
 
 
 if __name__ == "__main__":
