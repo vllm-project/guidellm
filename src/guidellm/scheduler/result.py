@@ -17,7 +17,7 @@ __all__ = [
     "SchedulerRequestResult",
     "SchedulerResult",
     "SchedulerRunInfo",
-    "WorkerProcessRequestTime",
+    "WorkerProcessRequest",
     "WorkerProcessResult",
 ]
 
@@ -147,8 +147,8 @@ class SchedulerRequestResult(
 
 
 @dataclass
-class WorkerProcessRequestTime:
-    start_time: float
+class WorkerProcessRequest(Generic[RequestT, ResponseT]):
+    session: RequestSession[RequestT, ResponseT]
     timeout_time: float
     queued_time: float
 
@@ -163,6 +163,5 @@ class WorkerProcessResult(Generic[RequestT, ResponseT]):
 
 @dataclass
 class MPQueues(Generic[RequestT, ResponseT]):
-    requests: Queue[RequestSession[RequestT, ResponseT]]
-    times: Queue[WorkerProcessRequestTime]
+    requests: Queue[WorkerProcessRequest[RequestT, ResponseT]]
     responses: Queue[WorkerProcessResult[RequestT, ResponseT]]
