@@ -2,7 +2,7 @@ import json
 import random
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Optional, TypedDict, Union
 
 import yaml
 from datasets import (
@@ -63,6 +63,26 @@ class SyntheticDatasetConfig(BaseModel):
         gt=0,
         default=None,
     )
+    turns: int = Field(
+        description="The number of turns in the conversation.",
+        gt=0,
+        default=1,
+    )
+    turns_stdev: Optional[int] = Field(
+        description="The standard deviation of the number of turns.",
+        gt=0,
+        default=None,
+    )
+    turns_min: Optional[int] = Field(
+        description="The minimum number of turns in the conversation.",
+        gt=0,
+        default=None,
+    )
+    turns_max: Optional[int] = Field(
+        description="The maximum number of turns in the conversation.",
+        gt=0,
+        default=None,
+    )
     samples: int = Field(
         description="The number of samples to generate for the dataset.",
         gt=0,
@@ -118,14 +138,13 @@ class SyntheticDatasetConfig(BaseModel):
         return SyntheticDatasetConfig(**config_dict)
 
 
-class SyntheticTextItemsGenerator(
-    Iterable[
-        dict[
-            Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
-            Union[str, int],
-        ]
-    ]
-):
+class SyntheticDatasetRow(TypedDict):
+    prompt: list[str]
+    prompt_tokens_count: list[int]
+    output_tokens_count: list[int]
+
+
+class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
     def __init__(
         self,
         config: SyntheticDatasetConfig,
@@ -141,12 +160,7 @@ class SyntheticTextItemsGenerator(
 
     def __iter__(
         self,
-    ) -> Iterator[
-        dict[
-            Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
-            Union[str, int],
-        ]
-    ]:
+    ) -> Iterator[SyntheticDatasetRow]:
         prompt_tokens_sampler = IntegerRangeSampler(
             average=self.config.prompt_tokens,
             variance=self.config.prompt_tokens_stdev,
@@ -161,20 +175,33 @@ class SyntheticTextItemsGenerator(
             max_value=self.config.output_tokens_max,
             random_seed=self.random_seed + 1,  # ensure diff dist from prompts
         )
+        turns_sampler = IntegerRangeSampler(
+            average=self.config.turns,
+            variance=self.config.turns_stdev,
+            min_value=self.config.turns_min,
+            max_value=self.config.turns_max,
+            random_seed=self.random_seed + 7,  # ensure diff dist
+        )
         # ensure diff distribution from output tokens
         rand = random.Random(self.random_seed + 2)  # noqa: S311
 
-        for _, prompt_tokens, output_tokens in zip(
-            range(self.config.samples),
-            prompt_tokens_sampler,
-            output_tokens_sampler,
-        ):
-            start_index = rand.randint(0, len(self.text_creator.words))
-            yield {
-                "prompt": self._create_prompt(prompt_tokens, start_index),
-                "prompt_tokens_count": prompt_tokens,
-                "output_tokens_count": output_tokens,
+        for _, turns in zip(range(self.config.samples), turns_sampler):
+            row: SyntheticDatasetRow = {
+                "prompt": [],
+                "prompt_tokens_count": [],
+                "output_tokens_count": [],
             }
+            for _, prompt_tokens, output_tokens in zip(
+                range(turns),
+                prompt_tokens_sampler,
+                output_tokens_sampler,
+            ):
+                start_index = rand.randint(0, len(self.text_creator.words))
+                row["prompt"].append(self._create_prompt(prompt_tokens, start_index))
+                row["prompt_tokens_count"].append(prompt_tokens)
+                row["output_tokens_count"].append(output_tokens)
+
+            yield row
 
     def _create_prompt(self, prompt_tokens: int, start_index: int) -> str:
         if prompt_tokens <= 0:
