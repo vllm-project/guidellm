@@ -15,6 +15,7 @@ from guidellm.config import settings
 from guidellm.dataset import ColumnInputTypes, load_dataset
 from guidellm.objects import StandardBaseModel
 from guidellm.request.request import GenerationRequest
+from guidellm.request.session import GenerativeRequestSession
 
 __all__ = [
     "GenerativeRequestLoader",
@@ -30,10 +31,10 @@ class RequestLoaderDescription(StandardBaseModel):
 
 class RequestLoader(Iterable):
     @abstractmethod
-    def __iter__(self): ...
+    def __iter__(self) -> Iterator: ...
 
     @abstractmethod
-    def __len__(self): ...
+    def __len__(self) -> int: ...
 
     @property
     @abstractmethod
@@ -105,14 +106,14 @@ class GenerativeRequestLoader(RequestLoader):
         self.preserve_iter_state = iter_type == "infinite"  # ensure no caching requests
         self._preserved_iter = None
 
-    def __iter__(self) -> Iterator[GenerationRequest]:
+    def __iter__(self) -> Iterator[GenerativeRequestSession]:
         scope_create_count = 0
 
         while (dataset_iter := self._get_dataset_iter(scope_create_count)) is not None:
             scope_create_count += 1
 
             for item in dataset_iter:
-                yield self._create_request(item)
+                yield GenerativeRequestSession(self._create_request(item))
 
             self._preserved_iter = None
 

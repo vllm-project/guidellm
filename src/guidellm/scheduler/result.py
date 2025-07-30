@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import (
     Generic,
     Literal,
@@ -5,14 +6,17 @@ from typing import (
 )
 
 from guidellm.objects import StandardBaseModel
+from guidellm.request.session import RequestSession
+from guidellm.request.types import RequestT, ResponseT
 from guidellm.scheduler.strategy import SchedulingStrategy
-from guidellm.scheduler.types import RequestT, ResponseT
 
 __all__ = [
     "SchedulerRequestInfo",
     "SchedulerRequestResult",
     "SchedulerResult",
     "SchedulerRunInfo",
+    "WorkerProcessRequest",
+    "WorkerProcessResult",
 ]
 
 
@@ -135,3 +139,18 @@ class SchedulerRequestResult(
     request: RequestT
     request_info: SchedulerRequestInfo
     response: Optional[ResponseT] = None
+
+
+@dataclass
+class WorkerProcessRequest(Generic[RequestT, ResponseT]):
+    session: RequestSession[RequestT, ResponseT]
+    timeout_time: float
+    queued_time: float
+
+
+@dataclass
+class WorkerProcessResult(Generic[RequestT, ResponseT]):
+    type_: Literal["request_scheduled", "request_start", "request_complete"]
+    request: RequestT
+    response: Optional[ResponseT]
+    info: SchedulerRequestInfo
