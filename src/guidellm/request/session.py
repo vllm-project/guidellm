@@ -6,12 +6,16 @@ from guidellm.request.request import GenerationRequest
 
 __all__ = ["GenerativeRequestSession", "RequestSession"]
 
-# TODO: Replace with specific types that implement needed features
 RequestT = TypeVar("RequestT")
 ResponseT = TypeVar("ResponseT")
 
 
 class RequestSession(ABC, Generic[RequestT, ResponseT]):
+    """
+    A series of requests that build upon each other to
+    form a conversion between the user and the model.
+    """
+
     @abstractmethod
     def __len__(self) -> int: ...
 
@@ -29,7 +33,6 @@ class RequestSession(ABC, Generic[RequestT, ResponseT]):
     def complete(self) -> bool: ...
 
 
-# TODO: Implement multiturn support
 class GenerativeRequestSession(RequestSession[GenerationRequest, ResponseSummary]):
     def __init__(self, request: GenerationRequest) -> None:
         self.request = request

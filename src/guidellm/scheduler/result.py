@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from queue import Queue
 from typing import (
     Generic,
     Literal,
@@ -12,7 +11,6 @@ from guidellm.request.types import RequestT, ResponseT
 from guidellm.scheduler.strategy import SchedulingStrategy
 
 __all__ = [
-    "MPQueues",
     "SchedulerRequestInfo",
     "SchedulerRequestResult",
     "SchedulerResult",
@@ -143,9 +141,6 @@ class SchedulerRequestResult(
     response: Optional[ResponseT] = None
 
 
-# TODO: Move dataclasses somewhere else
-
-
 @dataclass
 class WorkerProcessRequest(Generic[RequestT, ResponseT]):
     session: RequestSession[RequestT, ResponseT]
@@ -159,9 +154,3 @@ class WorkerProcessResult(Generic[RequestT, ResponseT]):
     request: RequestT
     response: Optional[ResponseT]
     info: SchedulerRequestInfo
-
-
-@dataclass
-class MPQueues(Generic[RequestT, ResponseT]):
-    requests: Queue[WorkerProcessRequest[RequestT, ResponseT]]
-    responses: Queue[WorkerProcessResult[RequestT, ResponseT]]
