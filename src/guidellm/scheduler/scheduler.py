@@ -4,8 +4,6 @@ import time
 from collections.abc import AsyncGenerator, Iterable, Iterator
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Manager
-from queue import Empty as QueueEmpty
-from queue import Queue
 from threading import Event
 from typing import (
     Any,
@@ -21,8 +19,8 @@ from guidellm.request.types import (
     RequestT,
     ResponseT,
 )
+from guidellm.scheduler.queues import MPQueues, Queue, QueueEmpty
 from guidellm.scheduler.result import (
-    MPQueues,
     SchedulerRequestResult,
     SchedulerResult,
     SchedulerRunInfo,

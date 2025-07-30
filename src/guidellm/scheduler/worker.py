@@ -5,8 +5,6 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from itertools import islice
-from queue import Empty as QueueEmpty
-from queue import Queue
 from threading import Event
 from typing import (
     Any,
@@ -29,8 +27,8 @@ from guidellm.backend import (
 from guidellm.objects import StandardBaseModel
 from guidellm.request import GenerationRequest
 from guidellm.request.types import RequestT, ResponseT
+from guidellm.scheduler.queues import MPQueues, Queue, QueueEmpty
 from guidellm.scheduler.result import (
-    MPQueues,
     SchedulerRequestInfo,
     WorkerProcessRequest,
     WorkerProcessResult,
