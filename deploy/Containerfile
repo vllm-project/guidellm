@@ -20,23 +20,26 @@ FROM $BASE_IMAGE
 COPY --from=builder /opt/app-root/guidellm /opt/app-root/guidellm
 
 # Add guidellm bin to PATH
-ENV PATH="/opt/app-root/guidellm/bin:$PATH"
+# Argument defaults can be set with GUIDELLM_<ARG>
+ENV HOME="/home/guidellm" \
+    PATH="/opt/app-root/guidellm/bin:$PATH" \
+    GUIDELLM_OUTPUT_PATH="/results/benchmarks.json"
 
 # Create a non-root user
-RUN useradd -md /results guidellm
+RUN useradd -Md $HOME -g root guidellm
 
 # Switch to non-root user
 USER guidellm
 
-# Set working directory
-WORKDIR /results
+# Create the user home dir
+WORKDIR $HOME
+
+# Create a volume for results
+VOLUME /results
 
 # Metadata
 LABEL org.opencontainers.image.source="https://github.com/vllm-project/guidellm" \
       org.opencontainers.image.description="GuideLLM Performance Benchmarking Container"
-
-# Argument defaults can be set with GUIDELLM_<ARG>
-ENV GUIDELLM_OUTPUT_PATH="/results/benchmarks.json"
 
 ENTRYPOINT [ "/opt/app-root/guidellm/bin/guidellm" ]
 CMD [ "benchmark", "run" ]
