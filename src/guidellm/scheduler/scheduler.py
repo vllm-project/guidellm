@@ -124,9 +124,8 @@ class Scheduler(Generic[RequestT, ResponseT]):
             ) as executor,
         ):
             requests_iter: Optional[Iterator[Any]] = None
-            # TODO: Configurable delay and move somewhere more appropriate
             scheduling_strategy.start_time = (
-                time.time()
+                time.time() + settings.scheduler_start_delay
             )  # Add a small delay to allow processes to start
             futures, queues, stop_event = await self._start_processes(
                 manager, executor, scheduling_strategy
@@ -134,6 +133,15 @@ class Scheduler(Generic[RequestT, ResponseT]):
             run_info, requests_iter = self._run_setup(
                 futures, scheduling_strategy, max_number, max_duration
             )
+
+            # Add some initial requests to the queue
+            requests_iter = self._add_requests(
+                requests_iter,
+                queues.requests,
+                run_info,
+            )
+            # Wait for the test to start
+            await asyncio.sleep(time.time() - scheduling_strategy.start_time)
             yield SchedulerResult(
                 type_="run_start",
                 run_info=run_info,
@@ -285,9 +293,9 @@ class Scheduler(Generic[RequestT, ResponseT]):
                 if time.time() >= run_info.end_time:
                     raise StopIteration
 
-                while (
-                    not requests_queue.full()
-                    and added_count < settings.max_add_requests_per_loop
+                while not requests_queue.full() and added_count < (
+                    run_info.strategy.queued_requests_limit
+                    or settings.max_add_requests_per_loop
                 ):
                     if run_info.created_requests >= run_info.end_number:
                         raise StopIteration

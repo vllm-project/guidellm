@@ -133,6 +133,7 @@ class Settings(BaseSettings):
     max_concurrency: int = 512
     max_worker_processes: int = 10
     max_add_requests_per_loop: int = 20
+    scheduler_start_delay: float = 5
 
     # Data settings
     dataset: DatasetSettings = DatasetSettings()
