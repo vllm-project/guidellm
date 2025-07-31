@@ -5,7 +5,7 @@ import { WorkloadDetails } from './workloadDetails.interfaces';
 const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true';
 
 const fetchWorkloadDetails = () => {
-  return { data: window.workload_details as WorkloadDetails };
+  return { data: window.workloadDetails as WorkloadDetails };
 };
 
 export const workloadDetailsApi = createApi({

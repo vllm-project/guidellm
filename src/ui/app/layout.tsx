@@ -35,7 +35,7 @@ export default function RootLayout({
     <script
       dangerouslySetInnerHTML={{
         __html:
-          'window.run_info = {}; window.workload_details = {}; window.benchmarks = {};',
+          'window.runInfo = {}; window.workloadDetails = {}; window.benchmarks = {};',
       }}
     />
   );

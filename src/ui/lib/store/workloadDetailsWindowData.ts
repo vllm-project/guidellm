@@ -1,4 +1,4 @@
-export const workloadDetailsScript = `window.workload_details = {
+export const workloadDetailsScript = `window.workloadDetails = {
   "prompts": {
     "samples": [
       "such a sacrifice to her advantage as years of gratitude cannot enough acknowledge. By this time she is actually with them! If such goodness does not make her miserable now, she will never deserve to be happy! What a meeting for her, when she first sees my aunt! We must endeavour to forget all that has passed on either side, said Jane I hope and trust they will yet be happy. His consenting to marry her is a proof, I will believe, that he is come to a right way of thinking. Their mutual affection will steady them; and I flatter myself they will settle so quietly, and live in so rational a manner",
