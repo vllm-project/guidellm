@@ -6,6 +6,11 @@ repos:
     exclude: ^tests/?.*/assets/.+
   - id: end-of-file-fixer
     exclude: ^tests/?.*/assets/.+
+- repo: https://github.com/pdm-project/pdm
+  rev: 2.25.4
+  hooks:
+    - id: pdm-lock-check
+      name: check lock file matches pyproject
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.11.7
   hooks:

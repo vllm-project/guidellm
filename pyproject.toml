@@ -10,6 +10,9 @@ include = ["*"]
 [tool.setuptools.package-data]
 "guidellm.data" = ["*.gz"]
 
+[tool.pdm]
+distribution = true
+
 
 # ************************************************
 # ********** Project Metadata **********
@@ -99,6 +102,10 @@ dev = [
     # link checking
     "mkdocs-linkcheck~=1.0.6",
 ]
+
+# For PEP 735 compliant tools
+[dependency-groups]
+dev = [ "guidellm[dev]" ]
 
 [project.urls]
 homepage = "https://github.com/vllm-project/guidellm"
