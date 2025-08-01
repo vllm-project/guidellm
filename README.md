@@ -166,6 +166,8 @@ The `guidellm benchmark` command is used to run benchmarks against a generative 
 
 - `--max-requests`: Sets the maximum number of requests for each benchmark run. If not provided, the benchmark will run until `--max-seconds` is reached or the dataset is exhausted.
 
+- `--max-error`: The maximum error rate after which a benchmark will stop. Can either be a rate i.e 0 < rate < 1 or constant number. If rate is given and rate_type is 'constant' and 'max_seconds' exists then the rate will be calculated as part of the total expected requests counts i.e rate * duration. If rate is given and number of requests is not pre-determined than a context window of the last requests will be looked at. Context window size is configurable under GUIDELLM\_\_ERROR_CHECK_WINDOW_SIZE. If a number above 1 is given than we just count the total number of error and check if it's above the threshold.
+
 - `--warmup-percent`: Specifies the percentage of the benchmark to treat as a warmup phase. Requests during this phase are excluded from the final results.
 
 - `--cooldown-percent`: Specifies the percentage of the benchmark to treat as a cooldown phase. Requests during this phase are excluded from the final results.

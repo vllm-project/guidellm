@@ -1,6 +1,6 @@
 import random
 import uuid
-from typing import Any, Literal, Optional, TypeVar, Union
+from typing import Any, Literal, Optional, TypeVar, Union, get_args
 
 from pydantic import Field, computed_field
 
@@ -32,6 +32,7 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     WorkerDescription,
 )
+from guidellm.scheduler.result import TerminationReason
 
 __all__ = [
     "Benchmark",
@@ -45,6 +46,14 @@ __all__ = [
     "GenerativeTextResponseStats",
     "StatusBreakdown",
 ]
+
+BenchmarkStatus = Literal["success", "error", "interrupted"]
+REASON_STATUS_MAPPING: dict[TerminationReason, BenchmarkStatus] = {
+    "interrupted": "interrupted",
+    "max_error_reached": "error",
+    "max_seconds_reached": "success",
+    "max_requests_reached": "success",
+}
 
 
 class BenchmarkArgs(StandardBaseModel):
@@ -89,6 +98,9 @@ class BenchmarkArgs(StandardBaseModel):
     )
     max_duration: Optional[float] = Field(
         description="The maximum duration in seconds to run this benchmark, if any."
+    )
+    max_error: Optional[float] = Field(
+        description="Maximum error rate or const after which a benchmark will stop."
     )
     warmup_number: Optional[int] = Field(
         description=(
@@ -211,6 +223,34 @@ class BenchmarkRunStats(StandardBaseModel):
             "The average time spent processing all requests in the benchmark run. "
             "This is the time from when the actual request was started to when "
             "it was completed."
+        )
+    )
+    error_rate: float = Field(
+        description=(
+            "The number of total errored requests divided by the number "
+            "of total successful and errored requests at the end of benchmark. "
+        )
+    )
+    window_error_rate: float = Field(
+        description=(
+            "The number of errored requests within the error checking window"
+            "divided by the window size at the end of benchmark. "
+            "If the window_error_rate is above the max_error "
+            "the termination_reason should be 'max_error_reached'. "
+            "You may configure the error checking window size by setting "
+            "the environment variable GUIDELLM__ERROR_CHECK_WINDOW_SIZE."
+        )
+    )
+    status: BenchmarkStatus = Field(
+        description=(
+            f"The status of the benchmark output, "
+            f"one of the following options: {get_args(BenchmarkStatus)}."
+        )
+    )
+    termination_reason: TerminationReason = Field(
+        description=(
+            "The reason for the benchmark termination, "
+            f"one of the following options: {get_args(TerminationReason)}."
         )
     )
 

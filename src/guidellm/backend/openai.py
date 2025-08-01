@@ -105,7 +105,7 @@ class OpenAIHTTPBackend(Backend):
             raise ValueError("Target URL must be provided for OpenAI HTTP backend.")
 
         if self._target.endswith("/v1") or self._target.endswith("/v1/"):
-            # backwards compatability, strip v1 off
+            # backwards compatibility, strip v1 off
             self._target = self._target[:-3]
 
         if self._target.endswith("/"):

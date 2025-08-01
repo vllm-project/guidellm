@@ -182,11 +182,27 @@ def benchmark():
     ),
 )
 @click.option(
+    "--max-error",
+    type=float,
+    help=(
+        "The maximum error after which a benchmark will stop. "
+        "Can either be a rate i.e 0 < rate < 1 or constant number. "
+        "If rate is given and rate_type is 'constant' and 'max_seconds' exists "
+        "then the rate will be calculated as part of the total expected "
+        "requests count i.e rate * duration. If rate is given and number"
+        "of requests is not pre-determined than a context window "
+        "of the last requests will be looked at. Context window size"
+        "is configurable under GUIDELLM__ERROR_CHECK_WINDOW_SIZE."
+        "If a number above 1 is given than we just count the total"
+        "number of error and check if it's above the threshold."
+    ),
+)
+@click.option(
     "--warmup-percent",
     type=float,
     default=GenerativeTextScenario.get_default("warmup_percent"),
     help=(
-        "The percent of the benchmark (based on max-seconds, max-requets, "
+        "The percent of the benchmark (based on max-seconds, max-requests, "
         "or lenth of dataset) to run as a warmup and not include in the final results. "
         "Defaults to None."
     ),
@@ -196,7 +212,7 @@ def benchmark():
     type=float,
     default=GenerativeTextScenario.get_default("cooldown_percent"),
     help=(
-        "The percent of the benchmark (based on max-seconds, max-requets, or lenth "
+        "The percent of the benchmark (based on max-seconds, max-requests, or length "
         "of dataset) to run as a cooldown and not include in the final results. "
         "Defaults to None."
     ),
@@ -262,6 +278,7 @@ def run(
     rate,
     max_seconds,
     max_requests,
+    max_error,
     warmup_percent,
     cooldown_percent,
     disable_progress,
@@ -289,6 +306,7 @@ def run(
         rate=rate,
         max_seconds=max_seconds,
         max_requests=max_requests,
+        max_error=max_error,
         warmup_percent=warmup_percent,
         cooldown_percent=cooldown_percent,
         output_sampling=output_sampling,

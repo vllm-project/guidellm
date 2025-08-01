@@ -221,6 +221,7 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
             strategy=SynchronousStrategy(),
             max_number=None,
             max_duration=10.0,
+            max_error=0.05,
             warmup_number=None,
             warmup_duration=None,
             cooldown_number=None,
@@ -245,6 +246,10 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
             request_start_time_targeted_delay_avg=1.2827096836907523,
             request_time_delay_avg=0.0004316908972603934,
             request_time_avg=1.426228676523481,
+            error_rate=0.345346,
+            window_error_rate=0.345346,
+            status="success",
+            termination_reason="max_seconds_reached",
         ),
         worker=GenerativeRequestsWorkerDescription(
             backend_type="openai_http",

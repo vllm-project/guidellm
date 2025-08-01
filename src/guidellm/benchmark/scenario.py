@@ -98,6 +98,7 @@ class GenerativeTextScenario(Scenario):
     ] = None
     max_seconds: Optional[PositiveFloat] = None
     max_requests: Optional[PositiveInt] = None
+    max_error: Optional[PositiveFloat] = None
     warmup_percent: Annotated[Optional[float], Field(gt=0, le=1)] = None
     cooldown_percent: Annotated[Optional[float], Field(gt=0, le=1)] = None
     output_sampling: Optional[NonNegativeInt] = None

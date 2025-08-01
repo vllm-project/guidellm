@@ -53,6 +53,7 @@ async def benchmark_generative_text(
     rate: Optional[Union[float, list[float]]],
     max_seconds: Optional[float],
     max_requests: Optional[int],
+    max_error: Optional[float],
     warmup_percent: Optional[float],
     cooldown_percent: Optional[float],
     output_path: Optional[Union[str, Path]],
@@ -119,6 +120,7 @@ async def benchmark_generative_text(
         profile=profile,
         max_number_per_strategy=max_requests,
         max_duration_per_strategy=max_seconds,
+        max_error_per_strategy=max_error,
         warmup_percent_per_strategy=warmup_percent,
         cooldown_percent_per_strategy=cooldown_percent,
     ):
