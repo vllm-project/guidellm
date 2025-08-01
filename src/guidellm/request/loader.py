@@ -13,6 +13,7 @@ from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
 from guidellm.config import settings
 from guidellm.dataset import ColumnInputTypes, load_dataset
+from guidellm.dataset.synthetic import SyntheticDatasetCreator
 from guidellm.objects import StandardBaseModel
 from guidellm.request.request import GenerationRequest
 
@@ -84,6 +85,7 @@ class GenerativeRequestLoader(RequestLoader):
         shuffle: bool = True,
         iter_type: Literal["finite", "infinite"] = "finite",
         random_seed: int = 42,
+        consistent_synthetic_data: bool = False,
     ):
         self.data = data
         self.data_args = data_args
@@ -100,6 +102,7 @@ class GenerativeRequestLoader(RequestLoader):
         self.shuffle = shuffle
         self.iter_type = iter_type
         self.random_seed = random_seed
+        self.consistent_synthetic_data = consistent_synthetic_data
 
         self.column_mappings = self._create_column_mappings(args_column_mappings)
         self.preserve_iter_state = iter_type == "infinite"  # ensure no caching requests
@@ -244,8 +247,20 @@ class GenerativeRequestLoader(RequestLoader):
         if scope_create_count > 0 and self.iter_type != "infinite":
             return None
 
+        # For infinite iter_type, we need to handle synthetic datasets specially
+        # to ensure each concurrency rate gets the same prompts when the
+        # consistent_synthetic_data flag is enabled
         if self.preserve_iter_state and self._preserved_iter is not None:
-            return self._preserved_iter
+            if self.consistent_synthetic_data and SyntheticDatasetCreator.is_supported(
+                self.data, self.data_args
+            ):
+                # reset the iterator for each concurrency rate to ensure
+                # consistent prompts across different concurrency levels
+                pass  # Continue to create a new iterator below
+            else:
+                # For non-synthetic datasets or when flag is disabled, preserve
+                # the iterator state as before
+                return self._preserved_iter
 
         dataset = (
             self.dataset
@@ -255,7 +270,12 @@ class GenerativeRequestLoader(RequestLoader):
 
         dataset_iter = iter(dataset)
 
-        if self.preserve_iter_state:
+        # We preserve the iter state for non-synthetic datasets or when flag
+        # is disabled
+        if self.preserve_iter_state and not (
+            self.consistent_synthetic_data
+            and SyntheticDatasetCreator.is_supported(self.data, self.data_args)
+        ):
             self._preserved_iter = dataset_iter
 
         return dataset_iter
