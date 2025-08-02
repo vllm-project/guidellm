@@ -1,9 +1,41 @@
+"""
+Request scheduling strategies for the GuideLLM toolkit.
+
+This module provides a comprehensive set of scheduling strategies that control how
+requests are processed and timed within the GuideLLM benchmarking system. These
+strategies enable fine-grained control over request concurrency, timing patterns,
+and throughput characteristics to simulate various real-world usage scenarios.
+
+The scheduling system is built around abstract timing implementations that define
+when requests should be executed, and concrete strategy classes that combine
+timing behaviors with process and concurrency limits.
+
+Classes:
+    ScheduledRequestTimings: Abstract base class for request timing implementations
+    LastCompletionRequestTimings: Timing implementation for synchronous/concurrent
+        strategies
+    NoDelayRequestTimings: Timing implementation for throughput-maximizing strategies
+    ConstantRateRequestTimings: Timing implementation for constant-rate request
+        scheduling
+    PoissonRateRequestTimings: Timing implementation for Poisson-distributed request
+        scheduling
+    SchedulingStrategy: Abstract base class for all scheduling strategies
+    SynchronousStrategy: Sequential request processing with maximum throughput
+    ConcurrentStrategy: Parallel request processing with limited concurrency
+    ThroughputStrategy: Unrestricted request processing for maximum system throughput
+    AsyncConstantStrategy: Asynchronous request scheduling at a constant rate
+    AsyncPoissonStrategy: Asynchronous request scheduling with Poisson distribution
+
+Functions:
+    strategy_display_str: Generate human-readable string representations of strategies
+"""
+
 import math
-import os
 import random
 import time
-from collections.abc import Generator
+from abc import ABC, abstractmethod
 from typing import (
+    Any,
     Literal,
     Optional,
     Union,
@@ -11,13 +43,18 @@ from typing import (
 
 from pydantic import Field
 
-from guidellm.config import settings
 from guidellm.objects import StandardBaseModel
+from guidellm.scheduler.objects import ScheduledRequestInfo
 
 __all__ = [
     "AsyncConstantStrategy",
     "AsyncPoissonStrategy",
     "ConcurrentStrategy",
+    "ConstantRateRequestTimings",
+    "LastCompletionRequestTimings",
+    "NoDelayRequestTimings",
+    "PoissonRateRequestTimings",
+    "ScheduledRequestTimings",
     "SchedulingStrategy",
     "StrategyType",
     "SynchronousStrategy",
@@ -29,251 +66,549 @@ __all__ = [
 StrategyType = Literal["synchronous", "concurrent", "throughput", "constant", "poisson"]
 
 
+class ScheduledRequestTimings(StandardBaseModel, ABC):
+    """
+    Abstract base class for request timing implementations in scheduling strategies.
+
+    This class defines the interface for controlling when requests are scheduled
+    and how timing offsets are calculated. Different implementations provide
+    various timing behaviors such as synchronous, constant-rate, or stochastic
+    request scheduling patterns.
+
+    Implementations must provide logic for calculating the next request offset
+    and handling request completion events that may affect future timing decisions.
+    """
+
+    @abstractmethod
+    def next_offset(self) -> float:
+        """
+        Calculate the time offset for the next request to be scheduled.
+
+        :return: The offset in seconds from the scheduler start time when the
+            next request should be scheduled.
+        """
+
+    @abstractmethod
+    def request_completed(self, request_info: ScheduledRequestInfo):
+        """
+        Handle the completion of a request and update internal timing state.
+
+        This method is called when a request completes (successfully or with error)
+        and allows the timing implementation to update its internal state based on
+        the completion information.
+
+        :param request_info: Information about the completed request including
+            timing details and completion status.
+        """
+
+
+class LastCompletionRequestTimings(ScheduledRequestTimings):
+    """
+    Timing implementation for synchronous and concurrent scheduling strategies.
+
+    This implementation schedules the next request immediately after the last
+    request has completed, enabling sequential or limited concurrent processing.
+    It maintains an internal offset based on completion times to ensure proper
+    scheduling behavior.
+    """
+
+    offset: float = Field(
+        default=0.0,
+        description="The current time offset in seconds from scheduler start time.",
+    )
+    startup_requests: int = Field(
+        default=0,
+        description=(
+            "Number of initial requests to schedule during startup phase with equal "
+            "spacing of startup_requests_delay before going to last request times."
+        ),
+        ge=0,
+    )
+    startup_requests_delay: float = Field(
+        default=0.0,
+        description=(
+            "Delay in seconds used to add to the offset for each request "
+            "within the startup phase (_num_requests <= startup_requests)."
+        ),
+        ge=0,
+    )
+    _requests_count: int = Field(
+        default=0,
+        description="Internal counter tracking the number of offsets generated.",
+        ge=0,
+    )
+
+    def next_offset(self) -> float:
+        """
+        :return: The current offset value in seconds from scheduler start time.
+        """
+        self._num_request_offsets += 1
+
+        if self._num_request_offsets <= self.startup_requests:
+            self.offset += self.startup_requests_delay
+
+        return self.offset
+
+    def request_completed(self, request_info: ScheduledRequestInfo):
+        """
+        Update timing state and offset based on the completed request.
+
+        :param request_info: Information about the completed request including
+            timing details and completion status.
+        """
+        if (
+            self._num_request_offsets > self.startup_requests
+            and request_info.completed_at is not None
+        ):
+            # set the next sync offset to the time when the previous request completed
+            self.offset = request_info.completed_at - request_info.scheduler_start_time
+
+
+class NoDelayRequestTimings(ScheduledRequestTimings):
+    """
+    Timing implementation for throughput-maximizing scheduling strategies.
+
+    This implementation schedules requests with no delay, allowing the system
+    to process requests as quickly as possible. It always returns a zero offset,
+    enabling maximum throughput by scheduling requests immediately without
+    waiting for previous requests to complete.
+    """
+
+    offset: float = Field(
+        default=0.0,
+        description="The current time offset in seconds from scheduler start time.",
+        ge=0,
+    )
+    startup_duration: float = Field(
+        default=0.0,
+        description=(
+            "The duration of the startup phase in seconds to gradually ramp up "
+            "request processing."
+        ),
+        ge=0,
+    )
+    startup_tau: float = Field(
+        default=1.0,
+        description=(
+            "The target average time between requests during the startup phase."
+        ),
+        gt=0,
+    )
+    _start_time: float = Field(
+        default=None,
+        description="The start time of the request processing phase.",
+    )
+    _requests_count: int = Field(
+        default=0,
+        description="Internal counter tracking the number of offsets generated.",
+        ge=0,
+    )
+
+    def next_offset(self) -> float:
+        """
+        Get the offset for the next request with no delay.
+
+        :return: Always returns 0.0 to schedule requests immediately.
+        """
+        if self._start_time is None:
+            self._start_time = time.time()
+
+        self._requests_count += 1
+
+        if (
+            self.startup_duration > 0
+            and time.time() < self._start_time + self.startup_duration
+        ):
+            # Gradually ramp up the request processing during start up phase
+            # using exponential decay to the startup_duration
+            return self.offset + self.startup_duration * (
+                1 - math.exp(-self._requests_count / self.startup_tau)
+            )
+        elif self.startup_duration > 0:
+            return self.offset + self.startup_duration
+        else:
+            return self.offset
+
+    def request_completed(self, request_info: ScheduledRequestInfo):
+        """
+        Handle request completion (no action needed for throughput strategy).
+
+        :param request_info: Information about the completed request (unused).
+        """
+
+
+class ConstantRateRequestTimings(ScheduledRequestTimings):
+    """
+    Timing implementation for constant-rate scheduling strategies.
+
+    This implementation schedules requests at a constant rate defined in requests
+    per second. The offset for each subsequent request is calculated as a multiple
+    of the interval between requests, ensuring evenly spaced request scheduling.
+    """
+
+    rate: float = Field(
+        description="The target rate in requests per second. Must be positive.",
+        gt=0,
+    )
+    startup_duration: float = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds over which startup requests are distributed "
+            "to converge quickly to the desired rate before switching to "
+            "constant-rate scheduling."
+        ),
+        ge=0,
+    )
+    _start_time: float = Field(
+        default=None,
+        description="The start time of the request processing phase.",
+    )
+    _requests_count: int = Field(
+        default=0,
+        description="Internal counter tracking the number of offsets generated.",
+        ge=0,
+    )
+
+    def next_offset(self) -> float:
+        """
+        Calculate the offset for the next request at a constant rate.
+
+        Each request is scheduled at a fixed interval based on the target rate,
+        with offsets increasing linearly: 0, 1/rate, 2/rate, 3/rate, etc.
+
+        :return: The offset in seconds for the next request.
+        """
+        if self._start_time is None:
+            self._start_time = time.time()
+
+        self._requests_count += 1
+        interval = 1.0 / self.rate
+
+        if (
+            self.startup_duration > 0
+            and time.time() - self._start_time < self.startup_duration
+        ):
+            # Adjust the rate during the startup phase to exponentially decay
+            # to the desired rate
+            tau = (self.rate * self.startup_duration) / (
+                -1 * math.log(0.01)
+            )  # target 99% convergence
+            adjust_fraction = 1 - math.exp(-self._requests_count / tau)
+            interval *= adjust_fraction
+
+        return self.offset + interval * self._requests_count
+
+    def request_completed(self, request_info: ScheduledRequestInfo):
+        """
+        Handle request completion (no action needed for constant rate strategy).
+
+        :param request_info: Information about the completed request (unused).
+        """
+
+
+class PoissonRateRequestTimings(ScheduledRequestTimings):
+    """
+    Timing implementation for Poisson-distributed scheduling strategies.
+
+    This implementation schedules requests following a Poisson process with
+    exponentially distributed inter-arrival times. The average rate is specified
+    in requests per second, but individual intervals vary randomly according to
+    the exponential distribution, simulating realistic traffic patterns.
+    """
+
+    rate: float = Field(
+        description="The target average rate in requests per second. Must be positive.",
+        gt=0,
+    )
+    random_seed: int = Field(
+        default=42,
+        description=(
+            "Seed for the random number generator to ensure reproducible behavior."
+        ),
+    )
+    offset: float = Field(
+        default=0.0,
+        description="The cumulative time offset in seconds from scheduler start time.",
+    )
+    startup_duration: float = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds over which startup requests are distributed "
+            "to converge quickly to the desired rate before switching to "
+            "constant-rate scheduling."
+        ),
+        ge=0,
+    )
+    _start_time: float = Field(
+        default=None,
+        description="The start time of the request processing phase.",
+    )
+    _requests_count: int = Field(
+        default=0,
+        description="Internal counter tracking the number of offsets generated.",
+        ge=0,
+    )
+    _random: Any = Field(
+        default=None,
+        description="Random number generator instance for Poisson distribution.",
+        exclude=True,  # Don't include in serialization
+    )
+
+    def next_offset(self) -> float:
+        """
+        Calculate the offset for the next request using Poisson distribution.
+
+        Uses exponential distribution to generate inter-arrival times that
+        follow a Poisson process. Each call advances the cumulative offset
+        by a randomly generated delay.
+
+        :return: The cumulative offset in seconds for the next request.
+        """
+        if self._start_time is None:
+            self._start_time = time.time()
+
+        if self._random is None:
+            self._random = random.Random(self.random_seed)
+
+        self._requests_count += 1
+
+        next_delay = self._random.expovariate(self.rate)
+
+        if (
+            self.startup_duration > 0
+            and time.time() - self._start_time < self.startup_duration
+        ):
+            # Adjust the rate during the startup phase to exponentially decay
+            # to the desired rate
+            tau = (self.rate * self.startup_duration) / (
+                -1 * math.log(0.01)
+            )  # target 99% convergence
+            adjust_fraction = 1 - math.exp(-self._requests_count / tau)
+            next_delay *= adjust_fraction
+
+        self.offset += next_delay
+
+        return self.offset
+
+    def request_completed(self, request_info: ScheduledRequestInfo):
+        """
+        Handle request completion (no action needed for Poisson rate strategy).
+
+        :param request_info: Information about the completed request (unused).
+        """
+
+
 class SchedulingStrategy(StandardBaseModel):
     """
-    An abstract base class for scheduling strategies.
-    This class defines the interface for scheduling requests and provides
-    a common structure for all scheduling strategies.
-    Subclasses should implement the `request_times` method to provide
-    specific scheduling behavior.
-
-    :param type_: The type of scheduling strategy to use.
-        This should be one of the predefined strategy types.
+    An abstract base class for scheduling strategies enabling control over how
+    requests are processed by the scheduler.
     """
 
     type_: Literal["strategy"] = Field(
-        description="The type of scheduling strategy schedule requests with.",
+        description="The type of scheduling strategy to schedule requests with.",
     )
 
     @property
-    def processing_mode(self) -> Literal["sync", "async"]:
+    def processes_limit(self) -> Optional[int]:
         """
-        The processing mode for the scheduling strategy, either 'sync' or 'async'.
-        This property determines how the worker processes are setup:
-        either to run synchronously with one request at a time or asynchronously.
-        This property should be implemented by subclasses to return
-        the appropriate processing mode.
-
-        :return: The processing mode for the scheduling strategy,
-            either 'sync' or 'async'.
+        :return: The maximum number of worker processes supported by the
+            scheduling strategy. None if not limited.
         """
-        return "async"
+        return None
 
     @property
-    def processes_limit(self) -> int:
+    def requests_limit(self) -> Optional[int]:
         """
-        The limit on the number of worker processes for the scheduling strategy.
-        It determines how many worker processes are created
-        for the scheduling strategy and must be implemented by subclasses.
-
-        :return: The number of processes for the scheduling strategy.
+        :return: The maximum number of concurrent requests that can be processed
+            at once by the scheduling strategy. None if not limited.
         """
-        cpu_cores = os.cpu_count() or 1
+        return None
 
-        return min(max(1, cpu_cores - 1), settings.max_worker_processes)
-
-    @property
-    def queued_requests_limit(self) -> Optional[int]:
+    def create_worker_timings(
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+    ) -> ScheduledRequestTimings:
         """
-        The maximum number of queued requests for the scheduling strategy.
-        It determines how many requests can be queued at one time
-        for the scheduling strategy and must be implemented by subclasses.
+        Create a ScheduledRequestTimings instance to define the timing behavior
+        for the worker process to schedule requests.
 
-        :return: The maximum number of queued requests for the scheduling strategy.
+        :param local_rank: The rank of the worker process within the local world size.
+        :param local_world_size: The total num of worker processes in the local world.
+        :param local_max_concurrency: The maximum number of concurrent requests
+            for the worker process.
+        :return: A ScheduledRequestTimings instance for the worker process.
         """
-        return settings.max_concurrency
-
-    @property
-    def processing_requests_limit(self) -> int:
-        """
-        The maximum number of processing requests for the scheduling strategy.
-        It determines how many requests can be processed at one time
-        for the scheduling strategy and must be implemented by subclasses.
-
-        :return: The maximum number of processing requests for the scheduling strategy.
-        """
-        return settings.max_concurrency
-
-    def request_times(self) -> Generator[float, None, None]:
-        """
-        A generator that yields timestamps for when requests should be sent.
-        This method should be implemented by subclasses to provide specific
-        scheduling behavior.
-
-        :return: A generator that yields timestamps for request scheduling
-            or -1 for requests that should be sent immediately.
-        """
-        raise NotImplementedError("Subclasses must implement request_times() method.")
+        raise NotImplementedError(
+            "create_worker_timings method must be implemented by subclasses."
+        )
 
 
 class SynchronousStrategy(SchedulingStrategy):
     """
-    A class representing a synchronous scheduling strategy.
-    This strategy schedules requests synchronously, one at a time,
-    with the maximum rate possible.
-    It inherits from the `SchedulingStrategy` base class and
-    implements the `request_times` method to provide the specific
-    behavior for synchronous scheduling.
+    Sequential request processing strategy with maximum throughput constraints.
 
-    :param type_: The synchronous StrategyType to schedule requests synchronously.
+    This strategy processes requests one at a time in strict sequential order,
+    waiting for each request to complete before starting the next. It provides
+    the most predictable timing behavior and is useful for measuring maximum
+    achievable throughput under sequential processing constraints.
+
+    The strategy enforces a limit of one worker process and one concurrent request,
+    making it ideal for scenarios where request ordering and isolation are critical.
     """
 
     type_: Literal["synchronous"] = "synchronous"  # type: ignore[assignment]
 
     @property
-    def processing_mode(self) -> Literal["sync"]:
+    def processes_limit(self) -> Optional[int]:
         """
-        The processing mode for the scheduling strategy, either 'sync' or 'async'.
-        This property determines how the worker processes are setup:
-        either to run synchronously with one request at a time or asynchronously.
+        Get the maximum number of worker processes for synchronous scheduling.
 
-        :return: 'sync' for synchronous scheduling strategy
-            for the single worker process.
-        """
-        return "sync"
-
-    @property
-    def processes_limit(self) -> int:
-        """
-        The limit on the number of worker processes for the scheduling strategy.
-        It determines how many worker processes are created
-        for the scheduling strategy and must be implemented by subclasses.
-
-        :return: 1 for the synchronous scheduling strategy to limit
-            the worker processes to one.
+        :return: Always returns 1 to enforce single-process constraint.
         """
         return 1
 
     @property
-    def queued_requests_limit(self) -> int:
+    def requests_limit(self) -> Optional[int]:
         """
-        The maximum number of queued requests for the scheduling strategy.
-        It determines how many requests can be queued at one time
-        for the scheduling strategy and must be implemented by subclasses.
+        Get the maximum number of concurrent requests for synchronous scheduling.
 
-        :return: 1 for the synchronous scheduling strategy to limit
-            the queued requests to one that is ready to be processed.
+        :return: Always returns 1 to enforce single-request constraint.
         """
         return 1
 
-    @property
-    def processing_requests_limit(self) -> int:
+    def create_worker_timings(
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+    ) -> ScheduledRequestTimings:
         """
-        The maximum number of processing requests for the scheduling strategy.
-        It determines how many requests can be processed at one time
-        for the scheduling strategy and must be implemented by subclasses.
+        Create timing implementation for synchronous request scheduling.
 
-        :return: 1 for the synchronous scheduling strategy to limit
-            the processing requests to one that is ready to be processed.
+        :param local_rank: The rank of the worker process. Must be 0.
+        :param local_world_size: Total number of worker processes. Must be 1.
+        :param local_max_concurrency: The maximum number of concurrent requests
+            for the worker process.
+        :return: LastCompletionRequestTimings instance for sequential processing.
+        :raises ValueError: If multiple workers or non-zero rank is specified.
         """
-        return 1
+        if local_world_size > 1 or local_rank != 0:
+            raise ValueError(
+                "SynchronousStrategy can only be used with a single worker process."
+            )
 
-    def request_times(self) -> Generator[float, None, None]:
-        """
-        A generator that yields time.time() so requests are sent immediately,
-            while scheduling them synchronously.
-
-        :return: A generator that yields time.time() for immediate request scheduling.
-        """
-        while True:
-            yield time.time()
+        return LastCompletionRequestTimings()
 
 
 class ConcurrentStrategy(SchedulingStrategy):
     """
-    A class representing a concurrent scheduling strategy.
-    This strategy schedules requests concurrently with the specified
-    number of streams.
-    It inherits from the `SchedulingStrategy` base class and
-    implements the `request_times` method to provide the specific
-    behavior for concurrent scheduling.
+    Parallel request processing strategy with controlled concurrency limits.
 
-    :param type_: The concurrent StrategyType to schedule requests concurrently.
-    :param streams: The number of concurrent streams to use for scheduling requests.
-        Each stream runs synchronously with the maximum rate possible.
-        This must be a positive integer.
+    This strategy enables concurrent request processing up to a specified number
+    of streams, allowing multiple requests to be processed simultaneously while
+    maintaining predictable resource usage. It provides a balance between
+    throughput and resource control.
+
+    The number of concurrent streams determines both the maximum number of worker
+    processes and the maximum number of requests that can be processed in parallel.
+    Each worker process handles one stream and waits for request completion before
+    processing the next request in that stream.
     """
 
     type_: Literal["concurrent"] = "concurrent"  # type: ignore[assignment]
     streams: int = Field(
         description=(
             "The number of concurrent streams to use for scheduling requests. "
-            "Each stream runs sychronously with the maximum rate possible. "
             "This must be a positive integer."
         ),
         gt=0,
     )
-
-    @property
-    def processing_mode(self) -> Literal["sync"]:
-        """
-        The processing mode for the scheduling strategy, either 'sync' or 'async'.
-        This property determines how the worker processes are setup:
-        either to run synchronously with one request at a time or asynchronously.
-
-        :return: 'sync' for synchronous scheduling strategy
-            for the multiple worker processes equal to streams.
-        """
-        return "sync"
+    startup_duration: float = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds over which startup requests are distributed "
+            "before switching to completion-based timing."
+        ),
+        ge=0,
+    )
 
     @property
     def processes_limit(self) -> int:
         """
-        The limit on the number of worker processes for the scheduling strategy.
-        It determines how many worker processes are created
-        for the scheduling strategy and must be implemented by subclasses.
+        Get the maximum number of worker processes for concurrent scheduling.
 
-        :return: {self.streams} for the concurrent scheduling strategy to limit
-            the worker processes to the number of streams.
+        :return: The number of streams, which equals the maximum worker processes.
         """
         return self.streams
 
     @property
-    def queued_requests_limit(self) -> int:
+    def requests_limit(self) -> int:
         """
-        The maximum number of queued requests for the scheduling strategy.
-        It determines how many requests can be queued at one time
-        for the scheduling strategy and must be implemented by subclasses.
+        Get the maximum number of concurrent requests for concurrent scheduling.
 
-        :return: {self.streams} for the concurrent scheduling strategy to limit
-            the queued requests to the number of streams that are ready to be processed.
+        :return: The number of streams, which equals the maximum concurrent requests.
         """
         return self.streams
 
-    @property
-    def processing_requests_limit(self) -> int:
+    def create_worker_timings(
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+    ) -> LastCompletionRequestTimings:
         """
-        The maximum number of processing requests for the scheduling strategy.
-        It determines how many requests can be processed at one time
-        for the scheduling strategy and must be implemented by subclasses.
+        Create timing implementation for concurrent request scheduling.
 
-        :return: {self.streams} for the concurrent scheduling strategy to limit
-            the processing requests to the number of streams that ready to be processed.
+        :param local_rank: The rank of the worker process. Must be less than streams.
+        :param local_world_size: Total number of worker processes. Must not exceed
+            streams.
+        :param local_max_concurrency: The maximum number of concurrent requests
+            for the worker process.
+        :return: LastCompletionRequestTimings instance for stream-based processing.
+        :raises ValueError: If worker configuration exceeds stream limits.
         """
-        return self.streams
+        if local_world_size > self.streams:
+            raise ValueError(
+                "ConcurrentStrategy can only be used with up to "
+                f"{self.streams} worker processes."
+            )
 
-    def request_times(self) -> Generator[float, None, None]:
-        """
-        A generator that yields time.time() so requests are sent
-        immediately, while scheduling them concurrently with the specified
-        number of streams.
+        if local_rank >= self.streams:
+            raise ValueError(
+                f"Local rank {local_rank} exceeds the number of streams {self.streams}."
+            )
 
-        :return: A generator that yields time.time() for immediate request scheduling.
-        """
-        while True:
-            yield time.time()
+        if self.startup_duration > 0:
+            # Ensure equal global distribution of the start up for concurrent streams
+            # Ex: for 10 streams, 2 workers, and 8 seconds start up duration,
+            # the first worker should start at 0.0, 1.6, 3.2, 4.8, 6.4
+            # and the second worker should start at 0.8, 2.4, 4.0, 5.6, 7.2
+            delay_per_stream = self.startup_duration / self.streams
+            streams_per_worker = self.streams // local_world_size
+
+            offset = local_rank * streams_per_worker * delay_per_stream
+            startup_requests = streams_per_worker + (
+                1
+                if local_world_size > 1 and local_rank < self.streams % local_world_size
+                else 0
+            )
+            startup_requests_delay = delay_per_stream * local_world_size
+        else:
+            offset = 0.0
+            startup_requests = 0
+            startup_requests_delay = 0.0
+
+        return LastCompletionRequestTimings(
+            offset=offset,
+            startup_requests=startup_requests,
+            startup_requests_delay=startup_requests_delay,
+        )
 
 
 class ThroughputStrategy(SchedulingStrategy):
     """
-    A class representing a throughput scheduling strategy.
-    This strategy schedules as many requests asynchronously as possible,
-    with the maximum rate possible.
-    It inherits from the `SchedulingStrategy` base class and
-    implements the `request_times` method to provide the specific
-    behavior for throughput scheduling.
+    Maximum throughput strategy with optional concurrency limits.
 
-    :param type_: The throughput StrategyType to schedule requests asynchronously.
+    This strategy schedules requests to maximize system throughput by allowing
+    unlimited concurrent request processing. Requests are scheduled immediately
+    without waiting for previous requests to complete, enabling the system to
+    achieve its maximum processing capacity.
+
+    An optional maximum concurrency limit can be set to prevent resource
+    exhaustion while still allowing high-throughput processing patterns.
     """
 
     type_: Literal["throughput"] = "throughput"  # type: ignore[assignment]
@@ -281,84 +616,79 @@ class ThroughputStrategy(SchedulingStrategy):
         default=None,
         description=(
             "The maximum number of concurrent requests to schedule. "
-            "If set to None, the concurrency value from settings will be used. "
             "This must be a positive integer greater than 0."
         ),
         gt=0,
     )
+    startup_duration: float = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds over which startup requests are distributed "
+            "before switching to full throughput scheduling."
+        ),
+        ge=0,
+    )
 
     @property
-    def processing_mode(self) -> Literal["async"]:
+    def processes_limit(self) -> Optional[int]:
         """
-        The processing mode for the scheduling strategy, either 'sync' or 'async'.
-        This property determines how the worker processes are setup:
-        either to run synchronously with one request at a time or asynchronously.
+        Get the maximum number of worker processes for throughput scheduling.
 
-        :return: 'async' for asynchronous scheduling strategy
-            for the multiple worker processes handling requests.
+        :return: The max_concurrency value if set, otherwise None for unlimited
+            worker processes.
         """
-        return "async"
+        return self.max_concurrency
 
     @property
-    def queued_requests_limit(self) -> int:
+    def requests_limit(self) -> Optional[int]:
         """
-        The maximum number of queued requests for the scheduling strategy.
-        It determines how many requests can be queued at one time
-        for the scheduling strategy and must be implemented by subclasses.
+        Get the maximum number of concurrent requests for throughput scheduling.
 
-        :return: The processing requests limit to ensure that there are enough
-            requests even for the worst case scenario where the max concurrent
-            requests are pulled at once for processing.
+        :return: The max_concurrency value if set, otherwise None for unlimited
+            concurrent requests.
         """
-        return self.processing_requests_limit
+        return self.max_concurrency
 
-    @property
-    def processing_requests_limit(self) -> int:
+    def create_worker_timings(
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+    ) -> ScheduledRequestTimings:
         """
-        The maximum number of processing requests for the scheduling strategy.
-        It determines how many requests can be processed at one time
-        for the scheduling strategy and must be implemented by subclasses.
+        Create timing implementation for throughput request scheduling.
 
-        :return: {self.max_concurrency} for the throughput scheduling strategy to limit
-            the processing requests to the maximum concurrency.
-            If max_concurrency is None, then the default processing requests limit
-            will be used.
+        :param local_rank: The rank of the worker process (unused for throughput).
+        :param local_world_size: Total number of worker processes (unused for
+            throughput).
+        :return: NoDelayRequestTimings instance for immediate request scheduling.
         """
-        return self.max_concurrency or super().processing_requests_limit
+        if self.startup_duration > 0:
+            # Vary offset by up to 5% of the startup duration for a bit of variance
+            offset = 0.05 * self.startup_duration * (local_rank / local_world_size)
+            # set convergence of tau to target reaching 99% of the startup_duration
+            # at local_max_concurrency
+            tau = local_max_concurrency / (-1 * math.log(0.01))
+        else:
+            offset = 0.0
+            tau = 1.0
 
-    def request_times(self) -> Generator[float, None, None]:
-        """
-        A generator that yields the start time.time() so requests are sent
-        immediately, while scheduling as many asynchronously as possible.
-
-        :return: A generator that yields the start time.time()
-            for immediate request scheduling.
-        """
-        start_time = time.time()
-
-        while True:
-            yield start_time
+        return NoDelayRequestTimings(
+            startup_duration=self.startup_duration,
+            startup_tau=tau,
+            offset=offset,
+        )
 
 
 class AsyncConstantStrategy(ThroughputStrategy):
     """
-    A class representing an asynchronous constant scheduling strategy.
-    This strategy schedules requests asynchronously at a constant request rate
-    in requests per second.
-    If initial_burst is set, it will send an initial burst of math.floor(rate)
-    requests to reach the target rate.
-    This is useful to ensure that the target rate is reached quickly
-    and then maintained.
-    It inherits from the `SchedulingStrategy` base class and
-    implements the `request_times` method to provide the specific
-    behavior for asynchronous constant scheduling.
+    Asynchronous constant-rate scheduling strategy for predictable load patterns.
 
-    :param type_: The constant StrategyType to schedule requests asynchronously.
-    :param rate: The rate at which to schedule requests asynchronously in
-        requests per second. This must be a positive float.
-    :param initial_burst: True to send an initial burst of requests
-        (math.floor(self.rate)) to reach target rate.
-        False to not send an initial burst.
+    This strategy schedules requests at a fixed rate specified in requests per
+    second, distributed evenly across all worker processes. It provides predictable
+    timing behavior while allowing asynchronous processing, making it ideal for
+    simulating steady-state load conditions and measuring system performance
+    under consistent request rates.
+
+    The total rate is divided equally among all worker processes, ensuring the
+    aggregate rate matches the specified value regardless of the number of workers.
     """
 
     type_: Literal["constant"] = "constant"  # type: ignore[assignment]
@@ -369,64 +699,52 @@ class AsyncConstantStrategy(ThroughputStrategy):
         ),
         gt=0,
     )
-    initial_burst: bool = Field(
-        default=True,
+    startup_duration: float = Field(
+        default=0.0,
         description=(
-            "True to send an initial burst of requests (math.floor(self.rate)) "
-            "to reach target rate. False to not send an initial burst."
+            "Duration in seconds over which startup requests are distributed "
+            "to converge quickly to the desired rate before switching to "
+            "constant-rate scheduling."
         ),
+        ge=0,
     )
 
-    def request_times(self) -> Generator[float, None, None]:
+    def create_worker_timings(
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+    ) -> ScheduledRequestTimings:
         """
-        A generator that yields timestamps for when requests should be sent.
-        This method schedules requests asynchronously at a constant rate
-        in requests per second.
-        If burst_time is set, it will send an initial burst of requests
-        to reach the target rate.
-        This is useful to ensure that the target rate is reached quickly
-        and then maintained.
+        Create timing implementation for constant-rate request scheduling.
 
-        :return: A generator that yields timestamps for request scheduling.
+        Divides the total rate evenly across all worker processes to maintain
+        the specified aggregate rate.
+
+        :param local_rank: The rank of the worker process (unused for rate calculation).
+        :param local_world_size: Total number of worker processes for rate division.
+        :param local_max_concurrency: The maximum number of concurrent requests
+            for the worker process.
+        :return: ConstantRateRequestTimings instance with per-worker rate.
         """
-        start_time = time.time()
-        constant_increment = 1.0 / self.rate
+        # Divide the rate evenly across all worker processes
+        worker_rate = self.rate / local_world_size
 
-        # handle bursts first to get to the desired rate
-        if self.initial_burst is not None:
-            # send an initial burst equal to the rate
-            # to reach the target rate
-            burst_count = math.floor(self.rate)
-            for _ in range(burst_count):
-                yield start_time
-
-            start_time += constant_increment
-
-        counter = 0
-
-        # continue with constant rate after bursting
-        while True:
-            yield start_time + constant_increment * counter
-            counter += 1
+        return ConstantRateRequestTimings(
+            rate=worker_rate,
+            startup_duration=self.startup_duration,
+        )
 
 
 class AsyncPoissonStrategy(ThroughputStrategy):
     """
-    A class representing an asynchronous Poisson scheduling strategy.
-    This strategy schedules requests asynchronously at a Poisson request rate
-    in requests per second.
-    If initial_burst is set, it will send an initial burst of math.floor(rate)
-    requests to reach the target rate.
-    It inherits from the `SchedulingStrategy` base class and
-    implements the `request_times` method to provide the specific
-    behavior for asynchronous Poisson scheduling.
+    Asynchronous Poisson-distributed scheduling strategy for realistic load simulation.
 
-    :param type_: The Poisson StrategyType to schedule requests asynchronously.
-    :param rate: The rate at which to schedule requests asynchronously in
-        requests per second. This must be a positive float.
-    :param initial_burst: True to send an initial burst of requests
-        (math.floor(self.rate)) to reach target rate.
-        False to not send an initial burst.
+    This strategy schedules requests following a Poisson process with exponentially
+    distributed inter-arrival times. The average rate is specified in requests per
+    second, but individual intervals vary randomly, providing a more realistic
+    simulation of user behavior and network traffic patterns.
+
+    The total rate is divided equally among all worker processes, with each worker
+    using a different random seed to ensure independent request streams that
+    collectively achieve the target rate.
     """
 
     type_: Literal["poisson"] = "poisson"  # type: ignore[assignment]
@@ -437,49 +755,67 @@ class AsyncPoissonStrategy(ThroughputStrategy):
         ),
         gt=0,
     )
-    initial_burst: bool = Field(
-        default=True,
+    startup_duration: float = Field(
+        default=0.0,
         description=(
-            "True to send an initial burst of requests (math.floor(self.rate)) "
-            "to reach target rate. False to not send an initial burst."
+            "Duration in seconds over which startup requests are distributed "
+            "to converge quickly to the desired rate before switching to "
+            "constant-rate scheduling."
         ),
+        ge=0,
     )
     random_seed: int = Field(
         default=42,
-        description=("The random seed to use for the Poisson distribution. "),
+        description=("The random seed to use for the Poisson distribution."),
     )
 
-    def request_times(self) -> Generator[float, None, None]:
+    def create_worker_timings(
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+    ) -> ScheduledRequestTimings:
         """
-        A generator that yields timestamps for when requests should be sent.
-        This method schedules requests asynchronously at a Poisson rate
-        in requests per second.
-        The inter arrival time between requests is exponentially distributed
-        based on the rate.
+        Create timing implementation for Poisson-distributed request scheduling.
 
-        :return: A generator that yields timestamps for request scheduling.
+        Divides the total rate evenly across all worker processes and assigns
+        unique random seeds to ensure independent but coordinated request streams.
+
+        :param local_rank: The rank of the worker process for seed generation.
+        :param local_world_size: Total number of worker processes for rate division.
+        :param local_max_concurrency: The maximum number of concurrent requests
+            for the worker process.
+        :return: PoissonRateRequestTimings instance with per-worker rate and
+            unique seed.
         """
-        start_time = time.time()
-
-        if self.initial_burst is not None:
-            # send an initial burst equal to the rate
-            # to reach the target rate
-            burst_count = math.floor(self.rate)
-            for _ in range(burst_count):
-                yield start_time
-        else:
-            yield start_time
-
-        # set the random seed for reproducibility
-        rand = random.Random(self.random_seed)  # noqa: S311
-
-        while True:
-            inter_arrival_time = rand.expovariate(self.rate)
-            start_time += inter_arrival_time
-            yield start_time
+        # Divide the rate evenly across all worker processes
+        worker_rate = self.rate / local_world_size
+        # Use a different seed for each worker to ensure different sequences
+        worker_seed = self.random_seed + local_rank
+        return PoissonRateRequestTimings(
+            rate=worker_rate,
+            random_seed=worker_seed,
+            startup_duration=self.startup_duration,
+        )
 
 
 def strategy_display_str(strategy: Union[StrategyType, SchedulingStrategy]) -> str:
+    """
+    Generate a human-readable string representation of a scheduling strategy.
+
+    Creates concise string representations that include the strategy type and
+    relevant configuration parameters (e.g., rate for async strategies, streams
+    for concurrent strategies). Useful for logging, debugging, and user interfaces.
+
+    :param strategy: A strategy type string or SchedulingStrategy instance to format.
+    :return: A formatted string representation of the strategy with configuration
+        details when available.
+
+    Examples:
+        >>> strategy_display_str("synchronous")
+        "synchronous"
+        >>> strategy_display_str(ConcurrentStrategy(streams=4))
+        "concurrent@4"
+        >>> strategy_display_str(AsyncConstantStrategy(rate=10.5))
+        "constant@10.50"
+    """
     strategy_type = strategy if isinstance(strategy, str) else strategy.type_
     strategy_instance = strategy if isinstance(strategy, SchedulingStrategy) else None
 

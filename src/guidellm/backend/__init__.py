@@ -1,23 +1,24 @@
+"""
+Backend infrastructure for GuideLLM language model interactions.
+
+Provides abstract base classes, implemented backends, request/response objects,
+and timing utilities for standardized communication with LLM providers.
+"""
+
 from .backend import (
     Backend,
     BackendType,
 )
-from .openai import CHAT_COMPLETIONS_PATH, TEXT_COMPLETIONS_PATH, OpenAIHTTPBackend
-from .response import (
-    RequestArgs,
-    ResponseSummary,
-    StreamingResponseType,
-    StreamingTextResponse,
+from .objects import (
+    GenerationRequest,
+    GenerationRequestTimings,
+    GenerationResponse,
 )
 
 __all__ = [
-    "CHAT_COMPLETIONS_PATH",
-    "TEXT_COMPLETIONS_PATH",
     "Backend",
     "BackendType",
-    "OpenAIHTTPBackend",
-    "RequestArgs",
-    "ResponseSummary",
-    "StreamingResponseType",
-    "StreamingTextResponse",
+    "GenerationRequest",
+    "GenerationRequestTimings",
+    "GenerationResponse",
 ]

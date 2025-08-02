@@ -8,6 +8,8 @@ from .hf_transformers import (
     check_load_processor,
 )
 from .random import IntegerRangeSampler
+from .registry import RegistryMixin
+from .singleton import SingletonMixin, ThreadSafeSingletonMixin
 from .text import (
     EndlessTextCreator,
     clean_text,
@@ -24,6 +26,9 @@ __all__ = [
     "DefaultGroupHandler",
     "EndlessTextCreator",
     "IntegerRangeSampler",
+    "RegistryMixin",
+    "SingletonMixin",
+    "ThreadSafeSingletonMixin",
     "check_load_processor",
     "clean_text",
     "filter_text",
