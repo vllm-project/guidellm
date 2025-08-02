@@ -103,12 +103,12 @@ export const Component = () => {
           leftColumn={leftColumn(
             formattedRequestRate,
             formatNumber(timePerRequestAtRPS.mean),
-            'ms'
+            's'
           )}
           rightColumn={columnContent(
             formattedRequestRate,
             timePerRequestAtRPS.percentiles,
-            'ms'
+            's'
           )}
         >
           <GraphTitle title="E2E Latency vs RPS" />
@@ -117,7 +117,7 @@ export const Component = () => {
               data={timePerRequest}
               margins={{ left: 50, bottom: 50 }}
               xLegend="request per sec"
-              yLegend="latency (ms)"
+              yLegend="latency (s)"
               minX={minX}
             />
           </GraphsWrapper>
@@ -127,7 +127,7 @@ export const Component = () => {
           leftColumn={leftColumn3(
             formattedRequestRate,
             formatNumber(throughputAtRPS.mean),
-            'ms'
+            'tok/s'
           )}
         >
           <GraphTitle title="Throughput vs RPS" />

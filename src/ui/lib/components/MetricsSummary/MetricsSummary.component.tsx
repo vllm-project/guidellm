@@ -143,7 +143,7 @@ export const Component = () => {
             </FieldCell>
             <FieldCell data-id="field-cell-3">
               <Input
-                label="TIME PER REQUEST (Ms)"
+                label="TIME PER REQUEST (s)"
                 value={timePerRequestSLO}
                 onChange={handleTimePerRequest}
                 fullWidth
@@ -253,7 +253,7 @@ export const Component = () => {
             label="time per request"
             value={`${formatNumber(
               interpolatedMetricData.timePerRequest.enforcedPercentileValue
-            )} ms`}
+            )} s`}
             match={isTprMatch}
             valueColor={LineColor.Tertiary}
           />
