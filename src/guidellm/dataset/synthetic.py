@@ -25,6 +25,11 @@ __all__ = [
 
 
 class SyntheticDatasetConfig(BaseModel):
+    prefix_tokens: int = Field(
+        description="The number of shared prefix tokens to prepend to each prompt.",
+        ge=0,
+        default=0,
+    )
     prompt_tokens: int = Field(
         description="The average number of text tokens generated for prompts.",
         gt=0,
@@ -164,21 +169,28 @@ class SyntheticTextItemsGenerator(
         # ensure diff distribution from output tokens
         rand = random.Random(self.random_seed + 2)  # noqa: S311
 
+        prefix_index = rand.randint(0, len(self.text_creator.words))
+        prefix_tokens = self._create_prompt(self.config.prefix_tokens, prefix_index)
+
         for _, prompt_tokens, output_tokens in zip(
             range(self.config.samples),
             prompt_tokens_sampler,
             output_tokens_sampler,
         ):
             start_index = rand.randint(0, len(self.text_creator.words))
+            prompt_text = self.processor.decode(
+                prefix_tokens + self._create_prompt(prompt_tokens, start_index),
+                skip_special_tokens=True,
+            )
             yield {
-                "prompt": self._create_prompt(prompt_tokens, start_index),
-                "prompt_tokens_count": prompt_tokens,
+                "prompt": prompt_text,
+                "prompt_tokens_count": self.config.prefix_tokens + prompt_tokens,
                 "output_tokens_count": output_tokens,
             }
 
-    def _create_prompt(self, prompt_tokens: int, start_index: int) -> str:
+    def _create_prompt(self, prompt_tokens: int, start_index: int) -> list[int]:
         if prompt_tokens <= 0:
-            return ""
+            return []
 
         left = start_index
         right = start_index + 4 * prompt_tokens
@@ -186,16 +198,17 @@ class SyntheticTextItemsGenerator(
         while left < right:
             mid = (left + right) // 2
             test_prompt = self.text_creator.create_text(start_index, mid - start_index)
-            test_tokens = len(self.processor.tokenize(test_prompt))
+            test_tokens = self.processor.encode(test_prompt)
 
-            if test_tokens == prompt_tokens:
-                return test_prompt
-            elif test_tokens < prompt_tokens:
+            if len(test_tokens) == prompt_tokens:
+                return test_tokens
+            elif len(test_tokens) < prompt_tokens:
                 left = mid + 1
             else:
                 right = mid
 
-        return self.text_creator.create_text(start_index, left - start_index)
+        final_text = self.text_creator.create_text(start_index, left - start_index)
+        return self.processor.encode(final_text)
 
 
 class SyntheticDatasetCreator(DatasetCreator):
