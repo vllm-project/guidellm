@@ -18,6 +18,76 @@ from guidellm.dataset.synthetic import (
 )
 
 
+class TestPrefixBucketConfig:
+    """Test cases for PrefixBucketConfig class.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.mark.smoke
+    def test_creation_with_valid_params(self):
+        """Test creating PrefixBucketConfig with valid parameters.
+
+        ### WRITTEN BY AI ###
+        """
+        config = PrefixBucketConfig(bucket_weight=100, prefix_count=1, prefix_tokens=5)
+
+        assert config.bucket_weight == 100
+        assert config.prefix_count == 1
+        assert config.prefix_tokens == 5
+
+    @pytest.mark.sanity
+    def test_creation_with_negative_values(self):
+        """Test creating PrefixBucketConfig with negative values raises ValueError.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(ValueError):
+            PrefixBucketConfig(bucket_weight=-10, prefix_count=1, prefix_tokens=5)
+
+        with pytest.raises(ValueError):
+            PrefixBucketConfig(bucket_weight=100, prefix_count=-1, prefix_tokens=5)
+
+        with pytest.raises(ValueError):
+            PrefixBucketConfig(bucket_weight=100, prefix_count=1, prefix_tokens=-5)
+
+    @pytest.mark.regression
+    def test_prefix_bucket_zero_weight_error(self):
+        """Test that zero total weight raises an error.
+
+        ### WRITTEN BY AI ###
+        """
+        # Test validation error for creating PrefixBucketConfig with weight=0
+        with pytest.raises(ValueError):
+            PrefixBucketConfig(bucket_weight=0, prefix_count=1, prefix_tokens=2)
+
+    @pytest.mark.sanity
+    def test_prefix_bucket_config_validation(self):
+        """Test PrefixBucketConfig validation.
+
+        ### WRITTEN BY AI ###
+        """
+        # Test valid config
+        valid_config = PrefixBucketConfig(
+            bucket_weight=50, prefix_count=2, prefix_tokens=3
+        )
+        assert valid_config.bucket_weight == 50
+        assert valid_config.prefix_count == 2
+        assert valid_config.prefix_tokens == 3
+
+        # Test invalid bucket_weight
+        with pytest.raises(ValueError):
+            PrefixBucketConfig(bucket_weight=0, prefix_count=1, prefix_tokens=2)
+
+        # Test invalid prefix_count
+        with pytest.raises(ValueError):
+            PrefixBucketConfig(bucket_weight=100, prefix_count=0, prefix_tokens=2)
+
+        # Test invalid prefix_tokens
+        with pytest.raises(ValueError):
+            PrefixBucketConfig(bucket_weight=100, prefix_count=1, prefix_tokens=-1)
+
+
 class TestSyntheticDatasetConfig:
     """Test cases for SyntheticDatasetConfig class.
 
@@ -306,10 +376,11 @@ class TestSyntheticTextItemsGenerator:
         ### WRITTEN BY AI ###
         """
         with patch("guidellm.dataset.synthetic.IntegerRangeSampler") as mock_sampler:
-            # Default side effect for basic iteration
+            # Side effect for basic iteration with enough values for larger tests
             def mock_sampler_side_effect(*args, **kwargs):
                 mock_instance = Mock()
-                mock_instance.__iter__ = Mock(return_value=iter([15, 15, 15, 15, 15]))
+                # Provide enough values for tests (up to 20 items)
+                mock_instance.__iter__ = Mock(return_value=iter([15] * 20))
                 return mock_instance
 
             mock_sampler.side_effect = mock_sampler_side_effect
@@ -343,6 +414,45 @@ class TestSyntheticTextItemsGenerator:
             prompt_tokens=15,
             output_tokens=10,
             samples=5,
+            source="The quick brown fox jumps over the lazy dog.",
+        )
+
+    @pytest.fixture
+    def config_with_multiple_prefix_buckets(self):
+        """Fixture for configuration with multiple prefix buckets.
+
+        ### WRITTEN BY AI ###
+        """
+        prefix_bucket1 = PrefixBucketConfig(
+            bucket_weight=60, prefix_count=1, prefix_tokens=2
+        )
+        prefix_bucket2 = PrefixBucketConfig(
+            bucket_weight=40, prefix_count=1, prefix_tokens=4
+        )
+
+        return SyntheticDatasetConfig(
+            prefix_buckets=[prefix_bucket1, prefix_bucket2],
+            prompt_tokens=10,
+            output_tokens=5,
+            samples=10,
+            source="The quick brown fox jumps over the lazy dog.",
+        )
+
+    @pytest.fixture
+    def config_with_multiple_prefix_counts(self):
+        """Fixture for configuration with prefix_count > 1.
+
+        ### WRITTEN BY AI ###
+        """
+        prefix_bucket = PrefixBucketConfig(
+            bucket_weight=100, prefix_count=3, prefix_tokens=2
+        )
+
+        return SyntheticDatasetConfig(
+            prefix_buckets=[prefix_bucket],
+            prompt_tokens=8,
+            output_tokens=4,
+            samples=6,
             source="The quick brown fox jumps over the lazy dog.",
         )
 
@@ -551,6 +661,112 @@ class TestSyntheticTextItemsGenerator:
 
             # Verify cycle was called with vocab values
             mock_cycle.assert_called_once()
+
+    @pytest.mark.regression
+    def test_multiple_prefix_buckets_distribution(
+        self,
+        mock_integer_range_sampler,
+        config_with_multiple_prefix_buckets,
+        mock_tokenizer,
+    ):
+        """Test distribution across multiple prefix buckets with different weights.
+
+        ### WRITTEN BY AI ###
+        """
+        generator = SyntheticTextItemsGenerator(
+            config_with_multiple_prefix_buckets, mock_tokenizer, random_seed=42
+        )
+
+        items = list(generator)
+
+        # Verify we get the expected number of items
+        assert len(items) == config_with_multiple_prefix_buckets.samples
+
+        # Verify that prefix tokens are added to prompt_tokens_count
+        # Since we have buckets with 2 and 4 prefix tokens, and the mock returns 15
+        # prompt tokens, we should see prompt_tokens_count of either 17 or 19
+        prefix_counts = [item["prompt_tokens_count"] for item in items]
+        assert all(count in [17, 19] for count in prefix_counts)
+
+        # Calculate expected distribution based on weights
+        # Bucket 1: weight=60, prefix_count=1, prefix_tokens=2
+        # Bucket 2: weight=40, prefix_count=1, prefix_tokens=4
+        # Total weight = 100, samples = 10
+        # Bucket 1: (60/1/100) * 10 = 6 samples with 17 tokens (2 prefix + 15 prompt)
+        # Bucket 2: (40/1/100) * 10 = 4 samples with 19 tokens (4 prefix + 15 prompt)
+        count_17 = prefix_counts.count(17)  # 2 prefix tokens
+        count_19 = prefix_counts.count(19)  # 4 prefix tokens
+        assert count_17 == 6
+        assert count_19 == 4
+
+    @pytest.mark.regression
+    def test_multiple_prefix_counts(
+        self,
+        mock_integer_range_sampler,
+        config_with_multiple_prefix_counts,
+        mock_tokenizer,
+    ):
+        """Test prefix buckets with prefix_count > 1.
+
+        ### WRITTEN BY AI ###
+        """
+        generator = SyntheticTextItemsGenerator(
+            config_with_multiple_prefix_counts, mock_tokenizer, random_seed=42
+        )
+
+        items = list(generator)
+
+        # Verify we get the expected number of items
+        assert len(items) == config_with_multiple_prefix_counts.samples
+
+        # All items should have 2 prefix tokens + 15 prompt tokens = 17 total
+        for item in items:
+            assert item["prompt_tokens_count"] == 17
+
+    @pytest.mark.sanity
+    def test_prefix_buckets_create_prefixes_method(
+        self, config_with_multiple_prefix_buckets, mock_tokenizer
+    ):
+        """Test the _create_prefixes method directly.
+
+        ### WRITTEN BY AI ###
+        """
+        generator = SyntheticTextItemsGenerator(
+            config_with_multiple_prefix_buckets, mock_tokenizer, random_seed=42
+        )
+
+        # Test _create_prefixes method
+        rand = Mock()
+        rand.randint = Mock(return_value=0)
+        prefixes = generator._create_prefixes(rand)
+
+        # Should return a sequence of prefix token lists
+        assert isinstance(prefixes, list)
+        assert len(prefixes) == 10
+
+        # Each prefix should be a list of integers
+        for prefix in prefixes:
+            assert isinstance(prefix, list)
+            assert all(isinstance(token, int) for token in prefix)
+
+    @pytest.mark.regression
+    def test_empty_prefix_buckets(
+        self, mock_integer_range_sampler, simple_config, mock_tokenizer
+    ):
+        """Test behavior when prefix_buckets is None or empty.
+
+        ### WRITTEN BY AI ###
+        """
+        # Test with None prefix_buckets (simple_config has None)
+        generator = SyntheticTextItemsGenerator(
+            simple_config, mock_tokenizer, random_seed=42
+        )
+
+        items = list(generator)
+
+        # All items should have exactly the prompt tokens (no prefix)
+        for item in items:
+            assert item["prompt_tokens_count"] == 15  # Mock returns 15
 
 
 class TestSyntheticDatasetCreator:
