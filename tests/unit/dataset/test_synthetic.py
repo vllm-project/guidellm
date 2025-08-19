@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from guidellm.dataset.synthetic import (
+    PrefixBucketConfig,
     SyntheticDatasetConfig,
     SyntheticDatasetCreator,
     SyntheticTextItemsGenerator,
@@ -29,8 +30,12 @@ class TestSyntheticDatasetConfig:
 
         ### WRITTEN BY AI ###
         """
+        prefix_bucket = PrefixBucketConfig(
+            bucket_weight=100, prefix_count=1, prefix_tokens=5
+        )
+
         config = SyntheticDatasetConfig(
-            prefix_tokens=5,
+            prefix_buckets=[prefix_bucket],
             prompt_tokens=100,
             prompt_tokens_stdev=10,
             prompt_tokens_min=50,
@@ -43,7 +48,7 @@ class TestSyntheticDatasetConfig:
             source="custom_text.txt",
         )
 
-        assert config.prefix_tokens == 5
+        assert config.prefix_buckets[0].prefix_tokens == 5  # type: ignore [index]
         assert config.prompt_tokens == 100
         assert config.prompt_tokens_stdev == 10
         assert config.prompt_tokens_min == 50
@@ -67,7 +72,9 @@ class TestSyntheticDatasetConfig:
                 "output_tokens": 25,
                 "samples": 200,
                 "source": "test.txt",
-                "prefix_tokens": 10,
+                "prefix_buckets": [
+                    {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 10}
+                ],
             }
         )
 
@@ -77,7 +84,7 @@ class TestSyntheticDatasetConfig:
         assert config.output_tokens == 25
         assert config.samples == 200
         assert config.source == "test.txt"
-        assert config.prefix_tokens == 10
+        assert config.prefix_buckets[0].prefix_tokens == 10  # type: ignore [index]
 
     @pytest.mark.regression
     def test_parse_key_value_pairs(self):
@@ -85,7 +92,7 @@ class TestSyntheticDatasetConfig:
 
         ### WRITTEN BY AI ###
         """
-        kv_str = "prompt_tokens=80,output_tokens=30,samples=300,source=data.txt,prefix_tokens=5"  # noqa: E501
+        kv_str = "prompt_tokens=80,output_tokens=30,samples=300,source=data.txt"
 
         config = SyntheticDatasetConfig.parse_str(kv_str)
 
@@ -93,7 +100,7 @@ class TestSyntheticDatasetConfig:
         assert config.output_tokens == 30
         assert config.samples == 300
         assert config.source == "data.txt"
-        assert config.prefix_tokens == 5
+        assert config.prefix_buckets is None
 
     @pytest.mark.sanity
     def test_parse_yaml_file(self):
@@ -106,7 +113,9 @@ class TestSyntheticDatasetConfig:
             "output_tokens": 15,
             "samples": 100,
             "source": "yaml_test.txt",
-            "prefix_tokens": 3,
+            "prefix_buckets": [
+                {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 3}
+            ],
         }
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
@@ -120,7 +129,7 @@ class TestSyntheticDatasetConfig:
             assert config.output_tokens == 15
             assert config.samples == 100
             assert config.source == "yaml_test.txt"
-            assert config.prefix_tokens == 3
+            assert config.prefix_buckets[0].prefix_tokens == 3  # type: ignore [index]
         finally:
             Path(yaml_path).unlink()
 
@@ -134,7 +143,9 @@ class TestSyntheticDatasetConfig:
             "prompt_tokens": 90,
             "output_tokens": 35,
             "samples": 150,
-            "prefix_tokens": 2,
+            "prefix_buckets": [
+                {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 2}
+            ],
         }
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".config", delete=False) as f:
@@ -147,7 +158,7 @@ class TestSyntheticDatasetConfig:
             assert config.prompt_tokens == 90
             assert config.output_tokens == 35
             assert config.samples == 150
-            assert config.prefix_tokens == 2
+            assert config.prefix_buckets[0].prefix_tokens == 2  # type: ignore [index]
         finally:
             Path(config_path).unlink()
 
@@ -194,8 +205,9 @@ class TestSyntheticDatasetConfig:
         with pytest.raises(ValueError):
             SyntheticDatasetConfig(prompt_tokens=20, output_tokens=10, samples=0)
 
+        # Test negative prefix tokens via PrefixBucketConfig validation
         with pytest.raises(ValueError):
-            SyntheticDatasetConfig(prompt_tokens=20, output_tokens=10, prefix_tokens=-1)
+            PrefixBucketConfig(prefix_tokens=-1)
 
     @pytest.mark.regression
     def test_validation_optional_positive_values(self):
@@ -279,13 +291,29 @@ class TestSyntheticTextItemsGenerator:
         """
         tokenizer = Mock()
         tokenizer.get_vocab.return_value = {f"token_{i}": i for i in range(1000)}
-        tokenizer.encode.side_effect = lambda text: [1, 2, 3] * (len(text) // 10 + 1)
+        tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
         tokenizer.decode.side_effect = (
             lambda tokens, skip_special_tokens=False: " ".join(
                 f"token_{t}" for t in tokens[:5]
             )
         )
         return tokenizer
+
+    @pytest.fixture
+    def mock_integer_range_sampler(self):
+        """Fixture to provide a mocked IntegerRangeSampler.
+
+        ### WRITTEN BY AI ###
+        """
+        with patch("guidellm.dataset.synthetic.IntegerRangeSampler") as mock_sampler:
+            # Default side effect for basic iteration
+            def mock_sampler_side_effect(*args, **kwargs):
+                mock_instance = Mock()
+                mock_instance.__iter__ = Mock(return_value=iter([15, 15, 15, 15, 15]))
+                return mock_instance
+
+            mock_sampler.side_effect = mock_sampler_side_effect
+            yield mock_sampler
 
     @pytest.fixture
     def simple_config(self):
@@ -306,8 +334,12 @@ class TestSyntheticTextItemsGenerator:
 
         ### WRITTEN BY AI ###
         """
+        prefix_bucket = PrefixBucketConfig(
+            bucket_weight=100, prefix_count=1, prefix_tokens=3
+        )
+
         return SyntheticDatasetConfig(
-            prefix_tokens=3,
+            prefix_buckets=[prefix_bucket],
             prompt_tokens=15,
             output_tokens=10,
             samples=5,
@@ -352,29 +384,16 @@ class TestSyntheticTextItemsGenerator:
         mock_text_creator.assert_called_once_with(data=simple_config.source)
 
     @pytest.mark.smoke
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    @patch("guidellm.dataset.synthetic.IntegerRangeSampler")
     def test_basic_iteration(
-        self, mock_sampler, mock_text_creator, simple_config, mock_tokenizer
+        self,
+        mock_integer_range_sampler,
+        simple_config,
+        mock_tokenizer,
     ):
         """Test basic iteration functionality.
 
         ### WRITTEN BY AI ###
         """
-        # Setup mocks
-        mock_text_creator_instance = Mock()
-        mock_text_creator_instance.words = ["word1", "word2", "word3"] * 100
-        mock_text_creator_instance.create_text.return_value = "sample text"
-        mock_text_creator.return_value = mock_text_creator_instance
-
-        # Mock IntegerRangeSampler to return iterators
-        def mock_sampler_side_effect(*args, **kwargs):
-            mock_instance = Mock()
-            mock_instance.__iter__ = Mock(return_value=iter([15, 15, 15, 15, 15]))
-            return mock_instance
-
-        mock_sampler.side_effect = mock_sampler_side_effect
-
         generator = SyntheticTextItemsGenerator(
             simple_config, mock_tokenizer, random_seed=42
         )
@@ -394,28 +413,19 @@ class TestSyntheticTextItemsGenerator:
             assert isinstance(item["output_tokens_count"], int)
 
     @pytest.mark.sanity
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    def test_create_prompt_method(
-        self, mock_text_creator, simple_config, mock_tokenizer
-    ):
+    def test_create_prompt_method(self, simple_config, mock_tokenizer):
         """Test _create_prompt method.
 
         ### WRITTEN BY AI ###
         """
-        mock_text_creator_instance = Mock()
-        mock_text_creator_instance.words = ["word"] * 100
-        mock_text_creator_instance.create_text.return_value = "test text"
-        mock_text_creator.return_value = mock_text_creator_instance
-
-        mock_tokenizer.encode.return_value = [1, 2, 3]
-
         generator = SyntheticTextItemsGenerator(
             simple_config, mock_tokenizer, random_seed=42
         )
 
         # Test normal case
         result = generator._create_prompt(5, 0, 42)
-        assert result == [42, 1, 2, 3]
+        assert result[0] == 42  # Unique prefix token
+        assert len(result) == 5
 
         # Test zero tokens
         result = generator._create_prompt(0, 0, 42)
@@ -423,30 +433,14 @@ class TestSyntheticTextItemsGenerator:
 
         # Test without unique prefix
         result = generator._create_prompt(3, 0)
-        assert result == [1, 2, 3]
+        assert len(result) == 3
 
     @pytest.mark.regression
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    def test_create_prompt_binary_search(
-        self, mock_text_creator, simple_config, mock_tokenizer
-    ):
+    def test_create_prompt_binary_search(self, simple_config, mock_tokenizer):
         """Test binary search logic in _create_prompt.
 
         ### WRITTEN BY AI ###
         """
-        mock_text_creator_instance = Mock()
-        mock_text_creator_instance.words = ["word"] * 1000
-        mock_text_creator_instance.create_text.side_effect = lambda start, length: (
-            "text " * max(1, length // 4)
-        ).strip()
-        mock_text_creator.return_value = mock_text_creator_instance
-
-        # Mock tokenizer to return different lengths based on input
-        def mock_encode(text):
-            return [1] * len(text.split())
-
-        mock_tokenizer.encode.side_effect = mock_encode
-
         generator = SyntheticTextItemsGenerator(
             simple_config, mock_tokenizer, random_seed=42
         )
@@ -456,25 +450,13 @@ class TestSyntheticTextItemsGenerator:
         assert len(result) >= 4  # Should include prefix + some tokens
 
     @pytest.mark.sanity
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    @patch("guidellm.dataset.synthetic.IntegerRangeSampler")
     def test_prefix_tokens_integration(
-        self, mock_sampler, mock_text_creator, config_with_prefix, mock_tokenizer
+        self, mock_integer_range_sampler, config_with_prefix, mock_tokenizer
     ):
         """Test integration with prefix tokens.
 
         ### WRITTEN BY AI ###
         """
-        # Setup mocks
-        mock_text_creator_instance = Mock()
-        mock_text_creator_instance.words = ["word"] * 100
-        mock_text_creator_instance.create_text.return_value = "sample text"
-        mock_text_creator.return_value = mock_text_creator_instance
-
-        mock_sampler_instance = Mock()
-        mock_sampler_instance.__iter__ = Mock(return_value=iter([15, 15, 15, 15, 15]))
-        mock_sampler.return_value = mock_sampler_instance
-
         generator = SyntheticTextItemsGenerator(
             config_with_prefix, mock_tokenizer, random_seed=42
         )
@@ -483,40 +465,19 @@ class TestSyntheticTextItemsGenerator:
 
         # Verify prompt_tokens_count includes prefix
         for item in items:
-            assert item["prompt_tokens_count"] == config_with_prefix.prefix_tokens + 15
+            assert (
+                item["prompt_tokens_count"]
+                == config_with_prefix.prefix_buckets[0].prefix_tokens + 15
+            )
 
     @pytest.mark.regression
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    @patch("guidellm.dataset.synthetic.IntegerRangeSampler")
     def test_random_seeding_consistency(
-        self, mock_sampler, mock_text_creator, simple_config, mock_tokenizer
+        self, mock_integer_range_sampler, simple_config, mock_tokenizer
     ):
         """Test that same seed produces consistent results.
 
         ### WRITTEN BY AI ###
         """
-        # Setup mocks
-        mock_text_creator_instance = Mock()
-        mock_text_creator_instance.words = ["word"] * 100
-        mock_text_creator_instance.create_text.return_value = "sample text"
-        mock_text_creator.return_value = mock_text_creator_instance
-
-        # Create consistent mock sampler behavior
-        call_count = 0
-
-        def mock_sampler_side_effect(*args, **kwargs):
-            nonlocal call_count
-            mock_instance = Mock()
-            # Return same sequence for both prompt and output tokens
-            if call_count % 2 == 0:  # prompt tokens
-                mock_instance.__iter__ = Mock(return_value=iter([15, 16, 17, 18, 19]))
-            else:  # output tokens
-                mock_instance.__iter__ = Mock(return_value=iter([10, 11, 12, 13, 14]))
-            call_count += 1
-            return mock_instance
-
-        mock_sampler.side_effect = mock_sampler_side_effect
-
         # Create two generators with same seed
         generator1 = SyntheticTextItemsGenerator(
             simple_config, mock_tokenizer, random_seed=42
@@ -528,7 +489,7 @@ class TestSyntheticTextItemsGenerator:
         items1 = list(generator1)
         items2 = list(generator2)
 
-        # Results should be identical with same seed
+        # With same seed and deterministic mocks, results should be identical
         assert len(items1) == len(items2)
         for item1, item2 in zip(items1, items2):
             assert item1["prompt"] == item2["prompt"]
@@ -536,34 +497,13 @@ class TestSyntheticTextItemsGenerator:
             assert item1["output_tokens_count"] == item2["output_tokens_count"]
 
     @pytest.mark.regression
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    @patch("guidellm.dataset.synthetic.IntegerRangeSampler")
     def test_variance_configuration(
-        self, mock_sampler, mock_text_creator, complex_config, mock_tokenizer
+        self, mock_integer_range_sampler, complex_config, mock_tokenizer
     ):
         """Test that variance configuration is properly used.
 
         ### WRITTEN BY AI ###
         """
-        # Setup mocks
-        mock_text_creator_instance = Mock()
-        mock_text_creator_instance.words = ["word"] * 100
-        mock_text_creator_instance.create_text.return_value = "sample text"
-        mock_text_creator.return_value = mock_text_creator_instance
-
-        # Fix tokenizer mock to handle the create_text return properly
-        mock_tokenizer.encode.side_effect = (
-            lambda text: [1, 2, 3] if isinstance(text, str) else [1, 2, 3]
-        )
-
-        # Setup mock sampler to track calls
-        def mock_sampler_side_effect(*args, **kwargs):
-            mock_instance = Mock()
-            mock_instance.__iter__ = Mock(return_value=iter([20, 18, 22, 19, 21] * 2))
-            return mock_instance
-
-        mock_sampler.side_effect = mock_sampler_side_effect
-
         generator = SyntheticTextItemsGenerator(
             complex_config, mock_tokenizer, random_seed=42
         )
@@ -573,10 +513,10 @@ class TestSyntheticTextItemsGenerator:
         next(generator_iter)
 
         # Verify that IntegerRangeSampler is called with correct parameters
-        assert mock_sampler.call_count == 2
+        assert mock_integer_range_sampler.call_count == 2
 
         # Check prompt tokens sampler call
-        prompt_call = mock_sampler.call_args_list[0]
+        prompt_call = mock_integer_range_sampler.call_args_list[0]
         assert prompt_call[1]["average"] == complex_config.prompt_tokens
         assert prompt_call[1]["variance"] == complex_config.prompt_tokens_stdev
         assert prompt_call[1]["min_value"] == complex_config.prompt_tokens_min
@@ -584,7 +524,7 @@ class TestSyntheticTextItemsGenerator:
         assert prompt_call[1]["random_seed"] == 42
 
         # Check output tokens sampler call
-        output_call = mock_sampler.call_args_list[1]
+        output_call = mock_integer_range_sampler.call_args_list[1]
         assert output_call[1]["average"] == complex_config.output_tokens
         assert output_call[1]["variance"] == complex_config.output_tokens_stdev
         assert output_call[1]["min_value"] == complex_config.output_tokens_min
@@ -592,19 +532,11 @@ class TestSyntheticTextItemsGenerator:
         assert output_call[1]["random_seed"] == 43  # 42 + 1
 
     @pytest.mark.regression
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    def test_unique_prefix_generation(
-        self, mock_text_creator, simple_config, mock_tokenizer
-    ):
+    def test_unique_prefix_generation(self, simple_config, mock_tokenizer):
         """Test that unique prefixes are generated for each request.
 
         ### WRITTEN BY AI ###
         """
-        mock_text_creator_instance = Mock()
-        mock_text_creator_instance.words = ["word"] * 100
-        mock_text_creator_instance.create_text.return_value = "sample text"
-        mock_text_creator.return_value = mock_text_creator_instance
-
         # Mock the cycle to return predictable values
         with patch("guidellm.dataset.synthetic.cycle") as mock_cycle:
             mock_cycle.return_value = iter([100, 101, 102, 103, 104])
