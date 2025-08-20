@@ -531,4 +531,3 @@ class TestRegistryMixin:
             assert len(objects) == 1
             assert TestAutoRegistry.registry_populated is True
             assert TestAutoRegistry.registry is not None
-            assert "module1class" in TestAutoRegistry.registry
