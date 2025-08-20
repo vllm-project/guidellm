@@ -35,6 +35,7 @@ __all__ = [
     "MaxGlobalErrorRateConstraint",
     "MaxNumberConstraint",
     "PydanticConstraintInitializer",
+    "RequestsExhaustedConstraint",
     "SerializableConstraintInitializer",
     "UnserializableConstraintInitializer",
 ]
@@ -988,3 +989,47 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
                 )
 
         return value[0] if isinstance(value, list) and len(value) == 1 else value
+
+
+class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
+    type_: Literal["requests_exhausted"] = "requests_exhausted"  # type: ignore[assignment]
+    num_requests: int
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """
+        Extract serializable information from this constraint initializer.
+
+        :return: Dictionary containing constraint configuration and metadata
+        """
+        return self.model_dump()
+
+    def __call__(
+        self,
+        state: SchedulerState,
+        request_info: ScheduledRequestInfo,  # noqa: ARG002
+    ) -> SchedulerUpdateAction:
+        create_exceeded = state.created_requests >= self.num_requests
+        processed_exceeded = state.processed_requests >= self.num_requests
+        remaining_fraction = min(
+            max(0.0, 1.0 - state.processed_requests / float(self.num_requests)), 1.0
+        )
+        remaining_requests = max(0, self.num_requests - state.processed_requests)
+
+        return SchedulerUpdateAction(
+            request_queuing="stop" if create_exceeded else "continue",
+            request_processing="stop_local" if processed_exceeded else "continue",
+            metadata={
+                "num_requests": self.num_requests,
+                "create_exceeded": create_exceeded,
+                "processed_exceeded": processed_exceeded,
+                "created_requests": state.created_requests,
+                "processed_requests": state.processed_requests,
+                "remaining_fraction": remaining_fraction,
+                "remaining_requests": remaining_requests,
+            },
+            progress=SchedulerUpdateActionProgress(
+                remaining_fraction=remaining_fraction,
+                remaining_requests=remaining_requests,
+            ),
+        )

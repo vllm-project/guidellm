@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
-from typing import Annotated, Any, Literal, Optional, TypeVar, Union
+from typing import Annotated, Any, Literal, TypeVar
 
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from pydantic import BeforeValidator, Field, NonNegativeInt, PositiveFloat, PositiveInt
@@ -25,7 +27,7 @@ def get_builtin_scenarios() -> list[str]:
     return [p.stem for p in SCENARIO_DIR.glob("*.json")]
 
 
-def parse_float_list(value: Union[str, float, list[float]]) -> list[float]:
+def parse_float_list(value: str | float | list[float]) -> list[float]:
     """
     Parse a comma separated string to a list of float
     or convert single float list of one or pass float
@@ -57,7 +59,7 @@ class Scenario(StandardBaseModel):
     target: str
 
     @classmethod
-    def from_builtin(cls: type[T], name: str, overrides: Optional[dict] = None) -> T:
+    def from_builtin(cls: type[T], name: str, overrides: dict | None = None) -> T:
         filename = SCENARIO_DIR / f"{name}.json"
 
         if not filename.is_file():
@@ -77,28 +79,28 @@ class GenerativeTextScenario(Scenario):
         arbitrary_types_allowed = True
 
     backend_type: BackendType = "openai_http"
-    backend_args: Optional[dict[str, Any]] = None
-    model: Optional[str] = None
-    processor: Optional[Union[str, Path, PreTrainedTokenizerBase]] = None
-    processor_args: Optional[dict[str, Any]] = None
-    data: Union[
-        str,
-        Path,
-        Iterable[Union[str, dict[str, Any]]],
-        Dataset,
-        DatasetDict,
-        IterableDataset,
-        IterableDatasetDict,
-    ]
-    data_args: Optional[dict[str, Any]] = None
-    data_sampler: Optional[Literal["random"]] = None
-    rate_type: Union[StrategyType, ProfileType]
-    rate: Annotated[
-        Optional[list[PositiveFloat]], BeforeValidator(parse_float_list)
-    ] = None
-    max_seconds: Optional[PositiveFloat] = None
-    max_requests: Optional[PositiveInt] = None
-    warmup_percent: Annotated[Optional[float], Field(gt=0, le=1)] = None
-    cooldown_percent: Annotated[Optional[float], Field(gt=0, le=1)] = None
-    output_sampling: Optional[NonNegativeInt] = None
+    backend_args: dict[str, Any] | None = None
+    model: str | None = None
+    processor: str | Path | PreTrainedTokenizerBase | None = None
+    processor_args: dict[str, Any] | None = None
+    data: (
+        str
+        | Path
+        | Iterable[str | dict[str, Any]]
+        | Dataset
+        | DatasetDict
+        | IterableDataset
+        | IterableDatasetDict
+    )
+    data_args: dict[str, Any] | None = None
+    data_sampler: Literal["random"] | None = None
+    rate_type: StrategyType | ProfileType
+    rate: Annotated[list[PositiveFloat] | None, BeforeValidator(parse_float_list)] = (
+        None
+    )
+    max_seconds: PositiveFloat | None = None
+    max_requests: PositiveInt | None = None
+    warmup_percent: Annotated[float | None, Field(gt=0, le=1)] = None
+    cooldown_percent: Annotated[float | None, Field(gt=0, le=1)] = None
+    output_sampling: NonNegativeInt | None = None
     random_seed: int = 42

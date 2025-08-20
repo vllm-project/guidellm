@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from guidellm.benchmark import (
     GenerativeBenchmarksReport,
 )
-from guidellm.benchmark.output import GenerativeBenchmarksConsole
+from guidellm.benchmark.output import GenerativeBenchmarkerConsole
 from tests.unit.mock_benchmark import mock_generative_benchmark
 
 
@@ -100,7 +100,7 @@ def test_file_csv():
 
 
 def test_console_benchmarks_profile_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     assert (
@@ -109,7 +109,7 @@ def test_console_benchmarks_profile_str():
 
 
 def test_console_benchmarks_args_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     assert console.benchmarks_args_str == (
@@ -119,14 +119,14 @@ def test_console_benchmarks_args_str():
 
 
 def test_console_benchmarks_worker_desc_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     assert console.benchmarks_worker_desc_str == str(mock_benchmark.worker)
 
 
 def test_console_benchmarks_request_loader_desc_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     assert console.benchmarks_request_loader_desc_str == str(
@@ -135,35 +135,35 @@ def test_console_benchmarks_request_loader_desc_str():
 
 
 def test_console_benchmarks_extras_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     assert console.benchmarks_extras_str == "None"
 
 
 def test_console_print_section_header():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     with patch.object(console.console, "print") as mock_print:
         console.print_section_header("Test Header")
         mock_print.assert_called_once()
 
 
 def test_console_print_labeled_line():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     with patch.object(console.console, "print") as mock_print:
         console.print_labeled_line("Label", "Value")
         mock_print.assert_called_once()
 
 
 def test_console_print_line():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     with patch.object(console.console, "print") as mock_print:
         console.print_line("Test Line")
         mock_print.assert_called_once()
 
 
 def test_console_print_table():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     headers = ["Header1", "Header2"]
     rows = [["Row1Col1", "Row1Col2"], ["Row2Col1", "Row2Col2"]]
     with (
@@ -178,7 +178,7 @@ def test_console_print_table():
 
 
 def test_console_print_benchmarks_metadata():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     with (
@@ -191,7 +191,7 @@ def test_console_print_benchmarks_metadata():
 
 
 def test_console_print_benchmarks_info():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     with patch.object(console, "print_table") as mock_table:
@@ -200,7 +200,7 @@ def test_console_print_benchmarks_info():
 
 
 def test_console_print_benchmarks_stats():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     with patch.object(console, "print_table") as mock_table:

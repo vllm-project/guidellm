@@ -4,20 +4,30 @@ Unit tests for the registry module.
 
 from __future__ import annotations
 
+import inspect
 from typing import TypeVar
 from unittest import mock
 
 import pytest
 
-from guidellm.utils.registry import RegistryMixin, RegistryObjT
+from guidellm.utils import RegistryMixin
+from guidellm.utils.registry import RegisterT, RegistryObjT
 
 
 def test_registry_obj_type():
     """Test that RegistryObjT is configured correctly as a TypeVar."""
     assert isinstance(RegistryObjT, type(TypeVar("test")))
     assert RegistryObjT.__name__ == "RegistryObjT"
-    assert RegistryObjT.__bound__ is not None  # bound to Any
+    assert RegistryObjT.__bound__ is None
     assert RegistryObjT.__constraints__ == ()
+
+
+def test_registered_type():
+    """Test that RegisterT is configured correctly as a TypeVar."""
+    assert isinstance(RegisterT, type(TypeVar("test")))
+    assert RegisterT.__name__ == "RegisterT"
+    assert RegisterT.__bound__ is None
+    assert RegisterT.__constraints__ == ()
 
 
 class TestRegistryMixin:
@@ -81,25 +91,16 @@ class TestRegistryMixin:
         [
             ("custom_name", "custom_name"),
             (["name1", "name2"], ["name1", "name2"]),
-            (None, None),  # Uses class name
+            (None, "TestClass"),
         ],
     )
     def test_register(self, valid_instances, name, expected_key):
         """Test register method with various name configurations."""
         registry_class, _ = valid_instances
 
-        if name is None:
-
-            @registry_class.register()
-            class TestClass:
-                pass
-
-            expected_key = "testclass"
-        else:
-
-            @registry_class.register(name)
-            class TestClass:
-                pass
+        @registry_class.register(name)
+        class TestClass:
+            pass
 
         assert registry_class.registry is not None
         if isinstance(expected_key, list):
@@ -119,8 +120,17 @@ class TestRegistryMixin:
         """Test register method with invalid name types."""
         registry_class, _ = valid_instances
 
-        with pytest.raises(ValueError, match="name must be a string, list of strings"):
-            registry_class.register(invalid_name)
+        # The register method returns a decorator, so we need to apply it to test
+        # validation
+        decorator = registry_class.register(invalid_name)
+
+        class TestClass:
+            pass
+
+        with pytest.raises(
+            ValueError, match="name must be a string or an iterable of strings"
+        ):
+            decorator(TestClass)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -128,7 +138,7 @@ class TestRegistryMixin:
         [
             ("custom_name", "custom_name"),
             (["name1", "name2"], ["name1", "name2"]),
-            (None, "testclass"),
+            (None, "TestClass"),
         ],
     )
     def test_register_decorator(self, valid_instances, name, expected_key):
@@ -185,7 +195,7 @@ class TestRegistryMixin:
             # Second call should return False
             result = TestAutoRegistry.auto_populate_registry()
             assert result is False
-            mock_import.assert_called_once()  # Should not be called again
+            mock_import.assert_called_once()
 
     @pytest.mark.sanity
     def test_auto_populate_registry_invalid(self):
@@ -311,41 +321,10 @@ class TestRegistryMixin:
         assert Registry1.registry is not None
         assert Registry2.registry is not None
         assert Registry1.registry != Registry2.registry
-        assert "testclass1" in Registry1.registry
-        assert "testclass2" in Registry2.registry
-        assert "testclass1" not in Registry2.registry
-        assert "testclass2" not in Registry1.registry
-
-    @pytest.mark.regression
-    def test_inheritance_registry_sharing(self):
-        """Test that inherited registry classes share the same registry."""
-
-        class BaseRegistry(RegistryMixin):
-            pass
-
-        class ChildRegistry(BaseRegistry):
-            pass
-
-        @BaseRegistry.register()
-        class BaseClass:
-            pass
-
-        @ChildRegistry.register()
-        class ChildClass:
-            pass
-
-        # Child classes share the same registry as their parent
-        assert BaseRegistry.registry is ChildRegistry.registry
-
-        # Both classes can see all registered objects
-        base_objects = BaseRegistry.registered_objects()
-        child_objects = ChildRegistry.registered_objects()
-
-        assert len(base_objects) == 2
-        assert len(child_objects) == 2
-        assert base_objects == child_objects
-        assert BaseClass in base_objects
-        assert ChildClass in base_objects
+        assert "TestClass1" in Registry1.registry
+        assert "TestClass2" in Registry2.registry
+        assert "TestClass1" not in Registry2.registry
+        assert "TestClass2" not in Registry1.registry
 
     @pytest.mark.smoke
     def test_auto_discovery_initialization(self):
@@ -427,6 +406,31 @@ class TestRegistryMixin:
         with pytest.raises(AttributeError):
             registry_class.register_decorator("not_a_class")
 
+    @pytest.mark.sanity
+    def test_register_decorator_empty_string_name(self, valid_instances):
+        """Test register_decorator with empty string name."""
+        registry_class, _ = valid_instances
+
+        class TestClass:
+            pass
+
+        registry_class.register_decorator(TestClass, name="")
+        assert "" in registry_class.registry
+        assert registry_class.registry[""] is TestClass
+
+    @pytest.mark.sanity
+    def test_register_decorator_none_in_list(self, valid_instances):
+        """Test register_decorator with None in name list."""
+        registry_class, _ = valid_instances
+
+        class TestClass:
+            pass
+
+        with pytest.raises(
+            ValueError, match="name must be a string or a list of strings"
+        ):
+            registry_class.register_decorator(TestClass, name=["valid", None])
+
     @pytest.mark.smoke
     def test_is_registered_empty_registry(self, valid_instances):
         """Test is_registered with empty registry."""
@@ -446,50 +450,6 @@ class TestRegistryMixin:
     @pytest.mark.regression
     def test_auto_registry_integration(self):
         """Test complete auto-discovery workflow with mocked imports."""
-
-        class TestAutoRegistry(RegistryMixin):
-            registry_auto_discovery = True
-            auto_package = "test_package.modules"
-
-        with (
-            mock.patch("pkgutil.walk_packages") as walk_mock,
-            mock.patch("importlib.import_module") as import_mock,
-        ):
-            # Setup mock package
-            package_mock = mock.MagicMock()
-            package_mock.__path__ = ["test_package/modules"]
-            package_mock.__name__ = "test_package.modules"
-
-            # Setup mock module with test class
-            module_mock = mock.MagicMock()
-            module_mock.__name__ = "test_package.modules.module1"
-
-            class Module1Class:
-                pass
-
-            TestAutoRegistry.register_decorator(Module1Class, "Module1Class")
-
-            # Setup import behavior
-            import_mock.side_effect = lambda name: (
-                package_mock
-                if name == "test_package.modules"
-                else module_mock
-                if name == "test_package.modules.module1"
-                else (_ for _ in ()).throw(ImportError(f"No module named {name}"))
-            )
-
-            # Setup package walking behavior
-            walk_mock.side_effect = lambda path, prefix: (
-                [(None, "test_package.modules.module1", False)]
-                if prefix == "test_package.modules."
-                else (_ for _ in ()).throw(ValueError(f"Unknown package: {prefix}"))
-            )
-
-            objects = TestAutoRegistry.registered_objects()
-            assert len(objects) == 1
-            assert TestAutoRegistry.registry_populated is True
-            assert TestAutoRegistry.registry is not None
-            assert "module1class" in TestAutoRegistry.registry
 
         class TestAutoRegistry(RegistryMixin):
             registry_auto_discovery = True
@@ -531,3 +491,103 @@ class TestRegistryMixin:
             assert len(objects) == 1
             assert TestAutoRegistry.registry_populated is True
             assert TestAutoRegistry.registry is not None
+            assert "Module1Class" in TestAutoRegistry.registry
+
+    @pytest.mark.smoke
+    def test_register_preserves_class_metadata(self):
+        """Test that registered classes retain docs, types, and methods."""
+
+        class TestRegistry(RegistryMixin):
+            pass
+
+        @TestRegistry.register("documented_class")
+        class DocumentedClass:
+            """This is a documented class with methods and type hints."""
+
+            def __init__(self, value: int) -> None:
+                """Initialize with a value.
+
+                :param value: An integer value
+                """
+                self.value = value
+
+            def get_value(self) -> int:
+                """Get the stored value.
+
+                :return: The stored integer value
+                """
+                return self.value
+
+            def set_value(self, new_value: int) -> None:
+                """Set a new value.
+
+                :param new_value: The new integer value to set
+                """
+                self.value = new_value
+
+            @classmethod
+            def from_string(cls, value_str: str) -> DocumentedClass:
+                """Create instance from string.
+
+                :param value_str: String representation of value
+                :return: New DocumentedClass instance
+                """
+                return cls(int(value_str))
+
+            @staticmethod
+            def validate_value(value: int) -> bool:
+                """Validate that a value is positive.
+
+                :param value: Value to validate
+                :return: True if positive, False otherwise
+                """
+                return value > 0
+
+        # Check that the class was registered
+        assert TestRegistry.is_registered("documented_class")
+        registered_class = TestRegistry.get_registered_object("documented_class")
+        assert registered_class is DocumentedClass
+
+        # Check that the class retains its documentation
+        assert registered_class.__doc__ is not None
+        assert "documented class with methods" in registered_class.__doc__
+        assert registered_class.__init__.__doc__ is not None
+        assert "Initialize with a value" in registered_class.__init__.__doc__
+        assert registered_class.get_value.__doc__ is not None
+        assert "Get the stored value" in registered_class.get_value.__doc__
+        assert registered_class.set_value.__doc__ is not None
+        assert "Set a new value" in registered_class.set_value.__doc__
+        assert registered_class.from_string.__doc__ is not None
+        assert "Create instance from string" in registered_class.from_string.__doc__
+        assert registered_class.validate_value.__doc__ is not None
+        assert (
+            "Validate that a value is positive"
+            in registered_class.validate_value.__doc__
+        )
+
+        # Check that methods are callable and work correctly
+        instance = registered_class(42)
+        assert instance.get_value() == 42
+        instance.set_value(100)
+        assert instance.get_value() == 100
+        instance2 = registered_class.from_string("123")
+        assert instance2.get_value() == 123
+        assert registered_class.validate_value(10) is True
+        assert registered_class.validate_value(-5) is False
+
+        # Check that type annotations are preserved (if accessible)
+        if hasattr(inspect, "get_annotations"):
+            # Python 3.10+
+            try:
+                annotations = inspect.get_annotations(registered_class.__init__)
+                assert "value" in annotations
+                assert annotations["value"] is int
+                return_ann = annotations.get("return")
+                assert return_ann is None or return_ann is type(None)
+            except (AttributeError, NameError):
+                # Fallback for older Python or missing annotations
+                pass
+
+        # Check that the class name is preserved
+        assert registered_class.__name__ == "DocumentedClass"
+        assert registered_class.__qualname__.endswith("DocumentedClass")

@@ -11,16 +11,17 @@ from .constraints import (
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
+from .environment import Environment, NonDistributedEnvironment
 from .objects import (
     BackendInterface,
     BackendT,
     MeasuredRequestTimings,
-    MeasuredRequestTimingsT,
     MultiTurnRequestT,
     RequestSchedulerTimings,
     RequestT,
     ResponseT,
     ScheduledRequestInfo,
+    SchedulerMessagingPydanticRegistry,
     SchedulerState,
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
@@ -41,15 +42,8 @@ from .strategy import (
     SynchronousStrategy,
     ThroughputStrategy,
 )
-from .worker import (
-    GenerativeRequestsWorker,
-    GenerativeRequestsWorkerDescription,
-    RequestsWorker,
-    ResolveStatus,
-    WorkerDescription,
-    WorkerProcessRequest,
-    WorkerProcessResult,
-)
+from .worker import WorkerProcess
+from .worker_group import WorkerProcessGroup
 
 __all__ = [
     "AsyncConstantStrategy",
@@ -61,8 +55,7 @@ __all__ = [
     "Constraint",
     "ConstraintInitializer",
     "ConstraintsInitializerFactory",
-    "GenerativeRequestsWorker",
-    "GenerativeRequestsWorkerDescription",
+    "Environment",
     "LastCompletionRequestTimings",
     "MaxDurationConstraint",
     "MaxErrorRateConstraint",
@@ -70,19 +63,18 @@ __all__ = [
     "MaxGlobalErrorRateConstraint",
     "MaxNumberConstraint",
     "MeasuredRequestTimings",
-    "MeasuredRequestTimingsT",
     "MultiTurnRequestT",
     "NoDelayRequestTimings",
+    "NonDistributedEnvironment",
     "PoissonRateRequestTimings",
     "PydanticConstraintInitializer",
     "RequestSchedulerTimings",
     "RequestT",
-    "RequestsWorker",
-    "ResolveStatus",
     "ResponseT",
     "ScheduledRequestInfo",
     "ScheduledRequestTimings",
     "Scheduler",
+    "SchedulerMessagingPydanticRegistry",
     "SchedulerState",
     "SchedulerUpdateAction",
     "SchedulerUpdateActionProgress",
@@ -93,7 +85,6 @@ __all__ = [
     "SynchronousStrategy",
     "ThroughputStrategy",
     "UnserializableConstraintInitializer",
-    "WorkerDescription",
-    "WorkerProcessRequest",
-    "WorkerProcessResult",
+    "WorkerProcess",
+    "WorkerProcessGroup",
 ]

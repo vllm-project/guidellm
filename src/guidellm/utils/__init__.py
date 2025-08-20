@@ -1,5 +1,5 @@
 from .auto_importer import AutoImporterMixin
-from .colors import Colors
+from .console import Colors, Console, ConsoleUpdateStep, StatusIcons, StatusStyles
 from .default_group import DefaultGroupHandler
 from .encoding import (
     Encoder,
@@ -28,6 +28,8 @@ from .messaging import (
     InterProcessMessagingManagerQueue,
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
+    ReceiveMessageT,
+    SendMessageT,
 )
 from .mixins import InfoMixin
 from .pydantic_utils import (
@@ -38,7 +40,7 @@ from .pydantic_utils import (
     StatusBreakdown,
 )
 from .random import IntegerRangeSampler
-from .registry import RegistryMixin
+from .registry import RegistryMixin, RegistryObjT
 from .singleton import SingletonMixin, ThreadSafeSingletonMixin
 from .statistics import (
     DistributionSummary,
@@ -51,17 +53,22 @@ from .text import (
     EndlessTextCreator,
     clean_text,
     filter_text,
+    format_value_display,
     is_punctuation,
     load_text,
     split_text,
     split_text_list_by_length,
 )
+from .threading import synchronous_to_exitable_async
 from .typing import get_literal_vals
 
 __all__ = [
     "SUPPORTED_TYPES",
     "AutoImporterMixin",
     "Colors",
+    "Colors",
+    "Console",
+    "ConsoleUpdateStep",
     "DefaultGroupHandler",
     "DistributionSummary",
     "Encoder",
@@ -74,11 +81,15 @@ __all__ = [
     "InterProcessMessagingPipe",
     "InterProcessMessagingQueue",
     "MessageEncoding",
+    "MessageEncoding",
     "Percentiles",
     "PydanticClassRegistryMixin",
+    "ReceiveMessageT",
     "RegistryMixin",
+    "RegistryObjT",
     "ReloadableBaseModel",
     "RunningStats",
+    "SendMessageT",
     "SerializationTypesAlias",
     "Serializer",
     "SingletonMixin",
@@ -86,12 +97,15 @@ __all__ = [
     "StandardBaseModel",
     "StatusBreakdown",
     "StatusDistributionSummary",
+    "StatusIcons",
+    "StatusStyles",
     "ThreadSafeSingletonMixin",
     "TimeRunningStats",
     "all_defined",
     "check_load_processor",
     "clean_text",
     "filter_text",
+    "format_value_display",
     "get_literal_vals",
     "is_punctuation",
     "load_text",
@@ -103,4 +117,5 @@ __all__ = [
     "save_dataset_to_file",
     "split_text",
     "split_text_list_by_length",
+    "synchronous_to_exitable_async",
 ]

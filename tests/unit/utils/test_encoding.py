@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Generic
+from typing import Any, Generic, TypeVar
 
 import pytest
 from pydantic import BaseModel, Field
 
 from guidellm.backend.objects import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
 )
 from guidellm.scheduler.objects import RequestSchedulerTimings, ScheduledRequestInfo
@@ -22,12 +21,28 @@ class SampleModel(BaseModel):
     value: int = Field(description="Value field for testing")
 
 
-class ComplexModel(BaseModel):
+class SampleModelSubclass(SampleModel):
+    """Subclass of SampleModel for testing."""
+
+    extra_field: str
+
+
+SampleModelT = TypeVar("SampleModelT", bound=SampleModel)
+
+
+class ComplexModel(BaseModel, Generic[SampleModelT]):
     """Complex Pydantic model for testing."""
 
     items: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    nested: SampleModel | None = Field(default=None)
+    nested: SampleModelT | None = Field(default=None)
+
+
+class GenricModelWrapper(Generic[SampleModelT]):
+    """Simulates a layered generic type."""
+
+    def method(self, **kwargs) -> ComplexModel[SampleModelT]:
+        return ComplexModel[SampleModelT](**kwargs)
 
 
 class TestMessageEncoding:
@@ -192,7 +207,7 @@ class TestMessageEncoding:
             (
                 None,
                 GenerationRequest(content="test content"),
-                ScheduledRequestInfo[GenerationRequestTimings](
+                ScheduledRequestInfo(
                     scheduler_timings=RequestSchedulerTimings(
                         targeted_start=1.0,
                         queued=0.1,
@@ -215,7 +230,7 @@ class TestMessageEncoding:
                     response_output_tokens=6,
                 ),
                 GenerationRequest(content="test content"),
-                ScheduledRequestInfo[GenerationRequestTimings](
+                ScheduledRequestInfo(
                     scheduler_timings=RequestSchedulerTimings(
                         targeted_start=1.0,
                         queued=0.1,
@@ -242,7 +257,7 @@ class TestMessageEncoding:
 
         instance.register_pydantic(GenerationRequest)
         instance.register_pydantic(GenerationResponse)
-        instance.register_pydantic(ScheduledRequestInfo[GenerationRequestTimings])
+        instance.register_pydantic(ScheduledRequestInfo)
 
         message = instance.encode(obj)
         decoded = instance.decode(message)
@@ -508,3 +523,34 @@ class TestSerializer:
         inst.pydantic_registry.clear()
         restored = inst.from_dict(dumped)
         assert restored == sample
+
+    @pytest.mark.sanity
+    def test_generic_model(self):
+        inst = Serializer("dict")
+        inst.register_pydantic(ComplexModel[SampleModelSubclass])
+        nested = ComplexModel[SampleModelSubclass](
+            items=["i1", "i2"],
+            metadata={"m": 1},
+            nested=SampleModelSubclass(name="nested", value=10, extra_field="extra"),
+        )
+        dumped = inst.to_dict(nested)
+        restored = inst.from_dict(dumped)
+        assert restored == nested
+
+    @pytest.mark.sanity
+    @pytest.mark.xfail(
+        reason="A generic object returned by a generic method loses its type args"
+    )
+    def test_generic_emitted_type(self):
+        generic_instance = GenricModelWrapper[SampleModelSubclass]()
+
+        inst = Serializer("dict")
+        inst.register_pydantic(ComplexModel[SampleModelSubclass])
+        nested = generic_instance.method(
+            items=["i1", "i2"],
+            metadata={"m": 1},
+            nested=SampleModelSubclass(name="nested", value=10, extra_field="extra"),
+        )
+        dumped = inst.to_dict(nested)
+        restored = inst.from_dict(dumped)
+        assert restored == nested

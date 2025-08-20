@@ -364,7 +364,9 @@ class TestMaxNumberConstraint:
                 processed_requests=num_requests,
                 errored_requests=0,
             )
-            request_info = ScheduledRequestInfo(request_id="test", status="completed")
+            request_info = ScheduledRequestInfo(
+                request_id="test", status="completed", created_at=start_time
+            )
 
             action = instance(state, request_info)
             assert isinstance(action, SchedulerUpdateAction)

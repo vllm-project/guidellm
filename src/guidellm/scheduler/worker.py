@@ -1,512 +1,372 @@
+"""
+Individual worker process management for multi-process request execution.
+
+Manages worker processes that handle request scheduling, backend processing, and
+coordination in distributed benchmark environments. Workers consume requests from
+queues, apply timing strategies, process requests through backends, and publish
+status updates while maintaining synchronization across the process group.
+"""
+
+from __future__ import annotations
+
 import asyncio
-import math
-import multiprocessing
-import multiprocessing.queues
 import time
-from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
-from dataclasses import dataclass
-from typing import (
-    Any,
-    Generic,
-    Literal,
-    Optional,
-    Union,
+from multiprocessing.synchronize import Barrier as ProcessingBarrier
+from multiprocessing.synchronize import Event as ProcessingEvent
+from threading import Event as ThreadingEvent
+from typing import Generic, Literal
+
+try:
+    import uvloop
+
+    HAS_UVLOOP = True
+except ImportError:
+    uvloop = None
+
+    HAS_UVLOOP = False
+
+import contextlib
+
+from guidellm.scheduler.objects import (
+    BackendInterface,
+    MultiTurnRequestT,
+    RequestT,
+    ResponseT,
+    ScheduledRequestInfo,
+    SchedulerMessagingPydanticRegistry,
 )
+from guidellm.scheduler.strategy import ScheduledRequestTimings
+from guidellm.utils import InterProcessMessaging, synchronous_to_exitable_async
 
-from loguru import logger
-from pydantic import Field
-
-from guidellm.backend import (
-    Backend,
-    BackendType,
-    RequestArgs,
-    ResponseSummary,
-    StreamingTextResponse,
-)
-from guidellm.request import GenerationRequest
-from guidellm.scheduler.objects import RequestT, ResponseT
-from guidellm.utils import StandardBaseDict, StandardBaseModel
-
-__all__ = [
-    "GenerativeRequestsWorker",
-    "GenerativeRequestsWorkerDescription",
-    "RequestsWorker",
-    "ResolveStatus",
-    "WorkerDescription",
-    "WorkerProcessRequest",
-    "WorkerProcessResult",
-]
+__all__ = ["WorkerProcess"]
 
 
-@dataclass
-class WorkerProcessRequest(Generic[RequestT]):
-    request: RequestT
-    start_time: float
-    timeout_time: float
-    queued_time: float
-
-
-@dataclass
-class WorkerProcessResult(Generic[RequestT, ResponseT]):
-    type_: Literal["request_scheduled", "request_start", "request_complete"]
-    request: RequestT
-    response: Optional[ResponseT]
-    info: Any
-
-
-@dataclass
-class ResolveStatus:
-    requested: bool
-    completed: bool
-    errored: bool
-    canceled: bool
-
-    request_start: float
-    request_end: float
-
-
-class WorkerDescription(StandardBaseModel):
-    type_: Literal["worker"] = "worker"
-
-
-class RequestsWorker(ABC, Generic[RequestT, ResponseT]):
+class WorkerProcess(Generic[RequestT, ResponseT]):
     """
-    An abstract base class for a worker that processes requests.
-    This class defines the interface for a worker that can resolve requests
-    asynchronously or synchronously within the Scheduler class.
-    Subclasses must implement the `resolve` method,
-    which takes a request directly given from the load generator,
-    along with the desired start_time for the request and a timeout_time.
-    The `resolve` method should return the response from the backend.
+    Individual worker process for distributed request execution and coordination.
+
+    Manages the complete request lifecycle from queue consumption through backend
+    processing and status publication. Coordinates with other workers through
+    barriers and events while maintaining configurable concurrency limits and
+    timing strategies for request scheduling.
+
+    Example:
+    ::
+        worker = WorkerProcess(
+            messaging=messaging_interface,
+            async_limit=10,
+            startup_barrier=barrier,
+            shutdown_event=shutdown,
+            error_event=error,
+            backend=backend_instance,
+            request_timings=timing_strategy
+        )
+        worker.run()
     """
 
-    @property
-    @abstractmethod
-    def description(self) -> WorkerDescription:
-        """
-        An abstract property that must be implemented by subclasses.
-        This property should return a Serializable class representing the information
-        about the worker instance.
-        """
-        ...
-
-    @abstractmethod
-    async def prepare_multiprocessing(self):
-        """
-        An abstract method that must be implemented by subclasses.
-        This is useful for workers that have instance state that can not
-        be shared across processes and should be cleared out and re-initialized
-        for each new process.
-        """
-        ...
-
-    @abstractmethod
-    async def resolve(
+    def __init__(
         self,
-        request: RequestT,
-        timeout_time: float,
-    ) -> tuple[ResolveStatus, ResponseT]:
-        """
-        An abstract method that must be implemented by subclasses.
-        This method should handle the resolution of a request through asyncio,
-        including any necessary backend processing and response handling.
-
-        :param request: The request to be resolved generated by the load generator.
-        :param timeout_time: The timeout time for the request, if there is no timeout
-            given, then this will be math.inf.
-        :return: The response from the worker.
-        """
-        ...
-
-    async def get_request(
-        self, requests_queue: multiprocessing.Queue
-    ) -> Optional[WorkerProcessRequest[RequestT]]:
-        return await asyncio.to_thread(requests_queue.get)  # type: ignore[attr-defined]
-
-    async def send_result(
-        self,
-        results_queue: multiprocessing.Queue,
-        result: WorkerProcessResult[RequestT, ResponseT],
+        messaging: InterProcessMessaging[
+            tuple[
+                ResponseT | None,
+                RequestT | MultiTurnRequestT[RequestT],
+                ScheduledRequestInfo,
+            ],
+        ],
+        async_limit: int,
+        startup_barrier: ProcessingBarrier,
+        shutdown_event: ProcessingEvent,
+        error_event: ProcessingEvent,
+        requests_completed_event: ProcessingEvent,
+        backend: BackendInterface[RequestT, ResponseT],
+        request_timings: ScheduledRequestTimings,
     ):
-        await asyncio.to_thread(results_queue.put, result)  # type: ignore[attr-defined]
+        """
+        Initialize worker process instance.
 
-    async def resolve_scheduler_request(
-        self,
-        request: Any,
-        queued_time: float,
-        dequeued_time: float,
-        start_time: float,
-        timeout_time: float,
-        results_queue: multiprocessing.Queue,
-        process_id: int,
-    ):
-        info = StandardBaseDict(
-            targeted_start_time=start_time,
-            queued_time=queued_time,
-            dequeued_time=dequeued_time,
-            scheduled_time=time.time(),
-            process_id=process_id,
-        )
-        result: WorkerProcessResult[RequestT, ResponseT] = WorkerProcessResult(
-            type_="request_scheduled",
-            request=request,
-            response=None,
-            info=info,
-        )
-        asyncio.create_task(self.send_result(results_queue, result))
-
-        if (wait_time := start_time - time.time()) > 0:
-            await asyncio.sleep(wait_time)
-
-        info.worker_start = time.time()
-        result = WorkerProcessResult(
-            type_="request_start",
-            request=request,
-            response=None,
-            info=info,
-        )
-        asyncio.create_task(self.send_result(results_queue, result))
-
-        status, response = await self.resolve(request, timeout_time)
-        info.worker_end = time.time()
-        info.requested = status.requested
-        info.completed = status.completed
-        info.errored = status.errored
-        info.canceled = status.canceled
-        info.request_start = status.request_start
-        info.request_end = status.request_end
-        result = WorkerProcessResult(
-            type_="request_complete",
-            request=request,
-            response=response,
-            info=info,
-        )
-        asyncio.create_task(self.send_result(results_queue, result))
-
-    def process_loop_synchronous(
-        self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
-        process_id: int,
-    ):
-        async def _process_runner():
-            while (
-                process_request := await self.get_request(requests_queue)
-            ) is not None:
-                dequeued_time = time.time()
-
-                await self.resolve_scheduler_request(
-                    request=process_request.request,
-                    queued_time=process_request.queued_time,
-                    dequeued_time=dequeued_time,
-                    start_time=process_request.start_time,
-                    timeout_time=process_request.timeout_time,
-                    results_queue=results_queue,
-                    process_id=process_id,
-                )
-
-        try:
-            asyncio.run(_process_runner())
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                f"Error in worker process {process_id}: {exc}",
-                exc_info=True,
-                stack_info=True,
-            )
-
-    def process_loop_asynchronous(
-        self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
-        max_concurrency: int,
-        process_id: int,
-    ):
-        async def _process_runner():
-            pending = asyncio.Semaphore(max_concurrency)
-
-            if pending.locked():
-                raise ValueError("Async worker called with max_concurrency < 1")
-
-            while (
-                process_request := await self.get_request(requests_queue)
-            ) is not None:
-                dequeued_time = time.time()
-
-                await pending.acquire()
-
-                def _task_done(_: asyncio.Task):
-                    nonlocal pending
-                    pending.release()
-
-                task = asyncio.create_task(
-                    self.resolve_scheduler_request(
-                        request=process_request.request,
-                        queued_time=process_request.queued_time,
-                        dequeued_time=dequeued_time,
-                        start_time=process_request.start_time,
-                        timeout_time=process_request.timeout_time,
-                        results_queue=results_queue,
-                        process_id=process_id,
-                    )
-                )
-                task.add_done_callback(_task_done)
-                await asyncio.sleep(0)  # enable start task immediately
-
-        try:
-            asyncio.run(_process_runner())
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                f"Error in worker process {process_id}: {exc}",
-                exc_info=True,
-                stack_info=True,
-            )
-
-
-class GenerativeRequestsWorkerDescription(WorkerDescription):
-    type_: Literal["generative_requests_worker"] = "generative_requests_worker"  # type: ignore[assignment]
-    backend_type: BackendType
-    backend_target: str
-    backend_model: str
-    backend_info: dict[str, Any] = Field(
-        default_factory=dict,
-    )
-
-
-class GenerativeRequestsWorker(RequestsWorker[GenerationRequest, ResponseSummary]):
-    """
-    A class that handles the execution of requests using a backend.
-    This class is responsible for sending requests to the backend,
-    handling responses, and managing errors.
-
-    :param backend: The backend to use for handling requests.
-        This should be an instance of Backend such as an OpenAIHTTPBackend.
-    """
-
-    def __init__(self, backend: Backend):
+        :param messaging: Inter-process communication interface for request coordination
+        :param async_limit: Maximum concurrent requests this worker can handle
+        :param startup_barrier: Multiprocessing barrier for coordinated startup
+        :param shutdown_event: Event for signaling graceful shutdown
+        :param error_event: Event for signaling error conditions across processes
+        :param requests_completed_event: Event for signaling when the main process
+            has stopped sending requests / all requests are added to the queue
+        :param backend: Backend instance for processing requests
+        :param request_timings: Timing strategy for request scheduling
+        """
+        self.messaging = messaging
+        self.async_limit = async_limit
+        self.startup_barrier = startup_barrier
+        self.shutdown_event = shutdown_event
+        self.error_event = error_event
+        self.requests_completed_event = requests_completed_event
         self.backend = backend
+        self.request_timings = request_timings
+        self.startup_completed = False
 
-    @property
-    def description(self) -> GenerativeRequestsWorkerDescription:
+    def run(self):
         """
-        Get the description of the worker.
-        :return: The description of the worker.
-        """
-        return GenerativeRequestsWorkerDescription(
-            backend_type=self.backend.type_,
-            backend_target=self.backend.target,
-            backend_model=self.backend.model or "None",
-            backend_info=self.backend.info,
-        )
+        Main entry point for worker process execution.
 
-    async def prepare_multiprocessing(self):
-        """
-        Prepare the worker for multiprocessing.
-        This is useful for workers that have instance state that can not
-        be shared across processes and should be cleared out and re-initialized
-        for each new process.
-        """
-        await self.backend.prepare_multiprocessing()
+        Initializes asyncio event loop with optional uvloop optimization and starts
+        worker async operations. Handles event loop cleanup for forked processes.
 
-    def process_loop_synchronous(
-        self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
-        process_id: int,
-    ):
-        asyncio.run(self.backend.validate())
-        super().process_loop_synchronous(
-            requests_queue=requests_queue,
-            results_queue=results_queue,
-            process_id=process_id,
-        )
-
-    def process_loop_asynchronous(
-        self,
-        requests_queue: multiprocessing.Queue,
-        results_queue: multiprocessing.Queue,
-        max_concurrency: int,
-        process_id: int,
-    ):
-        asyncio.run(self.backend.validate())
-        super().process_loop_asynchronous(
-            requests_queue=requests_queue,
-            results_queue=results_queue,
-            max_concurrency=max_concurrency,
-            process_id=process_id,
-        )
-
-    async def resolve(
-        self,
-        request: GenerationRequest,
-        timeout_time: float,
-    ) -> tuple[ResolveStatus, ResponseSummary]:
+        :raises RuntimeError: If worker encounters unrecoverable error during execution
         """
-        Resolve a request by sending it to the backend and handling the response.
-        This method sends the request to the backend, waits for a response,
-        and handles any errors that may occur during the process.
+        try:
+            loop = (
+                asyncio.new_event_loop() if not HAS_UVLOOP else uvloop.new_event_loop()
+            )
+            asyncio.set_event_loop(loop)
+            asyncio.run(self.run_async())
+        except Exception as err:
+            print(f"******EXCEPTION in worker {self.messaging.worker_index} run: {err}")
+            self.error_event.set()
+            raise RuntimeError(
+                f"Worker process {self.messaging.worker_index} encountered an "
+                f"error: {err}"
+            ) from err
 
-        :param request: The request to resolve.
-        :param timeout_time: The time to wait for a response before timing out.
-            If timeout_time is math.inf, the request will not timeout.
-        :return: A ResponseSummary object containing the response from the backend.
-            If an error occurs, the ResponseSummary will contain the error message.
+    async def run_async(self):
         """
-        resolve_start_time = time.time()
-        response = None
-        error: Optional[str] = None
-        status = ResolveStatus(
-            requested=False,
-            completed=False,
-            errored=False,
-            canceled=False,
-            request_start=-1,
-            request_end=-1,
-        )
+        Execute main asynchronous worker process logic.
+
+        Orchestrates concurrent execution of request processing and shutdown monitoring
+        tasks. Handles task cleanup, error propagation, and cancellation coordination
+        when any task completes or fails.
+
+        :raises RuntimeError: If worker tasks encounter unrecoverable errors
+        :raises asyncio.CancelledError: If worker process was cancelled
+        """
+        stop_task = asyncio.create_task(self._run_async_stop_processing())
+        request_proc_task = asyncio.create_task(self._run_async_requests_processing())
+        caller_cancelled = False
 
         try:
-            if timeout_time < time.time():
-                raise asyncio.TimeoutError(
-                    "The timeout time has already passed."
-                )  # exit early
-
-            status.requested = True
-            request_func, request_kwargs = self._create_request_func_kwargs(request)
-
-            async def _runner():
-                # wrap function so we can enforce timeout and
-                # still return the latest state from the backend
-                async for resp in request_func(**request_kwargs):  # type: ignore[operator]
-                    nonlocal response
-                    response = resp
-
-            await asyncio.wait_for(
-                _runner(),
-                timeout=timeout_time - time.time() if timeout_time < math.inf else None,
+            await asyncio.wait(
+                [stop_task, request_proc_task],
+                return_when=asyncio.FIRST_COMPLETED,
             )
+        except asyncio.CancelledError:
+            caller_cancelled = True
 
-            if not response:
-                raise ValueError(
-                    f"No response received for request: {request} "
-                    f"and backend: {self.backend}"
-                )
-            if not isinstance(response, ResponseSummary):
-                raise ValueError(
-                    f"Received no ResponseSummary for request: {request} "
-                    f"and backend: {self.backend}, received: {response}"
-                )
+        stop_task.cancel()
+        request_proc_task.cancel()
 
-            status.completed = True
-        except asyncio.TimeoutError:
-            error = "TimeoutError: The request timed out before completing."
-            status.errored = True
-            status.canceled = True
-        except Exception as exc:  # noqa: BLE001
-            error = str(exc)
-            status.errored = True
+        try:
+            # Ensure all child tasks cancel correctly
+            await asyncio.wait(
+                [stop_task, request_proc_task], return_when=asyncio.ALL_COMPLETED
+            )
+        except asyncio.CancelledError:
+            caller_cancelled = True
 
-        return self._handle_response(
-            status=status,
-            request=request,
-            response=response,
-            error=error,
-            resolve_start_time=resolve_start_time,
+        if (
+            task_err := (
+                request_proc_task.exception()
+                if not request_proc_task.cancelled()
+                else stop_task.exception()
+                if not stop_task.cancelled()
+                else None
+            )
+        ) is not None:
+            raise RuntimeError(
+                f"Worker process {self.messaging.worker_index} encountered an "
+                f"error: {task_err}"
+            ) from task_err
+
+        if caller_cancelled:
+            raise asyncio.CancelledError("Worker process was cancelled")
+
+    async def _run_async_stop_processing(
+        self,
+    ) -> Literal["error_event", "shutdown_event"]:
+        exit_reason, _ = await synchronous_to_exitable_async(
+            synchronous=None,
+            exit_events={
+                "error_event": self.error_event,
+                "shutdown_event": self.shutdown_event,
+            },
+            poll_interval=self.messaging.poll_interval,
         )
 
-    def _create_request_func_kwargs(
-        self,
-        request: GenerationRequest,
-    ) -> tuple[
-        AsyncGenerator[Union[StreamingTextResponse, ResponseSummary], None],
-        dict[str, Any],
-    ]:
-        request_func: AsyncGenerator[
-            Union[StreamingTextResponse, ResponseSummary], None
-        ]
-        request_kwargs: dict[str, Any]
+        if exit_reason in {"shutdown_event", "canceled"}:
+            raise asyncio.CancelledError("Worker process shutdown event set")
 
-        if request.request_type == "text_completions":
-            request_func = self.backend.text_completions  # type: ignore[assignment]
-            request_kwargs = {
-                "prompt": request.content,
-                "request_id": request.request_id,
-                "prompt_token_count": request.stats.get("prompt_tokens", None),
-                "output_token_count": request.constraints.get("output_tokens", None),
-                **request.params,
-            }
-        elif request.request_type == "chat_completions":
-            request_func = self.backend.chat_completions  # type: ignore[assignment]
-            request_kwargs = {
-                "content": request.content,
-                "request_id": request.request_id,
-                "prompt_token_count": request.stats.get("prompt_tokens", None),
-                "output_token_count": request.constraints.get("output_tokens", None),
-                **request.params,
-            }
-        else:
-            raise ValueError(
-                f"Invalid request type: {request.request_type} for {request}"
+        if exit_reason == "error_event":
+            raise RuntimeError(
+                f"Worker process {self.messaging.worker_index} received error signal."
             )
 
-        return request_func, request_kwargs
+        raise RuntimeError(
+            f"Worker process {self.messaging.worker_index} received unknown exit: "
+            f"{exit_reason}"
+        )
 
-    def _handle_response(
-        self,
-        status: ResolveStatus,
-        request: GenerationRequest,
-        response: Any,
-        error: Optional[str],
-        resolve_start_time: float,
-    ) -> tuple[ResolveStatus, ResponseSummary]:
-        if response is None or not isinstance(
-            response, (ResponseSummary, StreamingTextResponse)
-        ):
-            # nothing received or invalid response, fill in defaults for error
-            if response:
-                error = str(
-                    ValueError(
-                        f"Invalid response: {type(response)} for request: {request}; "
-                    )
-                ) + (error or "")
+    async def _run_async_requests_processing(self):
+        try:
+            # Get backend ready for reqeuests
+            await self.backend.process_startup()
+            await self.backend.validate()
 
-            response = ResponseSummary(
-                value="",
-                request_args=RequestArgs(
-                    target=self.backend.target,
-                    headers={},
-                    params={},
-                    payload={},
+            # Get messaging system ready
+            all_requests_processed = ThreadingEvent()
+            await self.messaging.start(
+                send_stop_criteria=[all_requests_processed],
+                receive_stop_criteria=[self.requests_completed_event, self.error_event],
+                pydantic_models=list(
+                    SchedulerMessagingPydanticRegistry.registry.values()
                 ),
-                start_time=resolve_start_time,
-                end_time=status.request_end,
-                first_iter_time=None,
-                last_iter_time=None,
-                request_id=request.request_id,
-                error=error or "Unknown error",
-            )
-        elif isinstance(response, StreamingTextResponse):
-            response = ResponseSummary(
-                value=response.value,
-                request_args=RequestArgs(
-                    target=self.backend.target,
-                    headers={},
-                    params={},
-                    payload={},
-                ),
-                start_time=response.start_time,
-                end_time=time.time(),
-                first_iter_time=response.first_iter_time,
-                last_iter_time=response.time if response.iter_count > 0 else None,
-                request_prompt_tokens=request.stats.get("prompt_tokens", None),
-                request_output_tokens=request.constraints.get("output_tokens", None),
-                response_prompt_tokens=None,
-                response_output_tokens=response.iter_count,
-                request_id=request.request_id,
-                error=error or "Unknown error",
             )
 
-        response.error = error
-        status.request_start = response.start_time
-        status.request_end = response.end_time
+            # Wait for all processes to be ready
+            barrier_exit_reason, _ = await synchronous_to_exitable_async(
+                synchronous=None,
+                exit_barrier=self.startup_barrier,
+                poll_interval=self.messaging.poll_interval,
+            )
 
-        return status, response
+            if barrier_exit_reason not in ["barrier", "canceled"]:
+                raise RuntimeError(
+                    f"Worker process {self.messaging.worker_index} failed to "
+                    f"synchronize at startup: {barrier_exit_reason}"
+                )
+
+            self.startup_completed = True
+
+            # Run request processing
+            async_semaphore = asyncio.Semaphore(self.async_limit)
+            pending_tasks = set()
+
+            def _task_done(task):
+                pending_tasks.discard(task)
+                async_semaphore.release()
+
+                if not task.cancelled() and (exception := task.exception()):
+                    raise exception
+
+            # Main loop; loop until canceled
+            while True:
+                await async_semaphore.acquire()
+                request_task = asyncio.create_task(self._process_next_request())
+                pending_tasks.add(request_task)
+                request_task.add_done_callback(_task_done)
+        except (asyncio.CancelledError, Exception) as err:
+            if self.startup_completed:
+                await self._cancel_remaining_requests(
+                    pending_tasks, all_requests_processed
+                )
+                await self.messaging.stop()
+                await self.backend.process_shutdown()
+
+            raise err
+
+    async def _process_next_request(self):
+        request: RequestT | MultiTurnRequestT[RequestT] | None = None
+        request_info: ScheduledRequestInfo | None = None
+        response: ResponseT | None = None
+
+        try:
+            # Pull request from the queue
+            request, request_info = await self.messaging.get()
+            current_time = time.time()
+            request_info.status = "pending"
+            request_info.scheduler_timings.dequeued = current_time
+
+            if isinstance(request, (list, tuple)):
+                raise NotImplementedError("Multi-turn requests are not yet supported")
+
+            # Schedule the request for targeted time
+            target_start = (
+                request_info.scheduler_start_time + self.request_timings.next_offset()
+            )
+            request_info.scheduler_timings.targeted_start = target_start
+            request_info.scheduler_timings.scheduled_at = current_time
+
+            if target_start > current_time:
+                await asyncio.sleep(target_start - current_time)
+                # adapt delay so that scheduled at reflects the sleep time
+                request_info.scheduler_timings.scheduled_at = target_start
+
+            # Process the request with the backend
+            request_info.scheduler_timings.resolve_start = time.time()
+            self._send_update("in_progress", response, request, request_info)
+            async for resp, info in self.backend.resolve(request, request_info, None):
+                response = resp
+                request_info = info
+
+            # Complete the request
+            request_info.scheduler_timings.resolve_end = time.time()
+            self._send_update("completed", response, request, request_info)
+
+            response = request = request_info = None
+        except asyncio.CancelledError:
+            # Handle cancellation
+            if request is not None and request_info is not None:
+                request_info.error = "Request was cancelled"
+                request_info.scheduler_timings.resolve_end = time.time()
+                self._send_update("cancelled", response, request, request_info)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            if request is not None and request_info is not None:
+                request_info.error = str(exc)
+                request_info.scheduler_timings.resolve_end = time.time()
+                self._send_update("errored", response, request, request_info)
+
+    def _send_update(
+        self,
+        new_status: Literal["in_progress", "completed", "errored", "cancelled"],
+        response: ResponseT | None,
+        request: RequestT | MultiTurnRequestT[RequestT],
+        request_info: ScheduledRequestInfo,
+    ):
+        prev_status = request_info.status
+
+        try:
+            request_info.status = new_status
+            request_info = (
+                request_info.model_copy()
+                if new_status not in {"completed", "errored", "cancelled"}
+                else request_info  # last update, don't need to copy
+            )
+            self.messaging.put_sync(
+                (response, request, request_info),
+                timeout=-1,
+            )
+            prev_status = new_status
+        except Exception as exc:
+            # Reset status to last one that succeeded or started function with
+            # Calling logic can retry after handling error, if possible
+            request_info.status = prev_status
+            raise exc
+
+    async def _cancel_remaining_requests(
+        self, pending_tasks: set[asyncio.Task], all_requests_processed: ThreadingEvent
+    ):
+        # Cancel any tasks that were active tasks
+        cancel_tasks = []
+        for task in pending_tasks:
+            if not task.done():
+                task.cancel()
+                cancel_tasks.append(task)
+
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.gather(*cancel_tasks, return_exceptions=True)
+
+        # Cancel any tasks pending on the queue
+        while not self.messaging.receive_stopped_event.is_set():
+            # Loop until we know nothing else will be added
+            with contextlib.suppress((asyncio.TimeoutError, Exception)):
+                request, request_info = await self.messaging.get(
+                    timeout=self.messaging.poll_interval
+                )
+                request_info.error = "Request was cancelled"
+                request_info.scheduler_timings.resolve_end = time.time()
+                self._send_update("cancelled", None, request, request_info)
+
+        all_requests_processed.set()
+        await synchronous_to_exitable_async(
+            synchronous=None,
+            exit_events={"send_stopped": self.messaging.send_stopped_event},
+            poll_interval=self.messaging.poll_interval,
+        )
