@@ -2,156 +2,161 @@
 Unit tests for the registry module.
 """
 
+from __future__ import annotations
+
+from typing import TypeVar
 from unittest import mock
 
 import pytest
 
-from guidellm.utils.registry import RegistryMixin
+from guidellm.utils.registry import RegistryMixin, RegistryObjT
 
 
-class TestBasicRegistration:
-    """Test suite for basic registry functionality."""
+def test_registry_obj_type():
+    """Test that RegistryObjT is configured correctly as a TypeVar."""
+    assert isinstance(RegistryObjT, type(TypeVar("test")))
+    assert RegistryObjT.__name__ == "RegistryObjT"
+    assert RegistryObjT.__bound__ is not None  # bound to Any
+    assert RegistryObjT.__constraints__ == ()
 
-    @pytest.mark.smoke
-    def test_registry_initialization(self):
-        """Test that RegistryMixin initializes with correct defaults."""
+
+class TestRegistryMixin:
+    """Test suite for RegistryMixin class."""
+
+    @pytest.fixture(
+        params=[
+            {"registry_auto_discovery": False, "auto_package": None},
+            {"registry_auto_discovery": True, "auto_package": "test.package"},
+        ],
+        ids=["manual_registry", "auto_discovery"],
+    )
+    def valid_instances(self, request):
+        """Fixture providing test data for RegistryMixin subclasses."""
+        config = request.param
 
         class TestRegistryClass(RegistryMixin):
-            pass
+            registry_auto_discovery = config["registry_auto_discovery"]
+            if config["auto_package"]:
+                auto_package = config["auto_package"]
 
-        assert TestRegistryClass.registry is None
-        assert TestRegistryClass.registry_auto_discovery is False
-        assert TestRegistryClass.registry_populated is False
+        return TestRegistryClass, config
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Test RegistryMixin inheritance and exposed methods."""
+        assert hasattr(RegistryMixin, "registry")
+        assert hasattr(RegistryMixin, "registry_auto_discovery")
+        assert hasattr(RegistryMixin, "registry_populated")
+        assert hasattr(RegistryMixin, "register")
+        assert hasattr(RegistryMixin, "register_decorator")
+        assert hasattr(RegistryMixin, "auto_populate_registry")
+        assert hasattr(RegistryMixin, "registered_objects")
+        assert hasattr(RegistryMixin, "is_registered")
+        assert hasattr(RegistryMixin, "get_registered_object")
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """Test RegistryMixin initialization."""
+        registry_class, config = valid_instances
+
+        assert registry_class.registry is None
+        assert (
+            registry_class.registry_auto_discovery == config["registry_auto_discovery"]
+        )
+        assert registry_class.registry_populated is False
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_missing(self):
+        """Test RegistryMixin with missing auto_package when auto_discovery enabled."""
+
+        class TestRegistryClass(RegistryMixin):
+            registry_auto_discovery = True
+
+        with pytest.raises(ValueError, match="auto_package.*must be set"):
+            TestRegistryClass.auto_import_package_modules()
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        ("register_name", "expected_key"),
+        ("name", "expected_key"),
         [
             ("custom_name", "custom_name"),
-            ("CamelCase", "camelcase"),
-            ("UPPERCASE", "uppercase"),
-            ("snake_case", "snake_case"),
+            (["name1", "name2"], ["name1", "name2"]),
+            (None, None),  # Uses class name
         ],
     )
-    def test_register_with_name(self, register_name, expected_key):
-        """Test registering objects with explicit names."""
+    def test_register(self, valid_instances, name, expected_key):
+        """Test register method with various name configurations."""
+        registry_class, _ = valid_instances
 
-        class TestRegistryClass(RegistryMixin):
-            pass
+        if name is None:
 
-        @TestRegistryClass.register(register_name)
-        class TestClass:
-            pass
+            @registry_class.register()
+            class TestClass:
+                pass
 
-        assert TestRegistryClass.registry is not None
-        assert expected_key in TestRegistryClass.registry
-        assert TestRegistryClass.registry[expected_key] is TestClass
+            expected_key = "testclass"
+        else:
 
-    @pytest.mark.smoke
-    def test_register_without_name(self):
-        """Test registering objects without explicit names."""
+            @registry_class.register(name)
+            class TestClass:
+                pass
 
-        class TestRegistryClass(RegistryMixin):
-            pass
-
-        @TestRegistryClass.register()
-        class TestClass:
-            pass
-
-        assert TestRegistryClass.registry is not None
-        assert "testclass" in TestRegistryClass.registry
-        assert TestRegistryClass.registry["testclass"] is TestClass
-
-    @pytest.mark.smoke
-    def test_register_decorator_direct(self):
-        """Test direct usage of register_decorator."""
-
-        class TestRegistryClass(RegistryMixin):
-            pass
-
-        @TestRegistryClass.register_decorator
-        class TestClass:
-            pass
-
-        assert TestRegistryClass.registry is not None
-        assert "testclass" in TestRegistryClass.registry
-        assert TestRegistryClass.registry["testclass"] is TestClass
-
-    @pytest.mark.smoke
-    def test_register_multiple_names(self):
-        """Test registering an object with multiple names."""
-
-        class TestRegistryClass(RegistryMixin):
-            pass
-
-        @TestRegistryClass.register(["name1", "name2", "Name3"])
-        class TestClass:
-            pass
-
-        assert TestRegistryClass.registry is not None
-        assert "name1" in TestRegistryClass.registry
-        assert "name2" in TestRegistryClass.registry
-        assert "name3" in TestRegistryClass.registry
-        assert all(
-            TestRegistryClass.registry[key] is TestClass
-            for key in ["name1", "name2", "name3"]
-        )
-
-    @pytest.mark.smoke
-    def test_registered_objects(self):
-        """Test retrieving all registered objects."""
-
-        class TestRegistryClass(RegistryMixin):
-            pass
-
-        @TestRegistryClass.register()
-        class TestClass1:
-            pass
-
-        @TestRegistryClass.register("custom_name")
-        class TestClass2:
-            pass
-
-        registered = TestRegistryClass.registered_objects()
-        assert isinstance(registered, tuple)
-        assert len(registered) == 2
-        assert TestClass1 in registered
-        assert TestClass2 in registered
-
-
-class TestRegistrationValidation:
-    """Test suite for registration validation and error handling."""
+        assert registry_class.registry is not None
+        if isinstance(expected_key, list):
+            for key in expected_key:
+                assert key in registry_class.registry
+                assert registry_class.registry[key] is TestClass
+        else:
+            assert expected_key in registry_class.registry
+            assert registry_class.registry[expected_key] is TestClass
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        "invalid_name", [123, 42.5, True, {"key": "value"}, object()]
+        "invalid_name",
+        [123, 42.5, True, {"key": "value"}],
     )
-    def test_register_invalid_name_type(self, invalid_name):
-        """Test that invalid name types raise ValueError."""
-
-        class TestRegistryClass(RegistryMixin):
-            pass
+    def test_register_invalid(self, valid_instances, invalid_name):
+        """Test register method with invalid name types."""
+        registry_class, _ = valid_instances
 
         with pytest.raises(ValueError, match="name must be a string, list of strings"):
-            TestRegistryClass.register(invalid_name)
+            registry_class.register(invalid_name)
 
-    @pytest.mark.sanity
-    def test_register_decorator_invalid_object(self):
-        """Test that register_decorator validates object has __name__ attribute."""
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("name", "expected_key"),
+        [
+            ("custom_name", "custom_name"),
+            (["name1", "name2"], ["name1", "name2"]),
+            (None, "testclass"),
+        ],
+    )
+    def test_register_decorator(self, valid_instances, name, expected_key):
+        """Test register_decorator method with various name configurations."""
+        registry_class, _ = valid_instances
 
-        class TestRegistryClass(RegistryMixin):
+        class TestClass:
             pass
 
-        with pytest.raises(AttributeError):
-            TestRegistryClass.register_decorator("not_a_class")
+        registry_class.register_decorator(TestClass, name=name)
+
+        assert registry_class.registry is not None
+        if isinstance(expected_key, list):
+            for key in expected_key:
+                assert key in registry_class.registry
+                assert registry_class.registry[key] is TestClass
+        else:
+            assert expected_key in registry_class.registry
+            assert registry_class.registry[expected_key] is TestClass
 
     @pytest.mark.sanity
-    @pytest.mark.parametrize("invalid_name", [123, 42.5, True, {"key": "value"}])
-    def test_register_decorator_invalid_name_type(self, invalid_name):
-        """Test that invalid name types in register_decorator raise ValueError."""
-
-        class TestRegistryClass(RegistryMixin):
-            pass
+    @pytest.mark.parametrize(
+        "invalid_name",
+        [123, 42.5, True, {"key": "value"}],
+    )
+    def test_register_decorator_invalid(self, valid_instances, invalid_name):
+        """Test register_decorator with invalid name types."""
+        registry_class, _ = valid_instances
 
         class TestClass:
             pass
@@ -159,43 +164,66 @@ class TestRegistrationValidation:
         with pytest.raises(
             ValueError, match="name must be a string or an iterable of strings"
         ):
-            TestRegistryClass.register_decorator(TestClass, name=invalid_name)
+            registry_class.register_decorator(TestClass, name=invalid_name)
+
+    @pytest.mark.smoke
+    def test_auto_populate_registry(self):
+        """Test auto_populate_registry method with valid configuration."""
+
+        class TestAutoRegistry(RegistryMixin):
+            registry_auto_discovery = True
+            auto_package = "test.package"
+
+        with mock.patch.object(
+            TestAutoRegistry, "auto_import_package_modules"
+        ) as mock_import:
+            result = TestAutoRegistry.auto_populate_registry()
+            assert result is True
+            mock_import.assert_called_once()
+            assert TestAutoRegistry.registry_populated is True
+
+            # Second call should return False
+            result = TestAutoRegistry.auto_populate_registry()
+            assert result is False
+            mock_import.assert_called_once()  # Should not be called again
 
     @pytest.mark.sanity
-    def test_register_decorator_invalid_list_element(self):
-        """Test that invalid elements in name list raise ValueError."""
+    def test_auto_populate_registry_invalid(self):
+        """Test auto_populate_registry when auto-discovery is disabled."""
 
-        class TestRegistryClass(RegistryMixin):
-            pass
+        class TestDisabledRegistry(RegistryMixin):
+            registry_auto_discovery = False
 
-        class TestClass:
-            pass
+        with pytest.raises(ValueError, match="registry_auto_discovery is set to False"):
+            TestDisabledRegistry.auto_populate_registry()
 
-        with pytest.raises(
-            ValueError, match="name must be a string or a list of strings"
-        ):
-            TestRegistryClass.register_decorator(TestClass, name=["valid", 123])
+    @pytest.mark.smoke
+    def test_registered_objects(self, valid_instances):
+        """Test registered_objects method with manual registration."""
+        registry_class, config = valid_instances
 
-    @pytest.mark.sanity
-    def test_register_duplicate_name(self):
-        """Test that duplicate names raise ValueError."""
-
-        class TestRegistryClass(RegistryMixin):
-            pass
-
-        @TestRegistryClass.register("test_name")
+        @registry_class.register("class1")
         class TestClass1:
             pass
 
-        with pytest.raises(ValueError, match="already registered"):
+        @registry_class.register("class2")
+        class TestClass2:
+            pass
 
-            @TestRegistryClass.register("test_name")
-            class TestClass2:
-                pass
+        if config["registry_auto_discovery"]:
+            with mock.patch.object(registry_class, "auto_import_package_modules"):
+                objects = registry_class.registered_objects()
+        else:
+            objects = registry_class.registered_objects()
+
+        assert isinstance(objects, tuple)
+        assert len(objects) == 2
+        assert TestClass1 in objects
+        assert TestClass2 in objects
 
     @pytest.mark.sanity
-    def test_registered_objects_empty_registry(self):
-        """Test that registered_objects raises error when no objects registered."""
+    def test_registered_objects_invalid(self):
+        """Test registered_objects when no objects are registered."""
 
         class TestRegistryClass(RegistryMixin):
             pass
@@ -205,9 +233,62 @@ class TestRegistrationValidation:
         ):
             TestRegistryClass.registered_objects()
 
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("register_name", "check_name", "expected"),
+        [
+            ("test_name", "test_name", True),
+            ("TestName", "testname", True),
+            ("UPPERCASE", "uppercase", True),
+            ("test_name", "nonexistent", False),
+        ],
+    )
+    def test_is_registered(self, valid_instances, register_name, check_name, expected):
+        """Test is_registered with various name combinations."""
+        registry_class, _ = valid_instances
 
-class TestRegistryIsolation:
-    """Test suite for registry isolation between different classes."""
+        @registry_class.register(register_name)
+        class TestClass:
+            pass
+
+        result = registry_class.is_registered(check_name)
+        assert result == expected
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("register_name", "lookup_name"),
+        [
+            ("test_name", "test_name"),
+            ("TestName", "testname"),
+            ("UPPERCASE", "uppercase"),
+        ],
+    )
+    def test_get_registered_object(self, valid_instances, register_name, lookup_name):
+        """Test get_registered_object with valid names."""
+        registry_class, _ = valid_instances
+
+        @registry_class.register(register_name)
+        class TestClass:
+            pass
+
+        result = registry_class.get_registered_object(lookup_name)
+        assert result is TestClass
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        "lookup_name",
+        ["nonexistent", "wrong_name", "DIFFERENT_CASE"],
+    )
+    def test_get_registered_object_invalid(self, valid_instances, lookup_name):
+        """Test get_registered_object with invalid names."""
+        registry_class, _ = valid_instances
+
+        @registry_class.register("valid_name")
+        class TestClass:
+            pass
+
+        result = registry_class.get_registered_object(lookup_name)
+        assert result is None
 
     @pytest.mark.regression
     def test_multiple_registries_isolation(self):
@@ -266,10 +347,6 @@ class TestRegistryIsolation:
         assert BaseClass in base_objects
         assert ChildClass in base_objects
 
-
-class TestAutoDiscovery:
-    """Test suite for auto-discovery functionality."""
-
     @pytest.mark.smoke
     def test_auto_discovery_initialization(self):
         """Test initialization of auto-discovery enabled registry."""
@@ -284,37 +361,7 @@ class TestAutoDiscovery:
         assert TestAutoRegistry.registry_auto_discovery is True
 
     @pytest.mark.smoke
-    def test_auto_populate_registry(self):
-        """Test auto population mechanism."""
-
-        class TestAutoRegistry(RegistryMixin):
-            registry_auto_discovery = True
-            auto_package = "test_package.modules"
-
-        with mock.patch.object(
-            TestAutoRegistry, "auto_import_package_modules"
-        ) as mock_import:
-            result = TestAutoRegistry.auto_populate_registry()
-            assert result is True
-            mock_import.assert_called_once()
-            assert TestAutoRegistry.registry_populated is True
-
-            result = TestAutoRegistry.auto_populate_registry()
-            assert result is False
-            mock_import.assert_called_once()
-
-    @pytest.mark.sanity
-    def test_auto_populate_registry_disabled(self):
-        """Test that auto population fails when disabled."""
-
-        class TestDisabledAutoRegistry(RegistryMixin):
-            auto_package = "test_package.modules"
-
-        with pytest.raises(ValueError, match="registry_auto_discovery is set to False"):
-            TestDisabledAutoRegistry.auto_populate_registry()
-
-    @pytest.mark.sanity
-    def test_auto_registered_objects(self):
+    def test_auto_discovery_registered_objects(self):
         """Test automatic population during registered_objects call."""
 
         class TestAutoRegistry(RegistryMixin):
@@ -329,12 +376,120 @@ class TestAutoDiscovery:
             mock_populate.assert_called_once()
             assert objects == ("obj1", "obj2")
 
+    @pytest.mark.sanity
+    def test_register_duplicate_registration(self, valid_instances):
+        """Test register method with duplicate names."""
+        registry_class, _ = valid_instances
 
-class TestAutoDiscoveryIntegration:
-    """Test suite for comprehensive auto-discovery integration scenarios."""
+        @registry_class.register("duplicate_name")
+        class TestClass1:
+            pass
+
+        with pytest.raises(ValueError, match="already registered"):
+
+            @registry_class.register("duplicate_name")
+            class TestClass2:
+                pass
+
+    @pytest.mark.sanity
+    def test_register_decorator_duplicate_registration(self, valid_instances):
+        """Test register_decorator with duplicate names."""
+        registry_class, _ = valid_instances
+
+        class TestClass1:
+            pass
+
+        class TestClass2:
+            pass
+
+        registry_class.register_decorator(TestClass1, name="duplicate_name")
+        with pytest.raises(ValueError, match="already registered"):
+            registry_class.register_decorator(TestClass2, name="duplicate_name")
+
+    @pytest.mark.sanity
+    def test_register_decorator_invalid_list_element(self, valid_instances):
+        """Test register_decorator with invalid elements in name list."""
+        registry_class, _ = valid_instances
+
+        class TestClass:
+            pass
+
+        with pytest.raises(
+            ValueError, match="name must be a string or a list of strings"
+        ):
+            registry_class.register_decorator(TestClass, name=["valid", 123])
+
+    @pytest.mark.sanity
+    def test_register_decorator_invalid_object(self, valid_instances):
+        """Test register_decorator with object lacking __name__ attribute."""
+        registry_class, _ = valid_instances
+
+        with pytest.raises(AttributeError):
+            registry_class.register_decorator("not_a_class")
+
+    @pytest.mark.smoke
+    def test_is_registered_empty_registry(self, valid_instances):
+        """Test is_registered with empty registry."""
+        registry_class, _ = valid_instances
+
+        result = registry_class.is_registered("any_name")
+        assert result is False
+
+    @pytest.mark.smoke
+    def test_get_registered_object_empty_registry(self, valid_instances):
+        """Test get_registered_object with empty registry."""
+        registry_class, _ = valid_instances
+
+        result = registry_class.get_registered_object("any_name")
+        assert result is None
 
     @pytest.mark.regression
     def test_auto_registry_integration(self):
+        """Test complete auto-discovery workflow with mocked imports."""
+
+        class TestAutoRegistry(RegistryMixin):
+            registry_auto_discovery = True
+            auto_package = "test_package.modules"
+
+        with (
+            mock.patch("pkgutil.walk_packages") as walk_mock,
+            mock.patch("importlib.import_module") as import_mock,
+        ):
+            # Setup mock package
+            package_mock = mock.MagicMock()
+            package_mock.__path__ = ["test_package/modules"]
+            package_mock.__name__ = "test_package.modules"
+
+            # Setup mock module with test class
+            module_mock = mock.MagicMock()
+            module_mock.__name__ = "test_package.modules.module1"
+
+            class Module1Class:
+                pass
+
+            TestAutoRegistry.register_decorator(Module1Class, "Module1Class")
+
+            # Setup import behavior
+            import_mock.side_effect = lambda name: (
+                package_mock
+                if name == "test_package.modules"
+                else module_mock
+                if name == "test_package.modules.module1"
+                else (_ for _ in ()).throw(ImportError(f"No module named {name}"))
+            )
+
+            # Setup package walking behavior
+            walk_mock.side_effect = lambda path, prefix: (
+                [(None, "test_package.modules.module1", False)]
+                if prefix == "test_package.modules."
+                else (_ for _ in ()).throw(ValueError(f"Unknown package: {prefix}"))
+            )
+
+            objects = TestAutoRegistry.registered_objects()
+            assert len(objects) == 1
+            assert TestAutoRegistry.registry_populated is True
+            assert TestAutoRegistry.registry is not None
+            assert "module1class" in TestAutoRegistry.registry
         """Test complete auto-discovery workflow with mocked imports."""
 
         class TestAutoRegistry(RegistryMixin):
@@ -378,36 +533,3 @@ class TestAutoDiscoveryIntegration:
             assert TestAutoRegistry.registry_populated is True
             assert TestAutoRegistry.registry is not None
             assert "module1class" in TestAutoRegistry.registry
-
-    @pytest.mark.regression
-    def test_auto_registry_multiple_packages(self):
-        """Test auto-discovery with multiple packages."""
-
-        class TestMultiPackageRegistry(RegistryMixin):
-            registry_auto_discovery = True
-            auto_package = ("package1", "package2")
-
-        with mock.patch.object(
-            TestMultiPackageRegistry, "auto_import_package_modules"
-        ) as mock_import:
-            TestMultiPackageRegistry.registry = {}
-            TestMultiPackageRegistry.registered_objects()
-            mock_import.assert_called_once()
-            assert TestMultiPackageRegistry.registry_populated is True
-
-    @pytest.mark.regression
-    def test_auto_registry_import_error(self):
-        """Test handling of import errors during auto-discovery."""
-
-        class TestErrorRegistry(RegistryMixin):
-            registry_auto_discovery = True
-            auto_package = "nonexistent.package"
-
-        with mock.patch.object(
-            TestErrorRegistry,
-            "auto_import_package_modules",
-            side_effect=ValueError("auto_package must be set"),
-        ) as mock_import:
-            with pytest.raises(ValueError, match="auto_package must be set"):
-                TestErrorRegistry.auto_populate_registry()
-            mock_import.assert_called_once()

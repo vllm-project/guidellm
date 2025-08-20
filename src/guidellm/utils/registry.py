@@ -3,24 +3,24 @@ Registry system for dynamic object registration and discovery.
 
 Provides a flexible object registration system with optional auto-discovery
 capabilities through decorators and module imports. Enables dynamic discovery
-and instantiation of implementations based on configuration parameters.
-
-Classes:
-    RegistryMixin: Generic mixin for creating object registries with decorators
-        and optional auto-discovery capabilities.
-
-Type Variables:
-    RegistryObjT: Generic registry object type.
+and instantiation of implementations based on configuration parameters, supporting
+both manual registration and automatic package-based discovery for extensible
+plugin architectures.
 """
 
-from typing import Any, Callable, ClassVar, Generic, Optional, TypeVar, Union
+from __future__ import annotations
+
+from typing import Any, Callable, ClassVar, Generic, TypeVar
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 
-__all__ = ["RegistryMixin"]
+__all__ = ["RegistryMixin", "RegistryObjT"]
 
 
 RegistryObjT = TypeVar("RegistryObjT", bound=Any)
+"""
+Generic type variable for objects managed by the registry system.
+"""
 
 
 class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
@@ -29,6 +29,8 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
 
     Enables classes to maintain separate registries of objects that can be
     dynamically discovered and instantiated through decorators and module imports.
+    Supports both manual registration via decorators and automatic discovery
+    through package scanning for extensible plugin architectures.
 
     Example:
     ::
@@ -54,15 +56,19 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
 
         # Automatically imports and registers decorated objects
         proposals = TokenProposal.registered_objects()
+
+    :cvar registry: Dictionary mapping names to registered objects
+    :cvar registry_auto_discovery: Enable automatic package-based discovery
+    :cvar registry_populated: Track whether auto-discovery has completed
     """
 
-    registry: ClassVar[Optional[dict[str, RegistryObjT]]] = None
+    registry: ClassVar[dict[str, RegistryObjT] | None] = None
     registry_auto_discovery: ClassVar[bool] = False
     registry_populated: ClassVar[bool] = False
 
     @classmethod
     def register(
-        cls, name: Optional[Union[str, list[str]]] = None
+        cls, name: str | list[str] | None = None
     ) -> Callable[[RegistryObjT], RegistryObjT]:
         """
         Decorator that registers an object with the registry.
@@ -82,7 +88,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
 
     @classmethod
     def register_decorator(
-        cls, obj: RegistryObjT, name: Optional[Union[str, list[str]]] = None
+        cls, obj: RegistryObjT, name: str | list[str] | None = None
     ) -> RegistryObjT:
         """
         Direct decorator that registers an object with the registry.
@@ -187,7 +193,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
         return name.lower() in cls.registry
 
     @classmethod
-    def get_registered_object(cls, name: str) -> Optional[RegistryObjT]:
+    def get_registered_object(cls, name: str) -> RegistryObjT | None:
         """
         Get a registered object by its name.
 

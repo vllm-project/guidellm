@@ -34,7 +34,6 @@ from typing import (
     runtime_checkable,
 )
 
-import numpy as np
 from pydantic import Field, PrivateAttr
 
 from guidellm.backend import (

@@ -9,56 +9,54 @@ subclasses need to be discoverable at runtime.
 The AutoImporterMixin can be combined with registration mechanisms to create
 extensible systems where new implementations are automatically discovered and
 registered when they are placed in the correct package structure.
-
-Classes:
-    - AutoImporterMixin: A mixin class that provides functionality to automatically
-        import all modules within a specified package or list of packa
 """
+
+from __future__ import annotations
 
 import importlib
 import pkgutil
 import sys
-from typing import ClassVar, Optional, Union
+from typing import ClassVar
 
 __all__ = ["AutoImporterMixin"]
 
 
 class AutoImporterMixin:
     """
-    A mixin class that provides functionality to automatically import all modules
-    within a specified package or list of packages.
+    Mixin class for automatic module importing within packages.
 
-    This mixin is designed to be used with class registration mechanisms to enable
-    automatic discovery and registration of classes without explicit imports. When
-    a class inherits from AutoImporterMixin, it can define the package(s) to scan
-    for modules by setting the `auto_package` class variable.
+    This mixin enables dynamic discovery of classes and implementations without
+    explicit imports by automatically importing all modules within specified
+    packages. It is designed for use with class registration mechanisms to enable
+    automatic discovery and registration of classes when they are placed in the
+    correct package structure.
 
-    Usage Example:
-    ```python
-    from speculators.utils import AutoImporterMixin
-    class MyRegistry(AutoImporterMixin):
-        auto_package = "my_package.implementations"
+    Example:
+    ::
+        from guidellm.utils import AutoImporterMixin
 
-    MyRegistry.auto_import_package_modules()
-    ```
+        class MyRegistry(AutoImporterMixin):
+            auto_package = "my_package.implementations"
 
-    :cvar auto_package: The package name or tuple of names to import modules from.
-    :cvar auto_ignore_modules: Optional tuple of module names to ignore during import.
-    :cvar auto_imported_modules: List tracking which modules have been imported.
+        MyRegistry.auto_import_package_modules()
+
+    :cvar auto_package: Package name or tuple of package names to import modules from
+    :cvar auto_ignore_modules: Module names to ignore during import
+    :cvar auto_imported_modules: List tracking which modules have been imported
     """
 
-    auto_package: ClassVar[Optional[Union[str, tuple[str, ...]]]] = None
-    auto_ignore_modules: ClassVar[Optional[tuple[str, ...]]] = None
-    auto_imported_modules: ClassVar[Optional[list]] = None
+    auto_package: ClassVar[str | tuple[str, ...] | None] = None
+    auto_ignore_modules: ClassVar[tuple[str, ...] | None] = None
+    auto_imported_modules: ClassVar[list[str] | None] = None
 
     @classmethod
-    def auto_import_package_modules(cls):
+    def auto_import_package_modules(cls) -> None:
         """
-        Automatically imports all modules within the specified package(s).
+        Automatically import all modules within the specified package(s).
 
-        This method scans the package(s) defined in the `auto_package` class variable
-        and imports all modules found, tracking them in `auto_imported_modules`. It
-        skips packages (directories) and any modules listed in `auto_ignore_modules`.
+        Scans the package(s) defined in the `auto_package` class variable and imports
+        all modules found, tracking them in `auto_imported_modules`. Skips packages
+        (directories) and any modules listed in `auto_ignore_modules`.
 
         :raises ValueError: If the `auto_package` class variable is not set
         """
