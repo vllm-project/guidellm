@@ -23,7 +23,7 @@ from loguru import logger
 
 from guidellm import data as package_data
 from guidellm.config import settings
-from guidellm.utils.console import Colors
+from guidellm.utils.colors import Colors
 
 __all__ = [
     "MAX_PATH_LENGTH",
@@ -31,7 +31,7 @@ __all__ = [
     "clean_text",
     "filter_text",
     "format_value_display",
-    "is_puncutation",
+    "is_punctuation",
     "load_text",
     "split_text",
     "split_text_list_by_length",
@@ -268,7 +268,7 @@ def load_text(data: str | Path, encoding: str | None = None) -> str:
     return data.read_text(encoding=encoding)
 
 
-def is_puncutation(text: str) -> bool:
+def is_punctuation(text: str) -> bool:
     """
     Check if a single character is a punctuation mark.
 
@@ -332,7 +332,7 @@ class EndlessTextCreator:
             index = (start + counter) % len(self.words)
             add_word = self.words[index]
 
-            if counter != 0 and not is_puncutation(add_word):
+            if counter != 0 and not is_punctuation(add_word):
                 text += " "
 
             text += add_word
