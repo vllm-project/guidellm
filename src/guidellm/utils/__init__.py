@@ -1,6 +1,7 @@
 from .auto_importer import AutoImporterMixin
 from .console import Colors, Console, ConsoleUpdateStep, StatusIcons, StatusStyles
 from .default_group import DefaultGroupHandler
+from .dict import recursive_key_update
 from .encoding import (
     Encoder,
     EncodingTypesAlias,
@@ -55,6 +56,7 @@ from .synchronous import (
 )
 from .text import (
     EndlessTextCreator,
+    camelize_str,
     clean_text,
     filter_text,
     format_value_display,
@@ -79,6 +81,7 @@ __all__ = [
     "EndlessTextCreator",
     "InfoMixin",
     "IntegerRangeSampler",
+    "camelize_str",
     "InterProcessMessaging",
     "InterProcessMessagingManagerQueue",
     "InterProcessMessagingPipe",
@@ -110,6 +113,7 @@ __all__ = [
     "format_value_display",
     "get_literal_vals",
     "is_punctuation",
+    "recursive_key_update",
     "load_text",
     "safe_add",
     "safe_divide",
