@@ -12,9 +12,6 @@ from guidellm.benchmark.profile import (
     SynchronousProfile,
     ThroughputProfile,
 )
-from guidellm.objects import (
-    StatusDistributionSummary,
-)
 from guidellm.request import (
     GenerativeRequestLoaderDescription,
     RequestLoaderDescription,
@@ -30,7 +27,11 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     WorkerDescription,
 )
-from guidellm.utils import StandardBaseModel, StatusBreakdown
+from guidellm.utils import (
+    StandardBaseModel,
+    StatusBreakdown,
+    StatusDistributionSummary,
+)
 
 __all__ = [
     "Benchmark",

@@ -22,10 +22,6 @@ from guidellm.benchmark.benchmark import (
     GenerativeTextResponseStats,
 )
 from guidellm.config import settings
-from guidellm.objects import (
-    RunningStats,
-    TimeRunningStats,
-)
 from guidellm.request import (
     GenerationRequest,
     GenerativeRequestLoaderDescription,
@@ -38,7 +34,13 @@ from guidellm.scheduler import (
     SchedulerRequestResult,
     WorkerDescription,
 )
-from guidellm.utils import StandardBaseModel, StatusBreakdown, check_load_processor
+from guidellm.utils import (
+    RunningStats,
+    StandardBaseModel,
+    StatusBreakdown,
+    TimeRunningStats,
+    check_load_processor,
+)
 
 __all__ = [
     "AggregatorT",

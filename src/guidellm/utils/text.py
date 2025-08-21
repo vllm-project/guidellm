@@ -1,9 +1,21 @@
+"""
+Text processing utilities for content manipulation and formatting operations.
+
+Provides comprehensive text processing capabilities including cleaning, filtering,
+splitting, loading from various sources, and formatting utilities. Supports loading
+text from URLs, compressed files, package resources, and local files with automatic
+encoding detection. Includes specialized formatting for display values and text
+wrapping operations for consistent presentation across the system.
+"""
+
+from __future__ import annotations
+
 import gzip
 import re
 import textwrap
 from importlib.resources import as_file, files  # type: ignore[attr-defined]
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import ftfy
 import httpx
@@ -11,35 +23,86 @@ from loguru import logger
 
 from guidellm import data as package_data
 from guidellm.config import settings
+from guidellm.utils.console import Colors
 
 __all__ = [
+    "MAX_PATH_LENGTH",
     "EndlessTextCreator",
     "clean_text",
     "filter_text",
+    "format_value_display",
     "is_puncutation",
     "load_text",
     "split_text",
     "split_text_list_by_length",
 ]
 
-MAX_PATH_LENGTH = 4096
+MAX_PATH_LENGTH: int = 4096
+
+
+def format_value_display(
+    value: float,
+    label: str,
+    units: str = "",
+    total_characters: int | None = None,
+    digits_places: int | None = None,
+    decimal_places: int | None = None,
+) -> str:
+    """
+    Format a numeric value with units and label for consistent display output.
+
+    Creates standardized display strings for metrics and measurements with
+    configurable precision, width, and color formatting. Supports both
+    fixed-width and variable-width output for tabular displays.
+
+    :param value: Numeric value to format and display
+    :param label: Descriptive label for the value
+    :param units: Units string to append after the value
+    :param total_characters: Total width for right-aligned output formatting
+    :param digits_places: Total number of digits for numeric formatting
+    :param decimal_places: Number of decimal places for numeric precision
+    :return: Formatted string with value, units, and colored label
+    """
+    if decimal_places is None and digits_places is None:
+        formatted_number = f"{value}:.0f"
+    elif digits_places is None:
+        formatted_number = f"{value:.{decimal_places}f}"
+    elif decimal_places is None:
+        formatted_number = f"{value:>{digits_places}f}"
+    else:
+        formatted_number = f"{value:>{digits_places}.{decimal_places}f}"
+
+    result = f"{formatted_number}{units} [{Colors.info}]{label}[/{Colors.info}]"
+
+    if total_characters is not None:
+        total_characters += len(Colors.info) * 2 + 5
+
+        if len(result) < total_characters:
+            result = result.rjust(total_characters)
+
+    return result
 
 
 def split_text_list_by_length(
     text_list: list[Any],
-    max_characters: Union[int, list[int]],
+    max_characters: int | list[int],
     pad_horizontal: bool = True,
     pad_vertical: bool = True,
 ) -> list[list[str]]:
     """
-    Split a list of strings into a list of strings,
-    each with a maximum length of max_characters
+    Split text strings into wrapped lines with specified maximum character limits.
 
-    :param text_list: the list of strings to split
-    :param max_characters: the maximum length of each string
-    :param pad_horizontal: whether to pad the strings horizontally, defaults to True
-    :param pad_vertical: whether to pad the strings vertically, defaults to True
-    :return: a list of strings
+    Processes each string in the input list by wrapping text to fit within character
+    limits, with optional padding for consistent formatting in tabular displays.
+    Supports different character limits per string and uniform padding across results.
+
+    :param text_list: List of strings to process and wrap
+    :param max_characters: Maximum characters per line, either single value or
+        per-string limits
+    :param pad_horizontal: Right-align lines within their character limits
+    :param pad_vertical: Pad shorter results to match the longest wrapped result
+    :return: List of wrapped line lists, one per input string
+    :raises ValueError: If max_characters list length doesn't match text_list length
     """
     if not isinstance(max_characters, list):
         max_characters = [max_characters] * len(text_list)
@@ -75,16 +138,21 @@ def split_text_list_by_length(
 
 def filter_text(
     text: str,
-    filter_start: Optional[Union[str, int]] = None,
-    filter_end: Optional[Union[str, int]] = None,
+    filter_start: str | int | None = None,
+    filter_end: str | int | None = None,
 ) -> str:
     """
-    Filter text by start and end strings or indices
+    Extract text substring using start and end markers or indices.
 
-    :param text: the text to filter
-    :param filter_start: the start string or index to filter from
-    :param filter_end: the end string or index to filter to
-    :return: the filtered text
+    Filters text content by locating string markers or using numeric indices
+    to extract specific portions. Supports flexible filtering for content
+    extraction and preprocessing operations.
+
+    :param text: Source text to filter and extract from
+    :param filter_start: Starting marker string or index position
+    :param filter_end: Ending marker string or index position
+    :return: Filtered text substring between specified boundaries
+    :raises ValueError: If filter indices are invalid or markers not found
     """
     filter_start_index = -1
     filter_end_index = -1
@@ -112,10 +180,29 @@ def filter_text(
 
 
 def clean_text(text: str) -> str:
+    """
+    Normalize text by fixing encoding issues and standardizing whitespace.
+
+    Applies Unicode normalization and whitespace standardization for consistent
+    text processing. Removes excessive whitespace and fixes common encoding problems.
+
+    :param text: Raw text string to clean and normalize
+    :return: Cleaned text with normalized encoding and whitespace
+    """
     return re.sub(r"\s+", " ", ftfy.fix_text(text)).strip()
 
 
 def split_text(text: str, split_punctuation: bool = False) -> list[str]:
+    """
+    Split text into tokens with optional punctuation separation.
+
+    Tokenizes text into words and optionally separates punctuation marks
+    for detailed text analysis and processing operations.
+
+    :param text: Text string to tokenize and split
+    :param split_punctuation: Separate punctuation marks as individual tokens
+    :return: List of text tokens
+    """
     text = clean_text(text)
 
     if split_punctuation:
@@ -124,16 +211,20 @@ def split_text(text: str, split_punctuation: bool = False) -> list[str]:
     return text.split()
 
 
-def load_text(data: Union[str, Path], encoding: Optional[str] = None) -> str:
+def load_text(data: str | Path, encoding: str | None = None) -> str:
     """
-    Load an HTML file from a path or URL
+    Load text content from various sources including URLs, files, and package data.
 
-    :param data: the path or URL to load the HTML file from
-    :type data: Union[str, Path]
-    :param encoding: the encoding to use when reading the file
-    :type encoding: str
-    :return: the HTML content
-    :rtype: str
+    Supports loading from HTTP/FTP URLs, local files, compressed archives, package
+    resources, and raw text strings. Automatically detects source type and applies
+    appropriate loading strategy with encoding support.
+
+    :param data: Source location or raw text - URL, file path, package resource
+        identifier, or text content
+    :param encoding: Character encoding for file reading operations
+    :return: Loaded text content as string
+    :raises FileNotFoundError: If local file path does not exist
+    :raises httpx.HTTPStatusError: If URL request fails
     """
     logger.debug("Loading text: {}", data)
 
@@ -179,29 +270,62 @@ def load_text(data: Union[str, Path], encoding: Optional[str] = None) -> str:
 
 def is_puncutation(text: str) -> bool:
     """
-    Check if the text is a punctuation
+    Check if a single character is a punctuation mark.
 
-    :param text: the text to check
-    :type text: str
-    :return: True if the text is a punctuation, False otherwise
-    :rtype: bool
+    Identifies punctuation characters by excluding alphanumeric characters
+    and whitespace from single-character strings.
+
+    :param text: Single character string to test
+    :return: True if the character is punctuation, False otherwise
     """
     return len(text) == 1 and not text.isalnum() and not text.isspace()
 
 
 class EndlessTextCreator:
+    """
+    Infinite text generator for load testing and content creation operations.
+
+    Provides deterministic text generation by cycling through preprocessed word
+    tokens from source content. Supports filtering and punctuation handling for
+    realistic text patterns in benchmarking scenarios.
+
+    Example:
+    ::
+        creator = EndlessTextCreator("path/to/source.txt")
+        generated = creator.create_text(start=0, length=100)
+        more_text = creator.create_text(start=50, length=200)
+    """
+
     def __init__(
         self,
-        data: Union[str, Path],
-        filter_start: Optional[Union[str, int]] = None,
-        filter_end: Optional[Union[str, int]] = None,
+        data: str | Path,
+        filter_start: str | int | None = None,
+        filter_end: str | int | None = None,
     ):
+        """
+        Initialize text creator with source content and optional filtering.
+
+        :param data: Source text location or content - file path, URL, or raw text
+        :param filter_start: Starting marker or index for content filtering
+        :param filter_end: Ending marker or index for content filtering
+        """
         self.data = data
         self.text = load_text(data)
         self.filtered_text = filter_text(self.text, filter_start, filter_end)
         self.words = split_text(self.filtered_text, split_punctuation=True)
 
     def create_text(self, start: int, length: int) -> str:
+        """
+        Generate text by cycling through word tokens from the specified position.
+
+        Creates deterministic text sequences by selecting consecutive tokens from
+        the preprocessed word list, wrapping around when reaching the end.
+        Maintains proper spacing and punctuation formatting.
+
+        :param start: Starting position in the token sequence
+        :param length: Number of tokens to include in generated text
+        :return: Generated text string with proper spacing and punctuation
+        """
         text = ""
 
         for counter in range(length):
