@@ -372,7 +372,7 @@ class TestLoadText:
             load_text("http://example.com/error.txt")
 
 
-class TestIsPuncutation:
+class TestIsPunctuation:
     """Test suite for is_puncutation."""
 
     @pytest.mark.smoke
