@@ -5,7 +5,7 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from guidellm.objects import (
+from guidellm.utils import (
     DistributionSummary,
     Percentiles,
     RunningStats,
