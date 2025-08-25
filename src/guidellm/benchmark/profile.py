@@ -653,15 +653,22 @@ class SweepProfile(Profile):
         :param prev_strategy: The previously completed strategy.
         :param prev_benchmark: Benchmark results from the previous strategy.
         :return: Next strategy in sweep sequence, or None if complete.
+        :raises RuntimeError: If synchronous or throughput benchmarks fail
+            (≤0 requests/second).
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'.
         """
         if prev_strategy is None:
             return SynchronousStrategy()
 
         if prev_strategy.type_ == "synchronous":
-            self.synchronous_rate = (
-                prev_benchmark.metrics.requests_per_second.successful.mean
-            )
+            sync_rate = prev_benchmark.metrics.requests_per_second.successful.mean
+            if sync_rate <= 0:
+                raise RuntimeError(
+                    f"Synchronous benchmark failed with {sync_rate:.2f} "
+                    "requests/second. Cannot proceed with sweep - check server "
+                    "connectivity and constraints."
+                )
+            self.synchronous_rate = sync_rate
 
             return ThroughputStrategy(
                 max_concurrency=self.max_concurrency,
@@ -669,9 +676,15 @@ class SweepProfile(Profile):
             )
 
         if prev_strategy.type_ == "throughput":
-            self.throughput_rate = (
-                prev_benchmark.metrics.requests_per_second.successful.mean
-            )
+            throughput_rate = prev_benchmark.metrics.requests_per_second.successful.mean
+            if throughput_rate <= 0:
+                raise RuntimeError(
+                    f"Throughput benchmark failed with {throughput_rate:.2f} "
+                    "requests/second. Cannot proceed with sweep - check server "
+                    "connectivity and constraints."
+                )
+            self.throughput_rate = throughput_rate
+
             self.measured_rates = list(
                 np.linspace(
                     self.synchronous_rate,

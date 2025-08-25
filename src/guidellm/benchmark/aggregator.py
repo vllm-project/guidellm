@@ -34,7 +34,6 @@ from typing import (
     runtime_checkable,
 )
 
-import numpy as np
 from pydantic import Field, PrivateAttr
 
 from guidellm.backend import (
@@ -477,7 +476,7 @@ class SchedulerStatsAggregator(
                     key="worker_resolve_time", type_="avg", default=0.0
                 ),
                 worker_resolve_end_delay_avg=state.get_metric(
-                    key="worker_resolve_end_delay", type_="avg"
+                    key="worker_resolve_end_delay", type_="avg", default=0.0
                 ),
                 finalized_delay_avg=state.get_metric(
                     key="finalized_delay", type_="avg", default=0.0

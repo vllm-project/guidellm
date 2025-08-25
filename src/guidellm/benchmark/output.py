@@ -5,7 +5,6 @@ import json
 import math
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -36,6 +35,7 @@ from guidellm.utils import (
     safe_format_timestamp,
     split_text_list_by_length,
 )
+from guidellm.utils.general import safe_format_timestamp
 
 __all__ = [
     "GenerativeBenchmarkerCSV",
@@ -621,8 +621,8 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             benchmark.run_id,
             benchmark.id_,
             str(benchmark.scheduler.strategy),
-            datetime.fromtimestamp(benchmark.start_time).strftime("%Y-%m-%d %H:%M:%S"),
-            datetime.fromtimestamp(benchmark.end_time).strftime("%Y-%m-%d %H:%M:%S"),
+            safe_format_timestamp(benchmark.start_time, "%Y-%m-%d %H:%M:%S", "N/A"),
+            safe_format_timestamp(benchmark.end_time, "%Y-%m-%d %H:%M:%S", "N/A"),
             benchmark.duration,
         ]
         return headers, values

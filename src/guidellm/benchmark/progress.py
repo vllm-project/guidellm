@@ -20,7 +20,6 @@ import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterable, AsyncIterator, Iterable
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Generic, Literal
 
 from rich.console import Group
@@ -624,7 +623,9 @@ class _GenerativeProgressTaskState:
         if self.start_time < 0.0:
             return "--:--:--"
 
-        return datetime.fromtimestamp(self.start_time).strftime("%H:%M:%S")
+        from guidellm.utils.general import safe_format_timestamp
+
+        return safe_format_timestamp(self.start_time, "%H:%M:%S", "--:--:--")
 
     @property
     def formatted_progress_status(self) -> str:

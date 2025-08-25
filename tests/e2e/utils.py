@@ -41,7 +41,7 @@ class GuidellmClient:
     def start_benchmark(
         self,
         rate_type: str = "constant",
-        rate: int = 10,
+        rate: Optional[int] = 10,
         max_seconds: Optional[int] = None,
         max_requests: Optional[int] = None,
         max_error_rate: Optional[float] = None,
@@ -65,11 +65,14 @@ class GuidellmClient:
 
         # Build command components
         cmd_parts = [
-            f"GUIDELLM__MAX_CONCURRENCY=10 GUIDELLM__MAX_WORKER_PROCESSES=10 {guidellm_exe} benchmark",
+            f"HF_HOME=/tmp/huggingface_cache {guidellm_exe} benchmark",
             f'--target "{self.target}"',
             f"--rate-type {rate_type}",
-            f"--rate {rate}",
         ]
+
+        # Only add rate parameter if it's not None (synchronous doesn't use rate)
+        if rate is not None:
+            cmd_parts.append(f"--rate {rate}")
 
         if max_seconds is not None:
             cmd_parts.append(f"--max-seconds {max_seconds}")

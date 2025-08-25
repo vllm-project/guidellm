@@ -16,8 +16,8 @@ class VllmSimServer:
 
     def __init__(
         self,
-        port: int,
-        model: str,
+        port: int = 8000,
+        model: str = "test-model",
         lora: Optional[list[str]] = None,
         mode: Optional[str] = None,
         echo: Optional[bool] = None,
@@ -134,3 +134,10 @@ class VllmSimServer:
         Returns the base URL of the running server.
         """
         return self.server_url
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()

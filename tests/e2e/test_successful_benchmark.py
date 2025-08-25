@@ -22,99 +22,90 @@ def server():
     using the TestServer class.
     """
     server = VllmSimServer(
-        port=8000,
-        model="databricks/dolly-v2-12b",
-        mode="echo",
+        mode="random",
         time_to_first_token=1,  # 1ms TTFT
         inter_token_latency=1,  # 1ms ITL
     )
-    try:
-        server.start()
+    with server:
         yield server  # Yield the URL for tests to use
-    finally:
-        server.stop()  # Teardown: Stop the server after tests are done
 
 
+@pytest.mark.smoke
 @pytest.mark.timeout(30)
 def test_max_seconds_benchmark(server: VllmSimServer):
     """
     Test that the max seconds constraint is properly triggered.
     """
     report_path = Path("tests/e2e/max_duration_benchmarks.json")
+    cleanup_report_file(report_path)
     rate = 10
 
     # Create and configure the guidellm client
     client = GuidellmClient(target=server.get_url(), output_path=report_path)
 
-    try:
-        # Start the benchmark
-        client.start_benchmark(
-            rate=rate,
-            max_seconds=1,
-        )
+    # Start the benchmark
+    client.start_benchmark(
+        rate=rate,
+        max_seconds=1,
+    )
 
-        # Wait for the benchmark to complete
-        client.wait_for_completion(timeout=30)
+    # Wait for the benchmark to complete
+    client.wait_for_completion(timeout=30)
 
-        # Assert no Python exceptions occurred
-        assert_no_python_exceptions(client.stderr)
+    # Assert no Python exceptions occurred
+    assert_no_python_exceptions(client.stderr)
 
-        # Load and validate the report
-        report = load_benchmark_report(report_path)
-        benchmark = report["benchmarks"][0]
+    # Load and validate the report
+    report = load_benchmark_report(report_path)
+    benchmark = report["benchmarks"][0]
 
-        # Check that the max duration constraint was triggered
-        assert_constraint_triggered(
-            benchmark, "max_seconds", {"duration_exceeded": True}
-        )
+    # Check that the max duration constraint was triggered
+    assert_constraint_triggered(benchmark, "max_seconds", {"duration_exceeded": True})
 
-        # Validate successful requests have all expected fields
-        successful_requests = benchmark["requests"]["successful"]
-        assert_successful_requests_fields(successful_requests)
+    # Validate successful requests have all expected fields
+    successful_requests = benchmark["requests"]["successful"]
+    assert_successful_requests_fields(successful_requests)
 
-    finally:
-        cleanup_report_file(report_path)
+    cleanup_report_file(report_path)
 
 
+@pytest.mark.smoke
 @pytest.mark.timeout(30)
 def test_max_requests_benchmark(server: VllmSimServer):
     """
     Test that the max requests constraint is properly triggered.
     """
     report_path = Path("tests/e2e/max_number_benchmarks.json")
+    cleanup_report_file(report_path)
     rate = 10
 
     # Create and configure the guidellm client
     client = GuidellmClient(target=server.get_url(), output_path=report_path)
 
-    try:
-        # Start the benchmark
-        client.start_benchmark(
-            rate=rate,
-            max_requests=rate,
-        )
+    # Start the benchmark
+    client.start_benchmark(
+        rate=rate,
+        max_requests=rate,
+    )
 
-        # Wait for the benchmark to complete
-        client.wait_for_completion(timeout=30)
+    # Wait for the benchmark to complete
+    client.wait_for_completion(timeout=30)
 
-        # Assert no Python exceptions occurred
-        assert_no_python_exceptions(client.stderr)
+    # Assert no Python exceptions occurred
+    assert_no_python_exceptions(client.stderr)
 
-        # Load and validate the report
-        report = load_benchmark_report(report_path)
-        benchmark = report["benchmarks"][0]
+    # Load and validate the report
+    report = load_benchmark_report(report_path)
+    benchmark = report["benchmarks"][0]
 
-        # Check that the max requests constraint was triggered
-        assert_constraint_triggered(
-            benchmark, "max_requests", {"processed_exceeded": True}
-        )
+    # Check that the max requests constraint was triggered
+    assert_constraint_triggered(benchmark, "max_requests", {"processed_exceeded": True})
 
-        # Validate successful requests have all expected fields
-        successful_requests = benchmark["requests"]["successful"]
-        assert len(successful_requests) == rate, (
-            f"Expected {rate} successful requests, got {len(successful_requests)}"
-        )
-        assert_successful_requests_fields(successful_requests)
+    # Validate successful requests have all expected fields
+    successful_requests = benchmark["requests"]["successful"]
+    assert len(successful_requests) == rate, (
+        f"Expected {rate} successful requests, got {len(successful_requests)}"
+    )
+    assert_successful_requests_fields(successful_requests)
 
-    finally:
-        cleanup_report_file(report_path)
+    cleanup_report_file(report_path)
