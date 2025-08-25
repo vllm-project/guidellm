@@ -693,7 +693,7 @@ class AsyncConstantStrategy(ThroughputStrategy):
             Divides the total rate evenly across all worker processes to maintain
             the specified aggregate rate.
 
-        :param local_rank: The rank of the worker process (unused).
+        :param local_rank: The rank of the worker process.
             :param local_world_size: Total number of worker processes for rate division.
         :param local_max_concurrency: The maximum number of concurrent requests
                 for the worker process.
@@ -701,9 +701,12 @@ class AsyncConstantStrategy(ThroughputStrategy):
         """
         # Divide the rate evenly across all worker processes
         worker_rate = self.rate / local_world_size
+        # Start each worker with an offset to interleave rates
+        worker_offset = (1 / self.rate) * local_rank
 
         return ConstantRateRequestTimings(
             rate=worker_rate,
+            offset=worker_offset,
         )
 
 
@@ -768,7 +771,11 @@ class AsyncPoissonStrategy(ThroughputStrategy):
         worker_rate = self.rate / local_world_size
         # Use a different seed for each worker to ensure different sequences
         worker_seed = self.random_seed + local_rank
+        # Start each worker with an offset to interleave rates
+        worker_offset = (1 / self.rate) * local_rank
+
         return PoissonRateRequestTimings(
             rate=worker_rate,
             random_seed=worker_seed,
+            offset=worker_offset,
         )
