@@ -120,15 +120,6 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         :raises RuntimeError: If process initialization or startup fails.
         """
         # Processes limits and params
-        num_processes = int(
-            min(
-                self.strategy.processes_limit or math.inf,
-                self.backend.processes_limit or math.inf,
-                settings.max_worker_processes,
-            )
-        )
-        if num_processes <= 0:
-            raise RuntimeError("num_processes resolved to 0; increase limits/config")
 
         max_conc = int(
             min(
@@ -139,6 +130,18 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         )
         if max_conc <= 0:
             raise RuntimeError("max_concurrency resolved to 0; increase limits/config")
+
+        num_processes = int(
+            min(
+                self.strategy.processes_limit or math.inf,
+                self.backend.processes_limit or math.inf,
+                settings.max_worker_processes,
+                # Only spawn as many processes as we need for max_concurrency
+                max_conc,
+            )
+        )
+        if num_processes <= 0:
+            raise RuntimeError("num_processes resolved to 0; increase limits/config")
 
         per_proc_max_conc = math.ceil(max_conc / num_processes)
         per_proc_max_queue = min(2, per_proc_max_conc)
