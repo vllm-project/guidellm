@@ -45,6 +45,7 @@ from guidellm.scheduler import (
     StrategyType,
 )
 from guidellm.utils import Colors, format_value_display
+from guidellm.utils.general import safe_format_timestamp
 
 __all__ = [
     "BenchmarkerProgress",
@@ -622,8 +623,6 @@ class _GenerativeProgressTaskState:
     def formatted_start_time(self) -> str:
         if self.start_time < 0.0:
             return "--:--:--"
-
-        from guidellm.utils.general import safe_format_timestamp
 
         return safe_format_timestamp(self.start_time, "%H:%M:%S", "--:--:--")
 
