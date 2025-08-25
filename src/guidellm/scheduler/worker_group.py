@@ -143,8 +143,8 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         if num_processes <= 0:
             raise RuntimeError("num_processes resolved to 0; increase limits/config")
 
-        per_proc_max_conc = math.ceil(max_conc / num_processes)
-        per_proc_max_queue = min(2, per_proc_max_conc)
+        per_proc_max_conc = max_conc // num_processes
+        per_proc_max_queue = math.floor(math.log(per_proc_max_conc + math.e))
         max_queued_requests = (  # Add queue buffer for each process
             max_conc + (num_processes * per_proc_max_queue)
         )
@@ -160,9 +160,11 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         # Initialize worker processes
         self.processes = []
         for rank in range(num_processes):
+            # Distribute any remainder across the first R ranks
             async_limit = per_proc_max_conc + (
                 1 if rank < (max_conc % num_processes) else 0
             )
+
             worker = WorkerProcess[RequestT, MeasuredRequestTimingsT, ResponseT](
                 local_rank=rank,
                 local_world_size=num_processes,
