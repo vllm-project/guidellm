@@ -96,6 +96,9 @@ class GenerativeTextScenario(Scenario):
     rate: Annotated[
         Optional[list[PositiveFloat]], BeforeValidator(parse_float_list)
     ] = None
+    start_rate: Optional[PositiveFloat] = None
+    increment_factor: Optional[PositiveFloat] = None
+    rate_limit: Optional[PositiveInt] = None
     max_seconds: Optional[PositiveFloat] = None
     max_requests: Optional[PositiveInt] = None
     warmup_percent: Annotated[Optional[float], Field(gt=0, le=1)] = None

@@ -17,6 +17,7 @@ from .output import GenerativeBenchmarksConsole, GenerativeBenchmarksReport
 from .profile import (
     AsyncProfile,
     ConcurrentProfile,
+    IncrementalProfile,
     Profile,
     ProfileType,
     SweepProfile,
@@ -55,6 +56,7 @@ __all__ = [
     "GenerativeTextBenchmarkerTaskProgressState",
     "GenerativeTextErrorStats",
     "GenerativeTextResponseStats",
+    "IncrementalProfile",
     "Profile",
     "ProfileType",
     "StatusBreakdown",

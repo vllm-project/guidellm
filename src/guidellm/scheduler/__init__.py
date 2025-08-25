@@ -7,6 +7,7 @@ from .result import (
 from .scheduler import Scheduler
 from .strategy import (
     AsyncConstantStrategy,
+    AsyncIncrementalStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,
     SchedulingStrategy,
@@ -26,6 +27,7 @@ from .worker import (
 
 __all__ = [
     "AsyncConstantStrategy",
+    "AsyncIncrementalStrategy",
     "AsyncPoissonStrategy",
     "ConcurrentStrategy",
     "GenerativeRequestsWorker",

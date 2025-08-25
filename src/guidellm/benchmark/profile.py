@@ -8,6 +8,7 @@ from guidellm.config import settings
 from guidellm.objects import StandardBaseModel
 from guidellm.scheduler import (
     AsyncConstantStrategy,
+    AsyncIncrementalStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,
     SchedulingStrategy,
@@ -19,6 +20,7 @@ from guidellm.scheduler import (
 __all__ = [
     "AsyncProfile",
     "ConcurrentProfile",
+    "IncrementalProfile",
     "Profile",
     "ProfileType",
     "SweepProfile",
@@ -27,7 +29,9 @@ __all__ = [
     "create_profile",
 ]
 
-ProfileType = Literal["synchronous", "concurrent", "throughput", "async", "sweep"]
+ProfileType = Literal[
+    "synchronous", "concurrent", "throughput", "async", "sweep", "incremental"
+]
 
 
 class Profile(StandardBaseModel):
@@ -363,9 +367,82 @@ class SweepProfile(AsyncProfile):
         return SweepProfile(sweep_size=int(rate), random_seed=random_seed, **kwargs)
 
 
+class IncrementalProfile(ThroughputProfile):
+    type_: Literal["incremental"] = "incremental"
+    start_rate: float = Field(
+        description="The initial rate at which to schedule requests in requests per second.",
+    )
+    increment_factor: float = Field(
+        description="The factor by which to increase the rate over time.",
+    )
+    rate_limit: int = Field(
+        description="The factor after which the load remains constant for incremental rate type.",
+    )
+    initial_burst: bool = Field(
+        default=True,
+        description=(
+            "True to send an initial burst of requests (math.floor(self.start_rate)) "
+            "to reach target rate. False to not send an initial burst."
+        ),
+    )
+
+    @property
+    def strategy_types(self) -> list[StrategyType]:
+        return [self.type_]
+
+    def next_strategy(self) -> Optional[SchedulingStrategy]:
+        if self.completed_strategies >= 1:
+            return None
+
+        return AsyncIncrementalStrategy(
+            start_rate=self.start_rate,
+            increment_factor=self.increment_factor,
+            rate_limit=self.rate_limit,
+            initial_burst=self.initial_burst,
+            max_concurrency=self.max_concurrency,
+        )
+
+    @staticmethod
+    def from_standard_args(
+        rate_type: Union[StrategyType, ProfileType],
+        rate: Optional[Union[float, Sequence[float]]],
+        start_rate: float,
+        increment_factor: float,
+        rate_limit: int,
+        **kwargs,
+    ) -> "IncrementalProfile":
+        if rate_type != "incremental":
+            raise ValueError("Rate type must be 'incremental' for incremental profile.")
+
+        if rate is not None:
+            raise ValueError(
+                "rate does not apply to incremental profile, it must be set to None or not set at all. "
+                "Use start_rate and increment_factor instead."
+            )
+
+        if start_rate <= 0:
+            raise ValueError("start_rate must be a positive number.")
+
+        if increment_factor <= 0:
+            raise ValueError("increment_factor must be a positive number.")
+
+        if rate_limit <= 0:
+            raise ValueError("rate_limit must be a positive integer.")
+
+        return IncrementalProfile(
+            start_rate=start_rate,
+            increment_factor=increment_factor,
+            rate_limit=rate_limit,
+            **kwargs,
+        )
+
+
 def create_profile(
     rate_type: Union[StrategyType, ProfileType],
     rate: Optional[Union[float, Sequence[float]]],
+    start_rate: Optional[float] = None,
+    increment_factor: Optional[float] = None,
+    rate_limit: Optional[int] = None,
     random_seed: int = 42,
     **kwargs,
 ) -> "Profile":
@@ -382,6 +459,20 @@ def create_profile(
             rate=rate,
             **kwargs,
         )
+
+    if rate_type == "incremental":
+        if start_rate is None or increment_factor is None:
+            raise ValueError(
+                "start_rate and increment_factor are required for incremental profile"
+            )
+            return IncrementalProfile.from_standard_args(
+                rate_type=rate_type,
+                rate=rate,
+                start_rate=start_rate,
+                increment_factor=increment_factor,
+                rate_limit=rate_limit,
+                **kwargs,
+            )
 
     if rate_type == "throughput":
         return ThroughputProfile.from_standard_args(
