@@ -856,10 +856,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                 try:
                     with pipe_lock:
                         pending = pipe_item
-                        pipe_item = None  # Clear after taking
+                        pipe_item = None
 
                     if pending is not None:
-                        # pending is already encoded, just send it directly
                         send_connection.send(pending)
                 except (EOFError, ConnectionResetError):
                     break
