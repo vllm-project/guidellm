@@ -124,10 +124,7 @@ def safe_format_timestamp(
     :param default: Value to return if timestamp is invalid or None
     :return: Formatted timestamp string or default value
     """
-    if timestamp is None or timestamp < 0 or timestamp > 2**31:
-        return default
-
     try:
         return datetime.fromtimestamp(timestamp).strftime(format_)
-    except (ValueError, OverflowError, OSError):
+    except (ValueError, TypeError, OverflowError, OSError):
         return default
