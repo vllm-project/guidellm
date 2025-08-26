@@ -24,10 +24,10 @@ from guidellm.backend import (
     ResponseSummary,
     StreamingTextResponse,
 )
-from guidellm.objects import StandardBaseModel
 from guidellm.request import GenerationRequest
 from guidellm.scheduler.result import SchedulerRequestInfo
 from guidellm.scheduler.types import RequestT, ResponseT
+from guidellm.utils import StandardBaseModel
 
 __all__ = [
     "GenerativeRequestsWorker",

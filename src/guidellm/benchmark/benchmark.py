@@ -13,8 +13,6 @@ from guidellm.benchmark.profile import (
     ThroughputProfile,
 )
 from guidellm.objects import (
-    StandardBaseModel,
-    StatusBreakdown,
     StatusDistributionSummary,
 )
 from guidellm.request import (
@@ -32,6 +30,7 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     WorkerDescription,
 )
+from guidellm.utils import StandardBaseModel, StatusBreakdown
 
 __all__ = [
     "Benchmark",

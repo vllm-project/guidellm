@@ -12,7 +12,7 @@ from typing import (
 from pydantic import Field
 
 from guidellm.config import settings
-from guidellm.objects import StandardBaseModel
+from guidellm.utils import StandardBaseModel
 
 __all__ = [
     "AsyncConstantStrategy",

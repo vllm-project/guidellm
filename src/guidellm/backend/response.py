@@ -3,7 +3,7 @@ from typing import Any, Literal, Optional
 from pydantic import computed_field
 
 from guidellm.config import settings
-from guidellm.objects.pydantic import StandardBaseModel
+from guidellm.utils import StandardBaseModel
 
 __all__ = [
     "RequestArgs",

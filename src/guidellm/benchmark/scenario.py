@@ -11,8 +11,8 @@ from transformers.tokenization_utils_base import (  # type: ignore[import]
 
 from guidellm.backend.backend import BackendType
 from guidellm.benchmark.profile import ProfileType
-from guidellm.objects.pydantic import StandardBaseModel
 from guidellm.scheduler.strategy import StrategyType
+from guidellm.utils import StandardBaseModel
 
 __ALL__ = ["Scenario", "GenerativeTextScenario", "get_builtin_scenarios"]
 

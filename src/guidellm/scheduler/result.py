@@ -4,9 +4,9 @@ from typing import (
     Optional,
 )
 
-from guidellm.objects import StandardBaseModel
 from guidellm.scheduler.strategy import SchedulingStrategy
 from guidellm.scheduler.types import RequestT, ResponseT
+from guidellm.utils import StandardBaseModel
 
 __all__ = [
     "SchedulerRequestInfo",

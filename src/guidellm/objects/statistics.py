@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 import numpy as np
 from pydantic import Field, computed_field
 
-from guidellm.objects.pydantic import StandardBaseModel, StatusBreakdown
+from guidellm.utils import StandardBaseModel, StatusBreakdown
 
 __all__ = [
     "DistributionSummary",

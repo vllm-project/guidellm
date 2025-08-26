@@ -22,7 +22,6 @@ from guidellm.benchmark.aggregator import (
 )
 from guidellm.benchmark.benchmark import BenchmarkArgs, GenerativeBenchmark
 from guidellm.benchmark.profile import Profile
-from guidellm.objects import StandardBaseModel
 from guidellm.request import (
     GenerationRequest,
     GenerativeRequestLoaderDescription,
@@ -37,6 +36,7 @@ from guidellm.scheduler import (
     SchedulerRequestResult,
     SchedulingStrategy,
 )
+from guidellm.utils import StandardBaseModel
 
 __all__ = ["Benchmarker", "BenchmarkerResult", "GenerativeBenchmarker"]
 

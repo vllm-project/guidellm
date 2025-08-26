@@ -13,8 +13,8 @@ from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
 from guidellm.config import settings
 from guidellm.dataset import ColumnInputTypes, load_dataset
-from guidellm.objects import StandardBaseModel
 from guidellm.request.request import GenerationRequest
+from guidellm.utils import StandardBaseModel
 
 __all__ = [
     "GenerativeRequestLoader",

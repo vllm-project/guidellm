@@ -24,8 +24,6 @@ from guidellm.benchmark.benchmark import (
 from guidellm.config import settings
 from guidellm.objects import (
     RunningStats,
-    StandardBaseModel,
-    StatusBreakdown,
     TimeRunningStats,
 )
 from guidellm.request import (
@@ -40,7 +38,7 @@ from guidellm.scheduler import (
     SchedulerRequestResult,
     WorkerDescription,
 )
-from guidellm.utils import check_load_processor
+from guidellm.utils import StandardBaseModel, StatusBreakdown, check_load_processor
 
 __all__ = [
     "AggregatorT",
