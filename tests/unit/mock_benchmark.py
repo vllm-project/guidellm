@@ -6,13 +6,13 @@ from guidellm.benchmark import (
     GenerativeTextResponseStats,
     SynchronousProfile,
 )
-from guidellm.objects import StatusBreakdown
 from guidellm.request import GenerativeRequestLoaderDescription
 from guidellm.scheduler import (
     GenerativeRequestsWorkerDescription,
     SchedulerRequestInfo,
     SynchronousStrategy,
 )
+from guidellm.utils import StatusBreakdown
 
 __all__ = ["mock_generative_benchmark"]
 
