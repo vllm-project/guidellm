@@ -94,9 +94,6 @@ class ThreadSafeSingletonMixin(SingletonMixin):
         lock_attr_name = f"_singleton_lock_{cls.__name__}"
         instance_attr_name = f"_singleton_instance_{cls.__name__}"
 
-        if not hasattr(cls, lock_attr_name):
-            setattr(cls, lock_attr_name, threading.Lock())
-
         with getattr(cls, lock_attr_name):
             instance_exists = (
                 hasattr(cls, instance_attr_name)
@@ -108,6 +105,11 @@ class ThreadSafeSingletonMixin(SingletonMixin):
                 instance._singleton_initialized = False
                 instance._init_lock = threading.Lock()
             return getattr(cls, instance_attr_name)
+
+    def __init_subclass__(cls, *args, **kwargs):
+        super().__init_subclass__(*args, **kwargs)
+        lock_attr_name = f"_singleton_lock_{cls.__name__}"
+        setattr(cls, lock_attr_name, threading.Lock())
 
     def __init__(self):
         """Initialize the singleton instance with thread-safe initialization."""

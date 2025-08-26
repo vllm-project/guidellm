@@ -28,7 +28,6 @@ __all__ = [
 
 
 BaseModelT = TypeVar("BaseModelT", bound=BaseModel)
-T = TypeVar("T", bound=BaseModel)
 SuccessfulT = TypeVar("SuccessfulT")
 ErroredT = TypeVar("ErroredT")
 IncompleteT = TypeVar("IncompleteT")
@@ -90,7 +89,7 @@ class StandardBaseModel(BaseModel):
     )
 
     @classmethod
-    def get_default(cls: type[T], field: str) -> Any:
+    def get_default(cls: type[BaseModelT], field: str) -> Any:
         """
         Get default value for a model field.
 
