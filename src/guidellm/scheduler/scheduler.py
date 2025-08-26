@@ -13,7 +13,6 @@ from typing import (
 
 from loguru import logger
 
-from guidellm.settings import settings
 from guidellm.scheduler.objects import RequestT, ResponseT
 from guidellm.scheduler.strategy import SchedulingStrategy
 from guidellm.scheduler.worker import (
@@ -21,6 +20,7 @@ from guidellm.scheduler.worker import (
     WorkerProcessRequest,
     WorkerProcessResult,
 )
+from guidellm.settings import settings
 from guidellm.utils import StandardBaseDict
 
 __all__ = ["Scheduler"]

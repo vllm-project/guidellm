@@ -11,9 +11,9 @@ from typing import (
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
-from guidellm.settings import settings
 from guidellm.dataset import ColumnInputTypes, load_dataset
 from guidellm.request.request import GenerationRequest
+from guidellm.settings import settings
 from guidellm.utils import StandardBaseModel
 
 __all__ = [

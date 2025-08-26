@@ -4,7 +4,6 @@ from typing import Literal, Optional, Union
 import numpy as np
 from pydantic import Field, computed_field
 
-from guidellm.settings import settings
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -14,6 +13,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     ThroughputStrategy,
 )
+from guidellm.settings import settings
 from guidellm.utils import StandardBaseModel
 
 __all__ = [

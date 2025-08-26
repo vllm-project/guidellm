@@ -21,7 +21,6 @@ from guidellm.benchmark.benchmark import (
     GenerativeTextErrorStats,
     GenerativeTextResponseStats,
 )
-from guidellm.settings import settings
 from guidellm.request import (
     GenerationRequest,
     GenerativeRequestLoaderDescription,
@@ -34,6 +33,7 @@ from guidellm.scheduler import (
     SchedulerRequestResult,
     WorkerDescription,
 )
+from guidellm.settings import settings
 from guidellm.utils import (
     RunningStats,
     StandardBaseModel,

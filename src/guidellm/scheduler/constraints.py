@@ -16,13 +16,13 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import Field, field_validator
 
-from guidellm.settings import settings
 from guidellm.scheduler.objects import (
     ScheduledRequestInfo,
     SchedulerState,
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
 )
+from guidellm.settings import settings
 from guidellm.utils import InfoMixin, RegistryMixin, StandardBaseModel
 
 __all__ = [
