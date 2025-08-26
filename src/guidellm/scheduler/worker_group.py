@@ -41,7 +41,7 @@ from guidellm.scheduler.objects import (
 )
 from guidellm.scheduler.strategy import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
-from guidellm.utils import MsgpackEncoding, synchronous_to_exitable_async
+from guidellm.utils import MessageEncoding, synchronous_to_exitable_async
 
 __all__ = ["WorkerProcessGroup"]
 
@@ -508,7 +508,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             )
             state, continue_requests, _ = self._update_state(request_info)
 
-            request_msg = MsgpackEncoding.encode((request, request_info))
+            request_msg = MessageEncoding.encode_message((request, request_info))
             update_msg = (None, request, request_info, state)
 
             return (request_msg, update_msg), continue_requests
@@ -575,7 +575,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
     ) -> tuple[SchedulerState | None, bool]:
         try:
             message = self.updates_queue.get(timeout=settings.scheduler_poll_interval)
-            response, request, request_info = MsgpackEncoding.decode(message)
+            response, request, request_info = MessageEncoding.decode_message(message)
 
             scheduler_state, _, continue_updates = self._update_state(request_info)
             self.pending_updates_queue.sync_put(
@@ -596,7 +596,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 message = self.requests_queue.get(
                     timeout=settings.scheduler_poll_interval
                 )
-                request, request_info = MsgpackEncoding.decode(message)
+                request, request_info = MessageEncoding.decode_message(message)
 
                 # Send start first
                 request_info.status = "in_progress"

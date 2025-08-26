@@ -31,7 +31,7 @@ from guidellm.scheduler.objects import (
     ScheduledRequestInfo,
 )
 from guidellm.scheduler.strategy import ScheduledRequestTimings
-from guidellm.utils import MsgpackEncoding, synchronous_to_exitable_async
+from guidellm.utils import MessageEncoding, synchronous_to_exitable_async
 
 __all__ = ["WorkerProcess"]
 
@@ -492,7 +492,7 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
 
             try:
                 message = self.requests_queue.get(timeout=self.poll_intervals)
-                request_tuple = MsgpackEncoding.decode(message)
+                request_tuple = MessageEncoding.decode_message(message)
                 self.pending_requests_queue.sync_put(request_tuple)
             except QueueEmpty:
                 pass  # No update available, continue polling
@@ -522,7 +522,9 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                     update_tuple[2]
                 )
 
-                message = MsgpackEncoding.encode((response, request, request_info))
+                message = MessageEncoding.encode_message(
+                    (response, request, request_info)
+                )
                 self.updates_queue.put(message)
                 self.pending_updates_queue.task_done()
             except culsans.QueueEmpty:
