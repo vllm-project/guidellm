@@ -20,7 +20,7 @@ with (
     hf_logging.set_verbosity_error()
     logging.getLogger("transformers").setLevel(logging.ERROR)
 
-from .config import (
+from .settings import (
     DatasetSettings,
     Environment,
     LoggingSettings,

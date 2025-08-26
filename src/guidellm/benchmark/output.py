@@ -20,7 +20,7 @@ from guidellm.benchmark.profile import (
     SweepProfile,
     ThroughputProfile,
 )
-from guidellm.config import settings
+from guidellm.settings import settings
 from guidellm.presentation import UIDataBuilder
 from guidellm.presentation.injector import create_report
 from guidellm.scheduler import strategy_display_str

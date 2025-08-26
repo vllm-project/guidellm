@@ -16,7 +16,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import Field, field_validator
 
-from guidellm.config import settings
+from guidellm.settings import settings
 from guidellm.scheduler.objects import (
     ScheduledRequestInfo,
     SchedulerState,

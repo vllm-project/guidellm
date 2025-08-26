@@ -133,6 +133,8 @@ class Settings(BaseSettings):
     max_concurrency: int = 512
     max_worker_processes: int = 10
     max_add_requests_per_loop: int = 20
+    constraint_error_window_size: float = 30
+    constraint_error_min_processed: float = 30
 
     # Data settings
     dataset: DatasetSettings = DatasetSettings()

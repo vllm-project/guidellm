@@ -21,7 +21,7 @@ from guidellm.benchmark.benchmark import (
     GenerativeTextErrorStats,
     GenerativeTextResponseStats,
 )
-from guidellm.config import settings
+from guidellm.settings import settings
 from guidellm.request import (
     GenerationRequest,
     GenerativeRequestLoaderDescription,
