@@ -426,7 +426,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
         await super().stop()
         self.send_queue.close()
         self.done_queue.close()
-        self.buffer_send_queue = None
+        self.send_queue = None
         self.done_queue = None
 
     async def receive_messages_task(
