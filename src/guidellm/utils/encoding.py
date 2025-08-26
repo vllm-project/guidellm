@@ -43,7 +43,15 @@ except ImportError:
 from pydantic import BaseModel
 from typing_extensions import TypeAlias
 
-__all__ = ["Encoder", "MessageEncoding", "Serializer"]
+__all__ = [
+    "EncodedTypeAlias",
+    "Encoder",
+    "EncodingTypesAlias",
+    "MessageEncoding",
+    "SerializationTypesAlias",
+    "SerializedTypeAlias",
+    "Serializer",
+]
 
 ObjT = TypeVar("ObjT")
 MsgT = TypeVar("MsgT")

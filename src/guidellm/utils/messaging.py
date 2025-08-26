@@ -38,7 +38,6 @@ __all__ = [
     "InterProcessMessagingManagerQueue",
     "InterProcessMessagingPipe",
     "InterProcessMessagingQueue",
-    "MessageT",
 ]
 
 MessageT = TypeVar("MessageT", bound=Any)
@@ -427,7 +426,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
         await super().stop()
         self.send_queue.close()
         self.done_queue.close()
-        self.buffer_send_queue = None
+        self.send_queue = None
         self.done_queue = None
 
     async def receive_messages_task(
@@ -857,10 +856,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                 try:
                     with pipe_lock:
                         pending = pipe_item
-                        pipe_item = None  # Clear after taking
+                        pipe_item = None
 
                     if pending is not None:
-                        # pending is already encoded, just send it directly
                         send_connection.send(pending)
                 except (EOFError, ConnectionResetError):
                     break
