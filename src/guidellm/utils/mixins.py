@@ -90,7 +90,7 @@ class InfoMixin:
                 {
                     key: val
                     if isinstance(val, (str, int, float, bool, list, dict))
-                    else str(val)
+                    else repr(val)
                     for key, val in obj.__dict__.items()
                     if not key.startswith("_")
                 }
