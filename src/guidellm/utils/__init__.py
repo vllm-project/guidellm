@@ -1,17 +1,22 @@
 from .auto_importer import AutoImporterMixin
 from .console import Colors, Console, ConsoleUpdateStep, StatusIcons, StatusStyles
 from .default_group import DefaultGroupHandler
-from .encoding import MsgpackEncoding
-from .general import (
-    UNSET,
-    UnsetType,
+from .encoding import (
+    EncodedTypeAlias,
+    Encoder,
+    EncodingTypesAlias,
+    MessageEncoding,
+    SerializationTypesAlias,
+    SerializedTypeAlias,
+    Serializer,
+)
+from .functions import (
     all_defined,
     safe_add,
     safe_divide,
     safe_format_timestamp,
     safe_getattr,
     safe_multiply,
-    safe_subtract,
 )
 from .hf_datasets import (
     SUPPORTED_TYPES,
@@ -19,6 +24,13 @@ from .hf_datasets import (
 )
 from .hf_transformers import (
     check_load_processor,
+)
+from .messaging import (
+    InterProcessMessaging,
+    InterProcessMessagingManagerQueue,
+    InterProcessMessagingPipe,
+    InterProcessMessagingQueue,
+    MessageT,
 )
 from .mixins import InfoMixin
 from .pydantic_utils import (
@@ -52,7 +64,6 @@ from .threading import synchronous_to_exitable_async
 
 __all__ = [
     "SUPPORTED_TYPES",
-    "UNSET",
     "AutoImporterMixin",
     "Colors",
     "Colors",
@@ -60,15 +71,27 @@ __all__ = [
     "ConsoleUpdateStep",
     "DefaultGroupHandler",
     "DistributionSummary",
+    "EncodedTypeAlias",
+    "Encoder",
+    "EncodingTypesAlias",
     "EndlessTextCreator",
     "InfoMixin",
     "IntegerRangeSampler",
-    "MsgpackEncoding",
+    "InterProcessMessaging",
+    "InterProcessMessagingManagerQueue",
+    "InterProcessMessagingPipe",
+    "InterProcessMessagingQueue",
+    "MessageEncoding",
+    "MessageEncoding",
+    "MessageT",
     "Percentiles",
     "PydanticClassRegistryMixin",
     "RegistryMixin",
     "ReloadableBaseModel",
     "RunningStats",
+    "SerializationTypesAlias",
+    "SerializedTypeAlias",
+    "Serializer",
     "SingletonMixin",
     "StandardBaseDict",
     "StandardBaseModel",
@@ -78,7 +101,6 @@ __all__ = [
     "StatusStyles",
     "ThreadSafeSingletonMixin",
     "TimeRunningStats",
-    "UnsetType",
     "all_defined",
     "check_load_processor",
     "clean_text",
@@ -91,7 +113,6 @@ __all__ = [
     "safe_format_timestamp",
     "safe_getattr",
     "safe_multiply",
-    "safe_subtract",
     "save_dataset_to_file",
     "split_text",
     "split_text_list_by_length",

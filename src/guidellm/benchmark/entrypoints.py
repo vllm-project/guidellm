@@ -42,7 +42,7 @@ from guidellm.scheduler import (
     NonDistributedEnvironment,
     StrategyType,
 )
-from guidellm.utils import UNSET, Console, InfoMixin
+from guidellm.utils import Console, InfoMixin
 
 __all__ = [
     "benchmark_generative_text",
@@ -103,8 +103,8 @@ async def benchmark_generative_text(  # noqa: C901
     print_updates: bool = False,
     # Aggregators configuration
     add_aggregators: (
-        dict[str, str | dict[str, Any] | Aggregator | CompilableAggregator]
-    ) = UNSET,
+        dict[str, str | dict[str, Any] | Aggregator | CompilableAggregator] | None
+    ) = None,
     warmup: float | None = None,
     cooldown: float | None = None,
     request_samples: int | None = 20,
@@ -209,7 +209,7 @@ async def benchmark_generative_text(  # noqa: C901
             )
         elif constraints:
             raise ValueError(
-                "Constraints must be empty or unset when providing a Profile instance. "
+                "Constraints must be empty when providing a Profile instance. "
                 f"Provided constraints: {constraints} ; provided profile: {profile}"
             )
         console_step.finish(

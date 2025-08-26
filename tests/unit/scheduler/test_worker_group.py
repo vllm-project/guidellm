@@ -30,7 +30,7 @@ from guidellm.scheduler import (
     WorkerProcessGroup,
     worker_group,
 )
-from guidellm.utils import MsgpackEncoding
+from guidellm.utils import MessageEncoding
 
 
 def async_timeout(delay):
@@ -121,16 +121,16 @@ class MockWorkerProcessor(MockWorker):
             except queue.Empty:
                 continue
 
-            request, request_info = MsgpackEncoding.decode(request_msg)
+            request, request_info = MessageEncoding.decode_message(request_msg)
             request_info.status = "in_progress"
             self.updates_queue.put(
-                MsgpackEncoding.encode((None, request, request_info))
+                MessageEncoding.encode_message((None, request, request_info))
             )
             time.sleep(0.01)
             request_info.status = "completed"
             response = f"response_for_{request}"
             self.updates_queue.put(
-                MsgpackEncoding.encode((response, request, request_info))
+                MessageEncoding.encode_message((response, request, request_info))
             )
 
 
@@ -488,7 +488,7 @@ class TestWorkerProcessGroup:
         # Enqueue lifecycle updates
         for req in requests + requests:
             group.updates_queue.put(
-                MsgpackEncoding.encode(
+                MessageEncoding.encode_message(
                     (
                         None,
                         req,
@@ -503,7 +503,7 @@ class TestWorkerProcessGroup:
                 )
             )
             group.updates_queue.put(
-                MsgpackEncoding.encode(
+                MessageEncoding.encode_message(
                     (
                         None,
                         req,
@@ -647,12 +647,12 @@ class TestWorkerProcessGroup:
         """Helper to process test requests and generate updates."""
         for _ in range(count):
             try:
-                req, req_info = MsgpackEncoding.decode(
+                req, req_info = MessageEncoding.decode_message(
                     group.requests_queue.get(timeout=0.1)
                 )
                 # Simulate in_progress update
                 group.updates_queue.put(
-                    MsgpackEncoding.encode(
+                    MessageEncoding.encode_message(
                         (
                             None,
                             req,
@@ -668,7 +668,7 @@ class TestWorkerProcessGroup:
                 )
                 # Simulate completed update
                 group.updates_queue.put(
-                    MsgpackEncoding.encode(
+                    MessageEncoding.encode_message(
                         (
                             None,
                             req,

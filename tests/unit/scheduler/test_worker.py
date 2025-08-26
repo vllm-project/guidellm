@@ -30,7 +30,7 @@ from guidellm.scheduler.strategy import (
     NoDelayRequestTimings,
     PoissonRateRequestTimings,
 )
-from guidellm.utils import MsgpackEncoding, random
+from guidellm.utils import MessageEncoding, random
 
 
 def async_timeout(delay):
@@ -552,7 +552,7 @@ class TestWorkerProcess:
         # ensure full processing of requests
         for index in range(20):
             requests_queue.put(
-                MsgpackEncoding.encode(
+                MessageEncoding.encode_message(
                     (
                         f"req-{index}",
                         ScheduledRequestInfo[MeasuredRequestTimings](
@@ -573,7 +573,7 @@ class TestWorkerProcess:
         while time.time() - start_time < max_wait_time:
             try:
                 update_message = updates_queue.get_nowait()
-                updates.append(MsgpackEncoding.decode(update_message))
+                updates.append(MessageEncoding.decode_message(update_message))
                 num_failures = 0
             except Empty:
                 num_failures += 1
@@ -633,7 +633,7 @@ class TestWorkerProcess:
         num_cancel_tasks = (async_limit + 2) * 2
         for index in range(20, 20 + num_cancel_tasks):
             requests_queue.put(
-                MsgpackEncoding.encode(
+                MessageEncoding.encode_message(
                     (
                         f"req-{index}",
                         ScheduledRequestInfo[MeasuredRequestTimings](
@@ -659,7 +659,7 @@ class TestWorkerProcess:
         while True:
             try:
                 update_message = updates_queue.get_nowait()
-                updates.append(MsgpackEncoding.decode(update_message))
+                updates.append(MessageEncoding.decode_message(update_message))
             except Empty:
                 num_failures += 1
                 if num_failures > 3:
@@ -715,7 +715,7 @@ class TestWorkerProcess:
 
             for index in range(20):
                 requests_queue.put(
-                    MsgpackEncoding.encode(
+                    MessageEncoding.encode_message(
                         (
                             f"req-{index}",
                             ScheduledRequestInfo[MeasuredRequestTimings](
@@ -741,7 +741,7 @@ class TestWorkerProcess:
         while attempts < max_attempts:
             try:
                 update_message = updates_queue.get_nowait()
-                updates.append(MsgpackEncoding.decode(update_message))
+                updates.append(MessageEncoding.decode_message(update_message))
             except Empty:
                 attempts += 1
                 if len(updates) >= 40:  # We got all expected updates
