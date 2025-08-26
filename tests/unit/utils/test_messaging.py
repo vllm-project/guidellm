@@ -16,14 +16,14 @@ from guidellm.backend import (
     GenerationResponse,
 )
 from guidellm.scheduler import ScheduledRequestInfo
-from guidellm.utils.messaging import (
+from guidellm.utils import (
     InterProcessMessaging,
-    InterProcessMessagingQueue,
     InterProcessMessagingManagerQueue,
     InterProcessMessagingPipe,
+    InterProcessMessagingQueue,
     MessageEncoding,
-    MessageT,
 )
+from guidellm.utils.messaging import MessageT
 
 
 def async_timeout(delay: float):
@@ -556,7 +556,7 @@ class TestInterProcessMessagingQueue:
         ],
     )
     @async_timeout(10.0)
-    async def test_lifecycle_put_get(
+    async def test_lifecycle_put_get_iter(
         self, multiprocessing_contexts, valid_instances, test_obj
     ):
         instance, constructor_args = valid_instances
@@ -853,7 +853,7 @@ class TestInterProcessMessagingManagerQueue:
         ],
     )
     @async_timeout(10.0)
-    async def test_lifecycle_put_get(self, valid_instances, test_obj):
+    async def test_lifecycle_put_get_iter(self, valid_instances, test_obj):
         instance, constructor_args, _, context = valid_instances
 
         if (

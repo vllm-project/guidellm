@@ -4,21 +4,8 @@ Constraint system for scheduler behavior control and request processing limits.
 Provides flexible constraints for managing scheduler behavior with configurable
 thresholds based on time, error rates, and request counts. Constraints evaluate
 scheduler state and individual requests to determine whether processing should
-continue or stop based on predefined limits.
-
-Example:
-::
-    from guidellm.scheduler.constraints import ConstraintsInitializerFactory
-
-    # Create constraints from configuration
-    constraints = ConstraintsInitializerFactory.resolve_constraints({
-        "max_number": 1000,
-        "max_duration": 300.0,
-        "max_error_rate": {"max_error_rate": 0.1, "window_size": 50}
-    })
-
-    # Evaluate constraint during scheduling
-    action = constraints["max_number"](scheduler_state, request_info)
+continue or stop based on predefined limits. The constraint system enables
+sophisticated benchmark stopping criteria through composable constraint types.
 """
 
 from __future__ import annotations
@@ -63,9 +50,9 @@ class Constraint(Protocol):
         """
         Evaluate constraint against scheduler state and request information.
 
-        :param state: Current scheduler state with metrics and timing
+        :param state: Current scheduler state with metrics and timing information
         :param request: Individual request information and metadata
-        :return: Action indicating whether to continue or stop operations
+        :return: Action indicating whether to continue or stop scheduler operations
         """
 
 
@@ -127,28 +114,21 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
 
     Provides centralized access to registered constraint types with support for
     creating constraints from configuration dictionaries, simple values, or
-    pre-configured instances. Handles constraint resolution and type validation.
+    pre-configured instances. Handles constraint resolution and type validation
+    for the scheduler constraint system.
 
     Example:
     ::
-        from guidellm.scheduler import (
-            ConstraintsInitializerFactory,
-            SchedulerUpdateAction,
-            SchedulerState,
-            ScheduledRequestInfo
-        )
+        from guidellm.scheduler import ConstraintsInitializerFactory
 
-
-        # Register
-        ConstraintsInitializerFactory.register("new_constraint")
+        # Register new constraint type
+        @ConstraintsInitializerFactory.register("new_constraint")
         class NewConstraint:
             def create_constraint(self, **kwargs) -> Constraint:
                 return lambda state, request: SchedulerUpdateAction()
 
-
-        # Create constraint
-        constraint = factory.create_constraint("new_constraint")
-        print(constraint(SchedulerState(), ScheduledRequestInfo()))
+        # Create and use constraint
+        constraint = ConstraintsInitializerFactory.create_constraint("new_constraint")
     """
 
     @classmethod
@@ -159,7 +139,7 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         :param key: Registered constraint initializer key
         :param args: Positional arguments for initializer creation
         :param kwargs: Keyword arguments for initializer creation
-        :return: Configured constraint initializer function
+        :return: Configured constraint initializer instance
         :raises ValueError: If the key is not registered in the factory
         """
         if cls.registry is None or key not in cls.registry:
@@ -168,10 +148,11 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         initializer_class = cls.registry[key]
 
         return (
-            initializer_class(*args, **kwargs)
-            if not isinstance(initializer_class, SerializableConstraintInitializer)
-            else initializer_class.model_validate(
-                initializer_class.validated_kwargs(*args, **kwargs)
+            initializer_class(*args, **kwargs)  # type: ignore[operator]
+            if not isinstance(initializer_class, type)
+            or not issubclass(initializer_class, SerializableConstraintInitializer)
+            else initializer_class(
+                **initializer_class.validated_kwargs(*args, **kwargs)  # type: ignore[misc]
             )
         )
 
@@ -183,13 +164,13 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         :param initializer: Constraint initializer to serialize
         :return: Dictionary representation or unserializable placeholder
         """
-        return (
-            initializer.model_dump()
-            if isinstance(initializer, SerializableConstraintInitializer)
-            else UnserializableConstraintInitializer(
+        if isinstance(initializer, SerializableConstraintInitializer):
+            return initializer.model_dump()
+        else:
+            unserializable = UnserializableConstraintInitializer(
                 orig_info=InfoMixin.extract_from_obj(initializer)
             )
-        )
+            return unserializable.model_dump()
 
     @classmethod
     def deserialize(
@@ -211,10 +192,14 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
             and initializer_dict["type_"] in cls.registry
         ):
             initializer_class = cls.registry[initializer_dict["type_"]]
-            return initializer_class.model_validate(initializer_dict)
+            if hasattr(initializer_class, "model_validate"):
+                return initializer_class.model_validate(initializer_dict)  # type: ignore[return-value]
+            else:
+                return initializer_class(**initializer_dict)  # type: ignore[return-value,operator]
 
         raise ValueError(
-            f"Cannot deserialize unknown constraint initializer: {initializer_class}"
+            f"Cannot deserialize unknown constraint initializer: "
+            f"{initializer_dict.get('type_', 'unknown')}"
         )
 
     @classmethod
@@ -223,6 +208,7 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         Create a constraint instance for the specified key.
 
         :param key: Registered constraint initializer key
+        :param args: Positional arguments for constraint creation
         :param kwargs: Keyword arguments for constraint creation
         :return: Configured constraint function ready for evaluation
         :raises ValueError: If the key is not registered in the factory
@@ -289,10 +275,10 @@ class PydanticConstraintInitializer(StandardBaseModel, ABC, InfoMixin):
 
     Provides standardized serialization, validation, and metadata handling for
     constraint initializers using Pydantic models. Subclasses implement specific
-    constraint creation logic while inheriting common functionality.
+    constraint creation logic while inheriting validation and persistence support.
     """
 
-    type_: str = Field(description="Type identifier for the constraint")
+    type_: str = Field(description="Type identifier for the constraint initializer")
 
     @property
     def info(self) -> dict[str, Any]:
@@ -309,7 +295,8 @@ class PydanticConstraintInitializer(StandardBaseModel, ABC, InfoMixin):
         """
         Validate and process arguments for constraint creation.
 
-        Must be implemented by subclasses to handle their specific parameter patterns.
+        Must be implemented by subclasses to handle their specific parameter patterns
+        and validation requirements.
 
         :param args: Positional arguments passed to the constraint
         :param kwargs: Keyword arguments passed to the constraint
@@ -323,7 +310,8 @@ class PydanticConstraintInitializer(StandardBaseModel, ABC, InfoMixin):
         """
         Create a constraint instance.
 
-        Must be implemented by subclasses to return their specific constraint type.
+        Must be implemented by subclasses to return their specific constraint type
+        with appropriate configuration and validation.
 
         :param kwargs: Additional keyword arguments (usually unused)
         :return: Configured constraint instance
@@ -344,13 +332,13 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
     type_: Literal["unserializable"] = "unserializable"  # type: ignore[assignment]
     orig_info: dict[str, Any] = Field(
         default_factory=dict,
-        description="Information about why this constraint is unserializable",
+        description="Original constraint information before serialization failure",
     )
 
     @classmethod
     def validated_kwargs(
         cls,
-        orig_info: dict[str, Any] = None,
+        orig_info: dict[str, Any] | None = None,
         **kwargs,  # noqa: ARG003
     ) -> dict[str, Any]:
         """
@@ -396,7 +384,7 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
         )
 
 
-@ConstraintsInitializerFactory.register(
+@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
     ["max_number", "max_num", "max_requests", "max_req"]
 )
 class MaxNumberConstraint(PydanticConstraintInitializer):
@@ -430,7 +418,8 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         """
         aliases = ["max_number", "max_num", "max_requests", "max_req"]
         for alias in aliases:
-            max_num = max_num or kwargs.get(alias)
+            if max_num is None:
+                max_num = kwargs.get(alias)
 
         return {"max_num": max_num, "current_index": kwargs.get("current_index", -1)}
 
@@ -443,7 +432,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()
+        return self.model_copy()  # type: ignore[return-value]
 
     def __call__(
         self,
@@ -451,7 +440,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         request_info: ScheduledRequestInfo,  # noqa: ARG002
     ) -> SchedulerUpdateAction:
         """
-        Evaluate constraint against current scheduler state.
+        Evaluate constraint against current scheduler state and request count.
 
         :param state: Current scheduler state with request counts
         :param request_info: Individual request information (unused)
@@ -509,7 +498,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(
+@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
     ["max_duration", "max_dur", "max_sec", "max_seconds", "max_min", "max_minutes"]
 )
 class MaxDurationConstraint(PydanticConstraintInitializer):
@@ -529,7 +518,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
 
     @classmethod
     def validated_kwargs(
-        cls, max_duration: int | float | list[int | float] = None, **kwargs
+        cls, max_duration: int | float | list[int | float] | None = None, **kwargs
     ) -> dict[str, Any]:
         """
         Validate and process arguments for MaxDurationConstraint creation.
@@ -541,12 +530,13 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         """
         seconds_aliases = ["max_dur", "max_sec", "max_seconds"]
         for alias in seconds_aliases:
-            max_duration = max_duration or kwargs.get(alias)
+            if max_duration is None:
+                max_duration = kwargs.get(alias)
         minutes_aliases = ["max_min", "max_minutes"]
         for alias in minutes_aliases:
             minutes = kwargs.get(alias)
-            if minutes is not None:
-                max_duration = max_duration or minutes * 60
+            if minutes is not None and max_duration is None:
+                max_duration = minutes * 60
 
         return {
             "max_duration": max_duration,
@@ -562,7 +552,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()
+        return self.model_copy()  # type: ignore[return-value]
 
     def __call__(
         self,
@@ -625,7 +615,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(
+@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
     ["max_errors", "max_err", "max_error", "max_errs"]
 )
 class MaxErrorsConstraint(PydanticConstraintInitializer):
@@ -634,7 +624,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
 
     Stops both request queuing and all request processing when the total number
     of errored requests reaches the maximum threshold. Uses global error tracking
-    across all requests.
+    across all requests for immediate constraint evaluation.
     """
 
     type_: Literal["max_errors"] = "max_errors"  # type: ignore[assignment]
@@ -645,7 +635,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
 
     @classmethod
     def validated_kwargs(
-        cls, max_errors: int | float | list[int | float] = None, **kwargs
+        cls, max_errors: int | float | list[int | float] | None = None, **kwargs
     ) -> dict[str, Any]:
         """
         Validate and process arguments for MaxErrorsConstraint creation.
@@ -657,7 +647,8 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         """
         aliases = ["max_errors", "max_err", "max_error", "max_errs"]
         for alias in aliases:
-            max_errors = max_errors or kwargs.get(alias)
+            if max_errors is None:
+                max_errors = kwargs.get(alias)
 
         return {
             "max_errors": max_errors,
@@ -673,7 +664,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()
+        return self.model_copy()  # type: ignore[return-value]
 
     def __call__(
         self,
@@ -726,7 +717,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(
+@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
     ["max_error_rate", "max_err_rate", "max_errors_rate"]
 )
 class MaxErrorRateConstraint(PydanticConstraintInitializer):
@@ -735,7 +726,8 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
 
     Tracks error status of recent requests in a sliding window and stops all
     processing when the error rate exceeds the threshold. Only applies the
-    constraint after processing enough requests to fill the minimum window size.
+    constraint after processing enough requests to fill the minimum window size
+    for statistical significance.
     """
 
     type_: Literal["max_error_rate"] = "max_error_rate"  # type: ignore[assignment]
@@ -770,7 +762,8 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         """
         aliases = ["max_error_rate", "max_err_rate", "max_errors_rate"]
         for alias in aliases:
-            max_error_rate = max_error_rate or kwargs.get(alias)
+            if max_error_rate is None:
+                max_error_rate = kwargs.get(alias)
 
         return {
             "max_error_rate": max_error_rate,
@@ -790,7 +783,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()
+        return self.model_copy()  # type: ignore[return-value]
 
     def __call__(
         self, state: SchedulerState, request_info: ScheduledRequestInfo
@@ -865,7 +858,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(
+@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
     ["max_global_error_rate", "max_global_err_rate", "max_global_errors_rate"]
 )
 class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
@@ -874,7 +867,8 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
 
     Calculates error rate across all processed requests and stops all processing
     when the rate exceeds the threshold. Only applies the constraint after
-    processing the minimum number of requests to ensure statistical significance.
+    processing the minimum number of requests to ensure statistical significance
+    for global error rate calculations.
     """
 
     type_: Literal["max_global_error_rate"] = "max_global_error_rate"  # type: ignore[assignment]
@@ -908,7 +902,8 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
             "max_global_err_rate",
             "max_global_errors_rate",
         ]:
-            max_error_rate = max_error_rate or kwargs.get(alias)
+            if max_error_rate is None:
+                max_error_rate = kwargs.get(alias)
 
         return {
             "max_error_rate": max_error_rate,
@@ -927,7 +922,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()
+        return self.model_copy()  # type: ignore[return-value]
 
     def __call__(
         self,
@@ -948,7 +943,9 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
             else self.max_error_rate[min(current_index, len(self.max_error_rate) - 1)]
         )
 
-        exceeded_min_processed = state.processed_requests >= self.min_processed
+        exceeded_min_processed = (
+            self.min_processed is None or state.processed_requests >= self.min_processed
+        )
         error_rate = (
             state.errored_requests / float(state.processed_requests)
             if state.processed_requests > 0

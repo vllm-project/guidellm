@@ -5,7 +5,7 @@ import math
 import statistics
 import time
 from abc import ABC
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 import pytest
 from pydantic import ValidationError
@@ -234,7 +234,7 @@ class TestLastCompletionRequestTimings:
             completion_time = time.time() + offset
             request_times.append(completion_time)
 
-            mock_request = ScheduledRequestInfo(
+            mock_request: ScheduledRequestInfo = ScheduledRequestInfo(
                 request_id=f"test-{index}",
                 status="completed",
                 scheduler_node_id=0,
@@ -565,7 +565,7 @@ class TestSchedulingStrategy:
         """Test that invalid implementations raise NotImplementedError."""
 
         class InvalidStrategy(SchedulingStrategy):
-            type_: str = "strategy"
+            type_: Literal["strategy"] = "strategy"  # type: ignore[assignment,annotation-unchecked]
 
         strategy = InvalidStrategy()
         with pytest.raises(NotImplementedError):
@@ -576,7 +576,7 @@ class TestSchedulingStrategy:
         """Test that concrete implementations can be constructed."""
 
         class TestStrategy(SchedulingStrategy):
-            type_: str = "strategy"
+            type_: Literal["strategy"] = "strategy"  # type: ignore[assignment,annotation-unchecked]
 
             def create_request_timings(
                 self,

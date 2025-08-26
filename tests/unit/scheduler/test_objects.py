@@ -87,7 +87,6 @@ class TestBackendInterface:
     def test_abstract_methods_defined(self):
         """Test that all expected abstract methods are defined."""
         expected_methods = {
-            "info",
             "process_startup",
             "validate",
             "process_shutdown",
@@ -96,6 +95,7 @@ class TestBackendInterface:
         expected_properties = {
             "processes_limit",
             "requests_limit",
+            "info",
         }
 
         for method_name in expected_methods:
@@ -169,6 +169,7 @@ class TestBackendInterface:
             def requests_limit(self) -> int | None:
                 return 100
 
+            @property
             def info(self) -> dict[str, Any]:
                 return {"model": "test", "version": "1.0"}
 
@@ -196,12 +197,12 @@ class TestBackendInterface:
         assert isinstance(backend, ConcreteBackend)
         assert backend.processes_limit == 4
         assert backend.requests_limit == 100
-        info = backend.info()
+        info = backend.info
         assert info == {"model": "test", "version": "1.0"}
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
-    async def test_implementation_async_methods(self):
+    async def test_implementation_async_methods(self):  # noqa: C901
         """Test that async methods work correctly in concrete implementation."""
 
         class AsyncBackend(BackendInterface[dict, MeasuredRequestTimings, dict]):
@@ -218,6 +219,7 @@ class TestBackendInterface:
             def requests_limit(self) -> int | None:
                 return None  # Unlimited
 
+            @property
             def info(self) -> dict[str, Any]:
                 return {"backend": "async_test"}
 
@@ -271,9 +273,14 @@ class TestBackendInterface:
     @pytest.mark.smoke
     def test_method_signatures(self):
         """Test that abstract methods have the expected signatures."""
-        info_sig = inspect.signature(BackendInterface.info)
-        assert len(info_sig.parameters) == 1
-        assert list(info_sig.parameters.keys()) == ["self"]
+        info_prop = BackendInterface.info
+        assert isinstance(info_prop, property)
+
+        processes_limit_prop = BackendInterface.processes_limit
+        assert isinstance(processes_limit_prop, property)
+
+        requests_limit_prop = BackendInterface.requests_limit
+        assert isinstance(requests_limit_prop, property)
 
         startup_sig = inspect.signature(BackendInterface.process_startup)
         assert len(startup_sig.parameters) == 1  # Only self
@@ -302,6 +309,7 @@ class TestRequestSchedulerTimings:
         "targeted_start",
         "queued",
         "dequeued",
+        "scheduled_at",
         "resolve_start",
         "resolve_end",
         "finalized",
@@ -314,6 +322,7 @@ class TestRequestSchedulerTimings:
                 "targeted_start": None,
                 "queued": None,
                 "dequeued": None,
+                "scheduled_at": None,
                 "resolve_start": None,
                 "resolve_end": None,
                 "finalized": None,
@@ -322,12 +331,14 @@ class TestRequestSchedulerTimings:
                 "targeted_start": 1000.0,
                 "queued": 200.0,
                 "dequeued": 800.0,
+                "scheduled_at": 900.0,
                 "resolve_start": 1000.5,
                 "resolve_end": 1100.0,
                 "finalized": 1100.5,
             },
             {
                 "queued": 200.0,
+                "scheduled_at": 250.0,
                 "resolve_start": 1000.5,
                 "resolve_end": 1100.0,
             },
@@ -335,6 +346,7 @@ class TestRequestSchedulerTimings:
                 "targeted_start": 0.0,
                 "queued": 0.0,
                 "dequeued": 0.0,
+                "scheduled_at": 0.0,
                 "resolve_start": 0.0,
                 "resolve_end": 0.0,
                 "finalized": 0.0,
@@ -388,6 +400,7 @@ class TestRequestSchedulerTimings:
             ("targeted_start", "invalid_string"),
             ("queued", "invalid_string"),
             ("dequeued", [1, 2, 3]),
+            ("scheduled_at", {"key": "value"}),
             ("resolve_start", {"key": "value"}),
             ("resolve_end", [1, 2, 3]),
             ("finalized", object()),

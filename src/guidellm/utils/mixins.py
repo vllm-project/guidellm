@@ -12,6 +12,10 @@ from typing import Any
 __all__ = ["InfoMixin"]
 
 
+PYTHON_PRIMITIVES = (str, int, float, bool, list, tuple, dict)
+"""Type alias for serialized object representations"""
+
+
 class InfoMixin:
     """
     Mixin class providing standardized metadata extraction for introspection.
@@ -58,9 +62,7 @@ class InfoMixin:
             "module": obj.__class__.__module__ if hasattr(obj, "__class__") else None,
             "attributes": (
                 {
-                    key: val
-                    if isinstance(val, (str, int, float, bool, list, dict))
-                    else str(val)
+                    key: val if isinstance(val, PYTHON_PRIMITIVES) else repr(val)
                     for key, val in obj.__dict__.items()
                     if not key.startswith("_")
                 }
@@ -90,7 +92,7 @@ class InfoMixin:
                 {
                     key: val
                     if isinstance(val, (str, int, float, bool, list, dict))
-                    else str(val)
+                    else repr(val)
                     for key, val in obj.__dict__.items()
                     if not key.startswith("_")
                 }

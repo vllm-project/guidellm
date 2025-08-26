@@ -160,7 +160,7 @@ class ScheduledRequestInfo(StandardBaseModel, Generic[MeasuredRequestTimingsT]):
         description="Backend-specific timing measurements for request processing",
     )
 
-    @computed_field
+    @computed_field  # type: ignore[misc]
     @property
     def started_at(self) -> float | None:
         """
@@ -174,7 +174,7 @@ class ScheduledRequestInfo(StandardBaseModel, Generic[MeasuredRequestTimingsT]):
 
         return request_start or self.scheduler_timings.resolve_start
 
-    @computed_field
+    @computed_field  # type: ignore[misc]
     @property
     def completed_at(self) -> float | None:
         """
@@ -186,7 +186,12 @@ class ScheduledRequestInfo(StandardBaseModel, Generic[MeasuredRequestTimingsT]):
 
         return request_end or self.scheduler_timings.resolve_end
 
-    def model_copy(self) -> ScheduledRequestInfo:
+    def model_copy(self, **kwargs) -> ScheduledRequestInfo:  # type: ignore[override]  # noqa: ARG002
+        """
+        Create a deep copy of the request info with copied timing objects.
+
+        :return: New ScheduledRequestInfo instance with independent timing objects
+        """
         return super().model_copy(
             update={
                 "scheduler_timings": self.scheduler_timings.model_copy(),
@@ -225,21 +230,21 @@ class BackendInterface(ABC, Generic[RequestT, MeasuredRequestTimingsT, ResponseT
     @abstractmethod
     def processes_limit(self) -> int | None:
         """
-        :return: The maximum worker processes supported, or None if unlimited
+        :return: Maximum worker processes supported, or None if unlimited
         """
 
     @property
     @abstractmethod
     def requests_limit(self) -> int | None:
         """
-        :return: The maximum concurrent requests supported, or None if unlimited
+        :return: Maximum concurrent requests supported, or None if unlimited
         """
 
     @property
     @abstractmethod
     def info(self) -> dict[str, Any]:
         """
-        :return: The backend metadata including model initialization and configuration.
+        :return: Backend metadata including model initialization and configuration
         """
         ...
 
@@ -298,14 +303,9 @@ class SchedulerUpdateActionProgress(TypedDict, total=False):
     track execution progress and make termination decisions.
     """
 
-    remaining_fraction: float | None = None
-    """Estimated fraction of work remaining (0.0 to 1.0), if known."""
-
-    remaining_requests: float | None = None
-    """Estimated number of requests remaining to be processed, if known."""
-
-    remaining_duration: float | None = None
-    """Estimated time remaining in seconds for completion, if known."""
+    remaining_fraction: float | None
+    remaining_requests: float | None
+    remaining_duration: float | None
 
 
 class SchedulerUpdateAction(StandardBaseModel):
@@ -340,7 +340,7 @@ class SchedulerUpdateAction(StandardBaseModel):
         description="Additional context and data for the scheduler action",
     )
     progress: SchedulerUpdateActionProgress = Field(
-        default_factory=SchedulerUpdateActionProgress,
+        default_factory=lambda: SchedulerUpdateActionProgress(),
         description="Progress information for the scheduler action",
     )
 
