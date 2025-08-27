@@ -61,6 +61,7 @@ from .text import (
     split_text_list_by_length,
 )
 from .threading import synchronous_to_exitable_async
+from .typing import get_literal_vals
 
 __all__ = [
     "SUPPORTED_TYPES",
@@ -106,6 +107,7 @@ __all__ = [
     "clean_text",
     "filter_text",
     "format_value_display",
+    "get_literal_vals",
     "is_puncutation",
     "load_text",
     "safe_add",
