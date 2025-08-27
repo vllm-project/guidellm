@@ -373,7 +373,7 @@ class TestLoadText:
 
 
 class TestIsPunctuation:
-    """Test suite for is_puncutation."""
+    """Test suite for is_punctuation."""
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(

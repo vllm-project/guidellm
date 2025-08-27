@@ -48,6 +48,7 @@ keywords = [
 ]
 dependencies = [
     "click>=8.0.0,<8.2.0",
+    "culsans~=0.9.0",
     "datasets",
     "ftfy>=6.0.0",
     "httpx[http2]<1.0.0",
@@ -157,15 +158,16 @@ indent-style = "space"
 
 [tool.ruff.lint]
 ignore = [
-    "PLR0913",
-    "TC001",
-    "COM812",
-    "ISC001",
-    "TC002",
+    "COM812",  # ignore trailing comma errors due to older Python versions
+    "PD011", # ignore .values usage since ruff assumes it's a Pandas DataFrame
+    "PLR0913",  # ignore too many arguments in function definitions
     "PLW1514", # allow Path.open without encoding
     "RET505", # allow `else` blocks
     "RET506", # allow `else` blocks
-    "PD011", # ignore .values usage since ruff assumes it's a Pandas DataFrame
+    "S311",  # allow standard pseudo-random generators
+    "TC001",  # ignore imports used only for type checking
+    "TC002",  # ignore imports used only for type checking
+    "TC003", # ignore imports used only for type checking
 ]
 select = [
     # Rules reference: https://docs.astral.sh/ruff/rules/

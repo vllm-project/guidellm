@@ -1,6 +1,13 @@
 from .auto_importer import AutoImporterMixin
 from .colors import Colors
 from .default_group import DefaultGroupHandler
+from .encoding import (
+    Encoder,
+    EncodingTypesAlias,
+    MessageEncoding,
+    SerializationTypesAlias,
+    Serializer,
+)
 from .functions import (
     all_defined,
     safe_add,
@@ -15,6 +22,12 @@ from .hf_datasets import (
 )
 from .hf_transformers import (
     check_load_processor,
+)
+from .messaging import (
+    InterProcessMessaging,
+    InterProcessMessagingManagerQueue,
+    InterProcessMessagingPipe,
+    InterProcessMessagingQueue,
 )
 from .pydantic_utils import (
     PydanticClassRegistryMixin,
@@ -49,13 +62,22 @@ __all__ = [
     "Colors",
     "DefaultGroupHandler",
     "DistributionSummary",
+    "Encoder",
+    "EncodingTypesAlias",
     "EndlessTextCreator",
     "IntegerRangeSampler",
+    "InterProcessMessaging",
+    "InterProcessMessagingManagerQueue",
+    "InterProcessMessagingPipe",
+    "InterProcessMessagingQueue",
+    "MessageEncoding",
     "Percentiles",
     "PydanticClassRegistryMixin",
     "RegistryMixin",
     "ReloadableBaseModel",
     "RunningStats",
+    "SerializationTypesAlias",
+    "Serializer",
     "SingletonMixin",
     "StandardBaseDict",
     "StandardBaseModel",
