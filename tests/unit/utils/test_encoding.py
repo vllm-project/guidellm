@@ -6,13 +6,13 @@ from typing import Any, Generic
 import pytest
 from pydantic import BaseModel, Field
 
-from guidellm.backend import (
+from guidellm.backend.objects import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,
 )
-from guidellm.scheduler import RequestSchedulerTimings, ScheduledRequestInfo
-from guidellm.utils import Encoder, MessageEncoding, Serializer
+from guidellm.scheduler.objects import RequestSchedulerTimings, ScheduledRequestInfo
+from guidellm.utils.encoding import Encoder, MessageEncoding, Serializer
 
 
 class SampleModel(BaseModel):

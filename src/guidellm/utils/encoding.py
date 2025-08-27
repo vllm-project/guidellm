@@ -47,6 +47,8 @@ __all__ = [
     "Encoder",
     "EncodingTypesAlias",
     "MessageEncoding",
+    "MsgT",
+    "ObjT",
     "SerializationTypesAlias",
     "Serializer",
 ]
@@ -327,7 +329,7 @@ class Serializer:
 
         :param model: Pydantic model class to register for type preservation
         """
-        key = f"{model.__module__}:{model.__name__}"
+        key = (model.__module__, model.__name__)
         self.pydantic_registry[key] = model
 
     def load_pydantic(self, type_name: str, module_name: str) -> type[BaseModel]:
@@ -338,7 +340,7 @@ class Serializer:
         :param module_name: Module containing the class
         :return: Loaded Pydantic model class
         """
-        key = f"{module_name}:{type_name}"
+        key = (module_name, type_name)
 
         if key in self.pydantic_registry:
             return self.pydantic_registry[key]

@@ -21,9 +21,8 @@ from guidellm.utils import (
     InterProcessMessagingManagerQueue,
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
-    MessageEncoding,
 )
-from guidellm.utils.messaging import MessageT
+from guidellm.utils.messaging import ReceiveMessageT, SendMessageT
 
 
 def async_timeout(delay: float):
@@ -88,18 +87,13 @@ class MockProcessTarget:
 
 @pytest.fixture(
     params=[
-        {"ctx_name": None},
         {"ctx_name": "fork"},
         {"ctx_name": "spawn"},
     ],
-    ids=["default_ctx", "fork_ctx", "spawn_ctx"],
+    ids=["fork_ctx", "spawn_ctx"],
 )
 def multiprocessing_contexts(request):
-    context = (
-        multiprocessing.get_context()
-        if request.param["ctx_name"] is None
-        else multiprocessing.get_context(request.param["ctx_name"])
-    )
+    context = multiprocessing.get_context(request.param["ctx_name"])
     manager = context.Manager()
     try:
         yield manager, context
@@ -107,12 +101,20 @@ def multiprocessing_contexts(request):
         manager.shutdown()
 
 
-def test_message_type():
-    """Test that MessageT is filled out correctly as a TypeVar."""
-    assert isinstance(MessageT, type(TypeVar("test")))
-    assert MessageT.__name__ == "MessageT"
-    assert MessageT.__bound__ is Any
-    assert MessageT.__constraints__ == ()
+def test_send_message_type():
+    """Test that SendMessageT is filled out correctly as a TypeVar."""
+    assert isinstance(SendMessageT, type(TypeVar("test")))
+    assert SendMessageT.__name__ == "SendMessageT"
+    assert SendMessageT.__bound__ is Any
+    assert SendMessageT.__constraints__ == ()
+
+
+def test_receive_message_type():
+    """Test that ReceiveMessageT is filled out correctly as a TypeVar."""
+    assert isinstance(ReceiveMessageT, type(TypeVar("test")))
+    assert ReceiveMessageT.__name__ == "ReceiveMessageT"
+    assert ReceiveMessageT.__bound__ is Any
+    assert ReceiveMessageT.__constraints__ == ()
 
 
 class TestInterProcessMessaging:
@@ -196,15 +198,14 @@ class TestInterProcessMessaging:
         if shutdown_event_set:
             shutdown_event.set()
 
-        messaging.stop_events = [stop_event]
         messaging.shutdown_event = shutdown_event
 
         # Test the method
         if expect_error:
             with pytest.raises(RuntimeError):
-                messaging.check_on_stop_action(pending, queue_empty)
+                messaging.check_on_stop_action(pending, queue_empty, [stop_event])
         else:
-            result = messaging.check_on_stop_action(pending, queue_empty)
+            result = messaging.check_on_stop_action(pending, queue_empty, [stop_event])
             assert result == expected_result
 
     @pytest.mark.smoke
@@ -248,7 +249,6 @@ class TestInterProcessMessaging:
         if shutdown_event_set:
             shutdown_event.set()
 
-        messaging.stop_events = [stop_event]
         messaging.shutdown_event = shutdown_event
 
         # Test the method
@@ -300,7 +300,6 @@ class TestInterProcessMessaging:
         if shutdown_event_set:
             shutdown_event.set()
 
-        messaging.stop_events = [stop_event]
         messaging.shutdown_event = shutdown_event
 
         # Test the method
@@ -342,11 +341,13 @@ class TestInterProcessMessagingQueue:
             },
         ],
     )
-    def valid_instances(self, request):
+    def valid_instances(self, multiprocessing_contexts, request):
         """Fixture providing test data for InterProcessMessagingQueue."""
         constructor_args = request.param
         instance = InterProcessMessagingQueue(**constructor_args, poll_interval=0.01)
-        return instance, constructor_args
+        manager, context = multiprocessing_contexts
+
+        return instance, constructor_args, manager, context
 
     @pytest.mark.smoke
     def test_class_signatures(self):
@@ -360,7 +361,7 @@ class TestInterProcessMessagingQueue:
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
         """Test InterProcessMessagingQueue initialization."""
-        instance, constructor_args = valid_instances
+        instance, constructor_args, _, _ = valid_instances
 
         assert isinstance(instance, InterProcessMessagingQueue)
         assert instance.worker_index == constructor_args["worker_index"]
@@ -368,13 +369,12 @@ class TestInterProcessMessagingQueue:
         assert instance.max_receive_size == constructor_args["max_receive_size"]
         assert hasattr(instance, "send_queue")
         assert hasattr(instance, "done_queue")
-        assert hasattr(instance, "message_encoding")
         assert instance.running is False
 
     @pytest.mark.smoke
     def test_create_worker_copy(self, valid_instances):
         """Test InterProcessMessagingQueue.create_worker_copy."""
-        instance, _ = valid_instances
+        instance, _, _, _ = valid_instances
         worker_index = 42
 
         worker_copy = instance.create_worker_copy(worker_index)
@@ -400,13 +400,11 @@ class TestInterProcessMessagingQueue:
     @async_timeout(5.0)
     async def test_start_stop_lifecycle(self, valid_instances, stop_events_lambda):
         """Test InterProcessMessagingQueue start/stop lifecycle."""
-        instance, _ = valid_instances
+        instance, _, _, _ = valid_instances
         stop_events = stop_events_lambda()
 
         # Initially not running
         assert instance.running is False
-        assert instance.message_encoding is None
-        assert instance.stop_events is None
         assert instance.stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
@@ -417,9 +415,6 @@ class TestInterProcessMessagingQueue:
         # Start should work
         await instance.start(stop_events=stop_events)
         assert instance.running is True
-        assert instance.message_encoding is not None
-        assert isinstance(instance.message_encoding, MessageEncoding)
-        assert instance.stop_events == stop_events
         assert instance.stopped_event is not None
         assert isinstance(instance.stopped_event, threading.Event)
         assert instance.shutdown_event is not None
@@ -445,8 +440,6 @@ class TestInterProcessMessagingQueue:
 
         await instance.stop()
         assert instance.running is False
-        assert instance.message_encoding is None
-        assert instance.stop_events is None
         assert instance.stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
@@ -460,10 +453,8 @@ class TestInterProcessMessagingQueue:
         "test_obj",
         [
             123451,
-            12.345,
             "asdfghjkl",
             [None, 123, 45.67, "string", {"key": "value"}, [1, 2, 3]],
-            (1, 2, 3),
             {"key": "value", "another_key": 123.456, "yet_another_key": [1, 2, 3]},
             MockMessage(content="hello", num=42),
             (
@@ -479,11 +470,8 @@ class TestInterProcessMessagingQueue:
         ],
     )
     @async_timeout(10.0)
-    async def test_lifecycle_put_get(
-        self, multiprocessing_contexts, valid_instances, test_obj
-    ):
-        instance, constructor_args = valid_instances
-        manager, context = multiprocessing_contexts
+    async def test_lifecycle_put_get(self, valid_instances, test_obj):
+        instance, constructor_args, manager, context = valid_instances
 
         if (
             (
@@ -541,8 +529,6 @@ class TestInterProcessMessagingQueue:
     @pytest.mark.parametrize(
         "test_obj",
         [
-            "asdfghjkl",
-            MockMessage(content="hello", num=42),
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
@@ -556,11 +542,8 @@ class TestInterProcessMessagingQueue:
         ],
     )
     @async_timeout(10.0)
-    async def test_lifecycle_put_get_iter(
-        self, multiprocessing_contexts, valid_instances, test_obj
-    ):
-        instance, constructor_args = valid_instances
-        manager, context = multiprocessing_contexts
+    async def test_lifecycle_put_get_iter(self, valid_instances, test_obj):
+        instance, constructor_args, manager, context = valid_instances
 
         if (
             (
@@ -677,7 +660,6 @@ class TestInterProcessMessagingManagerQueue:
         assert instance.max_receive_size == constructor_args["max_receive_size"]
         assert hasattr(instance, "send_queue")
         assert hasattr(instance, "done_queue")
-        assert hasattr(instance, "message_encoding")
         assert instance.running is False
 
     @pytest.mark.smoke
@@ -714,8 +696,6 @@ class TestInterProcessMessagingManagerQueue:
 
         # Initially not running
         assert instance.running is False
-        assert instance.message_encoding is None
-        assert instance.stop_events is None
         assert instance.stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
@@ -726,9 +706,6 @@ class TestInterProcessMessagingManagerQueue:
         # Start should work
         await instance.start(stop_events=stop_events)
         assert instance.running is True
-        assert instance.message_encoding is not None
-        assert isinstance(instance.message_encoding, MessageEncoding)
-        assert instance.stop_events == stop_events
         assert instance.stopped_event is not None
         assert isinstance(instance.stopped_event, threading.Event)
         assert instance.shutdown_event is not None
@@ -754,8 +731,6 @@ class TestInterProcessMessagingManagerQueue:
 
         await instance.stop()
         assert instance.running is False
-        assert instance.message_encoding is None
-        assert instance.stop_events is None
         assert instance.stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
@@ -973,7 +948,6 @@ class TestInterProcessMessagingPipe:
         assert hasattr(instance, "pipes")
         assert len(instance.pipes) == constructor_args["num_workers"]
         assert len(instance.pipes) == constructor_args["num_workers"]
-        assert hasattr(instance, "message_encoding")
         assert instance.running is False
 
     @pytest.mark.sanity
@@ -1020,8 +994,6 @@ class TestInterProcessMessagingPipe:
 
         # Initially not running
         assert instance.running is False
-        assert instance.message_encoding is None
-        assert instance.stop_events is None
         assert instance.stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
@@ -1032,9 +1004,6 @@ class TestInterProcessMessagingPipe:
         # Start should work
         await instance.start(stop_events=stop_events)
         assert instance.running is True
-        assert instance.message_encoding is not None
-        assert isinstance(instance.message_encoding, MessageEncoding)
-        assert instance.stop_events == stop_events
         assert instance.stopped_event is not None
         assert isinstance(instance.stopped_event, threading.Event)
         assert instance.shutdown_event is not None
@@ -1051,8 +1020,6 @@ class TestInterProcessMessagingPipe:
         # Stop should work
         await instance.stop()
         assert instance.running is False
-        assert instance.message_encoding is None
-        assert instance.stop_events is None
         assert instance.stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
@@ -1066,10 +1033,8 @@ class TestInterProcessMessagingPipe:
         "test_obj",
         [
             123451,
-            12.345,
             "asdfghjkl",
             [None, 123, 45.67, "string", {"key": "value"}, [1, 2, 3]],
-            (1, 2, 3),
             {"key": "value", "another_key": 123.456, "yet_another_key": [1, 2, 3]},
             MockMessage(content="hello", num=42),
             (

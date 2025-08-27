@@ -4,7 +4,7 @@ Inter-process messaging abstractions for distributed scheduler coordination.
 Provides high-level interfaces for asynchronous message passing between worker
 processes using various transport mechanisms including queues and pipes. Supports
 configurable encoding, serialization, error handling, and flow control with
-buffering and stop event coordination for the scheduler's distributed operations.
+buffering and stop event coordination for distributed scheduler operations.
 """
 
 from __future__ import annotations
@@ -38,15 +38,19 @@ __all__ = [
     "InterProcessMessagingManagerQueue",
     "InterProcessMessagingPipe",
     "InterProcessMessagingQueue",
+    "ReceiveMessageT",
+    "SendMessageT",
 ]
 
-MessageT = TypeVar("MessageT", bound=Any)
-"""Generic type variable for messages processed by inter-process messaging systems."""
+SendMessageT = TypeVar("SendMessageT", bound=Any)
+"""Generic type variable for messages sent through the messaging system"""
+ReceiveMessageT = TypeVar("ReceiveMessageT", bound=Any)
+"""Generic type variable for messages received through the messaging system"""
 
 
-class InterProcessMessaging(Generic[MessageT], ABC):
+class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
     """
-    Abstract base for inter-process messaging coordination in distributed scheduler.
+    Abstract base for inter-process messaging in distributed scheduler coordination.
 
     Provides unified interface for asynchronous message passing between scheduler
     components using configurable transport mechanisms, encoding schemes, and
@@ -89,11 +93,10 @@ class InterProcessMessaging(Generic[MessageT], ABC):
 
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum number of items in send queue before blocking
-        :param max_buffer_send_size: Maximum number of items in buffer send queue
-        :param max_receive_size: Maximum number of items in receive queue before
-            blocking
-        :param max_buffer_receive_size: Maximum number of items in buffer receive queue
+        :param max_send_size: Maximum items in send queue before blocking
+        :param max_buffer_send_size: Maximum items in buffer send queue
+        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param on_stop_action: Behavior when stop events are triggered
         :param on_empty_action: Behavior when message queues become empty
         :param on_full_action: Behavior when message queues become full
@@ -112,18 +115,18 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         self.on_full_action = on_full_action
         self.poll_interval = poll_interval
 
-        self.message_encoding: MessageEncoding = None
-        self.stop_events: list[ThreadingEvent | ProcessingEvent] = None
         self.stopped_event: ThreadingEvent = None
         self.shutdown_event: ThreadingEvent = None
-        self.buffer_send_queue: culsans.Queue = None
-        self.buffer_receive_queue: culsans.Queue = None
+        self.buffer_send_queue: culsans.Queue[SendMessageT] = None
+        self.buffer_receive_queue: culsans.Queue[ReceiveMessageT] = None
         self.send_task: asyncio.Task = None
         self.receive_task: asyncio.Task = None
         self.running = False
 
     @abstractmethod
-    def create_worker_copy(self, worker_index: int) -> InterProcessMessaging[MessageT]:
+    def create_worker_copy(
+        self, worker_index: int
+    ) -> InterProcessMessaging[SendMessageT, ReceiveMessageT]:
         """
         Create worker-specific copy for distributed process coordination.
 
@@ -133,21 +136,33 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         ...
 
     @abstractmethod
-    async def send_messages_task(self, send_items: Iterable[Any] | None):
+    async def send_messages_task(
+        self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+        send_items: Iterable[Any] | None,
+    ):
         """
         Execute asynchronous message sending task for process coordination.
 
+        :param message_encoding: Encoding configuration for message serialization
+        :param stop_events: Events that trigger task termination
         :param send_items: Optional collection of items to send to other processes
         """
         ...
 
     @abstractmethod
     async def receive_messages_task(
-        self, receive_callback: Callable[[Any], None] | None
+        self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+        receive_callback: Callable[[Any], None] | None,
     ):
         """
         Execute asynchronous message receiving task for process coordination.
 
+        :param message_encoding: Encoding configuration for message deserialization
+        :param stop_events: Events that trigger task termination
         :param receive_callback: Optional callback to process received messages
         """
         ...
@@ -157,6 +172,8 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         send_items: Iterable[Any] | None = None,
         receive_callback: Callable[[Any], None] | None = None,
         stop_events: list[ThreadingEvent | ProcessingEvent] | None = None,
+        send_stop_events: list[ThreadingEvent | ProcessingEvent] | None = None,
+        receive_stop_events: list[ThreadingEvent | ProcessingEvent] | None = None,
         pydantic_models: list[type[BaseModel]] | None = None,
     ):
         """
@@ -165,26 +182,42 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         :param send_items: Optional collection of items to send during processing
         :param receive_callback: Optional callback for processing received messages
         :param stop_events: External events that trigger messaging shutdown
+        :param send_stop_events: Events that trigger send task shutdown
+        :param receive_stop_events: Events that trigger receive task shutdown
         :param pydantic_models: Optional list of Pydantic models for serialization
         """
         self.running = True
-        self.message_encoding = MessageEncoding(
+        self.stopped_event = ThreadingEvent()
+        self.shutdown_event = ThreadingEvent()
+        self.buffer_send_queue = culsans.Queue[SendMessageT]()
+        self.buffer_receive_queue = culsans.Queue[ReceiveMessageT]()
+
+        message_encoding = MessageEncoding(
             serialization=self.serialization,
             encoding=self.encoding,
             pydantic_models=pydantic_models,
         )
-        self.stop_events = stop_events if stop_events is not None else []
-        self.stopped_event = ThreadingEvent()
-        self.shutdown_event = ThreadingEvent()
-
-        self.buffer_send_queue = culsans.Queue()
-        self.buffer_receive_queue = culsans.Queue()
+        if send_stop_events is None:
+            send_stop_events = []
+        if receive_stop_events is None:
+            receive_stop_events = []
+        if stop_events:
+            send_stop_events.extend(stop_events)
+            receive_stop_events.extend(stop_events)
 
         self.send_task = asyncio.create_task(
-            self.send_messages_task(send_items=send_items)
+            self.send_messages_task(
+                message_encoding=message_encoding,
+                stop_events=send_stop_events,
+                send_items=send_items,
+            )
         )
         self.receive_task = asyncio.create_task(
-            self.receive_messages_task(receive_callback=receive_callback)
+            self.receive_messages_task(
+                message_encoding=message_encoding,
+                stop_events=receive_stop_events,
+                receive_callback=receive_callback,
+            )
         )
 
     async def stop(self):
@@ -202,13 +235,11 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         await self.buffer_receive_queue.aclose()
         self.buffer_send_queue = None
         self.buffer_receive_queue = None
-        self.message_encoding = None
-        self.stop_events = None
         self.stopped_event = None
         self.shutdown_event = None
         self.running = False
 
-    async def get(self, timeout: float | None = None) -> Any:
+    async def get(self, timeout: float | None = None) -> ReceiveMessageT:
         """
         Retrieve message from receive buffer with optional timeout.
 
@@ -219,7 +250,19 @@ class InterProcessMessaging(Generic[MessageT], ABC):
             self.buffer_receive_queue.async_get(), timeout=timeout
         )
 
-    async def put(self, item: Any, timeout: float | None = None):
+    def get_sync(self, timeout: float | None = None) -> ReceiveMessageT:
+        """
+        Retrieve message from receive buffer synchronously with optional timeout.
+
+        :param timeout: Maximum time to wait for a message, if <=0 uses get_nowait
+        :return: Decoded message from the receive buffer
+        """
+        if timeout is not None and timeout <= 0:
+            return self.buffer_receive_queue.get_nowait()
+        else:
+            return self.buffer_receive_queue.sync_get(timeout=timeout)
+
+    async def put(self, item: SendMessageT, timeout: float | None = None):
         """
         Add message to send buffer with optional timeout.
 
@@ -228,12 +271,30 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         """
         await asyncio.wait_for(self.buffer_send_queue.async_put(item), timeout=timeout)
 
-    def check_on_stop_action(self, pending: Any | None, queue_empty: bool) -> bool:
+    def put_sync(self, item: SendMessageT, timeout: float | None = None):
+        """
+        Add message to send buffer synchronously with optional timeout.
+
+        :param item: Message item to add to the send buffer
+        :param timeout: Maximum time to wait for buffer space, if <=0 uses put_nowait
+        """
+        if timeout is not None and timeout <= 0:
+            self.buffer_send_queue.put_nowait(item)
+        else:
+            self.buffer_send_queue.sync_put(item, timeout=timeout)
+
+    def check_on_stop_action(
+        self,
+        pending: Any | None,
+        queue_empty: bool,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+    ) -> bool:
         """
         Check if messaging should stop based on configured stop action.
 
         :param pending: Currently pending message being processed
         :param queue_empty: Whether the message queue is currently empty
+        :param stop_events: Events that indicate stop condition
         :return: True if messaging should stop, False otherwise
         :raises RuntimeError: When stop action is 'error' and stop event is set
         """
@@ -242,7 +303,7 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         if self.on_stop_action == "ignore":
             return shutdown_set and pending is None
 
-        stop_set = any(event.is_set() for event in self.stop_events)
+        stop_set = any(event.is_set() for event in stop_events)
 
         if self.on_stop_action == "error":
             if stop_set:
@@ -266,16 +327,10 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         :return: True if messaging should stop, False otherwise
         :raises RuntimeError: When empty action is 'error' and queue is empty
         """
-        if self.on_empty_action == "ignore":
-            return False
-
         if self.on_empty_action == "error":
             raise RuntimeError("Queue empty (on_empty_action='error').")
 
-        return (
-            self.shutdown_event.is_set()
-            or any(event.is_set() for event in self.stop_events)
-        ) and pending is None
+        return self.on_empty_action == "stop" and pending is None
 
     def check_on_queue_full_action(self, pending: Any | None) -> bool:
         """
@@ -285,21 +340,15 @@ class InterProcessMessaging(Generic[MessageT], ABC):
         :return: True if messaging should stop, False otherwise
         :raises RuntimeError: When full action is 'error' and queue is full
         """
-        if self.on_full_action == "ignore":
-            return False
-
         if self.on_full_action == "error":
             raise RuntimeError("Queue full (on_full_action='error').")
 
-        return (
-            self.shutdown_event.is_set()
-            or any(event.is_set() for event in self.stop_events)
-        ) and pending is None
+        return self.on_full_action == "stop" and pending is None
 
 
-class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
+class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMessageT]):
     """
-    Queue-based inter-process messaging implementation for scheduler coordination.
+    Queue-based inter-process messaging for distributed scheduler coordination.
 
     Provides message passing using multiprocessing.Queue objects for communication
     between scheduler workers and main process. Handles message encoding, buffering,
@@ -343,11 +392,10 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
 
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum number of items in send queue before blocking
-        :param max_buffer_send_size: Maximum number of items in buffer send queue
-        :param max_receive_size: Maximum number of items in receive queue before
-            blocking
-        :param max_buffer_receive_size: Maximum number of items in buffer receive queue
+        :param max_send_size: Maximum items in send queue before blocking
+        :param max_buffer_send_size: Maximum items in buffer send queue
+        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param on_stop_action: Behavior when stop events are triggered
         :param on_empty_action: Behavior when message queues become empty
         :param on_full_action: Behavior when message queues become full
@@ -378,7 +426,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
 
     def create_worker_copy(
         self, worker_index: int
-    ) -> InterProcessMessagingQueue[MessageT]:
+    ) -> InterProcessMessagingQueue[SendMessageT, ReceiveMessageT]:
         """
         Create worker-specific copy for distributed queue-based coordination.
 
@@ -401,17 +449,40 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
             done_queue=self.done_queue,
         )
 
-    async def send_messages_task(self, send_items: Iterable[Any] | None):
+    async def stop(self):
+        """
+        Stop the messaging system and wait for all tasks to complete.
+        """
+        await super().stop()
+        if self.worker_index is None:
+            # only main process should close the queues
+            self.send_queue.close()
+            self.done_queue.close()
+        self.send_queue = None
+        self.done_queue = None
+
+    async def send_messages_task(
+        self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+        send_items: Iterable[Any] | None,
+    ):
         """
         Execute asynchronous queue-based message sending task.
 
+        :param message_encoding: Encoding configuration for message serialization
+        :param stop_events: Events that trigger task termination
         :param send_items: Optional collection of items to send via queues
         """
         canceled_event = ThreadingEvent()
 
         try:
             await asyncio.to_thread(
-                self.send_messages_task_thread, send_items, canceled_event
+                self._send_messages_task_thread,
+                message_encoding,
+                stop_events,
+                send_items,
+                canceled_event,
             )
         except asyncio.CancelledError:
             canceled_event.set()
@@ -419,29 +490,28 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
         finally:
             self.stopped_event.set()
 
-    async def stop(self):
-        """
-        Stop the messaging system and wait for all tasks to complete.
-        """
-        await super().stop()
-        self.send_queue.close()
-        self.done_queue.close()
-        self.send_queue = None
-        self.done_queue = None
-
     async def receive_messages_task(
-        self, receive_callback: Callable[[Any], None] | None
+        self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+        receive_callback: Callable[[Any], None] | None,
     ):
         """
         Execute asynchronous queue-based message receiving task.
 
+        :param message_encoding: Encoding configuration for message deserialization
+        :param stop_events: Events that trigger task termination
         :param receive_callback: Optional callback to process received messages
         """
         canceled_event = ThreadingEvent()
 
         try:
             return await asyncio.to_thread(
-                self.receive_messages_task_thread, receive_callback, canceled_event
+                self._receive_messages_task_thread,
+                message_encoding,
+                stop_events,
+                receive_callback,
+                canceled_event,
             )
         except asyncio.CancelledError:
             canceled_event.set()
@@ -449,15 +519,21 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
         finally:
             self.stopped_event.set()
 
-    def send_messages_task_thread(  # noqa: C901, PLR0912
-        self, send_items: Iterable[Any] | None, canceled_event: ThreadingEvent
+    def _send_messages_task_thread(  # noqa: C901, PLR0912
+        self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+        send_items: Iterable[Any] | None,
+        canceled_event: ThreadingEvent,
     ):
         send_items_iter = iter(send_items) if send_items is not None else None
         pending_item = None
         queue_empty_reported = False
 
         while not canceled_event.is_set():
-            if self.check_on_stop_action(pending_item, queue_empty_reported):
+            if self.check_on_stop_action(
+                pending_item, queue_empty_reported, stop_events
+            ):
                 break
 
             queue_empty_reported = False
@@ -470,7 +546,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
                         item = self.buffer_send_queue.sync_get(
                             timeout=self.poll_interval
                         )
-                    pending_item = self.message_encoding.encode(item)
+                    pending_item = message_encoding.encode(item)
                 except (culsans.QueueEmpty, queue.Empty, StopIteration):
                     queue_empty_reported = True
                     if self.check_on_queue_empty_action(pending_item):
@@ -491,8 +567,10 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
                     if self.check_on_queue_full_action(pending_item):
                         break
 
-    def receive_messages_task_thread(  # noqa: C901
+    def _receive_messages_task_thread(  # noqa: C901
         self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
         receive_callback: Callable[[Any], None] | None,
         canceled_event: ThreadingEvent,
     ):
@@ -501,7 +579,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
         queue_empty_reported = False
 
         while not canceled_event.is_set():
-            if self.check_on_stop_action(pending_item, queue_empty_reported):
+            if self.check_on_stop_action(
+                pending_item, queue_empty_reported, stop_events
+            ):
                 break
 
             if pending_item is None:
@@ -512,7 +592,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
                     else:
                         # Worker
                         item = self.send_queue.get(timeout=self.poll_interval)
-                    pending_item = self.message_encoding.decode(item)
+                    pending_item = message_encoding.decode(item)
                 except (culsans.QueueEmpty, queue.Empty):
                     queue_empty_reported = True
                     if self.check_on_queue_empty_action(pending_item):
@@ -535,7 +615,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[MessageT]):
                         break
 
 
-class InterProcessMessagingManagerQueue(InterProcessMessagingQueue[MessageT]):
+class InterProcessMessagingManagerQueue(
+    InterProcessMessagingQueue[SendMessageT, ReceiveMessageT]
+):
     """
     Manager-based queue messaging for inter-process scheduler coordination.
 
@@ -581,11 +663,10 @@ class InterProcessMessagingManagerQueue(InterProcessMessagingQueue[MessageT]):
         :param manager: Multiprocessing manager for shared queue creation
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum number of items in send queue before blocking
-        :param max_buffer_send_size: Maximum number of items in buffer send queue
-        :param max_receive_size: Maximum number of items in receive queue before
-            blocking
-        :param max_buffer_receive_size: Maximum number of items in buffer receive queue
+        :param max_send_size: Maximum items in send queue before blocking
+        :param max_buffer_send_size: Maximum items in buffer send queue
+        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param on_stop_action: Behavior when stop events are triggered
         :param on_empty_action: Behavior when message queues become empty
         :param on_full_action: Behavior when message queues become full
@@ -613,7 +694,7 @@ class InterProcessMessagingManagerQueue(InterProcessMessagingQueue[MessageT]):
 
     def create_worker_copy(
         self, worker_index: int
-    ) -> InterProcessMessagingManagerQueue[MessageT]:
+    ) -> InterProcessMessagingManagerQueue[SendMessageT, ReceiveMessageT]:
         """
         Create worker-specific copy for managed queue-based coordination.
 
@@ -646,9 +727,9 @@ class InterProcessMessagingManagerQueue(InterProcessMessagingQueue[MessageT]):
         self.done_queue = None
 
 
-class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
+class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessageT]):
     """
-    Pipe-based inter-process messaging implementation for scheduler coordination.
+    Pipe-based inter-process messaging for distributed scheduler coordination.
 
     Provides message passing using multiprocessing.Pipe objects for direct
     communication between scheduler workers and main process. Offers lower
@@ -685,7 +766,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
         on_full_action: Literal["ignore", "stop", "error"] = "ignore",
         poll_interval: float = 0.1,
         worker_index: int | None = None,
-        pipe: ProcessingPipe | None = None,
+        pipe: tuple[Connection, Connection] | None = None,
     ):
         """
         Initialize pipe-based messaging for inter-process communication.
@@ -693,11 +774,10 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
         :param num_workers: Number of worker processes requiring pipe connections
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum number of items in send queue before blocking
-        :param max_buffer_send_size: Maximum number of items in buffer send queue
-        :param max_receive_size: Maximum number of items in receive queue before
-            blocking
-        :param max_buffer_receive_size: Maximum number of items in buffer receive queue
+        :param max_send_size: Maximum items in send queue before blocking
+        :param max_buffer_send_size: Maximum items in buffer send queue
+        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param on_stop_action: Behavior when stop events are triggered
         :param on_empty_action: Behavior when message queues become empty
         :param on_full_action: Behavior when message queues become full
@@ -721,15 +801,15 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
         self.num_workers = num_workers
 
         if pipe is None:
-            self.pipes: list[ProcessingPipe] = [
+            self.pipes: list[tuple[Connection, Connection]] = [
                 ProcessingPipe(duplex=True) for _ in range(num_workers)
             ]
         else:
-            self.pipes: list[ProcessingPipe] = [pipe]
+            self.pipes: list[tuple[Connection, Connection]] = [pipe]
 
     def create_worker_copy(
         self, worker_index: int
-    ) -> InterProcessMessagingPipe[MessageT]:
+    ) -> InterProcessMessagingPipe[SendMessageT, ReceiveMessageT]:
         """
         Create worker-specific copy for pipe-based coordination.
 
@@ -756,14 +836,22 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
         """
         await super().stop()
         if self.worker_index is None:
+            # Only main process should close the pipes
             for main_con, worker_con in self.pipes:
                 main_con.close()
                 worker_con.close()
 
-    async def send_messages_task(self, send_items: Iterable[Any] | None):
+    async def send_messages_task(
+        self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+        send_items: Iterable[Any] | None,
+    ):
         """
         Execute asynchronous pipe-based message sending task.
 
+        :param message_encoding: Encoding configuration for message serialization
+        :param stop_events: Events that trigger task termination
         :param send_items: Optional collection of items to send via pipes
         """
         canceled_event = ThreadingEvent()
@@ -774,8 +862,10 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                 await asyncio.gather(
                     *[
                         asyncio.to_thread(
-                            self.send_messages_task_thread,
+                            self._send_messages_task_thread,
                             self.pipes[index],
+                            message_encoding,
+                            stop_events,
                             send_items,
                             canceled_event,
                         )
@@ -784,8 +874,10 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                 )
             else:
                 await asyncio.to_thread(
-                    self.send_messages_task_thread,
+                    self._send_messages_task_thread,
                     self.pipes[0],
+                    message_encoding,
+                    stop_events,
                     send_items,
                     canceled_event,
                 )
@@ -796,11 +888,16 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
             self.stopped_event.set()
 
     async def receive_messages_task(
-        self, receive_callback: Callable[[Any], None] | None
+        self,
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
+        receive_callback: Callable[[Any], None] | None,
     ):
         """
         Execute asynchronous pipe-based message receiving task.
 
+        :param message_encoding: Encoding configuration for message deserialization
+        :param stop_events: Events that trigger task termination
         :param receive_callback: Optional callback to process received messages
         """
         canceled_event = ThreadingEvent()
@@ -811,8 +908,10 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                 await asyncio.gather(
                     *[
                         asyncio.to_thread(
-                            self.receive_messages_task_thread,
+                            self._receive_messages_task_thread,
                             self.pipes[index],
+                            message_encoding,
+                            stop_events,
                             receive_callback,
                             canceled_event,
                         )
@@ -821,8 +920,10 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                 )
             else:
                 await asyncio.to_thread(
-                    self.receive_messages_task_thread,
+                    self._receive_messages_task_thread,
                     self.pipes[0],
+                    message_encoding,
+                    stop_events,
                     receive_callback,
                     canceled_event,
                 )
@@ -832,9 +933,11 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
         finally:
             self.stopped_event.set()
 
-    def send_messages_task_thread(  # noqa: C901, PLR0912
+    def _send_messages_task_thread(  # noqa: C901, PLR0912
         self,
-        pipe: ProcessingPipe,
+        pipe: tuple[Connection, Connection],
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
         send_items: Iterable[Any] | None,
         canceled_event: ThreadingEvent,
     ):
@@ -867,7 +970,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
             threading.Thread(target=_background_pipe_recv, daemon=True).start()
 
         while not canceled_event.is_set():
-            if self.check_on_stop_action(pending_item, queue_empty_reported):
+            if self.check_on_stop_action(
+                pending_item, queue_empty_reported, stop_events
+            ):
                 break
 
             queue_empty_reported = False
@@ -880,7 +985,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                         item = self.buffer_send_queue.sync_get(
                             timeout=self.poll_interval
                         )
-                    pending_item = self.message_encoding.encode(item)
+                    pending_item = message_encoding.encode(item)
                 except (culsans.QueueEmpty, queue.Empty, StopIteration):
                     queue_empty_reported = True
                     if self.check_on_queue_empty_action(pending_item):
@@ -901,9 +1006,11 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
                     if self.check_on_queue_full_action(pending_item):
                         break
 
-    def receive_messages_task_thread(  # noqa: C901
+    def _receive_messages_task_thread(  # noqa: C901
         self,
-        pipe: ProcessingPipe,
+        pipe: tuple[Connection, Connection],
+        message_encoding: MessageEncoding,
+        stop_events: list[ThreadingEvent | ProcessingEvent],
         receive_callback: Callable[[Any], None] | None,
         canceled_event: ThreadingEvent,
     ):
@@ -915,14 +1022,16 @@ class InterProcessMessagingPipe(InterProcessMessaging[MessageT]):
         queue_empty_reported = False
 
         while not canceled_event.is_set():
-            if self.check_on_stop_action(pending_item, queue_empty_reported):
+            if self.check_on_stop_action(
+                pending_item, queue_empty_reported, stop_events
+            ):
                 break
 
             if pending_item is None:
                 try:
                     if receive_connection.poll(self.poll_interval):
                         item = receive_connection.recv()
-                        pending_item = self.message_encoding.decode(item)
+                        pending_item = message_encoding.decode(item)
                     else:
                         raise queue.Empty
                 except (culsans.QueueEmpty, queue.Empty):
