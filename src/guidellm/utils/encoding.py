@@ -76,6 +76,11 @@ class MessageEncoding(Generic[ObjT, MsgT]):
     performance and compatibility across different transport mechanisms used in
     distributed scheduler operations.
 
+    For performance reasons, this encoding only supports Python primitives
+    (int, float, str), Pydantic models, and collections of mixed Pydantic and Python
+    models for a single level of nesting (list[Pydantic, int, float, str], tuple, dict).
+    Nested combinations of mixtures of Pydantic and Python models are not supported.
+
     Example:
     ::
         from guidellm.utils.encoding import MessageEncoding
@@ -305,6 +310,11 @@ class Serializer:
     encoding/decoding cycles by storing class metadata and enabling proper
     reconstruction of complex objects. Supports both dictionary-based and
     sequence-based serialization strategies for different use cases.
+
+    For performance reasons, this serializer only supports Python primitives
+    (int, float, str), Pydantic models, and collections of mixed Pydantic and Python
+    models for a single level of nesting (list[Pydantic, int, float, str], tuple, dict).
+    Nested combinations of mixtures of Pydantic and Python models are not supported.
     """
 
     def __init__(
