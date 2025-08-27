@@ -56,6 +56,7 @@ from .text import (
     split_text,
     split_text_list_by_length,
 )
+from .typing import get_literal_vals
 
 __all__ = [
     "SUPPORTED_TYPES",
@@ -91,6 +92,7 @@ __all__ = [
     "check_load_processor",
     "clean_text",
     "filter_text",
+    "get_literal_vals",
     "is_punctuation",
     "load_text",
     "safe_add",
