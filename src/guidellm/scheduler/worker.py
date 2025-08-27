@@ -25,9 +25,8 @@ from guidellm.backend import (
     StreamingTextResponse,
 )
 from guidellm.request import GenerationRequest
-from guidellm.scheduler.result import SchedulerRequestInfo
-from guidellm.scheduler.types import RequestT, ResponseT
-from guidellm.utils import StandardBaseModel
+from guidellm.scheduler.objects import RequestT, ResponseT
+from guidellm.utils import StandardBaseDict, StandardBaseModel
 
 __all__ = [
     "GenerativeRequestsWorker",
@@ -53,7 +52,7 @@ class WorkerProcessResult(Generic[RequestT, ResponseT]):
     type_: Literal["request_scheduled", "request_start", "request_complete"]
     request: RequestT
     response: Optional[ResponseT]
-    info: SchedulerRequestInfo
+    info: Any
 
 
 @dataclass
@@ -142,7 +141,7 @@ class RequestsWorker(ABC, Generic[RequestT, ResponseT]):
         results_queue: multiprocessing.Queue,
         process_id: int,
     ):
-        info = SchedulerRequestInfo(
+        info = StandardBaseDict(
             targeted_start_time=start_time,
             queued_time=queued_time,
             dequeued_time=dequeued_time,

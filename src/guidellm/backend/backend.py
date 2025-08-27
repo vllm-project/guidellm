@@ -7,7 +7,7 @@ from loguru import logger
 from PIL import Image
 
 from guidellm.backend.response import ResponseSummary, StreamingTextResponse
-from guidellm.config import settings
+from guidellm.settings import settings
 
 __all__ = [
     "Backend",

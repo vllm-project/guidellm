@@ -1,7 +1,7 @@
 import pytest
 
 from guidellm.backend import OpenAIHTTPBackend
-from guidellm.config import settings
+from guidellm.settings import settings
 
 
 @pytest.mark.smoke

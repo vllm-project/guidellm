@@ -2,7 +2,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import computed_field
 
-from guidellm.config import settings
+from guidellm.settings import settings
 from guidellm.utils import StandardBaseModel
 
 __all__ = [
