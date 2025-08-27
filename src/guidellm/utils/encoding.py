@@ -528,7 +528,7 @@ class Serializer:
             packed sequences
         """
         type_, payload, remaining = self.unpack_next_sequence(data)
-        if remaining:
+        if remaining is not None:
             raise ValueError("Data contains multiple packed sequences; expected one.")
 
         if type_ == "pydantic":
