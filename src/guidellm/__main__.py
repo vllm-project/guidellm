@@ -1,7 +1,7 @@
 import asyncio
 import codecs
 from pathlib import Path
-from typing import get_args
+from typing import Union
 
 import click
 
@@ -19,12 +19,10 @@ from guidellm.benchmark.scenario import (
 from guidellm.config import print_config
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
-from guidellm.utils import DefaultGroupHandler
+from guidellm.utils import DefaultGroupHandler, get_literal_vals
 from guidellm.utils import cli as cli_tools
 
-STRATEGY_PROFILE_CHOICES = list(
-    set(list(get_args(ProfileType)) + list(get_args(StrategyType)))
-)
+STRATEGY_PROFILE_CHOICES = list(get_literal_vals(Union[ProfileType, StrategyType]))
 
 
 @click.group()
@@ -93,10 +91,10 @@ def benchmark():
     "--backend",
     "--backend-type",  # legacy alias
     "backend",
-    type=click.Choice(list(get_args(BackendType))),
+    type=click.Choice(list(get_literal_vals(BackendType))),
     help=(
         "The type of backend to use to run requests against. Defaults to 'openai_http'."
-        f" Supported types: {', '.join(get_args(BackendType))}"
+        f" Supported types: {', '.join(get_literal_vals(BackendType))}"
     ),
     default="openai_http",
 )
