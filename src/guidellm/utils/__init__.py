@@ -29,6 +29,7 @@ from .messaging import (
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
 )
+from .mixins import InfoMixin
 from .pydantic_utils import (
     PydanticClassRegistryMixin,
     ReloadableBaseModel,
@@ -65,6 +66,7 @@ __all__ = [
     "Encoder",
     "EncodingTypesAlias",
     "EndlessTextCreator",
+    "InfoMixin",
     "IntegerRangeSampler",
     "InterProcessMessaging",
     "InterProcessMessagingManagerQueue",

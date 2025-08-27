@@ -9,24 +9,19 @@ from typing import (
     Any,
     Generic,
     Optional,
-    Union,
 )
 
 from loguru import logger
 
-from guidellm.config import settings
-from guidellm.scheduler.result import (
-    SchedulerRequestResult,
-    SchedulerResult,
-    SchedulerRunInfo,
-)
+from guidellm.scheduler.objects import RequestT, ResponseT
 from guidellm.scheduler.strategy import SchedulingStrategy
-from guidellm.scheduler.types import RequestT, ResponseT
 from guidellm.scheduler.worker import (
     RequestsWorker,
     WorkerProcessRequest,
     WorkerProcessResult,
 )
+from guidellm.settings import settings
+from guidellm.utils import StandardBaseDict
 
 __all__ = ["Scheduler"]
 
@@ -70,9 +65,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
         scheduling_strategy: SchedulingStrategy,
         max_number: Optional[int] = None,
         max_duration: Optional[float] = None,
-    ) -> AsyncGenerator[
-        Union[SchedulerResult, SchedulerRequestResult[RequestT, ResponseT]], None
-    ]:
+    ) -> AsyncGenerator[Any, None]:
         """
         The main method that runs the scheduler.
         This method is a generator that yields SchedulerResult objects
@@ -126,7 +119,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             run_info, requests_iter, times_iter = self._run_setup(
                 futures, scheduling_strategy, max_number, max_duration
             )
-            yield SchedulerResult(
+            yield StandardBaseDict(
                 type_="run_start",
                 run_info=run_info,
             )
@@ -166,7 +159,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             except Exception as err:
                 raise RuntimeError(f"Scheduler run failed: {err}") from err
 
-            yield SchedulerResult(
+            yield StandardBaseDict(
                 type_="run_complete",
                 run_info=run_info,
             )
@@ -249,7 +242,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
         scheduling_strategy: SchedulingStrategy,
         max_number: Optional[int],
         max_duration: Optional[float],
-    ) -> tuple[SchedulerRunInfo, Iterator[Any], Iterator[float]]:
+    ) -> tuple[StandardBaseDict, Iterator[Any], Iterator[float]]:
         requests_iter = iter(self.request_loader)
         start_time = time.time()
         times_iter = iter(scheduling_strategy.request_times())
@@ -270,7 +263,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
                 "scheduler will run indefinitely until the request loader is exhausted."
             )
 
-        info = SchedulerRunInfo(
+        info = StandardBaseDict(
             start_time=start_time,
             end_time=end_time,
             end_number=end_number,
@@ -285,7 +278,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
         requests_iter: Optional[Iterator[Any]],
         times_iter: Iterator[float],
         requests_queue: multiprocessing.Queue,
-        run_info: SchedulerRunInfo,
+        run_info: StandardBaseDict,
     ) -> Optional[Iterator[Any]]:
         if requests_iter is not None:
             try:
@@ -325,8 +318,8 @@ class Scheduler(Generic[RequestT, ResponseT]):
     def _check_result_ready(
         self,
         responses_queue: multiprocessing.Queue,
-        run_info: SchedulerRunInfo,
-    ) -> Optional[SchedulerRequestResult[RequestT, ResponseT]]:
+        run_info: StandardBaseDict,
+    ) -> Optional[StandardBaseDict]:
         try:
             process_response: WorkerProcessResult[RequestT, ResponseT] = (
                 responses_queue.get_nowait()
@@ -338,7 +331,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             run_info.queued_requests -= 1
             run_info.scheduled_requests += 1
 
-            return SchedulerRequestResult(
+            return StandardBaseDict(
                 type_="request_scheduled",
                 run_info=run_info,
                 request=process_response.request,
@@ -350,7 +343,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             run_info.scheduled_requests -= 1
             run_info.processing_requests += 1
 
-            return SchedulerRequestResult(
+            return StandardBaseDict(
                 type_="request_start",
                 run_info=run_info,
                 request=process_response.request,
@@ -362,7 +355,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             run_info.processing_requests -= 1
             run_info.completed_requests += 1
 
-            return SchedulerRequestResult(
+            return StandardBaseDict(
                 type_="request_complete",
                 run_info=run_info,
                 request=process_response.request,
