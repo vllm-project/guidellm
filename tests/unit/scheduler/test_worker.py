@@ -166,7 +166,7 @@ class TestWorkerProcess:
                 startup_barrier=Barrier(2),
                 shutdown_event=Event(),
                 error_event=Event(),
-                completed_event=Event(),
+                requests_completed_event=Event(),
                 backend=MockBackend(),
                 request_timings=LastCompletionRequestTimings(),
             )
@@ -259,8 +259,8 @@ class TestWorkerProcess:
         assert isinstance(instance.shutdown_event, ProcessingEvent)
         assert instance.error_event is not None
         assert isinstance(instance.error_event, ProcessingEvent)
-        assert instance.completed_event is not None
-        assert isinstance(instance.completed_event, ProcessingEvent)
+        assert instance.requests_completed_event is not None
+        assert isinstance(instance.requests_completed_event, ProcessingEvent)
         assert instance.backend is not None
         assert isinstance(instance.backend, MockBackend)
         assert instance.request_timings is not None
@@ -291,7 +291,7 @@ class TestWorkerProcess:
             "startup_barrier",
             "shutdown_event",
             "error_event",
-            "completed_event",
+            "requests_completed_event",
             "backend",
             "request_timings",
         ]
@@ -303,7 +303,7 @@ class TestWorkerProcess:
                 "startup_barrier": barrier,
                 "shutdown_event": shutdown_event,
                 "error_event": error_event,
-                "completed_event": completed_event,
+                "requests_completed_event": completed_event,
                 "backend": backend,
                 "request_timings": request_timings,
             }
@@ -405,6 +405,10 @@ class TestWorkerProcess:
                     ),
                     timeout=2.0,
                 )
+
+            # Signal that all requests have been sent
+            instance.requests_completed_event.set()
+
             for _ in range(num_canceled):
                 response, request, request_info = await main_messaging.get(timeout=2.0)
                 if request_info.status == "in_progress":
@@ -611,6 +615,7 @@ class TestWorkerProcess:
                         assert target_offset <= prev_offset + bounds.tolerance
 
             # Trigger shutdown
+            instance.requests_completed_event.set()
             instance.shutdown_event.set()
             await asyncio.to_thread(process.join, timeout=2.0)
         finally:
@@ -620,8 +625,4 @@ class TestWorkerProcess:
                 await asyncio.to_thread(process.join, timeout=2.0)
             assert process.exitcode <= 0, (
                 f"Process exited with error code: {process.exitcode}"
-            )
-            # Verify that the completed_event was set
-            assert instance.completed_event.is_set(), (
-                "completed_event should be set after process completion"
             )

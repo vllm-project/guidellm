@@ -53,14 +53,14 @@ class MessagingStopCallback(Protocol):
     """Protocol for evaluating stop conditions in messaging operations."""
 
     def __call__(
-        self, messaging: InterProcessMessaging, pending: bool, queue_empty: bool
+        self, messaging: InterProcessMessaging, pending: bool, queue_empty: int
     ) -> bool:
         """
         Evaluate whether messaging operations should stop.
 
         :param messaging: The messaging instance to evaluate
         :param pending: Whether there are pending operations
-        :param queue_empty: Whether the queue is empty
+        :param queue_empty: The number of times in a row the queue has been empty
         :return: True if operations should stop, False otherwise
         """
         ...
@@ -81,7 +81,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
 
         messaging = InterProcessMessagingQueue(
             serialization="pickle",
-            max_send_size=100
+            max_pending_size=100
         )
 
         await messaging.start()
@@ -90,13 +90,15 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         await messaging.stop()
     """
 
+    STOP_REQUIRED_QUEUE_EMPTY: int = 3
+
     def __init__(
         self,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias | list[EncodingTypesAlias] = None,
-        max_send_size: int | None = None,
+        max_pending_size: int | None = None,
         max_buffer_send_size: int | None = None,
-        max_receive_size: int | None = None,
+        max_done_size: int | None = None,
         max_buffer_receive_size: int | None = None,
         poll_interval: float = 0.1,
         worker_index: int | None = None,
@@ -106,9 +108,9 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
 
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum items in send queue before blocking
+        :param max_pending_size: Maximum items in send queue before blocking
         :param max_buffer_send_size: Maximum items in buffer send queue
-        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_done_size: Maximum items in done queue before blocking
         :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param poll_interval: Time interval for checking queue status and events
         :param worker_index: Index identifying this worker in the process group
@@ -116,14 +118,14 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self.worker_index: int | None = worker_index
         self.serialization = serialization
         self.encoding = encoding
-        self.max_send_size = max_send_size
+        self.max_pending_size = max_pending_size
         self.max_buffer_send_size = max_buffer_send_size
-        self.max_receive_size = max_receive_size
+        self.max_done_size = max_done_size
         self.max_buffer_receive_size = max_buffer_receive_size
         self.poll_interval = poll_interval
 
-        self.send_stopped_event: ThreadingEvent = None
-        self.receive_stopped_event: ThreadingEvent = None
+        self.send_stopped_event: ThreadingEvent | ProcessingEvent = None
+        self.receive_stopped_event: ThreadingEvent | ProcessingEvent = None
         self.shutdown_event: ThreadingEvent = None
         self.buffer_send_queue: culsans.Queue[SendMessageT] = None
         self.buffer_receive_queue: culsans.Queue[ReceiveMessageT] = None
@@ -184,9 +186,11 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         send_stop_criteria: (
             list[ThreadingEvent | ProcessingEvent | MessagingStopCallback] | None
         ) = None,
+        send_stopped_event: ThreadingEvent | ProcessingEvent | None = None,
         receive_stop_criteria: (
             list[ThreadingEvent | ProcessingEvent | MessagingStopCallback] | None
         ) = None,
+        receive_stopped_event: ThreadingEvent | ProcessingEvent | None = None,
         pydantic_models: list[type[BaseModel]] | None = None,
     ):
         """
@@ -195,12 +199,14 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :param send_items: Optional collection of items to send during processing
         :param receive_callback: Optional callback for processing received messages
         :param send_stop_criteria: Events and callables that trigger send task shutdown
+        :param send_stopped_event: Event set when send task has fully stopped
         :param receive_stop_criteria: Events and callables that trigger receive shutdown
+        :param receive_stopped_event: Event set when receive task has fully stopped
         :param pydantic_models: Optional list of Pydantic models for serialization
         """
         self.running = True
-        self.send_stopped_event = ThreadingEvent()
-        self.receive_stopped_event = ThreadingEvent()
+        self.send_stopped_event = send_stopped_event or ThreadingEvent()
+        self.receive_stopped_event = receive_stopped_event or ThreadingEvent()
         self.shutdown_event = ThreadingEvent()
         self.buffer_send_queue = culsans.Queue[SendMessageT](
             maxsize=self.max_buffer_send_size or 0
@@ -384,18 +390,18 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         )
         stop_callbacks = tuple(item for item in stop_criteria or [] if callable(item))
 
-        def check_stop(pending: bool, queue_empty: bool) -> bool:
+        def check_stop(pending: bool, queue_empty: int) -> bool:
             if canceled_event.is_set():
                 return True
 
-            if pending or not queue_empty:
-                # can't stop, still processing messages
-                return False
+            if any(cb(self, pending, queue_empty) for cb in stop_callbacks):
+                return True
 
             return (
-                self.shutdown_event.is_set()
+                not pending
+                and queue_empty >= self.STOP_REQUIRED_QUEUE_EMPTY
+                and self.shutdown_event.is_set()
                 or any(event.is_set() for event in stop_events)
-                or any(cb(self, pending, queue_empty) for cb in stop_callbacks)
             )
 
         return check_stop
@@ -416,7 +422,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
 
         messaging = InterProcessMessagingQueue(
             serialization="pickle",
-            max_send_size=100
+            max_pending_size=100
         )
 
         # Create worker copy for distributed processing
@@ -427,13 +433,13 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         self,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias = None,
-        max_send_size: int | None = None,
+        max_pending_size: int | None = None,
         max_buffer_send_size: int | None = None,
-        max_receive_size: int | None = None,
+        max_done_size: int | None = None,
         max_buffer_receive_size: int | None = None,
         poll_interval: float = 0.1,
         worker_index: int | None = None,
-        send_queue: multiprocessing.Queue | None = None,
+        pending_queue: multiprocessing.Queue | None = None,
         done_queue: multiprocessing.Queue | None = None,
     ):
         """
@@ -441,30 +447,30 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
 
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum items in send queue before blocking
+        :param max_pending_size: Maximum items in send queue before blocking
         :param max_buffer_send_size: Maximum items in buffer send queue
-        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_done_size: Maximum items in receive queue before blocking
         :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param poll_interval: Time interval for checking queue status and events
         :param worker_index: Index identifying this worker in the process group
-        :param send_queue: Multiprocessing queue for sending messages
+        :param pending_queue: Multiprocessing queue for sending messages
         :param done_queue: Multiprocessing queue for receiving completed messages
         """
         super().__init__(
             serialization=serialization,
             encoding=encoding,
-            max_send_size=max_send_size,
+            max_pending_size=max_pending_size,
             max_buffer_send_size=max_buffer_send_size,
-            max_receive_size=max_receive_size,
+            max_done_size=max_done_size,
             max_buffer_receive_size=max_buffer_receive_size,
             poll_interval=poll_interval,
             worker_index=worker_index,
         )
-        self.send_queue = send_queue or multiprocessing.Queue(
-            maxsize=max_send_size or 0
+        self.pending_queue = pending_queue or multiprocessing.Queue(
+            maxsize=max_pending_size or 0
         )
         self.done_queue = done_queue or multiprocessing.Queue(
-            maxsize=max_receive_size or 0
+            maxsize=max_done_size or 0
         )
 
     def create_worker_copy(
@@ -479,13 +485,13 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         copy_args = {
             "serialization": self.serialization,
             "encoding": self.encoding,
-            "max_send_size": self.max_send_size,
+            "max_pending_size": self.max_pending_size,
             "max_buffer_send_size": self.max_buffer_send_size,
-            "max_receive_size": self.max_receive_size,
+            "max_done_size": self.max_done_size,
             "max_buffer_receive_size": self.max_buffer_receive_size,
             "poll_interval": self.poll_interval,
             "worker_index": worker_index,
-            "send_queue": self.send_queue,
+            "pending_queue": self.pending_queue,
             "done_queue": self.done_queue,
         }
         copy_args.update(kwargs)
@@ -499,9 +505,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         await super().stop()
         if self.worker_index is None:
             # only main process should close the queues
-            self.send_queue.close()
+            self.pending_queue.close()
             self.done_queue.close()
-        self.send_queue = None
+        self.pending_queue = None
         self.done_queue = None
 
     def create_send_messages_threads(
@@ -554,11 +560,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
     ):
         send_items_iter = iter(send_items) if send_items is not None else None
         pending_item = None
-        queue_empty_reported = False
+        queue_empty = 0
 
-        while not check_stop(pending_item is not None, queue_empty_reported):
-            queue_empty_reported = False
-
+        while not check_stop(pending_item is not None, queue_empty):
             if pending_item is None:
                 try:
                     if send_items_iter is not None:
@@ -568,14 +572,15 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                             timeout=self.poll_interval
                         )
                     pending_item = message_encoding.encode(item)
+                    queue_empty = 0
                 except (culsans.QueueEmpty, queue.Empty, StopIteration):
-                    queue_empty_reported = True
+                    queue_empty += 1
 
             if pending_item is not None:
                 try:
                     if self.worker_index is None:
                         # Main publisher
-                        self.send_queue.put(pending_item, timeout=self.poll_interval)
+                        self.pending_queue.put(pending_item, timeout=self.poll_interval)
                     else:
                         # Worker
                         self.done_queue.put(pending_item, timeout=self.poll_interval)
@@ -593,9 +598,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
     ):
         pending_item = None
         received_item = None
-        queue_empty_reported = False
+        queue_empty = 0
 
-        while not check_stop(pending_item is not None, queue_empty_reported):
+        while not check_stop(pending_item is not None, queue_empty):
             if pending_item is None:
                 try:
                     if self.worker_index is None:
@@ -603,10 +608,11 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                         item = self.done_queue.get(timeout=self.poll_interval)
                     else:
                         # Worker
-                        item = self.send_queue.get(timeout=self.poll_interval)
+                        item = self.pending_queue.get(timeout=self.poll_interval)
                     pending_item = message_encoding.decode(item)
+                    queue_empty = 0
                 except (culsans.QueueEmpty, queue.Empty):
-                    queue_empty_reported = True
+                    queue_empty += 1
 
             if pending_item is not None or received_item is not None:
                 try:
@@ -652,13 +658,13 @@ class InterProcessMessagingManagerQueue(
         manager: BaseContext,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias = None,
-        max_send_size: int | None = None,
+        max_pending_size: int | None = None,
         max_buffer_send_size: int | None = None,
-        max_receive_size: int | None = None,
+        max_done_size: int | None = None,
         max_buffer_receive_size: int | None = None,
         poll_interval: float = 0.1,
         worker_index: int | None = None,
-        send_queue: multiprocessing.Queue | None = None,
+        pending_queue: multiprocessing.Queue | None = None,
         done_queue: multiprocessing.Queue | None = None,
     ):
         """
@@ -667,27 +673,27 @@ class InterProcessMessagingManagerQueue(
         :param manager: Multiprocessing manager for shared queue creation
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum items in send queue before blocking
+        :param max_pending_size: Maximum items in send queue before blocking
         :param max_buffer_send_size: Maximum items in buffer send queue
-        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_done_size: Maximum items in receive queue before blocking
         :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param poll_interval: Time interval for checking queue status and events
         :param worker_index: Index identifying this worker in the process group
-        :param send_queue: Managed multiprocessing queue for sending messages
+        :param pending_queue: Managed multiprocessing queue for sending messages
         :param done_queue: Managed multiprocessing queue for receiving completed
             messages
         """
         super().__init__(
             serialization=serialization,
             encoding=encoding,
-            max_send_size=max_send_size,
+            max_pending_size=max_pending_size,
             max_buffer_send_size=max_buffer_send_size,
-            max_receive_size=max_receive_size,
+            max_done_size=max_done_size,
             max_buffer_receive_size=max_buffer_receive_size,
             poll_interval=poll_interval,
             worker_index=worker_index,
-            send_queue=send_queue or manager.Queue(maxsize=max_send_size or 0),
-            done_queue=done_queue or manager.Queue(maxsize=max_receive_size or 0),
+            pending_queue=pending_queue or manager.Queue(maxsize=max_pending_size or 0),
+            done_queue=done_queue or manager.Queue(maxsize=max_done_size or 0),
         )
 
     def create_worker_copy(
@@ -703,13 +709,13 @@ class InterProcessMessagingManagerQueue(
             "manager": None,
             "serialization": self.serialization,
             "encoding": self.encoding,
-            "max_send_size": self.max_send_size,
+            "max_pending_size": self.max_pending_size,
             "max_buffer_send_size": self.max_buffer_send_size,
-            "max_receive_size": self.max_receive_size,
+            "max_done_size": self.max_done_size,
             "max_buffer_receive_size": self.max_buffer_receive_size,
             "poll_interval": self.poll_interval,
             "worker_index": worker_index,
-            "send_queue": self.send_queue,
+            "pending_queue": self.pending_queue,
             "done_queue": self.done_queue,
         }
         copy_args.update(kwargs)
@@ -721,7 +727,7 @@ class InterProcessMessagingManagerQueue(
         Stop the messaging system and wait for all tasks to complete.
         """
         await InterProcessMessaging.stop(self)
-        self.send_queue = None
+        self.pending_queue = None
         self.done_queue = None
 
 
@@ -753,9 +759,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         num_workers: int,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias = None,
-        max_send_size: int | None = None,
+        max_pending_size: int | None = None,
         max_buffer_send_size: int | None = None,
-        max_receive_size: int | None = None,
+        max_done_size: int | None = None,
         max_buffer_receive_size: int | None = None,
         poll_interval: float = 0.1,
         worker_index: int | None = None,
@@ -767,9 +773,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         :param num_workers: Number of worker processes requiring pipe connections
         :param serialization: Message serialization method for transport encoding
         :param encoding: Optional encoding scheme for serialized message data
-        :param max_send_size: Maximum items in send queue before blocking
+        :param max_pending_size: Maximum items in send queue before blocking
         :param max_buffer_send_size: Maximum items in buffer send queue
-        :param max_receive_size: Maximum items in receive queue before blocking
+        :param max_done_size: Maximum items in receive queue before blocking
         :param max_buffer_receive_size: Maximum items in buffer receive queue
         :param poll_interval: Time interval for checking queue status and events
         :param worker_index: Index identifying this worker in the process group
@@ -778,9 +784,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         super().__init__(
             serialization=serialization,
             encoding=encoding,
-            max_send_size=max_send_size,
+            max_pending_size=max_pending_size,
             max_buffer_send_size=max_buffer_send_size,
-            max_receive_size=max_receive_size,
+            max_done_size=max_done_size,
             max_buffer_receive_size=max_buffer_receive_size,
             poll_interval=poll_interval,
             worker_index=worker_index,
@@ -807,9 +813,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
             "num_workers": self.num_workers,
             "serialization": self.serialization,
             "encoding": self.encoding,
-            "max_send_size": self.max_send_size,
+            "max_pending_size": self.max_pending_size,
             "max_buffer_send_size": self.max_buffer_send_size,
-            "max_receive_size": self.max_receive_size,
+            "max_done_size": self.max_done_size,
             "max_buffer_receive_size": self.max_buffer_receive_size,
             "poll_interval": self.poll_interval,
             "worker_index": worker_index,
@@ -903,7 +909,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         send_connection: Connection = pipe[0] if self.worker_index is None else pipe[1]
         send_items_iter = iter(send_items) if send_items is not None else None
         pending_item = None
-        queue_empty_reported = False
+        queue_empty = 0
         pipe_item = None
         pipe_lock = threading.Lock()
 
@@ -925,9 +931,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
             threading.Thread(target=_background_pipe_recv, daemon=True).start()
 
         try:
-            while not check_stop(pending_item is not None, queue_empty_reported):
-                queue_empty_reported = False
-
+            while not check_stop(pending_item is not None, queue_empty):
                 if pending_item is None:
                     try:
                         if send_items_iter is not None:
@@ -937,8 +941,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                                 timeout=self.poll_interval
                             )
                         pending_item = message_encoding.encode(item)
+                        queue_empty = 0
                     except (culsans.QueueEmpty, queue.Empty, StopIteration):
-                        queue_empty_reported = True
+                        queue_empty += 1
 
                 if pending_item is not None:
                     try:
@@ -968,9 +973,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         )
         pending_item = None
         received_item = None
-        queue_empty_reported = False
+        queue_empty = 0
 
-        while not check_stop(pending_item is not None, queue_empty_reported):
+        while not check_stop(pending_item is not None, queue_empty):
             if pending_item is None:
                 try:
                     if receive_connection.poll(self.poll_interval):
@@ -978,8 +983,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                         pending_item = message_encoding.decode(item)
                     else:
                         raise queue.Empty
+                    queue_empty = 0
                 except (culsans.QueueEmpty, queue.Empty):
-                    queue_empty_reported = True
+                    queue_empty += 1
 
             if pending_item is not None or received_item is not None:
                 try:

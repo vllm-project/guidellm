@@ -78,7 +78,7 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         startup_barrier: ProcessingBarrier,
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
-        completed_event: ProcessingEvent,
+        requests_completed_event: ProcessingEvent,
         backend: BackendInterface[RequestT, MeasuredRequestTimingsT, ResponseT],
         request_timings: ScheduledRequestTimings,
     ):
@@ -90,7 +90,8 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         :param startup_barrier: Multiprocessing barrier for coordinated startup
         :param shutdown_event: Event for signaling graceful shutdown
         :param error_event: Event for signaling error conditions across processes
-        :param completed_event: Event for signaling when this worker has completed
+        :param requests_completed_event: Event for signaling when the main process
+            has stopped sending requests / all requests are added to the queue
         :param backend: Backend instance for processing requests
         :param request_timings: Timing strategy for request scheduling
         """
@@ -99,7 +100,7 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self.startup_barrier = startup_barrier
         self.shutdown_event = shutdown_event
         self.error_event = error_event
-        self.completed_event = completed_event
+        self.requests_completed_event = requests_completed_event
         self.backend = backend
         self.request_timings = request_timings
         self.startup_completed = False
@@ -126,8 +127,6 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 f"Worker process {self.messaging.worker_index} encountered an "
                 f"error: {err}"
             ) from err
-        finally:
-            self.completed_event.set()
 
     async def run_async(self):
         """
@@ -212,11 +211,10 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             await self.backend.validate()
 
             # Get messaging system ready
-            processing_cancelled = ThreadingEvent()
             all_requests_processed = ThreadingEvent()
             await self.messaging.start(
                 send_stop_criteria=[all_requests_processed],
-                receive_stop_criteria=[processing_cancelled],
+                receive_stop_criteria=[self.requests_completed_event, self.error_event],
                 pydantic_models=list(
                     SchedulerMessagingPydanticRegistry.registry.values()
                 ),
@@ -255,7 +253,6 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 pending_tasks.add(request_task)
                 request_task.add_done_callback(_task_done)
         except (asyncio.CancelledError, Exception) as err:
-            processing_cancelled.set()
             await self._cancel_remaining_requests(pending_tasks, all_requests_processed)
             await self.messaging.stop()
             await self.backend.process_shutdown()
@@ -323,27 +320,17 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         prev_status = request_info.status
 
         try:
-            if (new_status == "in_progress" and prev_status != "in_progress") or (
-                new_status != "in_progress" and prev_status == "pending"
-            ):
-                request_info.status = "in_progress"
-                self.messaging.put_sync(
-                    (None, request, request_info.model_copy()),
-                    timeout=-1,
-                )
-                prev_status = new_status
-
-            if prev_status == "in_progress" and new_status in {
-                "completed",
-                "errored",
-                "cancelled",
-            }:
-                request_info.status = new_status
-                self.messaging.put_sync(
-                    (response, request, request_info),  # last update, no copy
-                    timeout=-1,
-                )
-                prev_status = new_status
+            request_info.status = new_status
+            request_info = (
+                request_info.model_copy()
+                if new_status not in {"completed", "errored", "cancelled"}
+                else request_info  # last update, don't need to copy
+            )
+            self.messaging.put_sync(
+                (response, request, request_info),
+                timeout=-1,
+            )
+            prev_status = new_status
         except Exception as exc:
             # Reset status to last one that succeeded or started function with
             # Calling logic can retry after handling error, if possible

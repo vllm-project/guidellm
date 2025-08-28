@@ -140,7 +140,8 @@ class Settings(BaseSettings):
     mp_messaging_object: Literal["queue", "manager_queue", "pipe"] = "queue"
     mp_requests_send_buffer_size: int = 1
     mp_poll_interval: float = 0.1
-    mp_proc_receive_buffer_per: float = 0.1
+    mp_max_pending_buffer_percent: float = 0.5
+    mp_max_worker_buffer_percent: float = 0.2
     max_concurrency: int = 512
     max_worker_processes: int = 10
     scheduler_start_delay_non_distributed: float = 0.1
