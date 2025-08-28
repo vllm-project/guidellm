@@ -253,9 +253,12 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 pending_tasks.add(request_task)
                 request_task.add_done_callback(_task_done)
         except (asyncio.CancelledError, Exception) as err:
-            await self._cancel_remaining_requests(pending_tasks, all_requests_processed)
-            await self.messaging.stop()
-            await self.backend.process_shutdown()
+            if self.startup_completed:
+                await self._cancel_remaining_requests(
+                    pending_tasks, all_requests_processed
+                )
+                await self.messaging.stop()
+                await self.backend.process_shutdown()
 
             raise err
 
