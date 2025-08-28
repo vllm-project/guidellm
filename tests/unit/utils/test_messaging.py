@@ -162,24 +162,24 @@ class TestInterProcessMessagingQueue:
             {
                 "serialization": "dict",
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
             {
                 "serialization": "sequence",
                 "encoding": None,
-                "max_send_size": 10,
+                "max_pending_size": 10,
                 "max_buffer_send_size": 2,
-                "max_receive_size": 5,
+                "max_done_size": 5,
                 "max_buffer_receive_size": 3,
                 "worker_index": None,
             },
             {
                 "serialization": None,
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
         ],
@@ -208,9 +208,9 @@ class TestInterProcessMessagingQueue:
 
         assert isinstance(instance, InterProcessMessagingQueue)
         assert instance.worker_index == constructor_args["worker_index"]
-        assert instance.max_send_size == constructor_args["max_send_size"]
-        assert instance.max_receive_size == constructor_args["max_receive_size"]
-        assert hasattr(instance, "send_queue")
+        assert instance.max_pending_size == constructor_args["max_pending_size"]
+        assert instance.max_done_size == constructor_args["max_done_size"]
+        assert hasattr(instance, "pending_queue")
         assert hasattr(instance, "done_queue")
         assert instance.running is False
 
@@ -224,10 +224,10 @@ class TestInterProcessMessagingQueue:
 
         assert isinstance(worker_copy, InterProcessMessagingQueue)
         assert worker_copy.worker_index == worker_index
-        assert worker_copy.send_queue is instance.send_queue
+        assert worker_copy.pending_queue is instance.pending_queue
         assert worker_copy.done_queue is instance.done_queue
-        assert worker_copy.max_send_size == instance.max_send_size
-        assert worker_copy.max_receive_size == instance.max_receive_size
+        assert worker_copy.max_pending_size == instance.max_pending_size
+        assert worker_copy.max_done_size == instance.max_done_size
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -458,24 +458,24 @@ class TestInterProcessMessagingManagerQueue:
             {
                 "serialization": "dict",
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
             {
                 "serialization": "sequence",
                 "encoding": None,
-                "max_send_size": 10,
+                "max_pending_size": 10,
                 "max_buffer_send_size": 2,
-                "max_receive_size": 5,
+                "max_done_size": 5,
                 "max_buffer_receive_size": 3,
                 "worker_index": None,
             },
             {
                 "serialization": None,
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
         ],
@@ -508,9 +508,9 @@ class TestInterProcessMessagingManagerQueue:
 
         assert isinstance(instance, InterProcessMessagingManagerQueue)
         assert instance.worker_index == constructor_args["worker_index"]
-        assert instance.max_send_size == constructor_args["max_send_size"]
-        assert instance.max_receive_size == constructor_args["max_receive_size"]
-        assert hasattr(instance, "send_queue")
+        assert instance.max_pending_size == constructor_args["max_pending_size"]
+        assert instance.max_done_size == constructor_args["max_done_size"]
+        assert hasattr(instance, "pending_queue")
         assert hasattr(instance, "done_queue")
         assert instance.running is False
 
@@ -524,10 +524,10 @@ class TestInterProcessMessagingManagerQueue:
 
         assert isinstance(worker_copy, InterProcessMessagingManagerQueue)
         assert worker_copy.worker_index == worker_index
-        assert worker_copy.send_queue is instance.send_queue
+        assert worker_copy.pending_queue is instance.pending_queue
         assert worker_copy.done_queue is instance.done_queue
-        assert worker_copy.max_send_size == instance.max_send_size
-        assert worker_copy.max_receive_size == instance.max_receive_size
+        assert worker_copy.max_pending_size == instance.max_pending_size
+        assert worker_copy.max_done_size == instance.max_done_size
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -754,17 +754,17 @@ class TestInterProcessMessagingPipe:
                 "num_workers": 2,
                 "serialization": "dict",
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
             {
                 "num_workers": 1,
                 "serialization": "sequence",
                 "encoding": None,
-                "max_send_size": 10,
+                "max_pending_size": 10,
                 "max_buffer_send_size": 2,
-                "max_receive_size": 5,
+                "max_done_size": 5,
                 "max_buffer_receive_size": 3,
                 "worker_index": None,
             },
@@ -772,8 +772,8 @@ class TestInterProcessMessagingPipe:
                 "num_workers": 1,
                 "serialization": None,
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
         ],
@@ -801,8 +801,8 @@ class TestInterProcessMessagingPipe:
 
         assert isinstance(instance, InterProcessMessagingPipe)
         assert instance.worker_index == constructor_args["worker_index"]
-        assert instance.max_send_size == constructor_args["max_send_size"]
-        assert instance.max_receive_size == constructor_args["max_receive_size"]
+        assert instance.max_pending_size == constructor_args["max_pending_size"]
+        assert instance.max_done_size == constructor_args["max_done_size"]
         assert instance.num_workers == constructor_args["num_workers"]
         assert hasattr(instance, "pipes")
         assert len(instance.pipes) == constructor_args["num_workers"]
@@ -839,8 +839,8 @@ class TestInterProcessMessagingPipe:
         assert isinstance(worker_copy, InterProcessMessagingPipe)
         assert worker_copy.worker_index == worker_index
         assert worker_copy.pipes[0] is instance.pipes[worker_index]
-        assert worker_copy.max_send_size == instance.max_send_size
-        assert worker_copy.max_receive_size == instance.max_receive_size
+        assert worker_copy.max_pending_size == instance.max_pending_size
+        assert worker_copy.max_done_size == instance.max_done_size
         assert worker_copy.num_workers == instance.num_workers
 
     @pytest.mark.smoke

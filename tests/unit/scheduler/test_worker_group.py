@@ -75,7 +75,7 @@ class MockBackend(BackendInterface):
         pass
 
     async def resolve(self, request, request_info, request_history):
-        yield f"response_for_{request}"
+        yield f"response_for_{request}", request_info
 
 
 class TestWorkerProcessGroup:
@@ -210,6 +210,8 @@ class TestWorkerProcessGroup:
         # Test shutdown
         await instance.shutdown()
         print(
-            f"\nRequests summary: created={state.created_requests}, queued={state.queued_requests}, processing={state.processing_requests}, processed={state.processed_requests} "
+            f"\nRequests summary: created={state.created_requests}, queued={state.queued_requests}, processing={state.processing_requests}, processed={state.processed_requests}, successful={state.successful_requests}, cancelled={state.cancelled_requests}, errored={state.errored_requests}"
         )
+        print(resp)
+        print(info)
         # TODO: check valid shutdown behavior

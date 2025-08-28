@@ -120,7 +120,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self.mp_context = None
         self.mp_manager = None
         self.processes: list[BaseProcess] = None
-        self.processes_completed_events: list[Event] = None
+        self.requests_completed_event: Event = None
         self.startup_barrier: Barrier = None
         self.shutdown_event: Event = None
         self.error_event: Event = None
@@ -176,8 +176,11 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             raise RuntimeError("num_processes resolved to 0; increase limits/config")
 
         per_proc_max_conc = max_conc // num_processes
-        per_proc_max_receive_buffer = max(
-            1, math.floor(per_proc_max_conc * settings.mp_proc_receive_buffer_per)
+        max_pending_size = max(
+            1, math.floor(max_conc * settings.mp_max_pending_buffer_percent)
+        )
+        per_proc_max_buffer_size = max(
+            1, math.floor(per_proc_max_conc * settings.mp_max_worker_buffer_percent)
         )
 
         # Initialize multiprocessing components
@@ -186,12 +189,13 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self.startup_barrier = self.mp_context.Barrier(num_processes + 1)
         self.shutdown_event = self.mp_context.Event()
         self.error_event = self.mp_context.Event()
+        self.requests_completed_event = self.mp_context.Event()
 
         if settings.mp_messaging_object == "queue":
             self.messaging = InterProcessMessagingQueue(
                 serialization=settings.mp_serialization,
                 encoding=settings.mp_encoding,
-                max_send_size=max_conc,
+                max_pending_size=max_pending_size,
                 max_buffer_send_size=settings.mp_requests_send_buffer_size,
                 poll_interval=settings.mp_poll_interval,
             )
@@ -200,7 +204,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 manager=self.mp_manager,
                 serialization=settings.mp_serialization,
                 encoding=settings.mp_encoding,
-                max_send_size=max_conc,
+                max_pending_size=max_pending_size,
                 max_buffer_send_size=settings.mp_requests_send_buffer_size,
                 poll_interval=settings.mp_poll_interval,
             )
@@ -209,32 +213,30 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 num_workers=num_processes,
                 serialization=settings.mp_serialization,
                 encoding=settings.mp_encoding,
-                max_send_size=max_conc,
+                max_pending_size=max_pending_size,
                 max_buffer_send_size=settings.mp_requests_send_buffer_size,
                 poll_interval=settings.mp_poll_interval,
             )
 
         # Initialize worker processes
         self.processes = []
-        self.processes_completed_events = []
         for rank in range(num_processes):
             # Distribute any remainder across the first N ranks
             async_limit = per_proc_max_conc + (
                 1 if rank < (max_conc % num_processes) else 0
             )
 
-            worker_completed_event = self.mp_context.Event()
             worker = WorkerProcess[RequestT, MeasuredRequestTimingsT, ResponseT](
                 messaging=self.messaging.create_worker_copy(
                     worker_index=rank,
                     max_buffer_send_size=None,
-                    max_buffer_receive_size=per_proc_max_receive_buffer,
+                    max_buffer_receive_size=per_proc_max_buffer_size,
                 ),
                 async_limit=async_limit,
                 startup_barrier=self.startup_barrier,
                 shutdown_event=self.shutdown_event,
                 error_event=self.error_event,
-                completed_event=worker_completed_event,
+                requests_completed_event=self.requests_completed_event,
                 backend=self.backend,
                 request_timings=self.strategy.create_request_timings(
                     local_rank=rank,
@@ -245,7 +247,6 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()
             self.processes.append(proc)
-            self.processes_completed_events.append(worker_completed_event)
 
         reason, _ = await synchronous_to_exitable_async(
             synchronous=None,
@@ -279,7 +280,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self._state = _WorkerGroupState[RequestT, MeasuredRequestTimingsT, ResponseT](
             start_time=start_time,
             num_processes=len(self.processes),
-            processes_completed_events=self.processes_completed_events,
+            processes=self.processes,
             constraints=self.constraints,
             shutdown_event=self.shutdown_event,
         )
@@ -289,6 +290,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             ),
             receive_callback=self._state.update_callback_receive,
             send_stop_criteria=[self.shutdown_event, self.error_event],
+            send_stopped_event=self.requests_completed_event,
             receive_stop_criteria=[self.error_event, self._state.stop_callback_receive],
             pydantic_models=list(SchedulerMessagingPydanticRegistry.registry.values()),
         )
@@ -408,7 +410,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self,
         start_time: float,
         num_processes: int,
-        processes_completed_events: list[Event],
+        processes: list[BaseProcess],
         constraints: dict[str, Constraint],
         shutdown_event: Event,
     ):
@@ -419,7 +421,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             num_processes=num_processes,
             start_time=start_time,
         )
-        self.processes_completed_events = processes_completed_events
+        self.processes = processes
         self._constraints = constraints
         self._internal_constraints: dict[str, Constraint] = {}
         self._shutdown_event = shutdown_event
@@ -544,7 +546,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             and messaging.send_stopped_event.is_set()  # No more requests will be added
             and self._shutdown_event.is_set()  # processing should stop
             and all(
-                event.is_set() for event in self.processes_completed_events
+                not proc.is_alive() for proc in self.processes
             )  # no more updates will be added by workers
         )
 
@@ -601,21 +603,19 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self._state.queued_requests += 1
 
     def _update_new_response(self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]):
-        if info.status == "in_progress":
+        if info.status == "in_progress" or (
+            info.status == "cancelled" and info.scheduler_timings.resolve_start is None
+            # Cancelled request that never sent a progress update
+        ):
             self._state.queued_requests -= 1
             self._state.processing_requests += 1
-        elif info.status in ("completed", "errored", "cancelled"):
+
+        if info.status in ("completed", "errored", "cancelled"):
             self._state.processing_requests -= 1
             self._state.processed_requests += 1
             self._state.successful_requests += 1 if info.status == "completed" else 0
             self._state.errored_requests += 1 if info.status == "errored" else 0
             self._state.cancelled_requests += 1 if info.status == "cancelled" else 0
-        else:
-            raise ValueError(
-                f"Unknown request status: {info.status}. "
-                "Supported statuses are: queued, pending, in_progress, "
-                "completed, errored, cancelled."
-            )
 
     def _update_with_constraints(
         self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]
