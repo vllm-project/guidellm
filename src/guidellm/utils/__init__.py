@@ -2,12 +2,10 @@ from .auto_importer import AutoImporterMixin
 from .console import Colors, Console, ConsoleUpdateStep, StatusIcons, StatusStyles
 from .default_group import DefaultGroupHandler
 from .encoding import (
-    EncodedTypeAlias,
     Encoder,
     EncodingTypesAlias,
     MessageEncoding,
     SerializationTypesAlias,
-    SerializedTypeAlias,
     Serializer,
 )
 from .functions import (
@@ -30,7 +28,7 @@ from .messaging import (
     InterProcessMessagingManagerQueue,
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
-    MessageT,
+    SendMessageT,
 )
 from .mixins import InfoMixin
 from .pydantic_utils import (
@@ -41,7 +39,7 @@ from .pydantic_utils import (
     StatusBreakdown,
 )
 from .random import IntegerRangeSampler
-from .registry import RegistryMixin
+from .registry import RegistryMixin, RegistryObjT
 from .singleton import SingletonMixin, ThreadSafeSingletonMixin
 from .statistics import (
     DistributionSummary,
@@ -72,7 +70,6 @@ __all__ = [
     "ConsoleUpdateStep",
     "DefaultGroupHandler",
     "DistributionSummary",
-    "EncodedTypeAlias",
     "Encoder",
     "EncodingTypesAlias",
     "EndlessTextCreator",
@@ -84,14 +81,14 @@ __all__ = [
     "InterProcessMessagingQueue",
     "MessageEncoding",
     "MessageEncoding",
-    "MessageT",
     "Percentiles",
     "PydanticClassRegistryMixin",
     "RegistryMixin",
+    "RegistryObjT",
     "ReloadableBaseModel",
     "RunningStats",
+    "SendMessageT",
     "SerializationTypesAlias",
-    "SerializedTypeAlias",
     "Serializer",
     "SingletonMixin",
     "StandardBaseDict",

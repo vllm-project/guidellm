@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import typing
-from abc import ABC
 from collections.abc import AsyncIterator
 from typing import Any, Optional, TypeVar, Union
 
@@ -77,13 +76,6 @@ class TestBackendInterface:
     """Test the BackendInterface abstract base class."""
 
     @pytest.mark.smoke
-    def test_is_abstract_base_class(self):
-        """Test that BackendInterface is an ABC and cannot be instantiated directly."""
-        assert issubclass(BackendInterface, ABC)
-        with pytest.raises(TypeError, match="Can't instantiate abstract class"):
-            BackendInterface()
-
-    @pytest.mark.smoke
     def test_abstract_methods_defined(self):
         """Test that all expected abstract methods are defined."""
         expected_methods = {
@@ -112,17 +104,17 @@ class TestBackendInterface:
     def test_generic_type_parameters(self):
         """Test that BackendInterface has the correct generic type parameters."""
         orig_bases = BackendInterface.__orig_bases__
-        abc_base = None
+        protocol_base = None
         generic_base = None
 
         for base in orig_bases:
             if hasattr(base, "__origin__"):
                 if base.__origin__ is typing.Generic:
                     generic_base = base
-            elif base.__name__ == "ABC":
-                abc_base = base
+            elif base.__name__ == "Protocol":
+                protocol_base = base
 
-        assert abc_base is not None, "Should inherit from ABC"
+        assert protocol_base is not None, "Should inherit from Protocol"
         assert generic_base is not None, "Should inherit from Generic"
 
         if hasattr(generic_base, "__args__"):
@@ -131,30 +123,6 @@ class TestBackendInterface:
             param_names = [param.__name__ for param in type_params]
             expected_names = ["RequestT", "MeasuredRequestTimingsT", "ResponseT"]
             assert param_names == expected_names
-
-    @pytest.mark.sanity
-    def test_invalid_implementation(self):
-        """Test that a concrete implementation must implement all abstract methods."""
-
-        class PartialBackend(BackendInterface):
-            @property
-            def processes_limit(self):
-                return 1
-
-            @property
-            def requests_limit(self):
-                return 10
-
-            def info(self):
-                return {}
-
-            async def process_startup(self):
-                pass
-
-            # Missing: validate, process_shutdown, resolve
-
-        with pytest.raises(TypeError, match="Can't instantiate abstract class"):
-            PartialBackend()
 
     @pytest.mark.smoke
     def test_implementation_construction(self):

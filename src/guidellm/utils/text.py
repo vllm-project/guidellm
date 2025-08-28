@@ -22,7 +22,7 @@ import httpx
 from loguru import logger
 
 from guidellm import data as package_data
-from guidellm.config import settings
+from guidellm.settings import settings
 from guidellm.utils.console import Colors
 
 __all__ = [
