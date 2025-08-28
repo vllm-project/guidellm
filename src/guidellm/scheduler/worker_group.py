@@ -144,7 +144,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
 
     async def create_processes(self):
         """
-        Start the processes for the worker process group.
+        Create and initialize worker processes for distributed request processing.
 
         Sets up multiprocessing infrastructure and worker processes based on
         strategy constraints, backend capabilities, and system configuration.
@@ -399,11 +399,6 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
     Handles request generation, state updates, constraint evaluation, and
     coordination between worker processes. Provides thread-safe state management
     with request lifecycle tracking and constraint-based termination logic.
-
-    :param start_time: Unix timestamp when processing should begin
-    :param num_processes: Number of worker processes in the group
-    :param constraints: Named constraints for controlling execution behavior
-    :param shutdown_event: Multiprocessing event for coordinated shutdown
     """
 
     def __init__(
@@ -414,6 +409,15 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         constraints: dict[str, Constraint],
         shutdown_event: Event,
     ):
+        """
+        Initialize worker group state management.
+
+        :param start_time: Unix timestamp when processing should begin
+        :param num_processes: Number of worker processes in the group
+        :param processes: List of worker process instances
+        :param constraints: Named constraints for controlling execution behavior
+        :param shutdown_event: Multiprocessing event for coordinated shutdown
+        """
         self._start_time = start_time
         self._update_lock: threading.Lock = threading.Lock()
         self._state: SchedulerState = SchedulerState(
@@ -527,7 +531,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         )
 
     def stop_callback_receive(
-        self, messaging: InterProcessMessaging, pending: bool, is_empty: bool
+        self, messaging: InterProcessMessaging, pending: bool, queue_empty: int
     ) -> bool:
         """
         Determine if message receiving should stop based on system state.
@@ -537,12 +541,12 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
 
         :param messaging: Inter-process messaging instance
         :param pending: Whether operations are still pending
-        :param is_empty: Whether receive queues are empty
+        :param queue_empty: The number of times the queue has reported empty in a row
         :return: True if message receiving should stop, False otherwise
         """
         return (
             not pending
-            and is_empty  # all updates pulled off
+            and queue_empty >= InterProcessMessaging.STOP_REQUIRED_QUEUE_EMPTY
             and messaging.send_stopped_event.is_set()  # No more requests will be added
             and self._shutdown_event.is_set()  # processing should stop
             and all(

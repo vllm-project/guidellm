@@ -400,8 +400,10 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
             return (
                 not pending
                 and queue_empty >= self.STOP_REQUIRED_QUEUE_EMPTY
-                and self.shutdown_event.is_set()
-                or any(event.is_set() for event in stop_events)
+                and (
+                    self.shutdown_event.is_set()
+                    or any(event.is_set() for event in stop_events)
+                )
             )
 
         return check_stop

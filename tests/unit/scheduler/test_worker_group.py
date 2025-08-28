@@ -87,7 +87,7 @@ class TestWorkerProcessGroup:
                 "requests": None,
                 "cycle_requests": ["request1", "request2", "request3"],
                 "strategy": SynchronousStrategy(),
-                "constraints": {"max_requests": MaxNumberConstraint(max_num=10)},
+                "constraints": {"max_num": MaxNumberConstraint(max_num=10)},
             },
             {
                 "requests": None,
@@ -185,33 +185,137 @@ class TestWorkerProcessGroup:
         assert instance._state is None
         assert instance.messaging is None
 
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("requests", "cycle_requests", "expected_error"),
+        [
+            (None, None, ValueError),
+            ([], iter([]), ValueError),  # cycle_requests as Iterator
+            (None, iter(["req1"]), ValueError),  # cycle_requests as Iterator
+        ],
+        ids=["no_requests", "cycle_as_iterator_empty", "cycle_as_iterator_data"],
+    )
+    def test_invalid_initialization_values(
+        self, requests, cycle_requests, expected_error
+    ):
+        """Test WorkerProcessGroup with invalid initialization values."""
+        with pytest.raises(expected_error):
+            WorkerProcessGroup(
+                requests=requests,
+                cycle_requests=cycle_requests,
+                backend=MockBackend(),
+                strategy=SynchronousStrategy(),
+                constraints={},
+            )
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_missing(self):
+        """Test WorkerProcessGroup initialization without required fields."""
+        with pytest.raises(TypeError):
+            WorkerProcessGroup()
+
     @pytest.mark.smoke
-    # @async_timeout(5)
+    @async_timeout(10)
     @pytest.mark.asyncio
     async def test_lifecycle(self, valid_instances: tuple[WorkerProcessGroup, dict]):
         """Test the lifecycle methods of WorkerProcessGroup."""
-        instance, _ = valid_instances
+        instance, constructor_args = valid_instances
 
         # Test create processes
         await instance.create_processes()
-        # TODO: check valid process creation
+
+        # Check valid process creation
+        assert instance.mp_context is not None
+        assert instance.mp_manager is not None
+        assert instance.processes is not None
+        assert len(instance.processes) > 0
+        assert all(proc.is_alive() for proc in instance.processes)
+        assert instance.startup_barrier is not None
+        assert instance.shutdown_event is not None
+        assert instance.error_event is not None
+        assert instance.requests_completed_event is not None
+        assert instance.messaging is not None
 
         # Test start
         start_time = time.time() + 0.1
         await instance.start(start_time=start_time)
-        # TODO: check valid start behavior
+
+        # Check valid start behavior
+        assert instance.messaging is not None
+        assert instance._state is not None
+        assert instance._state._start_time == start_time
+        assert instance._state._state.num_processes == len(instance.processes)
+        assert not instance.error_event.is_set()
 
         # Test iter updates
-        updates = {}
-        async for resp, req, info, state in instance.request_updates():
-            pass
-        # TODO: validate correct updates based on requests, cycle_requests, and constraints
+        updates_list = []
+        responses_count = 0
+
+        async for (
+            response,
+            request,
+            request_info,
+            scheduler_state,
+        ) in instance.request_updates():
+            updates_list.append((response, request, request_info, scheduler_state))
+            if response is not None:
+                responses_count += 1
+
+            # Validate request info structure
+            assert hasattr(request_info, "request_id")
+            assert hasattr(request_info, "status")
+            valid_statuses = [
+                "queued",
+                "in_progress",
+                "completed",
+                "errored",
+                "cancelled",
+            ]
+            assert request_info.status in valid_statuses
+
+            # Validate state structure
+            assert hasattr(scheduler_state, "created_requests")
+            assert hasattr(scheduler_state, "processed_requests")
+            assert hasattr(scheduler_state, "successful_requests")
+            assert scheduler_state.created_requests >= 0
+            assert scheduler_state.processed_requests >= 0
+            assert scheduler_state.successful_requests >= 0
+
+        # Validate correctness of all updates
+        if constructor_args.get("requests") is not None:
+            assert len(updates_list) == 2 * len(constructor_args["requests"]), (
+                "Should have received updates for all requests"
+            )
+        if constructor_args.get("constraints", {}).get("max_num") is not None:
+            assert (
+                len(updates_list)
+                == 2 * constructor_args["constraints"]["max_num"].max_num
+            ), "Should not have received more updates than max_num constraint"
+
+        assert len(updates_list) > 0, "Should have received at least one update"
+
+        # Constraints should be satisfied
+        for constraint_name, _ in constructor_args["constraints"].items():
+            constraint_check = (
+                "max" in constraint_name.lower()
+                or "duration" in constraint_name.lower()
+            )
+            if constraint_check:
+                assert scheduler_state.end_processing_time is not None, (
+                    f"Should have stopped processing due to {constraint_name}"
+                )
 
         # Test shutdown
-        await instance.shutdown()
-        print(
-            f"\nRequests summary: created={state.created_requests}, queued={state.queued_requests}, processing={state.processing_requests}, processed={state.processed_requests}, successful={state.successful_requests}, cancelled={state.cancelled_requests}, errored={state.errored_requests}"
+        exceptions = await instance.shutdown()
+
+        # Check valid shutdown behavior
+        assert isinstance(exceptions, list), "Shutdown should return list of exceptions"
+        assert instance.messaging is None, "Messaging should be cleared after shutdown"
+        assert instance._state is None, "State should be cleared after shutdown"
+        assert instance.processes is None, "Processes should be cleared after shutdown"
+        assert instance.mp_manager is None, (
+            "MP manager should be cleared after shutdown"
         )
-        print(resp)
-        print(info)
-        # TODO: check valid shutdown behavior
+        assert instance.mp_context is None, (
+            "MP context should be cleared after shutdown"
+        )
