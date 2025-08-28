@@ -187,8 +187,10 @@ class TestInterProcessMessagingQueue:
     def valid_instances(self, multiprocessing_contexts, request):
         """Fixture providing test data for InterProcessMessagingQueue."""
         constructor_args = request.param
-        instance = InterProcessMessagingQueue(**constructor_args, poll_interval=0.01)
         manager, context = multiprocessing_contexts
+        instance = InterProcessMessagingQueue(
+            **constructor_args, poll_interval=0.01, mp_context=context
+        )
 
         return instance, constructor_args, manager, context
 
