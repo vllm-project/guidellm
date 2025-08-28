@@ -40,6 +40,9 @@ from .progress import (
     BenchmarkerProgressGroup,
     GenerativeConsoleBenchmarkerProgress,
 )
+from .scheduler_registry import scheduler_register_benchmark_objects
+
+scheduler_register_benchmark_objects()
 
 __all__ = [
     "Aggregator",

@@ -129,6 +129,7 @@ class Scheduler(
                 worker_group = WorkerProcessGroup[
                     RequestT, MeasuredRequestTimingsT, ResponseT
                 ](
+                    requests=None,
                     cycle_requests=local_requests,
                     backend=backend,
                     strategy=local_strategy,
