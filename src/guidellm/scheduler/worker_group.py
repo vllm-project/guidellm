@@ -193,6 +193,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
 
         if settings.mp_messaging_object == "queue":
             self.messaging = InterProcessMessagingQueue(
+                mp_context=self.mp_context,
                 serialization=settings.mp_serialization,
                 encoding=settings.mp_encoding,
                 max_pending_size=max_pending_size,
@@ -202,6 +203,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         elif settings.mp_messaging_object == "manager_queue":
             self.messaging = InterProcessMessagingManagerQueue(
                 manager=self.mp_manager,
+                mp_context=self.mp_context,
                 serialization=settings.mp_serialization,
                 encoding=settings.mp_encoding,
                 max_pending_size=max_pending_size,
@@ -211,6 +213,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         elif settings.mp_messaging_object == "pipe":
             self.messaging = InterProcessMessagingPipe(
                 num_workers=num_processes,
+                mp_context=self.mp_context,
                 serialization=settings.mp_serialization,
                 encoding=settings.mp_encoding,
                 max_pending_size=max_pending_size,

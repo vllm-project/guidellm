@@ -18,8 +18,8 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from multiprocessing.connection import Connection
-from multiprocessing.connection import Pipe as ProcessingPipe
 from multiprocessing.context import BaseContext
+from multiprocessing.managers import SyncManager
 from multiprocessing.synchronize import Event as ProcessingEvent
 from threading import Event as ThreadingEvent
 from typing import Any, Callable, Generic, Protocol, TypeVar
@@ -94,6 +94,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
 
     def __init__(
         self,
+        mp_context: BaseContext | None = None,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias | list[EncodingTypesAlias] = None,
         max_pending_size: int | None = None,
@@ -116,6 +117,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :param worker_index: Index identifying this worker in the process group
         """
         self.worker_index: int | None = worker_index
+        self.mp_context = mp_context or multiprocessing.get_context()
         self.serialization = serialization
         self.encoding = encoding
         self.max_pending_size = max_pending_size
@@ -433,6 +435,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
 
     def __init__(
         self,
+        mp_context: BaseContext | None = None,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias = None,
         max_pending_size: int | None = None,
@@ -457,8 +460,10 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         :param worker_index: Index identifying this worker in the process group
         :param pending_queue: Multiprocessing queue for sending messages
         :param done_queue: Multiprocessing queue for receiving completed messages
+        :param context: Multiprocessing context for creating queues
         """
         super().__init__(
+            mp_context=mp_context,
             serialization=serialization,
             encoding=encoding,
             max_pending_size=max_pending_size,
@@ -468,10 +473,10 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
             poll_interval=poll_interval,
             worker_index=worker_index,
         )
-        self.pending_queue = pending_queue or multiprocessing.Queue(
+        self.pending_queue = pending_queue or self.mp_context.Queue(
             maxsize=max_pending_size or 0
         )
-        self.done_queue = done_queue or multiprocessing.Queue(
+        self.done_queue = done_queue or self.mp_context.Queue(
             maxsize=max_done_size or 0
         )
 
@@ -485,6 +490,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         :return: Configured queue messaging instance for the specified worker
         """
         copy_args = {
+            "mp_context": self.mp_context,
             "serialization": self.serialization,
             "encoding": self.encoding,
             "max_pending_size": self.max_pending_size,
@@ -657,7 +663,8 @@ class InterProcessMessagingManagerQueue(
 
     def __init__(
         self,
-        manager: BaseContext,
+        manager: SyncManager,
+        mp_context: BaseContext | None = None,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias = None,
         max_pending_size: int | None = None,
@@ -686,6 +693,7 @@ class InterProcessMessagingManagerQueue(
             messages
         """
         super().__init__(
+            mp_context=mp_context,
             serialization=serialization,
             encoding=encoding,
             max_pending_size=max_pending_size,
@@ -694,8 +702,8 @@ class InterProcessMessagingManagerQueue(
             max_buffer_receive_size=max_buffer_receive_size,
             poll_interval=poll_interval,
             worker_index=worker_index,
-            pending_queue=pending_queue or manager.Queue(maxsize=max_pending_size or 0),
-            done_queue=done_queue or manager.Queue(maxsize=max_done_size or 0),
+            pending_queue=pending_queue or manager.Queue(maxsize=max_pending_size or 0),  # type: ignore [assignment]
+            done_queue=done_queue or manager.Queue(maxsize=max_done_size or 0),  # type: ignore [assignment]
         )
 
     def create_worker_copy(
@@ -709,6 +717,7 @@ class InterProcessMessagingManagerQueue(
         """
         copy_args = {
             "manager": None,
+            "mp_context": self.mp_context,
             "serialization": self.serialization,
             "encoding": self.encoding,
             "max_pending_size": self.max_pending_size,
@@ -759,6 +768,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
     def __init__(
         self,
         num_workers: int,
+        mp_context: BaseContext | None = None,
         serialization: SerializationTypesAlias = "dict",
         encoding: EncodingTypesAlias = None,
         max_pending_size: int | None = None,
@@ -784,6 +794,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         :param pipe: Existing pipe connection for worker-specific instances
         """
         super().__init__(
+            mp_context=mp_context,
             serialization=serialization,
             encoding=encoding,
             max_pending_size=max_pending_size,
@@ -797,7 +808,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
 
         if pipe is None:
             self.pipes: list[tuple[Connection, Connection]] = [
-                ProcessingPipe(duplex=True) for _ in range(num_workers)
+                self.mp_context.Pipe(duplex=True) for _ in range(num_workers)
             ]
         else:
             self.pipes: list[tuple[Connection, Connection]] = [pipe]
@@ -813,6 +824,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         """
         copy_args = {
             "num_workers": self.num_workers,
+            "mp_context": self.mp_context,
             "serialization": self.serialization,
             "encoding": self.encoding,
             "max_pending_size": self.max_pending_size,
