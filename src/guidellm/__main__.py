@@ -16,9 +16,9 @@ from guidellm.benchmark import (
 from guidellm.benchmark.scenario import (
     GenerativeTextScenario,
 )
-from guidellm.config import print_config
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
+from guidellm.settings import print_config
 from guidellm.utils import DefaultGroupHandler, get_literal_vals
 from guidellm.utils import cli as cli_tools
 

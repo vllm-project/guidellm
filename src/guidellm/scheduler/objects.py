@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import time
 import uuid
-from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import (
     Any,
     Generic,
     Literal,
+    Protocol,
     TypeVar,
     Union,
 )
@@ -24,7 +24,7 @@ from typing import (
 from pydantic import Field, computed_field
 from typing_extensions import TypeAliasType, TypedDict
 
-from guidellm.utils import StandardBaseModel
+from guidellm.utils import RegistryMixin, RegistryObjT, StandardBaseModel
 
 __all__ = [
     "BackendInterface",
@@ -36,6 +36,7 @@ __all__ = [
     "RequestT",
     "ResponseT",
     "ScheduledRequestInfo",
+    "SchedulerMessagingPydanticRegistry",
     "SchedulerState",
     "SchedulerUpdateAction",
     "SchedulerUpdateActionProgress",
@@ -58,8 +59,18 @@ MultiTurnRequestT = TypeAliasType(
 """Multi-turn request structure supporting conversation history with optional delays."""
 
 
+class SchedulerMessagingPydanticRegistry(RegistryMixin[RegistryObjT]):
+    """
+    Registry for enabling a generic interface to define the pydantic class types used
+    for inter-process messaging within the scheduler.
+    """
+
+
 class RequestSchedulerTimings(StandardBaseModel):
-    """Scheduler-level timing measurements for request lifecycle tracking."""
+    """
+    Scheduler-level timing measurements for request lifecycle tracking.
+    All timestamps are expected to be in Unix time (seconds since epoch).
+    """
 
     targeted_start: float | None = Field(
         default=None,
@@ -89,7 +100,10 @@ class RequestSchedulerTimings(StandardBaseModel):
 
 
 class MeasuredRequestTimings(StandardBaseModel):
-    """Base timing measurements for backend request processing."""
+    """
+    Base timing measurements for backend request processing.
+    All timestamps are expected to be in Unix time (seconds since epoch).
+    """
 
     request_start: float | None = Field(
         default=None, description="When the backend began processing the request"
@@ -203,7 +217,7 @@ class ScheduledRequestInfo(StandardBaseModel, Generic[MeasuredRequestTimingsT]):
         )
 
 
-class BackendInterface(ABC, Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
+class BackendInterface(Protocol, Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
     """
     Abstract interface for request processing backends.
 
@@ -227,28 +241,23 @@ class BackendInterface(ABC, Generic[RequestT, MeasuredRequestTimingsT, ResponseT
     """
 
     @property
-    @abstractmethod
     def processes_limit(self) -> int | None:
         """
         :return: Maximum worker processes supported, or None if unlimited
         """
 
     @property
-    @abstractmethod
     def requests_limit(self) -> int | None:
         """
         :return: Maximum concurrent requests supported, or None if unlimited
         """
 
     @property
-    @abstractmethod
     def info(self) -> dict[str, Any]:
         """
         :return: Backend metadata including model initialization and configuration
         """
-        ...
 
-    @abstractmethod
     async def process_startup(self) -> None:
         """
         Perform backend initialization and startup procedures.
@@ -256,7 +265,6 @@ class BackendInterface(ABC, Generic[RequestT, MeasuredRequestTimingsT, ResponseT
         :raises: Implementation-specific exceptions for startup failures.
         """
 
-    @abstractmethod
     async def validate(self) -> None:
         """
         Validate backend configuration and operational status.
@@ -264,7 +272,6 @@ class BackendInterface(ABC, Generic[RequestT, MeasuredRequestTimingsT, ResponseT
         :raises: Implementation-specific exceptions for validation failures.
         """
 
-    @abstractmethod
     async def process_shutdown(self) -> None:
         """
         Perform backend cleanup and shutdown procedures.
@@ -272,7 +279,6 @@ class BackendInterface(ABC, Generic[RequestT, MeasuredRequestTimingsT, ResponseT
         :raises: Implementation-specific exceptions for shutdown failures.
         """
 
-    @abstractmethod
     async def resolve(
         self,
         request: RequestT,

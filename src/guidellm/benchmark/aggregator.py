@@ -46,7 +46,6 @@ from guidellm.benchmark.objects import (
     GenerativeMetrics,
     GenerativeRequestStats,
 )
-from guidellm.config import settings
 from guidellm.scheduler import (
     MeasuredRequestTimingsT,
     RequestT,
@@ -54,6 +53,7 @@ from guidellm.scheduler import (
     ScheduledRequestInfo,
     SchedulerState,
 )
+from guidellm.settings import settings
 from guidellm.utils import (
     InfoMixin,
     PydanticClassRegistryMixin,

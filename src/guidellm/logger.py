@@ -41,7 +41,7 @@ import sys
 
 from loguru import logger
 
-from guidellm.config import LoggingSettings, settings
+from guidellm.settings import LoggingSettings, settings
 
 __all__ = ["configure_logger", "logger"]
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Annotated, Any, ClassVar, Generic, Literal, Optional, TypeVar, Union
+from typing import Annotated, Any, ClassVar, Generic, Literal, Optional, TypeVar
 
 try:
     import msgpack
@@ -44,12 +44,12 @@ from pydantic import BaseModel
 from typing_extensions import TypeAlias
 
 __all__ = [
-    "EncodedTypeAlias",
     "Encoder",
     "EncodingTypesAlias",
     "MessageEncoding",
+    "MsgT",
+    "ObjT",
     "SerializationTypesAlias",
-    "SerializedTypeAlias",
     "Serializer",
 ]
 
@@ -63,15 +63,6 @@ SerializationTypesAlias: TypeAlias = Annotated[
 EncodingTypesAlias: TypeAlias = Annotated[
     Optional[Literal["msgpack", "msgspec"]],
     "Type alias for available binary encoding formats",
-]
-
-SerializedTypeAlias: TypeAlias = Annotated[
-    Union[bytes, str, dict[Any, Any], Any],
-    "Type alias for serialized object representations",
-]
-EncodedTypeAlias: TypeAlias = Annotated[
-    Union[bytes, str, dict[Any, Any], Any],
-    "Type alias for binary encoded message formats",
 ]
 
 
@@ -338,7 +329,7 @@ class Serializer:
 
         :param model: Pydantic model class to register for type preservation
         """
-        key = f"{model.__module__}:{model.__name__}"
+        key = (model.__module__, model.__name__)
         self.pydantic_registry[key] = model
 
     def load_pydantic(self, type_name: str, module_name: str) -> type[BaseModel]:
@@ -349,7 +340,7 @@ class Serializer:
         :param module_name: Module containing the class
         :return: Loaded Pydantic model class
         """
-        key = f"{module_name}:{type_name}"
+        key = (module_name, type_name)
 
         if key in self.pydantic_registry:
             return self.pydantic_registry[key]
@@ -539,7 +530,7 @@ class Serializer:
             packed sequences
         """
         type_, payload, remaining = self.unpack_next_sequence(data)
-        if remaining:
+        if remaining is not None:
             raise ValueError("Data contains multiple packed sequences; expected one.")
 
         if type_ == "pydantic":

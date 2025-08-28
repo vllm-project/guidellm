@@ -2,34 +2,26 @@
 Multi-process worker group orchestration for distributed request scheduling.
 
 Provides infrastructure for coordinating worker processes with shared state
-management, inter-process communication, and lifecycle coordination.
-
-Classes:
-    WorkerProcessGroup: Orchestrates multiple worker processes for distributed
-        request processing with centralized coordination.
+management, inter-process communication, and lifecycle coordination. Handles
+dynamic scaling, load balancing, constraint evaluation, and graceful shutdown
+across distributed workers processing concurrent requests.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import math
-import queue
 import threading
 import time
 import uuid
-from asyncio import Task
-from collections.abc import AsyncIterator, Iterable, Iterator
-from multiprocessing import Queue, get_context
+from collections.abc import AsyncIterator, Generator, Iterable, Iterator
+from multiprocessing import get_context
+from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Barrier, Event
-from threading import Event as ThreadingEvent
-from typing import Generic
+from typing import Generic, Literal
 
-import culsans
-
-from guidellm.config import settings
-from guidellm.scheduler.constraints import Constraint
+from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
 from guidellm.scheduler.objects import (
     BackendInterface,
     MeasuredRequestTimingsT,
@@ -37,11 +29,20 @@ from guidellm.scheduler.objects import (
     RequestT,
     ResponseT,
     ScheduledRequestInfo,
+    SchedulerMessagingPydanticRegistry,
     SchedulerState,
+    SchedulerUpdateAction,
 )
 from guidellm.scheduler.strategy import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
-from guidellm.utils import MessageEncoding, synchronous_to_exitable_async
+from guidellm.settings import settings
+from guidellm.utils import (
+    InterProcessMessaging,
+    InterProcessMessagingManagerQueue,
+    InterProcessMessagingPipe,
+    InterProcessMessagingQueue,
+    synchronous_to_exitable_async,
+)
 
 __all__ = ["WorkerProcessGroup"]
 
@@ -52,139 +53,199 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
 
     Manages process lifecycle, request distribution, response collection, and state
     synchronization across workers. Handles dynamic scaling, load balancing, and
-    constraint evaluation with graceful shutdown coordination.
+    constraint evaluation with graceful shutdown coordination for high-throughput
+    request processing workloads.
+
+    Example:
+    ::
+        from guidellm.scheduler.worker_group import WorkerProcessGroup
+
+        group = WorkerProcessGroup(
+            requests=request_iterable,
+            cycle_requests=None,
+            backend=backend_instance,
+            strategy=scheduling_strategy,
+            constraints={"max_time": time_constraint}
+        )
+
+        await group.create_processes()
+        await group.start(time.time())
+
+        async for response, request, info, state in group.request_updates():
+            if response is not None:
+                # Process completed request
+                handle_response(response)
+
+        await group.shutdown()
     """
 
     def __init__(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
+        cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
         backend: BackendInterface[RequestT, MeasuredRequestTimingsT, ResponseT],
         strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
-        infinite_requests: bool | None = None,
     ):
+        """
+        Initialize a worker process group for distributed request processing.
+
+        :param requests: Finite iterable of requests to process sequentially
+        :param cycle_requests: Iterable of requests to cycle through indefinitely
+        :param backend: Backend interface for processing requests
+        :param strategy: Scheduling strategy for request timing and distribution
+        :param constraints: Named constraints for controlling execution behavior
+        :raises ValueError: If neither requests nor cycle_requests are provided,
+            or if cycle_requests is an Iterator rather than Iterable
+        """
+        if not requests and not cycle_requests:
+            raise ValueError(
+                "At least one of 'requests' or 'cycle_requests' must be provided. "
+                f"Got requests: {requests}, cycle_requests: {cycle_requests}"
+            )
+
+        if isinstance(cycle_requests, Iterator):
+            raise ValueError(
+                f"cycle_requests must be an Iterable or None, not an Iterator. "
+                f"Got {type(cycle_requests)}"
+            )
+
         self.requests = requests
+        self.cycle_requests = cycle_requests
         self.backend = backend
         self.strategy = strategy
         self.constraints = constraints
-        self.infinite_requests = infinite_requests
 
         # Multiprocessing contexts and primitives, created in create_processes
         self.mp_context = None
+        self.mp_manager = None
         self.processes: list[BaseProcess] = None
+        self.processes_completed_events: list[Event] = None
         self.startup_barrier: Barrier = None
         self.shutdown_event: Event = None
         self.error_event: Event = None
-        self.requests_queue: Queue[
+
+        # Scheduler and messaging state, created in start
+        self._state: _WorkerGroupState[ResponseT, MeasuredRequestTimingsT, RequestT] = (
+            None
+        )
+        self.messaging: InterProcessMessaging[
             tuple[
                 RequestT | MultiTurnRequestT[RequestT],
                 ScheduledRequestInfo[MeasuredRequestTimingsT],
-            ]
-        ] = None
-        self.updates_queue: Queue[
-            tuple[
-                ResponseT | None,
-                RequestT,
-                ScheduledRequestInfo[MeasuredRequestTimingsT],
-            ]
-        ] = None
-
-        # Local process async/threading bridges + signals
-        self.pending_updates_queue: culsans.Queue[
+            ],
             tuple[
                 ResponseT | None,
                 RequestT | MultiTurnRequestT[RequestT],
                 ScheduledRequestInfo[MeasuredRequestTimingsT],
-            ]
+                SchedulerState,
+            ],
         ] = None
-        self.pending_requests_complete: ThreadingEvent = None
-        self.pending_updates_complete: ThreadingEvent = None
-        self.populate_requests_task: Task = None
-        self.populate_updates_task: Task = None
-
-        # Scheduler state
-        self.state_update_lock: threading.Lock = None
-        self.scheduler_state: SchedulerState = None
 
     async def create_processes(self):
         """
-        Initialize and start the worker process group.
+        Start the processes for the worker process group.
 
         Sets up multiprocessing infrastructure and worker processes based on
         strategy constraints, backend capabilities, and system configuration.
+        Determines optimal process count and concurrency limits, then spawns
+        worker processes with distributed request handling capabilities.
 
-        :param backend: Backend instance for processing requests.
-        :param requests: Iterable of requests to process.
-        :param strategy: Scheduling strategy configuration.
-        :param constraints: Dictionary of named constraints for controlling execution.
-        :raises RuntimeError: If process initialization or startup fails.
+        :raises RuntimeError: If process initialization or startup fails
         """
         # Processes limits and params
-
-        max_conc = int(
-            min(
-                self.strategy.requests_limit or math.inf,
-                self.backend.requests_limit or math.inf,
-                settings.max_concurrency,
-            )
+        max_conc: int = min(
+            self.strategy.requests_limit or math.inf,
+            self.backend.requests_limit or math.inf,
         )
+        if max_conc == math.inf:
+            # if concurrency not specified, use settings
+            max_conc = settings.max_concurrency
         if max_conc <= 0:
             raise RuntimeError("max_concurrency resolved to 0; increase limits/config")
 
         num_processes = int(
             min(
+                max_conc,  # Only spawn as many processes as we need for max_concurrency
                 self.strategy.processes_limit or math.inf,
                 self.backend.processes_limit or math.inf,
                 settings.max_worker_processes,
-                # Only spawn as many processes as we need for max_concurrency
-                max_conc,
             )
         )
         if num_processes <= 0:
             raise RuntimeError("num_processes resolved to 0; increase limits/config")
 
         per_proc_max_conc = max_conc // num_processes
-        per_proc_max_queue = math.floor(math.log(per_proc_max_conc + math.e))
-        max_queued_requests = (  # Add queue buffer for each process
-            max_conc + (num_processes * per_proc_max_queue)
+        per_proc_max_receive_buffer = max(
+            1, math.floor(per_proc_max_conc * settings.mp_proc_receive_buffer_per)
         )
 
         # Initialize multiprocessing components
-        self.mp_context = get_context("fork")
+        self.mp_context: BaseContext = get_context(settings.mp_context_type)
+        self.mp_manager = self.mp_context.Manager()
         self.startup_barrier = self.mp_context.Barrier(num_processes + 1)
         self.shutdown_event = self.mp_context.Event()
         self.error_event = self.mp_context.Event()
-        self.requests_queue = self.mp_context.Queue(maxsize=max_queued_requests)
-        self.updates_queue = self.mp_context.Queue()
+
+        if settings.mp_messaging_object == "queue":
+            self.messaging = InterProcessMessagingQueue(
+                serialization=settings.mp_serialization,
+                encoding=settings.mp_encoding,
+                max_send_size=max_conc,
+                max_buffer_send_size=settings.mp_requests_send_buffer_size,
+                poll_interval=settings.mp_poll_interval,
+            )
+        elif settings.mp_messaging_object == "manager_queue":
+            self.messaging = InterProcessMessagingManagerQueue(
+                manager=self.mp_manager,
+                serialization=settings.mp_serialization,
+                encoding=settings.mp_encoding,
+                max_send_size=max_conc,
+                max_buffer_send_size=settings.mp_requests_send_buffer_size,
+                poll_interval=settings.mp_poll_interval,
+            )
+        elif settings.mp_messaging_object == "pipe":
+            self.messaging = InterProcessMessagingPipe(
+                num_workers=num_processes,
+                serialization=settings.mp_serialization,
+                encoding=settings.mp_encoding,
+                max_send_size=max_conc,
+                max_buffer_send_size=settings.mp_requests_send_buffer_size,
+                poll_interval=settings.mp_poll_interval,
+            )
 
         # Initialize worker processes
         self.processes = []
+        self.processes_completed_events = []
         for rank in range(num_processes):
-            # Distribute any remainder across the first R ranks
+            # Distribute any remainder across the first N ranks
             async_limit = per_proc_max_conc + (
                 1 if rank < (max_conc % num_processes) else 0
             )
 
+            worker_completed_event = self.mp_context.Event()
             worker = WorkerProcess[RequestT, MeasuredRequestTimingsT, ResponseT](
-                local_rank=rank,
-                local_world_size=num_processes,
+                messaging=self.messaging.create_worker_copy(
+                    worker_index=rank,
+                    max_buffer_send_size=None,
+                    max_buffer_receive_size=per_proc_max_receive_buffer,
+                ),
                 async_limit=async_limit,
                 startup_barrier=self.startup_barrier,
                 shutdown_event=self.shutdown_event,
                 error_event=self.error_event,
-                requests_queue=self.requests_queue,
-                updates_queue=self.updates_queue,
+                completed_event=worker_completed_event,
                 backend=self.backend,
                 request_timings=self.strategy.create_request_timings(
                     local_rank=rank,
                     local_world_size=num_processes,
                     local_max_concurrency=async_limit,
                 ),
-                poll_intervals=settings.scheduler_poll_interval,
             )
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()
             self.processes.append(proc)
+            self.processes_completed_events.append(worker_completed_event)
 
         reason, _ = await synchronous_to_exitable_async(
             synchronous=None,
@@ -193,7 +254,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 "shutdown_event": self.shutdown_event,
             },
             exit_barrier=self.startup_barrier,
-            poll_interval=settings.scheduler_poll_interval,
+            poll_interval=settings.mp_poll_interval,
         )
         if reason != "barrier":
             raise RuntimeError(
@@ -205,40 +266,35 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         Begin request processing at the specified start time.
 
         Initializes scheduler state and background tasks, then waits until the
-        specified start time before beginning operations.
+        specified start time before beginning operations. Sets up inter-process
+        communication and coordinates synchronized startup across all workers.
 
-        :param start_time: Unix timestamp when processing should begin.
-        :raises RuntimeError: If workers encounter errors during startup.
+        :param start_time: Unix timestamp when processing should begin
+        :raises RuntimeError: If workers encounter errors during startup or
+            if create_processes() was not called first
         """
-        if self.processes is None:
+        if not self.processes:
             raise RuntimeError("create_processes() must be called before start()")
 
-        self.state_update_lock = threading.Lock()
-        self.scheduler_state = SchedulerState(
-            node_id=0,  # Process group node identifier
-            num_processes=len(self.processes),
+        self._state = _WorkerGroupState[RequestT, MeasuredRequestTimingsT, ResponseT](
             start_time=start_time,
+            num_processes=len(self.processes),
+            processes_completed_events=self.processes_completed_events,
+            constraints=self.constraints,
+            shutdown_event=self.shutdown_event,
         )
-        self.pending_updates_queue = culsans.Queue()
-        self.pending_requests_complete = ThreadingEvent()
-        self.pending_updates_complete = ThreadingEvent()
-
-        self.populate_requests_task = asyncio.create_task(
-            synchronous_to_exitable_async(
-                self._populate_requests_generator(start_time),
-                exit_events={"error_event": self.error_event},
-                poll_interval=0.0,
-            )
-        )
-        self.populate_updates_task = asyncio.create_task(
-            synchronous_to_exitable_async(
-                self._populate_updates_generator(),
-                exit_events={"error_event": self.error_event},
-                poll_interval=0.0,
-            )
+        await self.messaging.start(
+            send_items=self._state.requests_generator(
+                self.requests, self.cycle_requests
+            ),
+            receive_callback=self._state.update_callback_receive,
+            send_stop_criteria=[self.shutdown_event, self.error_event],
+            receive_stop_criteria=[self.error_event, self._state.stop_callback_receive],
+            pydantic_models=list(SchedulerMessagingPydanticRegistry.registry.values()),
         )
 
-        await asyncio.sleep(max(0, start_time - time.time()))
+        if (wait_time := start_time - time.time()) > 0:
+            await asyncio.sleep(wait_time)
         if self.error_event.is_set():
             raise RuntimeError(
                 "error_event is set in WorkerProcessGroup, "
@@ -259,365 +315,341 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         Yield request processing updates as they become available.
 
         Returns an async iterator of request updates including response, request,
-        scheduling metadata, and scheduler state. Updates occur on request queued,
-        processing start, and completion.
+        request scheduling info, and scheduler state. Updates occur on request queued,
+        processing start, and completion. Response is None until processing completes.
 
         :return: Async iterator yielding (response, request, request_info, state)
-            tuples; response is None until processing is complete.
-        :raises RuntimeError: If workers encounter unrecoverable errors.
+            tuples where response is None until processing is complete
+        :raises RuntimeError: If workers encounter unrecoverable errors
         """
-        last_check_time = -1 * math.inf
-
         while (
-            not self.pending_updates_complete.is_set()
-            or not self.pending_updates_queue.empty()
+            not self.messaging.receive_stopped_event.is_set()
+            or not self.messaging.send_stopped_event.is_set()
+            or not self.messaging.buffer_receive_queue.empty()
         ):
+            if self.error_event.is_set():
+                raise RuntimeError(
+                    "error_event is set in WorkerProcessGroup, "
+                    "indicating an error occurred in one of the worker processes."
+                )
+
             try:
                 (
                     response,
                     request,
                     request_info,
                     scheduler_state,
-                ) = await asyncio.wait_for(
-                    self.pending_updates_queue.async_get(),
-                    timeout=settings.scheduler_poll_interval,
-                )
+                ) = await self.messaging.get(timeout=settings.mp_poll_interval)
 
                 yield response, request, request_info, scheduler_state
             except asyncio.TimeoutError:
                 pass
-
-            if (time.time() - last_check_time) >= settings.scheduler_poll_interval:
-                if self.error_event.is_set():
-                    raise RuntimeError(
-                        "error_event is set in WorkerProcessGroup, "
-                        "indicating an error occurred in one of the worker processes."
-                    )
-                last_check_time = time.time()
 
     async def shutdown(self) -> list[Exception]:  # noqa: C901
         """
         Gracefully shut down the worker process group and clean up resources.
 
         Performs safe shutdown of worker processes, background tasks, and
-        multiprocessing resources.
+        multiprocessing resources. Coordinates orderly termination across
+        all workers and collects any exceptions encountered during shutdown.
 
-        :return: List of exceptions encountered during shutdown; empty if no errors.
+        :return: List of exceptions encountered during shutdown; empty if no errors
         """
         exceptions: list[Exception] = []
-
         if self.shutdown_event is not None:
             self.shutdown_event.set()
 
-        cancel_tasks = [
-            task
-            for task in (self.populate_requests_task, self.populate_updates_task)
-            if task and not task.done()
-        ]
-        for task in cancel_tasks:
-            task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            if cancel_tasks:
+        # Clear out start values
+        if self.messaging is not None:
+            await self.messaging.stop()
+        self.messaging = None
+        self._state = None
+
+        # Clear out create processes values
+        if self.processes is not None:
+            for proc in self.processes:
                 try:
-                    await asyncio.gather(*cancel_tasks, return_exceptions=True)
+                    await asyncio.to_thread(proc.join, timeout=5.0)
+                    if proc.exitcode is not None and proc.exitcode > 0:
+                        exceptions.append(
+                            RuntimeError(
+                                f"Worker {proc.pid} exited with code {proc.exitcode}"
+                            )
+                        )
                 except Exception as err:  # noqa: BLE001
                     exceptions.append(err)
-        self.populate_requests_task = None
-        self.populate_updates_task = None
-
-        if self.processes:
-            for proc in self.processes:
-                await asyncio.to_thread(proc.join, 5)
-                if proc.exitcode not in (0, None):
-                    exceptions.append(
-                        RuntimeError(
-                            f"Worker {proc.pid} exited with code {proc.exitcode}"
-                        )
-                    )
         self.processes = None
-        self.mp_context = None
-
         self.startup_barrier = None
         self.shutdown_event = None
         self.error_event = None
-        self.requests_queue = None
-        self.updates_queue = None
-        self.pending_updates_queue = None
+        if self.mp_manager is not None:
+            self.mp_manager.shutdown()
+        self.mp_manager = None
+        self.mp_context = None
 
         return exceptions
 
-    def _update_state(
-        self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]
-    ) -> tuple[SchedulerState, bool, bool]:
-        if not self.scheduler_state or not self.state_update_lock:
-            raise RuntimeError("workerProcessGroup not started")
 
-        with self.state_update_lock:
-            state = self.scheduler_state
-            if info.status == "queued":
-                state.created_requests += 1
-                state.queued_requests += 1
-            elif info.status == "in_progress":
-                state.queued_requests -= 1
-                state.processing_requests += 1
-            elif info.status in ("completed", "errored", "cancelled"):
-                state.processing_requests -= 1
-                state.processed_requests += 1
-                state.successful_requests += 1 if info.status == "completed" else 0
-                state.errored_requests += 1 if info.status == "errored" else 0
-                state.cancelled_requests += 1 if info.status == "cancelled" else 0
+class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
+    """
+    Manages scheduler state and synchronization for worker process groups.
+
+    Handles request generation, state updates, constraint evaluation, and
+    coordination between worker processes. Provides thread-safe state management
+    with request lifecycle tracking and constraint-based termination logic.
+
+    :param start_time: Unix timestamp when processing should begin
+    :param num_processes: Number of worker processes in the group
+    :param constraints: Named constraints for controlling execution behavior
+    :param shutdown_event: Multiprocessing event for coordinated shutdown
+    """
+
+    def __init__(
+        self,
+        start_time: float,
+        num_processes: int,
+        processes_completed_events: list[Event],
+        constraints: dict[str, Constraint],
+        shutdown_event: Event,
+    ):
+        self._start_time = start_time
+        self._update_lock: threading.Lock = threading.Lock()
+        self._state: SchedulerState = SchedulerState(
+            node_id=0,
+            num_processes=num_processes,
+            start_time=start_time,
+        )
+        self.processes_completed_events = processes_completed_events
+        self._constraints = constraints
+        self._internal_constraints: dict[str, Constraint] = {}
+        self._shutdown_event = shutdown_event
+        self._shutdown_set = False
+
+    def requests_generator(
+        self,
+        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
+        cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
+    ) -> Generator[tuple[RequestT | MultiTurnRequestT[RequestT],], None, None]:
+        """
+        Generate request-info pairs for worker processing with constraint evaluation.
+
+        Processes finite requests sequentially then cycles through repeating requests
+        indefinitely. Creates scheduling metadata for each request and evaluates
+        constraints to determine when to stop request generation.
+
+        :param requests: Finite iterable of requests to process sequentially
+        :param cycle_requests: Iterable of requests to cycle through indefinitely
+        :return: Generator yielding (request, request_info) tuples
+        """
+
+        def _iter():
+            if requests:
+                yield from requests
+
+            if cycle_requests:
+                while True:
+                    yield from cycle_requests
+
+        count = 0
+        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT] = None
+        for request in _iter():
+            count += 1
+
+            if hasattr(request, "request_id"):
+                request_id = request.request_id
+            elif hasattr(request, "id"):
+                request_id = request.id
+            elif hasattr(request, "id_"):
+                request_id = request.id_
+            elif hasattr(request, "uuid"):
+                request_id = request.uuid
             else:
-                raise ValueError(
-                    f"Unknown request status: {info.status}. "
-                    "Supported statuses are: queued, pending, in_progress, "
-                    "completed, errored, cancelled."
+                request_id = str(uuid.uuid4())
+            request_info: ScheduledRequestInfo[MeasuredRequestTimingsT] = (
+                ScheduledRequestInfo(
+                    request_id=request_id,
+                    status="queued",
+                    scheduler_node_id=0,
+                    scheduler_process_id=-1,
+                    scheduler_start_time=self._start_time,
                 )
+            )
+            _, stop = self._locked_update(request_info, source="generator")
+            yield (request, request_info)
 
-            state.end_time = time.time()  # Always update for last time update received
-            actions = {
-                name: const(state, info) for name, const in self.constraints.items()
-            }
-            state.scheduler_constraints = actions
+            if stop:
+                return
 
-            if state.end_queuing_time is None and (
-                stop_queueing_actions := {
-                    key: action
-                    for key, action in actions.items()
-                    if action.request_queuing == "stop"
-                }
-            ):
-                # Queuing not stopped and actions returned to stop it
-                state.end_queuing_constraints.update(stop_queueing_actions)
-                state.end_queuing_time = time.time()
+        # Reached the end, inject a RequestsExhaustedConstraint and update to record
+        self._locked_update(
+            info=request_info,
+            source="generator",
+            update_counts=False,
+            requests_exhausted=RequestsExhaustedConstraint(num_requests=count),
+        )
 
-            if state.end_processing_time is None and (
-                stop_processing_actions := {
-                    key: action
-                    for key, action in actions.items()
-                    if action.request_processing in ("stop_local", "stop_all")
-                }
-            ):
-                # Processing not stopped and actions returned to stop it
-                state.end_processing_constraints.update(stop_processing_actions)
-                state.end_processing_time = time.time()
+    def update_callback_receive(
+        self,
+        update: tuple[
+            ResponseT | None,
+            RequestT | MultiTurnRequestT,
+            ScheduledRequestInfo[MeasuredRequestTimingsT],
+        ],
+    ) -> tuple[
+        ResponseT | None,
+        RequestT | MultiTurnRequestT,
+        ScheduledRequestInfo[MeasuredRequestTimingsT],
+        SchedulerState,
+    ]:
+        """
+        Process received request updates and inject current scheduler state.
 
-            state_copy: SchedulerState = state.model_copy()
+        Updates internal state tracking based on request status changes and
+        evaluates constraints to determine if processing should be terminated.
+        Triggers shutdown when stop conditions are met.
+
+        :param update: Tuple containing response, request, and request info
+        :return: Updated tuple with injected scheduler state
+        """
+        response, request, request_info = update
+        state, stop = self._locked_update(info=request_info, source="updates")
+
+        if stop:
+            self._shutdown_event.set()
+
+        return (
+            response,
+            request,
+            request_info,
+            state,  # inject state for updates to be yielded back
+        )
+
+    def stop_callback_receive(
+        self, messaging: InterProcessMessaging, pending: bool, is_empty: bool
+    ) -> bool:
+        """
+        Determine if message receiving should stop based on system state.
+
+        Evaluates completion conditions including pending operations, queue state,
+        and shutdown signals to coordinate graceful termination of message processing.
+
+        :param messaging: Inter-process messaging instance
+        :param pending: Whether operations are still pending
+        :param is_empty: Whether receive queues are empty
+        :return: True if message receiving should stop, False otherwise
+        """
+        return (
+            not pending
+            and is_empty  # all updates pulled off
+            and messaging.send_stopped_event.is_set()  # No more requests will be added
+            and self._shutdown_event.is_set()  # processing should stop
+            and all(
+                event.is_set() for event in self.processes_completed_events
+            )  # no more updates will be added by workers
+        )
+
+    def _locked_update(
+        self,
+        info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        source: Literal["generator", "updates"],
+        update_counts: bool = True,
+        update_constraints: bool = True,
+        **add_constraints: dict[str, Constraint],
+    ) -> tuple[SchedulerState | None, bool]:
+        with self._update_lock:
+            if update_counts:
+                if source == "generator":
+                    self._update_new_request()
+                elif source == "updates":
+                    self._update_new_response(info)
+                else:
+                    raise ValueError(f"Unknown source: {source}")
+
+            if add_constraints:
+                self._internal_constraints.update(add_constraints)
+            if update_constraints:
+                self._update_with_constraints(info)
+            state_copy: SchedulerState = self._state.model_copy()
 
         return (
             state_copy,
-            state_copy.end_queuing_time is None,
-            state_copy.end_processing_time is None,
+            (
+                (source == "generator" and state_copy.end_queuing_time is not None)
+                or (source == "updates" and state_copy.end_processing_time is not None)
+            ),
         )
 
-    def _populate_requests_generator(self, scheduler_start_time: float):
-        last_check_time: float = time.time()
-        continue_requests: bool = True
-        message: bytes | None = None
-        request_iter: Iterator[RequestT] | None = (
-            self._populate_requests_create_iterator(first=True)
-        )
+    def _locked_cancel_request(
+        self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]
+    ):
+        if info.status != "queued":
+            raise ValueError(f"Cannot cancel request in {info.status} state")
 
-        try:
-            while continue_requests or message is not None:
-                if request_iter is None:
-                    request_iter = self._populate_requests_create_iterator(first=False)
+        with self._update_lock:
+            self._state.queued_requests -= 1
+            self._state.processed_requests += 1
+            self._state.cancelled_requests += 1
 
-                if request_iter is None and continue_requests:
-                    # Out of requests so stop
-                    continue_requests = False
-                    # Update scheduler state that requests were exhausted
-                    with self.state_update_lock:
-                        self.scheduler_state.end_queuing_constraints["request_iter"] = {
-                            "status": "exhausted",
-                            "time": time.time(),
-                        }
-                        self.scheduler_state.end_queuing_time = time.time()
+            info.status = "cancelled"
+            info.scheduler_timings.resolve_end = time.time()
+            state_copy: SchedulerState = self._state.model_copy()
 
-                if continue_requests and message is None:
-                    message, continue_requests = self._populate_requests_next_message(
-                        request_iter, scheduler_start_time
-                    )
-                    if message is None:
-                        # No message returned because request_iter is exhausted
-                        request_iter = None
+        return state_copy
 
-                if message is not None:
-                    with contextlib.suppress(queue.Full):
-                        self.requests_queue.put(
-                            message[0], timeout=settings.scheduler_poll_interval
-                        )
-                        self.pending_updates_queue.sync_put(message[1])
-                        message = None
+    def _update_new_request(self):
+        self._state.created_requests += 1
+        self._state.queued_requests += 1
 
-                if (time.time() - last_check_time) >= settings.scheduler_poll_interval:
-                    last_check_time = time.time()
-                    continue_requests = (
-                        continue_requests and not self.shutdown_event.is_set()
-                    )
-                    yield None  # Yield to check for error in wrapper to stop
-        except Exception as err:  # noqa: BLE001
-            print(f"******EXCEPTION in _populate_requests_generator: {err}")
-            self.error_event.set()
-            raise err
-        finally:
-            self.pending_requests_complete.set()
-
-    def _populate_requests_create_iterator(
-        self, first: bool = False
-    ) -> Iterator[RequestT] | None:
-        if first:
-            # First invocation, get a new iterator if not already one
-            return (
-                iter(self.requests)
-                if not isinstance(self.requests, Iterator)
-                else self.requests
+    def _update_new_response(self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]):
+        if info.status == "in_progress":
+            self._state.queued_requests -= 1
+            self._state.processing_requests += 1
+        elif info.status in ("completed", "errored", "cancelled"):
+            self._state.processing_requests -= 1
+            self._state.processed_requests += 1
+            self._state.successful_requests += 1 if info.status == "completed" else 0
+            self._state.errored_requests += 1 if info.status == "errored" else 0
+            self._state.cancelled_requests += 1 if info.status == "cancelled" else 0
+        else:
+            raise ValueError(
+                f"Unknown request status: {info.status}. "
+                "Supported statuses are: queued, pending, in_progress, "
+                "completed, errored, cancelled."
             )
 
-        if self.infinite_requests is True and isinstance(self.requests, Iterator):
-            # Out of requests and infinite set to True, but request_iter is Iterator
-            # Cannot create new, raise RuntimeError
-            raise RuntimeError(
-                f"Requests iterator {self.requests} exhausted and "
-                "infinite_requests is set to True"
+    def _update_with_constraints(
+        self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]
+    ):
+        actions: dict[str, SchedulerUpdateAction] = {
+            name: const(self._state, info) for name, const in self._constraints.items()
+        }
+        if self._internal_constraints:
+            actions.update(
+                {
+                    name: const(self._state, info)
+                    for name, const in self._internal_constraints.items()
+                }
             )
+        self._state.scheduler_constraints = actions
 
-        if self.infinite_requests is not False and isinstance(self.requests, Iterable):
-            # Out of requests and infinite set to True or set to default
-            # Create new iterator out of the Iterable
-            return iter(self.requests)
+        if self._state.end_queuing_time is None and (
+            stop_queuing_actions := {
+                key: action
+                for key, action in actions.items()
+                if action.request_queuing == "stop"
+            }
+        ):
+            # Queuing not stopped and actions returned to stop it
+            self._state.end_queuing_constraints = stop_queuing_actions
+            self._state.end_queuing_time = time.time()
 
-        # Either infinite is False for Iterable or Iterator
-        # or infinite is None (default) for Iterator
-        # So, return None to stop
-        return None
-
-    def _populate_requests_next_message(
-        self, request_iter: Iterator[RequestT], scheduler_start_time: float
-    ) -> tuple[tuple[bytes, bytes] | None, bool]:
-        try:
-            request = next(request_iter)
-            request_id = (
-                request.request_id or request.id or request.id_ or str(uuid.uuid4())
-            )
-            request_info = ScheduledRequestInfo[MeasuredRequestTimingsT](
-                request_id=request_id,
-                status="queued",
-                scheduler_node_id=-1,
-                scheduler_process_id=0,
-                scheduler_start_time=scheduler_start_time,
-            )
-            state, continue_requests, _ = self._update_state(request_info)
-
-            request_msg = MessageEncoding.encode_message((request, request_info))
-            update_msg = (None, request, request_info, state)
-
-            return (request_msg, update_msg), continue_requests
-        except StopIteration:
-            return None, True
-
-    def _populate_updates_generator(self):
-        """Generator for populating updates from workers."""
-        last_check_time = time.time()
-        last_state: SchedulerState = None
-        continue_processing = True
-        shutdown_set = False
-        canceled_remaining = False
-
-        try:
-            while (
-                continue_processing
-                or last_state is None
-                or (last_state.processed_requests < last_state.created_requests)
-            ):
-                next_state, continue_updates = self._populate_updates_process_next()
-                if next_state is not None:
-                    last_state = next_state
-                    continue_processing = continue_processing and continue_updates
-
-                if not continue_processing and not shutdown_set:
-                    self.shutdown_event.set()
-                    shutdown_set = True
-                    time.sleep(
-                        settings.scheduler_poll_interval
-                    )  # Ensure shut down propagates
-
-                if not continue_processing and not canceled_remaining:
-                    # We've shut down, no more requests will be added, cancel remaining
-                    next_state = self._populate_updates_cancel_remaining()
-                    if next_state is not None:
-                        last_state = next_state
-                    canceled_remaining = True
-
-                if (time.time() - last_check_time) >= settings.scheduler_poll_interval:
-                    last_check_time = time.time()
-                    if not shutdown_set and self.shutdown_event.is_set():
-                        shutdown_set = True
-                        continue_processing = False
-                        with self.state_update_lock:
-                            self.scheduler_state.end_queuing_constraints[
-                                "shutdown_event"
-                            ] = {
-                                "status": "set",
-                                "time": time.time(),
-                            }
-                            self.scheduler_state.end_processing_time = time.time()
-
-                    yield None  # Yield to check for error in wrapper to stop
-        except Exception as err:  # noqa: BLE001
-            print(f"******EXCEPTION in _populate_updates_generator: {err}")
-            self.error_event.set()
-            raise err
-        finally:
-            self.pending_updates_complete.set()
-
-    def _populate_updates_process_next(
-        self,
-    ) -> tuple[SchedulerState | None, bool]:
-        try:
-            message = self.updates_queue.get(timeout=settings.scheduler_poll_interval)
-            response, request, request_info = MessageEncoding.decode_message(message)
-
-            scheduler_state, _, continue_updates = self._update_state(request_info)
-            self.pending_updates_queue.sync_put(
-                (response, request, request_info, scheduler_state)
-            )
-
-            return scheduler_state, continue_updates
-        except queue.Empty:
-            return None, True
-
-    def _populate_updates_cancel_remaining(
-        self,
-    ) -> SchedulerState | None:
-        last_state = None
-
-        while True:
-            try:
-                message = self.requests_queue.get(
-                    timeout=settings.scheduler_poll_interval
-                )
-                request, request_info = MessageEncoding.decode_message(message)
-
-                # Send start first
-                request_info.status = "in_progress"
-                scheduler_state, _, _ = self._update_state(request_info)
-                self.pending_updates_queue.sync_put(
-                    (None, request, request_info.model_copy(), scheduler_state)
-                )
-
-                # Send canceled
-                request_info.status = "cancelled"
-                request_info.error = "Request was cancelled"
-                request_info.scheduler_timings.resolve_end = time.time()
-                scheduler_state, _, _ = self._update_state(request_info)
-                self.pending_updates_queue.sync_put(
-                    (None, request, request_info, scheduler_state)
-                )
-
-                last_state = scheduler_state
-            except queue.Empty:
-                if self.pending_requests_complete.is_set():
-                    # no more requests being pushed to queue, safe to exit
-                    break
-
-        return last_state
+        if self._state.end_processing_time is None and (
+            stop_processing_actions := {
+                key: action
+                for key, action in actions.items()
+                if action.request_processing in ("stop_local", "stop_all")
+            }
+        ):
+            # Processing not stopped and actions returned to stop it
+            self._state.end_processing_constraints = stop_processing_actions
+            self._state.end_processing_time = time.time()

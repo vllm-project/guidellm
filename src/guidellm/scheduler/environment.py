@@ -24,7 +24,6 @@ from typing import (
     Generic,
 )
 
-from guidellm.config import settings
 from guidellm.scheduler.constraints import Constraint
 from guidellm.scheduler.objects import (
     MeasuredRequestTimingsT,
@@ -35,6 +34,7 @@ from guidellm.scheduler.objects import (
     SchedulerState,
 )
 from guidellm.scheduler.strategy import SchedulingStrategy
+from guidellm.settings import settings
 from guidellm.utils import InfoMixin
 
 __all__ = ["Environment", "NonDistributedEnvironment"]
