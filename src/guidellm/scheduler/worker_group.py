@@ -578,6 +578,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 self._internal_constraints.update(add_constraints)
             if update_constraints:
                 self._update_with_constraints(info)
+            self._state.end_time = time.time()
             state_copy: SchedulerState = self._state.model_copy()
 
         return (
@@ -587,23 +588,6 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 or (source == "updates" and state_copy.end_processing_time is not None)
             ),
         )
-
-    def _locked_cancel_request(
-        self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]
-    ):
-        if info.status != "queued":
-            raise ValueError(f"Cannot cancel request in {info.status} state")
-
-        with self._update_lock:
-            self._state.queued_requests -= 1
-            self._state.processed_requests += 1
-            self._state.cancelled_requests += 1
-
-            info.status = "cancelled"
-            info.scheduler_timings.resolve_end = time.time()
-            state_copy: SchedulerState = self._state.model_copy()
-
-        return state_copy
 
     def _update_new_request(self):
         self._state.created_requests += 1
