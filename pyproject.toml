@@ -10,6 +10,9 @@ include = ["*"]
 [tool.setuptools.package-data]
 "guidellm.data" = ["*.gz"]
 
+[tool.pdm]
+distribution = true
+
 
 # ************************************************
 # ********** Project Metadata **********
@@ -53,7 +56,6 @@ dependencies = [
     "protobuf",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.0.0",
-    "pyhumps>=3.8.0",
     "pyyaml>=6.0.0",
     "rich",
     "transformers",
@@ -99,6 +101,10 @@ dev = [
     # link checking
     "mkdocs-linkcheck~=1.0.6",
 ]
+
+# For PEP 735 compliant tools
+[dependency-groups]
+dev = [ "guidellm[dev]" ]
 
 [project.urls]
 homepage = "https://github.com/vllm-project/guidellm"

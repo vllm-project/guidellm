@@ -1,11 +1,16 @@
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.6.0
+  rev: v6.0.0
   hooks:
   - id: trailing-whitespace
     exclude: ^tests/?.*/assets/.+
   - id: end-of-file-fixer
     exclude: ^tests/?.*/assets/.+
+- repo: https://github.com/pdm-project/pdm
+  rev: 2.25.6
+  hooks:
+    - id: pdm-lock-check
+      name: check lock file matches pyproject
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.11.7
   hooks:
@@ -14,35 +19,3 @@ repos:
       args: [ --fix, --show-fixes ]
     - id: ruff-format
       name: run formatter
-- repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.15.0
-  hooks:
-  - id: mypy
-    args: [--check-untyped-defs]
-    additional_dependencies:
-      [
-        # main dependencies
-        click,
-        datasets,
-        ftfy,
-        loguru,
-        numpy,
-        pillow,
-        pydantic,
-        pydantic_settings,
-        pyyaml,
-        respx,
-        rich,
-        setuptools,
-        setuptools-git-versioning,
-        transformers,
-
-        # dev dependencies
-        pytest,
-        pydantic_settings,
-
-        # types
-        types-PyYAML,
-        types-requests,
-        types-toml,
-      ]

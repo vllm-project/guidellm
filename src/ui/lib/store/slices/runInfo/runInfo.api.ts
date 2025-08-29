@@ -5,7 +5,7 @@ import { RunInfo } from './runInfo.interfaces';
 const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true';
 
 const fetchRunInfo = () => {
-  return { data: window.run_info as RunInfo };
+  return { data: window.runInfo as RunInfo };
 };
 
 export const runInfoApi = createApi({

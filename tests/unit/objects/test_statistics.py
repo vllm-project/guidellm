@@ -704,3 +704,82 @@ def test_time_running_stats_update():
     assert time_running_stats.rate_ms == pytest.approx(
         3000 / (time.time() - time_running_stats.start_time), abs=0.1
     )
+
+
+@pytest.mark.regression
+def test_distribution_summary_concurrency_double_counting_regression():
+    """Specific regression test for the double-counting bug in concurrency calculation.
+
+    Before the fix, when events were merged due to epsilon, the deltas were summed
+    but then the active count wasn't properly accumulated, causing incorrect results.
+
+    ### WRITTEN BY AI ###
+    """
+    epsilon = 1e-6
+
+    # Create a scenario where multiple requests start at exactly the same time
+    # This should result in events being merged, testing the accumulation logic
+    same_start_time = 1.0
+    requests = [
+        (same_start_time, 3.0),
+        (same_start_time, 4.0),
+        (same_start_time, 5.0),
+        (same_start_time + epsilon / 3, 6.0),  # Very close start (within epsilon)
+    ]
+
+    distribution_summary = DistributionSummary.from_request_times(
+        requests, distribution_type="concurrency", epsilon=epsilon
+    )
+
+    # All requests start at the same time (or within epsilon), so they should
+    # all be considered concurrent from the start
+    # Expected timeline:
+    # - t=1.0-3.0: 4 concurrent requests
+    # - t=3.0-4.0: 3 concurrent requests
+    # - t=4.0-5.0: 2 concurrent requests
+    # - t=5.0-6.0: 1 concurrent request
+
+    assert distribution_summary.max == 4.0  # All 4 requests concurrent at start
+    assert distribution_summary.min == 1.0  # 1 request still running at the end
+
+
+@pytest.mark.sanity
+def test_distribution_summary_concurrency_epsilon_edge_case():
+    """Test the exact epsilon boundary condition.
+
+    ### WRITTEN BY AI ###
+    """
+    epsilon = 1e-6
+
+    # Test requests that are exactly epsilon apart - should be merged
+    requests_exactly_epsilon = [
+        (1.0, 2.0),
+        (1.0 + epsilon, 2.5),  # Exactly epsilon apart
+        (2.0, 2.5),  # Another close request
+    ]
+
+    dist_epsilon = DistributionSummary.from_request_times(
+        requests_exactly_epsilon, distribution_type="concurrency", epsilon=epsilon
+    )
+
+    # Should be treated as concurrent (merged events)
+    assert dist_epsilon.max == 2.0
+    assert dist_epsilon.min == 2.0
+
+    # Test requests that are just over epsilon apart - should NOT be merged
+    requests_over_epsilon = [
+        (1.0, 2.0),
+        (1.0 + epsilon * 1.1, 2.5),  # Just over epsilon apart
+        (2.0, 2.5),  # Another close request
+    ]
+
+    dist_over_epsilon = DistributionSummary.from_request_times(
+        requests_over_epsilon, distribution_type="concurrency", epsilon=epsilon
+    )
+
+    # These should be treated separately, so max concurrency depends on overlap
+    # At t=1.0 to 1.0+epsilon*1.1: 1 concurrent
+    # At t=1.0+epsilon*1.1 to 2.0: 2 concurrent
+    # At t=2.0 to 2.5: 1 concurrent
+    assert dist_over_epsilon.max == 2.0
+    assert dist_over_epsilon.min == 1.0

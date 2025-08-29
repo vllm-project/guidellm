@@ -133,8 +133,6 @@ def test_process_dataset_non_empty(
     mock_save_to_file,
     tokenizer_mock,
 ):
-    from guidellm.preprocess.dataset import process_dataset
-
     mock_dataset = [{"prompt": "Hello"}, {"prompt": "How are you?"}]
     mock_load_dataset.return_value = (mock_dataset, {"prompt_column": "prompt"})
     mock_check_processor.return_value = tokenizer_mock
