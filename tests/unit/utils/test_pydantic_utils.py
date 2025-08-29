@@ -4,7 +4,7 @@ Unit tests for the pydantic_utils module.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, TypeVar
 from unittest import mock
 
 import pytest
@@ -17,6 +17,68 @@ from guidellm.utils import (
     StandardBaseModel,
     StatusBreakdown,
 )
+from guidellm.utils.pydantic_utils import (
+    BaseModelT,
+    ErroredT,
+    IncompleteT,
+    RegisterClassT,
+    SuccessfulT,
+    TotalT,
+)
+
+
+@pytest.mark.smoke
+def test_base_model_t(self):
+    """Test that BaseModelT is configured correctly as a TypeVar."""
+    assert isinstance(BaseModelT, type(TypeVar("test")))
+    assert BaseModelT.__name__ == "BaseModelT"
+    assert BaseModelT.__bound__ is BaseModel
+    assert BaseModelT.__constraints__ == ()
+
+
+@pytest.mark.smoke
+def test_register_class_t(self):
+    """Test that RegisterClassT is configured correctly as a TypeVar."""
+    assert isinstance(RegisterClassT, type(TypeVar("test")))
+    assert RegisterClassT.__name__ == "RegisterClassT"
+    assert RegisterClassT.__bound__ == type[BaseModelT]
+    assert RegisterClassT.__constraints__ == ()
+
+
+@pytest.mark.smoke
+def test_successful_t(self):
+    """Test that SuccessfulT is configured correctly as a TypeVar."""
+    assert isinstance(SuccessfulT, type(TypeVar("test")))
+    assert SuccessfulT.__name__ == "SuccessfulT"
+    assert SuccessfulT.__bound__ is None
+    assert SuccessfulT.__constraints__ == ()
+
+
+@pytest.mark.smoke
+def test_errored_t(self):
+    """Test that ErroredT is configured correctly as a TypeVar."""
+    assert isinstance(ErroredT, type(TypeVar("test")))
+    assert ErroredT.__name__ == "ErroredT"
+    assert ErroredT.__bound__ is None
+    assert ErroredT.__constraints__ == ()
+
+
+@pytest.mark.smoke
+def test_incomplete_t(self):
+    """Test that IncompleteT is configured correctly as a TypeVar."""
+    assert isinstance(IncompleteT, type(TypeVar("test")))
+    assert IncompleteT.__name__ == "IncompleteT"
+    assert IncompleteT.__bound__ is None
+    assert IncompleteT.__constraints__ == ()
+
+
+@pytest.mark.smoke
+def test_total_t(self):
+    """Test that TotalT is configured correctly as a TypeVar."""
+    assert isinstance(TotalT, type(TypeVar("test")))
+    assert TotalT.__name__ == "TotalT"
+    assert TotalT.__bound__ is None
+    assert TotalT.__constraints__ == ()
 
 
 class TestReloadableBaseModel:
