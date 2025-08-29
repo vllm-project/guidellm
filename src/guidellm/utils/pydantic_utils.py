@@ -28,6 +28,7 @@ __all__ = [
 
 
 BaseModelT = TypeVar("BaseModelT", bound=BaseModel)
+RegisterClassT = TypeVar("RegisterClassT", bound=type[BaseModelT])
 SuccessfulT = TypeVar("SuccessfulT")
 ErroredT = TypeVar("ErroredT")
 IncompleteT = TypeVar("IncompleteT")
@@ -130,7 +131,7 @@ class StatusBreakdown(BaseModel, Generic[SuccessfulT, ErroredT, IncompleteT, Tot
 
     Example:
     ::
-        from guidellm.utils.pydantic_utils import StatusBreakdown
+        from guidellm.utils import StatusBreakdown
 
         # Define a breakdown for request counts
         breakdown = StatusBreakdown[int, int, int, int](
@@ -172,7 +173,7 @@ class PydanticClassRegistryMixin(
 
     Example:
     ::
-        from guidellm.utils.pydantic_utils import PydanticClassRegistryMixin
+        from speculators.utils import PydanticClassRegistryMixin
 
         class BaseConfig(PydanticClassRegistryMixin["BaseConfig"]):
             schema_discriminator: ClassVar[str] = "config_type"
@@ -200,8 +201,8 @@ class PydanticClassRegistryMixin(
 
     @classmethod
     def register_decorator(
-        cls, clazz: type[BaseModelT], name: str | list[str] | None = None
-    ) -> type[BaseModelT]:
+        cls, clazz: RegisterClassT, name: str | list[str] | None = None
+    ) -> RegisterClassT:
         """
         Register a Pydantic model class with type validation and schema reload.
 
@@ -300,3 +301,25 @@ class PydanticClassRegistryMixin(
         cls.reload_schema()
 
         return populated
+
+    @classmethod
+    def registered_classes(cls) -> tuple[type[Any], ...]:
+        """
+        Get all registered pydantic classes from the registry.
+
+        Automatically triggers auto-discovery if registry_auto_discovery is enabled
+        to ensure all available implementations are included.
+
+        :return: Tuple of all registered classes including auto-discovered ones
+        :raises ValueError: If called before any objects have been registered
+        """
+        if cls.registry_auto_discovery:
+            cls.auto_populate_registry()
+
+        if cls.registry is None:
+            raise ValueError(
+                "ClassRegistryMixin.registered_classes() must be called after "
+                "registering classes with ClassRegistryMixin.register()."
+            )
+
+        return tuple(cls.registry.values())
