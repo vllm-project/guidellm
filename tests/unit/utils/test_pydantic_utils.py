@@ -10,7 +10,7 @@ from unittest import mock
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from guidellm.utils.pydantic_utils import (
+from guidellm.utils import (
     PydanticClassRegistryMixin,
     ReloadableBaseModel,
     StandardBaseDict,
@@ -459,6 +459,7 @@ class TestPydanticClassRegistryMixin:
         assert hasattr(PydanticClassRegistryMixin, "__get_pydantic_core_schema__")
         assert hasattr(PydanticClassRegistryMixin, "__pydantic_generate_base_schema__")
         assert hasattr(PydanticClassRegistryMixin, "auto_populate_registry")
+        assert hasattr(PydanticClassRegistryMixin, "registered_classes")
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -547,8 +548,8 @@ class TestPydanticClassRegistryMixin:
             value: str
 
         assert TestBaseModel.registry is not None  # type: ignore[misc]
-        assert "testsubmodel" in TestBaseModel.registry  # type: ignore[misc]
-        assert TestBaseModel.registry["testsubmodel"] is TestSubModel  # type: ignore[misc]
+        assert "TestSubModel" in TestBaseModel.registry  # type: ignore[misc]
+        assert TestBaseModel.registry["TestSubModel"] is TestSubModel  # type: ignore[misc]
 
     @pytest.mark.sanity
     def test_register_decorator_with_name(self):
@@ -620,6 +621,87 @@ class TestPydanticClassRegistryMixin:
             result = TestBaseModel.auto_populate_registry()
             assert result is True
             mock_reload.assert_called_once()
+
+    @pytest.mark.smoke
+    def test_registered_classes(self):
+        """Test PydanticClassRegistryMixin.registered_classes method."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+            registry_auto_discovery: ClassVar[bool] = False
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        @TestBaseModel.register("test_sub_a")
+        class TestSubModelA(TestBaseModel):
+            test_type: str = "test_sub_a"
+            value_a: str
+
+        @TestBaseModel.register("test_sub_b")
+        class TestSubModelB(TestBaseModel):
+            test_type: str = "test_sub_b"
+            value_b: int
+
+        # Test normal case with registered classes
+        registered = TestBaseModel.registered_classes()
+        assert isinstance(registered, tuple)
+        assert len(registered) == 2
+        assert TestSubModelA in registered
+        assert TestSubModelB in registered
+
+    @pytest.mark.sanity
+    def test_registered_classes_with_auto_discovery(self):
+        """Test PydanticClassRegistryMixin.registered_classes with auto discovery."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+            registry_auto_discovery: ClassVar[bool] = True
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        with mock.patch.object(
+            TestBaseModel, "auto_populate_registry"
+        ) as mock_auto_populate:
+            # Mock the registry to simulate registered classes
+            TestBaseModel.registry = {"test_class": type("TestClass", (), {})}
+            mock_auto_populate.return_value = False
+
+            registered = TestBaseModel.registered_classes()
+            mock_auto_populate.assert_called_once()
+            assert isinstance(registered, tuple)
+            assert len(registered) == 1
+
+    @pytest.mark.sanity
+    def test_registered_classes_no_registry(self):
+        """Test PydanticClassRegistryMixin.registered_classes with no registry."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        # Ensure registry is None
+        TestBaseModel.registry = None
+
+        with pytest.raises(ValueError) as exc_info:
+            TestBaseModel.registered_classes()
+
+        assert "must be called after registering classes" in str(exc_info.value)
 
     @pytest.mark.sanity
     def test_marshalling(self, valid_instances):
