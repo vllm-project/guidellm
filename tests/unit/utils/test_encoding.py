@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Generic
+from typing import Any, Generic, TypeVar
 
 import pytest
 from pydantic import BaseModel, Field
@@ -22,12 +22,28 @@ class SampleModel(BaseModel):
     value: int = Field(description="Value field for testing")
 
 
-class ComplexModel(BaseModel):
+class SampleModelSubclass(SampleModel):
+    """Subclass of SampleModel for testing."""
+
+    extra_field: str
+
+
+SampleModelT = TypeVar("SampleModelT", bound=SampleModel)
+
+
+class ComplexModel(BaseModel, Generic[SampleModelT]):
     """Complex Pydantic model for testing."""
 
     items: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    nested: SampleModel | None = Field(default=None)
+    nested: SampleModelT | None = Field(default=None)
+
+
+class GenricModelWrapper(Generic[SampleModelT]):
+    """Simulates a layered generic type."""
+
+    def method(self, **kwargs) -> ComplexModel[SampleModelT]:
+        return ComplexModel[SampleModelT](**kwargs)
 
 
 class TestMessageEncoding:
@@ -508,3 +524,31 @@ class TestSerializer:
         inst.pydantic_registry.clear()
         restored = inst.from_dict(dumped)
         assert restored == sample
+
+    @pytest.mark.sanity
+    def test_generic_model(self):
+        inst = Serializer("dict")
+        inst.register_pydantic(ComplexModel[SampleModelSubclass])
+        nested = ComplexModel[SampleModelSubclass](
+            items=["i1", "i2"],
+            metadata={"m": 1},
+            nested=SampleModelSubclass(name="nested", value=10, extra_field="extra"),
+        )
+        dumped = inst.to_dict(nested)
+        restored = inst.from_dict(dumped)
+        assert restored == nested
+
+    @pytest.mark.sanity
+    def test_generic_emitted_type(self):
+        generic_instance = GenricModelWrapper[SampleModelSubclass]()
+
+        inst = Serializer("dict")
+        inst.register_pydantic(ComplexModel[SampleModelSubclass])
+        nested = generic_instance.method(
+            items=["i1", "i2"],
+            metadata={"m": 1},
+            nested=SampleModelSubclass(name="nested", value=10, extra_field="extra"),
+        )
+        dumped = inst.to_dict(nested)
+        restored = inst.from_dict(dumped)
+        assert restored == nested
