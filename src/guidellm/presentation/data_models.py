@@ -218,7 +218,7 @@ class BenchmarkDatum(BaseModel):
         return cls(
             requests_per_second=bm.metrics.requests_per_second.successful.mean,
             tpot=TabularDistributionSummary.from_distribution_summary(
-                bm.metrics.inter_token_latency_ms.successful
+                bm.metrics.time_per_output_token_ms.successful
             ),
             ttft=TabularDistributionSummary.from_distribution_summary(
                 bm.metrics.time_to_first_token_ms.successful
