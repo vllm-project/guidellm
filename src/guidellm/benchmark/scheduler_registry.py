@@ -16,6 +16,6 @@ def scheduler_register_benchmark_objects():
     SchedulerMessagingPydanticRegistry.register("GenerationRequestTimings")(
         GenerationRequestTimings
     )
-    SchedulerMessagingPydanticRegistry.register("ScheduledRequestInfo")(
-        ScheduledRequestInfo
-    )
+    SchedulerMessagingPydanticRegistry.register(
+        "ScheduledRequestInfo[GenerationRequestTimings]"
+    )(ScheduledRequestInfo[GenerationRequestTimings])
