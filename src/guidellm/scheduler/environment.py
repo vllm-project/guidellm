@@ -26,7 +26,6 @@ from typing import (
 
 from guidellm.scheduler.constraints import Constraint
 from guidellm.scheduler.objects import (
-    MeasuredRequestTimingsT,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
@@ -94,7 +93,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         self,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         state: SchedulerState,
     ):
         """
@@ -132,7 +131,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         tuple[
             ResponseT,
             RequestT | MultiTurnRequestT[RequestT],
-            ScheduledRequestInfo[MeasuredRequestTimingsT],
+            ScheduledRequestInfo,
             SchedulerState,
         ]
     ]:
@@ -225,7 +224,7 @@ class NonDistributedEnvironment(Environment):
         self,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         state: SchedulerState,
     ):
         """
@@ -252,7 +251,7 @@ class NonDistributedEnvironment(Environment):
         tuple[
             ResponseT,
             RequestT | MultiTurnRequestT[RequestT],
-            ScheduledRequestInfo[MeasuredRequestTimingsT],
+            ScheduledRequestInfo,
             SchedulerState,
         ]
     ]:

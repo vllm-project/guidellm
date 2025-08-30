@@ -13,7 +13,6 @@ from guidellm.scheduler import (
     BackendInterface,
     BackendT,
     MeasuredRequestTimings,
-    MeasuredRequestTimingsT,
     MultiTurnRequestT,
     RequestSchedulerTimings,
     RequestT,
@@ -40,14 +39,6 @@ def test_response_t():
     assert ResponseT.__name__ == "ResponseT"
     assert ResponseT.__bound__ is None
     assert ResponseT.__constraints__ == ()
-
-
-def test_request_timings_t():
-    """Validate MeasuredRequestTimingsT is a TypeVar bound to MeasuredRequestTimings."""
-    assert isinstance(MeasuredRequestTimingsT, TypeVar)
-    assert MeasuredRequestTimingsT.__name__ == "MeasuredRequestTimingsT"
-    assert MeasuredRequestTimingsT.__bound__ == MeasuredRequestTimings
-    assert MeasuredRequestTimingsT.__constraints__ == ()
 
 
 def test_backend_t():
@@ -121,7 +112,7 @@ class TestBackendInterface:
             type_params = generic_base.__args__
             assert len(type_params) == 3, "Should have 3 type parameters"
             param_names = [param.__name__ for param in type_params]
-            expected_names = ["RequestT", "MeasuredRequestTimingsT", "ResponseT"]
+            expected_names = ["RequestT", "ResponseT"]
             assert param_names == expected_names
 
     @pytest.mark.smoke
@@ -153,11 +144,9 @@ class TestBackendInterface:
             async def resolve(
                 self,
                 request: str,
-                request_info: ScheduledRequestInfo[MeasuredRequestTimings],
+                request_info: ScheduledRequestInfo,
                 history: list[tuple[str, str]] | None = None,
-            ) -> AsyncIterator[
-                tuple[str, ScheduledRequestInfo[MeasuredRequestTimings]]
-            ]:
+            ) -> AsyncIterator[tuple[str, ScheduledRequestInfo]]:
                 yield f"Response to: {request}", request_info
 
         backend = ConcreteBackend()
@@ -203,11 +192,9 @@ class TestBackendInterface:
             async def resolve(
                 self,
                 request: dict,
-                request_info: ScheduledRequestInfo[MeasuredRequestTimings],
+                request_info: ScheduledRequestInfo,
                 history: list[tuple[dict, dict]] | None = None,
-            ) -> AsyncIterator[
-                tuple[dict, ScheduledRequestInfo[MeasuredRequestTimings]]
-            ]:
+            ) -> AsyncIterator[tuple[dict, ScheduledRequestInfo]]:
                 response = {"result": request.get("input", ""), "status": "success"}
                 yield response, request_info
 

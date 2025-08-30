@@ -59,8 +59,8 @@ class MockRequestTimings(MeasuredRequestTimings):
     """Mock timing implementation for testing."""
 
 
-SchedulerMessagingPydanticRegistry.register("ScheduledRequestInfo[MockRequestTimings]")(
-    ScheduledRequestInfo[MockRequestTimings]
+SchedulerMessagingPydanticRegistry.register("ScheduledRequestInfo")(
+    ScheduledRequestInfo
 )
 
 
@@ -204,7 +204,7 @@ class TestWorkerProcess:
         )
         assert generic_base is not None
         type_args = getattr(generic_base, "__args__", ())
-        assert len(type_args) == 3  # RequestT, MeasuredRequestTimingsT, ResponseT
+        assert len(type_args) == 2  # RequestT, ResponseT
 
         # Function signatures
         run_sig = inspect.signature(WorkerProcess.run)
@@ -359,9 +359,7 @@ class TestWorkerProcess:
                 await main_messaging.put(
                     (
                         request,
-                        ScheduledRequestInfo[MockRequestTimings](
-                            scheduler_start_time=start_time
-                        ),
+                        ScheduledRequestInfo(scheduler_start_time=start_time),
                     ),
                     timeout=2.0,
                 )
@@ -399,9 +397,7 @@ class TestWorkerProcess:
                 await main_messaging.put(
                     (
                         cancel_request,
-                        ScheduledRequestInfo[MockRequestTimings](
-                            scheduler_start_time=start_time
-                        ),
+                        ScheduledRequestInfo(scheduler_start_time=start_time),
                     ),
                     timeout=2.0,
                 )
@@ -543,9 +539,7 @@ class TestWorkerProcess:
                 await main_messaging.put(
                     (
                         request,
-                        ScheduledRequestInfo[MockRequestTimings](
-                            scheduler_start_time=start_time
-                        ),
+                        ScheduledRequestInfo(scheduler_start_time=start_time),
                     ),
                     timeout=2.0,
                 )

@@ -31,7 +31,6 @@ from typing import Any, ClassVar, Generic, Literal, TypeVar
 import yaml
 from pydantic import Field, computed_field
 
-from guidellm.backend import GenerationRequestTimings
 from guidellm.benchmark.profile import (
     Profile,
 )
@@ -134,7 +133,7 @@ BenchmarkMetricsT = TypeVar("BenchmarkMetricsT", bound=BenchmarkMetrics)
 class BenchmarkRequestStats(StandardBaseDict):
     """Individual request processing statistics and scheduling metadata."""
 
-    scheduler_info: ScheduledRequestInfo[GenerationRequestTimings] = Field(
+    scheduler_info: ScheduledRequestInfo = Field(
         description="Scheduler metadata and timing information for the request"
     )
 

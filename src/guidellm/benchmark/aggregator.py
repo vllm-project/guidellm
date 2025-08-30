@@ -38,7 +38,6 @@ from pydantic import Field, PrivateAttr
 
 from guidellm.backend import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
 )
 from guidellm.benchmark.objects import (
@@ -47,7 +46,6 @@ from guidellm.benchmark.objects import (
     GenerativeRequestStats,
 )
 from guidellm.scheduler import (
-    MeasuredRequestTimingsT,
     RequestT,
     ResponseT,
     ScheduledRequestInfo,
@@ -153,7 +151,7 @@ class AggregatorState(dict[str, Any]):
 
 
 @runtime_checkable
-class Aggregator(Protocol[ResponseT, RequestT, MeasuredRequestTimingsT]):
+class Aggregator(Protocol[ResponseT, RequestT]):
     """
     Protocol for processing benchmark data updates during execution.
 
@@ -167,7 +165,7 @@ class Aggregator(Protocol[ResponseT, RequestT, MeasuredRequestTimingsT]):
         state: AggregatorState,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> dict[str, Any] | None:
         """
@@ -183,7 +181,7 @@ class Aggregator(Protocol[ResponseT, RequestT, MeasuredRequestTimingsT]):
 
 
 @runtime_checkable
-class CompilableAggregator(Protocol[ResponseT, RequestT, MeasuredRequestTimingsT]):
+class CompilableAggregator(Protocol[ResponseT, RequestT]):
     """
     Protocol for aggregators that compile final results from aggregated state.
 
@@ -196,7 +194,7 @@ class CompilableAggregator(Protocol[ResponseT, RequestT, MeasuredRequestTimingsT
         state: AggregatorState,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> dict[str, Any] | None:
         """
@@ -225,7 +223,7 @@ class CompilableAggregator(Protocol[ResponseT, RequestT, MeasuredRequestTimingsT
 class SerializableAggregator(
     PydanticClassRegistryMixin[type["SerializableAggregator"]],
     ABC,
-    Generic[ResponseT, RequestT, MeasuredRequestTimingsT],
+    Generic[ResponseT, RequestT],
 ):
     schema_discriminator: ClassVar[str] = "type_"
 
@@ -286,7 +284,7 @@ class SerializableAggregator(
         state: AggregatorState,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> dict[str, Any] | None:
         """
@@ -314,9 +312,7 @@ class SerializableAggregator(
 
 
 @SerializableAggregator.register("inject_extras")
-class InjectExtrasAggregator(
-    SerializableAggregator[ResponseT, RequestT, MeasuredRequestTimingsT], InfoMixin
-):
+class InjectExtrasAggregator(SerializableAggregator[ResponseT, RequestT], InfoMixin):
     """
     Aggregator for injecting extra metadata into the output.
     """
@@ -333,7 +329,7 @@ class InjectExtrasAggregator(
         state: AggregatorState,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> dict[str, Any] | None:
         """
@@ -355,9 +351,7 @@ class InjectExtrasAggregator(
 
 
 @SerializableAggregator.register("scheduler_stats")
-class SchedulerStatsAggregator(
-    SerializableAggregator[ResponseT, RequestT, MeasuredRequestTimingsT], InfoMixin
-):
+class SchedulerStatsAggregator(SerializableAggregator[ResponseT, RequestT], InfoMixin):
     """
     Aggregates scheduler timing and performance metrics.
 
@@ -376,7 +370,7 @@ class SchedulerStatsAggregator(
         state: AggregatorState,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> dict[str, Any] | None:
         """
@@ -499,9 +493,7 @@ class SchedulerStatsAggregator(
 
 @SerializableAggregator.register("generative_stats_progress")
 class GenerativeStatsProgressAggregator(
-    SerializableAggregator[
-        GenerationResponse, GenerationRequest, GenerationRequestTimings
-    ]
+    SerializableAggregator[GenerationResponse, GenerationRequest]
 ):
     """
     Tracks generative model metrics during benchmark execution.
@@ -523,7 +515,7 @@ class GenerativeStatsProgressAggregator(
         state: AggregatorState,
         response: GenerationResponse | None,
         request: GenerationRequest,
-        request_info: ScheduledRequestInfo[GenerationRequestTimings],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> dict[str, Any] | None:
         """
@@ -667,9 +659,7 @@ class GenerativeStatsProgressAggregator(
 
 @SerializableAggregator.register("generative_requests")
 class GenerativeRequestsAggregator(
-    SerializableAggregator[
-        GenerationResponse, GenerationRequest, GenerationRequestTimings
-    ],
+    SerializableAggregator[GenerationResponse, GenerationRequest],
 ):
     """
     Compiles complete generative benchmark results with warmup/cooldown filtering.
@@ -712,7 +702,7 @@ class GenerativeRequestsAggregator(
         state: AggregatorState,
         response: GenerationResponse | None,
         request: GenerationRequest,
-        request_info: ScheduledRequestInfo[GenerationRequestTimings],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> dict[str, Any] | None:
         """
@@ -875,7 +865,7 @@ class GenerativeRequestsAggregator(
 
     def _is_in_warmup(
         self,
-        request_info: ScheduledRequestInfo[GenerationRequestTimings],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> bool:
         """Check if the current request is within the warmup period."""
@@ -902,7 +892,7 @@ class GenerativeRequestsAggregator(
 
     def _is_in_cooldown(
         self,
-        request_info: ScheduledRequestInfo[GenerationRequestTimings],
+        request_info: ScheduledRequestInfo,
         scheduler_state: SchedulerState,
     ) -> bool:
         """Check if the current request is within the cooldown period."""
@@ -936,7 +926,7 @@ class GenerativeRequestsAggregator(
         cls,
         response: GenerationResponse,
         request: GenerationRequest,
-        request_info: ScheduledRequestInfo[GenerationRequestTimings],
+        request_info: ScheduledRequestInfo,
     ) -> GenerativeRequestStats:
         prompt_tokens = response.preferred_prompt_tokens(
             settings.preferred_prompt_tokens_source

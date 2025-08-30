@@ -38,9 +38,7 @@ class MockRequestTimings(MeasuredRequestTimings):
     """Mock timing implementation for testing."""
 
 
-SchedulerMessagingPydanticRegistry.register("MockRequestTimings")(
-    ScheduledRequestInfo[MockRequestTimings]
-)
+SchedulerMessagingPydanticRegistry.register("MockRequestTimings")(ScheduledRequestInfo)
 
 
 class MockBackend(BackendInterface):

@@ -13,7 +13,6 @@ from guidellm.backend import (
     Backend,
     BackendType,
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
 )
 from guidellm.benchmark.aggregator import (
@@ -266,7 +265,6 @@ async def benchmark_generative_text(  # noqa: C901
         Benchmarker[
             GenerativeBenchmark,
             GenerationRequest,
-            GenerationRequestTimings,
             GenerationResponse,
         ]().run(
             requests=request_loader,

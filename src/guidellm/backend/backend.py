@@ -18,7 +18,6 @@ from typing import Literal
 
 from guidellm.backend.objects import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
 )
 from guidellm.scheduler import BackendInterface
@@ -35,7 +34,7 @@ BackendType = Literal["openai_http"]
 
 class Backend(
     RegistryMixin["type[Backend]"],
-    BackendInterface[GenerationRequest, GenerationRequestTimings, GenerationResponse],
+    BackendInterface[GenerationRequest, GenerationResponse],
 ):
     """
     Base class for generative AI backends with registry and lifecycle.

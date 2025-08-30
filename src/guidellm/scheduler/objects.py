@@ -14,6 +14,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import (
     Any,
+    ClassVar,
     Generic,
     Literal,
     Protocol,
@@ -24,13 +25,17 @@ from typing import (
 from pydantic import Field, computed_field
 from typing_extensions import TypeAliasType, TypedDict
 
-from guidellm.utils import RegistryMixin, RegistryObjT, StandardBaseModel
+from guidellm.utils import (
+    PydanticClassRegistryMixin,
+    RegistryMixin,
+    StandardBaseModel,
+)
+from guidellm.utils.registry import RegistryObjT
 
 __all__ = [
     "BackendInterface",
     "BackendT",
     "MeasuredRequestTimings",
-    "MeasuredRequestTimingsT",
     "MultiTurnRequestT",
     "RequestSchedulerTimings",
     "RequestT",
@@ -66,6 +71,7 @@ class SchedulerMessagingPydanticRegistry(RegistryMixin[RegistryObjT]):
     """
 
 
+@SchedulerMessagingPydanticRegistry.register()
 class RequestSchedulerTimings(StandardBaseModel):
     """
     Scheduler-level timing measurements for request lifecycle tracking.
@@ -99,12 +105,25 @@ class RequestSchedulerTimings(StandardBaseModel):
     )
 
 
-class MeasuredRequestTimings(StandardBaseModel):
+@SchedulerMessagingPydanticRegistry.register()
+class MeasuredRequestTimings(PydanticClassRegistryMixin["MeasuredRequestTimings"]):
     """
     Base timing measurements for backend request processing.
     All timestamps are expected to be in Unix time (seconds since epoch).
     """
 
+    @classmethod
+    def __pydantic_schema_base_type__(cls) -> type[MeasuredRequestTimings]:
+        if cls.__name__ == "MeasuredRequestTimings":
+            return cls
+
+        return MeasuredRequestTimings
+
+    schema_discriminator: ClassVar[str] = "timings_type"
+
+    timings_type: ClassVar[Literal["measured_request_timings"]] = (
+        "measured_request_timings"
+    )
     request_start: float | None = Field(
         default=None, description="When the backend began processing the request"
     )
@@ -113,13 +132,8 @@ class MeasuredRequestTimings(StandardBaseModel):
     )
 
 
-MeasuredRequestTimingsT = TypeVar(
-    "MeasuredRequestTimingsT", bound=MeasuredRequestTimings
-)
-"""Generic timing measurements type for backend-specific request processing."""
-
-
-class ScheduledRequestInfo(StandardBaseModel, Generic[MeasuredRequestTimingsT]):
+@SchedulerMessagingPydanticRegistry.register()
+class ScheduledRequestInfo(StandardBaseModel):
     """
     Complete request information including status, timings, and metadata.
 
@@ -169,7 +183,7 @@ class ScheduledRequestInfo(StandardBaseModel, Generic[MeasuredRequestTimingsT]):
         default_factory=RequestSchedulerTimings,
         description="Scheduler-level timing measurements for request lifecycle",
     )
-    request_timings: MeasuredRequestTimingsT | None = Field(
+    request_timings: MeasuredRequestTimings | None = Field(
         default=None,
         description="Backend-specific timing measurements for request processing",
     )
@@ -217,7 +231,7 @@ class ScheduledRequestInfo(StandardBaseModel, Generic[MeasuredRequestTimingsT]):
         )
 
 
-class BackendInterface(Protocol, Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
+class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
     """
     Abstract interface for request processing backends.
 
@@ -282,9 +296,9 @@ class BackendInterface(Protocol, Generic[RequestT, MeasuredRequestTimingsT, Resp
     async def resolve(
         self,
         request: RequestT,
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
         history: list[tuple[RequestT, ResponseT]] | None = None,
-    ) -> AsyncIterator[tuple[ResponseT, ScheduledRequestInfo[MeasuredRequestTimingsT]]]:
+    ) -> AsyncIterator[tuple[ResponseT, ScheduledRequestInfo]]:
         """
         Process a request and yield incremental response updates.
 

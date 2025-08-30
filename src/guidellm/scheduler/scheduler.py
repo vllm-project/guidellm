@@ -20,7 +20,6 @@ from guidellm.scheduler.constraints import (
 from guidellm.scheduler.environment import Environment, NonDistributedEnvironment
 from guidellm.scheduler.objects import (
     BackendInterface,
-    MeasuredRequestTimingsT,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
@@ -35,7 +34,7 @@ __all__ = ["Scheduler"]
 
 
 class Scheduler(
-    Generic[RequestT, MeasuredRequestTimingsT, ResponseT],
+    Generic[RequestT, ResponseT],
     ThreadSafeSingletonMixin,
 ):
     """
@@ -68,7 +67,7 @@ class Scheduler(
     async def run(
         self,
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
-        backend: BackendInterface[RequestT, MeasuredRequestTimingsT, ResponseT],
+        backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         env: Environment | None,
         **constraints: dict[str, Any | dict[str, Any] | Constraint],
@@ -76,7 +75,7 @@ class Scheduler(
         tuple[
             ResponseT | None,
             RequestT,
-            ScheduledRequestInfo[MeasuredRequestTimingsT],
+            ScheduledRequestInfo,
             SchedulerState,
         ]
     ]:
@@ -107,9 +106,7 @@ class Scheduler(
             if env is None:
                 env = NonDistributedEnvironment()
 
-            worker_group: (
-                WorkerProcessGroup[RequestT, MeasuredRequestTimingsT, ResponseT] | None
-            ) = None
+            worker_group: WorkerProcessGroup[RequestT, ResponseT] | None = None
 
             # Any issues during the run will raise an error (local or remote),
             # be caught and passed to the environment,
@@ -126,9 +123,7 @@ class Scheduler(
                 ) = await env.sync_run_params(requests, strategy, constraints)
 
                 # Setup the worker group, sync start with the environment
-                worker_group = WorkerProcessGroup[
-                    RequestT, MeasuredRequestTimingsT, ResponseT
-                ](
+                worker_group = WorkerProcessGroup[RequestT, ResponseT](
                     requests=None,
                     cycle_requests=local_requests,
                     backend=backend,

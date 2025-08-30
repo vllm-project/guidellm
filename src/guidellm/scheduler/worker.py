@@ -29,7 +29,6 @@ import contextlib
 
 from guidellm.scheduler.objects import (
     BackendInterface,
-    MeasuredRequestTimingsT,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
@@ -42,7 +41,7 @@ from guidellm.utils import InterProcessMessaging, synchronous_to_exitable_async
 __all__ = ["WorkerProcess"]
 
 
-class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
+class WorkerProcess(Generic[RequestT, ResponseT]):
     """
     Individual worker process for distributed request execution and coordination.
 
@@ -71,7 +70,7 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             tuple[
                 ResponseT | None,
                 RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo[MeasuredRequestTimingsT],
+                ScheduledRequestInfo,
             ],
         ],
         async_limit: int,
@@ -79,7 +78,7 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
         requests_completed_event: ProcessingEvent,
-        backend: BackendInterface[RequestT, MeasuredRequestTimingsT, ResponseT],
+        backend: BackendInterface[RequestT, ResponseT],
         request_timings: ScheduledRequestTimings,
     ):
         """
@@ -264,7 +263,7 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
 
     async def _process_next_request(self):
         request: RequestT | MultiTurnRequestT[RequestT] | None = None
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT] | None = None
+        request_info: ScheduledRequestInfo | None = None
         response: ResponseT | None = None
 
         try:
@@ -299,6 +298,10 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             # Complete the request
             request_info.scheduler_timings.resolve_end = time.time()
             self._send_update("completed", response, request, request_info)
+
+            print("\n\n********Completed request")
+            print(request_info)
+
             response = request = request_info = None
         except asyncio.CancelledError:
             # Handle cancellation
@@ -318,7 +321,7 @@ class WorkerProcess(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         new_status: Literal["in_progress", "completed", "errored", "cancelled"],
         response: ResponseT | None,
         request: RequestT | MultiTurnRequestT[RequestT],
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        request_info: ScheduledRequestInfo,
     ):
         prev_status = request_info.status
 

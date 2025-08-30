@@ -279,11 +279,9 @@ class OpenAIHTTPBackend(Backend):
     async def resolve(
         self,
         request: GenerationRequest,
-        request_info: ScheduledRequestInfo[GenerationRequestTimings],
+        request_info: ScheduledRequestInfo,
         history: Optional[list[tuple[GenerationRequest, GenerationResponse]]] = None,
-    ) -> AsyncIterator[
-        tuple[GenerationResponse, ScheduledRequestInfo[GenerationRequestTimings]]
-    ]:
+    ) -> AsyncIterator[tuple[GenerationResponse, ScheduledRequestInfo]]:
         """
         Process a generation request and yield progressive responses.
 

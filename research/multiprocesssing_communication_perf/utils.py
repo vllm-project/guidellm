@@ -154,7 +154,7 @@ def create_test_objects(
                 GenerationRequest(
                     content=generate_str(objects_size),
                 ),
-                ScheduledRequestInfo[GenerationRequestTimings](
+                ScheduledRequestInfo(
                     scheduler_timings=RequestSchedulerTimings(
                         targeted_start=time.time(),
                         queued=time.time(),
@@ -173,7 +173,7 @@ def create_test_objects(
                 ),
             )
             for _ in range(num_objects)
-        ], [GenerationRequest, ScheduledRequestInfo[GenerationRequestTimings]]
+        ], [GenerationRequest, ScheduledRequestInfo]
 
     if type_ == "tuple[GenerationResponse]":
         return [
@@ -186,7 +186,7 @@ def create_test_objects(
                 GenerationRequest(
                     content=generate_str(objects_size // 2),
                 ),
-                ScheduledRequestInfo[GenerationRequestTimings](
+                ScheduledRequestInfo(
                     scheduler_timings=RequestSchedulerTimings(
                         targeted_start=time.time(),
                         queued=time.time(),
@@ -208,7 +208,7 @@ def create_test_objects(
         ], [
             GenerationResponse,
             GenerationRequest,
-            ScheduledRequestInfo[GenerationRequestTimings],
+            ScheduledRequestInfo,
         ]
 
     raise ValueError(f"Unknown type_: {type_}")
