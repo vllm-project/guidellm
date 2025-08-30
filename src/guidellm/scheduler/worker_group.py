@@ -24,7 +24,6 @@ from typing import Generic, Literal
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
 from guidellm.scheduler.objects import (
     BackendInterface,
-    MeasuredRequestTimingsT,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
@@ -47,7 +46,7 @@ from guidellm.utils import (
 __all__ = ["WorkerProcessGroup"]
 
 
-class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
+class WorkerProcessGroup(Generic[RequestT, ResponseT]):
     """
     Orchestrates multiple worker processes for distributed request processing.
 
@@ -83,7 +82,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self,
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
         cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
-        backend: BackendInterface[RequestT, MeasuredRequestTimingsT, ResponseT],
+        backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
     ):
@@ -126,18 +125,16 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self.error_event: Event = None
 
         # Scheduler and messaging state, created in start
-        self._state: _WorkerGroupState[ResponseT, MeasuredRequestTimingsT, RequestT] = (
-            None
-        )
+        self._state: _WorkerGroupState[ResponseT, RequestT] = None
         self.messaging: InterProcessMessaging[
             tuple[
                 RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo[MeasuredRequestTimingsT],
+                ScheduledRequestInfo,
             ],
             tuple[
                 ResponseT | None,
                 RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo[MeasuredRequestTimingsT],
+                ScheduledRequestInfo,
                 SchedulerState,
             ],
         ] = None
@@ -229,7 +226,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 1 if rank < (max_conc % num_processes) else 0
             )
 
-            worker = WorkerProcess[RequestT, MeasuredRequestTimingsT, ResponseT](
+            worker = WorkerProcess[RequestT, ResponseT](
                 messaging=self.messaging.create_worker_copy(
                     worker_index=rank,
                     max_buffer_send_size=None,
@@ -280,7 +277,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         if not self.processes:
             raise RuntimeError("create_processes() must be called before start()")
 
-        self._state = _WorkerGroupState[RequestT, MeasuredRequestTimingsT, ResponseT](
+        self._state = _WorkerGroupState[RequestT, ResponseT](
             start_time=start_time,
             num_processes=len(self.processes),
             processes=self.processes,
@@ -312,7 +309,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         tuple[
             ResponseT | None,
             RequestT,
-            ScheduledRequestInfo[MeasuredRequestTimingsT],
+            ScheduledRequestInfo,
             SchedulerState,
         ]
     ]:
@@ -395,7 +392,7 @@ class WorkerProcessGroup(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         return exceptions
 
 
-class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
+class _WorkerGroupState(Generic[RequestT, ResponseT]):
     """
     Manages scheduler state and synchronization for worker process groups.
 
@@ -460,7 +457,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                     yield from cycle_requests
 
         count = 0
-        request_info: ScheduledRequestInfo[MeasuredRequestTimingsT] = None
+        request_info: ScheduledRequestInfo = None
         for request in _iter():
             count += 1
 
@@ -474,16 +471,15 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
                 request_id = request.uuid
             else:
                 request_id = str(uuid.uuid4())
-            request_info: ScheduledRequestInfo[MeasuredRequestTimingsT] = (
-                ScheduledRequestInfo(
-                    request_id=request_id,
-                    status="queued",
-                    scheduler_node_id=0,
-                    scheduler_process_id=-1,
-                    scheduler_start_time=self._start_time,
-                )
+            request_info: ScheduledRequestInfo = ScheduledRequestInfo(
+                request_id=request_id,
+                status="queued",
+                scheduler_node_id=0,
+                scheduler_process_id=-1,
+                scheduler_start_time=self._start_time,
             )
             _, stop = self._locked_update(request_info, source="generator")
+            print(f"----Sending request {request_info}")
             yield (request, request_info)
 
             if stop:
@@ -502,12 +498,12 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         update: tuple[
             ResponseT | None,
             RequestT | MultiTurnRequestT,
-            ScheduledRequestInfo[MeasuredRequestTimingsT],
+            ScheduledRequestInfo,
         ],
     ) -> tuple[
         ResponseT | None,
         RequestT | MultiTurnRequestT,
-        ScheduledRequestInfo[MeasuredRequestTimingsT],
+        ScheduledRequestInfo,
         SchedulerState,
     ]:
         """
@@ -521,6 +517,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         :return: Updated tuple with injected scheduler state
         """
         response, request, request_info = update
+        print(f"\n###########Received update for request: {request_info}")
         state, stop = self._locked_update(info=request_info, source="updates")
 
         if stop:
@@ -559,7 +556,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
 
     def _locked_update(
         self,
-        info: ScheduledRequestInfo[MeasuredRequestTimingsT],
+        info: ScheduledRequestInfo,
         source: Literal["generator", "updates"],
         update_counts: bool = True,
         update_constraints: bool = True,
@@ -593,7 +590,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
         self._state.created_requests += 1
         self._state.queued_requests += 1
 
-    def _update_new_response(self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]):
+    def _update_new_response(self, info: ScheduledRequestInfo):
         if info.status == "in_progress" or (
             info.status == "cancelled" and info.scheduler_timings.resolve_start is None
             # Cancelled request that never sent a progress update
@@ -608,9 +605,7 @@ class _WorkerGroupState(Generic[RequestT, MeasuredRequestTimingsT, ResponseT]):
             self._state.errored_requests += 1 if info.status == "errored" else 0
             self._state.cancelled_requests += 1 if info.status == "cancelled" else 0
 
-    def _update_with_constraints(
-        self, info: ScheduledRequestInfo[MeasuredRequestTimingsT]
-    ):
+    def _update_with_constraints(self, info: ScheduledRequestInfo):
         actions: dict[str, SchedulerUpdateAction] = {
             name: const(self._state, info) for name, const in self._constraints.items()
         }

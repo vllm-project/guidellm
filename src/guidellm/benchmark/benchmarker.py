@@ -36,7 +36,6 @@ from guidellm.scheduler import (
     BackendInterface,
     Constraint,
     Environment,
-    MeasuredRequestTimingsT,
     NonDistributedEnvironment,
     RequestT,
     ResponseT,
@@ -51,7 +50,7 @@ __all__ = ["Benchmarker"]
 
 
 class Benchmarker(
-    Generic[BenchmarkT, RequestT, MeasuredRequestTimingsT, ResponseT],
+    Generic[BenchmarkT, RequestT, ResponseT],
     ABC,
     ThreadSafeSingletonMixin,
 ):
@@ -69,13 +68,12 @@ class Benchmarker(
     async def run(
         self,
         requests: Iterable[RequestT | Iterable[RequestT | tuple[RequestT, float]]],
-        backend: BackendInterface[RequestT, MeasuredRequestTimingsT, ResponseT],
+        backend: BackendInterface[RequestT, ResponseT],
         profile: Profile,
         benchmark_class: type[BenchmarkT],
         benchmark_aggregators: dict[
             str,
-            Aggregator[ResponseT, RequestT, MeasuredRequestTimingsT]
-            | CompilableAggregator[ResponseT, RequestT, MeasuredRequestTimingsT],
+            Aggregator[ResponseT, RequestT] | CompilableAggregator[ResponseT, RequestT],
         ],
         environment: Environment | None = None,
     ) -> AsyncIterator[
@@ -121,7 +119,7 @@ class Benchmarker(
                     request,
                     request_info,
                     scheduler_state,
-                ) in Scheduler[RequestT, MeasuredRequestTimingsT, ResponseT]().run(
+                ) in Scheduler[RequestT, ResponseT]().run(
                     requests=requests,
                     backend=backend,
                     strategy=strategy,
@@ -170,12 +168,11 @@ class Benchmarker(
         run_index: int,
         profile: Profile,
         requests: Iterable[RequestT | Iterable[RequestT | tuple[RequestT, float]]],
-        backend: BackendInterface[RequestT, MeasuredRequestTimingsT, ResponseT],
+        backend: BackendInterface[RequestT, ResponseT],
         environment: Environment,
         aggregators: dict[
             str,
-            Aggregator[ResponseT, RequestT, MeasuredRequestTimingsT]
-            | CompilableAggregator[ResponseT, RequestT, MeasuredRequestTimingsT],
+            Aggregator[ResponseT, RequestT] | CompilableAggregator[ResponseT, RequestT],
         ],
         aggregators_state: dict[str, dict[str, Any]],
         strategy: SchedulingStrategy,

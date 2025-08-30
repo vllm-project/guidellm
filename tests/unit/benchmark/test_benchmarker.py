@@ -23,7 +23,6 @@ from guidellm.benchmark.objects import BenchmarkerDict, BenchmarkT, SchedulerDic
 from guidellm.benchmark.profile import SynchronousProfile
 from guidellm.scheduler import (
     BackendInterface,
-    MeasuredRequestTimingsT,
     NonDistributedEnvironment,
     RequestT,
     ResponseT,
@@ -70,15 +69,6 @@ def test_response_t():
     assert ResponseT.__name__ == "ResponseT"
     assert ResponseT.__bound__ is None
     assert ResponseT.__constraints__ == ()
-
-
-@pytest.mark.smoke
-def test_measured_request_timings_t():
-    """Test that MeasuredRequestTimingsT is filled out correctly as a TypeVar."""
-    assert isinstance(MeasuredRequestTimingsT, type(TypeVar("tmp")))
-    assert MeasuredRequestTimingsT.__name__ == "MeasuredRequestTimingsT"
-    assert MeasuredRequestTimingsT.__bound__ is not None
-    assert MeasuredRequestTimingsT.__constraints__ == ()
 
 
 class MockBenchmark:

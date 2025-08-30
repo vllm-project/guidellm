@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 
 from guidellm.backend.objects import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
 )
 from guidellm.scheduler.objects import RequestSchedulerTimings, ScheduledRequestInfo
@@ -208,7 +207,7 @@ class TestMessageEncoding:
             (
                 None,
                 GenerationRequest(content="test content"),
-                ScheduledRequestInfo[GenerationRequestTimings](
+                ScheduledRequestInfo(
                     scheduler_timings=RequestSchedulerTimings(
                         targeted_start=1.0,
                         queued=0.1,
@@ -231,7 +230,7 @@ class TestMessageEncoding:
                     response_output_tokens=6,
                 ),
                 GenerationRequest(content="test content"),
-                ScheduledRequestInfo[GenerationRequestTimings](
+                ScheduledRequestInfo(
                     scheduler_timings=RequestSchedulerTimings(
                         targeted_start=1.0,
                         queued=0.1,
@@ -258,7 +257,7 @@ class TestMessageEncoding:
 
         instance.register_pydantic(GenerationRequest)
         instance.register_pydantic(GenerationResponse)
-        instance.register_pydantic(ScheduledRequestInfo[GenerationRequestTimings])
+        instance.register_pydantic(ScheduledRequestInfo)
 
         message = instance.encode(obj)
         decoded = instance.decode(message)

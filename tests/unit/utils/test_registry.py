@@ -4,6 +4,7 @@ Unit tests for the registry module.
 
 from __future__ import annotations
 
+import inspect
 from typing import TypeVar
 from unittest import mock
 
@@ -17,7 +18,7 @@ def test_registry_obj_type():
     """Test that RegistryObjT is configured correctly as a TypeVar."""
     assert isinstance(RegistryObjT, type(TypeVar("test")))
     assert RegistryObjT.__name__ == "RegistryObjT"
-    assert RegistryObjT.__bound__ is not None
+    assert RegistryObjT.__bound__ is None
     assert RegistryObjT.__constraints__ == ()
 
 
@@ -25,7 +26,7 @@ def test_registered_type():
     """Test that RegisterT is configured correctly as a TypeVar."""
     assert isinstance(RegisterT, type(TypeVar("test")))
     assert RegisterT.__name__ == "RegisterT"
-    assert RegisterT.__bound__ is RegistryObjT
+    assert RegisterT.__bound__ is None
     assert RegisterT.__constraints__ == ()
 
 
@@ -119,8 +120,17 @@ class TestRegistryMixin:
         """Test register method with invalid name types."""
         registry_class, _ = valid_instances
 
-        with pytest.raises(ValueError, match="name must be a string, list of strings"):
-            registry_class.register(invalid_name)
+        # The register method returns a decorator, so we need to apply it to test
+        # validation
+        decorator = registry_class.register(invalid_name)
+
+        class TestClass:
+            pass
+
+        with pytest.raises(
+            ValueError, match="name must be a string or an iterable of strings"
+        ):
+            decorator(TestClass)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -482,3 +492,102 @@ class TestRegistryMixin:
             assert TestAutoRegistry.registry_populated is True
             assert TestAutoRegistry.registry is not None
             assert "Module1Class" in TestAutoRegistry.registry
+
+    @pytest.mark.smoke
+    def test_register_preserves_class_metadata(self):
+        """Test that registered classes retain docs, types, and methods."""
+
+        class TestRegistry(RegistryMixin):
+            pass
+
+        @TestRegistry.register("documented_class")
+        class DocumentedClass:
+            """This is a documented class with methods and type hints."""
+
+            def __init__(self, value: int) -> None:
+                """Initialize with a value.
+
+                :param value: An integer value
+                """
+                self.value = value
+
+            def get_value(self) -> int:
+                """Get the stored value.
+
+                :return: The stored integer value
+                """
+                return self.value
+
+            def set_value(self, new_value: int) -> None:
+                """Set a new value.
+
+                :param new_value: The new integer value to set
+                """
+                self.value = new_value
+
+            @classmethod
+            def from_string(cls, value_str: str) -> DocumentedClass:
+                """Create instance from string.
+
+                :param value_str: String representation of value
+                :return: New DocumentedClass instance
+                """
+                return cls(int(value_str))
+
+            @staticmethod
+            def validate_value(value: int) -> bool:
+                """Validate that a value is positive.
+
+                :param value: Value to validate
+                :return: True if positive, False otherwise
+                """
+                return value > 0
+
+        # Check that the class was registered
+        assert TestRegistry.is_registered("documented_class")
+        registered_class = TestRegistry.get_registered_object("documented_class")
+        assert registered_class is DocumentedClass
+
+        # Check that the class retains its documentation
+        assert registered_class.__doc__ is not None
+        assert "documented class with methods" in registered_class.__doc__
+        assert registered_class.__init__.__doc__ is not None
+        assert "Initialize with a value" in registered_class.__init__.__doc__
+        assert registered_class.get_value.__doc__ is not None
+        assert "Get the stored value" in registered_class.get_value.__doc__
+        assert registered_class.set_value.__doc__ is not None
+        assert "Set a new value" in registered_class.set_value.__doc__
+        assert registered_class.from_string.__doc__ is not None
+        assert "Create instance from string" in registered_class.from_string.__doc__
+        assert registered_class.validate_value.__doc__ is not None
+        assert (
+            "Validate that a value is positive"
+            in registered_class.validate_value.__doc__
+        )
+
+        # Check that methods are callable and work correctly
+        instance = registered_class(42)
+        assert instance.get_value() == 42
+        instance.set_value(100)
+        assert instance.get_value() == 100
+        instance2 = registered_class.from_string("123")
+        assert instance2.get_value() == 123
+        assert registered_class.validate_value(10) is True
+        assert registered_class.validate_value(-5) is False
+
+        # Check that type annotations are preserved (if accessible)
+        if hasattr(inspect, "get_annotations"):
+            # Python 3.10+
+            try:
+                annotations = inspect.get_annotations(registered_class.__init__)
+                assert "value" in annotations
+                assert annotations["value"] is int
+                return_ann = annotations.get("return")
+                assert return_ann is None or return_ann is type(None)
+            except (AttributeError, NameError):
+                # Fallback for older Python or missing annotations
+                pass
+
+        # Check that the class name is preserved
+        assert registered_class.__name__ == "DocumentedClass"
+        assert registered_class.__qualname__.endswith("DocumentedClass")

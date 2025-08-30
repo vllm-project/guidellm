@@ -11,7 +11,10 @@ from typing import Any, Literal, Optional
 
 from pydantic import Field
 
-from guidellm.scheduler import MeasuredRequestTimings
+from guidellm.scheduler import (
+    MeasuredRequestTimings,
+    SchedulerMessagingPydanticRegistry,
+)
 from guidellm.utils import StandardBaseModel
 
 __all__ = [
@@ -21,6 +24,7 @@ __all__ = [
 ]
 
 
+@SchedulerMessagingPydanticRegistry.register()
 class GenerationRequest(StandardBaseModel):
     """Request model for backend generation operations."""
 
@@ -59,6 +63,7 @@ class GenerationRequest(StandardBaseModel):
     )
 
 
+@SchedulerMessagingPydanticRegistry.register()
 class GenerationResponse(StandardBaseModel):
     """Response model for backend generation operations."""
 
@@ -135,9 +140,11 @@ class GenerationResponse(StandardBaseModel):
             return self.response_output_tokens or self.request_output_tokens
 
 
+@MeasuredRequestTimings.register()
 class GenerationRequestTimings(MeasuredRequestTimings):
     """Timing model for tracking generation request lifecycle events."""
 
+    timings_type: Literal["generation_request_timings"] = "generation_request_timings"
     first_iteration: Optional[float] = Field(
         default=None,
         description="Unix timestamp when the first generation iteration began.",
@@ -146,3 +153,6 @@ class GenerationRequestTimings(MeasuredRequestTimings):
         default=None,
         description="Unix timestamp when the last generation iteration completed.",
     )
+
+
+SchedulerMessagingPydanticRegistry.register_decorator(GenerationRequestTimings)

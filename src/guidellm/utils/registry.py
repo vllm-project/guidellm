@@ -10,16 +10,16 @@ plugin architectures.
 
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar, Generic, TypeVar
+from typing import Callable, ClassVar, Generic, TypeVar, cast
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 
 __all__ = ["RegisterT", "RegistryMixin", "RegistryObjT"]
 
 
-RegistryObjT = TypeVar("RegistryObjT", bound=Any)
+RegistryObjT = TypeVar("RegistryObjT")
 """Generic type variable for objects managed by the registry system."""
-RegisterT = TypeVar("RegisterT", bound=RegistryObjT)
+RegisterT = TypeVar("RegisterT")
 """Generic type variable for the args and return values within the registry."""
 
 
@@ -78,13 +78,12 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
         :return: Decorator function that registers the decorated object
         :raises ValueError: If name is not a string, list of strings, or None
         """
-        if name is not None and not isinstance(name, (str, list)):
-            raise ValueError(
-                "RegistryMixin.register() name must be a string, list of strings, "
-                f"or None. Got {name}."
-            )
 
-        return lambda obj: cls.register_decorator(obj, name=name)
+        def _decorator(obj: RegisterT) -> RegisterT:
+            cls.register_decorator(obj, name=name)
+            return obj
+
+        return _decorator
 
     @classmethod
     def register_decorator(
@@ -127,7 +126,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
                     "registered."
                 )
 
-            cls.registry[register_name] = obj
+            cls.registry[register_name] = cast("RegistryObjT", obj)
 
         return obj
 

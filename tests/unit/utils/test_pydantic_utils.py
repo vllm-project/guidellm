@@ -28,7 +28,7 @@ from guidellm.utils.pydantic_utils import (
 
 
 @pytest.mark.smoke
-def test_base_model_t(self):
+def test_base_model_t():
     """Test that BaseModelT is configured correctly as a TypeVar."""
     assert isinstance(BaseModelT, type(TypeVar("test")))
     assert BaseModelT.__name__ == "BaseModelT"
@@ -37,16 +37,16 @@ def test_base_model_t(self):
 
 
 @pytest.mark.smoke
-def test_register_class_t(self):
+def test_register_class_t():
     """Test that RegisterClassT is configured correctly as a TypeVar."""
     assert isinstance(RegisterClassT, type(TypeVar("test")))
     assert RegisterClassT.__name__ == "RegisterClassT"
-    assert RegisterClassT.__bound__ == type[BaseModelT]
+    assert RegisterClassT.__bound__ is None
     assert RegisterClassT.__constraints__ == ()
 
 
 @pytest.mark.smoke
-def test_successful_t(self):
+def test_successful_t():
     """Test that SuccessfulT is configured correctly as a TypeVar."""
     assert isinstance(SuccessfulT, type(TypeVar("test")))
     assert SuccessfulT.__name__ == "SuccessfulT"
@@ -55,7 +55,7 @@ def test_successful_t(self):
 
 
 @pytest.mark.smoke
-def test_errored_t(self):
+def test_errored_t():
     """Test that ErroredT is configured correctly as a TypeVar."""
     assert isinstance(ErroredT, type(TypeVar("test")))
     assert ErroredT.__name__ == "ErroredT"
@@ -64,7 +64,7 @@ def test_errored_t(self):
 
 
 @pytest.mark.smoke
-def test_incomplete_t(self):
+def test_incomplete_t():
     """Test that IncompleteT is configured correctly as a TypeVar."""
     assert isinstance(IncompleteT, type(TypeVar("test")))
     assert IncompleteT.__name__ == "IncompleteT"
@@ -73,7 +73,7 @@ def test_incomplete_t(self):
 
 
 @pytest.mark.smoke
-def test_total_t(self):
+def test_total_t():
     """Test that TotalT is configured correctly as a TypeVar."""
     assert isinstance(TotalT, type(TypeVar("test")))
     assert TotalT.__name__ == "TotalT"
@@ -113,7 +113,6 @@ class TestReloadableBaseModel:
         config = ReloadableBaseModel.model_config
         assert config["extra"] == "ignore"
         assert config["use_enum_values"] is True
-        assert config["validate_assignment"] is True
         assert config["from_attributes"] is True
         assert config["arbitrary_types_allowed"] is True
 
@@ -213,7 +212,6 @@ class TestStandardBaseModel:
         config = StandardBaseModel.model_config
         assert config["extra"] == "ignore"
         assert config["use_enum_values"] is True
-        assert config["validate_assignment"] is True
         assert config["from_attributes"] is True
 
     @pytest.mark.smoke
@@ -329,7 +327,6 @@ class TestStandardBaseDict:
         config = StandardBaseDict.model_config
         assert config["extra"] == "allow"
         assert config["use_enum_values"] is True
-        assert config["validate_assignment"] is True
         assert config["from_attributes"] is True
         assert config["arbitrary_types_allowed"] is True
 
@@ -852,3 +849,154 @@ class TestPydanticClassRegistryMixin:
         assert len(recreated.models) == 2
         assert isinstance(recreated.models[0], TestSubModelA)
         assert isinstance(recreated.models[1], TestSubModelB)
+
+    @pytest.mark.smoke
+    def test_register_preserves_pydantic_metadata(self):  # noqa: C901
+        """Test that registered Pydantic classes retain docs, types, and methods."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "model_type"
+            model_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+
+                return TestBaseModel
+
+        @TestBaseModel.register("documented_model")
+        class DocumentedModel(TestBaseModel):
+            """This is a documented Pydantic model with methods and type hints."""
+
+            model_type: str = "documented_model"
+            value: int = Field(description="An integer value for the model")
+
+            def get_value(self) -> int:
+                """Get the stored value.
+
+                :return: The stored integer value
+                """
+                return self.value
+
+            def set_value(self, new_value: int) -> None:
+                """Set a new value.
+
+                :param new_value: The new integer value to set
+                """
+                self.value = new_value
+
+            @classmethod
+            def from_string(cls, value_str: str) -> DocumentedModel:
+                """Create instance from string.
+
+                :param value_str: String representation of value
+                :return: New DocumentedModel instance
+                """
+                return cls(value=int(value_str))
+
+            @staticmethod
+            def validate_value(value: int) -> bool:
+                """Validate that a value is positive.
+
+                :param value: Value to validate
+                :return: True if positive, False otherwise
+                """
+                return value > 0
+
+            def model_post_init(self, __context) -> None:
+                """Post-initialization processing.
+
+                :param __context: Validation context
+                """
+                if self.value < 0:
+                    raise ValueError("Value must be non-negative")
+
+        # Check that the class was registered
+        assert TestBaseModel.is_registered("documented_model")
+        registered_class = TestBaseModel.get_registered_object("documented_model")
+        assert registered_class is DocumentedModel
+
+        # Check that the class retains its documentation
+        assert registered_class.__doc__ is not None
+        assert "documented Pydantic model with methods" in registered_class.__doc__
+
+        # Check that methods retain their documentation
+        assert registered_class.get_value.__doc__ is not None
+        assert "Get the stored value" in registered_class.get_value.__doc__
+        assert registered_class.set_value.__doc__ is not None
+        assert "Set a new value" in registered_class.set_value.__doc__
+        assert registered_class.from_string.__doc__ is not None
+        assert "Create instance from string" in registered_class.from_string.__doc__
+        assert registered_class.validate_value.__doc__ is not None
+        assert (
+            "Validate that a value is positive"
+            in registered_class.validate_value.__doc__
+        )
+        assert registered_class.model_post_init.__doc__ is not None
+        assert (
+            "Post-initialization processing" in registered_class.model_post_init.__doc__
+        )
+
+        # Check that methods are callable and work correctly
+        instance = DocumentedModel(value=42)
+        assert isinstance(instance, DocumentedModel)
+        assert instance.get_value() == 42
+        instance.set_value(100)
+        assert instance.get_value() == 100
+        assert instance.model_type == "documented_model"
+
+        # Check class methods work
+        instance2 = DocumentedModel.from_string("123")
+        assert instance2.get_value() == 123
+        assert instance2.model_type == "documented_model"
+
+        # Check static methods work
+        assert DocumentedModel.validate_value(10) is True
+        assert DocumentedModel.validate_value(-5) is False
+
+        # Check that Pydantic functionality is preserved
+        data_dict = instance.model_dump()
+        assert data_dict["value"] == 100
+        assert data_dict["model_type"] == "documented_model"
+
+        recreated = DocumentedModel.model_validate(data_dict)
+        assert isinstance(recreated, DocumentedModel)
+        assert recreated.value == 100
+        assert recreated.model_type == "documented_model"
+
+        # Test field validation
+        with pytest.raises(ValidationError):
+            DocumentedModel(value="not_an_int")
+
+        # Test post_init validation
+        with pytest.raises(ValueError, match="Value must be non-negative"):
+            DocumentedModel(value=-10)
+
+        # Check that Pydantic field metadata is preserved
+        value_field = DocumentedModel.model_fields["value"]
+        assert value_field.description == "An integer value for the model"
+
+        # Check that type annotations are preserved (if accessible)
+        import inspect
+
+        if hasattr(inspect, "get_annotations"):
+            # Python 3.10+
+            try:
+                annotations = inspect.get_annotations(DocumentedModel.get_value)
+                return_ann = annotations.get("return")
+                assert return_ann is int or return_ann == "int"
+            except (AttributeError, NameError):
+                # Fallback for older Python or missing annotations
+                pass
+
+        # Check that the class name is preserved
+        assert DocumentedModel.__name__ == "DocumentedModel"
+        assert DocumentedModel.__qualname__.endswith("DocumentedModel")
+
+        # Verify that the class is still properly integrated with the registry system
+        all_registered = TestBaseModel.registered_classes()
+        assert DocumentedModel in all_registered
+
+        # Test that the registered class is the same as the original
+        assert registered_class is DocumentedModel

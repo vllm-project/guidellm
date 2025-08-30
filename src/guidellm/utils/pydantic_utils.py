@@ -28,7 +28,7 @@ __all__ = [
 
 
 BaseModelT = TypeVar("BaseModelT", bound=BaseModel)
-RegisterClassT = TypeVar("RegisterClassT", bound=type[BaseModelT])
+RegisterClassT = TypeVar("RegisterClassT")
 SuccessfulT = TypeVar("SuccessfulT")
 ErroredT = TypeVar("ErroredT")
 IncompleteT = TypeVar("IncompleteT")
@@ -48,7 +48,6 @@ class ReloadableBaseModel(BaseModel):
     model_config = ConfigDict(
         extra="ignore",
         use_enum_values=True,
-        validate_assignment=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
     )
@@ -85,7 +84,6 @@ class StandardBaseModel(BaseModel):
     model_config = ConfigDict(
         extra="ignore",
         use_enum_values=True,
-        validate_assignment=True,
         from_attributes=True,
     )
 
@@ -114,7 +112,6 @@ class StandardBaseDict(StandardBaseModel):
     model_config = ConfigDict(
         extra="allow",
         use_enum_values=True,
-        validate_assignment=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
     )
@@ -221,10 +218,10 @@ class PydanticClassRegistryMixin(
                 "Pydantic BaseModel"
             )
 
-        dec_clazz = super().register_decorator(clazz, name=name)
+        super().register_decorator(clazz, name=name)
         cls.reload_schema()
 
-        return dec_clazz
+        return clazz
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -303,7 +300,7 @@ class PydanticClassRegistryMixin(
         return populated
 
     @classmethod
-    def registered_classes(cls) -> tuple[type[Any], ...]:
+    def registered_classes(cls) -> tuple[type[BaseModelT], ...]:
         """
         Get all registered pydantic classes from the registry.
 

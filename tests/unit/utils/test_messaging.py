@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from guidellm.backend import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
 )
 from guidellm.scheduler import ScheduledRequestInfo
@@ -73,7 +72,7 @@ class MockProcessTarget:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
 
@@ -312,12 +311,12 @@ class TestInterProcessMessagingQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -352,7 +351,7 @@ class TestInterProcessMessagingQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -384,12 +383,12 @@ class TestInterProcessMessagingQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -433,7 +432,7 @@ class TestInterProcessMessagingQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -612,7 +611,7 @@ class TestInterProcessMessagingManagerQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -647,7 +646,7 @@ class TestInterProcessMessagingManagerQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -679,12 +678,12 @@ class TestInterProcessMessagingManagerQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -728,7 +727,7 @@ class TestInterProcessMessagingManagerQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -907,12 +906,12 @@ class TestInterProcessMessagingPipe:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -949,7 +948,7 @@ class TestInterProcessMessagingPipe:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
