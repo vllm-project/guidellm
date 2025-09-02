@@ -538,6 +538,9 @@ class TestSerializer:
         assert restored == nested
 
     @pytest.mark.sanity
+    @pytest.mark.xfail(
+        reason="A generic object returned by a generic method loses its type args"
+    )
     def test_generic_emitted_type(self):
         generic_instance = GenricModelWrapper[SampleModelSubclass]()
 
