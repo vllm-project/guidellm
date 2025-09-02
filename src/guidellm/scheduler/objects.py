@@ -121,8 +121,8 @@ class MeasuredRequestTimings(PydanticClassRegistryMixin["MeasuredRequestTimings"
 
     schema_discriminator: ClassVar[str] = "timings_type"
 
-    timings_type: ClassVar[Literal["measured_request_timings"]] = (
-        "measured_request_timings"
+    timings_type: Literal["measured_request_timings"] = Field(
+        description="Type identifier for the timing measurement",
     )
     request_start: float | None = Field(
         default=None, description="When the backend began processing the request"

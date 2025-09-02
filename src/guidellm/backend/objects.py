@@ -140,7 +140,7 @@ class GenerationResponse(StandardBaseModel):
             return self.response_output_tokens or self.request_output_tokens
 
 
-@MeasuredRequestTimings.register()
+@MeasuredRequestTimings.register("generation_request_timings")
 class GenerationRequestTimings(MeasuredRequestTimings):
     """Timing model for tracking generation request lifecycle events."""
 
