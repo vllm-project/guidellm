@@ -338,3 +338,9 @@ class EndlessTextCreator:
             text += add_word
 
         return text
+
+
+from faker import Faker
+
+fake = Faker()
+fake.text()
