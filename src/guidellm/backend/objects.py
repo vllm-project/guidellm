@@ -13,6 +13,7 @@ from pydantic import Field
 
 from guidellm.scheduler import (
     MeasuredRequestTimings,
+    ScheduledRequestInfo,
     SchedulerMessagingPydanticRegistry,
 )
 from guidellm.utils import StandardBaseModel
@@ -154,5 +155,8 @@ class GenerationRequestTimings(MeasuredRequestTimings):
         description="Unix timestamp when the last generation iteration completed.",
     )
 
+
+# Rebuild ScheduledRequestInfo to recognize MeasuredRequestTimings schema change
+ScheduledRequestInfo.model_rebuild(force=True)
 
 SchedulerMessagingPydanticRegistry.register_decorator(GenerationRequestTimings)
