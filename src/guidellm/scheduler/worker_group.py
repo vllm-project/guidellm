@@ -479,7 +479,6 @@ class _WorkerGroupState(Generic[RequestT, ResponseT]):
                 scheduler_start_time=self._start_time,
             )
             _, stop = self._locked_update(request_info, source="generator")
-            print(f"----Sending request {request_info}")
             yield (request, request_info)
 
             if stop:
@@ -517,7 +516,6 @@ class _WorkerGroupState(Generic[RequestT, ResponseT]):
         :return: Updated tuple with injected scheduler state
         """
         response, request, request_info = update
-        print(f"\n###########Received update for request: {request_info}")
         state, stop = self._locked_update(info=request_info, source="updates")
 
         if stop:

@@ -43,7 +43,7 @@ from guidellm.benchmark import (
 from guidellm.benchmark.scenario import (
     GenerativeTextScenario,
 )
-from guidellm.mock_server import MockServer, ServerConfig
+from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
 from guidellm.settings import print_config
@@ -658,6 +658,7 @@ def dataset(
 @click.option(
     "--model", default="llama-3.1-8b-instruct", help="The name of the model to mock"
 )
+@click.option("--processor", default=None, help="The processor to use for requests")
 @click.option(
     "--request-latency",
     default=3,
@@ -721,6 +722,7 @@ def mock_server(
     port: int,
     workers: int,
     model: str,
+    processor: str | None,
     request_latency: float,
     request_latency_std: float,
     ttft_ms: float,
@@ -739,11 +741,12 @@ def mock_server(
     development scenarios requiring predictable server behavior.
     """
 
-    config = ServerConfig(
+    config = MockServerConfig(
         host=host,
         port=port,
         workers=workers,
         model=model,
+        processor=processor,
         request_latency=request_latency,
         request_latency_std=request_latency_std,
         ttft_ms=ttft_ms,
