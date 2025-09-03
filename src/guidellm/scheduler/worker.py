@@ -299,9 +299,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             request_info.scheduler_timings.resolve_end = time.time()
             self._send_update("completed", response, request, request_info)
 
-            print("\n\n********Completed request")
-            print(request_info)
-
             response = request = request_info = None
         except asyncio.CancelledError:
             # Handle cancellation
