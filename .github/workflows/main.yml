@@ -217,7 +217,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./ui/out
+          publish_dir: ./src/ui/out
           destination_dir: ui/dev
           keep_files: false
           user_name: ${{ github.actor }}
