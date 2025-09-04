@@ -11,6 +11,7 @@ repos:
   hooks:
     - id: pdm-lock-check
       name: check lock file matches pyproject
+      entry: sh -c "pdm lock -v --check || pdm lock --update-reuse"
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.11.7
   hooks:
