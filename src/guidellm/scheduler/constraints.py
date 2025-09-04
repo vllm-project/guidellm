@@ -456,10 +456,8 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
 
         create_exceeded = state.created_requests >= max_num
         processed_exceeded = state.processed_requests >= max_num
-        remaining_fraction = min(
-            max(0.0, 1.0 - state.processed_requests / float(max_num)), 1.0
-        )
-        remaining_requests = max(0, max_num - state.processed_requests)
+        remaining_requests = min(max(0, max_num - state.processed_requests), max_num)
+        remaining_fraction = remaining_requests / float(max_num)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if create_exceeded else "continue",
@@ -577,6 +575,8 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         current_time = time.time()
         elapsed = current_time - state.start_time
         duration_exceeded = elapsed >= max_duration
+        remaining_duration = min(max(0.0, max_duration - elapsed), max_duration)
+        remaining_fraction = remaining_duration / float(max_duration)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if duration_exceeded else "continue",
@@ -589,8 +589,8 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
                 "current_time": current_time,
             },
             progress=SchedulerUpdateActionProgress(
-                remaining_fraction=max(0.0, 1.0 - elapsed / float(max_duration)),
-                remaining_duration=max(0.0, max_duration - elapsed),
+                remaining_fraction=remaining_fraction,
+                remaining_duration=remaining_duration,
             ),
         )
 

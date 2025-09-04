@@ -48,6 +48,11 @@ from .statistics import (
     StatusDistributionSummary,
     TimeRunningStats,
 )
+from .synchronous import (
+    wait_for_sync_barrier,
+    wait_for_sync_event,
+    wait_for_sync_objects,
+)
 from .text import (
     EndlessTextCreator,
     clean_text,
@@ -58,7 +63,6 @@ from .text import (
     split_text,
     split_text_list_by_length,
 )
-from .threading import synchronous_to_exitable_async
 from .typing import get_literal_vals
 
 __all__ = [
@@ -115,5 +119,7 @@ __all__ = [
     "save_dataset_to_file",
     "split_text",
     "split_text_list_by_length",
-    "synchronous_to_exitable_async",
+    "wait_for_sync_barrier",
+    "wait_for_sync_event",
+    "wait_for_sync_objects",
 ]

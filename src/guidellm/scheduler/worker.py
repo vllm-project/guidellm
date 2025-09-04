@@ -13,19 +13,21 @@ import asyncio
 import time
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
-from threading import Event as ThreadingEvent
-from typing import Generic, Literal
+from typing import Annotated, Generic, Literal
 
 try:
     import uvloop
 
-    HAS_UVLOOP = True
+    HAS_UVLOOP: Annotated[
+        bool, "Flag indicating if uvloop is available for event loop optimization"
+    ] = True
 except ImportError:
     uvloop = None
 
-    HAS_UVLOOP = False
+    HAS_UVLOOP: Annotated[
+        bool, "Flag indicating if uvloop is available for event loop optimization"
+    ] = False
 
-import contextlib
 
 from guidellm.scheduler.objects import (
     BackendInterface,
@@ -36,7 +38,12 @@ from guidellm.scheduler.objects import (
     SchedulerMessagingPydanticRegistry,
 )
 from guidellm.scheduler.strategy import ScheduledRequestTimings
-from guidellm.utils import InterProcessMessaging, synchronous_to_exitable_async
+from guidellm.utils import (
+    InterProcessMessaging,
+    wait_for_sync_barrier,
+    wait_for_sync_event,
+    wait_for_sync_objects,
+)
 
 __all__ = ["WorkerProcess"]
 
@@ -73,36 +80,44 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 ScheduledRequestInfo,
             ],
         ],
-        async_limit: int,
-        startup_barrier: ProcessingBarrier,
-        shutdown_event: ProcessingEvent,
-        error_event: ProcessingEvent,
-        requests_completed_event: ProcessingEvent,
         backend: BackendInterface[RequestT, ResponseT],
         request_timings: ScheduledRequestTimings,
+        async_limit: int,
+        startup_barrier: ProcessingBarrier,
+        requests_generated_event: ProcessingEvent,
+        constraint_reached_event: ProcessingEvent,
+        shutdown_event: ProcessingEvent,
+        error_event: ProcessingEvent,
     ):
         """
         Initialize worker process instance.
 
         :param messaging: Inter-process communication interface for request coordination
-        :param async_limit: Maximum concurrent requests this worker can handle
-        :param startup_barrier: Multiprocessing barrier for coordinated startup
-        :param shutdown_event: Event for signaling graceful shutdown
-        :param error_event: Event for signaling error conditions across processes
-        :param requests_completed_event: Event for signaling when the main process
-            has stopped sending requests / all requests are added to the queue
         :param backend: Backend instance for processing requests
         :param request_timings: Timing strategy for request scheduling
+        :param async_limit: Maximum concurrent requests this worker can handle
+        :param startup_barrier: Multiprocessing barrier for coordinated startup
+        :param requests_generated_event: Event signaling when request generation is
+            complete
+        :param constraint_reached_event: Event signaling when processing constraints
+            are met
+        :param shutdown_event: Event for signaling graceful shutdown
+        :param error_event: Event for signaling error conditions across processes
         """
         self.messaging = messaging
-        self.async_limit = async_limit
-        self.startup_barrier = startup_barrier
-        self.shutdown_event = shutdown_event
-        self.error_event = error_event
-        self.requests_completed_event = requests_completed_event
         self.backend = backend
         self.request_timings = request_timings
+        self.async_limit = async_limit
+        self.startup_barrier = startup_barrier
+        self.requests_generated_event = requests_generated_event
+        self.constraint_reached_event = constraint_reached_event
+        self.shutdown_event = shutdown_event
+        self.error_event = error_event
+
+        # Internal states
         self.startup_completed = False
+        self.backend_started = False
+        self.messaging_started = False
 
     def run(self):
         """
@@ -114,10 +129,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If worker encounters unrecoverable error during execution
         """
         try:
-            loop = (
-                asyncio.new_event_loop() if not HAS_UVLOOP else uvloop.new_event_loop()
-            )
-            asyncio.set_event_loop(loop)
+            if HAS_UVLOOP:
+                asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
             asyncio.run(self.run_async())
         except Exception as err:
             print(f"******EXCEPTION in worker {self.messaging.worker_index} run: {err}")
@@ -138,8 +151,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If worker tasks encounter unrecoverable errors
         :raises asyncio.CancelledError: If worker process was cancelled
         """
-        stop_task = asyncio.create_task(self._run_async_stop_processing())
-        request_proc_task = asyncio.create_task(self._run_async_requests_processing())
+        stop_task = asyncio.create_task(self._stop_monitor())
+        request_proc_task = asyncio.create_task(self._process_requests())
         caller_cancelled = False
 
         try:
@@ -178,65 +191,80 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         if caller_cancelled:
             raise asyncio.CancelledError("Worker process was cancelled")
 
-    async def _run_async_stop_processing(
+    async def _stop_monitor(
         self,
     ) -> Literal["error_event", "shutdown_event"]:
-        exit_reason, _ = await synchronous_to_exitable_async(
-            synchronous=None,
-            exit_events={
+        exit_key = await wait_for_sync_objects(
+            {
                 "error_event": self.error_event,
                 "shutdown_event": self.shutdown_event,
             },
             poll_interval=self.messaging.poll_interval,
         )
 
-        if exit_reason in {"shutdown_event", "canceled"}:
-            raise asyncio.CancelledError("Worker process shutdown event set")
-
-        if exit_reason == "error_event":
+        if exit_key == "error_event":
             raise RuntimeError(
                 f"Worker process {self.messaging.worker_index} received error signal."
             )
 
-        raise RuntimeError(
-            f"Worker process {self.messaging.worker_index} received unknown exit: "
-            f"{exit_reason}"
-        )
-
-    async def _run_async_requests_processing(self):
+    async def _process_requests(self):
         try:
-            # Get backend ready for reqeuests
-            await self.backend.process_startup()
-            await self.backend.validate()
+            # 1. Start up synchronization (backend, messaging, and other processes)
+            # 2. Messaging startup, receive requests until requests_generated event
+            await self._processing_startup()
 
-            # Get messaging system ready
-            all_requests_processed = ThreadingEvent()
-            await self.messaging.start(
-                send_stop_criteria=[all_requests_processed],
-                receive_stop_criteria=[self.requests_completed_event, self.error_event],
-                pydantic_models=list(
-                    SchedulerMessagingPydanticRegistry.registry.values()
-                ),
-            )
-
-            # Wait for all processes to be ready
-            barrier_exit_reason, _ = await synchronous_to_exitable_async(
-                synchronous=None,
-                exit_barrier=self.startup_barrier,
+            # 3. Run process requests loop until constraint_reached event
+            processing_task = asyncio.create_task(self._process_requests_loop())
+            await wait_for_sync_event(
+                self.constraint_reached_event,
                 poll_interval=self.messaging.poll_interval,
             )
+            processing_task.cancel()
 
-            if barrier_exit_reason not in ["barrier", "canceled"]:
-                raise RuntimeError(
-                    f"Worker process {self.messaging.worker_index} failed to "
-                    f"synchronize at startup: {barrier_exit_reason}"
-                )
+            # 4. Cancel pending requests until proc canceled (manual, shutdown, error)
+            await self._cancel_requests_loop()
+        finally:
+            # 5. On cancel, shut down event, error event, or internal error:
+            #    attempt to shut down this worker cleanly (stop backend and messaging)
+            await self._processing_shutdown()
 
-            self.startup_completed = True
+    async def _processing_startup(self):
+        # Get backend ready
+        await self.backend.process_startup()
+        self.backend_started = True
+        await self.backend.validate()
 
+        # Get messaging system ready
+        await self.messaging.start(
+            receive_stop_criteria=[self.requests_generated_event],
+            pydantic_models=list(SchedulerMessagingPydanticRegistry.registry.values()),
+        )
+        self.messaging_started = True
+
+        # Wait for all processes to be ready
+        await wait_for_sync_barrier(
+            self.startup_barrier,
+            poll_interval=self.messaging.poll_interval,
+        )
+
+        self.startup_completed = True
+
+    async def _processing_shutdown(self):
+        if self.backend_started:
+            await self.backend.process_shutdown()
+            self.backend_started = False
+
+        if self.messaging_started:
+            await self.messaging.stop()
+            self.messaging_started = False
+
+        self.startup_completed = False
+
+    async def _process_requests_loop(self):
+        try:
             # Run request processing
             async_semaphore = asyncio.Semaphore(self.async_limit)
-            pending_tasks = set()
+            pending_tasks: set[asyncio.Task] = set()
 
             def _task_done(task):
                 pending_tasks.discard(task)
@@ -251,15 +279,28 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_task = asyncio.create_task(self._process_next_request())
                 pending_tasks.add(request_task)
                 request_task.add_done_callback(_task_done)
-        except (asyncio.CancelledError, Exception) as err:
-            if self.startup_completed:
-                await self._cancel_remaining_requests(
-                    pending_tasks, all_requests_processed
-                )
-                await self.messaging.stop()
-                await self.backend.process_shutdown()
+        except asyncio.CancelledError as err:
+            for task in pending_tasks:
+                task.cancel()
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
 
             raise err
+
+    async def _cancel_requests_loop(self):
+        while True:
+            try:
+                request: RequestT
+                request_info: ScheduledRequestInfo
+                request, request_info = await self.messaging.get(
+                    timeout=self.messaging.poll_interval
+                )
+            except asyncio.TimeoutError:
+                continue
+
+            request_info.scheduler_node_id = self.messaging.worker_index
+            request_info.error = "Request was cancelled"
+            request_info.scheduler_timings.resolve_end = time.time()
+            self._send_update("cancelled", None, request, request_info)
 
     async def _process_next_request(self):
         request: RequestT | MultiTurnRequestT[RequestT] | None = None
@@ -269,23 +310,25 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         try:
             # Pull request from the queue
             request, request_info = await self.messaging.get()
-            current_time = time.time()
-            request_info.status = "pending"
-            request_info.scheduler_timings.dequeued = current_time
 
             if isinstance(request, (list, tuple)):
                 raise NotImplementedError("Multi-turn requests are not yet supported")
 
-            # Schedule the request for targeted time
+            # Calculate targeted start and set pending state for request
+            request_info.scheduler_node_id = self.messaging.worker_index
+            request_info.scheduler_timings.dequeued = time.time()
             target_start = (
                 request_info.scheduler_start_time + self.request_timings.next_offset()
             )
             request_info.scheduler_timings.targeted_start = target_start
-            request_info.scheduler_timings.scheduled_at = current_time
+            self._send_update("pending", response, request, request_info)
 
+            # Schedule the request
+            current_time = time.time()
+            request_info.scheduler_timings.scheduled_at = current_time
             if target_start > current_time:
                 await asyncio.sleep(target_start - current_time)
-                # adapt delay so that scheduled at reflects the sleep time
+                # Adapt delay so that scheduled at reflects the sleep time
                 request_info.scheduler_timings.scheduled_at = target_start
 
             # Process the request with the backend
@@ -315,12 +358,18 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
     def _send_update(
         self,
-        new_status: Literal["in_progress", "completed", "errored", "cancelled"],
+        new_status: Literal[
+            "pending", "in_progress", "completed", "errored", "cancelled"
+        ],
         response: ResponseT | None,
         request: RequestT | MultiTurnRequestT[RequestT],
         request_info: ScheduledRequestInfo,
     ):
         prev_status = request_info.status
+
+        if new_status == prev_status:
+            # already sent this update, don't send again
+            return
 
         try:
             request_info.status = new_status
@@ -339,34 +388,3 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Calling logic can retry after handling error, if possible
             request_info.status = prev_status
             raise exc
-
-    async def _cancel_remaining_requests(
-        self, pending_tasks: set[asyncio.Task], all_requests_processed: ThreadingEvent
-    ):
-        # Cancel any tasks that were active tasks
-        cancel_tasks = []
-        for task in pending_tasks:
-            if not task.done():
-                task.cancel()
-                cancel_tasks.append(task)
-
-        with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.gather(*cancel_tasks, return_exceptions=True)
-
-        # Cancel any tasks pending on the queue
-        while not self.messaging.receive_stopped_event.is_set():
-            # Loop until we know nothing else will be added
-            with contextlib.suppress((asyncio.TimeoutError, Exception)):
-                request, request_info = await self.messaging.get(
-                    timeout=self.messaging.poll_interval
-                )
-                request_info.error = "Request was cancelled"
-                request_info.scheduler_timings.resolve_end = time.time()
-                self._send_update("cancelled", None, request, request_info)
-
-        all_requests_processed.set()
-        await synchronous_to_exitable_async(
-            synchronous=None,
-            exit_events={"send_stopped": self.messaging.send_stopped_event},
-            poll_interval=self.messaging.poll_interval,
-        )

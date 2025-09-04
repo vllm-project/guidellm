@@ -803,7 +803,11 @@ class _GenerativeProgressTaskState:
     def update(
         self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
     ):
-        self.progress = scheduler_state.remaining_fraction
+        self.progress = (
+            (1.0 - scheduler_state.remaining_fraction)
+            if scheduler_state.remaining_fraction is not None
+            else 0.0
+        )
         status: Literal["in_warmup", "in_progress", "in_cooldown"] | None = (
             "in_progress"  # Need to handle requests_in_* isn't in aggregator_update
         )
