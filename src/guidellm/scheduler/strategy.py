@@ -1,5 +1,4 @@
 import math
-import os
 import random
 import time
 from collections.abc import Generator
@@ -72,9 +71,7 @@ class SchedulingStrategy(StandardBaseModel):
 
         :return: The number of processes for the scheduling strategy.
         """
-        cpu_cores = os.cpu_count() or 1
-
-        return min(max(1, cpu_cores - 1), settings.max_worker_processes)
+        return settings.max_worker_processes
 
     @property
     def queued_requests_limit(self) -> Optional[int]:
@@ -231,9 +228,8 @@ class ConcurrentStrategy(SchedulingStrategy):
         :return: {self.streams} for the concurrent scheduling strategy to limit
             the worker processes to the number of streams.
         """
-        cpu_cores = os.cpu_count() or 1
 
-        return min(max(1, cpu_cores - 1), self.streams)
+        return min(self.streams, settings.max_worker_processes)
 
     @property
     def queued_requests_limit(self) -> int:
