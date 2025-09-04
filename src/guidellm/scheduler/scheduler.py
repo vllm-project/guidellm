@@ -154,7 +154,14 @@ class Scheduler(Generic[RequestT, ResponseT]):
                         if future.done() and (err := future.exception()) is not None:
                             raise err
 
-                    if requests_iter is None and run_info.processing_requests <= 0:
+                    if (
+                        requests_iter is None
+                        and run_info.processing_requests <= 0
+                        and (  # Ensure we have met one of the end conditions
+                            time.time() >= run_info.end_time
+                            or run_info.completed_requests >= run_info.end_number
+                        )
+                    ):
                         # we've exhausted all requests we've wanted to run
                         # and yielded all responses
                         break
