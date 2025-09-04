@@ -130,7 +130,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             futures, queues, stop_event = await self._start_processes(
                 manager, executor, scheduling_strategy
             )
-            run_info, requests_iter, times_iter = self._run_setup(
+            run_info, requests_iter = self._run_setup(
                 futures, scheduling_strategy, max_number, max_duration
             )
 
@@ -138,9 +138,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             requests_iter = self._add_requests(
                 requests_iter,
                 queues.requests,
-                times_iter,
                 run_info,
-                loop_limit=run_info.strategy.queued_requests_limit,
             )
             # Wait for the test to start
             await asyncio.sleep(time.time() - scheduling_strategy.start_time)
@@ -171,7 +169,6 @@ class Scheduler(Generic[RequestT, ResponseT]):
                     requests_iter = self._add_requests(
                         requests_iter,
                         queues.requests,
-                        times_iter,
                         run_info,
                     )
                     await asyncio.sleep(0)  # enable requests to start
@@ -244,6 +241,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
                     queues,
                     scheduling_strategy,
                     stop_event,
+                    False,  # TODO: Make configurable
                     requests_limit,
                     id_,
                     num_processes,
@@ -260,9 +258,8 @@ class Scheduler(Generic[RequestT, ResponseT]):
         scheduling_strategy: SchedulingStrategy,
         max_number: Optional[int],
         max_duration: Optional[float],
-    ) -> tuple[SchedulerRunInfo, Iterator[Any], Iterator[float]]:
+    ) -> tuple[SchedulerRunInfo, Iterator[Any]]:
         requests_iter = iter(self.request_loader)
-        times_iter = iter(scheduling_strategy.request_times())
         end_time = scheduling_strategy.start_time + (max_duration or math.inf)
         end_number = max_number or math.inf
 
@@ -288,42 +285,39 @@ class Scheduler(Generic[RequestT, ResponseT]):
             strategy=scheduling_strategy,
         )
 
-        return info, requests_iter, times_iter
+        return info, requests_iter
 
     def _add_requests(
         self,
         requests_iter: Optional[Iterator[Any]],
         requests_queue: Queue[WorkerProcessRequest[RequestT, ResponseT]],
-        times_iter: Iterator[float],
         run_info: SchedulerRunInfo,
-        loop_limit: Optional[int] = None,
     ) -> Optional[Iterator[Any]]:
         if requests_iter is not None:
             try:
                 added_count = 0
 
+                if time.time() >= run_info.end_time:
+                    raise StopIteration
+
                 while not requests_queue.full() and added_count < (
-                    loop_limit or settings.max_add_requests_per_loop
+                    run_info.strategy.queued_requests_limit
+                    or settings.max_add_requests_per_loop
                 ):
                     if run_info.created_requests >= run_info.end_number:
                         raise StopIteration
 
-                    if (
-                        next(times_iter) >= run_info.end_time
-                        or time.time() >= run_info.end_time
-                    ):
-                        raise StopIteration
-
-                    work_req = WorkerProcessRequest[RequestT, ResponseT](
-                        request=next(requests_iter),
+                    session = next(requests_iter)
+                    work_req = WorkerProcessRequest(
+                        session=session,
                         timeout_time=run_info.end_time,
                         queued_time=time.time(),
                     )
                     requests_queue.put(work_req)
 
-                    run_info.created_requests += 1
-                    run_info.queued_requests += 1
-                    added_count += 1
+                    run_info.created_requests += len(session)
+                    run_info.queued_requests += len(session)
+                    added_count += len(session)
             except StopIteration:
                 # we've reached the limit number, limit time, or exhausted the requests
                 # set to None to stop adding more and tell the loop no more requests
