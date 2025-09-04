@@ -11,10 +11,10 @@ from typing import (
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
-from guidellm.config import settings
 from guidellm.dataset import ColumnInputTypes, load_dataset
 from guidellm.objects import StandardBaseModel
-from guidellm.request.request import GenerationRequest
+from guidellm.preprocess.item import Item, ItemList
+from guidellm.request.session import GenerativeRequestSession
 
 __all__ = [
     "GenerativeRequestLoader",
@@ -105,14 +105,14 @@ class GenerativeRequestLoader(RequestLoader):
         self.preserve_iter_state = iter_type == "infinite"  # ensure no caching requests
         self._preserved_iter = None
 
-    def __iter__(self) -> Iterator[GenerationRequest]:
+    def __iter__(self) -> Iterator[GenerativeRequestSession]:
         scope_create_count = 0
 
         while (dataset_iter := self._get_dataset_iter(scope_create_count)) is not None:
             scope_create_count += 1
 
             for item in dataset_iter:
-                yield self._create_request(item)
+                yield GenerativeRequestSession(self._create_items(item))
 
             self._preserved_iter = None
 
@@ -260,7 +260,8 @@ class GenerativeRequestLoader(RequestLoader):
 
         return dataset_iter
 
-    def _create_request(self, item: dict[str, Any]) -> GenerationRequest:
+    def _create_items(self, item: dict[str, Any]) -> ItemList:
+        prompts = item[self.column_mappings["prompt_column"]]
         prompt_tokens = (
             item[self.column_mappings["prompt_tokens_count_column"]]
             if "prompt_tokens_count_column" in self.column_mappings
@@ -272,13 +273,12 @@ class GenerativeRequestLoader(RequestLoader):
             else None
         )
 
-        return GenerationRequest(
-            request_type=settings.preferred_route,
-            content=item[self.column_mappings["prompt_column"]],
-            stats=(
-                {"prompt_tokens": prompt_tokens} if prompt_tokens is not None else {}
-            ),
-            constraints=(
-                {"output_tokens": output_tokens} if output_tokens is not None else {}
-            ),
+        items = (
+            Item(value=prompt, output_tokens=out_t, prompt_tokens=in_t)
+            for prompt, in_t, out_t in zip(
+                prompts if isinstance(prompts, list) else [prompts],
+                prompt_tokens if isinstance(prompt_tokens, list) else [prompt_tokens],
+                output_tokens if isinstance(output_tokens, list) else [output_tokens],
+            )
         )
+        return ItemList(*items)

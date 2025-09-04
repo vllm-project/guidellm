@@ -6,6 +6,7 @@ from typing import (
 )
 
 from guidellm.objects import StandardBaseModel
+from guidellm.request.session import RequestSession
 from guidellm.request.types import RequestT, ResponseT
 from guidellm.scheduler.strategy import SchedulingStrategy
 
@@ -142,7 +143,7 @@ class SchedulerRequestResult(
 
 @dataclass
 class WorkerProcessRequest(Generic[RequestT, ResponseT]):
-    request: RequestT
+    session: RequestSession[RequestT, ResponseT]
     timeout_time: float
     queued_time: float
 

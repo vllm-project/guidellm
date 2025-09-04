@@ -90,11 +90,11 @@ async def benchmark_generative_text(
         ),
         random_seed=random_seed,
     )
-    unique_requests = request_loader.num_unique_items(raise_err=False)
+    unique_samples = request_loader.num_unique_items(raise_err=False)
     console.print_line(
-        f"Created loader with {unique_requests} unique requests from {data}.\n\n"
-        if unique_requests > 0
-        else f"Created loader with unknown number unique requests from {data}.\n\n"
+        f"Created loader with {unique_samples} unique samples from {data}.\n\n"
+        if unique_samples > 0
+        else f"Created loader with unknown number unique samples from {data}.\n\n"
     )
 
     profile = create_profile(rate_type=rate_type, rate=rate)

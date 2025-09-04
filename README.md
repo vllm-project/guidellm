@@ -145,7 +145,8 @@ The `guidellm benchmark` command is used to run benchmarks against a generative 
 
   - `prompt_tokens`: Average number of tokens for prompts.
   - `output_tokens`: Average number of tokens for outputs.
-  - `TYPE_stdev`, `TYPE_min`, `TYPE_max`: Standard deviation, minimum, and maximum values for the specified type (e.g., `prompt_tokens`, `output_tokens`). If not provided, will use the provided tokens value only.
+  - `turns`: Average number of request-response pairs per sample. Values above `1` result in a multi-turn[^1] benchmark.
+  - `TYPE_stdev`, `TYPE_min`, `TYPE_max`: Standard deviation, minimum, and maximum values for the specified type (e.g., `prompt_tokens`, `output_tokens`, `turns`). If not provided, will use the provided tokens value only.
   - `samples`: Number of samples to generate, defaults to 1000.
   - `source`: Source text data for generation, defaults to a local copy of Pride and Prejudice.
 
@@ -261,3 +262,7 @@ If you find GuideLLM helpful in your research or projects, please consider citin
   howpublished={\url{https://github.com/vllm-project/guidellm}},
 }
 ```
+
+- - -
+
+[^1]: Multi-turn refers to a benchmark where each dataset row represents a series of sequential requests, with each subsequent request building upon the context of the previous ones.
