@@ -17,9 +17,10 @@ import uuid
 from collections.abc import AsyncIterator, Generator, Iterable, Iterator
 from multiprocessing import get_context
 from multiprocessing.context import BaseContext
+from multiprocessing.managers import BaseManager
 from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Barrier, Event
-from typing import Generic, Literal
+from typing import Generic, NamedTuple
 
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
 from guidellm.scheduler.objects import (
@@ -40,10 +41,10 @@ from guidellm.utils import (
     InterProcessMessagingManagerQueue,
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
-    synchronous_to_exitable_async,
+    wait_for_sync_objects,
 )
 
-__all__ = ["WorkerProcessGroup"]
+__all__ = ["WorkerGroupState", "WorkerProcessGroup"]
 
 
 class WorkerProcessGroup(Generic[RequestT, ResponseT]):
@@ -116,16 +117,17 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.constraints = constraints
 
         # Multiprocessing contexts and primitives, created in create_processes
-        self.mp_context = None
-        self.mp_manager = None
+        self.mp_context: BaseContext = None
+        self.mp_manager: BaseManager = None
         self.processes: list[BaseProcess] = None
-        self.requests_completed_event: Event = None
         self.startup_barrier: Barrier = None
+        self.requests_generated_event: Event = None
+        self.constraint_reached_event: Event = None
         self.shutdown_event: Event = None
         self.error_event: Event = None
 
         # Scheduler and messaging state, created in start
-        self._state: _WorkerGroupState[ResponseT, RequestT] = None
+        self.state: WorkerGroupState[ResponseT, RequestT] = None
         self.messaging: InterProcessMessaging[
             tuple[
                 RequestT | MultiTurnRequestT[RequestT],
@@ -161,9 +163,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         if max_conc <= 0:
             raise RuntimeError("max_concurrency resolved to 0; increase limits/config")
 
+        # Calculate number of processes, ensure we don't exceed the max concurrency,
+        # or limits from the backend, strategy, or user settings
         num_processes = int(
             min(
-                max_conc,  # Only spawn as many processes as we need for max_concurrency
+                max_conc,
                 self.strategy.processes_limit or math.inf,
                 self.backend.processes_limit or math.inf,
                 settings.max_worker_processes,
@@ -184,9 +188,10 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.mp_context: BaseContext = get_context(settings.mp_context_type)
         self.mp_manager = self.mp_context.Manager()
         self.startup_barrier = self.mp_context.Barrier(num_processes + 1)
+        self.requests_generated_event = self.mp_context.Event()
+        self.constraint_reached_event = self.mp_context.Event()
         self.shutdown_event = self.mp_context.Event()
         self.error_event = self.mp_context.Event()
-        self.requests_completed_event = self.mp_context.Event()
 
         if settings.mp_messaging_object == "queue":
             self.messaging = InterProcessMessagingQueue(
@@ -232,34 +237,35 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                     max_buffer_send_size=None,
                     max_buffer_receive_size=per_proc_max_buffer_size,
                 ),
-                async_limit=async_limit,
-                startup_barrier=self.startup_barrier,
-                shutdown_event=self.shutdown_event,
-                error_event=self.error_event,
-                requests_completed_event=self.requests_completed_event,
                 backend=self.backend,
                 request_timings=self.strategy.create_request_timings(
                     local_rank=rank,
                     local_world_size=num_processes,
                     local_max_concurrency=async_limit,
                 ),
+                async_limit=async_limit,
+                startup_barrier=self.startup_barrier,
+                requests_generated_event=self.requests_generated_event,
+                constraint_reached_event=self.constraint_reached_event,
+                shutdown_event=self.shutdown_event,
+                error_event=self.error_event,
             )
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()
             self.processes.append(proc)
 
-        reason, _ = await synchronous_to_exitable_async(
-            synchronous=None,
-            exit_events={
-                "error_event": self.error_event,
+        wait_key = await wait_for_sync_objects(
+            {
+                "startup_barrier": self.startup_barrier,
                 "shutdown_event": self.shutdown_event,
+                "error_event": self.error_event,
             },
-            exit_barrier=self.startup_barrier,
             poll_interval=settings.mp_poll_interval,
         )
-        if reason != "barrier":
+
+        if wait_key == "error_event":
             raise RuntimeError(
-                f"Worker process group startup failed with exit reason: {reason}"
+                "Worker process group startup failed: error_event is set"
             )
 
     async def start(self, start_time: float):
@@ -277,21 +283,27 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         if not self.processes:
             raise RuntimeError("create_processes() must be called before start()")
 
-        self._state = _WorkerGroupState[RequestT, ResponseT](
+        stop_send_requests_event = threading.Event()
+        send_requests_stopped_event = threading.Event()
+        self.state = WorkerGroupState[RequestT, ResponseT](
             start_time=start_time,
-            num_processes=len(self.processes),
             processes=self.processes,
             constraints=self.constraints,
+            stop_send_requests_event=stop_send_requests_event,
+            send_requests_stopped_event=send_requests_stopped_event,
+            requests_generated_event=self.requests_generated_event,
+            constraint_reached_event=self.constraint_reached_event,
             shutdown_event=self.shutdown_event,
+            error_event=self.error_event,
         )
         await self.messaging.start(
-            send_items=self._state.requests_generator(
+            send_items=self.state.requests_generator(
                 self.requests, self.cycle_requests
             ),
-            receive_callback=self._state.update_callback_receive,
-            send_stop_criteria=[self.shutdown_event, self.error_event],
-            send_stopped_event=self.requests_completed_event,
-            receive_stop_criteria=[self.error_event, self._state.stop_callback_receive],
+            receive_callback=self.state.received_callback,
+            send_stopped_event=send_requests_stopped_event,
+            send_stop_criteria=[stop_send_requests_event],
+            receive_stop_criteria=[self.shutdown_event],
             pydantic_models=list(SchedulerMessagingPydanticRegistry.registry.values()),
         )
 
@@ -324,11 +336,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             tuples where response is None until processing is complete
         :raises RuntimeError: If workers encounter unrecoverable errors
         """
-        while (
-            not self.messaging.receive_stopped_event.is_set()
-            or not self.messaging.send_stopped_event.is_set()
-            or not self.messaging.buffer_receive_queue.empty()
-        ):
+        while True:
             if self.error_event.is_set():
                 raise RuntimeError(
                     "error_event is set in WorkerProcessGroup, "
@@ -345,7 +353,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
                 yield response, request, request_info, scheduler_state
             except asyncio.TimeoutError:
-                pass
+                if self.shutdown_event.is_set():
+                    # Everything yielded, exit
+                    break
 
     async def shutdown(self) -> list[Exception]:  # noqa: C901
         """
@@ -363,9 +373,12 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         # Clear out start values
         if self.messaging is not None:
-            await self.messaging.stop()
+            try:
+                await asyncio.wait_for(self.messaging.stop(), timeout=5.0)
+            except Exception as err:
+                exceptions.append(err)
         self.messaging = None
-        self._state = None
+        self.state = None
 
         # Clear out create processes values
         if self.processes is not None:
@@ -382,17 +395,28 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                     exceptions.append(err)
         self.processes = None
         self.startup_barrier = None
+        self.requests_generated_event = None
+        self.constraint_reached_event = None
         self.shutdown_event = None
         self.error_event = None
         if self.mp_manager is not None:
-            self.mp_manager.shutdown()
+            try:
+                self.mp_manager.shutdown()
+            except Exception as err:
+                exceptions.append(err)
         self.mp_manager = None
         self.mp_context = None
 
         return exceptions
 
 
-class _WorkerGroupState(Generic[RequestT, ResponseT]):
+class _StateUpdate(NamedTuple):
+    state: SchedulerState
+    stop_queueing: bool
+    stop_processing: bool
+
+
+class WorkerGroupState(Generic[RequestT, ResponseT]):
     """
     Manages scheduler state and synchronization for worker process groups.
 
@@ -404,32 +428,46 @@ class _WorkerGroupState(Generic[RequestT, ResponseT]):
     def __init__(
         self,
         start_time: float,
-        num_processes: int,
         processes: list[BaseProcess],
         constraints: dict[str, Constraint],
+        stop_send_requests_event: threading.Event,
+        send_requests_stopped_event: threading.Event,
+        requests_generated_event: Event,
+        constraint_reached_event: Event,
         shutdown_event: Event,
+        error_event: Event,
     ):
         """
         Initialize worker group state management.
 
         :param start_time: Unix timestamp when processing should begin
-        :param num_processes: Number of worker processes in the group
         :param processes: List of worker process instances
         :param constraints: Named constraints for controlling execution behavior
+        :param send_requests_stopped_event: Threading event for request coordination
+        :param requests_generated_event: Multiprocessing event for generation completion
+        :param constraint_reached_event: Multiprocessing event for constraint stopping
         :param shutdown_event: Multiprocessing event for coordinated shutdown
+        :param error_event: Multiprocessing event for error condition signaling
         """
-        self._start_time = start_time
+        self.start_time = start_time
+        self.processes = processes
+        self.constraints = constraints
+        self.stop_send_requests_event = stop_send_requests_event
+        self.send_requests_stopped_event = send_requests_stopped_event
+        self.requests_generated_event = requests_generated_event
+        self.constraint_reached_event = constraint_reached_event
+        self.shutdown_event = shutdown_event
+        self.error_event = error_event
+
         self._update_lock: threading.Lock = threading.Lock()
         self._state: SchedulerState = SchedulerState(
             node_id=0,
-            num_processes=num_processes,
+            num_processes=len(processes),
             start_time=start_time,
         )
-        self.processes = processes
-        self._constraints = constraints
-        self._internal_constraints: dict[str, Constraint] = {}
-        self._shutdown_event = shutdown_event
-        self._shutdown_set = False
+        self._queued_requests = set()
+        self._pending_requests = set()
+        self._processing_requests = set()
 
     def requests_generator(
         self,
@@ -465,34 +503,29 @@ class _WorkerGroupState(Generic[RequestT, ResponseT]):
                 request_id = request.request_id
             elif hasattr(request, "id"):
                 request_id = request.id
-            elif hasattr(request, "id_"):
-                request_id = request.id_
-            elif hasattr(request, "uuid"):
-                request_id = request.uuid
             else:
                 request_id = str(uuid.uuid4())
             request_info: ScheduledRequestInfo = ScheduledRequestInfo(
                 request_id=request_id,
                 status="queued",
-                scheduler_node_id=0,
-                scheduler_process_id=-1,
-                scheduler_start_time=self._start_time,
+                scheduler_process_id=0,
+                scheduler_start_time=self.start_time,
             )
-            _, stop = self._locked_update(request_info, source="generator")
+            state_update = self._locked_update(request_info)
             yield (request, request_info)
 
-            if stop:
+            if state_update.stop_queueing:
+                self.stop_send_requests_event.set()
                 return
 
-        # Reached the end, inject a RequestsExhaustedConstraint and update to record
+        # Reached the end, inject a RequestsExhaustedConstraint to record
         self._locked_update(
-            info=request_info,
-            source="generator",
-            update_counts=False,
+            info=None,
             requests_exhausted=RequestsExhaustedConstraint(num_requests=count),
         )
+        self.stop_send_requests_event.set()
 
-    def update_callback_receive(
+    def received_callback(
         self,
         update: tuple[
             ResponseT | None,
@@ -516,124 +549,135 @@ class _WorkerGroupState(Generic[RequestT, ResponseT]):
         :return: Updated tuple with injected scheduler state
         """
         response, request, request_info = update
-        state, stop = self._locked_update(info=request_info, source="updates")
+        state_update = self._locked_update(info=request_info)
 
-        if stop:
-            self._shutdown_event.set()
+        # Check if we need to tell workers to stop pulling new requests
+        # based on no more requests sent and all requests removed from queue
+        if (
+            state_update.state.queued_requests == 0
+            and self.send_requests_stopped_event.is_set()
+            and not self.requests_generated_event.is_set()
+        ):
+            self.requests_generated_event.set()
+
+        # Check if we need to tell workers to stop processing requests (constraints)
+        if state_update.stop_processing and not self.constraint_reached_event.is_set():
+            self.constraint_reached_event.set()
+
+        # Check if all requests have been processed and can shutdown
+        if (
+            state_update.state.processed_requests == state_update.state.created_requests
+            and self.send_requests_stopped_event.is_set()
+            and self.requests_generated_event.is_set()
+            and self.constraint_reached_event.is_set()
+            and not self.shutdown_event.is_set()
+        ):
+            self.shutdown_event.set()
 
         return (
             response,
             request,
             request_info,
-            state,  # inject state for updates to be yielded back
-        )
-
-    def stop_callback_receive(
-        self, messaging: InterProcessMessaging, pending: bool, queue_empty: int
-    ) -> bool:
-        """
-        Determine if message receiving should stop based on system state.
-
-        Evaluates completion conditions including pending operations, queue state,
-        and shutdown signals to coordinate graceful termination of message processing.
-
-        :param messaging: Inter-process messaging instance
-        :param pending: Whether operations are still pending
-        :param queue_empty: The number of times the queue has reported empty in a row
-        :return: True if message receiving should stop, False otherwise
-        """
-        return (
-            not pending
-            and queue_empty >= InterProcessMessaging.STOP_REQUIRED_QUEUE_EMPTY
-            and messaging.send_stopped_event.is_set()  # No more requests will be added
-            and self._shutdown_event.is_set()  # processing should stop
-            and all(
-                not proc.is_alive() for proc in self.processes
-            )  # no more updates will be added by workers
+            state_update.state,  # inject state for updates to be yielded back
         )
 
     def _locked_update(
         self,
-        info: ScheduledRequestInfo,
-        source: Literal["generator", "updates"],
-        update_counts: bool = True,
-        update_constraints: bool = True,
+        info: ScheduledRequestInfo | None = None,
         **add_constraints: dict[str, Constraint],
-    ) -> tuple[SchedulerState | None, bool]:
+    ) -> _StateUpdate:
         with self._update_lock:
-            if update_counts:
-                if source == "generator":
-                    self._update_new_request()
-                elif source == "updates":
-                    self._update_new_response(info)
-                else:
-                    raise ValueError(f"Unknown source: {source}")
-
             if add_constraints:
-                self._internal_constraints.update(add_constraints)
-            if update_constraints:
+                self.constraints.update(add_constraints)
+
+            if info is not None:
+                self._state.end_time = time.time()  # Always update in case last update
+                self._update_state_request_counts(info)
                 self._update_with_constraints(info)
-            self._state.end_time = time.time()
+
             state_copy: SchedulerState = self._state.model_copy()
 
-        return (
+        return _StateUpdate(
             state_copy,
-            (
-                (source == "generator" and state_copy.end_queuing_time is not None)
-                or (source == "updates" and state_copy.end_processing_time is not None)
-            ),
+            state_copy.end_queuing_time is not None,
+            state_copy.end_processing_time is not None,
         )
 
-    def _update_new_request(self):
-        self._state.created_requests += 1
-        self._state.queued_requests += 1
-
-    def _update_new_response(self, info: ScheduledRequestInfo):
-        if info.status == "in_progress" or (
-            info.status == "cancelled" and info.scheduler_timings.resolve_start is None
-            # Cancelled request that never sent a progress update
-        ):
-            self._state.queued_requests -= 1
-            self._state.processing_requests += 1
-
-        if info.status in ("completed", "errored", "cancelled"):
-            self._state.processing_requests -= 1
+    def _update_state_request_counts(self, info: ScheduledRequestInfo):
+        if info.status == "queued":
+            self._queued_requests.add(info.request_id)
+            self._state.queued_requests = len(self._queued_requests)
+            self._state.created_requests += 1
+        elif info.status == "pending":
+            self._queued_requests.remove(info.request_id)
+            self._state.queued_requests = len(self._queued_requests)
+            self._pending_requests.add(info.request_id)
+            self._state.pending_requests = len(self._pending_requests)
+        elif info.status == "in_progress":
+            self._pending_requests.remove(info.request_id)
+            self._state.pending_requests = len(self._pending_requests)
+            self._processing_requests.add(info.request_id)
+            self._state.processing_requests = len(self._processing_requests)
+        elif info.status == "completed":
+            self._processing_requests.remove(info.request_id)
+            self._state.processing_requests = len(self._processing_requests)
             self._state.processed_requests += 1
-            self._state.successful_requests += 1 if info.status == "completed" else 0
+            self._state.successful_requests += 1
+        elif info.status in ("errored", "cancelled"):
+            if info.request_id in self._queued_requests:
+                self._queued_requests.remove(info.request_id)
+                self._state.queued_requests = len(self._queued_requests)
+            elif info.request_id in self._pending_requests:
+                self._pending_requests.remove(info.request_id)
+                self._state.pending_requests = len(self._pending_requests)
+            elif info.request_id in self._processing_requests:
+                self._processing_requests.remove(info.request_id)
+                self._state.processing_requests = len(self._processing_requests)
+            else:
+                print(f"WARNING: Request was not present in state request sets: {info}")
+
+            self._state.processed_requests += 1
             self._state.errored_requests += 1 if info.status == "errored" else 0
             self._state.cancelled_requests += 1 if info.status == "cancelled" else 0
+        else:
+            raise ValueError(f"Unknown request_info status {info.status} for {info}")
 
     def _update_with_constraints(self, info: ScheduledRequestInfo):
         actions: dict[str, SchedulerUpdateAction] = {
-            name: const(self._state, info) for name, const in self._constraints.items()
+            name: const(self._state, info) for name, const in self.constraints.items()
         }
-        if self._internal_constraints:
-            actions.update(
-                {
-                    name: const(self._state, info)
-                    for name, const in self._internal_constraints.items()
-                }
-            )
         self._state.scheduler_constraints = actions
+        stop_queuing_actions = {}
+        stop_processing_actions = {}
 
-        if self._state.end_queuing_time is None and (
-            stop_queuing_actions := {
-                key: action
-                for key, action in actions.items()
-                if action.request_queuing == "stop"
-            }
-        ):
-            # Queuing not stopped and actions returned to stop it
+        for key, action in actions.items():
+            # Action updates
+            if (
+                self._state.end_queuing_time is None
+                and action.request_queuing == "stop"
+            ):
+                stop_queuing_actions[key] = action
+            if (
+                self._state.end_processing_time is None
+                and action.request_processing in ("stop_local", "stop_all")
+            ):
+                stop_processing_actions[key] = action
+
+            for progress_key in (
+                "remaining_fraction",
+                "remaining_requests",
+                "remaining_duration",
+            ):
+                if (new_val := action.progress.get(progress_key)) is not None and (
+                    getattr(self._state, progress_key) is None
+                    or new_val < getattr(self._state, progress_key)
+                ):
+                    setattr(self._state, progress_key, new_val)
+
+        if stop_queuing_actions:
             self._state.end_queuing_constraints = stop_queuing_actions
             self._state.end_queuing_time = time.time()
 
-        if self._state.end_processing_time is None and (
-            stop_processing_actions := {
-                key: action
-                for key, action in actions.items()
-                if action.request_processing in ("stop_local", "stop_all")
-            }
-        ):
-            # Processing not stopped and actions returned to stop it
+        if stop_processing_actions:
             self._state.end_processing_constraints = stop_processing_actions
             self._state.end_processing_time = time.time()

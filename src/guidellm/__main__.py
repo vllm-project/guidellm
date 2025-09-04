@@ -32,6 +32,19 @@ from typing import Annotated, Union
 
 import click
 
+try:
+    import uvloop
+
+    HAS_UVLOOP: Annotated[
+        bool, "Flag indicating if uvloop is available for event loop optimization"
+    ] = True
+except ImportError:
+    uvloop = None
+
+    HAS_UVLOOP: Annotated[
+        bool, "Flag indicating if uvloop is available for event loop optimization"
+    ] = False
+
 from guidellm.backend import BackendType
 from guidellm.benchmark import (
     GenerativeConsoleBenchmarkerProgress,
@@ -401,6 +414,8 @@ def run(
     Supports multiple backends, data sources, output formats, and constraint types
     for flexible benchmark configuration.
     """
+    if HAS_UVLOOP:
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     asyncio.run(
         benchmark_generative_text(
             target=target,

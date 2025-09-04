@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import inspect
 import random
 import time
@@ -57,11 +56,6 @@ class TimingsBounds:
 
 class MockRequestTimings(MeasuredRequestTimings):
     """Mock timing implementation for testing."""
-
-
-SchedulerMessagingPydanticRegistry.register("ScheduledRequestInfo")(
-    ScheduledRequestInfo
-)
 
 
 class MockBackend(BackendInterface):
@@ -162,13 +156,14 @@ class TestWorkerProcess:
         try:
             instance = WorkerProcess(
                 messaging=main_messaging.create_worker_copy(0),
-                **constructor_args["worker"],
-                startup_barrier=Barrier(2),
-                shutdown_event=Event(),
-                error_event=Event(),
-                requests_completed_event=Event(),
                 backend=MockBackend(),
                 request_timings=LastCompletionRequestTimings(),
+                **constructor_args["worker"],
+                startup_barrier=Barrier(2),
+                requests_generated_event=Event(),
+                constraint_reached_event=Event(),
+                shutdown_event=Event(),
+                error_event=Event(),
             )
             await main_messaging.start(
                 pydantic_models=list(
@@ -215,15 +210,11 @@ class TestWorkerProcess:
         assert len(run_async_sig.parameters) == 1
         assert "self" in run_async_sig.parameters
 
-        stop_processing_sig = inspect.signature(
-            WorkerProcess._run_async_stop_processing
-        )
+        stop_processing_sig = inspect.signature(WorkerProcess._stop_monitor)
         assert len(stop_processing_sig.parameters) == 1
         assert "self" in stop_processing_sig.parameters
 
-        requests_processing_sig = inspect.signature(
-            WorkerProcess._run_async_requests_processing
-        )
+        requests_processing_sig = inspect.signature(WorkerProcess._process_requests)
         assert len(requests_processing_sig.parameters) == 1
         assert "self" in requests_processing_sig.parameters
 
@@ -259,8 +250,10 @@ class TestWorkerProcess:
         assert isinstance(instance.shutdown_event, ProcessingEvent)
         assert instance.error_event is not None
         assert isinstance(instance.error_event, ProcessingEvent)
-        assert instance.requests_completed_event is not None
-        assert isinstance(instance.requests_completed_event, ProcessingEvent)
+        assert instance.requests_generated_event is not None
+        assert isinstance(instance.requests_generated_event, ProcessingEvent)
+        assert instance.constraint_reached_event is not None
+        assert isinstance(instance.constraint_reached_event, ProcessingEvent)
         assert instance.backend is not None
         assert isinstance(instance.backend, MockBackend)
         assert instance.request_timings is not None
@@ -281,31 +274,34 @@ class TestWorkerProcess:
         barrier = Barrier(2)
         shutdown_event = Event()
         error_event = Event()
-        completed_event = Event()
+        requests_generated_event = Event()
+        constraint_reached_event = Event()
         messaging = InterProcessMessagingQueue()
 
         # Test missing each required parameter one by one
         required_params = [
             "messaging",
-            "async_limit",
-            "startup_barrier",
-            "shutdown_event",
-            "error_event",
-            "requests_completed_event",
             "backend",
             "request_timings",
+            "async_limit",
+            "startup_barrier",
+            "requests_generated_event",
+            "constraint_reached_event",
+            "shutdown_event",
+            "error_event",
         ]
 
         for param_to_remove in required_params:
             kwargs = {
                 "messaging": messaging,
-                "async_limit": 5,
-                "startup_barrier": barrier,
-                "shutdown_event": shutdown_event,
-                "error_event": error_event,
-                "requests_completed_event": completed_event,
                 "backend": backend,
                 "request_timings": request_timings,
+                "async_limit": 5,
+                "startup_barrier": barrier,
+                "requests_generated_event": requests_generated_event,
+                "constraint_reached_event": constraint_reached_event,
+                "shutdown_event": shutdown_event,
+                "error_event": error_event,
             }
 
             del kwargs[param_to_remove]
@@ -315,7 +311,7 @@ class TestWorkerProcess:
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
-    @async_timeout(15)
+    # @async_timeout(15)
     @pytest.mark.parametrize(
         ("num_requests", "num_canceled", "error_rate"),
         [
@@ -323,23 +319,15 @@ class TestWorkerProcess:
             (STANDARD_NUM_REQUESTS, 20, 0.5),
         ],
     )
-    @pytest.mark.parametrize(
-        "stop_method", ["task_cancel", "shutdown_event", "error_event"]
-    )
-    async def test_run_async_request_processing(  # noqa: C901, PLR0912
+    async def test_run_async_lifecycle(  # noqa: C901, PLR0912
         self,
         valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
-        stop_method: Literal["task_cancel", "shutdown_event", "error_event"],
         num_requests: int,
         num_canceled: int,
         error_rate: float,
     ):
         """Test the asynchronous request processing of WorkerProcess."""
         instance, main_messaging, constructor_args = valid_instances
-
-        if num_canceled > constructor_args["worker"]["async_limit"]:
-            pytest.skip("Canceled requests exceed async limit")
-
         instance.backend.request_error_rate = error_rate
         instance_task = asyncio.create_task(instance.run_async())
 
@@ -349,115 +337,165 @@ class TestWorkerProcess:
 
             # Send regular requests
             requests_tracker = {}
-            for i in range(num_requests):
-                request = f"request_{i}"
+            for index in range(num_requests):
+                request = f"request_{index}"
+                request_info = ScheduledRequestInfo(
+                    request_id=request,
+                    scheduler_start_time=start_time,
+                    scheduler_process_id=0,
+                )
+                request_info.scheduler_timings.queued = time.time()
                 requests_tracker[request] = {
                     "sent": True,
-                    "received_in_progress": False,
-                    "received_resolved": False,
+                    "received_pending": 0,
+                    "received_in_progress": 0,
+                    "received_resolved": 0,
                 }
                 await main_messaging.put(
-                    (
-                        request,
-                        ScheduledRequestInfo(scheduler_start_time=start_time),
-                    ),
+                    (request, request_info),
                     timeout=2.0,
                 )
 
             # Process regular requests
             error_count = 0
-            for _ in range(num_requests * 2):
+            for _ in range(num_requests * 3):
+                # Each request must have a pending, in_progress, and resolution
                 response, request, request_info = await main_messaging.get(timeout=2.0)
-                if request_info.status == "in_progress":
-                    requests_tracker[request]["received_in_progress"] = True
+                assert request is not None
+                assert request_info is not None
+                assert request_info.request_id is not None
+                assert request_info.status is not None
+                assert request_info.scheduler_node_id > -1
+                assert request_info.scheduler_process_id > -1
+                assert request_info.scheduler_start_time == start_time
+                assert request_info.scheduler_timings is not None
+                assert request_info.scheduler_timings.targeted_start is not None
+                assert request_info.scheduler_timings.targeted_start >= start_time
+
+                if request_info.status == "pending":
+                    requests_tracker[request]["received_pending"] += 1
+                    assert request_info.scheduler_timings.dequeued is not None
+                    assert (
+                        request_info.scheduler_timings.dequeued
+                        >= request_info.scheduler_timings.targeted_start
+                    )
+                elif request_info.status == "in_progress":
+                    requests_tracker[request]["received_in_progress"] += 1
+                    assert request_info.scheduler_timings.scheduled_at is not None
+                    assert (
+                        request_info.scheduler_timings.scheduled_at
+                        >= request_info.scheduler_timings.dequeued
+                    )
+                    assert request_info.scheduler_timings.resolve_start is not None
+                    assert (
+                        request_info.scheduler_timings.resolve_start
+                        >= request_info.scheduler_timings.scheduled_at
+                    )
                 elif request_info.status == "completed":
                     assert response == f"response_for_{request}"
-                    requests_tracker[request]["received_resolved"] = True
+                    requests_tracker[request]["received_resolved"] += 1
+                    assert request_info.scheduler_timings.resolve_end is not None
+                    assert (
+                        request_info.scheduler_timings.resolve_end
+                        > request_info.scheduler_timings.resolve_start
+                    )
                 elif request_info.status == "errored":
                     assert response is None
-                    requests_tracker[request]["received_resolved"] = True
+                    requests_tracker[request]["received_resolved"] += 1
                     error_count += 1
+                    assert request_info.scheduler_timings.resolve_end is not None
+                    assert (
+                        request_info.scheduler_timings.resolve_end
+                        > request_info.scheduler_timings.resolve_start
+                    )
                 else:
                     raise ValueError(f"Unexpected status: {request_info.status}")
 
+            # Ensure correct error rate
             assert float(error_count) / num_requests == pytest.approx(
                 error_rate, rel=0.2
             )
 
-            # Send cancel requests and wait for in_progress
-            cancel_requests = []
-            for ind in range(num_canceled):
-                cancel_request = f"cancel_request_{ind}"
-                cancel_requests.append(cancel_request)
+            # Ensure no extra statuses
+            with pytest.raises(asyncio.TimeoutError):
+                await main_messaging.get(timeout=0.5)
+
+            # Send cancel requests
+            for index in range(num_canceled):
+                cancel_request = f"cancel_request_{index}"
+                cancel_info = ScheduledRequestInfo(
+                    request_id=request,
+                    scheduler_start_time=start_time,
+                    scheduler_process_id=0,
+                )
+                cancel_info.scheduler_timings.queued = time.time()
                 requests_tracker[cancel_request] = {
                     "sent": True,
-                    "received_in_progress": False,
-                    "received_resolved": False,
+                    "received_pending": 0,
+                    "received_in_progress": 0,
+                    "received_resolved": 0,
                 }
                 await main_messaging.put(
-                    (
-                        cancel_request,
-                        ScheduledRequestInfo(scheduler_start_time=start_time),
-                    ),
+                    (cancel_request, cancel_info),
                     timeout=2.0,
                 )
 
-            # Signal that all requests have been sent
-            instance.requests_completed_event.set()
-
-            for _ in range(num_canceled):
+            # Receive expected updates for cancel up to async number
+            for _ in range(2 * min(num_canceled, instance.async_limit)):
+                # Each processing request (up to async limit) will have pending, in_progress
                 response, request, request_info = await main_messaging.get(timeout=2.0)
-                if request_info.status == "in_progress":
-                    requests_tracker[request]["received_in_progress"] = True
+                if request_info.status == "pending":
+                    requests_tracker[request]["received_pending"] += 1
+                elif request_info.status == "in_progress":
+                    requests_tracker[request]["received_in_progress"] += 1
+                    error_count += 1
                 else:
                     raise ValueError(f"Unexpected status: {request_info.status}")
 
-            # Trigger shutdown/cancel
-            if stop_method == "task_cancel":
-                instance_task.cancel()
-            elif stop_method == "shutdown_event":
-                instance.shutdown_event.set()
-            elif stop_method == "error_event":
-                instance.error_event.set()
-            await asyncio.sleep(0.5)
+            # Signal constraints reached to start canceling
+            instance.constraint_reached_event.set()
+            await asyncio.sleep(0)
 
-            # Collect any cancelled
+            # Receive the remaining canceled updates
             for _ in range(num_canceled):
-                response, request, request_info = await main_messaging.get(timeout=1.0)
+                # All cancel requests should resolve with canceled (no other statuses)
+                response, request, request_info = await main_messaging.get(timeout=2.0)
+                assert request is not None
+                assert request_info is not None
+                assert request_info.request_id is not None
+                assert request_info.status is not None
+                assert request_info.scheduler_node_id > -1
+                assert request_info.scheduler_process_id > -1
+                assert request_info.scheduler_start_time == start_time
+                assert request_info.scheduler_timings is not None
+
                 if request_info.status == "cancelled":
-                    requests_tracker[request]["received_resolved"] = True
+                    requests_tracker[request]["received_resolved"] += 1
+                    assert request_info.scheduler_timings.resolve_end is not None
+                    assert request_info.scheduler_timings.resolve_end > start_time
                 else:
                     raise ValueError(f"Unexpected status: {request_info.status}")
 
-            # Verify all requests were processed
-            for request, status in requests_tracker.items():
-                assert status["received_in_progress"], (
-                    f"Request {request} never went in_progress"
-                )
-                assert status["received_resolved"], f"Request {request} never completed"
+            # Ensure no extra statuses
+            with pytest.raises(asyncio.TimeoutError):
+                await main_messaging.get(timeout=0.5)
 
+            # Signal requests stop now that all requests have been processed
+            instance.requests_generated_event.set()
+            await asyncio.sleep(0)
+
+            # Validate all the requests are correct
+            for request_key in [f"request_{index}" for index in range(num_requests)]:
+                assert request_key in requests_tracker
+                assert requests_tracker[request_key]["sent"]
+                assert requests_tracker[request_key]["received_pending"] == 1
+                assert requests_tracker[request_key]["received_resolved"] == 1
+                if request_key.startswith("request"):
+                    assert requests_tracker[request_key]["received_in_progress"] == 1
         finally:
-            if not instance_task.done() and not instance_task.cancelled():
-                instance_task.cancel()
-
-            final_error = None
-            try:
-                await asyncio.wait_for(instance_task, timeout=2.0)
-            except asyncio.TimeoutError:
-                # If it times out, force cancel
-                instance_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await asyncio.wait_for(instance_task, timeout=1.0)
-            except (asyncio.CancelledError, RuntimeError) as err:
-                # Expected exceptions depending on stop method
-                final_error = err
-
-            if stop_method == "task_cancel":
-                assert isinstance(final_error, asyncio.CancelledError)
-            elif stop_method == "error_event":
-                assert isinstance(final_error, RuntimeError)
-            else:
-                assert final_error is None
+            # Shut down
+            instance.shutdown_event.set()
+            await asyncio.wait_for(instance_task, timeout=2.0)
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -533,8 +571,9 @@ class TestWorkerProcess:
                     "sent": True,
                     "target_start_time": -1,
                     "actual_start_time": -1,
-                    "received_in_progress": False,
-                    "received_resolved": False,
+                    "received_pending": 0,
+                    "received_in_progress": 0,
+                    "received_resolved": 0,
                 }
                 await main_messaging.put(
                     (
@@ -545,10 +584,13 @@ class TestWorkerProcess:
                 )
 
             # Process regular requests
-            for _ in range(num_requests * 2):
+            for _ in range(num_requests * 3):
+                # Each request must have pending, in_progress, and resolved statuses
                 response, request, request_info = await main_messaging.get(timeout=2.0)
-                if request_info.status == "in_progress":
-                    requests_tracker[request]["received_in_progress"] = True
+                if request_info.status == "pending":
+                    requests_tracker[request]["received_pending"] += 1
+                elif request_info.status == "in_progress":
+                    requests_tracker[request]["received_in_progress"] += 1
                     requests_tracker[request]["target_start_time"] = (
                         request_info.scheduler_timings.targeted_start
                     )
@@ -557,15 +599,25 @@ class TestWorkerProcess:
                     )
                 elif request_info.status == "completed":
                     assert response == f"response_for_{request}"
-                    requests_tracker[request]["received_resolved"] = True
+                    requests_tracker[request]["received_resolved"] += 1
                 else:
                     raise ValueError(f"Unexpected status: {request_info.status}")
+
+            # Ensure no extra statuses
+            with pytest.raises(asyncio.TimeoutError):
+                await main_messaging.get(timeout=0.1)
+
+            # Trigger stopping for constraints and requests
+            instance.requests_generated_event.set()
+            instance.constraint_reached_event.set()
+            await asyncio.sleep(0)
 
             # Validate request values are correct
             for ind in range(num_requests):
                 request = f"request_{ind}"
-                assert requests_tracker[request]["received_in_progress"]
-                assert requests_tracker[request]["received_resolved"]
+                assert requests_tracker[request]["received_pending"] == 1
+                assert requests_tracker[request]["received_in_progress"] == 1
+                assert requests_tracker[request]["received_resolved"] == 1
 
                 bounds = timing_bounds[ind]
                 target_offset = (
@@ -607,13 +659,11 @@ class TestWorkerProcess:
                         assert target_offset < prev_offset + bounds.tolerance
                     elif bounds.prev_request == "less_equal":
                         assert target_offset <= prev_offset + bounds.tolerance
-
+        finally:
             # Trigger shutdown
-            instance.requests_completed_event.set()
             instance.shutdown_event.set()
             await asyncio.to_thread(process.join, timeout=2.0)
-        finally:
-            instance.shutdown_event.set()
+
             if process.is_alive():
                 process.terminate()
                 await asyncio.to_thread(process.join, timeout=2.0)

@@ -15,6 +15,7 @@ from typing import Any, ClassVar, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
+from typing_extensions import get_args, get_origin
 
 from guidellm.utils.registry import RegistryMixin
 
@@ -53,14 +54,88 @@ class ReloadableBaseModel(BaseModel):
     )
 
     @classmethod
-    def reload_schema(cls) -> None:
+    def reload_schema(cls, parents: bool = True) -> None:
         """
         Reload the class schema with updated registry information.
 
         Forces a complete rebuild of the Pydantic model schema to incorporate
         any changes made to associated registries or validation rules.
+
+        :param parents: Whether to also rebuild schemas for any pydantic parent
+            types that reference this model.
         """
         cls.model_rebuild(force=True)
+
+        if parents:
+            cls.reload_parent_schemas()
+
+    @classmethod
+    def reload_parent_schemas(cls):
+        """
+        Recursively reload schemas for all parent Pydantic models.
+
+        Traverses the inheritance hierarchy to find all parent classes that
+        are Pydantic models and triggers schema rebuilding on each to ensure
+        that any changes in child models are reflected in parent schemas.
+        """
+        potential_parents: set[BaseModel] = {BaseModel}
+        stack: list[BaseModel] = [BaseModel]
+
+        while stack:
+            current = stack.pop()
+            for subclass in current.__subclasses__():
+                if (
+                    issubclass(subclass, BaseModel)
+                    and subclass is not cls
+                    and subclass not in potential_parents
+                ):
+                    potential_parents.add(subclass)
+                    stack.append(subclass)
+
+        for check in cls.__mro__:
+            if isinstance(check, type) and issubclass(check, BaseModel):
+                cls._reload_schemas_depending_on(check, potential_parents)
+
+    @classmethod
+    def _reload_schemas_depending_on(cls, target: type[BaseModel], types: set[type]):
+        changed = True
+        while changed:
+            changed = False
+            for candidate in types:
+                if (
+                    isinstance(candidate, type)
+                    and issubclass(candidate, BaseModel)
+                    and any(
+                        cls._uses_type(target, field_info.annotation)
+                        for field_info in candidate.model_fields.values()
+                    )
+                ):
+                    before = candidate.model_json_schema()
+                    candidate.model_rebuild(force=True)
+                    after = candidate.model_json_schema()
+                    if before != after:
+                        changed = True
+
+    @classmethod
+    def _uses_type(cls, target: type, candidate: type) -> bool:
+        if target is candidate:
+            return True
+
+        origin = get_origin(candidate)
+
+        if origin is None:
+            return isinstance(candidate, type) and issubclass(candidate, target)
+
+        if isinstance(origin, type) and (
+            target is origin or issubclass(origin, target)
+        ):
+            return True
+
+        for arg in get_args(candidate) or []:
+            if isinstance(arg, type) and cls._uses_type(target, arg):
+                return True
+
+        return False
 
 
 class StandardBaseModel(BaseModel):

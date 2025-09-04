@@ -253,7 +253,9 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self.send_task = None
         self.receive_task = None
         if self.worker_index is None:
+            self.buffer_send_queue.clear()
             await self.buffer_send_queue.aclose()
+            self.buffer_receive_queue.clear()
             await self.buffer_receive_queue.aclose()
         self.buffer_send_queue = None
         self.buffer_receive_queue = None
@@ -396,7 +398,9 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
             if canceled_event.is_set():
                 return True
 
-            if any(cb(self, pending, queue_empty) for cb in stop_callbacks):
+            if stop_callbacks and any(
+                cb(self, pending, queue_empty) for cb in stop_callbacks
+            ):
                 return True
 
             return (
@@ -513,8 +517,16 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         await super().stop()
         if self.worker_index is None:
             # only main process should close the queues
+            with contextlib.suppress(queue.Empty):
+                while True:
+                    self.pending_queue.get_nowait()
             self.pending_queue.close()
+
+            with contextlib.suppress(queue.Empty):
+                while True:
+                    self.done_queue.get_nowait()
             self.done_queue.close()
+
         self.pending_queue = None
         self.done_queue = None
 

@@ -134,9 +134,11 @@ class Settings(BaseSettings):
     # Scheduler settings
     mp_context_type: Literal["spawn", "fork", "forkserver"] | None = "fork"
     mp_serialization: Literal["dict", "sequence"] | None = "dict"
-    mp_encoding: Literal["msgpack", "msgspec"] | None = (
-        None  # ["msgspec", "msgpack", None]
-    )
+    mp_encoding: (
+        Literal["msgpack", "msgspec"]
+        | None
+        | list[Literal["msgpack", "msgspec"] | None]
+    ) = ["msgspec", "msgpack", None]
     mp_messaging_object: Literal["queue", "manager_queue", "pipe"] = "queue"
     mp_requests_send_buffer_size: int = 1
     mp_poll_interval: float = 0.1
@@ -144,7 +146,7 @@ class Settings(BaseSettings):
     mp_max_worker_buffer_percent: float = 0.2
     max_concurrency: int = 512
     max_worker_processes: int = 10
-    scheduler_start_delay_non_distributed: float = 0.1
+    scheduler_start_delay_non_distributed: float = 1.0
     constraint_error_window_size: float = 30
     constraint_error_min_processed: float = 30
 

@@ -122,6 +122,7 @@ class MeasuredRequestTimings(PydanticClassRegistryMixin["MeasuredRequestTimings"
     schema_discriminator: ClassVar[str] = "timings_type"
 
     timings_type: Literal["measured_request_timings"] = Field(
+        default="measured_request_timings",
         description="Type identifier for the timing measurement",
     )
     request_start: float | None = Field(
@@ -414,7 +415,7 @@ class SchedulerState(StandardBaseModel):
     )
     end_processing_constraints: dict[str, SchedulerUpdateAction] = Field(
         default_factory=dict,
-        description="Constraints that triggered processing termination",
+        description="Constraints that triggered process ing termination",
     )
     scheduler_constraints: dict[str, SchedulerUpdateAction] = Field(
         default_factory=dict,
@@ -429,7 +430,7 @@ class SchedulerState(StandardBaseModel):
             "Estimated fraction for the remaining progress of the run, if known"
         ),
     )
-    remaining_requests: int | None = Field(
+    remaining_requests: float | None = Field(
         default=None,
         description="Estimated number of requests remaining to be processed, if known",
     )
@@ -447,7 +448,8 @@ class SchedulerState(StandardBaseModel):
         default=0, description="Total number of requests queued for processing"
     )
     pending_requests: int = Field(
-        default=0, description="Number of requests currently pending processing"
+        default=0,
+        description="Total number of requests pending processing within a worker",
     )
     processing_requests: int = Field(
         default=0, description="Number of requests currently being processed"

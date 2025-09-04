@@ -4,9 +4,14 @@ import asyncio
 import inspect
 import time
 from functools import wraps
-from typing import Any, Generic
+from multiprocessing.context import BaseContext
+from multiprocessing.managers import BaseManager
+from multiprocessing.process import BaseProcess
+from multiprocessing.synchronize import Barrier, Event
+from typing import Any, Generic, Literal
 
 import pytest
+from pydantic import Field
 
 from guidellm.scheduler import (
     AsyncConstantStrategy,
@@ -17,10 +22,13 @@ from guidellm.scheduler import (
     MeasuredRequestTimings,
     ScheduledRequestInfo,
     SchedulerMessagingPydanticRegistry,
+    SchedulerState,
     SynchronousStrategy,
     ThroughputStrategy,
     WorkerProcessGroup,
 )
+from guidellm.scheduler.worker_group import WorkerGroupState
+from guidellm.utils import InterProcessMessaging
 
 
 def async_timeout(delay):
@@ -37,8 +45,7 @@ def async_timeout(delay):
 class MockRequestTimings(MeasuredRequestTimings):
     """Mock timing implementation for testing."""
 
-
-SchedulerMessagingPydanticRegistry.register("MockRequestTimings")(ScheduledRequestInfo)
+    timings_type: Literal["mock"] = Field(default="mock")
 
 
 class MockBackend(BackendInterface):
@@ -73,11 +80,36 @@ class MockBackend(BackendInterface):
         pass
 
     async def resolve(self, request, request_info, request_history):
+        request_info.request_timings = MockRequestTimings(
+            request_start=time.time(), request_end=time.time()
+        )
         yield f"response_for_{request}", request_info
 
 
 class TestWorkerProcessGroup:
     """Test suite for WorkerProcessGroup class."""
+
+    def setup_method(self):
+        self._original_messaging_registry = (
+            SchedulerMessagingPydanticRegistry.registry.copy()
+            if SchedulerMessagingPydanticRegistry.registry
+            else {}
+        )
+        self._original_timings_registry = (
+            MeasuredRequestTimings.registry.copy()
+            if MeasuredRequestTimings.registry
+            else {}
+        )
+        MeasuredRequestTimings.register_decorator(MockRequestTimings, "mock")
+        SchedulerMessagingPydanticRegistry.register_decorator(
+            MockRequestTimings, "mock"
+        )
+
+    def teardown_method(self):
+        SchedulerMessagingPydanticRegistry.registry = self._original_messaging_registry
+        MeasuredRequestTimings.registry = self._original_timings_registry
+        MeasuredRequestTimings.model_rebuild(force=True)
+        ScheduledRequestInfo.model_rebuild(force=True)
 
     @pytest.fixture(
         params=[
@@ -136,7 +168,7 @@ class TestWorkerProcessGroup:
         )
         assert generic_base is not None
         type_args = getattr(generic_base, "__args__", ())
-        assert len(type_args) == 3
+        assert len(type_args) == 2
 
         # Function signatures
         create_processes_sig = inspect.signature(WorkerProcessGroup.create_processes)
@@ -178,9 +210,11 @@ class TestWorkerProcessGroup:
         assert instance.startup_barrier is None
         assert instance.shutdown_event is None
         assert instance.error_event is None
+        assert instance.requests_generated_event is None
+        assert instance.constraint_reached_event is None
 
         # Scheduler state and messaging (should be None initially)
-        assert instance._state is None
+        assert instance.state is None
         assert instance.messaging is None
 
     @pytest.mark.sanity
@@ -218,36 +252,48 @@ class TestWorkerProcessGroup:
     async def test_lifecycle(self, valid_instances: tuple[WorkerProcessGroup, dict]):
         """Test the lifecycle methods of WorkerProcessGroup."""
         instance, constructor_args = valid_instances
+        assert instance.requests or instance.cycle_requests
+        assert instance.backend
+        assert instance.strategy
+        assert instance.constraints is not None
 
-        # Test create processes
+        # Validate create_processes works and sets correct state
         await instance.create_processes()
-
-        # Check valid process creation
         assert instance.mp_context is not None
+        assert isinstance(instance.mp_context, BaseContext)
         assert instance.mp_manager is not None
+        assert isinstance(instance.mp_manager, BaseManager)
         assert instance.processes is not None
+        assert isinstance(instance.processes, list)
         assert len(instance.processes) > 0
+        assert all(isinstance(proc, BaseProcess) for proc in instance.processes)
         assert all(proc.is_alive() for proc in instance.processes)
         assert instance.startup_barrier is not None
+        assert isinstance(instance.startup_barrier, Barrier)
+        assert instance.requests_generated_event is not None
+        assert isinstance(instance.requests_generated_event, Event)
+        assert instance.constraint_reached_event is not None
+        assert isinstance(instance.constraint_reached_event, Event)
         assert instance.shutdown_event is not None
+        assert isinstance(instance.shutdown_event, Event)
         assert instance.error_event is not None
-        assert instance.requests_completed_event is not None
+        assert isinstance(instance.error_event, Event)
         assert instance.messaging is not None
+        assert isinstance(instance.messaging, InterProcessMessaging)
+        assert instance.messaging.worker_index is None
 
-        # Test start
+        # Validate start works and sets correct state
         start_time = time.time() + 0.1
         await instance.start(start_time=start_time)
-
-        # Check valid start behavior
-        assert instance.messaging is not None
-        assert instance._state is not None
-        assert instance._state._start_time == start_time
-        assert instance._state._state.num_processes == len(instance.processes)
+        assert instance.state is not None
+        assert isinstance(instance.state, WorkerGroupState)
+        assert not instance.requests_generated_event.is_set()
+        assert not instance.constraint_reached_event.is_set()
+        assert not instance.shutdown_event.is_set()
         assert not instance.error_event.is_set()
 
         # Test iter updates
-        updates_list = []
-        responses_count = 0
+        requests_tracker = {}
 
         async for (
             response,
@@ -255,65 +301,173 @@ class TestWorkerProcessGroup:
             request_info,
             scheduler_state,
         ) in instance.request_updates():
-            updates_list.append((response, request, request_info, scheduler_state))
-            if response is not None:
-                responses_count += 1
+            # Validate returned request
+            assert request is not None
 
-            # Validate request info structure
-            assert hasattr(request_info, "request_id")
-            assert hasattr(request_info, "status")
-            valid_statuses = [
-                "queued",
-                "in_progress",
-                "completed",
-                "errored",
-                "cancelled",
-            ]
-            assert request_info.status in valid_statuses
+            # Validate returned request info and response
+            assert request_info is not None
+            assert isinstance(request_info, ScheduledRequestInfo)
+            assert request_info.request_id is not None
+            assert request_info.status is not None
+            if request_info.request_id not in requests_tracker:
+                requests_tracker[request_info.request_id] = {
+                    "received_pending": 0,
+                    "received_in_progress": 0,
+                    "received_resolved": 0,
+                    "received_cancelled": 0,
+                }
+            assert request_info.scheduler_node_id > -1
+            assert request_info.scheduler_process_id > -1
+            assert request_info.scheduler_start_time == start_time
+            assert request_info.scheduler_timings is not None
+            if request_info.status == "pending":
+                requests_tracker[request_info.request_id]["received_pending"] += 1
+                assert request_info.scheduler_timings.dequeued is not None
+                assert request_info.scheduler_timings.targeted_start is not None
+                assert request_info.scheduler_timings.targeted_start >= start_time
+            elif request_info.status == "in_progress":
+                requests_tracker[request_info.request_id]["received_in_progress"] += 1
+                assert request_info.scheduler_timings.scheduled_at is not None
+                assert (
+                    request_info.scheduler_timings.scheduled_at
+                    >= request_info.scheduler_timings.dequeued
+                )
+                assert request_info.scheduler_timings.resolve_start is not None
+                assert (
+                    request_info.scheduler_timings.resolve_start
+                    >= request_info.scheduler_timings.scheduled_at
+                )
+            elif request_info.status == "completed":
+                requests_tracker[request_info.request_id]["received_resolved"] += 1
+                assert response is not None
+                assert request_info.scheduler_timings.resolve_end is not None
+                assert (
+                    request_info.scheduler_timings.resolve_end
+                    > request_info.scheduler_timings.resolve_start
+                )
+                assert request_info.request_timings is not None
+                assert isinstance(request_info.request_timings, MockRequestTimings)
+                assert request_info.request_timings.request_start is not None
+                assert (
+                    request_info.request_timings.request_start
+                    >= request_info.scheduler_timings.targeted_start
+                )
+                assert request_info.request_timings.request_end is not None
+                assert (
+                    request_info.request_timings.request_end
+                    >= request_info.request_timings.request_start
+                )
+            elif request_info.status in ("errored", "cancelled"):
+                assert response is None
+                requests_tracker[request_info.request_id]["received_resolved"] += 1
+                assert request_info.scheduler_timings.resolve_end is not None
+                assert (
+                    request_info.scheduler_timings.resolve_end
+                    > request_info.scheduler_start_time
+                )
+                if request_info.status == "cancelled":
+                    requests_tracker[request_info.request_id]["received_cancelled"] += 1
 
             # Validate state structure
-            assert hasattr(scheduler_state, "created_requests")
-            assert hasattr(scheduler_state, "processed_requests")
-            assert hasattr(scheduler_state, "successful_requests")
+            assert scheduler_state is not None
+            assert isinstance(scheduler_state, SchedulerState)
+            assert scheduler_state.node_id > -1
+            assert scheduler_state.start_time == start_time
+            assert scheduler_state.end_time is not None
+            if constructor_args.get("constraints"):
+                assert scheduler_state.remaining_fraction is not None
+                assert scheduler_state.remaining_fraction >= 0.0
+                assert scheduler_state.remaining_fraction <= 1.0
+            if constructor_args.get("constraints", {}).get("max_num") is not None:
+                assert scheduler_state.remaining_requests is not None
+                assert scheduler_state.remaining_requests >= 0
+                assert (
+                    scheduler_state.remaining_requests
+                    <= constructor_args["constraints"]["max_num"].max_num
+                )
+            if constructor_args.get("constraints", {}).get("max_duration") is not None:
+                assert scheduler_state.remaining_duration is not None
+                assert scheduler_state.remaining_duration >= 0.0
+                assert (
+                    scheduler_state.remaining_duration
+                    <= constructor_args["constraints"]["max_duration"].max_duration
+                )
             assert scheduler_state.created_requests >= 0
+            assert scheduler_state.queued_requests >= 0
+            assert scheduler_state.pending_requests >= 0
+            assert scheduler_state.processing_requests >= 0
             assert scheduler_state.processed_requests >= 0
             assert scheduler_state.successful_requests >= 0
+            assert scheduler_state.errored_requests >= 0
+            assert scheduler_state.cancelled_requests >= 0
 
         # Validate correctness of all updates
-        if constructor_args.get("requests") is not None:
-            assert len(updates_list) == 2 * len(constructor_args["requests"]), (
-                "Should have received updates for all requests"
+        for _, counts in requests_tracker.items():
+            assert counts["received_cancelled"] in (0, 1)
+            if counts["received_cancelled"] == 0:
+                assert counts["received_pending"] == 1
+                assert counts["received_in_progress"] >= 1
+                assert counts["received_resolved"] == 1
+        assert scheduler_state is not None  # last yielded state
+        assert scheduler_state.end_time > scheduler_state.start_time
+        assert scheduler_state.end_queuing_time is not None
+        assert scheduler_state.end_queuing_constraints is not None
+        assert scheduler_state.end_processing_time is not None
+        assert scheduler_state.end_processing_time >= scheduler_state.start_time
+        assert scheduler_state.end_processing_constraints is not None
+        assert scheduler_state.scheduler_constraints is not None
+        assert scheduler_state.created_requests == len(requests_tracker)
+        assert scheduler_state.queued_requests == 0
+        assert scheduler_state.pending_requests == 0
+        assert scheduler_state.processing_requests == 0
+        assert scheduler_state.processed_requests == len(requests_tracker)
+        assert scheduler_state.successful_requests >= 0
+        assert scheduler_state.errored_requests >= 0
+        assert scheduler_state.cancelled_requests >= 0
+        assert (
+            scheduler_state.successful_requests
+            + scheduler_state.errored_requests
+            + scheduler_state.cancelled_requests
+            == len(requests_tracker)
+        )
+        if constructor_args.get("constraints"):
+            assert list(scheduler_state.scheduler_constraints.keys()) == list(
+                constructor_args["constraints"].keys()
             )
-        if constructor_args.get("constraints", {}).get("max_num") is not None:
-            assert (
-                len(updates_list)
-                == 2 * constructor_args["constraints"]["max_num"].max_num
-            ), "Should not have received more updates than max_num constraint"
-
-        assert len(updates_list) > 0, "Should have received at least one update"
-
-        # Constraints should be satisfied
-        for constraint_name, _ in constructor_args["constraints"].items():
-            constraint_check = (
-                "max" in constraint_name.lower()
-                or "duration" in constraint_name.lower()
-            )
-            if constraint_check:
-                assert scheduler_state.end_processing_time is not None, (
-                    f"Should have stopped processing due to {constraint_name}"
-                )
+            assert scheduler_state.remaining_fraction == 0.0
+            if "max_num" in constructor_args["constraints"]:
+                assert "max_num" in scheduler_state.end_queuing_constraints
+                assert "max_num" in scheduler_state.end_processing_constraints
+                max_num = constructor_args["constraints"]["max_num"].max_num
+                assert scheduler_state.created_requests == max_num
+                assert scheduler_state.successful_requests == max_num
+                assert scheduler_state.errored_requests == 0
+                assert scheduler_state.cancelled_requests == 0
+            if "max_duration" in constructor_args["constraints"]:
+                assert "max_duration" in scheduler_state.end_queuing_constraints
+                assert "max_duration" in scheduler_state.end_processing_constraints
+                assert scheduler_state.remaining_duration == 0.0
+        else:
+            assert "requests_exhausted" in scheduler_state.scheduler_constraints
+            assert "requests_exhausted" in scheduler_state.end_queuing_constraints
+            assert "requests_exhausted" in scheduler_state.end_processing_constraints
+            assert scheduler_state.remaining_fraction is None
+            assert scheduler_state.remaining_requests is None
+            assert scheduler_state.remaining_duration is None
 
         # Test shutdown
         exceptions = await instance.shutdown()
 
         # Check valid shutdown behavior
-        assert isinstance(exceptions, list), "Shutdown should return list of exceptions"
-        assert instance.messaging is None, "Messaging should be cleared after shutdown"
-        assert instance._state is None, "State should be cleared after shutdown"
-        assert instance.processes is None, "Processes should be cleared after shutdown"
-        assert instance.mp_manager is None, (
-            "MP manager should be cleared after shutdown"
-        )
-        assert instance.mp_context is None, (
-            "MP context should be cleared after shutdown"
-        )
+        assert isinstance(exceptions, list)
+        assert len(exceptions) == 0
+        assert instance.messaging is None
+        assert instance.state is None
+        assert instance.processes is None
+        assert instance.startup_barrier is None
+        assert instance.requests_generated_event is None
+        assert instance.constraint_reached_event is None
+        assert instance.shutdown_event is None
+        assert instance.error_event is None
+        assert instance.mp_manager is None
+        assert instance.mp_context is None
