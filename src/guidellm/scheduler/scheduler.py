@@ -234,7 +234,6 @@ class Scheduler(Generic[RequestT, ResponseT]):
                     queues,
                     scheduling_strategy,
                     stop_event,
-                    False,  # TODO: Make configurable
                     requests_limit,
                     id_,
                     num_processes,
@@ -300,17 +299,16 @@ class Scheduler(Generic[RequestT, ResponseT]):
                     if run_info.created_requests >= run_info.end_number:
                         raise StopIteration
 
-                    session = next(requests_iter)
-                    work_req = WorkerProcessRequest(
-                        session=session,
+                    work_req = WorkerProcessRequest[RequestT, ResponseT](
+                        request=next(requests_iter),
                         timeout_time=run_info.end_time,
                         queued_time=time.time(),
                     )
                     requests_queue.put(work_req)
 
-                    run_info.created_requests += len(session)
-                    run_info.queued_requests += len(session)
-                    added_count += len(session)
+                    run_info.created_requests += 1
+                    run_info.queued_requests += 1
+                    added_count += 1
             except StopIteration:
                 # we've reached the limit number, limit time, or exhausted the requests
                 # set to None to stop adding more and tell the loop no more requests

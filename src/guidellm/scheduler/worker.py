@@ -122,8 +122,8 @@ class RequestsWorker(ABC, Generic[RequestT, ResponseT]):
         start_time: float,
         results_queue: Queue[WorkerProcessResult[RequestT, ResponseT]],
         process_id: int,
-    ) -> WorkerProcessRequest[RequestT, ResponseT]:
-        request = process_request.session.get_next_request()
+    ):
+        request = process_request.request
         timeout_time = process_request.timeout_time
         queued_time = process_request.queued_time
 
@@ -170,22 +170,17 @@ class RequestsWorker(ABC, Generic[RequestT, ResponseT]):
         )
         asyncio.create_task(self.send_result(results_queue, result))
 
-        process_request.session.push_response(response)
-        return process_request
-
     def process_loop_asynchronous(
         self,
         queues: MPQueues[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         stop_event: Event,
-        prioritize_sessions: bool,
         max_concurrency: int,
         process_id: int,
         num_processes: int,
     ):
         async def _process_runner():
             lock = asyncio.Semaphore(max_concurrency)
-            pending_requests: list[WorkerProcessRequest[RequestT, ResponseT]] = []
             times_iter = islice(
                 strategy.request_times(),
                 process_id,
@@ -202,50 +197,18 @@ class RequestsWorker(ABC, Generic[RequestT, ResponseT]):
                 await asyncio.sleep(start_time - time.time() - 1)
                 await lock.acquire()
 
-                process_request = None
                 try:
-                    process_request = (
-                        pending_requests.pop()
-                        if pending_requests
-                        else queues.requests.get_nowait()
-                    )
+                    process_request = queues.requests.get_nowait()
                     dequeued_time = time.time()
                 except QueueEmpty:
                     lock.release()
                     continue
 
-                async def wait_then_requeue(
-                    process_request: WorkerProcessRequest[RequestT, ResponseT],
-                ):
-                    # Wait to requeue the request session if it specifies a delay
-                    if delay := process_request.session.get_next_delay():
-                        await asyncio.sleep(delay)
-
-                    # Push session to the stack
-                    process_request.queued_time = time.time()
-                    pending_requests.append(process_request)
-                    if prioritize_sessions:
-                        # Release the lock with the session on top of the stack
-                        lock.release()
-
                 def _request_callback(
-                    future: asyncio.Future[WorkerProcessRequest[RequestT, ResponseT]],
+                    _: asyncio.Future[WorkerProcessRequest[RequestT, ResponseT]],
                 ):
-                    # If we are prioritizing sessions, hold
-                    # the lock until the session is done
                     nonlocal lock
-                    if not prioritize_sessions:
-                        lock.release()
-
-                    try:
-                        process_request = future.result()
-                    except asyncio.CancelledError:
-                        return
-                    if not process_request.session.complete:
-                        asyncio.create_task(wait_then_requeue(process_request))
-                    elif prioritize_sessions:
-                        # no more requests in this session, release the lock
-                        lock.release()
+                    lock.release()
 
                 task = asyncio.create_task(
                     self.resolve_scheduler_request(
@@ -319,7 +282,6 @@ class GenerativeRequestsWorker(RequestsWorker[GenerationRequest, ResponseSummary
         queues: MPQueues[GenerationRequest, ResponseSummary],
         strategy: SchedulingStrategy,
         stop_event: Event,
-        prioritize_sessions: bool,
         max_concurrency: int,
         process_id: int,
         num_processes: int,
@@ -329,7 +291,6 @@ class GenerativeRequestsWorker(RequestsWorker[GenerationRequest, ResponseSummary
             queues=queues,
             strategy=strategy,
             stop_event=stop_event,
-            prioritize_sessions=prioritize_sessions,
             max_concurrency=max_concurrency,
             process_id=process_id,
             num_processes=num_processes,
