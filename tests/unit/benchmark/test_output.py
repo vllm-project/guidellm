@@ -113,7 +113,7 @@ def test_console_benchmarks_args_str():
     mock_benchmark = mock_generative_benchmark()
     console.benchmarks = [mock_benchmark]
     assert console.benchmarks_args_str == (
-        "max_number=None, max_duration=10.0, warmup_number=None, "
+        "max_number=None, max_duration=10.0, max_error=0.05, warmup_number=None, "
         "warmup_duration=None, cooldown_number=None, cooldown_duration=None"
     )
 

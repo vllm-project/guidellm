@@ -5,7 +5,7 @@ Benchmarks Metadata:
     Duration:30.2 seconds
     Profile:type=sweep, strategies=['synchronous', 'throughput', 'constant', 'constant', 'constant', 'constant', 'constant', 'constant', 'constant', 'constant'],                   
     max_concurrency=None                                                                                                                                                            
-    Args:max_number=None, max_duration=30.0, warmup_number=None, warmup_duration=None, cooldown_number=None, cooldown_duration=None
+    Args:max_number=None, max_duration=30.0, max_error=None, warmup_number=None, warmup_duration=None, cooldown_number=None, cooldown_duration=None
     Worker:type_='generative_requests_worker' backend_type='openai_http' backend_target='example_target' backend_model='example_model' backend_info={'max_output_tokens': 16384,    
     'timeout': 300, 'http2': True, 'authorization': False, 'organization': None, 'project': None, 'text_completions_path': '/v1/completions', 'chat_completions_path':              
     '/v1/chat/completions'}                                                                                                                                                         
@@ -18,7 +18,7 @@ Benchmarks Info:
 Metadata                                    |||| Requests Made  ||| Prompt Tok/Req ||| Output Tok/Req  ||| Prompt Tok Total||| Output Tok Total  ||
   Benchmark| Start Time| End Time| Duration (s)|  Comp|  Inc|  Err|  Comp|   Inc| Err|   Comp|  Inc|  Err|   Comp|  Inc|  Err|   Comp|   Inc|   Err
 -----------|-----------|---------|-------------|------|-----|-----|------|------|----|-------|-----|-----|-------|-----|-----|-------|------|------
-synchronous|   16:59:28| 16:59:58|         30.0|    46|    1|    0| 257.1| 256.0| 0.0|  128.0|  0.0|  0.0|  11827|  256|    0|   5888|     0|     0
+synchronous|   20:59:28| 20:59:58|         30.0|    46|    1|    0| 257.1| 256.0| 0.0|  128.0|  0.0|  0.0|  11827|  256|    0|   5888|     0|     0
 ===================================================================================================================================================
                  
                  

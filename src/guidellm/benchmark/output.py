@@ -454,6 +454,7 @@ class GenerativeBenchmarksConsole:
             {
                 "max_number": args.max_number,
                 "max_duration": args.max_duration,
+                "max_error": args.max_error,
                 "warmup_number": args.warmup_number,
                 "warmup_duration": args.warmup_duration,
                 "cooldown_number": args.cooldown_number,

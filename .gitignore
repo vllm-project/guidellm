@@ -179,6 +179,8 @@ cython_debug/
 # Project specific files
 *.json
 *.yaml
+/bin
+uv.lock
 
 # But not scenarios
 !src/guidellm/benchmark/scenarios/*.json

@@ -25,6 +25,7 @@ benchmarks:
       type_: synchronous
     max_number:
     max_duration: 30
+    max_error:
     warmup_number:
     warmup_duration:
     cooldown_number:
@@ -47,6 +48,10 @@ benchmarks:
     request_start_time_targeted_delay_avg: 0.6319856542222043
     request_time_delay_avg: 0.00029866238857837433
     request_time_avg: 0.6370967195389119
+    error_rate: 0.0
+    window_error_rate: 0.0
+    status: success
+    termination_reason: max_seconds_reached
   worker:
     type_: generative_requests_worker
     backend_type: openai_http

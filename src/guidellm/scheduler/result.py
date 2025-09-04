@@ -16,6 +16,11 @@ __all__ = [
 ]
 
 
+TerminationReason = Literal[
+    "interrupted", "max_error_reached", "max_seconds_reached", "max_requests_reached"
+]
+
+
 class SchedulerRunInfo(StandardBaseModel):
     """
     Information about the current run of the scheduler.
@@ -46,12 +51,21 @@ class SchedulerRunInfo(StandardBaseModel):
     end_number: float
     processes: int
     strategy: SchedulingStrategy
+    max_error: Optional[float] = None
+    current_window: int = 0
+    errors_in_window: int = 0
 
     created_requests: int = 0
     queued_requests: int = 0
     scheduled_requests: int = 0
     processing_requests: int = 0
     completed_requests: int = 0
+    errored_requests: int = 0
+
+    # The default is "interrupted" to be fail safe, if
+    # the `termination_reason` logic is not reached for
+    # any reason - we assume it was interrupted.
+    termination_reason: TerminationReason = "interrupted"
 
 
 class SchedulerRequestInfo(StandardBaseModel):

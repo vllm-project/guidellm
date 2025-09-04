@@ -1,19 +1,13 @@
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import (
-    Any,
-    Generic,
-    Literal,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import Any, Generic, Literal, Optional, TypeVar, Union, get_args
 
 from pydantic import Field
 
 from guidellm.backend import ResponseSummary
 from guidellm.benchmark.benchmark import (
+    REASON_STATUS_MAPPING,
     BenchmarkArgs,
     BenchmarkRunStats,
     BenchmarkT,
@@ -40,6 +34,7 @@ from guidellm.scheduler import (
     SchedulerRequestResult,
     WorkerDescription,
 )
+from guidellm.scheduler.result import TerminationReason
 from guidellm.utils import check_load_processor
 
 __all__ = [
@@ -304,6 +299,24 @@ class BenchmarkAggregator(
             incomplete=[],
             total=None,
         ),
+    )
+    current_window: int = Field(
+        description=(
+            "The current accumulated window size for error checking. "
+            "This is a number between 0 and the value of "
+            "GUIDELLM__ERROR_CHECK_WINDOW_SIZE"
+        ),
+        default=0,
+    )
+    errors_in_window: int = Field(
+        description=("The amount of errored requests in the current window."),
+        default=0,
+    )
+    termination_reason: TerminationReason = Field(
+        description=(
+            f"The benchmark termination reason, one of: {get_args(TerminationReason)}"
+        ),
+        default="interrupted",
     )
 
     def add_result(
@@ -600,6 +613,8 @@ class GenerativeBenchmarkAggregator(
         """
         successful, incomplete, errored = self._compile_results()
 
+        error_rate, window_error_rate = self._calculate_error_rate()
+
         return GenerativeBenchmark.from_stats(
             run_id=self.run_id,
             successful=successful,
@@ -625,11 +640,27 @@ class GenerativeBenchmarkAggregator(
                 request_start_time_targeted_delay_avg=self.requests_stats.request_start_time_targeted_delay.mean,
                 request_time_delay_avg=self.requests_stats.request_time_delay.mean,
                 request_time_avg=self.requests_stats.request_time.mean,
+                error_rate=error_rate,
+                window_error_rate=window_error_rate,
+                status=REASON_STATUS_MAPPING[self.termination_reason],
+                termination_reason=self.termination_reason,
             ),
             worker=self.worker_description,
             requests_loader=self.request_loader_description,
             extras=self.extras,
         )
+
+    def _calculate_error_rate(self) -> tuple[float, float]:
+        total_successful = self.requests_stats.totals.successful.total
+        total_errored = self.requests_stats.totals.errored.total
+        total_finished = total_errored + total_successful
+        error_rate = 0.0 if total_finished == 0 else (total_errored / total_finished)
+        window_error_rate = (
+            0.0
+            if self.current_window == 0
+            else self.errors_in_window / self.current_window
+        )
+        return error_rate, window_error_rate
 
     def _compile_results(
         self,
