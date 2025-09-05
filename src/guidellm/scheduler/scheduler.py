@@ -140,7 +140,6 @@ class Scheduler(Generic[RequestT, ResponseT]):
                 queues.requests,
                 times_iter,
                 run_info,
-                loop_limit=run_info.strategy.queued_requests_limit,
             )
             # Wait for the test to start
             await asyncio.sleep(time.time() - scheduling_strategy.start_time)
@@ -296,14 +295,14 @@ class Scheduler(Generic[RequestT, ResponseT]):
         requests_queue: Queue[WorkerProcessRequest[RequestT, ResponseT]],
         times_iter: Iterator[float],
         run_info: SchedulerRunInfo,
-        loop_limit: Optional[int] = None,
     ) -> Optional[Iterator[Any]]:
         if requests_iter is not None:
             try:
                 added_count = 0
 
                 while not requests_queue.full() and added_count < (
-                    loop_limit or settings.max_add_requests_per_loop
+                    run_info.strategy.queued_requests_limit
+                    or settings.min_queued_requests
                 ):
                     if run_info.created_requests >= run_info.end_number:
                         raise StopIteration
