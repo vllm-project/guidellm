@@ -42,7 +42,6 @@ class GuidellmClient:
         self,
         rate_type: str = "constant",
         rate: Optional[int] = 10,
-        rate: Optional[int] = 10,
         max_seconds: Optional[int] = None,
         max_requests: Optional[int] = None,
         max_error_rate: Optional[float] = None,
