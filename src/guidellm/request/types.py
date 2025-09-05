@@ -1,6 +1,9 @@
 from typing import TypeVar
 
-__all__ = ["RequestT", "ResponseT"]
+__all__ = [
+    "RequestT",
+    "ResponseT",
+]
 
 
 RequestT = TypeVar("RequestT")

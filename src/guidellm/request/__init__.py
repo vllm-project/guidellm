@@ -5,6 +5,7 @@ from .loader import (
     RequestLoaderDescription,
 )
 from .request import GenerationRequest
+from .types import RequestT, ResponseT
 
 __all__ = [
     "GenerationRequest",
@@ -12,4 +13,6 @@ __all__ = [
     "GenerativeRequestLoaderDescription",
     "RequestLoader",
     "RequestLoaderDescription",
+    "RequestT",
+    "ResponseT",
 ]

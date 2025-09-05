@@ -32,11 +32,11 @@ from guidellm.request import (
     GenerationRequest,
     GenerativeRequestLoaderDescription,
     RequestLoaderDescription,
+    RequestT,
+    ResponseT,
 )
 from guidellm.scheduler import (
     GenerativeRequestsWorkerDescription,
-    RequestT,
-    ResponseT,
     SchedulerRequestResult,
     WorkerDescription,
 )
