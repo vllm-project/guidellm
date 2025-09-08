@@ -300,7 +300,7 @@ jobs:
           image: ${{ github.event.repository.name }}
           tags: "pr-${{ github.event.number }}"
           containerfiles: |
-            ./deploy/Containerfile
+            ./Containerfile
       - name: Push To ghcr.io
         id: push-to-ghcr
         uses: redhat-actions/push-to-registry@v2
