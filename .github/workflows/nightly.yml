@@ -256,6 +256,8 @@ jobs:
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ github.event.repository.name }}
+          build-args: |
+            GUIDELLM_BUILD_TYPE=nightly
           tags: nightly
           containerfiles: |
             ./Containerfile
