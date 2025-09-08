@@ -298,6 +298,8 @@ jobs:
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ github.event.repository.name }}
+          build-args: |
+            GUIDELLM_BUILD_TYPE=dev
           tags: "pr-${{ github.event.number }}"
           containerfiles: |
             ./Containerfile

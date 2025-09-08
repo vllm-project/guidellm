@@ -1,5 +1,12 @@
 ARG BASE_IMAGE=docker.io/python:3.13-slim
 
+# release: take the last version and add a post if build iteration
+# candidate: increment to next minor, add 'rc' with build iteration
+# nightly: increment to next minor, add 'a' with build iteration
+# alpha: increment to next minor, add 'a' with build iteration
+# dev: increment to next minor, add 'dev' with build iteration
+ARG GUIDELLM_BUILD_TYPE=dev
+
 # Use a multi-stage build to create a lightweight production image
 FROM $BASE_IMAGE as builder
 
@@ -8,6 +15,9 @@ USER root
 
 # Copy repository files
 COPY / /opt/app-root/src
+
+# Set correct build type for versioning
+ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
 
 # Create a venv and install guidellm
 RUN python3 -m venv /opt/app-root/guidellm \
