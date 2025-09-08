@@ -302,7 +302,7 @@ jobs:
           # TODO: Tag version
           tags: latest stable
           containerfiles: |
-            ./deploy/Containerfile
+            ./Containerfile
       - name: Push To ghcr.io
         id: push-to-ghcr
         uses: redhat-actions/push-to-registry@v2
