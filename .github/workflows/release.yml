@@ -305,7 +305,7 @@ jobs:
           image: ${{ github.event.repository.name }}
           build-args: |
             GUIDELLM_BUILD_TYPE=release
-          tags: latest stable ${{ env.package_version }}
+          tags: ${{ env.package_version }}
           containerfiles: |
             ./Containerfile
       - name: Push To ghcr.io
