@@ -19,6 +19,10 @@ COPY / /opt/app-root/src
 # Set correct build type for versioning
 ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
 
+# Install build tooling
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git
+
 # Create a venv and install guidellm
 RUN python3 -m venv /opt/app-root/guidellm \
     && /opt/app-root/guidellm/bin/pip install --no-cache-dir /opt/app-root/src
