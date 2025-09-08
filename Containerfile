@@ -20,12 +20,17 @@ COPY / /opt/app-root/src
 ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
 
 # Install build tooling
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && pip install --no-cache-dir -U pdm
+
+# disable pdm update check
+ENV PDM_CHECK_UPDATE=false
 
 # Create a venv and install guidellm
 RUN python3 -m venv /opt/app-root/guidellm \
-    && /opt/app-root/guidellm/bin/pip install --no-cache-dir /opt/app-root/src
+    && pdm use -p /opt/app-root/src -f /opt/app-root/guidellm \
+    && pdm install -p /opt/app-root/src --check --prod --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
