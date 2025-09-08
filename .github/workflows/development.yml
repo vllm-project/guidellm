@@ -293,6 +293,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Buildah build
         id: build-image
         uses: redhat-actions/buildah-build@v2
