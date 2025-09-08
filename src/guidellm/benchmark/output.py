@@ -578,6 +578,13 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 benchmark_headers: list[str] = []
                 benchmark_values: list[str | float | list[float]] = []
 
+                # Add basic run description info
+                desc_headers, desc_values = (
+                    self._get_benchmark_desc_headers_and_values(benchmark)
+                )
+                benchmark_headers.extend(desc_headers)
+                benchmark_values.extend(desc_values)
+
                 # Add status-based metrics
                 for status in StatusDistributionSummary.model_fields:
                     status_headers, status_values = (
@@ -678,6 +685,21 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 dist_summary.max,
             ],
         ]
+        return headers, values
+
+    def _get_benchmark_extras_headers_and_values(
+        self, benchmark: GenerativeBenchmark,
+    ) -> tuple[list[str], list[str]]:
+        headers = ["Profile", "Backend", "Generator Data"]
+        values: list[str] = [
+            benchmark.benchmarker.profile.model_dump_json(),
+            json.dumps(benchmark.benchmarker.backend),
+            json.dumps(benchmark.benchmarker.requests["attributes"]["data"]),
+        ]
+
+        if len(headers) != len(values):
+            raise ValueError("Headers and values length mismatch.")
+
         return headers, values
 
 
