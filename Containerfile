@@ -42,7 +42,7 @@ ENV HOME="/home/guidellm" \
     GUIDELLM_OUTPUT_PATH="/results/benchmarks.json"
 
 # Create a non-root user
-RUN useradd -Md $HOME -g root guidellm
+RUN useradd -K UMASK=0002 -Md $HOME -g root guidellm
 
 # Switch to non-root user
 USER guidellm
