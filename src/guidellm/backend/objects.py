@@ -141,6 +141,7 @@ class GenerationResponse(StandardBaseModel):
             return self.response_output_tokens or self.request_output_tokens
 
 
+@SchedulerMessagingPydanticRegistry.register()
 @MeasuredRequestTimings.register("generation_request_timings")
 class GenerationRequestTimings(MeasuredRequestTimings):
     """Timing model for tracking generation request lifecycle events."""
@@ -154,9 +155,3 @@ class GenerationRequestTimings(MeasuredRequestTimings):
         default=None,
         description="Unix timestamp when the last generation iteration completed.",
     )
-
-
-# Rebuild ScheduledRequestInfo to recognize MeasuredRequestTimings schema change
-ScheduledRequestInfo.model_rebuild(force=True)
-
-SchedulerMessagingPydanticRegistry.register_decorator(GenerationRequestTimings)

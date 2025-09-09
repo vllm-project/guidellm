@@ -78,8 +78,8 @@ class ReloadableBaseModel(BaseModel):
         are Pydantic models and triggers schema rebuilding on each to ensure
         that any changes in child models are reflected in parent schemas.
         """
-        potential_parents: set[BaseModel] = {BaseModel}
-        stack: list[BaseModel] = [BaseModel]
+        potential_parents: set[type[BaseModel]] = {BaseModel}
+        stack: list[type[BaseModel]] = [BaseModel]
 
         while stack:
             current = stack.pop()
@@ -108,13 +108,17 @@ class ReloadableBaseModel(BaseModel):
                     and any(
                         cls._uses_type(target, field_info.annotation)
                         for field_info in candidate.model_fields.values()
+                        if field_info.annotation is not None
                     )
                 ):
-                    before = candidate.model_json_schema()
+                    try:
+                        before = candidate.model_json_schema()
+                    except Exception:  # noqa: BLE001
+                        before = None
                     candidate.model_rebuild(force=True)
-                    after = candidate.model_json_schema()
-                    if before != after:
-                        changed = True
+                    if before is not None:
+                        after = candidate.model_json_schema()
+                        changed |= before != after
 
     @classmethod
     def _uses_type(cls, target: type, candidate: type) -> bool:
