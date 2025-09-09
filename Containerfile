@@ -13,9 +13,6 @@ FROM $BASE_IMAGE as builder
 # Ensure files are installed as root
 USER root
 
-# Copy repository files
-COPY / /opt/app-root/src
-
 # Set correct build type for versioning
 ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
 
@@ -27,6 +24,9 @@ RUN apt-get update \
 # disable pdm update check
 ENV PDM_CHECK_UPDATE=false
 
+# Copy repository files
+COPY / /opt/app-root/src
+
 # Create a venv and install guidellm
 RUN python3 -m venv /opt/app-root/guidellm \
     && pdm use -p /opt/app-root/src -f /opt/app-root/guidellm \
@@ -34,9 +34,6 @@ RUN python3 -m venv /opt/app-root/guidellm \
 
 # Prod image
 FROM $BASE_IMAGE
-
-# Copy the virtual environment from the builder stage
-COPY --from=builder /opt/app-root/guidellm /opt/app-root/guidellm
 
 # Add guidellm bin to PATH
 # Argument defaults can be set with GUIDELLM_<ARG>
@@ -59,6 +56,9 @@ VOLUME /results
 # Metadata
 LABEL org.opencontainers.image.source="https://github.com/vllm-project/guidellm" \
       org.opencontainers.image.description="GuideLLM Performance Benchmarking Container"
+
+# Copy the virtual environment from the builder stage
+COPY --from=builder /opt/app-root/guidellm /opt/app-root/guidellm
 
 ENTRYPOINT [ "/opt/app-root/guidellm/bin/guidellm" ]
 CMD [ "benchmark", "run" ]
