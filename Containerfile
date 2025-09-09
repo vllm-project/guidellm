@@ -13,18 +13,18 @@ FROM $BASE_IMAGE as builder
 # Ensure files are installed as root
 USER root
 
-# Set correct build type for versioning
-ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
-
 # Install build tooling
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && pip install --no-cache-dir -U pdm
 
-# disable pdm update check
-ENV PDM_CHECK_UPDATE=false
+# Disable pdm update check
+# Set correct build type for versioning
+ENV PDM_CHECK_UPDATE=false \
+    GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
 
 # Copy repository files
+# Do this as late as possible to leverage layer caching
 COPY / /opt/app-root/src
 
 # Create a venv and install guidellm
@@ -58,6 +58,7 @@ LABEL org.opencontainers.image.source="https://github.com/vllm-project/guidellm"
       org.opencontainers.image.description="GuideLLM Performance Benchmarking Container"
 
 # Copy the virtual environment from the builder stage
+# Do this as late as possible to leverage layer caching
 COPY --from=builder /opt/app-root/guidellm /opt/app-root/guidellm
 
 ENTRYPOINT [ "/opt/app-root/guidellm/bin/guidellm" ]
