@@ -1,5 +1,4 @@
 import math
-import os
 import random
 import time
 from collections.abc import Generator
@@ -44,6 +43,10 @@ class SchedulingStrategy(StandardBaseModel):
     type_: Literal["strategy"] = Field(
         description="The type of scheduling strategy schedule requests with.",
     )
+    start_time: float = Field(
+        default_factory=time.time,
+        description="The start time for the scheduling strategy.",
+    )
 
     @property
     def processing_mode(self) -> Literal["sync", "async"]:
@@ -68,9 +71,7 @@ class SchedulingStrategy(StandardBaseModel):
 
         :return: The number of processes for the scheduling strategy.
         """
-        cpu_cores = os.cpu_count() or 1
-
-        return min(max(1, cpu_cores - 1), settings.max_worker_processes)
+        return settings.max_worker_processes
 
     @property
     def queued_requests_limit(self) -> Optional[int]:
@@ -175,8 +176,9 @@ class SynchronousStrategy(SchedulingStrategy):
 
         :return: A generator that yields time.time() for immediate request scheduling.
         """
+        init_time = self.start_time
         while True:
-            yield time.time()
+            yield max(init_time, time.time())
 
 
 class ConcurrentStrategy(SchedulingStrategy):
@@ -226,7 +228,8 @@ class ConcurrentStrategy(SchedulingStrategy):
         :return: {self.streams} for the concurrent scheduling strategy to limit
             the worker processes to the number of streams.
         """
-        return self.streams
+
+        return min(self.streams, settings.max_worker_processes)
 
     @property
     def queued_requests_limit(self) -> int:
@@ -260,8 +263,9 @@ class ConcurrentStrategy(SchedulingStrategy):
 
         :return: A generator that yields time.time() for immediate request scheduling.
         """
+        init_time = self.start_time
         while True:
-            yield time.time()
+            yield max(init_time, time.time())
 
 
 class ThroughputStrategy(SchedulingStrategy):
@@ -334,10 +338,9 @@ class ThroughputStrategy(SchedulingStrategy):
         :return: A generator that yields the start time.time()
             for immediate request scheduling.
         """
-        start_time = time.time()
-
+        init_time = self.start_time
         while True:
-            yield start_time
+            yield init_time
 
 
 class AsyncConstantStrategy(ThroughputStrategy):
@@ -389,24 +392,24 @@ class AsyncConstantStrategy(ThroughputStrategy):
 
         :return: A generator that yields timestamps for request scheduling.
         """
-        start_time = time.time()
         constant_increment = 1.0 / self.rate
 
+        init_time = self.start_time
         # handle bursts first to get to the desired rate
         if self.initial_burst is not None:
             # send an initial burst equal to the rate
             # to reach the target rate
             burst_count = math.floor(self.rate)
             for _ in range(burst_count):
-                yield start_time
+                yield init_time
 
-            start_time += constant_increment
+            init_time += constant_increment
 
         counter = 0
 
         # continue with constant rate after bursting
         while True:
-            yield start_time + constant_increment * counter
+            yield init_time + constant_increment * counter
             counter += 1
 
 
@@ -459,24 +462,23 @@ class AsyncPoissonStrategy(ThroughputStrategy):
 
         :return: A generator that yields timestamps for request scheduling.
         """
-        start_time = time.time()
-
+        init_time = self.start_time
         if self.initial_burst is not None:
             # send an initial burst equal to the rate
             # to reach the target rate
             burst_count = math.floor(self.rate)
             for _ in range(burst_count):
-                yield start_time
+                yield init_time
         else:
-            yield start_time
+            yield init_time
 
         # set the random seed for reproducibility
         rand = random.Random(self.random_seed)  # noqa: S311
 
         while True:
             inter_arrival_time = rand.expovariate(self.rate)
-            start_time += inter_arrival_time
-            yield start_time
+            init_time += inter_arrival_time
+            yield init_time
 
 
 def strategy_display_str(strategy: Union[StrategyType, SchedulingStrategy]) -> str:

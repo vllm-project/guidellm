@@ -14,15 +14,15 @@ class ExampleModel(BaseModel):
 
 @pytest.mark.smoke
 def test_inject_data():
-    html = "<head><script>window.run_info = {};</script></head>"
+    html = "<head><script>window.runInfo = {};</script></head>"
     expected_html = (
         "<head><script>"
-        "window.run_info ="
+        "window.runInfo ="
         '{ "model": { "name": "neuralmagic/Qwen2.5-7B-quantized.w8a8" } };'
         "</script></head>"
     )
     js_data = {
-        "window.run_info = {};": "window.run_info ="
+        "window.runInfo = {};": "window.runInfo ="
         '{ "model": { "name": "neuralmagic/Qwen2.5-7B-quantized.w8a8" } };'
     }
     result = inject_data(
@@ -35,13 +35,13 @@ def test_inject_data():
 @pytest.mark.smoke
 def test_create_report_to_file(tmpdir):
     js_data = {
-        "window.run_info = {};": "window.run_info ="
+        "window.runInfo = {};": "window.runInfo ="
         '{ "model": { "name": "neuralmagic/Qwen2.5-7B-quantized.w8a8" } };'
     }
-    html_content = "<head><script>window.run_info = {};</script></head>"
+    html_content = "<head><script>window.runInfo = {};</script></head>"
     expected_html_content = (
         "<head><script>"
-        "window.run_info ="
+        "window.runInfo ="
         '{ "model": { "name": "neuralmagic/Qwen2.5-7B-quantized.w8a8" } };'
         "</script></head>"
     )
@@ -61,13 +61,13 @@ def test_create_report_to_file(tmpdir):
 @pytest.mark.smoke
 def test_create_report_with_file_nested_in_dir(tmpdir):
     js_data = {
-        "window.run_info = {};": "window.run_info ="
+        "window.runInfo = {};": "window.runInfo ="
         '{ "model": { "name": "neuralmagic/Qwen2.5-7B-quantized.w8a8" } };'
     }
-    html_content = "<head><script>window.run_info = {};</script></head>"
+    html_content = "<head><script>window.runInfo = {};</script></head>"
     expected_html_content = (
         "<head><script>"
-        "window.run_info ="
+        "window.runInfo ="
         '{ "model": { "name": "neuralmagic/Qwen2.5-7B-quantized.w8a8" } };'
         "</script></head>"
     )

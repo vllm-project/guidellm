@@ -35,7 +35,7 @@ class Union(click.ParamType):
         self.types = types
         self.name = "".join(t.name for t in types)
 
-    def convert(self, value, param, ctx):
+    def convert(self, value, param, ctx):  # noqa: RET503
         fails = []
         for t in self.types:
             try:

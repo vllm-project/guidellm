@@ -4,8 +4,8 @@ import { WorkloadDetails } from './src/lib/store/slices/workloadDetails/workload
 
 declare global {
   interface Window {
-    run_info?: RunInfo;
-    workload_details?: WorkloadDetails;
+    runInfo?: RunInfo;
+    workloadDetails?: WorkloadDetails;
     benchmarks?: Benchmarks;
   }
 }

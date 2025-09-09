@@ -14,6 +14,7 @@ from guidellm.config import settings
 
 __all__ = [
     "EndlessTextCreator",
+    "camelize_str",
     "clean_text",
     "filter_text",
     "is_puncutation",
@@ -187,6 +188,12 @@ def is_puncutation(text: str) -> bool:
     :rtype: bool
     """
     return len(text) == 1 and not text.isalnum() and not text.isspace()
+
+
+def camelize_str(snake_case_string: str) -> str:
+    return (words := snake_case_string.split("_"))[0].lower() + "".join(
+        word.capitalize() for word in words[1:]
+    )
 
 
 class EndlessTextCreator:

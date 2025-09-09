@@ -243,18 +243,9 @@ class DistributionSummary(StandardBaseModel):
         """
         if distribution_type == "concurrency":
             # convert to delta changes based on when requests were running
-            time_deltas: dict[float, int] = defaultdict(int)
-            for start, end in requests:
-                time_deltas[start] += 1
-                time_deltas[end] -= 1
-
-            # convert to the events over time measuring concurrency changes
-            events = []
-            active = 0
-
-            for time, delta in sorted(time_deltas.items()):
-                active += delta
-                events.append((time, active))
+            events = [(start, 1) for start, _ in requests] + [
+                (end, -1) for _, end in requests
+            ]
         elif distribution_type == "rate":
             # convert to events for when requests finished
             global_start = min(start for start, _ in requests) if requests else 0
@@ -280,6 +271,16 @@ class DistributionSummary(StandardBaseModel):
                 flattened_events[-1] = (last_time, last_val + val)
             else:
                 flattened_events.append((time, val))
+
+        if distribution_type == "concurrency":
+            # convert to the events over time measuring concurrency changes
+            events_over_time: list[tuple[float, float]] = []
+            active = 0
+            for time, delta in flattened_events:
+                active += delta  # type: ignore [assignment]
+                events_over_time.append((time, active))
+
+            flattened_events = events_over_time
 
         # convert to value distribution function
         distribution: dict[float, float] = defaultdict(float)

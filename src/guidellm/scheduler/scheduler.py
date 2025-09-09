@@ -1,10 +1,10 @@
 import asyncio
 import math
-import multiprocessing
-import multiprocessing.queues
 import time
 from collections.abc import AsyncGenerator, Iterable, Iterator
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import Manager
+from threading import Event
 from typing import (
     Any,
     Generic,
@@ -15,17 +15,21 @@ from typing import (
 from loguru import logger
 
 from guidellm.config import settings
+from guidellm.request.types import (
+    RequestT,
+    ResponseT,
+)
+from guidellm.scheduler.queues import MPQueues, Queue, QueueEmpty
 from guidellm.scheduler.result import (
     SchedulerRequestResult,
     SchedulerResult,
     SchedulerRunInfo,
-)
-from guidellm.scheduler.strategy import SchedulingStrategy
-from guidellm.scheduler.types import RequestT, ResponseT
-from guidellm.scheduler.worker import (
-    RequestsWorker,
     WorkerProcessRequest,
     WorkerProcessResult,
+)
+from guidellm.scheduler.strategy import SchedulingStrategy
+from guidellm.scheduler.worker import (
+    RequestsWorker,
 )
 
 __all__ = ["Scheduler"]
@@ -114,18 +118,31 @@ class Scheduler(Generic[RequestT, ResponseT]):
             raise ValueError(f"Invalid max_duration: {max_duration}")
 
         with (
-            multiprocessing.Manager() as manager,
+            Manager() as manager,
             ProcessPoolExecutor(
                 max_workers=scheduling_strategy.processes_limit
             ) as executor,
         ):
             requests_iter: Optional[Iterator[Any]] = None
-            futures, requests_queue, responses_queue = await self._start_processes(
+            scheduling_strategy.start_time = (
+                time.time() + settings.scheduler_start_delay
+            )  # Add a small delay to allow processes to start
+            futures, queues, stop_event = await self._start_processes(
                 manager, executor, scheduling_strategy
             )
             run_info, requests_iter, times_iter = self._run_setup(
                 futures, scheduling_strategy, max_number, max_duration
             )
+
+            # Add some initial requests to the queue
+            requests_iter = self._add_requests(
+                requests_iter,
+                queues.requests,
+                times_iter,
+                run_info,
+            )
+            # Wait for the test to start
+            await asyncio.sleep(time.time() - scheduling_strategy.start_time)
             yield SchedulerResult(
                 type_="run_start",
                 run_info=run_info,
@@ -140,7 +157,11 @@ class Scheduler(Generic[RequestT, ResponseT]):
 
                     if (
                         requests_iter is None
-                        and run_info.completed_requests >= run_info.created_requests
+                        and run_info.processing_requests <= 0
+                        and (  # Ensure we have met one of the end conditions
+                            time.time() >= run_info.end_time
+                            or run_info.completed_requests >= run_info.end_number
+                        )
                     ):
                         # we've exhausted all requests we've wanted to run
                         # and yielded all responses
@@ -148,14 +169,14 @@ class Scheduler(Generic[RequestT, ResponseT]):
 
                     requests_iter = self._add_requests(
                         requests_iter,
+                        queues.requests,
                         times_iter,
-                        requests_queue,
                         run_info,
                     )
                     await asyncio.sleep(0)  # enable requests to start
 
                     iter_result = self._check_result_ready(
-                        responses_queue,
+                        queues.responses,
                         run_info,
                     )
                     if iter_result is not None:
@@ -171,7 +192,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
                 run_info=run_info,
             )
 
-            await self._stop_processes(futures, requests_queue)
+            await self._stop_processes(futures, stop_event)
 
     async def _start_processes(
         self,
@@ -180,14 +201,17 @@ class Scheduler(Generic[RequestT, ResponseT]):
         scheduling_strategy: SchedulingStrategy,
     ) -> tuple[
         list[asyncio.Future],
-        multiprocessing.Queue,
-        multiprocessing.Queue,
+        MPQueues[RequestT, ResponseT],
+        Event,
     ]:
         await self.worker.prepare_multiprocessing()
-        requests_queue = manager.Queue(
-            maxsize=scheduling_strategy.queued_requests_limit
+        queues: MPQueues[RequestT, ResponseT] = MPQueues(
+            requests=manager.Queue(
+                maxsize=scheduling_strategy.processing_requests_limit
+            ),
+            responses=manager.Queue(),
         )
-        responses_queue = manager.Queue()
+        stop_event = manager.Event()
 
         num_processes = min(
             scheduling_strategy.processes_limit,
@@ -212,36 +236,22 @@ class Scheduler(Generic[RequestT, ResponseT]):
         futures = []
         loop = asyncio.get_event_loop()
         for id_, requests_limit in zip(process_ids, process_requests_limits):
-            if scheduling_strategy.processing_mode == "sync":
-                futures.append(
-                    loop.run_in_executor(
-                        executor,
-                        self.worker.process_loop_synchronous,
-                        requests_queue,
-                        responses_queue,
-                        id_,
-                    )
+            futures.append(
+                loop.run_in_executor(
+                    executor,
+                    self.worker.process_loop_asynchronous,
+                    queues,
+                    scheduling_strategy,
+                    stop_event,
+                    requests_limit,
+                    id_,
+                    num_processes,
                 )
-            elif scheduling_strategy.processing_mode == "async":
-                futures.append(
-                    loop.run_in_executor(
-                        executor,
-                        self.worker.process_loop_asynchronous,
-                        requests_queue,
-                        responses_queue,
-                        requests_limit,
-                        id_,
-                    )
-                )
-            else:
-                raise ValueError(
-                    f"Invalid processing mode: {scheduling_strategy.processing_mode} "
-                    f"for strategy: {scheduling_strategy}"
-                )
+            )
 
         await asyncio.sleep(0.1)  # give time for processes to start
 
-        return futures, requests_queue, responses_queue
+        return futures, queues, stop_event
 
     def _run_setup(
         self,
@@ -251,9 +261,8 @@ class Scheduler(Generic[RequestT, ResponseT]):
         max_duration: Optional[float],
     ) -> tuple[SchedulerRunInfo, Iterator[Any], Iterator[float]]:
         requests_iter = iter(self.request_loader)
-        start_time = time.time()
         times_iter = iter(scheduling_strategy.request_times())
-        end_time = time.time() + (max_duration or math.inf)
+        end_time = scheduling_strategy.start_time + (max_duration or math.inf)
         end_number = max_number or math.inf
 
         try:
@@ -271,7 +280,7 @@ class Scheduler(Generic[RequestT, ResponseT]):
             )
 
         info = SchedulerRunInfo(
-            start_time=start_time,
+            start_time=scheduling_strategy.start_time,
             end_time=end_time,
             end_number=end_number,
             processes=len(processes),
@@ -283,30 +292,29 @@ class Scheduler(Generic[RequestT, ResponseT]):
     def _add_requests(
         self,
         requests_iter: Optional[Iterator[Any]],
+        requests_queue: Queue[WorkerProcessRequest[RequestT, ResponseT]],
         times_iter: Iterator[float],
-        requests_queue: multiprocessing.Queue,
         run_info: SchedulerRunInfo,
     ) -> Optional[Iterator[Any]]:
         if requests_iter is not None:
             try:
                 added_count = 0
 
-                while (
-                    not requests_queue.full()
-                    and added_count < settings.max_add_requests_per_loop
+                while not requests_queue.full() and added_count < (
+                    run_info.strategy.queued_requests_limit
+                    or settings.min_queued_requests
                 ):
                     if run_info.created_requests >= run_info.end_number:
                         raise StopIteration
 
                     if (
-                        request_time := next(times_iter)
-                    ) >= run_info.end_time or time.time() >= run_info.end_time:
+                        next(times_iter) >= run_info.end_time
+                        or time.time() >= run_info.end_time
+                    ):
                         raise StopIteration
 
-                    request = next(requests_iter)
-                    work_req: WorkerProcessRequest[RequestT] = WorkerProcessRequest(
-                        request=request,
-                        start_time=request_time,
+                    work_req = WorkerProcessRequest[RequestT, ResponseT](
+                        request=next(requests_iter),
                         timeout_time=run_info.end_time,
                         queued_time=time.time(),
                     )
@@ -324,14 +332,14 @@ class Scheduler(Generic[RequestT, ResponseT]):
 
     def _check_result_ready(
         self,
-        responses_queue: multiprocessing.Queue,
+        responses_queue: Queue[WorkerProcessResult[RequestT, ResponseT]],
         run_info: SchedulerRunInfo,
     ) -> Optional[SchedulerRequestResult[RequestT, ResponseT]]:
         try:
             process_response: WorkerProcessResult[RequestT, ResponseT] = (
                 responses_queue.get_nowait()
             )
-        except multiprocessing.queues.Empty:  # type: ignore[attr-defined]
+        except QueueEmpty:
             return None
 
         if process_response.type_ == "request_scheduled":
@@ -374,9 +382,9 @@ class Scheduler(Generic[RequestT, ResponseT]):
     async def _stop_processes(
         self,
         futures: list[asyncio.Future],
-        requests_queue: multiprocessing.Queue,
+        stop_event: Event,
     ):
-        for _ in futures:
-            requests_queue.put(None)
+        # stop all processes
+        stop_event.set()
 
         await asyncio.gather(*futures)

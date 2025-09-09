@@ -1,4 +1,4 @@
-export const runInfoScript = `window.run_info = {
+export const runInfoScript = `window.runInfo = {
   "model": {
     "name": "neuralmagic/Qwen2.5-7B-quantized.w8a8",
     "size": 0

@@ -27,12 +27,12 @@ from guidellm.request import (
     GenerationRequest,
     GenerativeRequestLoaderDescription,
     RequestLoaderDescription,
+    RequestT,
+    ResponseT,
 )
 from guidellm.scheduler import (
     GenerativeRequestsWorker,
     RequestsWorker,
-    RequestT,
-    ResponseT,
     Scheduler,
     SchedulerRequestResult,
     SchedulingStrategy,

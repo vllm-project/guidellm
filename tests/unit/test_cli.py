@@ -2,6 +2,9 @@
 Unit tests for CLI functionality, specifically the version flag.
 """
 
+import importlib.metadata
+import re
+
 import pytest
 from click.testing import CliRunner
 
@@ -26,7 +29,6 @@ def test_version_flag_displays_actual_version():
     result = runner.invoke(cli, ["--version"])
 
     assert result.exit_code == 0
-    import re
 
     version_pattern = r"guidellm version: \d+\.\d+"
     assert re.search(version_pattern, result.output)
@@ -84,8 +86,6 @@ def test_version_flag_case_sensitivity():
 @pytest.mark.integration
 def test_version_integration_with_actual_version():
     """Integration test to verify version matches importlib.metadata."""
-    import importlib.metadata
-
     try:
         actual_version = importlib.metadata.version("guidellm")
 
