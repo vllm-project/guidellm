@@ -6,6 +6,19 @@ on:
   workflow_dispatch:  # Enables manual triggering of the workflow
 
 jobs:
+  cleanup-container-tags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete PR and untagged images older than 2 weeks
+        uses: snok/container-retention-policy@v3.0.0
+        with:
+          account: ${{ github.actor }}
+          token: ${{ github.token }}
+          image-names: ${{ github.event.repository.name }}
+          image-tags: "pr-*"
+          cut-off: 2w
+          dry-run: true
+
   push-container-tags:
     runs-on: ubuntu-latest
     steps:
