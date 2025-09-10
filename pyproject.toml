@@ -60,9 +60,6 @@ dependencies = [
     "rich",
     "transformers",
 ]
-default-optional-dependency-keys = [
-    "recommended"
-]
 
 [project.optional-dependencies]
 recommended = [
