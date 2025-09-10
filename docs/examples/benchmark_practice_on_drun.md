@@ -55,7 +55,7 @@ Download the chat dataset JSON file `Open-Source-Meeseeks-high-quality.json` fro
 
 ![alt text](image-3.png)
 
----
+______________________________________________________________________
 
 ## 🚀 2. Running Benchmarks
 
@@ -70,7 +70,7 @@ guidellm benchmark \
  --data "/{$local_path}/Open-Source-Meeseeks-high-quality.json"
 ```
 
----
+______________________________________________________________________
 
 ## 📊 3. Results Interpretation
 
@@ -78,8 +78,8 @@ guidellm benchmark \
 
 After the benchmark completes, key results are clear and straightforward, such as:
 
-* **`TTFT`**: Time to First Token
-* **`TPOT`**: Time Per Output Token
-* **`ITL`**: Inter-Token Latency
+- **`TTFT`**: Time to First Token
+- **`TPOT`**: Time Per Output Token
+- **`ITL`**: Inter-Token Latency
 
 The first benchmark test is complete.
