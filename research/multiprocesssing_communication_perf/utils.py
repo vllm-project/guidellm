@@ -181,7 +181,7 @@ def create_test_objects(
                 GenerationResponse(
                     request_id=str(uuid.uuid4()),
                     request_args={},
-                    value=generate_str(objects_size // 2),
+                    values=generate_strs_list(objects_size // 2, objects_size // 5),
                 ),
                 GenerationRequest(
                     content=generate_str(objects_size // 2),

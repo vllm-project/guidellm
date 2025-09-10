@@ -307,7 +307,6 @@ class OpenAIHTTPBackend(Backend):
                 "output_token_count": request.constraints.get("output_tokens"),
                 **request.params,
             },
-            value="",
             request_prompt_tokens=request.stats.get("prompt_tokens"),
             request_output_tokens=request.constraints.get("output_tokens"),
         )
@@ -344,7 +343,7 @@ class OpenAIHTTPBackend(Backend):
             if delta is not None:
                 if request_info.request_timings.first_iteration is None:
                     request_info.request_timings.first_iteration = time.time()
-                response.value += delta  # type: ignore [operator]
+                response.values.append(delta)
                 response.delta = delta
                 request_info.request_timings.last_iteration = time.time()
                 response.iterations += 1

@@ -74,8 +74,8 @@ class GenerationResponse(StandardBaseModel):
     request_args: dict[str, Any] = Field(
         description="Arguments passed to the backend for this request."
     )
-    value: Optional[str] = Field(
-        default=None,
+    values: list[str] = Field(
+        default_factory=list,
         description="Complete generated text content. None for streaming responses.",
     )
     delta: Optional[str] = Field(

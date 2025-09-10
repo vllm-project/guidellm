@@ -179,7 +179,7 @@ class TestGenerationResponse:
         expected_fields = [
             "request_id",
             "request_args",
-            "value",
+            "values",
             "delta",
             "iterations",
             "request_prompt_tokens",
@@ -207,7 +207,7 @@ class TestGenerationResponse:
 
         # Check defaults for optional fields
         if "value" not in constructor_args:
-            assert instance.value is None
+            assert instance.values == []
         if "delta" not in constructor_args:
             assert instance.delta is None
         if "iterations" not in constructor_args:
@@ -369,7 +369,7 @@ class TestGenerationResponse:
         reconstructed = GenerationResponse.model_validate(data_dict)
         assert reconstructed.request_id == instance.request_id
         assert reconstructed.request_args == instance.request_args
-        assert reconstructed.value == instance.value
+        assert reconstructed.values == instance.values
         assert reconstructed.iterations == instance.iterations
 
 

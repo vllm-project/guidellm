@@ -127,7 +127,6 @@ class MockBackend(Backend):
                 "output_token_count": output_tokens,
                 **request.params,
             },
-            value="",
             request_prompt_tokens=prompt_tokens,
             request_output_tokens=output_tokens,
         )
@@ -144,7 +143,7 @@ class MockBackend(Backend):
             if request_info.request_timings.first_iteration is None:
                 request_info.request_timings.first_iteration = time.time()
 
-            response.value += token  # type: ignore [reportOperatorIssue]
+            response.values.append(token)
             response.delta = token
             response.iterations = index + 1
             request_info.request_timings.last_iteration = time.time()

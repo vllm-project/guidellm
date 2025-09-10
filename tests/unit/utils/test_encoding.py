@@ -223,7 +223,7 @@ class TestMessageEncoding:
                 GenerationResponse(
                     request_id=str(uuid.uuid4()),
                     request_args={},
-                    value="test response",
+                    values=["test", "response"],
                     request_prompt_tokens=2,
                     request_output_tokens=3,
                     response_prompt_tokens=4,

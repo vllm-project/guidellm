@@ -940,7 +940,7 @@ class GenerativeRequestsAggregator(
             request_type=request.request_type,
             prompt=str(request.content),
             request_args=response.request_args,
-            output=response.value,
+            output="".join(response.values),
             iterations=response.iterations,
             prompt_tokens=prompt_tokens,
             output_tokens=output_tokens,

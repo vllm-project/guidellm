@@ -686,7 +686,7 @@ class TestOpenAIHTTPBackend:
 
         assert len(responses) >= 2
         final_response = responses[-1][0]
-        assert final_response.value == "Hello world"
+        assert "".join(final_response.values) == "Hello world"
         assert final_response.request_id == request.request_id
         assert final_response.iterations == 2
 
@@ -725,7 +725,7 @@ class TestOpenAIHTTPBackend:
                 responses.append((response, info))
 
         final_response = responses[-1][0]
-        assert final_response.value == "Response"
+        assert "".join(final_response.values) == "Response"
         assert final_response.request_id == request.request_id
 
 
