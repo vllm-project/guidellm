@@ -67,7 +67,7 @@ class RunInfo(BaseModel):
 
     @classmethod
     def from_benchmarks(cls, benchmarks: list["GenerativeBenchmark"]):
-        model = benchmarks[0].worker.backend_model or "N/A"
+        model = benchmarks[0].benchmarker.backend.get("model", "N/A")
         timestamp = max(
             bm.run_stats.start_time for bm in benchmarks if bm.start_time is not None
         )
@@ -108,8 +108,8 @@ class WorkloadDetails(BaseModel):
 
     @classmethod
     def from_benchmarks(cls, benchmarks: list["GenerativeBenchmark"]):
-        target = benchmarks[0].worker.backend_target
-        rate_type = benchmarks[0].args.profile.type_
+        target = benchmarks[0].benchmarker.backend.get("target", "N/A")
+        rate_type = benchmarks[0].scheduler.strategy.type_
         successful_requests = [
             req for bm in benchmarks for req in bm.requests.successful
         ]
@@ -152,13 +152,13 @@ class WorkloadDetails(BaseModel):
             statistics=output_token_stats, buckets=output_token_buckets, bucket_width=1
         )
 
-        min_start_time = benchmarks[0].run_stats.start_time
+        min_start_time = benchmarks[0].start_time
 
         all_req_times = [
-            req.start_time - min_start_time
+            req.scheduler_info.started_at - min_start_time
             for bm in benchmarks
             for req in bm.requests.successful
-            if req.start_time is not None
+            if req.scheduler_info.started_at is not None
         ]
         number_of_buckets = len(benchmarks)
         request_over_time_buckets, bucket_width = Bucket.from_data(
