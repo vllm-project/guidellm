@@ -298,7 +298,7 @@ export const Component = () => {
             color="surface.onSurface"
             textTransform="uppercase"
           >
-            Maximum RPS per gpu
+            Measured RPS (Mean)
           </Typography>
           <Typography variant="metric1" color="primary">
             {formatNumber(currentRequestRate)} rps
