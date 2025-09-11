@@ -40,6 +40,12 @@ from .progress import (
     BenchmarkerProgressGroup,
     GenerativeConsoleBenchmarkerProgress,
 )
+from .scenario import (
+    GenerativeTextScenario,
+    Scenario,
+    enable_scenarios,
+    get_builtin_scenarios,
+)
 
 __all__ = [
     "Aggregator",
@@ -65,14 +71,18 @@ __all__ = [
     "GenerativeRequestStats",
     "GenerativeRequestsAggregator",
     "GenerativeStatsProgressAggregator",
+    "GenerativeTextScenario",
     "InjectExtrasAggregator",
     "Profile",
     "ProfileType",
+    "Scenario",
     "SchedulerStatsAggregator",
     "SerializableAggregator",
     "SweepProfile",
     "SynchronousProfile",
     "ThroughputProfile",
     "benchmark_generative_text",
+    "enable_scenarios",
+    "get_builtin_scenarios",
     "reimport_benchmarks_report",
 ]

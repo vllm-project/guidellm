@@ -33,7 +33,7 @@ from guidellm.benchmark.progress import (
     BenchmarkerProgress,
     BenchmarkerProgressGroup,
 )
-from guidellm.benchmark.scenario import GenerativeTextScenario, Scenario
+from guidellm.benchmark.scenario import enable_scenarios
 from guidellm.request import GenerativeRequestLoader
 from guidellm.scheduler import (
     ConstraintInitializer,
@@ -44,7 +44,6 @@ from guidellm.utils import Console, InfoMixin
 
 __all__ = [
     "benchmark_generative_text",
-    "benchmark_with_scenario",
     "reimport_benchmarks_report",
 ]
 
@@ -143,18 +142,9 @@ async def finalize_outputs(
 
 # Complete entrypoints
 
-async def benchmark_with_scenario(scenario: Scenario, **kwargs):
-    """
-    Run a benchmark using a scenario and specify any extra arguments
-    """
-
-    if isinstance(scenario, GenerativeTextScenario):
-        return await benchmark_generative_text(**vars(scenario), **kwargs)
-    else:
-        raise ValueError(f"Unsupported Scenario type {type(scenario)}")
-
 
 # @validate_call(config={"arbitrary_types_allowed": True})
+@enable_scenarios
 async def benchmark_generative_text(  # noqa: C901
     target: str,
     data: DataType,
