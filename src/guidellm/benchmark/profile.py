@@ -29,8 +29,17 @@ from typing import (
 )
 
 import numpy as np
-from pydantic import Field, computed_field, field_serializer, field_validator
+from pydantic import (
+    Field,
+    NonNegativeFloat,
+    PositiveFloat,
+    PositiveInt,
+    computed_field,
+    field_serializer,
+    field_validator,
+)
 
+from guidellm import settings
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -86,7 +95,7 @@ class Profile(
     def create(
         cls,
         rate_type: str,
-        rate: float | int | list[float | int] | None,
+        rate: list[float] | None,
         random_seed: int = 42,
         **kwargs: Any,
     ) -> Profile:
@@ -112,7 +121,7 @@ class Profile(
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -265,7 +274,7 @@ class SynchronousProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -316,24 +325,22 @@ class ConcurrentProfile(Profile):
     """Fixed-concurrency strategy execution profile with configurable stream counts."""
 
     type_: Literal["concurrent"] = "concurrent"  # type: ignore[assignment]
-    streams: int | list[int] = Field(
+    streams: list[PositiveInt] = Field(
         description="Number of concurrent streams for request scheduling",
-        gt=0,
     )
-    startup_duration: float = Field(
+    startup_duration: NonNegativeFloat = Field(
         default=0.0,
         description=(
             "Duration in seconds for distributing startup requests "
             "before completion-based timing"
         ),
-        ge=0,
     )
 
     @classmethod
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -348,14 +355,13 @@ class ConcurrentProfile(Profile):
         :raises ValueError: If rate is None.
         """
         _ = (rate_type, random_seed)  # unused
-        kwargs["streams"] = rate
+        kwargs["streams"] = [int(r) for r in rate] if rate else None
         return kwargs
 
     @property
     def strategy_types(self) -> list[StrategyType]:
         """Get concurrent strategy types for each configured stream count."""
-        num_strategies = len(self.streams) if isinstance(self.streams, list) else 1
-        return [self.type_] * num_strategies
+        return [self.type_] * len(self.streams)
 
     def next_strategy(
         self,
@@ -370,13 +376,12 @@ class ConcurrentProfile(Profile):
         :return: ConcurrentStrategy with next stream count, or None if complete.
         """
         _ = (prev_strategy, prev_benchmark)  # unused
-        streams = self.streams if isinstance(self.streams, list) else [self.streams]
 
-        if len(self.completed_strategies) >= len(streams):
+        if len(self.completed_strategies) >= len(self.streams):
             return None
 
         return ConcurrentStrategy(
-            streams=streams[len(self.completed_strategies)],
+            streams=self.streams[len(self.completed_strategies)],
             startup_duration=self.startup_duration,
         )
 
@@ -388,25 +393,22 @@ class ThroughputProfile(Profile):
     """
 
     type_: Literal["throughput"] = "throughput"  # type: ignore[assignment]
-    max_concurrency: int | None = Field(
+    max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum number of concurrent requests to schedule",
-        gt=0,
     )
-    startup_duration: float = Field(
-        default=0.0,
+    startup_duration: NonNegativeFloat = Field(
         description=(
             "Duration in seconds for distributing startup requests "
             "before full throughput scheduling"
         ),
-        ge=0,
     )
 
     @classmethod
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -422,8 +424,8 @@ class ThroughputProfile(Profile):
         _ = (rate_type, random_seed)  # unused
         # Remap rate to max_concurrency, strip out random_seed
         kwargs.pop("random_seed", None)
-        if rate is not None:
-            kwargs["max_concurrency"] = rate
+        if rate is not None and len(rate) > 0:
+            kwargs["max_concurrency"] = rate[0]
         return kwargs
 
     @property
@@ -463,22 +465,19 @@ class AsyncProfile(Profile):
     strategy_type: Literal["constant", "poisson"] = Field(
         description="Type of asynchronous strategy pattern to use",
     )
-    rate: float | list[float] = Field(
+    rate: list[PositiveFloat] = Field(
         description="Request scheduling rate in requests per second",
-        gt=0,
     )
-    startup_duration: float = Field(
+    startup_duration: NonNegativeFloat = Field(
         default=0.0,
         description=(
             "Duration in seconds for distributing startup requests "
             "to converge quickly to desired rate"
         ),
-        ge=0,
     )
-    max_concurrency: int | None = Field(
+    max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum number of concurrent requests to schedule",
-        gt=0,
     )
     random_seed: int = Field(
         default=42,
@@ -489,7 +488,7 @@ class AsyncProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -523,7 +522,7 @@ class AsyncProfile(Profile):
     @property
     def strategy_types(self) -> list[StrategyType]:
         """Get async strategy types for each configured rate."""
-        num_strategies = len(self.rate) if isinstance(self.rate, list) else 1
+        num_strategies = len(self.rate)
         return [self.strategy_type] * num_strategies
 
     def next_strategy(
@@ -541,12 +540,11 @@ class AsyncProfile(Profile):
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'.
         """
         _ = (prev_strategy, prev_benchmark)  # unused
-        rate = self.rate if isinstance(self.rate, list) else [self.rate]
 
-        if len(self.completed_strategies) >= len(rate):
+        if len(self.completed_strategies) >= len(self.rate):
             return None
 
-        current_rate = rate[len(self.completed_strategies)]
+        current_rate = self.rate[len(self.completed_strategies)]
 
         if self.strategy_type == "constant":
             return AsyncConstantStrategy(
@@ -577,18 +575,16 @@ class SweepProfile(Profile):
         ge=2,
     )
     strategy_type: Literal["constant", "poisson"] = "constant"
-    startup_duration: float = Field(
+    startup_duration: NonNegativeFloat = Field(
         default=0.0,
         description=(
             "Duration in seconds for distributing startup requests "
             "to converge quickly to desired rate"
         ),
-        ge=0,
     )
-    max_concurrency: int | None = Field(
+    max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum number of concurrent requests to schedule",
-        gt=0,
     )
     random_seed: int = Field(
         default=42,
@@ -615,7 +611,7 @@ class SweepProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -628,7 +624,8 @@ class SweepProfile(Profile):
         :param kwargs: Additional arguments to pass through.
         :return: Dictionary of resolved arguments.
         """
-        kwargs["sweep_size"] = kwargs.get("sweep_size", rate)
+        sweep_size_from_rate = int(rate[0]) if rate else settings.default_sweep_number
+        kwargs["sweep_size"] = kwargs.get("sweep_size", sweep_size_from_rate)
         kwargs["random_seed"] = random_seed
         if rate_type in ["constant", "poisson"]:
             kwargs["strategy_type"] = rate_type

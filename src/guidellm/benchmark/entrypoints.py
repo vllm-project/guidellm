@@ -149,7 +149,7 @@ async def benchmark_generative_text(  # noqa: C901
     target: str,
     data: DataType,
     profile: StrategyType | ProfileType | Profile,
-    rate: float | list[float] | None = None,
+    rate: list[float] | None = None,
     random_seed: int = 42,
     # Backend configuration
     backend: BackendType | Backend = "openai_http",
