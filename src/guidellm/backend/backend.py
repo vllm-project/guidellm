@@ -79,6 +79,7 @@ class Backend(ABC):
 
     def __init__(self, type_: BackendType):
         self._type = type_
+        self._validated = False
 
     @property
     def type_(self) -> BackendType:
@@ -124,6 +125,8 @@ class Backend(ABC):
         Handle final setup and validate the backend is ready for use.
         If not successful, raises the appropriate exception.
         """
+        if self._validated:
+            return
         logger.info("{} validating backend {}", self.__class__.__name__, self.type_)
         await self.check_setup()
         models = await self.available_models()
@@ -146,6 +149,7 @@ class Backend(ABC):
                 pass
 
         await self.reset()
+        self._validated = True
 
     @abstractmethod
     async def check_setup(self):
