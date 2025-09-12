@@ -86,7 +86,7 @@ class Profile(
     def create(
         cls,
         rate_type: str,
-        rate: float | int | list[float | int] | None,
+        rate: list[float] | None,
         random_seed: int = 42,
         **kwargs: Any,
     ) -> Profile:
@@ -112,7 +112,7 @@ class Profile(
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -264,7 +264,7 @@ class SynchronousProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -313,7 +313,7 @@ class ConcurrentProfile(Profile):
     """Fixed-concurrency strategy execution profile with configurable stream counts."""
 
     type_: Literal["concurrent"] = "concurrent"  # type: ignore[assignment]
-    streams: int | list[int] = Field(
+    streams: list[int] = Field(
         description="Number of concurrent streams for request scheduling",
         gt=0,
     )
@@ -330,7 +330,7 @@ class ConcurrentProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -344,7 +344,7 @@ class ConcurrentProfile(Profile):
         :return: Dictionary of resolved arguments.
         :raises ValueError: If rate is None.
         """
-        kwargs["streams"] = rate
+        kwargs["streams"] = [int(r) for r in rate] if rate else None
         return kwargs
 
     @property
@@ -401,7 +401,7 @@ class ThroughputProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -456,7 +456,7 @@ class AsyncProfile(Profile):
     strategy_type: Literal["constant", "poisson"] = Field(
         description="Type of asynchronous strategy pattern to use",
     )
-    rate: float | list[float] = Field(
+    rate: list[float] = Field(
         description="Request scheduling rate in requests per second",
         gt=0,
     )
@@ -482,7 +482,7 @@ class AsyncProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -516,7 +516,7 @@ class AsyncProfile(Profile):
     @property
     def strategy_types(self) -> list[StrategyType]:
         """Get async strategy types for each configured rate."""
-        num_strategies = len(self.rate) if isinstance(self.rate, list) else 1
+        num_strategies = len(self.rate)
         return [self.strategy_type] * num_strategies
 
     def next_strategy(
@@ -533,7 +533,7 @@ class AsyncProfile(Profile):
             or None if all rates completed.
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'.
         """
-        rate = self.rate if isinstance(self.rate, list) else [self.rate]
+        rate = self.rate
 
         if len(self.completed_strategies) >= len(rate):
             return None
@@ -607,7 +607,7 @@ class SweepProfile(Profile):
     def resolve_args(
         cls,
         rate_type: str,
-        rate: float | int | list[float, int] | None,
+        rate: list[float] | None,
         random_seed: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -620,7 +620,8 @@ class SweepProfile(Profile):
         :param kwargs: Additional arguments to pass through.
         :return: Dictionary of resolved arguments.
         """
-        kwargs["sweep_size"] = kwargs.get("sweep_size", rate)
+        sweep_size_from_rate = rate[0] if rate else None
+        kwargs["sweep_size"] = kwargs.get("sweep_size", sweep_size_from_rate)
         kwargs["random_seed"] = random_seed
         if rate_type in ["constant", "poisson"]:
             kwargs["strategy_type"] = rate_type
