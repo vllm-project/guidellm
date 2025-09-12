@@ -10,7 +10,7 @@ from typing import Annotated, Any, Callable, Literal, TypeVar
 import yaml
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from loguru import logger
-from pydantic import BeforeValidator, Field, PositiveFloat, PositiveInt
+from pydantic import BeforeValidator, Field, PositiveFloat, PositiveInt, SkipValidation
 from transformers.tokenization_utils_base import (  # type: ignore[import]
     PreTrainedTokenizerBase,
 )
@@ -115,7 +115,7 @@ class GenerativeTextScenario(Scenario):
         # types like PreTrainedTokenizerBase
         arbitrary_types_allowed = True
 
-    data: (
+    data: Annotated[
         Iterable[str]
         | Iterable[dict[str, Any]]
         | Dataset
@@ -123,8 +123,10 @@ class GenerativeTextScenario(Scenario):
         | IterableDataset
         | IterableDatasetDict
         | str
-        | Path
-    )
+        | Path,
+        # BUG: See https://github.com/pydantic/pydantic/issues/9541
+        SkipValidation,
+    ]
     profile: StrategyType | ProfileType | Profile
     rate: Annotated[list[PositiveFloat] | None, BeforeValidator(parse_float_list)] = (
         None
@@ -159,7 +161,7 @@ def enable_scenarios(func: Callable) -> Any:
     @wraps(func)
     async def decorator(*args, scenario: Scenario | None = None, **kwargs) -> Any:
         if scenario is not None:
-            kwargs.update(**vars(scenario))
+            kwargs.update(**scenario.model_dump())
         return await func(*args, **kwargs)
 
     # Modify the signature of the decorator to include the `scenario` argument
