@@ -20,6 +20,7 @@ def load_dataset(
     processor_args: Optional[dict[str, Any]],
     random_seed: int = 42,
     split_pref_order: Optional[list[str]] = None,
+    max_requests: Optional[int] = None,
 ) -> tuple[Union[Dataset, IterableDataset], dict[ColumnInputTypes, str]]:
     creators = [
         InMemoryDatasetCreator,
@@ -37,6 +38,7 @@ def load_dataset(
                 processor_args,
                 random_seed,
                 split_pref_order,
+                max_requests,
             )
 
     raise ValueError(f"Unsupported data type: {type(data)} given for {data}. ")

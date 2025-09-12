@@ -252,6 +252,7 @@ class SyntheticDatasetCreator(DatasetCreator):
         processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
         processor_args: Optional[dict[str, Any]],
         random_seed: int,
+        max_requests: Optional[int] = None,
     ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
         processor = check_load_processor(
             processor,
@@ -262,6 +263,8 @@ class SyntheticDatasetCreator(DatasetCreator):
         )
 
         config = SyntheticDatasetConfig.parse_str(data)
+        if "samples=" not in str(data) and max_requests is not None:
+            config.samples = max_requests
         generator = SyntheticTextItemsGenerator(config, processor, random_seed)
         items = list(generator)
 

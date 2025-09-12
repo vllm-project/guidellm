@@ -85,6 +85,7 @@ class DatasetCreator(ABC):
         processor_args: Optional[dict[str, Any]],
         random_seed: int = 42,
         split_pref_order: Optional[list[str]] = None,
+        max_requests: Optional[int] = None,
     ) -> tuple[Union[Dataset, IterableDataset], dict[ColumnInputTypes, str]]:
         if not cls.is_supported(data, data_args):
             raise ValueError(f"Unsupported data type: {type(data)} given for {data}. ")
@@ -92,7 +93,7 @@ class DatasetCreator(ABC):
         split = cls.extract_args_split(data_args)
         column_mappings = cls.extract_args_column_mappings(data_args)
         dataset = cls.handle_create(
-            data, data_args, processor, processor_args, random_seed
+            data, data_args, processor, processor_args, random_seed, max_requests
         )
 
         if isinstance(dataset, (DatasetDict, IterableDatasetDict)):
@@ -210,4 +211,5 @@ class DatasetCreator(ABC):
         processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
         processor_args: Optional[dict[str, Any]],
         random_seed: int,
+        max_requests: Optional[int] = None,
     ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]: ...
