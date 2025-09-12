@@ -688,7 +688,7 @@ class OpenAIHTTPBackend(Backend):
             return data["choices"][0]["text"]
 
         if type_ == "chat_completions":
-            return data["choices"][0]["delta"]["content"]
+            return data.get("choices", [{}])[0].get("delta", {}).get("content")
 
         raise ValueError(f"Unsupported type: {type_}")
 
