@@ -40,14 +40,14 @@ def get_builtin_scenarios() -> list[str]:
     return [p.stem for p in SCENARIO_DIR.glob("*.json")]
 
 
-def parse_float_list(value: str | float | list[float]) -> list[float]:
+def parse_float_list(value: str | float | list[float]) -> float | list[float]:
     """
     Parse a comma separated string to a list of float
     or convert single float list of one or pass float
     list through.
     """
     if isinstance(value, (int, float)):
-        return [value]
+        return float(value)
     elif isinstance(value, list):
         return value
 
@@ -128,9 +128,9 @@ class GenerativeTextScenario(Scenario):
         SkipValidation,
     ]
     profile: StrategyType | ProfileType | Profile
-    rate: Annotated[list[PositiveFloat] | None, BeforeValidator(parse_float_list)] = (
-        None
-    )
+    rate: Annotated[
+        PositiveFloat | list[PositiveFloat] | None, BeforeValidator(parse_float_list)
+    ] = None
     random_seed: int = 42
     # Backend configuration
     backend: BackendType | Backend = "openai_http"
