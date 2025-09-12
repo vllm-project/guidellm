@@ -31,6 +31,7 @@ from typing import (
 import numpy as np
 from pydantic import Field, computed_field, field_serializer, field_validator
 
+from guidellm import settings
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -620,7 +621,7 @@ class SweepProfile(Profile):
         :param kwargs: Additional arguments to pass through.
         :return: Dictionary of resolved arguments.
         """
-        sweep_size_from_rate = rate[0] if rate else None
+        sweep_size_from_rate = int(rate[0]) if rate else settings.default_sweep_number
         kwargs["sweep_size"] = kwargs.get("sweep_size", sweep_size_from_rate)
         kwargs["random_seed"] = random_seed
         if rate_type in ["constant", "poisson"]:
