@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     ] = "response"
     preferred_backend: Literal["openai"] = "openai"
     preferred_route: Literal["text_completions", "chat_completions"] = (
-        "text_completions"
+        "chat_completions"
     )
     openai: OpenAISettings = OpenAISettings()
 
