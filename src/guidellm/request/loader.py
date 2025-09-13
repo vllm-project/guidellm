@@ -84,6 +84,7 @@ class GenerativeRequestLoader(RequestLoader):
         shuffle: bool = True,
         iter_type: Literal["finite", "infinite"] = "finite",
         random_seed: int = 42,
+        max_requests: Optional[int] = None,
     ):
         self.data = data
         self.data_args = data_args
@@ -93,6 +94,7 @@ class GenerativeRequestLoader(RequestLoader):
             processor,
             processor_args,
             random_seed,
+            max_requests=max_requests,
         )
         self.dataset = dataset
         self.processor = processor

@@ -89,6 +89,7 @@ async def benchmark_generative_text(
             else "infinite"  # default to infinite so we don't run out of data
         ),
         random_seed=random_seed,
+        max_requests=max_requests,
     )
     unique_requests = request_loader.num_unique_items(raise_err=False)
     console.print_line(
