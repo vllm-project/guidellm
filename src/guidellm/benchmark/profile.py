@@ -298,7 +298,35 @@ class SweepProfile(AsyncProfile):
 
         min_rate = self.measured_rates[0]
         max_rate = self.measured_rates[1]
-        rates = np.linspace(min_rate, max_rate, self.sweep_size - 1)[1:]
+        try:
+            rates = np.linspace(min_rate, max_rate, self.sweep_size - 1)[1:]
+            # validate rates
+            if len(rates) == 0:
+                raise ValueError(
+                    "Generated rate array is empty, \
+                                 please check input parameters"
+                )
+            if np.any(rates == 0):
+                # Provide detailed debug information
+                debug_info = {
+                    "min_rate": min_rate,
+                    "max_rate": max_rate,
+                    "sweep_size": self.sweep_size,
+                    "generated_rates": rates.tolist(),
+                    "zero_count": np.sum(rates == 0),
+                    "zero_positions": np.where(rates == 0)[0].tolist(),
+                }
+                raise ValueError(
+                    "Rate array contains zero values, which may cause division by zero \
+                        or invalid calculations.\n"
+                    f"Debug info: {debug_info}\n"
+                    "Please adjust parameter range to avoid zero values."
+                )
+        except ValueError as e:
+            raise ValueError(
+                "Unable to generate valid rates parameters. \
+                             Please check your input range."
+            ) from e
 
         if self.rate_type == "constant":
             return AsyncConstantStrategy(
