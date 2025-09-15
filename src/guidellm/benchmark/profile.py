@@ -23,6 +23,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     ClassVar,
     Literal,
@@ -314,9 +315,8 @@ class ConcurrentProfile(Profile):
     """Fixed-concurrency strategy execution profile with configurable stream counts."""
 
     type_: Literal["concurrent"] = "concurrent"  # type: ignore[assignment]
-    streams: list[int] = Field(
+    streams: list[Annotated[int, Field(gt=0)]] = Field(
         description="Number of concurrent streams for request scheduling",
-        gt=0,
     )
     startup_duration: float = Field(
         default=0.0,
