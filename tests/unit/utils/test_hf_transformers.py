@@ -1,34 +1,40 @@
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+import transformers
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.utils.hf_transformers import check_load_processor
 
+
 class DummyTokenizer(PreTrainedTokenizerBase):
-    def __init__(self):
-        pass
+    pass
 
-@patch("guidellm.utils.hf_transformers.AutoTokenizer.from_pretrained", return_value=DummyTokenizer())
-def test_check_load_processor_with_tokenizer_instance(mock_from_pretrained):
-    tokenizer = DummyTokenizer()
-    result = check_load_processor(tokenizer, None, "test")
-    assert isinstance(result, PreTrainedTokenizerBase)
 
-@patch("guidellm.utils.hf_transformers.AutoTokenizer.from_pretrained", return_value=DummyTokenizer())
-def test_check_load_processor_with_tokenizer_name(mock_from_pretrained):
-    result = check_load_processor("bert-base-uncased", None, "test")
-    assert isinstance(result, PreTrainedTokenizerBase)
-
-@patch("guidellm.utils.hf_transformers.AutoTokenizer.from_pretrained", return_value=DummyTokenizer())
-def test_check_load_processor_with_tokenizer_path(mock_from_pretrained, tmp_path):
-    result = check_load_processor(tmp_path, None, "test")
-    assert isinstance(result, PreTrainedTokenizerBase)
-
-def test_check_load_processor_none_raises():
-    with pytest.raises(ValueError, match="Processor/Tokenizer is required"):
+def test_processor_is_none():
+    with pytest.raises(ValueError, match="Processor/Tokenizer is required for test."):
         check_load_processor(None, None, "test")
 
-def test_check_load_processor_invalid_type_raises():
-    with pytest.raises(ValueError, match="Invalid processor/Tokenizer"):
-        check_load_processor(123, None, "test")
+
+def test_processor_not_isinstance():
+    with pytest.raises(ValueError, match="Invalid processor/Tokenizer for test."):
+        check_load_processor(123, None, "test")  # type: ignore
+
+
+def test_processor_load_by_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        transformers.AutoTokenizer,
+        "from_pretrained",
+        lambda *args, **kwargs: DummyTokenizer(),
+    )
+    tokenizer = check_load_processor(tmp_path, None, "test")
+    assert isinstance(tokenizer, PreTrainedTokenizerBase)
+
+
+def test_processor_load_error(monkeypatch):
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("test error")
+
+    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", raise_error)
+    with pytest.raises(
+        ValueError, match="Failed to load processor/Tokenizer for test."
+    ):
+        check_load_processor("gpt2", None, "test")
