@@ -62,6 +62,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+recommended = [
+    "tiktoken>=0.11.0",  # For OpenAI tokenizer
+    "blobfile>=3.1.0",   # For OpenAI tokenizer
+]
 dev = [
     # build
     "build>=1.0.0",
@@ -102,7 +106,6 @@ dev = [
     "mkdocs-linkcheck~=1.0.6",
 ]
 
-# For PEP 735 compliant tools
 [dependency-groups]
 dev = [ "guidellm[dev]" ]
 
