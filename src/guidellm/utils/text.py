@@ -23,7 +23,7 @@ from loguru import logger
 
 from guidellm import data as package_data
 from guidellm.settings import settings
-from guidellm.utils.colors import Colors
+from guidellm.utils.console import Colors
 
 __all__ = [
     "MAX_PATH_LENGTH",

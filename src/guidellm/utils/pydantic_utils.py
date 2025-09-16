@@ -15,6 +15,7 @@ from typing import Any, ClassVar, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
+from typing_extensions import get_args, get_origin
 
 from guidellm.utils.registry import RegistryMixin
 
@@ -28,6 +29,7 @@ __all__ = [
 
 
 BaseModelT = TypeVar("BaseModelT", bound=BaseModel)
+RegisterClassT = TypeVar("RegisterClassT")
 SuccessfulT = TypeVar("SuccessfulT")
 ErroredT = TypeVar("ErroredT")
 IncompleteT = TypeVar("IncompleteT")
@@ -47,20 +49,97 @@ class ReloadableBaseModel(BaseModel):
     model_config = ConfigDict(
         extra="ignore",
         use_enum_values=True,
-        validate_assignment=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
     )
 
     @classmethod
-    def reload_schema(cls) -> None:
+    def reload_schema(cls, parents: bool = True) -> None:
         """
         Reload the class schema with updated registry information.
 
         Forces a complete rebuild of the Pydantic model schema to incorporate
         any changes made to associated registries or validation rules.
+
+        :param parents: Whether to also rebuild schemas for any pydantic parent
+            types that reference this model.
         """
         cls.model_rebuild(force=True)
+
+        if parents:
+            cls.reload_parent_schemas()
+
+    @classmethod
+    def reload_parent_schemas(cls):
+        """
+        Recursively reload schemas for all parent Pydantic models.
+
+        Traverses the inheritance hierarchy to find all parent classes that
+        are Pydantic models and triggers schema rebuilding on each to ensure
+        that any changes in child models are reflected in parent schemas.
+        """
+        potential_parents: set[type[BaseModel]] = {BaseModel}
+        stack: list[type[BaseModel]] = [BaseModel]
+
+        while stack:
+            current = stack.pop()
+            for subclass in current.__subclasses__():
+                if (
+                    issubclass(subclass, BaseModel)
+                    and subclass is not cls
+                    and subclass not in potential_parents
+                ):
+                    potential_parents.add(subclass)
+                    stack.append(subclass)
+
+        for check in cls.__mro__:
+            if isinstance(check, type) and issubclass(check, BaseModel):
+                cls._reload_schemas_depending_on(check, potential_parents)
+
+    @classmethod
+    def _reload_schemas_depending_on(cls, target: type[BaseModel], types: set[type]):
+        changed = True
+        while changed:
+            changed = False
+            for candidate in types:
+                if (
+                    isinstance(candidate, type)
+                    and issubclass(candidate, BaseModel)
+                    and any(
+                        cls._uses_type(target, field_info.annotation)
+                        for field_info in candidate.model_fields.values()
+                        if field_info.annotation is not None
+                    )
+                ):
+                    try:
+                        before = candidate.model_json_schema()
+                    except Exception:  # noqa: BLE001
+                        before = None
+                    candidate.model_rebuild(force=True)
+                    if before is not None:
+                        after = candidate.model_json_schema()
+                        changed |= before != after
+
+    @classmethod
+    def _uses_type(cls, target: type, candidate: type) -> bool:
+        if target is candidate:
+            return True
+
+        origin = get_origin(candidate)
+
+        if origin is None:
+            return isinstance(candidate, type) and issubclass(candidate, target)
+
+        if isinstance(origin, type) and (
+            target is origin or issubclass(origin, target)
+        ):
+            return True
+
+        for arg in get_args(candidate) or []:
+            if isinstance(arg, type) and cls._uses_type(target, arg):
+                return True
+
+        return False
 
 
 class StandardBaseModel(BaseModel):
@@ -84,12 +163,11 @@ class StandardBaseModel(BaseModel):
     model_config = ConfigDict(
         extra="ignore",
         use_enum_values=True,
-        validate_assignment=True,
         from_attributes=True,
     )
 
     @classmethod
-    def get_default(cls: type[BaseModelT], field: str) -> Any:
+    def get_default(cls: type[BaseModel], field: str) -> Any:
         """
         Get default value for a model field.
 
@@ -113,7 +191,6 @@ class StandardBaseDict(StandardBaseModel):
     model_config = ConfigDict(
         extra="allow",
         use_enum_values=True,
-        validate_assignment=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
     )
@@ -130,7 +207,7 @@ class StatusBreakdown(BaseModel, Generic[SuccessfulT, ErroredT, IncompleteT, Tot
 
     Example:
     ::
-        from guidellm.utils.pydantic_utils import StatusBreakdown
+        from guidellm.utils import StatusBreakdown
 
         # Define a breakdown for request counts
         breakdown = StatusBreakdown[int, int, int, int](
@@ -172,7 +249,7 @@ class PydanticClassRegistryMixin(
 
     Example:
     ::
-        from guidellm.utils.pydantic_utils import PydanticClassRegistryMixin
+        from speculators.utils import PydanticClassRegistryMixin
 
         class BaseConfig(PydanticClassRegistryMixin["BaseConfig"]):
             schema_discriminator: ClassVar[str] = "config_type"
@@ -200,8 +277,8 @@ class PydanticClassRegistryMixin(
 
     @classmethod
     def register_decorator(
-        cls, clazz: type[BaseModelT], name: str | list[str] | None = None
-    ) -> type[BaseModelT]:
+        cls, clazz: RegisterClassT, name: str | list[str] | None = None
+    ) -> RegisterClassT:
         """
         Register a Pydantic model class with type validation and schema reload.
 
@@ -220,10 +297,10 @@ class PydanticClassRegistryMixin(
                 "Pydantic BaseModel"
             )
 
-        dec_clazz = super().register_decorator(clazz, name=name)
+        super().register_decorator(clazz, name=name)
         cls.reload_schema()
 
-        return dec_clazz
+        return clazz
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -300,3 +377,25 @@ class PydanticClassRegistryMixin(
         cls.reload_schema()
 
         return populated
+
+    @classmethod
+    def registered_classes(cls) -> tuple[type[BaseModelT], ...]:
+        """
+        Get all registered pydantic classes from the registry.
+
+        Automatically triggers auto-discovery if registry_auto_discovery is enabled
+        to ensure all available implementations are included.
+
+        :return: Tuple of all registered classes including auto-discovered ones
+        :raises ValueError: If called before any objects have been registered
+        """
+        if cls.registry_auto_discovery:
+            cls.auto_populate_registry()
+
+        if cls.registry is None:
+            raise ValueError(
+                "ClassRegistryMixin.registered_classes() must be called after "
+                "registering classes with ClassRegistryMixin.register()."
+            )
+
+        return tuple(cls.registry.values())

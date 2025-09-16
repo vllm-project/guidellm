@@ -35,6 +35,7 @@ __all__ = [
     "MaxGlobalErrorRateConstraint",
     "MaxNumberConstraint",
     "PydanticConstraintInitializer",
+    "RequestsExhaustedConstraint",
     "SerializableConstraintInitializer",
     "UnserializableConstraintInitializer",
 ]
@@ -455,10 +456,8 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
 
         create_exceeded = state.created_requests >= max_num
         processed_exceeded = state.processed_requests >= max_num
-        remaining_fraction = min(
-            max(0.0, 1.0 - state.processed_requests / float(max_num)), 1.0
-        )
-        remaining_requests = max(0, max_num - state.processed_requests)
+        remaining_requests = min(max(0, max_num - state.processed_requests), max_num)
+        remaining_fraction = remaining_requests / float(max_num)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if create_exceeded else "continue",
@@ -576,6 +575,8 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         current_time = time.time()
         elapsed = current_time - state.start_time
         duration_exceeded = elapsed >= max_duration
+        remaining_duration = min(max(0.0, max_duration - elapsed), max_duration)
+        remaining_fraction = remaining_duration / float(max_duration)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if duration_exceeded else "continue",
@@ -588,8 +589,8 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
                 "current_time": current_time,
             },
             progress=SchedulerUpdateActionProgress(
-                remaining_fraction=max(0.0, 1.0 - elapsed / float(max_duration)),
-                remaining_duration=max(0.0, max_duration - elapsed),
+                remaining_fraction=remaining_fraction,
+                remaining_duration=remaining_duration,
             ),
         )
 
@@ -988,3 +989,47 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
                 )
 
         return value[0] if isinstance(value, list) and len(value) == 1 else value
+
+
+class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
+    type_: Literal["requests_exhausted"] = "requests_exhausted"  # type: ignore[assignment]
+    num_requests: int
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """
+        Extract serializable information from this constraint initializer.
+
+        :return: Dictionary containing constraint configuration and metadata
+        """
+        return self.model_dump()
+
+    def __call__(
+        self,
+        state: SchedulerState,
+        request_info: ScheduledRequestInfo,  # noqa: ARG002
+    ) -> SchedulerUpdateAction:
+        create_exceeded = state.created_requests >= self.num_requests
+        processed_exceeded = state.processed_requests >= self.num_requests
+        remaining_fraction = min(
+            max(0.0, 1.0 - state.processed_requests / float(self.num_requests)), 1.0
+        )
+        remaining_requests = max(0, self.num_requests - state.processed_requests)
+
+        return SchedulerUpdateAction(
+            request_queuing="stop" if create_exceeded else "continue",
+            request_processing="stop_local" if processed_exceeded else "continue",
+            metadata={
+                "num_requests": self.num_requests,
+                "create_exceeded": create_exceeded,
+                "processed_exceeded": processed_exceeded,
+                "created_requests": state.created_requests,
+                "processed_requests": state.processed_requests,
+                "remaining_fraction": remaining_fraction,
+                "remaining_requests": remaining_requests,
+            },
+            progress=SchedulerUpdateActionProgress(
+                remaining_fraction=remaining_fraction,
+                remaining_requests=remaining_requests,
+            ),
+        )

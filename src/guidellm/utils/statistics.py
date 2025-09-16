@@ -1,7 +1,19 @@
+"""
+Statistical analysis utilities for distribution calculations and running metrics.
+
+Provides comprehensive statistical computation tools for analyzing numerical
+distributions, percentiles, and streaming data. Includes specialized support for
+request timing analysis, concurrency measurement, and rate calculations. Integrates
+with Pydantic for serializable statistical models and supports both weighted and
+unweighted distributions with cumulative distribution function (CDF) generation.
+"""
+
+from __future__ import annotations
+
 import math
 import time as timer
 from collections import defaultdict
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import Field, computed_field
@@ -19,7 +31,11 @@ __all__ = [
 
 class Percentiles(StandardBaseModel):
     """
-    A pydantic model representing the standard percentiles of a distribution.
+    Standard percentiles model for statistical distribution analysis.
+
+    Provides complete percentile coverage from 0.1th to 99.9th percentiles for
+    statistical distribution characterization. Used as a component within
+    DistributionSummary to provide detailed distribution shape analysis.
     """
 
     p001: float = Field(
@@ -59,8 +75,25 @@ class Percentiles(StandardBaseModel):
 
 class DistributionSummary(StandardBaseModel):
     """
-    A pydantic model representing a statistical summary for a given
-    distribution of numerical values.
+    Comprehensive statistical summary for numerical value distributions.
+
+    Calculates and stores complete statistical metrics including central tendency,
+    dispersion, extremes, and percentiles for any numerical distribution. Supports
+    both weighted and unweighted data with optional cumulative distribution function
+    generation. Primary statistical analysis tool for request timing, performance
+    metrics, and benchmark result characterization.
+
+    Example:
+    ::
+        # Create from simple values
+        summary = DistributionSummary.from_values([1.0, 2.0, 3.0, 4.0, 5.0])
+        print(f"Mean: {summary.mean}, P95: {summary.percentiles.p95}")
+
+        # Create from request timings for concurrency analysis
+        requests = [(0.0, 1.0), (0.5, 2.0), (1.0, 2.5)]
+        concurrency = DistributionSummary.from_request_times(
+            requests, "concurrency"
+        )
     """
 
     mean: float = Field(
@@ -93,7 +126,7 @@ class DistributionSummary(StandardBaseModel):
     percentiles: Percentiles = Field(
         description="The percentiles of the distribution.",
     )
-    cumulative_distribution_function: Optional[list[tuple[float, float]]] = Field(
+    cumulative_distribution_function: list[tuple[float, float]] | None = Field(
         description="The cumulative distribution function (CDF) of the distribution.",
         default=None,
     )
@@ -102,22 +135,19 @@ class DistributionSummary(StandardBaseModel):
     def from_distribution_function(
         distribution: list[tuple[float, float]],
         include_cdf: bool = False,
-    ) -> "DistributionSummary":
+    ) -> DistributionSummary:
         """
-        Create a statistical summary for a given distribution of weighted numerical
-        values or a probability distribution function (PDF).
-        1.  If the distribution is a PDF, it is expected to be a list of tuples
-            where each tuple contains (value, probability). The sum of the
-            probabilities should be 1. If it is not, it will be normalized.
-        2.  If the distribution is a values distribution function, it is expected
-            to be a list of tuples where each tuple contains (value, weight).
-            The weights are normalized to a probability distribution function.
+        Create statistical summary from weighted distribution or probability function.
 
-        :param distribution: A list of tuples representing the distribution.
-            Each tuple contains (value, weight) or (value, probability).
-        :param include_cdf: Whether to include the calculated cumulative distribution
-            function (CDF) in the output DistributionSummary.
-        :return: An instance of DistributionSummary with calculated values.
+        Converts weighted numerical values or probability distribution function (PDF)
+        into comprehensive statistical summary. Normalizes weights to probabilities
+        and calculates all statistical metrics including percentiles.
+
+        :param distribution: List of (value, weight) or (value, probability) tuples
+            representing the distribution
+        :param include_cdf: Whether to include cumulative distribution function
+            in the output
+        :return: DistributionSummary instance with calculated statistical metrics
         """
         values, weights = zip(*distribution) if distribution else ([], [])
         values = np.array(values)  # type: ignore[assignment]
@@ -190,20 +220,23 @@ class DistributionSummary(StandardBaseModel):
     @staticmethod
     def from_values(
         values: list[float],
-        weights: Optional[list[float]] = None,
+        weights: list[float] | None = None,
         include_cdf: bool = False,
-    ) -> "DistributionSummary":
+    ) -> DistributionSummary:
         """
-        Create a statistical summary for a given distribution of numerical values.
-        This is a wrapper around from_distribution_function to handle the optional case
-        of including weights for the values. If weights are not provided, they are
-        automatically set to 1.0 for each value, so each value is equally weighted.
+        Create statistical summary from numerical values with optional weights.
 
-        :param values: A list of numerical values representing the distribution.
-        :param weights: A list of weights for each value in the distribution.
-            If not provided, all values are equally weighted.
-        :param include_cdf: Whether to include the calculated cumulative distribution
-            function (CDF) in the output DistributionSummary.
+        Wrapper around from_distribution_function for simple value lists. If weights
+        are not provided, all values are equally weighted. Enables statistical
+        analysis of any numerical dataset.
+
+        :param values: Numerical values representing the distribution
+        :param weights: Optional weights for each value. If not provided, all values
+            are equally weighted
+        :param include_cdf: Whether to include cumulative distribution function in
+            the output DistributionSummary
+        :return: DistributionSummary instance with calculated statistical metrics
+        :raises ValueError: If values and weights lists have different lengths
         """
         if weights is None:
             weights = [1.0] * len(values)
@@ -224,22 +257,21 @@ class DistributionSummary(StandardBaseModel):
         distribution_type: Literal["concurrency", "rate"],
         include_cdf: bool = False,
         epsilon: float = 1e-6,
-    ) -> "DistributionSummary":
+    ) -> DistributionSummary:
         """
-        Create a statistical summary for a given distribution of request times.
-        Specifically, this is used to measure concurrency or rate of requests
-        given an input list containing the start and end time of each request.
-        This will first convert the request times into a distribution function
-        and then calculate the statistics with from_distribution_function.
+        Create statistical summary from request timing data.
 
-        :param requests: A list of tuples representing the start and end times of
-            each request. Example: [(start_1, end_1), (start_2, end_2), ...]
-        :param distribution_type: The type of distribution to calculate.
-            Either "concurrency" or "rate".
-        :param include_cdf: Whether to include the calculated cumulative distribution
-            function (CDF) in the output DistributionSummary.
-        :param epsilon: The epsilon value for merging close events.
-        :return: An instance of DistributionSummary with calculated values.
+        Analyzes request start/end times to calculate concurrency or rate
+        distributions. Converts timing events into statistical metrics for
+        performance analysis and load characterization.
+
+        :param requests: List of (start_time, end_time) tuples for each request
+        :param distribution_type: Type of analysis - "concurrency" for simultaneous
+            requests or "rate" for completion rates
+        :param include_cdf: Whether to include cumulative distribution function
+        :param epsilon: Threshold for merging close timing events
+        :return: DistributionSummary with timing-based statistical metrics
+        :raises ValueError: If distribution_type is not "concurrency" or "rate"
         """
         if distribution_type == "concurrency":
             # convert to delta changes based on when requests were running
@@ -310,34 +342,28 @@ class DistributionSummary(StandardBaseModel):
         requests: list[tuple[float, float]],
         first_iter_times: list[float],
         iter_counts: list[int],
-        first_iter_counts: Optional[list[int]] = None,
+        first_iter_counts: list[int] | None = None,
         include_cdf: bool = False,
         epsilon: float = 1e-6,
-    ) -> "DistributionSummary":
+    ) -> DistributionSummary:
         """
-        Create a statistical summary for a given distribution of request times
-        for a request with iterable responses between the start and end.
-        For example, this is used to measure auto regressive requests where
-        a request is started and at some later point, iterative responses are
-        received. This will convert the request times and iterable values into
-        a distribution function and then calculate the statistics with
-        from_distribution_function.
+        Create statistical summary from iterative request timing data.
 
-        :param requests: A list of tuples representing the start and end times of
-            each request. Example: [(start_1, end_1), (start_2, end_2), ...]
-        :param first_iter_times: A list of times when the first iteration of
-            each request was received. Must be the same length as requests.
-        :param iter_counts: A list of the total number of iterations for each
-            request that occurred starting at the first iteration and ending
-            at the request end time. Must be the same length as requests.
-        :param first_iter_counts: A list of the number of iterations to log
-            for the first iteration of each request. For example, when calculating
-            total number of tokens processed, this is set to the prompt tokens number.
-            If not provided, defaults to 1 for each request.
-        :param include_cdf: Whether to include the calculated cumulative distribution
-            function (CDF) in the output DistributionSummary.
-        :param epsilon: The epsilon value for merging close events.
-        :return: An instance of DistributionSummary with calculated values.
+        Analyzes autoregressive or streaming requests with multiple iterations
+        between start and end times. Calculates rate distributions based on
+        iteration timing patterns for LLM token generation analysis.
+
+        :param requests: List of (start_time, end_time) tuples for each request
+        :param first_iter_times: Times when first iteration was received for
+            each request
+        :param iter_counts: Total iteration counts for each request from first
+            iteration to end
+        :param first_iter_counts: Iteration counts for first iteration (defaults
+            to 1 for each request)
+        :param include_cdf: Whether to include cumulative distribution function
+        :param epsilon: Threshold for merging close timing events
+        :return: DistributionSummary with iteration rate statistical metrics
+        :raises ValueError: If input lists have mismatched lengths
         """
 
         if first_iter_counts is None:
@@ -416,36 +442,45 @@ class StatusDistributionSummary(
     ]
 ):
     """
-    A pydantic model representing a statistical summary for a given
-    distribution of numerical values grouped by status.
-    Specifically used to represent the total, successful, incomplete,
-    and errored values for a benchmark or other statistical summary.
+    Status-grouped statistical summary for request processing analysis.
+
+    Provides comprehensive statistical analysis grouped by request status (total,
+    successful, incomplete, errored). Enables performance analysis across different
+    request outcomes for benchmarking and monitoring applications. Each status
+    category maintains complete DistributionSummary metrics.
+
+    Example:
+    ::
+        status_summary = StatusDistributionSummary.from_values(
+            value_types=["successful", "error", "successful"],
+            values=[1.5, 10.0, 2.1]
+        )
+        print(f"Success mean: {status_summary.successful.mean}")
+        print(f"Error rate: {status_summary.errored.count}")
     """
 
     @staticmethod
     def from_values(
         value_types: list[Literal["successful", "incomplete", "error"]],
         values: list[float],
-        weights: Optional[list[float]] = None,
+        weights: list[float] | None = None,
         include_cdf: bool = False,
-    ) -> "StatusDistributionSummary":
+    ) -> StatusDistributionSummary:
         """
-        Create a statistical summary by status for a given distribution of numerical
-        values. This is used to measure the distribution of values for different
-        statuses (e.g., successful, incomplete, error) and calculate the statistics
-        for each status. Weights are optional to weight the probability distribution
-        for each value by. If not provided, all values are equally weighted.
+        Create status-grouped statistical summary from values and status types.
 
-        :param value_types: A list of status types for each value in the distribution.
-            Must be one of 'successful', 'incomplete', or 'error'.
-        :param values: A list of numerical values representing the distribution.
-            Must be the same length as value_types.
-        :param weights: A list of weights for each value in the distribution.
-            If not provided, all values are equally weighted (set to 1).
-            Must be the same length as value_types.
-        :param include_cdf: Whether to include the calculated cumulative distribution
-            function (CDF) in the output StatusDistributionSummary.
-        :return: An instance of StatusDistributionSummary with calculated values.
+        Groups numerical values by request status and calculates complete
+        statistical summaries for each category. Enables performance analysis
+        across different request outcomes.
+
+        :param value_types: Status type for each value ("successful", "incomplete",
+            or "error")
+        :param values: Numerical values representing the distribution
+        :param weights: Optional weights for each value (defaults to equal weighting)
+        :param include_cdf: Whether to include cumulative distribution functions
+        :return: StatusDistributionSummary with statistics grouped by status
+        :raises ValueError: If input lists have mismatched lengths or invalid
+            status types
         """
         if any(
             type_ not in {"successful", "incomplete", "error"} for type_ in value_types
@@ -530,25 +565,22 @@ class StatusDistributionSummary(
         distribution_type: Literal["concurrency", "rate"],
         include_cdf: bool = False,
         epsilon: float = 1e-6,
-    ) -> "StatusDistributionSummary":
+    ) -> StatusDistributionSummary:
         """
-        Create a statistical summary by status for given distribution of request times.
-        This is used to measure the distribution of request times for different statuses
-        (e.g., successful, incomplete, error) for concurrency and rates.
-        This will call into DistributionSummary.from_request_times to calculate
-        the statistics for each status.
+        Create status-grouped statistical summary from request timing data.
 
-        :param request_types: List of status types for each request in the distribution.
-            Must be one of 'successful', 'incomplete', or 'error'.
-        :param requests: A list of tuples representing the start and end times of
-            each request. Example: [(start_1, end_1), (start_2, end_2), ...].
-            Must be the same length as request_types.
-        :param distribution_type: The type of distribution to calculate.
-            Either "concurrency" or "rate".
-        :param include_cdf: Whether to include the calculated cumulative distribution
-            function (CDF) in the output StatusDistributionSummary.
-        :param epsilon: The epsilon value for merging close events.
-        :return: An instance of StatusDistributionSummary with calculated values.
+        Analyzes request timings grouped by status to calculate concurrency or
+        rate distributions for each outcome category. Enables comparative
+        performance analysis across successful, incomplete, and errored requests.
+
+        :param request_types: Status type for each request ("successful",
+            "incomplete", or "error")
+        :param requests: List of (start_time, end_time) tuples for each request
+        :param distribution_type: Analysis type - "concurrency" or "rate"
+        :param include_cdf: Whether to include cumulative distribution functions
+        :param epsilon: Threshold for merging close timing events
+        :return: StatusDistributionSummary with timing statistics by status
+        :raises ValueError: If input lists have mismatched lengths or invalid types
         """
         if distribution_type not in {"concurrency", "rate"}:
             raise ValueError(
@@ -640,38 +672,31 @@ class StatusDistributionSummary(
         request_types: list[Literal["successful", "incomplete", "error"]],
         requests: list[tuple[float, float]],
         first_iter_times: list[float],
-        iter_counts: Optional[list[int]] = None,
-        first_iter_counts: Optional[list[int]] = None,
+        iter_counts: list[int] | None = None,
+        first_iter_counts: list[int] | None = None,
         include_cdf: bool = False,
         epsilon: float = 1e-6,
-    ) -> "StatusDistributionSummary":
+    ) -> StatusDistributionSummary:
         """
-        Create a statistical summary by status for given distribution of request times
-        for a request with iterable responses between the start and end.
-        For example, this is used to measure auto regressive requests where
-        a request is started and at some later point, iterative responses are
-        received. This will call into DistributionSummary.from_iterable_request_times
-        to calculate the statistics for each status.
+        Create status-grouped statistical summary from iterative request timing data.
 
-        :param request_types: List of status types for each request in the distribution.
-            Must be one of 'successful', 'incomplete', or 'error'.
-        :param requests: A list of tuples representing the start and end times of
-            each request. Example: [(start_1, end_1), (start_2, end_2), ...].
-            Must be the same length as request_types.
-        :param first_iter_times: A list of times when the first iteration of
-            each request was received. Must be the same length as requests.
-        :param iter_counts: A list of the total number of iterations for each
-            request that occurred starting at the first iteration and ending
-            at the request end time. Must be the same length as requests.
-            If not provided, defaults to 1 for each request.
-        :param first_iter_counts: A list of the number of iterations to log
-            for the first iteration of each request. For example, when calculating
-            total number of tokens processed, this is set to the prompt tokens number.
-            If not provided, defaults to 1 for each request.
-        :param include_cdf: Whether to include the calculated cumulative distribution
-            function (CDF) in the output StatusDistributionSummary.
-        :param epsilon: The epsilon value for merging close events.
-        :return: An instance of StatusDistributionSummary with calculated values.
+        Analyzes autoregressive request timings grouped by status to calculate
+        iteration rate distributions for each outcome category. Enables comparative
+        analysis of token generation or streaming response performance across
+        different request statuses.
+
+        :param request_types: Status type for each request ("successful",
+            "incomplete", or "error")
+        :param requests: List of (start_time, end_time) tuples for each request
+        :param first_iter_times: Times when first iteration was received for
+            each request
+        :param iter_counts: Total iteration counts for each request (defaults to 1)
+        :param first_iter_counts: Iteration counts for first iteration (defaults
+            to 1)
+        :param include_cdf: Whether to include cumulative distribution functions
+        :param epsilon: Threshold for merging close timing events
+        :return: StatusDistributionSummary with iteration statistics by status
+        :raises ValueError: If input lists have mismatched lengths or invalid types
         """
         if any(
             type_ not in {"successful", "incomplete", "error"}
@@ -813,13 +838,19 @@ class StatusDistributionSummary(
 
 class RunningStats(StandardBaseModel):
     """
-    Create a running statistics object to track the mean, rate, and other
-    statistics of a stream of values.
-    1.  The start time is set to the time the object is created.
-    2.  The count is set to 0.
-    3.  The total is set to 0.
-    4.  The last value is set to 0.
-    5.  The mean is calculated as the total / count.
+    Real-time statistics tracking for streaming numerical data.
+
+    Maintains mean, rate, and cumulative statistics for continuous data streams
+    without storing individual values. Optimized for memory efficiency in
+    long-running monitoring applications. Supports arithmetic operators for
+    convenient value addition and provides computed properties for derived metrics.
+
+    Example:
+    ::
+        stats = RunningStats()
+        stats += 10.5  # Add value using operator
+        stats.update(20.0, count=3)  # Add value with custom count
+        print(f"Mean: {stats.mean}, Rate: {stats.rate}")
     """
 
     start_time: float = Field(
@@ -867,10 +898,11 @@ class RunningStats(StandardBaseModel):
 
     def __add__(self, value: Any) -> float:
         """
-        Enable the use of the + operator to add a value to the running statistics.
+        Add value using + operator and return current mean.
 
-        :param value: The value to add to the running statistics.
-        :return: The mean of the running statistics.
+        :param value: Numerical value to add to the running statistics
+        :return: Updated mean after adding the value
+        :raises ValueError: If value is not numeric (int or float)
         """
         if not isinstance(value, (int, float)):
             raise ValueError(
@@ -881,12 +913,13 @@ class RunningStats(StandardBaseModel):
 
         return self.mean
 
-    def __iadd__(self, value: Any) -> "RunningStats":
+    def __iadd__(self, value: Any) -> RunningStats:
         """
-        Enable the use of the += operator to add a value to the running statistics.
+        Add value using += operator and return updated instance.
 
-        :param value: The value to add to the running statistics.
-        :return: The running statistics object.
+        :param value: Numerical value to add to the running statistics
+        :return: Self reference for method chaining
+        :raises ValueError: If value is not numeric (int or float)
         """
         if not isinstance(value, (int, float)):
             raise ValueError(
@@ -899,11 +932,10 @@ class RunningStats(StandardBaseModel):
 
     def update(self, value: float, count: int = 1) -> None:
         """
-        Update the running statistics with a new value.
+        Update running statistics with new value and count.
 
-        :param value: The new value to add to the running statistics.
-        :param count: The number of times to 'count' for the value.
-            If not provided, defaults to 1.
+        :param value: Numerical value to add to the running statistics
+        :param count: Number of occurrences to count for this value (defaults to 1)
         """
         self.count += count
         self.total += value
@@ -912,11 +944,17 @@ class RunningStats(StandardBaseModel):
 
 class TimeRunningStats(RunningStats):
     """
-    Create a running statistics object to track the mean, rate, and other
-    statistics of a stream of time values. This is used to track time values
-    in milliseconds and seconds.
+    Specialized running statistics for time-based measurements.
 
-    Adds time specific computed_fields such as measurements in milliseconds and seconds.
+    Extends RunningStats with time-specific computed properties for millisecond
+    conversions. Designed for tracking latency, duration, and timing metrics in
+    performance monitoring applications.
+
+    Example:
+    ::
+        time_stats = TimeRunningStats()
+        time_stats += 0.125  # Add 125ms in seconds
+        print(f"Mean: {time_stats.mean_ms}ms, Total: {time_stats.total_ms}ms")
     """
 
     @computed_field  # type: ignore[misc]

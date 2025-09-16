@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from guidellm.backend import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
 )
 from guidellm.scheduler import ScheduledRequestInfo
@@ -73,7 +72,7 @@ class MockProcessTarget:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
 
@@ -125,8 +124,8 @@ class TestInterProcessMessaging:
         """Test InterProcessMessaging abstract class signatures."""
         assert hasattr(InterProcessMessaging, "__init__")
         assert hasattr(InterProcessMessaging, "create_worker_copy")
-        assert hasattr(InterProcessMessaging, "send_messages_task")
-        assert hasattr(InterProcessMessaging, "receive_messages_task")
+        assert hasattr(InterProcessMessaging, "create_send_messages_threads")
+        assert hasattr(InterProcessMessaging, "create_receive_messages_threads")
         assert hasattr(InterProcessMessaging, "start")
         assert hasattr(InterProcessMessaging, "stop")
         assert hasattr(InterProcessMessaging, "get")
@@ -137,10 +136,14 @@ class TestInterProcessMessaging:
             InterProcessMessaging.create_worker_copy, "__isabstractmethod__", False
         )
         assert getattr(
-            InterProcessMessaging.send_messages_task, "__isabstractmethod__", False
+            InterProcessMessaging.create_send_messages_threads,
+            "__isabstractmethod__",
+            False,
         )
         assert getattr(
-            InterProcessMessaging.receive_messages_task, "__isabstractmethod__", False
+            InterProcessMessaging.create_receive_messages_threads,
+            "__isabstractmethod__",
+            False,
         )
 
     @pytest.mark.smoke
@@ -148,167 +151,6 @@ class TestInterProcessMessaging:
         """Test InterProcessMessaging cannot be instantiated directly."""
         with pytest.raises(TypeError):
             InterProcessMessaging()
-
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        (
-            "on_stop_action",
-            "pending",
-            "queue_empty",
-            "stop_event_set",
-            "shutdown_event_set",
-            "expected_result",
-            "expect_error",
-        ),
-        [
-            ("ignore", None, False, False, False, False, False),
-            ("ignore", None, False, True, False, False, False),
-            ("ignore", None, False, False, True, True, False),
-            ("ignore", "pending", False, False, True, False, False),
-            ("stop", None, False, True, False, True, False),
-            ("stop", None, False, False, True, True, False),
-            ("stop", "pending", False, True, False, False, False),
-            ("stop_after_empty", None, True, True, False, True, False),
-            ("stop_after_empty", None, False, True, False, False, False),
-            ("stop_after_empty", None, True, False, True, True, False),
-            ("error", None, False, True, False, None, True),
-            ("error", None, False, False, True, True, False),
-        ],
-    )
-    def test_check_on_stop_action(
-        self,
-        on_stop_action,
-        pending,
-        queue_empty,
-        stop_event_set,
-        shutdown_event_set,
-        expected_result,
-        expect_error,
-    ):
-        """Test InterProcessMessaging check_on_stop_action behavior."""
-        # Create a concrete implementation for testing
-        messaging = InterProcessMessagingQueue(on_stop_action=on_stop_action)
-
-        # Set up events
-        stop_event = threading.Event()
-        if stop_event_set:
-            stop_event.set()
-
-        shutdown_event = threading.Event()
-        if shutdown_event_set:
-            shutdown_event.set()
-
-        messaging.shutdown_event = shutdown_event
-
-        # Test the method
-        if expect_error:
-            with pytest.raises(RuntimeError):
-                messaging.check_on_stop_action(pending, queue_empty, [stop_event])
-        else:
-            result = messaging.check_on_stop_action(pending, queue_empty, [stop_event])
-            assert result == expected_result
-
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        (
-            "on_empty_action",
-            "pending",
-            "stop_event_set",
-            "shutdown_event_set",
-            "expected_result",
-            "expect_error",
-        ),
-        [
-            ("ignore", None, False, False, False, False),
-            ("ignore", None, True, False, False, False),
-            ("ignore", "pending", True, False, False, False),
-            ("stop", None, True, False, True, False),
-            ("stop", None, False, True, True, False),
-            ("stop", "pending", True, False, False, False),
-            ("error", None, False, False, None, True),
-        ],
-    )
-    def test_check_on_queue_empty_action(
-        self,
-        on_empty_action,
-        pending,
-        stop_event_set,
-        shutdown_event_set,
-        expected_result,
-        expect_error,
-    ):
-        """Test InterProcessMessaging check_on_queue_empty_action behavior."""
-        messaging = InterProcessMessagingQueue(on_empty_action=on_empty_action)
-
-        # Set up events
-        stop_event = threading.Event()
-        if stop_event_set:
-            stop_event.set()
-
-        shutdown_event = threading.Event()
-        if shutdown_event_set:
-            shutdown_event.set()
-
-        messaging.shutdown_event = shutdown_event
-
-        # Test the method
-        if expect_error:
-            with pytest.raises(RuntimeError):
-                messaging.check_on_queue_empty_action(pending)
-        else:
-            result = messaging.check_on_queue_empty_action(pending)
-            assert result == expected_result
-
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        (
-            "on_full_action",
-            "pending",
-            "stop_event_set",
-            "shutdown_event_set",
-            "expected_result",
-            "expect_error",
-        ),
-        [
-            ("ignore", None, False, False, False, False),
-            ("ignore", None, True, False, False, False),
-            ("ignore", "pending", True, False, False, False),
-            ("stop", None, True, False, True, False),
-            ("stop", None, False, True, True, False),
-            ("stop", "pending", True, False, False, False),
-            ("error", None, False, False, None, True),
-        ],
-    )
-    def test_check_on_queue_full_action(
-        self,
-        on_full_action,
-        pending,
-        stop_event_set,
-        shutdown_event_set,
-        expected_result,
-        expect_error,
-    ):
-        """Test InterProcessMessaging check_on_queue_full_action behavior."""
-        messaging = InterProcessMessagingQueue(on_full_action=on_full_action)
-
-        # Set up events
-        stop_event = threading.Event()
-        if stop_event_set:
-            stop_event.set()
-
-        shutdown_event = threading.Event()
-        if shutdown_event_set:
-            shutdown_event.set()
-
-        messaging.shutdown_event = shutdown_event
-
-        # Test the method
-        if expect_error:
-            with pytest.raises(RuntimeError):
-                messaging.check_on_queue_full_action(pending)
-        else:
-            result = messaging.check_on_queue_full_action(pending)
-            assert result == expected_result
 
 
 class TestInterProcessMessagingQueue:
@@ -319,24 +161,24 @@ class TestInterProcessMessagingQueue:
             {
                 "serialization": "dict",
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
             {
                 "serialization": "sequence",
                 "encoding": None,
-                "max_send_size": 10,
+                "max_pending_size": 10,
                 "max_buffer_send_size": 2,
-                "max_receive_size": 5,
+                "max_done_size": 5,
                 "max_buffer_receive_size": 3,
                 "worker_index": None,
             },
             {
                 "serialization": None,
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
         ],
@@ -344,8 +186,10 @@ class TestInterProcessMessagingQueue:
     def valid_instances(self, multiprocessing_contexts, request):
         """Fixture providing test data for InterProcessMessagingQueue."""
         constructor_args = request.param
-        instance = InterProcessMessagingQueue(**constructor_args, poll_interval=0.01)
         manager, context = multiprocessing_contexts
+        instance = InterProcessMessagingQueue(
+            **constructor_args, poll_interval=0.01, mp_context=context
+        )
 
         return instance, constructor_args, manager, context
 
@@ -355,8 +199,8 @@ class TestInterProcessMessagingQueue:
         assert issubclass(InterProcessMessagingQueue, InterProcessMessaging)
         assert hasattr(InterProcessMessagingQueue, "__init__")
         assert hasattr(InterProcessMessagingQueue, "create_worker_copy")
-        assert hasattr(InterProcessMessagingQueue, "send_messages_task")
-        assert hasattr(InterProcessMessagingQueue, "receive_messages_task")
+        assert hasattr(InterProcessMessagingQueue, "create_send_messages_threads")
+        assert hasattr(InterProcessMessagingQueue, "create_receive_messages_threads")
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -365,9 +209,9 @@ class TestInterProcessMessagingQueue:
 
         assert isinstance(instance, InterProcessMessagingQueue)
         assert instance.worker_index == constructor_args["worker_index"]
-        assert instance.max_send_size == constructor_args["max_send_size"]
-        assert instance.max_receive_size == constructor_args["max_receive_size"]
-        assert hasattr(instance, "send_queue")
+        assert instance.max_pending_size == constructor_args["max_pending_size"]
+        assert instance.max_done_size == constructor_args["max_done_size"]
+        assert hasattr(instance, "pending_queue")
         assert hasattr(instance, "done_queue")
         assert instance.running is False
 
@@ -381,10 +225,10 @@ class TestInterProcessMessagingQueue:
 
         assert isinstance(worker_copy, InterProcessMessagingQueue)
         assert worker_copy.worker_index == worker_index
-        assert worker_copy.send_queue is instance.send_queue
+        assert worker_copy.pending_queue is instance.pending_queue
         assert worker_copy.done_queue is instance.done_queue
-        assert worker_copy.max_send_size == instance.max_send_size
-        assert worker_copy.max_receive_size == instance.max_receive_size
+        assert worker_copy.max_pending_size == instance.max_pending_size
+        assert worker_copy.max_done_size == instance.max_done_size
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -405,7 +249,8 @@ class TestInterProcessMessagingQueue:
 
         # Initially not running
         assert instance.running is False
-        assert instance.stopped_event is None
+        assert instance.send_stopped_event is None
+        assert instance.receive_stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
         assert instance.buffer_receive_queue is None
@@ -413,10 +258,14 @@ class TestInterProcessMessagingQueue:
         assert instance.receive_task is None
 
         # Start should work
-        await instance.start(stop_events=stop_events)
+        await instance.start(
+            send_stop_criteria=stop_events, receive_stop_criteria=stop_events
+        )
         assert instance.running is True
-        assert instance.stopped_event is not None
-        assert isinstance(instance.stopped_event, threading.Event)
+        assert instance.send_stopped_event is not None
+        assert isinstance(instance.send_stopped_event, threading.Event)
+        assert instance.receive_stopped_event is not None
+        assert isinstance(instance.receive_stopped_event, threading.Event)
         assert instance.shutdown_event is not None
         assert isinstance(instance.shutdown_event, threading.Event)
         assert instance.buffer_send_queue is not None
@@ -434,13 +283,15 @@ class TestInterProcessMessagingQueue:
                 event.set()
 
             await asyncio.sleep(0.1)
-            assert instance.stopped_event.is_set()
+            assert instance.send_stopped_event.is_set()
+            assert instance.receive_stopped_event.is_set()
             assert instance.send_task.done()
             assert instance.receive_task.done()
 
         await instance.stop()
         assert instance.running is False
-        assert instance.stopped_event is None
+        assert instance.send_stopped_event is None
+        assert instance.receive_stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
         assert instance.buffer_receive_queue is None
@@ -460,12 +311,12 @@ class TestInterProcessMessagingQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -500,7 +351,7 @@ class TestInterProcessMessagingQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -532,12 +383,12 @@ class TestInterProcessMessagingQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -581,7 +432,7 @@ class TestInterProcessMessagingQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -608,24 +459,24 @@ class TestInterProcessMessagingManagerQueue:
             {
                 "serialization": "dict",
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
             {
                 "serialization": "sequence",
                 "encoding": None,
-                "max_send_size": 10,
+                "max_pending_size": 10,
                 "max_buffer_send_size": 2,
-                "max_receive_size": 5,
+                "max_done_size": 5,
                 "max_buffer_receive_size": 3,
                 "worker_index": None,
             },
             {
                 "serialization": None,
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
         ],
@@ -646,8 +497,10 @@ class TestInterProcessMessagingManagerQueue:
         assert issubclass(InterProcessMessagingManagerQueue, InterProcessMessagingQueue)
         assert hasattr(InterProcessMessagingManagerQueue, "__init__")
         assert hasattr(InterProcessMessagingManagerQueue, "create_worker_copy")
-        assert hasattr(InterProcessMessagingManagerQueue, "send_messages_task")
-        assert hasattr(InterProcessMessagingManagerQueue, "receive_messages_task")
+        assert hasattr(InterProcessMessagingManagerQueue, "_send_messages_task_thread")
+        assert hasattr(
+            InterProcessMessagingManagerQueue, "_receive_messages_task_thread"
+        )
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -656,9 +509,9 @@ class TestInterProcessMessagingManagerQueue:
 
         assert isinstance(instance, InterProcessMessagingManagerQueue)
         assert instance.worker_index == constructor_args["worker_index"]
-        assert instance.max_send_size == constructor_args["max_send_size"]
-        assert instance.max_receive_size == constructor_args["max_receive_size"]
-        assert hasattr(instance, "send_queue")
+        assert instance.max_pending_size == constructor_args["max_pending_size"]
+        assert instance.max_done_size == constructor_args["max_done_size"]
+        assert hasattr(instance, "pending_queue")
         assert hasattr(instance, "done_queue")
         assert instance.running is False
 
@@ -672,10 +525,10 @@ class TestInterProcessMessagingManagerQueue:
 
         assert isinstance(worker_copy, InterProcessMessagingManagerQueue)
         assert worker_copy.worker_index == worker_index
-        assert worker_copy.send_queue is instance.send_queue
+        assert worker_copy.pending_queue is instance.pending_queue
         assert worker_copy.done_queue is instance.done_queue
-        assert worker_copy.max_send_size == instance.max_send_size
-        assert worker_copy.max_receive_size == instance.max_receive_size
+        assert worker_copy.max_pending_size == instance.max_pending_size
+        assert worker_copy.max_done_size == instance.max_done_size
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -696,7 +549,8 @@ class TestInterProcessMessagingManagerQueue:
 
         # Initially not running
         assert instance.running is False
-        assert instance.stopped_event is None
+        assert instance.send_stopped_event is None
+        assert instance.receive_stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
         assert instance.buffer_receive_queue is None
@@ -704,10 +558,14 @@ class TestInterProcessMessagingManagerQueue:
         assert instance.receive_task is None
 
         # Start should work
-        await instance.start(stop_events=stop_events)
+        await instance.start(
+            send_stop_criteria=stop_events, receive_stop_criteria=stop_events
+        )
         assert instance.running is True
-        assert instance.stopped_event is not None
-        assert isinstance(instance.stopped_event, threading.Event)
+        assert instance.send_stopped_event is not None
+        assert isinstance(instance.send_stopped_event, threading.Event)
+        assert instance.receive_stopped_event is not None
+        assert isinstance(instance.receive_stopped_event, threading.Event)
         assert instance.shutdown_event is not None
         assert isinstance(instance.shutdown_event, threading.Event)
         assert instance.buffer_send_queue is not None
@@ -725,13 +583,15 @@ class TestInterProcessMessagingManagerQueue:
                 event.set()
 
             await asyncio.sleep(0.1)
-            assert instance.stopped_event.is_set()
+            assert instance.send_stopped_event.is_set()
+            assert instance.receive_stopped_event.is_set()
             assert instance.send_task.done()
             assert instance.receive_task.done()
 
         await instance.stop()
         assert instance.running is False
-        assert instance.stopped_event is None
+        assert instance.send_stopped_event is None
+        assert instance.receive_stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
         assert instance.buffer_receive_queue is None
@@ -751,7 +611,7 @@ class TestInterProcessMessagingManagerQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -786,7 +646,7 @@ class TestInterProcessMessagingManagerQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -818,12 +678,12 @@ class TestInterProcessMessagingManagerQueue:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -867,7 +727,7 @@ class TestInterProcessMessagingManagerQueue:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)
@@ -895,17 +755,17 @@ class TestInterProcessMessagingPipe:
                 "num_workers": 2,
                 "serialization": "dict",
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
             {
                 "num_workers": 1,
                 "serialization": "sequence",
                 "encoding": None,
-                "max_send_size": 10,
+                "max_pending_size": 10,
                 "max_buffer_send_size": 2,
-                "max_receive_size": 5,
+                "max_done_size": 5,
                 "max_buffer_receive_size": 3,
                 "worker_index": None,
             },
@@ -913,8 +773,8 @@ class TestInterProcessMessagingPipe:
                 "num_workers": 1,
                 "serialization": None,
                 "encoding": None,
-                "max_send_size": None,
-                "max_receive_size": None,
+                "max_pending_size": None,
+                "max_done_size": None,
                 "worker_index": None,
             },
         ],
@@ -932,8 +792,8 @@ class TestInterProcessMessagingPipe:
         assert issubclass(InterProcessMessagingPipe, InterProcessMessaging)
         assert hasattr(InterProcessMessagingPipe, "__init__")
         assert hasattr(InterProcessMessagingPipe, "create_worker_copy")
-        assert hasattr(InterProcessMessagingPipe, "send_messages_task")
-        assert hasattr(InterProcessMessagingPipe, "receive_messages_task")
+        assert hasattr(InterProcessMessagingPipe, "_send_messages_task_thread")
+        assert hasattr(InterProcessMessagingPipe, "_receive_messages_task_thread")
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -942,8 +802,8 @@ class TestInterProcessMessagingPipe:
 
         assert isinstance(instance, InterProcessMessagingPipe)
         assert instance.worker_index == constructor_args["worker_index"]
-        assert instance.max_send_size == constructor_args["max_send_size"]
-        assert instance.max_receive_size == constructor_args["max_receive_size"]
+        assert instance.max_pending_size == constructor_args["max_pending_size"]
+        assert instance.max_done_size == constructor_args["max_done_size"]
         assert instance.num_workers == constructor_args["num_workers"]
         assert hasattr(instance, "pipes")
         assert len(instance.pipes) == constructor_args["num_workers"]
@@ -980,8 +840,8 @@ class TestInterProcessMessagingPipe:
         assert isinstance(worker_copy, InterProcessMessagingPipe)
         assert worker_copy.worker_index == worker_index
         assert worker_copy.pipes[0] is instance.pipes[worker_index]
-        assert worker_copy.max_send_size == instance.max_send_size
-        assert worker_copy.max_receive_size == instance.max_receive_size
+        assert worker_copy.max_pending_size == instance.max_pending_size
+        assert worker_copy.max_done_size == instance.max_done_size
         assert worker_copy.num_workers == instance.num_workers
 
     @pytest.mark.smoke
@@ -994,7 +854,8 @@ class TestInterProcessMessagingPipe:
 
         # Initially not running
         assert instance.running is False
-        assert instance.stopped_event is None
+        assert instance.send_stopped_event is None
+        assert instance.receive_stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
         assert instance.buffer_receive_queue is None
@@ -1002,10 +863,14 @@ class TestInterProcessMessagingPipe:
         assert instance.receive_task is None
 
         # Start should work
-        await instance.start(stop_events=stop_events)
+        await instance.start(
+            send_stop_criteria=stop_events, receive_stop_criteria=stop_events
+        )
         assert instance.running is True
-        assert instance.stopped_event is not None
-        assert isinstance(instance.stopped_event, threading.Event)
+        assert instance.send_stopped_event is not None
+        assert isinstance(instance.send_stopped_event, threading.Event)
+        assert instance.receive_stopped_event is not None
+        assert isinstance(instance.receive_stopped_event, threading.Event)
         assert instance.shutdown_event is not None
         assert isinstance(instance.shutdown_event, threading.Event)
         assert instance.buffer_send_queue is not None
@@ -1020,7 +885,8 @@ class TestInterProcessMessagingPipe:
         # Stop should work
         await instance.stop()
         assert instance.running is False
-        assert instance.stopped_event is None
+        assert instance.send_stopped_event is None
+        assert instance.receive_stopped_event is None
         assert instance.shutdown_event is None
         assert instance.buffer_send_queue is None
         assert instance.buffer_receive_queue is None
@@ -1040,12 +906,12 @@ class TestInterProcessMessagingPipe:
             (
                 None,
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
             (
                 GenerationResponse(request_id="id", request_args={}),
                 GenerationRequest(content="asdfkj;"),
-                ScheduledRequestInfo[GenerationRequestTimings](),
+                ScheduledRequestInfo(),
             ),
         ],
     )
@@ -1082,7 +948,7 @@ class TestInterProcessMessagingPipe:
                 MockMessage,
                 GenerationRequest,
                 GenerationResponse,
-                ScheduledRequestInfo[GenerationRequestTimings],
+                ScheduledRequestInfo,
             ],
         )
         await asyncio.sleep(0.1)

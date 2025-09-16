@@ -62,6 +62,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "rich",
     "transformers",
+    "uvloop>=0.18",
 ]
 
 [project.optional-dependencies]
