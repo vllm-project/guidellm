@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal
 
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
+from torch.utils.data import Sampler
 from transformers import (  # type: ignore[import]
     PreTrainedTokenizerBase,
 )
@@ -34,8 +33,15 @@ from guidellm.benchmark.progress import (
     BenchmarkerProgress,
     BenchmarkerProgressGroup,
 )
-from guidellm.benchmark.scenario import enable_scenarios
-from guidellm.request import GenerativeRequestLoader
+from guidellm.benchmark.scenario import GenerativeTextScenario, Scenario
+from guidellm.data import (
+    DatasetPreprocessor,
+    GenerativeColumnMapper,
+    GenerativeDataLoader,
+    GenerativeRequestCollator,
+    GenerativeRequestCreator,
+)
+from guidellm.data.objects import GenerativeDatasetArgs
 from guidellm.scheduler import (
     ConstraintInitializer,
     NonDistributedEnvironment,
@@ -53,31 +59,29 @@ _CURRENT_WORKING_DIR = Path.cwd()
 
 
 # @validate_call(config={"arbitrary_types_allowed": True})
-@enable_scenarios
-async def benchmark_generative_text(  # noqa: C901
+async def benchmark_generative_text(  # noqa: C901, PLR0915
+    # Required
     target: str,
-    data: (
-        Iterable[str]
-        | Iterable[dict[str, Any]]
-        | Dataset
-        | DatasetDict
-        | IterableDataset
-        | IterableDatasetDict
-        | str
-        | Path
-    ),
-    profile: StrategyType | ProfileType | Profile,
-    rate: list[float] | None = None,
+    data: list[Any],
+    # Benchmark configuration
+    profile: StrategyType | ProfileType | Profile = "sweep",
+    rate: float | list[float] | None = None,
     random_seed: int = 42,
     # Backend configuration
     backend: BackendType | Backend = "openai_http",
     backend_kwargs: dict[str, Any] | None = None,
     model: str | None = None,
     # Data configuration
+    data_args: list[GenerativeDatasetArgs] | None = None,
+    data_samples: int = -1,
     processor: str | Path | PreTrainedTokenizerBase | None = None,
     processor_args: dict[str, Any] | None = None,
-    data_args: dict[str, Any] | None = None,
-    data_sampler: Literal["random"] | None = None,
+    data_column_mapper: GenerativeColumnMapper | None = None,
+    data_request_creator: GenerativeRequestCreator | None = None,
+    data_preprocessors: list[DatasetPreprocessor] | None = None,
+    dataloader_sampler: Sampler[int] | Literal["shuffle"] | None = None,
+    dataloader_collate_fn: GenerativeRequestCollator | None = None,
+    dataloader_kwargs: dict[str, Any] | None = None,
     # Output configuration
     output_path: str | Path | None = _CURRENT_WORKING_DIR,
     output_formats: (
@@ -158,13 +162,30 @@ async def benchmark_generative_text(  # noqa: C901
     with console.print_update_step(
         title=f"Initializing request loader from {data}"
     ) as console_step:
-        request_loader = GenerativeRequestLoader(
+
+        def processor_factory() -> PreTrainedTokenizerBase:
+            nonlocal processor
+            if isinstance(processor, PreTrainedTokenizerBase):
+                return processor
+            else:
+                processor = PreTrainedTokenizerBase.from_pretrained(
+                    processor,
+                    **(processor_args or {}),
+                )
+                return processor
+
+        request_loader = GenerativeDataLoader(
             data=data,
             data_args=data_args,
-            processor=processor,
-            processor_args=processor_args,
-            shuffle=data_sampler == "random",
+            data_samples=data_samples,
+            processor_factory=processor_factory,
+            column_mapper=data_column_mapper or GenerativeColumnMapper(),
+            request_creator=data_request_creator or GenerativeRequestCreator(),
+            preprocessors=data_preprocessors or [],
+            sampler=dataloader_sampler,
+            collate_fn=dataloader_collate_fn,
             random_seed=random_seed,
+            **(dataloader_kwargs or {}),
         )
         unique_requests = request_loader.num_unique_items(raise_err=False)
         console_step.finish(

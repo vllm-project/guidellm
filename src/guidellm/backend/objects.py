@@ -6,62 +6,26 @@ information to ensure consistent data handling across different backend
 implementations.
 """
 
-import uuid
 from typing import Any, Literal, Optional
 
 from pydantic import Field
 
+from guidellm.data import (
+    GenerationRequest,
+    GenerationRequestPayload,
+    GenerationRequestTimings,
+)
 from guidellm.scheduler import (
-    MeasuredRequestTimings,
-    ScheduledRequestInfo,
     SchedulerMessagingPydanticRegistry,
 )
 from guidellm.utils import StandardBaseModel
 
 __all__ = [
     "GenerationRequest",
+    "GenerationRequestPayload",
     "GenerationRequestTimings",
     "GenerationResponse",
 ]
-
-
-@SchedulerMessagingPydanticRegistry.register()
-class GenerationRequest(StandardBaseModel):
-    """Request model for backend generation operations."""
-
-    request_id: str = Field(
-        default_factory=lambda: str(uuid.uuid4()),
-        description="Unique identifier for the request.",
-    )
-    request_type: Literal["text_completions", "chat_completions"] = Field(
-        default="text_completions",
-        description=(
-            "Type of request. 'text_completions' uses backend.text_completions(), "
-            "'chat_completions' uses backend.chat_completions()."
-        ),
-    )
-    content: Any = Field(
-        description=(
-            "Request content. For text_completions: string or list of strings. "
-            "For chat_completions: string, list of messages, or raw content "
-            "(set raw_content=True in params)."
-        )
-    )
-    params: dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "Additional parameters passed to backend methods. "
-            "Common: max_tokens, temperature, stream."
-        ),
-    )
-    stats: dict[Literal["prompt_tokens"], int] = Field(
-        default_factory=dict,
-        description="Request statistics including prompt token count.",
-    )
-    constraints: dict[Literal["output_tokens"], int] = Field(
-        default_factory=dict,
-        description="Request constraints such as maximum output tokens.",
-    )
 
 
 @SchedulerMessagingPydanticRegistry.register()
@@ -139,19 +103,3 @@ class GenerationResponse(StandardBaseModel):
             return self.request_output_tokens or self.response_output_tokens
         else:
             return self.response_output_tokens or self.request_output_tokens
-
-
-@SchedulerMessagingPydanticRegistry.register()
-@MeasuredRequestTimings.register("generation_request_timings")
-class GenerationRequestTimings(MeasuredRequestTimings):
-    """Timing model for tracking generation request lifecycle events."""
-
-    timings_type: Literal["generation_request_timings"] = "generation_request_timings"
-    first_iteration: Optional[float] = Field(
-        default=None,
-        description="Unix timestamp when the first generation iteration began.",
-    )
-    last_iteration: Optional[float] = Field(
-        default=None,
-        description="Unix timestamp when the last generation iteration completed.",
-    )

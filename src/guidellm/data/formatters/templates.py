@@ -1,0 +1,128 @@
+import textwrap
+
+from jinja2 import Template
+
+from guidellm.utils import RegistryMixin
+
+__all__ = [
+    "DEFAULT_AUDIO_TRANSCRIPTIONS_TEMPLATE",
+    "DEFAULT_AUDIO_TRANSLATIONS_TEMPLATE",
+    "DEFAULT_CHAT_COMPLETIONS_TEMPLATE",
+    "DEFAULT_TEXT_COMPLETIONS_TEMPLATE",
+    "JinjaTemplatesRegistry",
+]
+
+
+class JinjaTemplatesRegistry(RegistryMixin[Template | str]):
+    pass
+
+
+DEFAULT_TEXT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("text_completions")(
+    textwrap.dedent("""
+        {
+            "json": {
+                "prompt":
+                    {%- if text_column and text_column|length == 1 -%}
+                        {{ text_column[0] }}
+                    {%- else -%}
+                        {{ text_column }}
+                    {%- endif -%}
+            }
+        }
+    """).strip()
+)
+
+DEFAULT_CHAT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("chat_completions")(
+    textwrap.dedent("""
+        {
+            "json": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content":
+                            {%- if text_column and (not image_column) and (not video_column) and (not audio_column) and text_column|length == 1 -%}
+                                {{ text_column[0] }}
+                            {%- else -%}
+                                [
+                                    {%- for item in text_column or [] -%}
+                                        {"type": "text", "text": {{ item }}}
+                                    {%- endfor %}
+
+                                    {%- for item in image_column or [] -%}
+                                        {"type": "image_url",
+                                        "image_url": {{ encode_image(
+                                            item,
+                                            max_size=max_size|default(None),
+                                            max_width=max_width|default(None),
+                                            max_height=max_height|default(None),
+                                            encode_type=image_encode_type|default(encode_type|default(None))
+                                        ) }}}
+                                    {%- endfor %}
+
+                                    {%- for item in video_column or [] -%}
+                                        {"type": "video_url",
+                                        "video_url": {{ encode_video(
+                                            item,
+                                            encode_type=video_encode_type|default(encode_type|default(None))
+                                        ) }}}
+                                    {%- endfor %}
+
+                                    {%- for item in audio_column or [] -%}
+                                        {%- set audio_type, audio_val = encode_audio(
+                                            item,
+                                            sample_rate=sample_rate|default(None),
+                                            max_duration=max_duration|default(None),
+                                            encode_type=audio_encode_type|default(encode_type|default(None))
+                                        ) -%}
+                                        {"type": {{ audio_type }}, {{ audio_type }}: {{ audio_val }}}
+                                    {%- endfor %}
+                                ]
+                            {%- endif %}
+                    }
+                ]
+            }
+        }
+    """).strip()  # noqa: E501
+)
+
+DEFAULT_AUDIO_TRANSCRIPTIONS_TEMPLATE = JinjaTemplatesRegistry.register(
+    "audio_transcriptions"
+)(
+    textwrap.dedent("""
+        {
+            "files": {
+                "file": {{ encode_audio_file(
+                    audio_column[0],
+                    encode_type=audio_encode_type|default(encode_type|default(None))
+                ) }}
+            }
+            {%- if text_column and text_column|length > 0 %}
+            ,
+            "json": {
+                "prompt": {{ text_column[0] }}
+            }
+            {%- endif %}
+        }
+    """).strip()  # noqa: E501
+)
+
+DEFAULT_AUDIO_TRANSLATIONS_TEMPLATE = JinjaTemplatesRegistry.register(
+    "audio_translations"
+)(
+    textwrap.dedent("""
+        {
+            "files": {
+                "file": {{ encode_audio_file(
+                    audio_column[0],
+                    encode_type=audio_encode_type|default(encode_type|default(None))
+                ) }}
+            }
+            {%- if text_column and text_column|length > 0 %}
+            ,
+            "json": {
+                "prompt": {{ text_column[0] }}
+            }
+            {%- endif %}
+        }
+    """).strip()  # noqa: E501
+)
