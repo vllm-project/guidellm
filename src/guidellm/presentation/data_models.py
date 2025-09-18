@@ -190,7 +190,7 @@ class TabularDistributionSummary(DistributionSummary):
     """
 
     @computed_field
-    def percentile_rows(self) -> list[dict[str, float]]:
+    def percentile_rows(self) -> list[dict[str, Union[str, float]]]:
         rows = [
             {"percentile": name, "value": value}
             for name, value in self.percentiles.model_dump().items()
