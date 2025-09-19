@@ -31,7 +31,7 @@ __all__ = [
     "clean_text",
     "filter_text",
     "format_value_display",
-    "is_puncutation",
+    "is_punctuation",
     "load_text",
     "split_text",
     "split_text_list_by_length",
@@ -64,7 +64,7 @@ def format_value_display(
     :return: Formatted string with value, units, and colored label
     """
     if decimal_places is None and digits_places is None:
-        formatted_number = f"{value}:.0f"
+        formatted_number = f"{value:.0f}"
     elif digits_places is None:
         formatted_number = f"{value:.{decimal_places}f}"
     elif decimal_places is None:
@@ -268,7 +268,7 @@ def load_text(data: str | Path, encoding: str | None = None) -> str:
     return data.read_text(encoding=encoding)
 
 
-def is_puncutation(text: str) -> bool:
+def is_punctuation(text: str) -> bool:
     """
     Check if a single character is a punctuation mark.
 
@@ -332,7 +332,7 @@ class EndlessTextCreator:
             index = (start + counter) % len(self.words)
             add_word = self.words[index]
 
-            if counter != 0 and not is_puncutation(add_word):
+            if counter != 0 and not is_punctuation(add_word):
                 text += " "
 
             text += add_word
