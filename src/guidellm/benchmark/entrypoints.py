@@ -9,7 +9,7 @@ from transformers import (  # type: ignore[import]
     PreTrainedTokenizerBase,
 )
 
-from guidellm.backend import (
+from guidellm.backends import (
     Backend,
     BackendType,
     GenerationRequest,
