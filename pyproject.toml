@@ -21,7 +21,7 @@ name = "guidellm"
 description = "Guidance platform for deploying and managing large language models."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.9.0,<4.0"
-license = {text = "Apache-2.0"}
+license = { text = "Apache-2.0" }
 authors = [{ name = "Red Hat" }]
 keywords = [
     "ai",
@@ -56,7 +56,6 @@ dependencies = [
     "protobuf",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.0.0",
-    "pyhumps>=3.8.0",
     "pyyaml>=6.0.0",
     "rich",
     "sanic",
