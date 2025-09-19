@@ -14,7 +14,7 @@ from typing import (
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase  # type: ignore  # noqa: PGH003
 
-from guidellm.backends import Backend, ResponseSummary
+from guidellm.backend import Backend, ResponseSummary
 from guidellm.benchmark.aggregator import (
     AggregatorT,
     BenchmarkT,

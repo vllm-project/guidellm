@@ -50,7 +50,7 @@ class Scheduler(
     Example:
     ::
         from guidellm.scheduler import Scheduler
-        from guidellm.backend import OpenAIBackend
+        from guidellm.backends import OpenAIBackend
         from guidellm.scheduler import NonDistributedEnvironment, SynchronousStrategy
 
         scheduler = Scheduler()

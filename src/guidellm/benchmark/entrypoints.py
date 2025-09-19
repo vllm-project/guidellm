@@ -7,7 +7,7 @@ from transformers import (  # type: ignore[import]
     PreTrainedTokenizerBase,
 )
 
-from guidellm.backends import Backend, BackendType
+from guidellm.backend import Backend, BackendType
 from guidellm.benchmark.benchmarker import GenerativeBenchmarker
 from guidellm.benchmark.output import (
     GenerativeBenchmarksConsole,

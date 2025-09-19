@@ -9,7 +9,7 @@ from transformers.tokenization_utils_base import (  # type: ignore[import]
     PreTrainedTokenizerBase,
 )
 
-from guidellm.backends.backend import BackendType
+from guidellm.backend.backend import BackendType
 from guidellm.benchmark.profile import ProfileType
 from guidellm.objects.pydantic import StandardBaseModel
 from guidellm.scheduler.strategies import StrategyType
