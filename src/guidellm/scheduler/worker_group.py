@@ -33,7 +33,7 @@ from guidellm.scheduler.objects import (
     SchedulerState,
     SchedulerUpdateAction,
 )
-from guidellm.scheduler.strategy import SchedulingStrategy
+from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
 from guidellm.settings import settings
 from guidellm.utils import (

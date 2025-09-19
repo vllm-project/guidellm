@@ -37,7 +37,7 @@ from guidellm.scheduler.objects import (
     ScheduledRequestInfo,
     SchedulerMessagingPydanticRegistry,
 )
-from guidellm.scheduler.strategy import ScheduledRequestTimings
+from guidellm.scheduler.strategies import ScheduledRequestTimings
 from guidellm.utils import (
     InterProcessMessaging,
     wait_for_sync_barrier,
