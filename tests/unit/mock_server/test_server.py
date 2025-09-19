@@ -378,11 +378,11 @@ class TestMockServerEndpoints:
                     except json.JSONDecodeError:
                         continue
 
-                assert len(chunks) > 0
-                # Verify chunk structure
-                for chunk in chunks:
-                    assert "choices" in chunk
-                    assert len(chunk["choices"]) > 0
+            assert len(chunks) > 0
+            # Verify chunk structure
+            for chunk in chunks:
+                assert "choices" in chunk
+                assert len(chunk["choices"]) > 0
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
