@@ -906,7 +906,7 @@ class _GenerativeProgressTaskState:
         cancelled_requests: int | None = None,
         errored_requests: int | None = None,
     ):
-        if self.benchmark_status is not None:
+        if benchmark_status is not None:
             self.benchmark_status = benchmark_status
         if start_time is not None:
             self.start_time = start_time
