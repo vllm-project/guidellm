@@ -10,7 +10,7 @@ import culsans
 import pytest
 from pydantic import BaseModel
 
-from guidellm.backend import (
+from guidellm.backends import (
     GenerationRequest,
     GenerationResponse,
 )

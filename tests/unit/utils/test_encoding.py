@@ -6,7 +6,7 @@ from typing import Any, Generic, TypeVar
 import pytest
 from pydantic import BaseModel, Field
 
-from guidellm.backend.objects import (
+from guidellm.backends.objects import (
     GenerationRequest,
     GenerationResponse,
 )

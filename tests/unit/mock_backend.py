@@ -8,7 +8,7 @@ from typing import Any, Optional, Union
 from lorem.text import TextLorem  # type: ignore
 from PIL import Image
 
-from guidellm.backend import (
+from guidellm.backends import (
     Backend,
     RequestArgs,
     ResponseSummary,

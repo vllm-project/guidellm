@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from guidellm.backend import ResponseSummary, StreamingTextResponse
+from guidellm.backends import ResponseSummary, StreamingTextResponse
 
 from .mock_backend import MockBackend
 
