@@ -64,6 +64,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+perf = [
+    "orjson",
+    "msgpack",
+    "msgspec",
+    "uvloop",
+]
 dev = [
     # build
     "build>=1.0.0",
