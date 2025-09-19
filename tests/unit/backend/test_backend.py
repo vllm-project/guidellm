@@ -12,8 +12,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from guidellm.backend.backend import Backend, BackendType
-from guidellm.backend.objects import (
+from guidellm.backends.backend import Backend, BackendType
+from guidellm.backends.objects import (
     GenerationRequest,
     GenerationRequestTimings,
 )
@@ -244,7 +244,7 @@ class TestBackendRegistry:
     @pytest.mark.smoke
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""
-        from guidellm.backend.openai import OpenAIHTTPBackend
+        from guidellm.backends.openai import OpenAIHTTPBackend
 
         # OpenAI backend should be registered
         backend = Backend.create("openai_http", target="http://test")
@@ -262,7 +262,7 @@ class TestBackendRegistry:
     @pytest.mark.smoke
     def test_backend_registry_functionality(self):
         """Test that backend registry functions work."""
-        from guidellm.backend.openai import OpenAIHTTPBackend
+        from guidellm.backends.openai import OpenAIHTTPBackend
 
         # Test that we can get registered backends
         openai_class = Backend.get_registered_object("openai_http")
@@ -327,6 +327,6 @@ class TestBackendRegistry:
         assert len(registered) > 0
 
         # Check that openai backend is in the registered objects
-        from guidellm.backend.openai import OpenAIHTTPBackend
+        from guidellm.backends.openai import OpenAIHTTPBackend
 
         assert OpenAIHTTPBackend in registered

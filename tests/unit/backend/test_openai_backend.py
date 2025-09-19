@@ -14,13 +14,13 @@ import httpx
 import pytest
 from PIL import Image
 
-from guidellm.backend.backend import Backend
-from guidellm.backend.objects import (
+from guidellm.backends.backend import Backend
+from guidellm.backends.objects import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,
 )
-from guidellm.backend.openai import OpenAIHTTPBackend, UsageStats
+from guidellm.backends.openai import OpenAIHTTPBackend, UsageStats
 from guidellm.scheduler import ScheduledRequestInfo
 
 

@@ -9,7 +9,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from guidellm.backend.objects import (
+from guidellm.backends.objects import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,

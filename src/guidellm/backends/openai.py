@@ -23,8 +23,8 @@ import httpx
 from PIL import Image
 from pydantic import dataclasses
 
-from guidellm.backend.backend import Backend
-from guidellm.backend.objects import (
+from guidellm.backends.backend import Backend
+from guidellm.backends.objects import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,
@@ -351,8 +351,8 @@ class OpenAIHTTPBackend(Backend):
 
             if usage_stats is not None:
                 request_info.request_timings.request_end = time.time()
-                response.request_output_tokens = usage_stats.output_tokens
-                response.request_prompt_tokens = usage_stats.prompt_tokens
+                response.response_output_tokens = usage_stats.output_tokens
+                response.response_prompt_tokens = usage_stats.prompt_tokens
 
             yield response, request_info
 
@@ -602,7 +602,7 @@ class OpenAIHTTPBackend(Backend):
         **kwargs,
     ) -> dict[str, Any]:
         # Start with endpoint-specific extra body parameters
-        extra_body = self.extra_body.get(endpoint_type, self.extra_body)
+        extra_body: dict = self.extra_body.get(endpoint_type, self.extra_body)
 
         body = copy.deepcopy(extra_body)
         body.update(request_kwargs or {})
@@ -622,14 +622,22 @@ class OpenAIHTTPBackend(Backend):
             if max_output_tokens:
                 body.update({"stop": None, "ignore_eos": True})
 
+            if self.remove_from_body:
+                for key in self.remove_from_body:
+                    body.pop(key, None)
+
         return {key: val for key, val in body.items() if val is not None}
 
     def _get_completions_text_content(self, data: dict) -> Optional[str]:
         if not data.get("choices"):
             return None
 
-        choice = data["choices"][0]
-        return choice.get("text") or choice.get("delta", {}).get("content")
+        choice: dict = data["choices"][0]
+        return (
+            choice.get("text")
+            or choice.get("delta", {}).get("content")
+            or choice.get("message", {}).get("content")
+        )
 
     def _get_completions_usage_stats(self, data: dict) -> Optional[UsageStats]:
         if not data.get("usage"):

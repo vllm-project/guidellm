@@ -16,7 +16,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Literal
 
-from guidellm.backend.objects import (
+from guidellm.backends.objects import (
     GenerationRequest,
     GenerationResponse,
 )

@@ -6,7 +6,7 @@ from typing import get_args
 import click
 from pydantic import ValidationError
 
-from guidellm.backend import BackendType
+from guidellm.backends import BackendType
 from guidellm.benchmark import (
     ProfileType,
     reimport_benchmarks_report,
