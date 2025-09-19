@@ -36,7 +36,7 @@ from typing import (
 
 from pydantic import Field, PrivateAttr
 
-from guidellm.backend import (
+from guidellm.backends import (
     GenerationRequest,
     GenerationResponse,
 )
