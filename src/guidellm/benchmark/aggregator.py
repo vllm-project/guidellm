@@ -911,7 +911,7 @@ class GenerativeRequestsAggregator(
             )
 
         if self.cooldown >= 1:  # Count/time-based cooldown
-            if scheduler_state.remaining_requests < self.cooldown:
+            if scheduler_state.remaining_requests <= self.cooldown:
                 return True
 
             current_time = (
