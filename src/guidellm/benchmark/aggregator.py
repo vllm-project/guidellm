@@ -21,7 +21,6 @@ from guidellm.benchmark.benchmark import (
     GenerativeTextErrorStats,
     GenerativeTextResponseStats,
 )
-from guidellm.config import settings
 from guidellm.objects import (
     RunningStats,
     StandardBaseModel,
@@ -40,6 +39,7 @@ from guidellm.scheduler import (
     SchedulerRequestResult,
     WorkerDescription,
 )
+from guidellm.settings import settings
 from guidellm.utils import check_load_processor
 
 __all__ = [
