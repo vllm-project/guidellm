@@ -251,7 +251,7 @@ class CompletionsHandler:
             await stream_response.write(f"data: {json.dumps(final_chunk)}\n\n")
 
             # Send usage if requested
-            if req.stream_options and req.stream_options.get("include_usage"):
+            if req.stream_options and req.stream_options.include_usage:
                 usage_chunk = {
                     "id": completion_id,
                     "object": "text_completion",
