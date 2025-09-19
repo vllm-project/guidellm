@@ -4,7 +4,7 @@ from typing import Union
 
 from loguru import logger
 
-from guidellm.config import settings
+from guidellm.settings import settings
 from guidellm.utils.text import load_text
 
 

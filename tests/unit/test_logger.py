@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from guidellm import configure_logger, logger
-from guidellm.config import LoggingSettings
+from guidellm.settings import LoggingSettings
 
 
 @pytest.fixture(autouse=True)

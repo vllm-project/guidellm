@@ -11,10 +11,10 @@ from typing import (
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
-from guidellm.config import settings
 from guidellm.dataset import ColumnInputTypes, load_dataset
 from guidellm.objects import StandardBaseModel
 from guidellm.request.request import GenerationRequest
+from guidellm.settings import settings
 
 __all__ = [
     "GenerativeRequestLoader",

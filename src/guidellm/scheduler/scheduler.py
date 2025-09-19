@@ -14,7 +14,6 @@ from typing import (
 
 from loguru import logger
 
-from guidellm.config import settings
 from guidellm.request.types import (
     RequestT,
     ResponseT,
@@ -31,6 +30,7 @@ from guidellm.scheduler.strategy import SchedulingStrategy
 from guidellm.scheduler.worker import (
     RequestsWorker,
 )
+from guidellm.settings import settings
 
 __all__ = ["Scheduler"]
 

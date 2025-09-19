@@ -1,6 +1,6 @@
 import pytest
 
-from guidellm.config import (
+from guidellm.settings import (
     DatasetSettings,
     Environment,
     LoggingSettings,
