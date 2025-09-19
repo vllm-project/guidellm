@@ -253,7 +253,7 @@ class BenchmarkerTaskProgressState:
         decimal_places: Optional[int] = None,
     ) -> str:
         if decimal_places is None and digits_places is None:
-            formatted_number = f"{value}:.0f"
+            formatted_number = f"{value:.0f}"
         elif digits_places is None:
             formatted_number = f"{value:.{decimal_places}f}"
         elif decimal_places is None:

@@ -14,7 +14,7 @@ from guidellm.utils.text import (
     clean_text,
     filter_text,
     format_value_display,
-    is_puncutation,
+    is_punctuation,
     load_text,
     split_text,
     split_text_list_by_length,
@@ -372,8 +372,8 @@ class TestLoadText:
             load_text("http://example.com/error.txt")
 
 
-class TestIsPuncutation:
-    """Test suite for is_puncutation."""
+class TestIsPunctuation:
+    """Test suite for is_punctuation."""
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -392,8 +392,8 @@ class TestIsPuncutation:
         ],
     )
     def test_invocation(self, text, expected):
-        """Test is_puncutation with various characters."""
-        result = is_puncutation(text)
+        """Test is_punctuation with various characters."""
+        result = is_punctuation(text)
         assert result == expected
 
     @pytest.mark.sanity
@@ -405,9 +405,9 @@ class TestIsPuncutation:
         ],
     )
     def test_invalid_invocation(self, text):
-        """Test is_puncutation with invalid inputs."""
+        """Test is_punctuation with invalid inputs."""
         with pytest.raises((TypeError, AttributeError)):
-            is_puncutation(text)
+            is_punctuation(text)
 
 
 class TestEndlessTextCreator:
