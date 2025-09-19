@@ -11,7 +11,7 @@ from .constraints import (
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from .environment import Environment, NonDistributedEnvironment
+from .environments import Environment, NonDistributedEnvironment
 from .objects import (
     BackendInterface,
     BackendT,
@@ -27,7 +27,7 @@ from .objects import (
     SchedulerUpdateActionProgress,
 )
 from .scheduler import Scheduler
-from .strategy import (
+from .strategies import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,

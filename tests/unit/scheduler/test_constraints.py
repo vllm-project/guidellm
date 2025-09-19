@@ -286,8 +286,14 @@ class TestUnserializableConstraintInitializer:
     def test_call_raises(self, valid_instances):
         """Test that calling constraint raises RuntimeError."""
         instance, _ = valid_instances
-        state = SchedulerState()
-        request = ScheduledRequestInfo()
+        state = SchedulerState(node_id="test_node", num_processes=1, start_time=0.0)
+        request = ScheduledRequestInfo(
+            request_id="test_request",
+            status="pending",
+            scheduler_node_id="test_node",
+            scheduler_process_id=1,
+            scheduler_start_time=0.0,
+        )
 
         with pytest.raises(
             RuntimeError, match="Cannot invoke unserializable constraint"

@@ -17,7 +17,7 @@ from guidellm.scheduler.constraints import (
     Constraint,
     ConstraintsInitializerFactory,
 )
-from guidellm.scheduler.environment import Environment, NonDistributedEnvironment
+from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
 from guidellm.scheduler.objects import (
     BackendInterface,
     MultiTurnRequestT,
@@ -26,7 +26,7 @@ from guidellm.scheduler.objects import (
     ScheduledRequestInfo,
     SchedulerState,
 )
-from guidellm.scheduler.strategy import SchedulingStrategy
+from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker_group import WorkerProcessGroup
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
