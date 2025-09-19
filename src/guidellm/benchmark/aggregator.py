@@ -12,7 +12,7 @@ from typing import (
 
 from pydantic import Field
 
-from guidellm.backends import ResponseSummary
+from guidellm.backend import ResponseSummary
 from guidellm.benchmark.benchmark import (
     BenchmarkArgs,
     BenchmarkRunStats,
