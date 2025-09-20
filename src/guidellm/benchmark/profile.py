@@ -11,6 +11,7 @@ from guidellm.scheduler import (
     AsyncPoissonStrategy,
     ConcurrentStrategy,
     SchedulingStrategy,
+    StepsStrategy,
     StrategyType,
     SynchronousStrategy,
     ThroughputStrategy,
@@ -24,10 +25,13 @@ __all__ = [
     "SweepProfile",
     "SynchronousProfile",
     "ThroughputProfile",
+    "StepsProfile",
     "create_profile",
 ]
 
-ProfileType = Literal["synchronous", "concurrent", "throughput", "async", "sweep"]
+ProfileType = Literal[
+    "synchronous", "concurrent", "throughput", "async", "sweep", "steps"
+]
 
 
 class Profile(StandardBaseModel):
@@ -363,9 +367,60 @@ class SweepProfile(AsyncProfile):
         return SweepProfile(sweep_size=int(rate), random_seed=random_seed, **kwargs)
 
 
+class StepsProfile(Profile):
+    type_: Literal["steps"] = "steps"  # type: ignore[assignment]
+
+    steps_duration: list[int]
+    steps_rate: list[float]
+
+    @property
+    def strategy_types(self) -> list[StrategyType]:
+        return [self.type_]
+
+    def next_strategy(self) -> Optional[SchedulingStrategy]:
+        if self.completed_strategies >= 1:
+            return None
+
+        return StepsStrategy(
+            steps_duration=self.steps_duration,
+            steps_rate=self.steps_rate,
+        )
+
+    @staticmethod
+    def from_standard_args(
+        rate_type: Union[StrategyType, ProfileType],
+        rate: Optional[Union[float, Sequence[float]]],
+        steps_duration: Optional[list[int]],
+        steps_rate: Optional[list[float]],
+        **kwargs,
+    ) -> "StepsProfile":
+        if rate_type != "steps":
+            raise ValueError("Rate type must be 'steps' for steps profile.")
+        if rate is not None:
+            raise ValueError(
+                "Rate does not apply to steps profile, it must be set to None."
+            )
+        if not steps_duration:
+            raise ValueError("steps_duration must be provided for steps profile.")
+        if not steps_rate:
+            raise ValueError("steps_rate must be provided for steps profile.")
+        if len(steps_duration) != len(steps_rate):
+            raise ValueError("steps_duration and steps_rate must have the same length.")
+
+        if kwargs:
+            raise ValueError("No additional arguments are allowed for steps profile.")
+
+        return StepsProfile(
+            steps_duration=steps_duration,
+            steps_rate=steps_rate,
+        )
+
+
 def create_profile(
     rate_type: Union[StrategyType, ProfileType],
     rate: Optional[Union[float, Sequence[float]]],
+    steps_duration: Optional[list[int]] = None,
+    steps_rate: Optional[list[float]] = None,
     random_seed: int = 42,
     **kwargs,
 ) -> "Profile":
@@ -403,6 +458,15 @@ def create_profile(
             rate_type=rate_type,
             rate=rate,
             random_seed=random_seed,
+            **kwargs,
+        )
+
+    if rate_type == "steps":
+        return StepsProfile.from_standard_args(
+            rate_type=rate_type,
+            rate=rate,
+            steps_duration=steps_duration,
+            steps_rate=steps_rate,
             **kwargs,
         )
 

@@ -51,6 +51,8 @@ async def benchmark_generative_text(
     data_sampler: Optional[Literal["random"]],
     rate_type: Union[StrategyType, ProfileType],
     rate: Optional[Union[float, list[float]]],
+    steps_duration: Optional[list[int]],
+    steps_rate: Optional[list[float]],
     max_seconds: Optional[float],
     max_requests: Optional[int],
     warmup_percent: Optional[float],
@@ -97,7 +99,13 @@ async def benchmark_generative_text(
         else f"Created loader with unknown number unique requests from {data}.\n\n"
     )
 
-    profile = create_profile(rate_type=rate_type, rate=rate)
+    profile = create_profile(
+        rate_type=rate_type,
+        rate=rate,
+        steps_duration=steps_duration,
+        steps_rate=steps_rate,
+        random_seed=random_seed,
+    )
     benchmarker = GenerativeBenchmarker(
         backend=backend,
         request_loader=request_loader,
