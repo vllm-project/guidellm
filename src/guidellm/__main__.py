@@ -497,7 +497,7 @@ def from_file(path, output_path):
     to different output formats. Supports JSON, YAML, and CSV export formats
     based on the output file extension.
     """
-    reimport_benchmarks_report(path, output_path)
+    asyncio.run(reimport_benchmarks_report(path, output_path))
 
 
 @cli.command(
