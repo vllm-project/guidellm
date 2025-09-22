@@ -1,4 +1,5 @@
 import json
+import os
 from collections.abc import Sequence
 from enum import Enum
 from typing import Literal, Optional
@@ -131,8 +132,12 @@ class Settings(BaseSettings):
 
     # Scheduler settings
     max_concurrency: int = 512
-    max_worker_processes: int = 10
-    max_add_requests_per_loop: int = 20
+    max_worker_processes: int = Field(
+        # use number of CPUs - 1, but at least 10
+        default_factory=lambda: max((os.cpu_count() or 1) - 1, 10)
+    )
+    min_queued_requests: int = 20
+    scheduler_start_delay: float = 5
 
     # Data settings
     dataset: DatasetSettings = DatasetSettings()

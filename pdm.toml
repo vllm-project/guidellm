@@ -1,2 +1,4 @@
+[strategy]
+update = "reuse"
 [lock]
 format = "pylock"
