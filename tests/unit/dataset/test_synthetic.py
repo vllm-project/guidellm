@@ -415,7 +415,7 @@ class TestSyntheticTextItemsGenerator:
 
         # Test normal case
         result = generator._create_prompt(5, 0, 42)
-        assert result == [42, 1, 2, 3]
+        assert result == [1, 2, 3]
 
         # Test zero tokens
         result = generator._create_prompt(0, 0, 42)
