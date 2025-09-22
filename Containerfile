@@ -1,4 +1,4 @@
-# FIXME: Update to official python-3.13-minimal image when available
+# TODO: Update to official python-3.13-minimal image when available
 ARG BASE_IMAGE=quay.io/psap/python-313-minimal:fedora
 
 # release: take the last version and add a post if build iteration
@@ -29,7 +29,7 @@ ENV PDM_CHECK_UPDATE=false \
 # Do this as late as possible to leverage layer caching
 COPY / /opt/app-root/src
 
-# Create a venv and install guidellm
+# Install guidellm and locked dependencies
 RUN pdm use -p /opt/app-root/src -f /opt/app-root \
     && pdm install -p /opt/app-root/src --check --prod --no-editable
 
@@ -51,8 +51,11 @@ WORKDIR $HOME
 VOLUME /results
 
 # Metadata
-LABEL org.opencontainers.image.source="https://github.com/vllm-project/guidellm" \
-      org.opencontainers.image.description="GuideLLM Performance Benchmarking Container"
+LABEL io.k8s.display-name="GuideLLM" \
+      org.opencontainers.image.description="GuideLLM Performance Benchmarking Container" \
+      org.opencontainers.image.source="https://github.com/vllm-project/guidellm" \
+      org.opencontainers.image.documentation="https://blog.vllm.ai/guidellm/stable" \
+      org.opencontainers.image.license="Apache-2.0"
 
 # Copy the virtual environment from the builder stage
 # Do this as late as possible to leverage layer caching
