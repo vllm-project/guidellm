@@ -1,4 +1,5 @@
-ARG BASE_IMAGE=docker.io/python:3.13-slim
+# FIXME: Update to official python-3.13-minimal image when available
+ARG BASE_IMAGE=quay.io/psap/python-313-minimal:fedora
 
 # release: take the last version and add a post if build iteration
 # candidate: increment to next minor, add 'rc' with build iteration
@@ -10,13 +11,14 @@ ARG GUIDELLM_BUILD_TYPE=dev
 # Use a multi-stage build to create a lightweight production image
 FROM $BASE_IMAGE as builder
 
-# Ensure files are installed as root
+# Switch to root for installing packages
 USER root
 
 # Install build tooling
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && pip install --no-cache-dir -U pdm
+RUN dnf install -y git \
+    && python3 -m venv /tmp/pdm \
+    && /tmp/pdm/bin/pip install --no-cache-dir -U pdm \
+    && ln -s /tmp/pdm/bin/pdm /usr/local/bin/pdm
 
 # Disable pdm update check
 # Set correct build type for versioning
@@ -28,8 +30,7 @@ ENV PDM_CHECK_UPDATE=false \
 COPY / /opt/app-root/src
 
 # Create a venv and install guidellm
-RUN python3 -m venv /opt/app-root/guidellm \
-    && pdm use -p /opt/app-root/src -f /opt/app-root/guidellm \
+RUN pdm use -p /opt/app-root/src -f /opt/app-root \
     && pdm install -p /opt/app-root/src --check --prod --no-editable
 
 # Prod image
@@ -38,14 +39,10 @@ FROM $BASE_IMAGE
 # Add guidellm bin to PATH
 # Argument defaults can be set with GUIDELLM_<ARG>
 ENV HOME="/home/guidellm" \
-    PATH="/opt/app-root/guidellm/bin:$PATH" \
     GUIDELLM_OUTPUT_PATH="/results/benchmarks.json"
 
-# Create a non-root user
-RUN useradd -K UMASK=0002 -Md $HOME -g root guidellm
-
-# Switch to non-root user
-USER guidellm
+# Make sure root is the primary group
+USER 1001:0
 
 # Create the user home dir
 WORKDIR $HOME
@@ -59,7 +56,7 @@ LABEL org.opencontainers.image.source="https://github.com/vllm-project/guidellm"
 
 # Copy the virtual environment from the builder stage
 # Do this as late as possible to leverage layer caching
-COPY --from=builder /opt/app-root/guidellm /opt/app-root/guidellm
+COPY --chown=1001:0 --from=builder /opt/app-root /opt/app-root
 
-ENTRYPOINT [ "/opt/app-root/guidellm/bin/guidellm" ]
+ENTRYPOINT [ "/opt/app-root/bin/guidellm" ]
 CMD [ "benchmark", "run" ]
