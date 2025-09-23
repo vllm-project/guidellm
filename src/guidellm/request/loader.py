@@ -105,14 +105,14 @@ class GenerativeRequestLoader(RequestLoader):
         self.preserve_iter_state = iter_type == "infinite"  # ensure no caching requests
         self._preserved_iter = None
 
-    def __iter__(self) -> Iterator[GenerationRequest]:
+    def __iter__(self) -> Iterator[list[GenerationRequest]]:
         scope_create_count = 0
 
         while (dataset_iter := self._get_dataset_iter(scope_create_count)) is not None:
             scope_create_count += 1
 
             for item in dataset_iter:
-                yield self._create_request(item)
+                yield self._create_requests(item)
 
             self._preserved_iter = None
 
@@ -260,25 +260,36 @@ class GenerativeRequestLoader(RequestLoader):
 
         return dataset_iter
 
-    def _create_request(self, item: dict[str, Any]) -> GenerationRequest:
-        prompt_tokens = (
-            item[self.column_mappings["prompt_tokens_count_column"]]
+    def _create_requests(self, item: dict[str, Any]) -> list[GenerationRequest]:
+        prompts = list(item[self.column_mappings["prompt_column"]])
+        prompts_tokens: list[Optional[int]] = (
+            list(item[self.column_mappings["prompt_tokens_count_column"]])
             if "prompt_tokens_count_column" in self.column_mappings
-            else None
+            else [None] * len(prompts)
         )
-        output_tokens = (
-            item[self.column_mappings["output_tokens_count_column"]]
+        outputs_tokens: list[Optional[int]] = (
+            list(item[self.column_mappings["output_tokens_count_column"]])
             if "output_tokens_count_column" in self.column_mappings
-            else None
+            else [None] * len(prompts)
         )
 
-        return GenerationRequest(
-            request_type=settings.preferred_route,
-            content=item[self.column_mappings["prompt_column"]],
-            stats=(
+        if len(prompts) != len(prompts_tokens) != len(outputs_tokens):
+            raise ValueError(
+                "Mismatched lengths between prompts and token counts. "
+                f"Prompts: {len(prompts)}, Prompt Tokens: {len(prompts_tokens)}, "
+                f"Output Tokens: {len(outputs_tokens)}"
+            )
+
+        return [
+            GenerationRequest(
+                request_type=settings.preferred_route,
+                content=prompt,
+                stats=(
                 {"prompt_tokens": prompt_tokens} if prompt_tokens is not None else {}
-            ),
-            constraints=(
-                {"output_tokens": output_tokens} if output_tokens is not None else {}
-            ),
-        )
+                ),
+                constraints=(
+                    {"output_tokens": output_tokens} if output_tokens is not None else {}
+                ),
+            )
+            for prompt, prompt_tokens, output_tokens in zip(prompts, prompts_tokens, outputs_tokens)
+        ]
