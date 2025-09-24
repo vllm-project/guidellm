@@ -10,6 +10,9 @@ include = ["*"]
 [tool.setuptools.package-data]
 "guidellm.data" = ["*.gz"]
 
+[tool.pdm]
+distribution = true
+
 
 # ************************************************
 # ********** Project Metadata **********
@@ -64,6 +67,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+recommended = [
+    "tiktoken>=0.11.0",  # For OpenAI tokenizer
+    "blobfile>=3.1.0",   # For OpenAI tokenizer
+]
 dev = [
     # build
     "build>=1.0.0",
@@ -103,6 +110,9 @@ dev = [
     # link checking
     "mkdocs-linkcheck~=1.0.6",
 ]
+
+[dependency-groups]
+dev = [ "guidellm[dev]" ]
 
 [project.urls]
 homepage = "https://github.com/vllm-project/guidellm"
