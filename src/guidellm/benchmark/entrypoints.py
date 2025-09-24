@@ -26,7 +26,6 @@ from guidellm.benchmark.aggregator import (
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.objects import GenerativeBenchmark, GenerativeBenchmarksReport
 from guidellm.benchmark.output import (
-    GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,
 )
 from guidellm.benchmark.profile import Profile, ProfileType
@@ -52,6 +51,9 @@ __all__ = [
 
 _CURRENT_WORKING_DIR = Path.cwd()
 
+
+# Data types
+
 DataType = (
     Iterable[str]
     | Iterable[dict[str, Any]]
@@ -70,6 +72,8 @@ OutputFormatType = (
     | None
 )
 
+
+# Helper functions
 
 async def initialize_backend(
     backend: BackendType | Backend,
@@ -136,6 +140,8 @@ async def finalize_outputs(
         output_format_results[key] = output_result
     return output_format_results
 
+
+# Complete entrypoints
 
 async def benchmark_with_scenario(scenario: Scenario, **kwargs):
     """
