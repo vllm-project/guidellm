@@ -13,7 +13,7 @@ from .formatters import (
 from .loaders import GenerativeDataLoader, GenerativeRequestCollator
 from .objects import (
     GenerationRequest,
-    GenerationRequestPayload,
+    GenerationRequestArguments,
     GenerationRequestTimings,
     GenerativeDatasetArgs,
     GenerativeDatasetColumnType,
@@ -31,7 +31,7 @@ __all__ = [
     "DatasetDeserializerFactory",
     "DatasetPreprocessor",
     "GenerationRequest",
-    "GenerationRequestPayload",
+    "GenerationRequestArguments",
     "GenerationRequestTimings",
     "GenerativeColumnMapper",
     "GenerativeDataLoader",

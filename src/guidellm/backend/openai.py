@@ -42,6 +42,16 @@ class UsageStats:
     output_tokens: Optional[int] = None
 
 
+open_ai_paths: dict[str, str] = {
+    "health": "health",
+    "models": "v1/models",
+    "text_completions": "v1/completions",
+    "chat_completions": "v1/chat/completions",
+    "audio_transcriptions": "v1/audio/transcriptions",
+    "audio_translations": "v1/audio/translations",
+}
+
+
 @Backend.register("openai_http")
 class OpenAIHTTPBackend(Backend):
     """
@@ -66,74 +76,26 @@ class OpenAIHTTPBackend(Backend):
         await backend.process_shutdown()
     """
 
-    HEALTH_PATH: ClassVar[str] = "/health"
-    MODELS_PATH: ClassVar[str] = "/v1/models"
-    TEXT_COMPLETIONS_PATH: ClassVar[str] = "/v1/completions"
-    CHAT_COMPLETIONS_PATH: ClassVar[str] = "/v1/chat/completions"
-
-    MODELS_KEY: ClassVar[str] = "models"
-    TEXT_COMPLETIONS_KEY: ClassVar[str] = "text_completions"
-    CHAT_COMPLETIONS_KEY: ClassVar[str] = "chat_completions"
-
     def __init__(
         self,
         target: str,
         model: Optional[str] = None,
-        api_key: Optional[str] = None,
-        organization: Optional[str] = None,
-        project: Optional[str] = None,
         timeout: float = 60.0,
         http2: bool = True,
         follow_redirects: bool = True,
-        max_output_tokens: Optional[int] = None,
-        stream_response: bool = True,
-        extra_query: Optional[dict] = None,
-        extra_body: Optional[dict] = None,
-        remove_from_body: Optional[list[str]] = None,
-        headers: Optional[dict] = None,
         verify: bool = False,
     ):
-        """
-        Initialize OpenAI HTTP backend.
-
-        :param target: Target URL for the OpenAI server (e.g., "http://localhost:8000").
-        :param model: Model to use for requests. If None, uses first available model.
-        :param api_key: API key for authentication. Adds Authorization header
-            if provided.
-        :param organization: Organization ID. Adds OpenAI-Organization header
-            if provided.
-        :param project: Project ID. Adds OpenAI-Project header if provided.
-        :param timeout: Request timeout in seconds. Defaults to 60 seconds.
-        :param http2: Whether to use HTTP/2. Defaults to True.
-        :param follow_redirects: Whether to follow redirects. Default True.
-        :param max_output_tokens: Maximum tokens for completions. If None, none is set.
-        :param stream_response: Whether to stream responses by default. Can be
-            overridden per request. Defaults to True.
-        :param extra_query: Additional query parameters. Both general and
-            endpoint-specific with type keys supported.
-        :param extra_body: Additional body parameters. Both general and
-            endpoint-specific with type keys supported.
-        :param remove_from_body: Parameter names to remove from request bodies.
-        :param headers: Additional HTTP headers.
-        :param verify: Whether to verify SSL certificates. Default False.
-        """
         super().__init__(type_="openai_http")
 
         # Request Values
         self.target = target.rstrip("/").removesuffix("/v1")
         self.model = model
-        self.headers = self._build_headers(api_key, organization, project, headers)
 
         # Store configuration
         self.timeout = timeout
         self.http2 = http2
         self.follow_redirects = follow_redirects
         self.verify = verify
-        self.max_output_tokens = max_output_tokens
-        self.stream_response = stream_response
-        self.extra_query = extra_query or {}
-        self.extra_body = extra_body or {}
-        self.remove_from_body = remove_from_body or []
 
         # Runtime state
         self._in_process = False
@@ -147,20 +109,11 @@ class OpenAIHTTPBackend(Backend):
         return {
             "target": self.target,
             "model": self.model,
-            "headers": self.headers,
             "timeout": self.timeout,
             "http2": self.http2,
             "follow_redirects": self.follow_redirects,
             "verify": self.verify,
-            "max_output_tokens": self.max_output_tokens,
-            "stream_response": self.stream_response,
-            "extra_query": self.extra_query,
-            "extra_body": self.extra_body,
-            "remove_from_body": self.remove_from_body,
-            "health_path": self.HEALTH_PATH,
-            "models_path": self.MODELS_PATH,
-            "text_completions_path": self.TEXT_COMPLETIONS_PATH,
-            "chat_completions_path": self.CHAT_COMPLETIONS_PATH,
+            "openai_paths": open_ai_paths,
         }
 
     async def process_startup(self):
@@ -209,7 +162,7 @@ class OpenAIHTTPBackend(Backend):
         if self.model:
             with contextlib.suppress(httpx.TimeoutException, httpx.HTTPStatusError):
                 # Model is set, use /health endpoint as first check
-                target = f"{self.target}{self.HEALTH_PATH}"
+                target = f"{self.target}{open_ai_paths['health']}"
                 headers = self._get_headers()
                 response = await self._async_client.get(target, headers=headers)  # type: ignore [union-attr]
                 response.raise_for_status()
@@ -256,7 +209,7 @@ class OpenAIHTTPBackend(Backend):
         """
         self._check_in_process()
 
-        target = f"{self.target}{self.MODELS_PATH}"
+        target = f"{self.target}{open_ai_paths['models']}"
         headers = self._get_headers()
         params = self._get_params(self.MODELS_KEY)
         response = await self._async_client.get(target, headers=headers, params=params)  # type: ignore [union-attr]
@@ -299,6 +252,36 @@ class OpenAIHTTPBackend(Backend):
             raise NotImplementedError(
                 "Multi-turn requests with conversation history are not yet supported"
             )
+
+        url = (
+            request.arguments.url or f"{self.target}/{request.arguments.path}"
+            if request.arguments.path is not None
+            else f"{self.target}/{open_ai_paths[request.request_type]}"
+        )
+
+        if not request.arguments.stream:
+            response = await self._async_client.request(
+                request.arguments.method or "POST",
+                url,
+                content=request.arguments.content,
+                files=request.arguments.files,
+                json=request.arguments.json,
+                params=request.arguments.params,
+                headers=request.arguments.headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            yield 
+
+            return
+
+            yield (
+                self._get_completions_text_content(data),
+                self._get_completions_usage_stats(data),
+            )
+            return   
+
 
         response = GenerationResponse(
             request_id=request.request_id,

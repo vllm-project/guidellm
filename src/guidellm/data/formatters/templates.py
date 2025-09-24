@@ -1,4 +1,5 @@
 import textwrap
+from typing import Union
 
 from jinja2 import Template
 
@@ -13,13 +14,26 @@ __all__ = [
 ]
 
 
-class JinjaTemplatesRegistry(RegistryMixin[Template | str]):
+class JinjaTemplatesRegistry(RegistryMixin[Union[Template, str]]):
     pass
 
 
 DEFAULT_TEXT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("text_completions")(
     textwrap.dedent("""
         {
+            {%- if output_tokens_count_column is defined and output_tokens_count_column is not none -%}
+                "max_tokens": {{ output_tokens_count_column }},
+                "max_completion_tokens": {{ output_tokens_count_column }},
+                "stop": null,
+                "ignore_eos": true,
+            {%- else -%}
+                {%- if max_tokens is defined and max_tokens is not none -%}
+                    "max_tokens": {{ max_tokens }},
+                {%- endif -%}
+                {%- if max_completion_tokens is defined and max_completion_tokens is not none -%}
+                    "max_completion_tokens": {{ max_completion_tokens }},
+                {%- endif -%}
+            {%- endif -%}
             "json": {
                 "prompt":
                     {%- if text_column and text_column|length == 1 -%}
@@ -29,13 +43,26 @@ DEFAULT_TEXT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("text_comple
                     {%- endif -%}
             }
         }
-    """).strip()
+    """).strip()  # noqa: E501
 )
 
 DEFAULT_CHAT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("chat_completions")(
     textwrap.dedent("""
         {
             "json": {
+                {%- if output_tokens_count_column is defined and output_tokens_count_column is not none -%}
+                    "max_tokens": {{ output_tokens_count_column }},
+                    "max_completion_tokens": {{ output_tokens_count_column }},
+                    "stop": null,
+                    "ignore_eos": true,
+                {%- else -%}
+                    {%- if max_tokens is defined and max_tokens is not none -%}
+                        "max_tokens": {{ max_tokens }},
+                    {%- endif -%}
+                    {%- if max_completion_tokens is defined and max_completion_tokens is not none -%}
+                        "max_completion_tokens": {{ max_completion_tokens }},
+                    {%- endif -%}
+                {%- endif -%}
                 "messages": [
                     {
                         "role": "user",
@@ -90,6 +117,19 @@ DEFAULT_AUDIO_TRANSCRIPTIONS_TEMPLATE = JinjaTemplatesRegistry.register(
 )(
     textwrap.dedent("""
         {
+            {%- if output_tokens_count_column is defined and output_tokens_count_column is not none -%}
+                "max_tokens": {{ output_tokens_count_column }},
+                "max_completion_tokens": {{ output_tokens_count_column }},
+                "stop": null,
+                "ignore_eos": true,
+            {%- else -%}
+                {%- if max_tokens is defined and max_tokens is not none -%}
+                    "max_tokens": {{ max_tokens }},
+                {%- endif -%}
+                {%- if max_completion_tokens is defined and max_completion_tokens is not none -%}
+                    "max_completion_tokens": {{ max_completion_tokens }},
+                {%- endif -%}
+            {%- endif -%}
             "files": {
                 "file": {{ encode_audio_file(
                     audio_column[0],
@@ -111,6 +151,19 @@ DEFAULT_AUDIO_TRANSLATIONS_TEMPLATE = JinjaTemplatesRegistry.register(
 )(
     textwrap.dedent("""
         {
+            {%- if output_tokens_count_column is defined and output_tokens_count_column is not none -%}
+                "max_tokens": {{ output_tokens_count_column }},
+                "max_completion_tokens": {{ output_tokens_count_column }},
+                "stop": null,
+                "ignore_eos": true,
+            {%- else -%}
+                {%- if max_tokens is defined and max_tokens is not none -%}
+                    "max_tokens": {{ max_tokens }},
+                {%- endif -%}
+                {%- if max_completion_tokens is defined and max_completion_tokens is not none -%}
+                    "max_completion_tokens": {{ max_completion_tokens }},
+                {%- endif -%}
+            {%- endif -%}
             "files": {
                 "file": {{ encode_audio_file(
                     audio_column[0],

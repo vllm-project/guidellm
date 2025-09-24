@@ -187,11 +187,11 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915
             random_seed=random_seed,
             **(dataloader_kwargs or {}),
         )
-        unique_requests = request_loader.num_unique_items(raise_err=False)
         console_step.finish(
             title=(
-                f"Request loader initialized with {unique_requests} unique requests "
-                f"from {data}"
+                f"Request loader initialized with "
+                f"{data_samples if data_samples > 0 else 'inf'} "
+                "unique requests from {data}"
             ),
             details=InfoMixin.extract_from_obj(request_loader),
             status_level="success",

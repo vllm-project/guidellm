@@ -13,7 +13,7 @@ from guidellm.utils import StandardBaseDict, StandardBaseModel
 
 __all__ = [
     "GenerationRequest",
-    "GenerationRequestPayload",
+    "GenerationRequestArguments",
     "GenerationRequestTimings",
     "GenerativeDatasetArgs",
     "GenerativeDatasetColumnType",
@@ -24,8 +24,8 @@ __all__ = [
 GenerativeRequestType = Literal[
     "text_completions",
     "chat_completions",
-    "audio_transcription",
-    "audio_translation",
+    "audio_transcriptions",
+    "audio_translations",
 ]
 
 GenerativeDatasetColumnType = Literal[
@@ -38,10 +38,22 @@ GenerativeDatasetColumnType = Literal[
 ]
 
 
-class GenerationRequestPayload(StandardBaseDict):
+class GenerationRequestArguments(StandardBaseDict):
     url: str | None = Field(
         default=None,
         description="The URL endpoint to which the request will be sent.",
+    )
+    path: str | None = Field(
+        default=None,
+        description="The path to append to the base URL for the request.",
+    )
+    method: str | None = Field(
+        default=None,
+        description="The HTTP method to use for the request (e.g., 'POST', 'GET').",
+    )
+    stream: bool | None = Field(
+        default=None,
+        description="Whether to stream the response, if applicable.",
     )
     content: Any | None = Field(
         default=None,
@@ -64,6 +76,32 @@ class GenerationRequestPayload(StandardBaseDict):
         description="HTTP headers to include in the request, if applicable.",
     )
 
+    def update(self, *payloads: GenerationRequestArguments | dict[str, Any]) -> None:
+        for payload in payloads:
+            if not isinstance(payload, GenerationRequestArguments):
+                payload = GenerationRequestArguments(**payload)  # noqa: PLW2901
+
+            self.url = payload.url or self.url
+            self.method = payload.method or self.method
+            self.stream = payload.stream if payload.stream is not None else self.stream
+            self.content = payload.content or self.content
+
+            if self.files is None:
+                self.files = {}
+            self.files.update(payload.files or {})
+
+            if self.json is None:
+                self.json = {}
+            self.json.update(payload.json or {})
+
+            if self.params is None:
+                self.params = {}
+            self.params.update(payload.params or {})
+
+            if self.headers is None:
+                self.headers = {}
+            self.headers.update(payload.headers or {})
+
 
 @SchedulerMessagingPydanticRegistry.register()
 class GenerationRequest(StandardBaseModel):
@@ -75,24 +113,20 @@ class GenerationRequest(StandardBaseModel):
     )
     request_type: GenerativeRequestType | str = Field(
         description=(
-            "Type of request. 'text_completions' uses backend.text_completions(), "
-            "'chat_completions' uses backend.chat_completions()."
+            "Type of request. If url is not provided in arguments, "
+            "this will be used to determine the request url."
         ),
     )
-    payload: GenerationRequestPayload = Field(
+    arguments: GenerationRequestArguments = Field(
         description=(
             "Payload for the request, structured as a dictionary of arguments to pass "
             "to the respective backend method. For example, can contain "
             "'json', 'headers', 'files', etc."
         )
     )
-    stats: dict[Literal["prompt_tokens"], int] = Field(
+    stats: dict[Literal["prompt_tokens", "output_tokens"], int] = Field(
         default_factory=dict,
-        description="Request statistics including prompt token count.",
-    )
-    constraints: dict[Literal["output_tokens"], int] = Field(
-        default_factory=dict,
-        description="Request constraints such as maximum output tokens.",
+        description="Request statistics including prompt and output token counts.",
     )
 
 

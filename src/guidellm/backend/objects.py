@@ -12,7 +12,7 @@ from pydantic import Field
 
 from guidellm.data import (
     GenerationRequest,
-    GenerationRequestPayload,
+    GenerationRequestArguments,
     GenerationRequestTimings,
 )
 from guidellm.scheduler import (
@@ -22,7 +22,7 @@ from guidellm.utils import StandardBaseModel
 
 __all__ = [
     "GenerationRequest",
-    "GenerationRequestPayload",
+    "GenerationRequestArguments",
     "GenerationRequestTimings",
     "GenerationResponse",
 ]

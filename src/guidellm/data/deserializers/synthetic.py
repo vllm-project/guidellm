@@ -138,7 +138,7 @@ class SyntheticTextGenerator:
         )
 
 
-@DatasetDeserializerFactory.register("in_memory_dict")
+@DatasetDeserializerFactory.register("synthetic_text")
 class SyntheticTextDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
