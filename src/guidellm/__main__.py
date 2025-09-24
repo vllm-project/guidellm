@@ -473,23 +473,30 @@ def run(
 )
 @click.option(
     "--output-path",
-    type=click.Path(file_okay=True, dir_okay=True, exists=False),
-    default=None,
-    is_flag=False,
-    flag_value=Path.cwd() / "benchmarks_reexported.json",
+    type=click.Path(),
+    default=Path.cwd(),
     help=(
-        "Allows re-exporting the benchmarks to another format. "
-        "The path to save the output to. If it is a directory, "
-        "it will save benchmarks.json under it. "
-        "Otherwise, json, yaml, or csv files are supported for output types "
-        "which will be read from the extension for the file path. "
-        "This input is optional. If the output path flag is not provided, "
-        "the benchmarks will not be reexported. If the flag is present but "
-        "no value is specified, it will default to the current directory "
-        "with the file name `benchmarks_reexported.json`."
+        "Allows re-exporting the benchmarks to other formats. "
+        "The path to save the output formats to, if the format is a file type. "
+        "If it is a directory, it will save all output formats selected under it. "
+        "If it is a file, it will save the corresponding output format to that file. "
+        "Any output formats that were given that do not match the file extension will "
+        "be saved in the parent directory of the file path. "
+        "Defaults to the current working directory. "
     ),
 )
-def from_file(path, output_path):
+@click.option(
+    "--output-formats",
+    multiple=True,
+    type=str,
+    default=("console", "json"),  # ("console", "json", "html", "csv")
+    help=(
+        "The output formats to use for the benchmark results. "
+        "Defaults to console, json, html, and csv where the file formats "
+        "will be saved at the specified output path."
+    ),
+)
+def from_file(path, output_path, output_formats):
     """
     Load and optionally re-export a previously saved benchmark report.
 
@@ -497,7 +504,7 @@ def from_file(path, output_path):
     to different output formats. Supports JSON, YAML, and CSV export formats
     based on the output file extension.
     """
-    asyncio.run(reimport_benchmarks_report(path, output_path))
+    asyncio.run(reimport_benchmarks_report(path, output_path, output_formats))
 
 
 @cli.command(
