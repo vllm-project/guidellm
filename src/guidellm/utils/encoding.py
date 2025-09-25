@@ -390,23 +390,11 @@ class Serializer:
         if isinstance(obj, BaseModel):
             return self.to_dict_pydantic(obj)
 
-        if isinstance(obj, (list, tuple)) and any(
-            isinstance(item, BaseModel) for item in obj
-        ):
-            return [
-                self.to_dict_pydantic(item) if isinstance(item, BaseModel) else item
-                for item in obj
-            ]
+        if isinstance(obj, (list, tuple)):
+            return [self.to_dict(item) for item in obj]
 
-        if isinstance(obj, dict) and any(
-            isinstance(value, BaseModel) for value in obj.values()
-        ):
-            return {
-                key: self.to_dict_pydantic(value)
-                if isinstance(value, BaseModel)
-                else value
-                for key, value in obj.items()
-            }
+        if isinstance(obj, dict):
+            return {key: self.to_dict(value) for key, value in obj.items()}
 
         return obj
 
@@ -418,22 +406,13 @@ class Serializer:
         :return: Reconstructed object with proper types restored
         """
         if isinstance(data, (list, tuple)):
-            return [
-                self.from_dict_pydantic(item)
-                if isinstance(item, dict) and "*PYD*" in item
-                else item
-                for item in data
-            ]
-        elif isinstance(data, dict) and data:
+            return [self.from_dict(item) for item in data]
+
+        if isinstance(data, dict) and data:
             if "*PYD*" in data:
                 return self.from_dict_pydantic(data)
 
-            return {
-                key: self.from_dict_pydantic(value)
-                if isinstance(value, dict) and "*PYD*" in value
-                else value
-                for key, value in data.items()
-            }
+            return {key: self.from_dict(value) for key, value in data.items()}
 
         return data
 
