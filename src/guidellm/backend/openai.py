@@ -468,7 +468,6 @@ class OpenAIHTTPBackend(Backend):
                 max_output_tokens or self.max_output_tokens,
             )
             payload["max_tokens"] = max_output_tokens or self.max_output_tokens
-            payload["max_completion_tokens"] = payload["max_tokens"]
 
             if max_output_tokens:
                 # only set stop and ignore_eos if max_output_tokens set at request level
