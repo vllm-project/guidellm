@@ -496,7 +496,11 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         count = 0
         request_info: ScheduledRequestInfo = None
-        for request in _iter():
+        for request_chain in _iter():
+            if isinstance(request_chain, (list, tuple)):
+                request = request_chain[0]
+            else:
+                request = request_chain
             count += 1
 
             if hasattr(request, "request_id"):
