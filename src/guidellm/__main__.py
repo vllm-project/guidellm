@@ -104,6 +104,7 @@ def decode_escaped_str(_ctx, _param, value):
 
 
 @click.group()
+@click.version_option(package_name="guidellm", message="guidellm version: %(version)s")
 def cli():
     """
     Main entry point for the GuideLLM command-line interface.
