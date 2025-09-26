@@ -32,8 +32,7 @@ except ImportError:
 from guidellm.scheduler.objects import (
     BackendInterface,
     HistoryT,
-    MultiTurnRequestT,
-    MultiTurnT,
+    RequestDataT,
     RequestT,
     ResponseT,
     ScheduledRequestAugmentation,
@@ -54,7 +53,7 @@ ProcessRequestT = TypeAliasType(
     "ProcessRequestT",
     tuple[
         HistoryT[RequestT, ResponseT],
-        MultiTurnT[RequestT],
+        list[RequestDataT[RequestT]],
         ScheduledRequestAugmentation,
     ],
     type_params=(RequestT, ResponseT),
@@ -87,11 +86,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
     def __init__(
         self,
         messaging: InterProcessMessaging[
-            tuple[
-                ResponseT | None,
-                RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo,
-            ],
+            tuple[ResponseT | None, RequestT, ScheduledRequestInfo],
+            list[RequestDataT[RequestT]],
         ],
         backend: BackendInterface[RequestT, ResponseT],
         request_timings: ScheduledRequestTimings,
@@ -132,7 +128,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend_started = False
         self.messaging_started = False
         self.turns_queue: list[
-            tuple[HistoryT[RequestT, ResponseT], MultiTurnT[RequestT]]
+            tuple[HistoryT[RequestT, ResponseT], list[RequestDataT[RequestT]]]
         ] = []
 
     def run(self):
@@ -332,7 +328,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self._send_update("cancelled", None, request, request_info)
 
     async def _process_next_request(self) -> ProcessRequestT[RequestT, ResponseT]:
-        conversation: MultiTurnT[RequestT] = []
+        conversation: list[RequestDataT[RequestT]] = []
         history: HistoryT[RequestT, ResponseT] = []
         request: RequestT | None = None
         request_info: ScheduledRequestInfo | None = None
@@ -409,7 +405,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
     async def _wait_then_requeue(
         self,
         history: HistoryT[RequestT, ResponseT],
-        conversation: MultiTurnT[RequestT],
+        conversation: list[RequestDataT[RequestT]],
         aug: ScheduledRequestAugmentation,
     ):
         try:
@@ -427,7 +423,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             "pending", "in_progress", "completed", "errored", "cancelled"
         ],
         response: ResponseT | None,
-        request: RequestT | MultiTurnRequestT[RequestT],
+        request: RequestT,
         request_info: ScheduledRequestInfo,
     ):
         prev_status = request_info.status

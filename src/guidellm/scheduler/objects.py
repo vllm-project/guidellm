@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from typing import (
     Any,
     ClassVar,
@@ -34,10 +34,10 @@ from guidellm.utils.registry import RegistryObjT
 __all__ = [
     "BackendInterface",
     "BackendT",
+    "DatasetIterT",
     "HistoryT",
     "MeasuredRequestTimings",
-    "MultiTurnRequestT",
-    "MultiTurnT",
+    "RequestDataT",
     "RequestSchedulerTimings",
     "RequestT",
     "ResponseT",
@@ -47,35 +47,31 @@ __all__ = [
     "SchedulerState",
     "SchedulerUpdateAction",
     "SchedulerUpdateActionProgress",
-    "TurnT",
 ]
 
 RequestT = TypeVar("RequestT")
 """Generic request object type for scheduler processing."""
 
-# TODO: Remove
-MultiTurnRequestT = RequestT
-
 ResponseT = TypeVar("ResponseT")
 """Generic response object type returned by backend processing."""
 
-TurnT = TypeAliasType(
-    "TurnT",
+RequestDataT = TypeAliasType(
+    "RequestDataT",
     tuple[RequestT, "ScheduledRequestAugmentation", "ScheduledRequestInfo"],
     type_params=(RequestT,),
 )
-
-MultiTurnT = TypeAliasType(
-    "MultiTurnT",
-    list[TurnT[RequestT]],
-    type_params=(RequestT,),
-)
-"""Multi-turn request structure supporting conversation history with optional delays."""
+"""Request including external metadata and scheduling config."""
 
 HistoryT = TypeAliasType(
     "HistoryT",
     list[tuple[RequestT, ResponseT]],
     type_params=(RequestT, ResponseT),
+)
+"""Record of requests + responses in conversation."""
+
+
+DatasetIterT = TypeAliasType(
+    "DatasetIterT", Iterable[Iterable[tuple[RequestT, float]]], type_params=(RequestT,)
 )
 
 

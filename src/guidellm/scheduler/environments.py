@@ -19,14 +19,14 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator
 from typing import (
     Generic,
 )
 
 from guidellm.scheduler.constraints import Constraint
 from guidellm.scheduler.objects import (
-    MultiTurnRequestT,
+    DatasetIterT,
     RequestT,
     ResponseT,
     ScheduledRequestInfo,
@@ -52,11 +52,11 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
     @abstractmethod
     async def sync_run_params(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
     ) -> tuple[
-        Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        DatasetIterT[RequestT],
         SchedulingStrategy,
         dict[str, Constraint],
     ]:
@@ -130,7 +130,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
     ) -> AsyncIterator[
         tuple[
             ResponseT,
-            RequestT | MultiTurnRequestT[RequestT],
+            RequestT,
             ScheduledRequestInfo,
             SchedulerState,
         ]
@@ -194,11 +194,11 @@ class NonDistributedEnvironment(Environment):
 
     async def sync_run_params(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
     ) -> tuple[
-        Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        DatasetIterT[RequestT],
         SchedulingStrategy,
         dict[str, Constraint],
     ]:
@@ -250,7 +250,7 @@ class NonDistributedEnvironment(Environment):
     ) -> AsyncIterator[
         tuple[
             ResponseT,
-            RequestT | MultiTurnRequestT[RequestT],
+            RequestT,
             ScheduledRequestInfo,
             SchedulerState,
         ]

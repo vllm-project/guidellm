@@ -25,8 +25,8 @@ from typing import Generic, NamedTuple
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
 from guidellm.scheduler.objects import (
     BackendInterface,
-    MultiTurnRequestT,
-    MultiTurnT,
+    DatasetIterT,
+    RequestDataT,
     RequestT,
     ResponseT,
     ScheduledRequestAugmentation,
@@ -83,8 +83,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
     def __init__(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
-        cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
+        requests: DatasetIterT[RequestT] | None,
+        cycle_requests: DatasetIterT[RequestT] | None,
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
@@ -131,16 +131,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         # Scheduler and messaging state, created in start
         self.state: WorkerGroupState[ResponseT, RequestT] = None
         self.messaging: InterProcessMessaging[
-            tuple[
-                RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo,
-            ],
-            tuple[
-                ResponseT | None,
-                RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo,
-                SchedulerState,
-            ],
+            list[RequestDataT[RequestT]],
+            tuple[ResponseT | None, RequestT, ScheduledRequestInfo, SchedulerState],
         ] = None
 
     async def create_processes(self):
@@ -473,9 +465,9 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
     def requests_generator(
         self,
-        requests: Iterable[Iterable[tuple[RequestT, float]]] | None,
-        cycle_requests: Iterable[Iterable[tuple[RequestT, float]]] | None,
-    ) -> Generator[MultiTurnT[RequestT], None, None]:
+        requests: DatasetIterT[RequestT] | None,
+        cycle_requests: DatasetIterT[RequestT] | None,
+    ) -> Generator[list[RequestDataT[RequestT]], None, None]:
         """
         Generate request-info pairs for worker processing with constraint evaluation.
 
@@ -544,12 +536,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self,
         update: tuple[
             ResponseT | None,
-            RequestT | MultiTurnRequestT,
+            RequestT,
             ScheduledRequestInfo,
         ],
     ) -> tuple[
         ResponseT | None,
-        RequestT | MultiTurnRequestT,
+        RequestT,
         ScheduledRequestInfo,
         SchedulerState,
     ]:

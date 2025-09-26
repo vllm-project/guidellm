@@ -10,7 +10,7 @@ to enable scalable load testing across various scenarios including LLM inference
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator
 from typing import Any, Generic
 
 from guidellm.scheduler.constraints import (
@@ -20,7 +20,7 @@ from guidellm.scheduler.constraints import (
 from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
 from guidellm.scheduler.objects import (
     BackendInterface,
-    MultiTurnRequestT,
+    DatasetIterT,
     RequestT,
     ResponseT,
     ScheduledRequestInfo,
@@ -66,7 +66,7 @@ class Scheduler(
 
     async def run(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         env: Environment | None,
