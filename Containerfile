@@ -16,7 +16,7 @@ USER root
 
 # Install build tooling
 RUN dnf install -y git \
-    && python3 -m venv /tmp/pdm \
+    && /usr/bin/python3 -m venv /tmp/pdm \
     && /tmp/pdm/bin/pip install --no-cache-dir -U pdm \
     && ln -s /tmp/pdm/bin/pdm /usr/local/bin/pdm
 
@@ -27,11 +27,11 @@ ENV PDM_CHECK_UPDATE=false \
 
 # Copy repository files
 # Do this as late as possible to leverage layer caching
-COPY / /opt/app-root/src
+COPY / /src
 
 # Install guidellm and locked dependencies
-RUN pdm use -p /opt/app-root/src -f /opt/app-root \
-    && pdm install -p /opt/app-root/src --check --prod --no-editable
+RUN pdm use -p /src -f /opt/app-root \
+    && pdm install -p /src --check --prod --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
