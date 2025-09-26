@@ -16,6 +16,7 @@ import copy
 import json
 import time
 from collections.abc import AsyncIterator
+from itertools import chain
 from pathlib import Path
 from typing import Any, ClassVar, Optional, Union
 
@@ -29,7 +30,7 @@ from guidellm.backends.objects import (
     GenerationRequestTimings,
     GenerationResponse,
 )
-from guidellm.scheduler import ScheduledRequestInfo
+from guidellm.scheduler import HistoryT, ScheduledRequestInfo
 
 __all__ = ["OpenAIHTTPBackend", "UsageStats"]
 
@@ -280,7 +281,7 @@ class OpenAIHTTPBackend(Backend):
         self,
         request: GenerationRequest,
         request_info: ScheduledRequestInfo,
-        history: Optional[list[tuple[GenerationRequest, GenerationResponse]]] = None,
+        history: Optional[HistoryT[GenerationRequest, GenerationResponse]] = None,
     ) -> AsyncIterator[tuple[GenerationResponse, ScheduledRequestInfo]]:
         """
         Process a generation request and yield progressive responses.
@@ -295,10 +296,8 @@ class OpenAIHTTPBackend(Backend):
         :yields: Tuples of (response, updated_request_info) as generation progresses.
         """
         self._check_in_process()
-        if history is not None:
-            raise NotImplementedError(
-                "Multi-turn requests with conversation history are not yet supported"
-            )
+        if history:
+            request = self._apply_history(request, history)
 
         response = GenerationResponse(
             request_id=request.request_id,
@@ -499,6 +498,22 @@ class OpenAIHTTPBackend(Backend):
                     self._get_completions_text_content(data),
                     self._get_completions_usage_stats(data),
                 )
+
+    def _apply_history(
+        self,
+        request: GenerationRequest,
+        history: HistoryT[GenerationRequest, GenerationResponse],
+    ) -> GenerationRequest:
+        """
+        Apply conversation history to the current request.
+        """
+
+        def turn_to_text(turn: tuple[GenerationRequest, GenerationResponse]) -> str:
+            req, res = turn
+            return f"{req.content}{res.value}"
+
+        request.content = "".join(chain(map(turn_to_text, history), (request.content,)))
+        return request
 
     def _build_headers(
         self,
