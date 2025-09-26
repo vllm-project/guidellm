@@ -31,9 +31,12 @@ except ImportError:
 
 from guidellm.scheduler.objects import (
     BackendInterface,
+    HistoryT,
     MultiTurnRequestT,
+    MultiTurnT,
     RequestT,
     ResponseT,
+    ScheduledRequestAugmentation,
     ScheduledRequestInfo,
     SchedulerMessagingPydanticRegistry,
 )
@@ -118,6 +121,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.startup_completed = False
         self.backend_started = False
         self.messaging_started = False
+        self.turns_queue: list[
+            tuple[HistoryT[RequestT, ResponseT], MultiTurnT[RequestT]]
+        ] = []
 
     def run(self):
         """
@@ -302,16 +308,19 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             self._send_update("cancelled", None, request, request_info)
 
     async def _process_next_request(self):
-        request: RequestT | MultiTurnRequestT[RequestT] | None = None
+        request: RequestT | None = None
         request_info: ScheduledRequestInfo | None = None
         response: ResponseT | None = None
+        aug: ScheduledRequestAugmentation | None = None
 
         try:
             # Pull request from the queue
-            request, request_info = await self.messaging.get()
-
-            if isinstance(request, (list, tuple)):
-                raise NotImplementedError("Multi-turn requests are not yet supported")
+            history, conversation = (
+                self.turns_queue.pop(0)
+                if self.turns_queue
+                else ([], await self.messaging.get())
+            )
+            request, aug, request_info = conversation.pop(0)
 
             # Calculate targeted start and set pending state for request
             request_info.scheduler_node_id = self.messaging.worker_index
@@ -340,6 +349,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Complete the request
             request_info.scheduler_timings.resolve_end = time.time()
             self._send_update("completed", response, request, request_info)
+
+            # If multi-turn, queue up next turn(s)
+            # TODO: Move to callback and support delay
+            if conversation:  # more turns to process
+                history.append((request, response))
+                self.turns_queue.append((history, conversation))
 
             response = request = request_info = None
         except asyncio.CancelledError:

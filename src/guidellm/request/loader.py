@@ -105,7 +105,7 @@ class GenerativeRequestLoader(RequestLoader):
         self.preserve_iter_state = iter_type == "infinite"  # ensure no caching requests
         self._preserved_iter = None
 
-    def __iter__(self) -> Iterator[list[GenerationRequest]]:
+    def __iter__(self) -> Iterator[list[tuple[GenerationRequest, float]]]:
         scope_create_count = 0
 
         while (dataset_iter := self._get_dataset_iter(scope_create_count)) is not None:
@@ -260,7 +260,9 @@ class GenerativeRequestLoader(RequestLoader):
 
         return dataset_iter
 
-    def _create_requests(self, item: dict[str, Any]) -> list[GenerationRequest]:
+    def _create_requests(
+        self, item: dict[str, Any]
+    ) -> list[tuple[GenerationRequest, float]]:
         prompts = list(item[self.column_mappings["prompt_column"]])
         prompts_tokens: list[Optional[int]] = (
             list(item[self.column_mappings["prompt_tokens_count_column"]])
@@ -281,15 +283,24 @@ class GenerativeRequestLoader(RequestLoader):
             )
 
         return [
-            GenerationRequest(
-                request_type=settings.preferred_route,
-                content=prompt,
-                stats=(
-                {"prompt_tokens": prompt_tokens} if prompt_tokens is not None else {}
+            (
+                GenerationRequest(
+                    request_type=settings.preferred_route,
+                    content=prompt,
+                    stats=(
+                        {"prompt_tokens": prompt_tokens}
+                        if prompt_tokens is not None
+                        else {}
+                    ),
+                    constraints=(
+                        {"output_tokens": output_tokens}
+                        if output_tokens is not None
+                        else {}
+                    ),
                 ),
-                constraints=(
-                    {"output_tokens": output_tokens} if output_tokens is not None else {}
-                ),
+                0.0,  # TODO: delay
             )
-            for prompt, prompt_tokens, output_tokens in zip(prompts, prompts_tokens, outputs_tokens)
+            for prompt, prompt_tokens, output_tokens in zip(
+                prompts, prompts_tokens, outputs_tokens
+            )
         ]

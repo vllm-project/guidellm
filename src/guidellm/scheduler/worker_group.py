@@ -26,8 +26,10 @@ from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstrai
 from guidellm.scheduler.objects import (
     BackendInterface,
     MultiTurnRequestT,
+    MultiTurnT,
     RequestT,
     ResponseT,
+    ScheduledRequestAugmentation,
     ScheduledRequestInfo,
     SchedulerMessagingPydanticRegistry,
     SchedulerState,
@@ -471,9 +473,9 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
     def requests_generator(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
-        cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
-    ) -> Generator[tuple[RequestT | MultiTurnRequestT[RequestT],], None, None]:
+        requests: Iterable[Iterable[tuple[RequestT, float]]] | None,
+        cycle_requests: Iterable[Iterable[tuple[RequestT, float]]] | None,
+    ) -> Generator[MultiTurnT[RequestT], None, None]:
         """
         Generate request-info pairs for worker processing with constraint evaluation.
 
@@ -494,31 +496,40 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 while True:
                     yield from cycle_requests
 
-        count = 0
-        request_info: ScheduledRequestInfo = None
+        count: int = 0
+        stop_queueing: bool = False
+
+        def _turn_iter(requests_chain: Iterable[tuple[RequestT, float]]):
+            nonlocal count, stop_queueing
+            for request, delay in requests_chain:
+                count += 1
+
+                if hasattr(request, "request_id"):
+                    request_id = request.request_id
+                elif hasattr(request, "id"):
+                    request_id = request.id
+                else:
+                    request_id = str(uuid.uuid4())
+                request_augmentation = ScheduledRequestAugmentation(
+                    post_requeue_delay=delay
+                )
+                request_info: ScheduledRequestInfo = ScheduledRequestInfo(
+                    request_id=request_id,
+                    status="queued",
+                    scheduler_process_id=0,
+                    scheduler_start_time=self.start_time,
+                )
+                state_update = self._locked_update(request_info)
+                yield (request, request_augmentation, request_info)
+
+                if state_update.stop_queueing:
+                    stop_queueing = True
+                    return
+
         for request_chain in _iter():
-            if isinstance(request_chain, (list, tuple)):
-                request = request_chain[0]
-            else:
-                request = request_chain
-            count += 1
+            yield list(_turn_iter(request_chain))
 
-            if hasattr(request, "request_id"):
-                request_id = request.request_id
-            elif hasattr(request, "id"):
-                request_id = request.id
-            else:
-                request_id = str(uuid.uuid4())
-            request_info: ScheduledRequestInfo = ScheduledRequestInfo(
-                request_id=request_id,
-                status="queued",
-                scheduler_process_id=0,
-                scheduler_start_time=self.start_time,
-            )
-            state_update = self._locked_update(request_info)
-            yield (request, request_info)
-
-            if state_update.stop_queueing:
+            if stop_queueing:
                 self.stop_send_requests_event.set()
                 return
 

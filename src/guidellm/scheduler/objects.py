@@ -19,7 +19,6 @@ from typing import (
     Literal,
     Protocol,
     TypeVar,
-    Union,
 )
 
 from pydantic import Field, computed_field
@@ -35,33 +34,49 @@ from guidellm.utils.registry import RegistryObjT
 __all__ = [
     "BackendInterface",
     "BackendT",
+    "HistoryT",
     "MeasuredRequestTimings",
     "MultiTurnRequestT",
+    "MultiTurnT",
     "RequestSchedulerTimings",
     "RequestT",
     "ResponseT",
+    "ScheduledRequestAugmentation",
     "ScheduledRequestInfo",
     "SchedulerMessagingPydanticRegistry",
     "SchedulerState",
     "SchedulerUpdateAction",
     "SchedulerUpdateActionProgress",
+    "TurnT",
 ]
 
 RequestT = TypeVar("RequestT")
 """Generic request object type for scheduler processing."""
 
+# TODO: Remove
+MultiTurnRequestT = RequestT
+
 ResponseT = TypeVar("ResponseT")
 """Generic response object type returned by backend processing."""
 
-MultiTurnRequestT = TypeAliasType(
-    "MultiTurnRequestT",
-    Union[
-        list[Union[RequestT, tuple[RequestT, float]]],
-        tuple[Union[RequestT, tuple[RequestT, float]]],
-    ],
+TurnT = TypeAliasType(
+    "TurnT",
+    tuple[RequestT, "ScheduledRequestAugmentation", "ScheduledRequestInfo"],
+    type_params=(RequestT,),
+)
+
+MultiTurnT = TypeAliasType(
+    "MultiTurnT",
+    list[TurnT[RequestT]],
     type_params=(RequestT,),
 )
 """Multi-turn request structure supporting conversation history with optional delays."""
+
+HistoryT = TypeAliasType(
+    "HistoryT",
+    list[tuple[RequestT, ResponseT]],
+    type_params=(RequestT, ResponseT),
+)
 
 
 class SchedulerMessagingPydanticRegistry(RegistryMixin[RegistryObjT]):
@@ -69,6 +84,21 @@ class SchedulerMessagingPydanticRegistry(RegistryMixin[RegistryObjT]):
     Registry for enabling a generic interface to define the pydantic class types used
     for inter-process messaging within the scheduler.
     """
+
+
+@SchedulerMessagingPydanticRegistry.register()
+class ScheduledRequestAugmentation(StandardBaseModel):
+    """
+    Adjustments to scheduler logic for a paired request.
+    """
+
+    post_requeue_delay: float = Field(
+        description=(
+            "Delay in seconds to wait after a request to "
+            "queue the next request in the conversation."
+        ),
+        default=0.0,
+    )
 
 
 @SchedulerMessagingPydanticRegistry.register()
