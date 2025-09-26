@@ -296,16 +296,22 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             try:
                 request: RequestT
                 request_info: ScheduledRequestInfo
-                request, request_info = await self.messaging.get(
-                    timeout=self.messaging.poll_interval
+                _, conversation = (
+                    self.turns_queue.pop(0)
+                    if self.turns_queue
+                    else (
+                        None,
+                        await self.messaging.get(timeout=self.messaging.poll_interval),
+                    )
                 )
             except asyncio.TimeoutError:
                 continue
 
-            request_info.scheduler_node_id = self.messaging.worker_index
-            request_info.error = "Request was cancelled"
-            request_info.scheduler_timings.resolve_end = time.time()
-            self._send_update("cancelled", None, request, request_info)
+            for request, _, request_info in conversation:
+                request_info.scheduler_node_id = self.messaging.worker_index
+                request_info.error = "Request was cancelled"
+                request_info.scheduler_timings.resolve_end = time.time()
+                self._send_update("cancelled", None, request, request_info)
 
     async def _process_next_request(self):
         request: RequestT | None = None
