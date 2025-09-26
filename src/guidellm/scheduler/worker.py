@@ -13,7 +13,7 @@ import asyncio
 import time
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
-from typing import Annotated, Generic, Literal
+from typing import Annotated, Generic, Literal, TypeAliasType
 
 try:
     import uvloop
@@ -49,6 +49,16 @@ from guidellm.utils import (
 )
 
 __all__ = ["WorkerProcess"]
+
+ProcessRequestT = TypeAliasType(
+    "ProcessRequestT",
+    tuple[
+        HistoryT[RequestT, ResponseT],
+        MultiTurnT[RequestT],
+        ScheduledRequestAugmentation,
+    ],
+    type_params=(RequestT, ResponseT),
+)
 
 
 class WorkerProcess(Generic[RequestT, ResponseT]):
@@ -271,12 +281,20 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             async_semaphore = asyncio.Semaphore(self.async_limit)
             pending_tasks: set[asyncio.Task] = set()
 
-            def _task_done(task):
+            def _task_done(task: asyncio.Task[ProcessRequestT[RequestT, ResponseT]]):
                 pending_tasks.discard(task)
                 async_semaphore.release()
 
-                if not task.cancelled() and (exception := task.exception()):
-                    raise exception
+                if not task.cancelled():
+                    if exception := task.exception():
+                        raise exception
+
+                    history, conversation, aug = task.result()
+                    if conversation:
+                        requeue_task = asyncio.create_task(
+                            self._wait_then_requeue(history, conversation, aug)
+                        )
+                        pending_tasks.add(requeue_task)
 
             # Main loop; loop until canceled
             while True:
@@ -313,12 +331,14 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.scheduler_timings.resolve_end = time.time()
                 self._send_update("cancelled", None, request, request_info)
 
-    async def _process_next_request(self):
-        conversation: MultiTurnT[RequestT] | None = None
+    async def _process_next_request(self) -> ProcessRequestT[RequestT, ResponseT]:
+        conversation: MultiTurnT[RequestT] = []
+        history: HistoryT[RequestT, ResponseT] = []
         request: RequestT | None = None
         request_info: ScheduledRequestInfo | None = None
         response: ResponseT | None = None
         aug: ScheduledRequestAugmentation | None = None
+        premature_exit: bool = False
 
         try:
             # Pull request from the queue
@@ -359,14 +379,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             request_info.scheduler_timings.resolve_end = time.time()
             self._send_update("completed", response, request, request_info)
 
-            # If multi-turn, queue up next turn(s)
-            # TODO: Move to callback and support delay
-            if conversation:  # more turns to process
-                history.append((request, response))
-                self.turns_queue.append((history, conversation))
+            # Record Turn
+            history.append((request, response))
 
-            response = request = request_info = conversation = None
+            response = request = request_info = None
         except asyncio.CancelledError:
+            premature_exit = True
             # Handle cancellation
             if request is not None and request_info is not None:
                 request_info.error = "Request was cancelled"
@@ -374,16 +392,34 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self._send_update("cancelled", response, request, request_info)
             raise
         except Exception as exc:  # noqa: BLE001
+            premature_exit = True
             if request is not None and request_info is not None:
                 request_info.error = str(exc)
                 request_info.scheduler_timings.resolve_end = time.time()
                 self._send_update("errored", response, request, request_info)
         finally:
-            if conversation is not None:
+            if premature_exit and conversation:
                 for request, _, request_info in conversation:
                     request_info.error = "Request was cancelled"
                     request_info.scheduler_timings.resolve_end = time.time()
                     self._send_update("cancelled", response, request, request_info)
+
+        return history, conversation, aug
+
+    async def _wait_then_requeue(
+        self,
+        history: HistoryT[RequestT, ResponseT],
+        conversation: MultiTurnT[RequestT],
+        aug: ScheduledRequestAugmentation,
+    ):
+        try:
+            if aug.post_requeue_delay > 0:
+                await asyncio.sleep(aug.post_requeue_delay)
+        except asyncio.CancelledError:
+            # If we are cancelled, dump straight to queue
+            raise
+        finally:
+            self.turns_queue.append((history, conversation))
 
     def _send_update(
         self,
