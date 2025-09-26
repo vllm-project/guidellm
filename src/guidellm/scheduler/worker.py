@@ -314,6 +314,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self._send_update("cancelled", None, request, request_info)
 
     async def _process_next_request(self):
+        conversation: MultiTurnT[RequestT] | None = None
         request: RequestT | None = None
         request_info: ScheduledRequestInfo | None = None
         response: ResponseT | None = None
@@ -362,7 +363,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 history.append((request, response))
                 self.turns_queue.append((history, conversation))
 
-            response = request = request_info = None
+            response = request = request_info = conversation = None
         except asyncio.CancelledError:
             # Handle cancellation
             if request is not None and request_info is not None:
@@ -375,6 +376,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.error = str(exc)
                 request_info.scheduler_timings.resolve_end = time.time()
                 self._send_update("errored", response, request, request_info)
+        finally:
+            if conversation is not None:
+                for request, _, request_info in conversation:
+                    request_info.error = "Request was cancelled"
+                    request_info.scheduler_timings.resolve_end = time.time()
+                    self._send_update("cancelled", response, request, request_info)
 
     def _send_update(
         self,
