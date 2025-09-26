@@ -1,5 +1,5 @@
 # TODO: Update to official python-3.13-minimal image when available
-ARG BASE_IMAGE=quay.io/psap/python-313-minimal:fedora
+ARG BASE_IMAGE=quay.io/fedora/python-313-minimal:latest
 
 # release: take the last version and add a post if build iteration
 # candidate: increment to next minor, add 'rc' with build iteration
