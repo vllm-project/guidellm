@@ -20,7 +20,6 @@ from guidellm.benchmark.profile import (
     SweepProfile,
     ThroughputProfile,
 )
-from guidellm.config import settings
 from guidellm.objects import (
     DistributionSummary,
     StandardBaseModel,
@@ -29,6 +28,7 @@ from guidellm.objects import (
 from guidellm.presentation import UIDataBuilder
 from guidellm.presentation.injector import create_report
 from guidellm.scheduler import strategy_display_str
+from guidellm.settings import settings
 from guidellm.utils import Colors, split_text_list_by_length
 from guidellm.utils.dict import recursive_key_update
 from guidellm.utils.text import camelize_str
