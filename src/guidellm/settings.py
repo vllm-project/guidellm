@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import json
-import os
 from collections.abc import Sequence
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,8 +47,8 @@ class LoggingSettings(BaseModel):
     disabled: bool = False
     clear_loggers: bool = True
     console_log_level: str = "WARNING"
-    log_file: Optional[str] = None
-    log_file_level: Optional[str] = None
+    log_file: str | None = None
+    log_file_level: str | None = None
 
 
 class DatasetSettings(BaseModel):
@@ -80,11 +81,11 @@ class OpenAISettings(BaseModel):
     for OpenAI server based pathways
     """
 
-    api_key: Optional[str] = None
-    bearer_token: Optional[str] = None
-    headers: Optional[dict[str, str]] = None
-    organization: Optional[str] = None
-    project: Optional[str] = None
+    api_key: str | None = None
+    bearer_token: str | None = None
+    headers: dict[str, str] | None = None
+    organization: str | None = None
+    project: str | None = None
     base_url: str = "http://localhost:8000"
     max_output_tokens: int = 16384
     verify: bool = True
@@ -131,24 +132,30 @@ class Settings(BaseSettings):
     request_http2: bool = True
 
     # Scheduler settings
+    mp_context_type: Literal["spawn", "fork", "forkserver"] | None = "fork"
+    mp_serialization: Literal["dict", "sequence"] | None = "dict"
+    mp_encoding: (
+        Literal["msgpack", "msgspec"]
+        | None
+        | list[Literal["msgpack", "msgspec"] | None]
+    ) = ["msgspec", "msgpack", None]
+    mp_messaging_object: Literal["queue", "manager_queue", "pipe"] = "queue"
+    mp_requests_send_buffer_size: int = 1
+    mp_poll_interval: float = 0.1
+    mp_max_pending_buffer_percent: float = 0.5
+    mp_max_worker_buffer_percent: float = 0.2
     max_concurrency: int = 512
-    max_worker_processes: int = Field(
-        # use number of CPUs - 1, but at least 10
-        default_factory=lambda: max((os.cpu_count() or 1) - 1, 10)
-    )
-    min_queued_requests: int = 20
-    scheduler_start_delay: float = 5
+    max_worker_processes: int = 10
+    scheduler_start_delay_non_distributed: float = 1.0
+    constraint_error_window_size: float = 30
+    constraint_error_min_processed: float = 30
 
     # Data settings
     dataset: DatasetSettings = DatasetSettings()
 
     # Request/stats settings
-    preferred_prompt_tokens_source: Optional[
-        Literal["request", "response", "local"]
-    ] = "response"
-    preferred_output_tokens_source: Optional[
-        Literal["request", "response", "local"]
-    ] = "response"
+    preferred_prompt_tokens_source: Literal["request", "response"] = "response"
+    preferred_output_tokens_source: Literal["request", "response"] = "response"
     preferred_backend: Literal["openai"] = "openai"
     preferred_route: Literal["text_completions", "chat_completions"] = (
         "text_completions"

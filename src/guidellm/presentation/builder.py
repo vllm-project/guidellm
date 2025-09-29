@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from guidellm.benchmark.benchmark import GenerativeBenchmark
+    from guidellm.benchmark import GenerativeBenchmark
 
-from .data_models import BenchmarkDatum, RunInfo, WorkloadDetails
+from guidellm.presentation.data_models import BenchmarkDatum, RunInfo, WorkloadDetails
 
 
 class UIDataBuilder:

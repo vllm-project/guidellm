@@ -72,7 +72,7 @@ def configure_logger(config: LoggingSettings = settings.logging):
         sys.stdout,
         level=config.console_log_level.upper(),
         format="<green>{time:YY-MM-DD HH:mm:ss}</green>|<level>{level: <8}</level> \
-        |<cyan>{name}:{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        |<cyan>{name}:{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     )
 
     if config.log_file or config.log_file_level:
