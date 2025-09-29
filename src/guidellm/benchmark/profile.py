@@ -681,7 +681,7 @@ class SweepProfile(Profile):
                 prev_benchmark.metrics.requests_per_second.successful.mean
             )
             if self.synchronous_rate <= 0 and self.throughput_rate <= 0:
-                raise RuntimeError("Invalid rates in sweep; aborting. Where there any successful requests?")
+                raise RuntimeError("Invalid rates in sweep; aborting. Were there any successful requests?")
             self.measured_rates = list(
                 np.linspace(
                     self.synchronous_rate,
