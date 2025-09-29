@@ -680,6 +680,8 @@ class SweepProfile(Profile):
             self.throughput_rate = (
                 prev_benchmark.metrics.requests_per_second.successful.mean
             )
+            if self.synchronous_rate <= 0 and self.throughput_rate <= 0:
+                raise RuntimeError("Invalid rates in sweep; aborting. Were there any successful requests?")
             self.measured_rates = list(
                 np.linspace(
                     self.synchronous_rate,
@@ -698,7 +700,6 @@ class SweepProfile(Profile):
                 if strat.type_ == self.strategy_type
             ]
         )
-
         if self.strategy_type == "constant":
             return AsyncConstantStrategy(
                 rate=self.measured_rates[next_rate_index],
