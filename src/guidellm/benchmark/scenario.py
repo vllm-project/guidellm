@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 from functools import cache, wraps
 from inspect import Parameter, signature
 from pathlib import Path
 from typing import Annotated, Any, Callable, Literal, TypeVar
 
 import yaml
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from loguru import logger
 from pydantic import BeforeValidator, Field, PositiveFloat, PositiveInt, SkipValidation
 from transformers.tokenization_utils_base import (  # type: ignore[import]
@@ -16,11 +14,8 @@ from transformers.tokenization_utils_base import (  # type: ignore[import]
 )
 
 from guidellm.backends import Backend, BackendType
-from guidellm.benchmark.aggregator import (
-    Aggregator,
-    CompilableAggregator,
-)
 from guidellm.benchmark.profile import Profile, ProfileType
+from guidellm.benchmark.type import DataInputType, ProcessorInputType, AggregatorInputType
 from guidellm.scheduler import StrategyType
 from guidellm.utils import StandardBaseModel
 
@@ -116,14 +111,7 @@ class GenerativeTextScenario(Scenario):
         arbitrary_types_allowed = True
 
     data: Annotated[
-        Iterable[str]
-        | Iterable[dict[str, Any]]
-        | Dataset
-        | DatasetDict
-        | IterableDataset
-        | IterableDatasetDict
-        | str
-        | Path,
+        DataInputType,
         # BUG: See https://github.com/pydantic/pydantic/issues/9541
         SkipValidation,
     ]
@@ -137,14 +125,12 @@ class GenerativeTextScenario(Scenario):
     backend_kwargs: dict[str, Any] | None = None
     model: str | None = None
     # Data configuration
-    processor: str | Path | PreTrainedTokenizerBase | None = None
+    processor: ProcessorInputType | None = None
     processor_args: dict[str, Any] | None = None
     data_args: dict[str, Any] | None = None
     data_sampler: Literal["random"] | None = None
     # Aggregators configuration
-    add_aggregators: (
-        dict[str, str | dict[str, Any] | Aggregator | CompilableAggregator] | None
-    ) = None
+    add_aggregators: AggregatorInputType | None = None
     warmup: Annotated[float | None, Field(gt=0, le=1)] = None
     cooldown: Annotated[float | None, Field(gt=0, le=1)] = None
     request_samples: PositiveInt | None = 20
