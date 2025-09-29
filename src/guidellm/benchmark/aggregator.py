@@ -441,7 +441,7 @@ class SchedulerStatsAggregator(SerializableAggregator[ResponseT, RequestT], Info
 
     def compile(
         self, state: AggregatorState, scheduler_state: SchedulerState
-    ) -> dict[Literal["scheduler_stats"], BenchmarkSchedulerStats]:
+    ) -> dict[Literal["run_stats"], BenchmarkSchedulerStats]:
         """
         Compile scheduler timing metrics into benchmark statistics.
 
@@ -473,7 +473,7 @@ class SchedulerStatsAggregator(SerializableAggregator[ResponseT, RequestT], Info
                     key="worker_resolve_time", type_="avg", default=0.0
                 ),
                 worker_resolve_end_delay_avg=state.get_metric(
-                    key="worker_resolve_end_delay", type_="avg"
+                    key="worker_resolve_end_delay", type_="avg", default=0.0
                 ),
                 finalized_delay_avg=state.get_metric(
                     key="finalized_delay", type_="avg", default=0.0
