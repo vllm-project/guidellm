@@ -1,13 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal
-
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
-from transformers import (  # type: ignore[import]
-    PreTrainedTokenizerBase,
-)
 
 from guidellm.backends import (
     Backend,
@@ -16,8 +10,6 @@ from guidellm.backends import (
     GenerationResponse,
 )
 from guidellm.benchmark.aggregator import (
-    Aggregator,
-    CompilableAggregator,
     GenerativeRequestsAggregator,
     GenerativeStatsProgressAggregator,
     SchedulerStatsAggregator,
@@ -29,11 +21,10 @@ from guidellm.benchmark.output import (
     GenerativeBenchmarkerOutput,
 )
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.progress import (
-    BenchmarkerProgress,
-    BenchmarkerProgressGroup,
-)
+from guidellm.benchmark.progress import BenchmarkerProgressGroup
 from guidellm.benchmark.scenario import enable_scenarios
+from guidellm.benchmark.type import OutputFormatType, DataInputType, ProcessorInputType, ProgressInputType, \
+    AggregatorInputType
 from guidellm.request import GenerativeRequestLoader
 from guidellm.scheduler import (
     ConstraintInitializer,
@@ -49,27 +40,6 @@ __all__ = [
 
 
 _CURRENT_WORKING_DIR = Path.cwd()
-
-
-# Data types
-
-DataType = (
-    Iterable[str]
-    | Iterable[dict[str, Any]]
-    | Dataset
-    | DatasetDict
-    | IterableDataset
-    | IterableDatasetDict
-    | str
-    | Path
-)
-
-OutputFormatType = (
-    tuple[str, ...]
-    | list[str]
-    | dict[str, str | dict[str, Any] | GenerativeBenchmarkerOutput]
-    | None
-)
 
 
 # Helper functions
@@ -147,7 +117,7 @@ async def finalize_outputs(
 @enable_scenarios
 async def benchmark_generative_text(  # noqa: C901
     target: str,
-    data: DataType,
+    data: DataInputType,
     profile: StrategyType | ProfileType | Profile,
     rate: list[float] | None = None,
     random_seed: int = 42,
@@ -156,7 +126,7 @@ async def benchmark_generative_text(  # noqa: C901
     backend_kwargs: dict[str, Any] | None = None,
     model: str | None = None,
     # Data configuration
-    processor: str | Path | PreTrainedTokenizerBase | None = None,
+    processor: ProcessorInputType | None = None,
     processor_args: dict[str, Any] | None = None,
     data_args: dict[str, Any] | None = None,
     data_sampler: Literal["random"] | None = None,
@@ -164,12 +134,10 @@ async def benchmark_generative_text(  # noqa: C901
     output_path: str | Path | None = _CURRENT_WORKING_DIR,
     output_formats: OutputFormatType = ("console", "json", "html", "csv"),
     # Updates configuration
-    progress: tuple[str, ...] | list[str] | list[BenchmarkerProgress] | None = None,
+    progress: ProgressInputType | None = None,
     print_updates: bool = False,
     # Aggregators configuration
-    add_aggregators: (
-        dict[str, str | dict[str, Any] | Aggregator | CompilableAggregator] | None
-    ) = None,
+    add_aggregators: AggregatorInputType | None = None,
     warmup: float | None = None,
     cooldown: float | None = None,
     request_samples: int | None = 20,
