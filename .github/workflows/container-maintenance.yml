@@ -19,7 +19,7 @@ jobs:
       - name: Delete PR and untagged images older than 2 weeks
         uses: snok/container-retention-policy@v3.0.0
         with:
-          account: ${{ github.actor }}
+          account: ${{ github.repository_owner }}
           token: ${{ github.token }}
           image-names: ${{ github.event.repository.name }}
           image-tags: "pr-*"
@@ -34,7 +34,7 @@ jobs:
       - name: Log into ghcr.io
         uses: redhat-actions/podman-login@v1
         with:
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ github.token }}
           registry: ghcr.io/${{ github.repository_owner }}
       - name: Get list of tags
