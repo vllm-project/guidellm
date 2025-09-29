@@ -24,7 +24,7 @@ jobs:
           image-names: ${{ github.event.repository.name }}
           image-tags: "pr-*"
           cut-off: 2w
-          dry-run: true
+          dry-run: false
 
   push-container-tags:
     runs-on: ubuntu-latest
