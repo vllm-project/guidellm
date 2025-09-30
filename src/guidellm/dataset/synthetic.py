@@ -223,9 +223,9 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
                 output_tokens_sampler,
             ):
                 start_index = rand.randint(0, len(self.text_creator.words))
-                prefix_tokens = next(shared_prefix_iter, [])
                 # Append the prefix tokens only for the first turn
                 if i == 0:
+                    prefix_tokens = next(shared_prefix_iter, [])
                     prompt_text = self.processor.decode(
                         prefix_tokens
                         + self._create_prompt(
@@ -234,7 +234,9 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
                         skip_special_tokens=True,
                     )
                     row["prompt"].append(prompt_text)
-                    row["prompt_tokens_count"].append(len(prefix_tokens) + prompt_tokens)
+                    row["prompt_tokens_count"].append(
+                        len(prefix_tokens) + prompt_tokens
+                    )
                     row["output_tokens_count"].append(output_tokens)
                 else:
                     prompt_text = self.processor.decode(
