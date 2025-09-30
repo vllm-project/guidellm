@@ -10,17 +10,14 @@ Classes:
     OpenAIHTTPBackend: HTTP backend for OpenAI-compatible API servers.
 """
 
-import base64
+import asyncio
 import contextlib
-import copy
 import json
 import time
 from collections.abc import AsyncIterator
-from pathlib import Path
-from typing import Any, ClassVar, Optional, Union
+from typing import Any, Optional
 
 import httpx
-from PIL import Image
 from pydantic import dataclasses
 
 from guidellm.backend.backend import Backend
@@ -28,8 +25,17 @@ from guidellm.backend.objects import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,
+    GenerationTokenStats,
 )
 from guidellm.scheduler import ScheduledRequestInfo
+
+try:
+    import orjson
+
+    HAS_ORJSON = True
+except ImportError:
+    orjson = None
+    HAS_ORJSON = False
 
 __all__ = ["OpenAIHTTPBackend", "UsageStats"]
 
@@ -163,8 +169,7 @@ class OpenAIHTTPBackend(Backend):
             with contextlib.suppress(httpx.TimeoutException, httpx.HTTPStatusError):
                 # Model is set, use /health endpoint as first check
                 target = f"{self.target}{open_ai_paths['health']}"
-                headers = self._get_headers()
-                response = await self._async_client.get(target, headers=headers)  # type: ignore [union-attr]
+                response = await self._async_client.get(target)
                 response.raise_for_status()
 
                 return
@@ -179,18 +184,6 @@ class OpenAIHTTPBackend(Backend):
                     "No model available and could not set a default model "
                     "from the server's available models."
                 )
-
-            return
-
-        with contextlib.suppress(httpx.TimeoutException, httpx.HTTPStatusError):
-            # Last check, fall back on dummy request to text completions
-            async for _, __ in self.text_completions(
-                prompt="Validate backend",
-                request_id="validate",
-                output_token_count=1,
-                stream_response=False,
-            ):
-                pass
 
             return
 
@@ -210,9 +203,7 @@ class OpenAIHTTPBackend(Backend):
         self._check_in_process()
 
         target = f"{self.target}{open_ai_paths['models']}"
-        headers = self._get_headers()
-        params = self._get_params(self.MODELS_KEY)
-        response = await self._async_client.get(target, headers=headers, params=params)  # type: ignore [union-attr]
+        response = await self._async_client.get(target)
         response.raise_for_status()
 
         return [item["id"] for item in response.json()["data"]]
@@ -229,7 +220,7 @@ class OpenAIHTTPBackend(Backend):
         models = await self.available_models()
         return models[0] if models else None
 
-    async def resolve(
+    async def resolve(  # noqa: C901
         self,
         request: GenerationRequest,
         request_info: ScheduledRequestInfo,
@@ -253,16 +244,18 @@ class OpenAIHTTPBackend(Backend):
                 "Multi-turn requests with conversation history are not yet supported"
             )
 
-        url = (
+        request_info.request_timings = GenerationRequestTimings()
+        request.arguments.url = (
             request.arguments.url or f"{self.target}/{request.arguments.path}"
             if request.arguments.path is not None
             else f"{self.target}/{open_ai_paths[request.request_type]}"
         )
+        request_info.request_timings.request_start = time.time()
 
         if not request.arguments.stream:
             response = await self._async_client.request(
                 request.arguments.method or "POST",
-                url,
+                request.arguments.url,
                 content=request.arguments.content,
                 files=request.arguments.files,
                 json=request.arguments.json,
@@ -271,353 +264,158 @@ class OpenAIHTTPBackend(Backend):
             )
             response.raise_for_status()
             data = response.json()
-
-            yield 
-
-            return
-
-            yield (
-                self._get_completions_text_content(data),
-                self._get_completions_usage_stats(data),
-            )
-            return   
-
-
-        response = GenerationResponse(
-            request_id=request.request_id,
-            request_args={
-                "request_type": request.request_type,
-                "output_token_count": request.constraints.get("output_tokens"),
-                **request.params,
-            },
-            request_prompt_tokens=request.stats.get("prompt_tokens"),
-            request_output_tokens=request.constraints.get("output_tokens"),
-        )
-        request_info.request_timings = GenerationRequestTimings()
-        request_info.request_timings.request_start = time.time()
-
-        completion_method = (
-            self.text_completions
-            if request.request_type == "text_completions"
-            else self.chat_completions
-        )
-        completion_kwargs = (
-            {
-                "prompt": request.content,
-                "request_id": request.request_id,
-                "output_token_count": request.constraints.get("output_tokens"),
-                "stream_response": request.params.get("stream", self.stream_response),
-                **request.params,
-            }
-            if request.request_type == "text_completions"
-            else {
-                "content": request.content,
-                "request_id": request.request_id,
-                "output_token_count": request.constraints.get("output_tokens"),
-                "stream_response": request.params.get("stream", self.stream_response),
-                **request.params,
-            }
-        )
-
-        async for delta, usage_stats in completion_method(**completion_kwargs):
-            if request_info.request_timings.request_start is None:
-                request_info.request_timings.request_start = time.time()
-
-            if delta is not None:
-                if request_info.request_timings.first_iteration is None:
-                    request_info.request_timings.first_iteration = time.time()
-                response.values.append(delta)
-                response.delta = delta
-                request_info.request_timings.last_iteration = time.time()
-                response.iterations += 1
-
-            if usage_stats is not None:
-                request_info.request_timings.request_end = time.time()
-                response.request_output_tokens = usage_stats.output_tokens
-                response.request_prompt_tokens = usage_stats.prompt_tokens
-
-            yield response, request_info
-
-        if request_info.request_timings.request_end is None:
+            prompt_stats, output_stats = self._extract_response_stats(data, request)
             request_info.request_timings.request_end = time.time()
-        response.delta = None
-        yield response, request_info
 
-    async def text_completions(
-        self,
-        prompt: Union[str, list[str]],
-        request_id: Optional[str],  # noqa: ARG002
-        output_token_count: Optional[int] = None,
-        stream_response: bool = True,
-        **kwargs,
-    ) -> AsyncIterator[tuple[Optional[str], Optional[UsageStats]]]:
-        """
-        Generate text completions using the /v1/completions endpoint.
-
-        :param prompt: Text prompt(s) for completion. Single string or list.
-        :param request_id: Request identifier for tracking.
-        :param output_token_count: Maximum tokens to generate. Overrides default
-            if specified.
-        :param stream_response: Whether to stream response progressively.
-        :param kwargs: Additional request parameters (temperature, top_p, etc.).
-        :yields: Tuples of (generated_text, usage_stats). First yield is (None, None).
-        :raises RuntimeError: If backend is not initialized.
-        :raises HTTPError: If API request fails.
-        """
-        self._check_in_process()
-        target = f"{self.target}{self.TEXT_COMPLETIONS_PATH}"
-        headers = self._get_headers()
-        params = self._get_params(self.TEXT_COMPLETIONS_KEY)
-        body = self._get_body(
-            endpoint_type=self.TEXT_COMPLETIONS_KEY,
-            request_kwargs=kwargs,
-            max_output_tokens=output_token_count,
-            prompt=prompt,
-        )
-        yield None, None  # Initial yield for async iterator to signal start
-
-        if not stream_response:
-            response = await self._async_client.post(  # type: ignore [union-attr]
-                target,
-                headers=headers,
-                params=params,
-                json=body,
-            )
-            response.raise_for_status()
-            data = response.json()
             yield (
-                self._get_completions_text_content(data),
-                self._get_completions_usage_stats(data),
+                GenerationResponse(
+                    request_id=request.request_id,
+                    request_args=request.arguments,
+                    text=self._extract_response_text(data),
+                    iterations=0,
+                    prompt_stats=prompt_stats,
+                    output_stats=output_stats,
+                ),
+                request_info,
             )
             return
 
-        body.update({"stream": True, "stream_options": {"include_usage": True}})
-        async with self._async_client.stream(  # type: ignore [union-attr]
-            "POST",
-            target,
-            headers=headers,
-            params=params,
-            json=body,
-        ) as stream:
-            stream.raise_for_status()
-            async for line in stream.aiter_lines():
-                if not line or not line.strip().startswith("data:"):
-                    continue
-                if line.strip() == "data: [DONE]":
-                    break
-                data = json.loads(line.strip()[len("data: ") :])
-                yield (
-                    self._get_completions_text_content(data),
-                    self._get_completions_usage_stats(data),
-                )
+        deltas = []
+        prompt_stats = None
+        output_stats = None
+        end_reached = False
 
-    async def chat_completions(
-        self,
-        content: Union[
-            str,
-            list[Union[str, dict[str, Union[str, dict[str, str]]], Path, Image.Image]],
-            Any,
-        ],
-        request_id: Optional[str] = None,  # noqa: ARG002
-        output_token_count: Optional[int] = None,
-        raw_content: bool = False,
-        stream_response: bool = True,
-        **kwargs,
-    ) -> AsyncIterator[tuple[Optional[str], Optional[UsageStats]]]:
-        """
-        Generate chat completions using the /v1/chat/completions endpoint.
+        try:
+            async with self._async_client.stream(
+                request.arguments.method or "POST",
+                request.arguments.url,
+                content=request.arguments.content,
+                files=request.arguments.files,
+                json=request.arguments.json,
+                params=request.arguments.params,
+                headers=request.arguments.headers,
+            ) as stream:
+                stream.raise_for_status()
+                buffer = bytearray()
 
-        Supports multimodal inputs including text and images with message formatting.
+                async for chunk in stream.aiter_bytes():
+                    if not chunk or end_reached:
+                        continue
+                    buffer.extend(chunk)
 
-        :param content: Chat content - string, list of mixed content, or raw content
-            when raw_content=True.
-        :param request_id: Request identifier (currently unused).
-        :param output_token_count: Maximum tokens to generate. Overrides default
-            if specified.
-        :param raw_content: If True, passes content directly without formatting.
-        :param stream_response: Whether to stream response progressively.
-        :param kwargs: Additional request parameters (temperature, top_p, tools, etc.).
-        :yields: Tuples of (generated_text, usage_stats). First yield is (None, None).
-        :raises RuntimeError: If backend is not initialized.
-        :raises HTTPError: If API request fails.
-        """
-        self._check_in_process()
-        target = f"{self.target}{self.CHAT_COMPLETIONS_PATH}"
-        headers = self._get_headers()
-        params = self._get_params(self.CHAT_COMPLETIONS_KEY)
-        body = self._get_body(
-            endpoint_type=self.CHAT_COMPLETIONS_KEY,
-            request_kwargs=kwargs,
-            max_output_tokens=output_token_count,
-            messages=self._get_chat_messages(content) if not raw_content else content,
-            **kwargs,
-        )
-        yield None, None  # Initial yield for async iterator to signal start
+                    while (start := buffer.find(b"data:")) != -1 and (
+                        end := buffer.find(b"\n", start)
+                    ) != -1:
+                        line = buffer[start + len(b"data:") : end].strip()
+                        buffer = buffer[end + 1 :]
 
-        if not stream_response:
-            response = await self._async_client.post(  # type: ignore [union-attr]
-                target, headers=headers, params=params, json=body
-            )
-            response.raise_for_status()
-            data = response.json()
+                        if not line:
+                            continue
+
+                        if line == b"[DONE]":
+                            if request_info.request_timings.request_end is None:
+                                request_info.request_timings.request_end = time.time()
+                            end_reached = True
+                            break
+
+                        data = (
+                            json.loads(line) if not HAS_ORJSON else orjson.loads(line)
+                        )
+
+                        if "usage" in data:
+                            request_info.request_timings.request_end = time.time()
+                            prompt_stats, output_stats = self._extract_response_stats(
+                                data, request
+                            )
+                        else:
+                            if request_info.request_timings.first_iteration is None:
+                                request_info.request_timings.first_iteration = (
+                                    time.time()
+                                )
+                            request_info.request_timings.last_iteration = time.time()
+                            deltas.append(self._extract_response_text(data))
+
             yield (
-                self._get_completions_text_content(data),
-                self._get_completions_usage_stats(data),
+                GenerationResponse(
+                    request_id=request.request_id,
+                    request_args=request.arguments,
+                    text="".join(deltas) if deltas else None,
+                    iterations=len(deltas),
+                    prompt_stats=prompt_stats or GenerationTokenStats(),
+                    output_stats=output_stats or GenerationTokenStats(),
+                ),
+                request_info,
             )
-            return
-
-        body.update({"stream": True, "stream_options": {"include_usage": True}})
-        async with self._async_client.stream(  # type: ignore [union-attr]
-            "POST", target, headers=headers, params=params, json=body
-        ) as stream:
-            stream.raise_for_status()
-            async for line in stream.aiter_lines():
-                if not line or not line.strip().startswith("data:"):
-                    continue
-                if line.strip() == "data: [DONE]":
-                    break
-                data = json.loads(line.strip()[len("data: ") :])
-                yield (
-                    self._get_completions_text_content(data),
-                    self._get_completions_usage_stats(data),
-                )
-
-    def _build_headers(
-        self,
-        api_key: Optional[str],
-        organization: Optional[str],
-        project: Optional[str],
-        user_headers: Optional[dict],
-    ) -> dict[str, str]:
-        headers = {}
-
-        if api_key:
-            headers["Authorization"] = (
-                f"Bearer {api_key}" if not api_key.startswith("Bearer") else api_key
+        except asyncio.CancelledError as err:
+            yield (  # Ensure we yield what we have so far before stopping
+                GenerationResponse(
+                    request_id=request.request_id,
+                    request_args=request.arguments,
+                    text="".join(deltas) if deltas else None,
+                    iterations=len(deltas),
+                    prompt_stats=prompt_stats or GenerationTokenStats(),
+                    output_stats=output_stats or GenerationTokenStats(),
+                ),
+                request_info,
             )
-        if organization:
-            headers["OpenAI-Organization"] = organization
-        if project:
-            headers["OpenAI-Project"] = project
-        if user_headers:
-            headers.update(user_headers)
+            raise err
 
-        return {key: val for key, val in headers.items() if val is not None}
+    def _extract_response_text(self, data: dict) -> str:
+        if not data:
+            return None
+
+        object_type = data.get("object") or data.get("type")
+
+        if object_type == "text_completion":
+            return data.get("choices", [{}])[0].get("text", "")
+
+        if object_type == "chat.completion":
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        if object_type == "chat.completion.chunk":
+            return data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+
+        if "text" in data:
+            return data.get("text", "")
+
+        if "delta" in data:
+            return data.get("delta", "")
+
+        raise ValueError(f"Unsupported response format: {data}")
+
+    def _extract_response_stats(
+        self, data: dict, request: GenerationRequest
+    ) -> tuple[GenerationTokenStats, GenerationTokenStats]:
+        prompt_stats = GenerationTokenStats()
+        output_stats = GenerationTokenStats()
+
+        if not data or not (usage := data.get("usage")):
+            return prompt_stats, output_stats
+
+        prompt_stats.request = request.stats.get("prompt_tokens")
+        prompt_stats.response = usage.get("prompt_tokens", usage.get("input_tokens"))
+        prompt_token_details = usage.get(
+            "prompt_tokens_details", usage.get("input_tokens_details")
+        )
+        if prompt_token_details:
+            for key, val in prompt_token_details.items():
+                setattr(prompt_stats, key, val)
+
+        output_stats.request = request.constraints.get("output_tokens")
+        output_stats.response = usage.get(
+            "completion_tokens", usage.get("output_tokens")
+        )
+        output_token_details = usage.get(
+            "completion_tokens_details", usage.get("output_tokens_details")
+        )
+        if output_token_details:
+            for key, val in output_token_details.items():
+                setattr(output_stats, key, val)
+
+        return prompt_stats, output_stats
 
     def _check_in_process(self):
         if not self._in_process or self._async_client is None:
             raise RuntimeError(
                 "Backend not started up for process, cannot process requests."
             )
-
-    def _get_headers(self) -> dict[str, str]:
-        return {
-            "Content-Type": "application/json",
-            **self.headers,
-        }
-
-    def _get_params(self, endpoint_type: str) -> dict[str, str]:
-        if endpoint_type in self.extra_query:
-            return copy.deepcopy(self.extra_query[endpoint_type])
-        return copy.deepcopy(self.extra_query)
-
-    def _get_chat_messages(
-        self,
-        content: Union[
-            str,
-            list[Union[str, dict[str, Union[str, dict[str, str]]], Path, Image.Image]],
-            Any,
-        ],
-    ) -> list[dict[str, Any]]:
-        if isinstance(content, str):
-            return [{"role": "user", "content": content}]
-
-        if not isinstance(content, list):
-            raise ValueError(f"Unsupported content type: {type(content)}")
-
-        resolved_content = []
-        for item in content:
-            if isinstance(item, dict):
-                resolved_content.append(item)
-            elif isinstance(item, str):
-                resolved_content.append({"type": "text", "text": item})
-            elif isinstance(item, (Image.Image, Path)):
-                resolved_content.append(self._get_chat_message_media_item(item))
-            else:
-                raise ValueError(f"Unsupported content item type: {type(item)}")
-
-        return [{"role": "user", "content": resolved_content}]
-
-    def _get_chat_message_media_item(
-        self, item: Union[Path, Image.Image]
-    ) -> dict[str, Any]:
-        if isinstance(item, Image.Image):
-            encoded = base64.b64encode(item.tobytes()).decode("utf-8")
-            return {
-                "type": "image",
-                "image": {"url": f"data:image/jpeg;base64,{encoded}"},
-            }
-
-        # Handle file paths
-        suffix = item.suffix.lower()
-        if suffix in [".jpg", ".jpeg"]:
-            image = Image.open(item)
-            encoded = base64.b64encode(image.tobytes()).decode("utf-8")
-            return {
-                "type": "image",
-                "image": {"url": f"data:image/jpeg;base64,{encoded}"},
-            }
-        elif suffix == ".wav":
-            encoded = base64.b64encode(item.read_bytes()).decode("utf-8")
-            return {
-                "type": "input_audio",
-                "input_audio": {"data": encoded, "format": "wav"},
-            }
-        else:
-            raise ValueError(f"Unsupported file type: {suffix}")
-
-    def _get_body(
-        self,
-        endpoint_type: str,
-        request_kwargs: Optional[dict[str, Any]],
-        max_output_tokens: Optional[int] = None,
-        **kwargs,
-    ) -> dict[str, Any]:
-        # Start with endpoint-specific extra body parameters
-        extra_body = self.extra_body.get(endpoint_type, self.extra_body)
-
-        body = copy.deepcopy(extra_body)
-        body.update(request_kwargs or {})
-        body.update(kwargs)
-        body["model"] = self.model
-
-        # Handle token limits
-        max_tokens = max_output_tokens or self.max_output_tokens
-        if max_tokens is not None:
-            body.update(
-                {
-                    "max_tokens": max_tokens,
-                    "max_completion_tokens": max_tokens,
-                }
-            )
-            # Set stop conditions only for request-level limits
-            if max_output_tokens:
-                body.update({"stop": None, "ignore_eos": True})
-
-        return {key: val for key, val in body.items() if val is not None}
-
-    def _get_completions_text_content(self, data: dict) -> Optional[str]:
-        if not data.get("choices"):
-            return None
-
-        choice = data["choices"][0]
-        return choice.get("text") or choice.get("delta", {}).get("content")
-
-    def _get_completions_usage_stats(self, data: dict) -> Optional[UsageStats]:
-        if not data.get("usage"):
-            return None
-
-        return UsageStats(
-            prompt_tokens=data["usage"].get("prompt_tokens"),
-            output_tokens=data["usage"].get("completion_tokens"),
-        )

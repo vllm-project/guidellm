@@ -6,7 +6,7 @@ information to ensure consistent data handling across different backend
 implementations.
 """
 
-from typing import Any, Literal, Optional
+from typing import Literal
 
 from pydantic import Field
 
@@ -25,7 +25,29 @@ __all__ = [
     "GenerationRequestArguments",
     "GenerationRequestTimings",
     "GenerationResponse",
+    "GenerationTokenStats",
 ]
+
+
+@SchedulerMessagingPydanticRegistry.register()
+class GenerationTokenStats(StandardBaseModel):
+    """Token statistics for generation requests and responses."""
+
+    request: int | None = Field(
+        default=None, description="Number of tokens in the original request."
+    )
+    response: int | None = Field(
+        default=None, description="Number of tokens in the generated response."
+    )
+
+    def value(
+        self, preference: Literal["request", "response"] | None = None
+    ) -> int | None:
+        if preference == "request":
+            return self.request
+        if preference == "response":
+            return self.response
+        return self.response if self.response is not None else self.request
 
 
 @SchedulerMessagingPydanticRegistry.register()
@@ -35,71 +57,32 @@ class GenerationResponse(StandardBaseModel):
     request_id: str = Field(
         description="Unique identifier matching the original GenerationRequest."
     )
-    request_args: dict[str, Any] = Field(
+    request_args: GenerationRequestArguments = Field(
         description="Arguments passed to the backend for this request."
     )
-    values: list[str] = Field(
-        default_factory=list,
-        description="Complete generated text content. None for streaming responses.",
-    )
-    delta: Optional[str] = Field(
-        default=None, description="Incremental text content for streaming responses."
+    text: str | None = Field(
+        default=None,
+        description="The generated response text.",
     )
     iterations: int = Field(
         default=0, description="Number of generation iterations completed."
     )
-    request_prompt_tokens: Optional[int] = Field(
-        default=None, description="Token count from the original request prompt."
+
+    prompt_stats: GenerationTokenStats = Field(
+        default_factory=GenerationTokenStats,
+        description="Token statistics from the prompt.",
     )
-    request_output_tokens: Optional[int] = Field(
-        default=None,
-        description="Expected output token count from the original request.",
-    )
-    response_prompt_tokens: Optional[int] = Field(
-        default=None, description="Actual prompt token count reported by the backend."
-    )
-    response_output_tokens: Optional[int] = Field(
-        default=None, description="Actual output token count reported by the backend."
+    output_stats: GenerationTokenStats = Field(
+        default_factory=GenerationTokenStats,
+        description="Token statistics from the generated output.",
     )
 
-    @property
-    def prompt_tokens(self) -> Optional[int]:
-        """
-        :return: The number of prompt tokens used in the request
-            (response_prompt_tokens if available, otherwise request_prompt_tokens).
-        """
-        return self.response_prompt_tokens or self.request_prompt_tokens
+    def total_tokens(
+        self, preference: Literal["request", "response"] | None = None
+    ) -> int | None:
+        prompt_tokens = self.prompt_stats.value(preference=preference)
+        output_tokens = self.output_stats.value(preference=preference)
 
-    @property
-    def output_tokens(self) -> Optional[int]:
-        """
-        :return: The number of output tokens generated in the response
-            (response_output_tokens if available, otherwise request_output_tokens).
-        """
-        return self.response_output_tokens or self.request_output_tokens
-
-    @property
-    def total_tokens(self) -> Optional[int]:
-        """
-        :return: The total number of tokens used in the request and response.
-            Sum of prompt_tokens and output_tokens.
-        """
-        if self.prompt_tokens is None or self.output_tokens is None:
+        if prompt_tokens is None and output_tokens is None:
             return None
-        return self.prompt_tokens + self.output_tokens
-
-    def preferred_prompt_tokens(
-        self, preferred_source: Literal["request", "response"]
-    ) -> Optional[int]:
-        if preferred_source == "request":
-            return self.request_prompt_tokens or self.response_prompt_tokens
-        else:
-            return self.response_prompt_tokens or self.request_prompt_tokens
-
-    def preferred_output_tokens(
-        self, preferred_source: Literal["request", "response"]
-    ) -> Optional[int]:
-        if preferred_source == "request":
-            return self.request_output_tokens or self.response_output_tokens
-        else:
-            return self.response_output_tokens or self.request_output_tokens
+        return (prompt_tokens or 0) + (output_tokens or 0)

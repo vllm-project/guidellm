@@ -33,7 +33,6 @@ from guidellm.benchmark.progress import (
     BenchmarkerProgress,
     BenchmarkerProgressGroup,
 )
-from guidellm.benchmark.scenario import GenerativeTextScenario, Scenario
 from guidellm.data import (
     DatasetPreprocessor,
     GenerativeColumnMapper,
