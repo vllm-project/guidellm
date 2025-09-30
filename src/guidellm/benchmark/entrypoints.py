@@ -23,8 +23,13 @@ from guidellm.benchmark.output import (
 from guidellm.benchmark.profile import Profile, ProfileType
 from guidellm.benchmark.progress import BenchmarkerProgressGroup
 from guidellm.benchmark.scenario import enable_scenarios
-from guidellm.benchmark.type import OutputFormatType, DataInputType, ProcessorInputType, ProgressInputType, \
+from guidellm.benchmark.types import (
+    OutputFormatType,
+    DataInputType,
+    ProcessorInputType,
+    ProgressInputType,
     AggregatorInputType
+)
 from guidellm.request import GenerativeRequestLoader
 from guidellm.scheduler import (
     ConstraintInitializer,

@@ -15,7 +15,7 @@ from transformers.tokenization_utils_base import (  # type: ignore[import]
 
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.type import DataInputType, ProcessorInputType, AggregatorInputType
+from guidellm.benchmark.types import DataInputType, ProcessorInputType, AggregatorInputType
 from guidellm.scheduler import StrategyType
 from guidellm.utils import StandardBaseModel
 
