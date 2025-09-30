@@ -1,165 +1,351 @@
-from collections.abc import Iterable
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
-from transformers import (  # type: ignore[import]
-    PreTrainedTokenizerBase,
+from guidellm.backends import (
+    Backend,
+    BackendType,
+    GenerationRequest,
+    GenerationResponse,
 )
-
-from guidellm.backend import Backend, BackendType
-from guidellm.benchmark.benchmarker import GenerativeBenchmarker
+from guidellm.benchmark.aggregator import (
+    GenerativeRequestsAggregator,
+    GenerativeStatsProgressAggregator,
+    SchedulerStatsAggregator,
+    SerializableAggregator,
+)
+from guidellm.benchmark.benchmarker import Benchmarker
+from guidellm.benchmark.objects import GenerativeBenchmark, GenerativeBenchmarksReport
 from guidellm.benchmark.output import (
-    GenerativeBenchmarksConsole,
-    GenerativeBenchmarksReport,
+    GenerativeBenchmarkerOutput,
 )
-from guidellm.benchmark.profile import ProfileType, create_profile
-from guidellm.benchmark.progress import GenerativeTextBenchmarkerProgressDisplay
-from guidellm.benchmark.scenario import GenerativeTextScenario, Scenario
+from guidellm.benchmark.profile import Profile, ProfileType
+from guidellm.benchmark.progress import BenchmarkerProgressGroup
+from guidellm.benchmark.scenario import enable_scenarios
+from guidellm.benchmark.types import (
+    AggregatorInputT,
+    DataInputT,
+    OutputFormatT,
+    ProcessorInputT,
+    ProgressInputT,
+)
 from guidellm.request import GenerativeRequestLoader
-from guidellm.scheduler import StrategyType
+from guidellm.scheduler import (
+    ConstraintInitializer,
+    NonDistributedEnvironment,
+    StrategyType,
+)
+from guidellm.utils import Console, InfoMixin
+
+__all__ = [
+    "benchmark_generative_text",
+    "reimport_benchmarks_report",
+]
 
 
-async def benchmark_with_scenario(scenario: Scenario, **kwargs):
-    """
-    Run a benchmark using a scenario and specify any extra arguments
-    """
-
-    if isinstance(scenario, GenerativeTextScenario):
-        return await benchmark_generative_text(**vars(scenario), **kwargs)
-    else:
-        raise ValueError(f"Unsupported Scenario type {type(scenario)}")
+_CURRENT_WORKING_DIR = Path.cwd()
 
 
-async def benchmark_generative_text(
+# Helper functions
+
+
+async def initialize_backend(
+    backend: BackendType | Backend,
     target: str,
-    backend_type: BackendType,
-    backend_args: Optional[dict[str, Any]],
-    model: Optional[str],
-    processor: Optional[Optional[Union[str, Path, PreTrainedTokenizerBase]]],
-    processor_args: Optional[dict[str, Any]],
-    data: Union[
-        str,
-        Path,
-        Iterable[Union[str, dict[str, Any]]],
-        Dataset,
-        DatasetDict,
-        IterableDataset,
-        IterableDatasetDict,
-    ],
-    data_args: Optional[dict[str, Any]],
-    data_sampler: Optional[Literal["random"]],
-    rate_type: Union[StrategyType, ProfileType],
-    rate: Optional[Union[float, list[float]]],
-    max_seconds: Optional[float],
-    max_requests: Optional[int],
-    warmup_percent: Optional[float],
-    cooldown_percent: Optional[float],
-    output_path: Optional[Union[str, Path]],
-    output_extras: Optional[dict[str, Any]],
-    output_sampling: Optional[int],
-    random_seed: int,
-    show_progress: bool = True,
-    show_progress_scheduler_stats: bool = False,
-    output_console: bool = True,
-) -> tuple[GenerativeBenchmarksReport, Optional[Path]]:
-    console = GenerativeBenchmarksConsole(enabled=show_progress)
-    console.print_line("Creating backend...")
-    backend = Backend.create(
-        backend_type, target=target, model=model, **(backend_args or {})
+    model: str | None,
+    backend_kwargs: dict[str, Any] | None,
+) -> Backend:
+    backend = (
+        Backend.create(backend, target=target, model=model, **(backend_kwargs or {}))
+        if not isinstance(backend, Backend)
+        else backend
     )
+    await backend.process_startup()
     await backend.validate()
-    console.print_line(
-        f"Backend {backend_type} connected to {target} for model {backend.model}."
-    )
+    return backend
 
-    if processor is None:
-        processor = backend.model
 
-    console.print_line("Creating request loader...")
-    request_loader = GenerativeRequestLoader(
-        data=data,
-        data_args=data_args,
-        processor=processor,
-        processor_args=processor_args,
-        shuffle=data_sampler == "random",
-        iter_type=(
-            "finite"  # assume a finite dataset is our limit
-            if max_requests is None and max_seconds is None
-            else "infinite"  # default to infinite so we don't run out of data
-        ),
-        random_seed=random_seed,
-    )
-    unique_requests = request_loader.num_unique_items(raise_err=False)
-    console.print_line(
-        f"Created loader with {unique_requests} unique requests from {data}.\n\n"
-        if unique_requests > 0
-        else f"Created loader with unknown number unique requests from {data}.\n\n"
-    )
+async def resolve_profile(
+    constraint_inputs: dict[str, int | float],
+    profile: Profile | str | None,
+    rate: list[float] | None,
+    random_seed: int,
+    constraints: dict[str, ConstraintInitializer | Any],
+):
+    for key, val in constraint_inputs.items():
+        if val is not None:
+            constraints[key] = val
+    if not isinstance(profile, Profile):
+        if isinstance(profile, str):
+            profile = Profile.create(
+                rate_type=profile,
+                rate=rate,
+                random_seed=random_seed,
+                constraints={**constraints},
+            )
+        else:
+            raise ValueError(f"Expected string for profile; got {type(profile)}")
 
-    profile = create_profile(rate_type=rate_type, rate=rate)
-    benchmarker = GenerativeBenchmarker(
-        backend=backend,
-        request_loader=request_loader,
-        request_loader_description=request_loader.description,
-        benchmark_save_extras=output_extras,
-        processor=processor,
-        processor_args=processor_args,
-    )
-    progress = (
-        GenerativeTextBenchmarkerProgressDisplay(
-            display_scheduler_stats=show_progress_scheduler_stats
+    elif constraints:
+        raise ValueError(
+            "Constraints must be empty when providing a Profile instance. "
+            f"Provided constraints: {constraints} ; provided profile: {profile}"
         )
-        if show_progress
-        else None
+    return profile
+
+
+async def resolve_output_formats(
+    output_formats: OutputFormatT,
+    output_path: str | Path | None,
+) -> dict[str, GenerativeBenchmarkerOutput]:
+    return GenerativeBenchmarkerOutput.resolve(
+        output_formats=(output_formats or {}), output_path=output_path
+    )
+
+
+async def finalize_outputs(
+    report: GenerativeBenchmarksReport,
+    resolved_output_formats: dict[str, GenerativeBenchmarkerOutput],
+):
+    output_format_results = {}
+    for key, output in resolved_output_formats.items():
+        output_result = await output.finalize(report)
+        output_format_results[key] = output_result
+    return output_format_results
+
+
+# Complete entrypoints
+
+
+# @validate_call(config={"arbitrary_types_allowed": True})
+@enable_scenarios
+async def benchmark_generative_text(  # noqa: C901
+    target: str,
+    data: DataInputT,
+    profile: StrategyType | ProfileType | Profile,
+    rate: list[float] | None = None,
+    random_seed: int = 42,
+    # Backend configuration
+    backend: BackendType | Backend = "openai_http",
+    backend_kwargs: dict[str, Any] | None = None,
+    model: str | None = None,
+    # Data configuration
+    processor: ProcessorInputT | None = None,
+    processor_args: dict[str, Any] | None = None,
+    data_args: dict[str, Any] | None = None,
+    data_sampler: Literal["random"] | None = None,
+    # Output configuration
+    output_path: str | Path | None = _CURRENT_WORKING_DIR,
+    output_formats: OutputFormatT = ("console", "json", "html", "csv"),
+    # Updates configuration
+    progress: ProgressInputT | None = None,
+    print_updates: bool = False,
+    # Aggregators configuration
+    add_aggregators: AggregatorInputT | None = None,
+    warmup: float | None = None,
+    cooldown: float | None = None,
+    request_samples: int | None = 20,
+    # Constraints configuration
+    max_seconds: int | float | None = None,
+    max_requests: int | None = None,
+    max_errors: int | None = None,
+    max_error_rate: float | None = None,
+    max_global_error_rate: float | None = None,
+    **constraints: dict[str, ConstraintInitializer | Any],
+) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
+    console = Console(quiet=not print_updates)
+
+    with console.print_update_step(
+        title=f"Initializing backend {backend}"
+    ) as console_step:
+        backend = await initialize_backend(backend, target, model, backend_kwargs)
+        console_step.finish(
+            title=f"{backend.__class__.__name__} backend initialized",
+            details=backend.info,
+            status_level="success",
+        )
+
+    with console.print_update_step(title="Resolving processor") as console_step:
+        if processor is not None:
+            console_step.finish(
+                title="Processor resolved",
+                details=f"Using processor '{processor}'",
+                status_level="success",
+            )
+        elif model is not None:
+            console_step.finish(
+                title="Processor resolved",
+                details=f"Using model '{model}' as processor",
+                status_level="success",
+            )
+            processor = model
+        else:
+            console_step.update(
+                title="Resolving processor from backend.default_model",
+                status_level="info",
+            )
+            processor = await backend.default_model()
+            console_step.finish(
+                title="Processor resolved",
+                details=(
+                    f"Using model '{processor}' from backend "
+                    f"{backend.__class__.__name__} as processor"
+                ),
+                status_level="success",
+            )
+        await backend.process_shutdown()
+
+    with console.print_update_step(
+        title=f"Initializing request loader from {data}"
+    ) as console_step:
+        request_loader = GenerativeRequestLoader(
+            data=data,
+            data_args=data_args,
+            processor=processor,
+            processor_args=processor_args,
+            shuffle=data_sampler == "random",
+            random_seed=random_seed,
+        )
+        unique_requests = request_loader.num_unique_items(raise_err=False)
+        console_step.finish(
+            title=(
+                f"Request loader initialized with {unique_requests} unique requests "
+                f"from {data}"
+            ),
+            details=InfoMixin.extract_from_obj(request_loader),
+            status_level="success",
+        )
+
+    with console.print_update_step(
+        title=f"Resolving profile {profile}"
+    ) as console_step:
+        profile = await resolve_profile(
+            {
+                "max_seconds": max_seconds,
+                "max_requests": max_requests,
+                "max_errors": max_errors,
+                "max_error_rate": max_error_rate,
+                "max_global_error_rate": max_global_error_rate,
+            },
+            profile,
+            rate,
+            random_seed,
+            constraints,
+        )
+        console_step.finish(
+            title=f"{profile.__class__.__name__} profile resolved",
+            details=InfoMixin.extract_from_obj(profile),
+            status_level="success",
+        )
+
+    with console.print_update_step(
+        title="Creating benchmark aggregators"
+    ) as console_step:
+        aggregators = {
+            "scheduler_stats": SchedulerStatsAggregator(),
+            "requests_progress": GenerativeStatsProgressAggregator(),
+            "requests": GenerativeRequestsAggregator(
+                request_samples=request_samples,
+                warmup=warmup,
+                cooldown=cooldown,
+            ),
+            **SerializableAggregator.resolve(add_aggregators or {}),
+        }
+        console_step.finish(
+            title="Benchmark aggregators created",
+            details={key: str(val) for key, val in aggregators.items()},
+            status_level="success",
+        )
+
+    with console.print_update_step(title="Resolving output formats") as console_step:
+        resolved_output_formats = await resolve_output_formats(
+            output_formats, output_path
+        )
+        console_step.finish(
+            title="Output formats resolved",
+            details={key: str(val) for key, val in resolved_output_formats.items()},
+            status_level="success",
+        )
+
+    progress_group = BenchmarkerProgressGroup(
+        instances=progress or [], enabled=bool(progress)
     )
     report = GenerativeBenchmarksReport()
+    console.print_update(
+        title="Setup complete, starting benchmarks...", status="success"
+    )
+    console.print("\n\n")
 
-    async for result in benchmarker.run(
-        profile=profile,
-        max_number_per_strategy=max_requests,
-        max_duration_per_strategy=max_seconds,
-        warmup_percent_per_strategy=warmup_percent,
-        cooldown_percent_per_strategy=cooldown_percent,
+    async for (
+        _aggregator_update,
+        benchmark,
+        _strategy,
+        _scheduler_state,
+    ) in progress_group(
+        profile,
+        Benchmarker[
+            GenerativeBenchmark,
+            GenerationRequest,
+            GenerationResponse,
+        ]().run(
+            requests=request_loader,
+            backend=backend,
+            profile=profile,
+            environment=NonDistributedEnvironment(),
+            benchmark_aggregators=aggregators,
+            benchmark_class=GenerativeBenchmark,
+        ),
     ):
-        if progress:
-            progress.update(result)
+        if benchmark:
+            report.benchmarks.append(benchmark)
 
-        if result.type_ == "benchmark_compiled":
-            if result.current_benchmark is None:
-                raise ValueError("Current benchmark is None")
-            report.benchmarks.append(
-                result.current_benchmark.set_sample_size(output_sampling)
-            )
+    output_format_results = await finalize_outputs(report, resolved_output_formats)
 
-    if output_console:
-        console.benchmarks = report.benchmarks
-        console.print_full_report()
+    console.print("\n\n")
+    console.print_update(
+        title=f"Benchmarking complete; generated {len(report.benchmarks)} benchmark(s)",
+        status="success",
+    )
+    for key, value in output_format_results.items():
+        console.print_update(title=f"  {key:<8}: {value}", status="debug")
 
-    if output_path:
-        console.print_line("\nSaving benchmarks report...")
-        saved_path = report.save_file(output_path)
-        console.print_line(f"Benchmarks report saved to {saved_path}")
-    else:
-        saved_path = None
-
-    console.print_line("\nBenchmarking complete.")
-
-    return report, saved_path
+    return report, output_format_results
 
 
-def reimport_benchmarks_report(file: Path, output_path: Optional[Path]) -> None:
+async def reimport_benchmarks_report(
+    file: Path,
+    output_path: Path | None,
+    output_formats: OutputFormatT = ("console", "json", "html", "csv"),
+) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
     """
     The command-line entry point for re-importing and displaying an
-    existing benchmarks report. Can also specify
+    existing benchmarks report. Can also specify an output format.
     Assumes the file provided exists.
     """
-    console = GenerativeBenchmarksConsole(enabled=True)
-    report = GenerativeBenchmarksReport.load_file(file)
-    console.benchmarks = report.benchmarks
-    console.print_full_report()
+    console = Console()
+    with console.print_update_step(
+        title=f"Loading benchmarks from {file}"
+    ) as console_step:
+        report = GenerativeBenchmarksReport.load_file(file)
+        console_step.finish(
+            "Import of old benchmarks complete;"
+            f" loaded {len(report.benchmarks)} benchmark(s)"
+        )
 
-    if output_path:
-        console.print_line("\nSaving benchmarks report...")
-        saved_path = report.save_file(output_path)
-        console.print_line(f"Benchmarks report saved to {saved_path}")
+    with console.print_update_step(title="Resolving output formats") as console_step:
+        resolved_output_formats = await resolve_output_formats(
+            output_formats, output_path
+        )
+        console_step.finish(
+            title="Output formats resolved",
+            details={key: str(val) for key, val in resolved_output_formats.items()},
+            status_level="success",
+        )
+
+    output_format_results = await finalize_outputs(report, resolved_output_formats)
+
+    for key, value in output_format_results.items():
+        console.print_update(title=f"  {key:<8}: {value}", status="debug")
+
+    return report, output_format_results

@@ -1,271 +1,152 @@
+"""Mock benchmark objects for unit testing."""
+
+from guidellm.backend import GenerationRequestTimings
 from guidellm.benchmark import (
-    BenchmarkArgs,
-    BenchmarkRunStats,
+    BenchmarkSchedulerStats,
     GenerativeBenchmark,
-    GenerativeTextErrorStats,
-    GenerativeTextResponseStats,
-    SynchronousProfile,
+    GenerativeMetrics,
+    GenerativeRequestStats,
 )
-from guidellm.objects import StatusBreakdown
-from guidellm.request import GenerativeRequestLoaderDescription
-from guidellm.scheduler import (
-    GenerativeRequestsWorkerDescription,
-    SchedulerRequestInfo,
-    SynchronousStrategy,
+from guidellm.benchmark.objects import BenchmarkerDict, SchedulerDict
+from guidellm.benchmark.profile import SynchronousProfile
+from guidellm.scheduler import ScheduledRequestInfo, SchedulerState, SynchronousStrategy
+from guidellm.utils import (
+    DistributionSummary,
+    Percentiles,
+    StandardBaseDict,
+    StatusBreakdown,
+    StatusDistributionSummary,
 )
 
 __all__ = ["mock_generative_benchmark"]
 
 
+def _create_mock_percentiles() -> Percentiles:
+    """Create mock percentiles for testing."""
+    return Percentiles(
+        p001=0.1,
+        p01=1.0,
+        p05=5.0,
+        p10=10.0,
+        p25=25.0,
+        p50=50.0,
+        p75=75.0,
+        p90=90.0,
+        p95=95.0,
+        p99=99.0,
+        p999=99.9,
+    )
+
+
+def _create_mock_distribution() -> DistributionSummary:
+    """Create mock distribution summary for testing."""
+    return DistributionSummary(
+        mean=50.0,
+        median=50.0,
+        mode=50.0,
+        variance=10.0,
+        std_dev=3.16,
+        min=10.0,
+        max=100.0,
+        count=100,
+        total_sum=5000.0,
+        percentiles=_create_mock_percentiles(),
+    )
+
+
+def _create_status_dist() -> StatusDistributionSummary:
+    """Create mock status distribution summary for testing."""
+    dist = _create_mock_distribution()
+    return StatusDistributionSummary(
+        successful=dist,
+        incomplete=dist,
+        errored=dist,
+        total=dist,
+    )
+
+
 def mock_generative_benchmark() -> GenerativeBenchmark:
-    return GenerativeBenchmark.from_stats(
-        run_id="fa4a92c1-9a1d-4c83-b237-83fcc7971bd3",
-        successful=[
-            GenerativeTextResponseStats(
-                request_id="181a63e2-dc26-4268-9cfc-2ed9279aae63",
-                request_type="text_completions",
-                scheduler_info=SchedulerRequestInfo(
-                    requested=True,
-                    completed=True,
-                    errored=False,
-                    canceled=False,
-                    targeted_start_time=1744728125.203447,
-                    queued_time=1744728125.204123,
-                    dequeued_time=1744728125.2048807,
-                    scheduled_time=1744728125.2048993,
-                    worker_start=1744728125.2049701,
-                    request_start=1744728125.2052872,
-                    request_end=1744728126.7004411,
-                    worker_end=1744728126.701175,
-                    process_id=0,
-                ),
-                prompt="such a sacrifice to her advantage as years of gratitude cannot enough acknowledge. By this time she is actually with them! If such goodness does not make her miserable now, she will never deserve to be happy! What a meeting for her, when she first sees my aunt! We must endeavour to forget all that has passed on either side, said Jane I hope and trust they will yet be happy. His consenting to marry her is a proof, I will believe, that he is come to a right way of thinking. Their mutual affection will steady them; and I flatter myself they will settle so quietly, and live in so rational a manner",  # noqa: E501
-                output=", as to make their long life together very comfortable and very useful. I feel, if they and the honourable Mr. Thorpe, who still lives amongst us, should be all I need, I could perfectly rest happy. Writes to meet them in that kind of obedience which is necessary and honourable, and such",  # noqa: E501
-                prompt_tokens=128,
-                output_tokens=64,
-                start_time=1744728125.2052872,
-                end_time=1744728126.7004411,
-                first_token_time=1744728125.2473357,
-                last_token_time=1744728126.699908,
-            ),
-            GenerativeTextResponseStats(
-                request_id="8a7846d5-7624-420d-a269-831e568a848f",
-                request_type="text_completions",
-                scheduler_info=SchedulerRequestInfo(
-                    requested=True,
-                    completed=True,
-                    errored=False,
-                    canceled=False,
-                    targeted_start_time=1744728125.204613,
-                    queued_time=1744728125.2047558,
-                    dequeued_time=1744728126.7025175,
-                    scheduled_time=1744728126.7025256,
-                    worker_start=1744728126.702579,
-                    request_start=1744728126.7027814,
-                    request_end=1744728128.1961868,
-                    worker_end=1744728128.196895,
-                    process_id=0,
-                ),
-                prompt="a reconciliation; and, after a little further resistance on the part of his aunt, her resentment gave way, either to her affection for him, or her curiosity to see how his wife conducted herself; and she condescended to wait on them at Pemberley, in spite of that pollution which its woods had received, not merely from the presence of such a mistress, but the visits of her uncle and aunt from the city. With the Gardiners they were always on the most intimate terms. Darcy, as well as Elizabeth, really loved them; and they were both ever sensible of the warmest gratitude towards the persons who,",  # noqa: E501
-                output=" in their own days of poverty, had been so hotel and hospitable to a young couple leaving Pemberley. Till the size of Mr. Bennet\u2019s salary had been altered, the blessing of their friendship was much more greatly needed by the family than it appeared after that event.\n- Mr. Darcy soon deserved",  # noqa: E501
-                prompt_tokens=128,
-                output_tokens=64,
-                start_time=1744728126.7027814,
-                end_time=1744728128.1961868,
-                first_token_time=1744728126.7526379,
-                last_token_time=1744728128.1956792,
-            ),
-            GenerativeTextResponseStats(
-                request_id="4cde0e6c-4531-4e59-aac1-07bc8b6e4139",
-                request_type="text_completions",
-                scheduler_info=SchedulerRequestInfo(
-                    requested=True,
-                    completed=True,
-                    errored=False,
-                    canceled=False,
-                    targeted_start_time=1744728126.7031465,
-                    queued_time=1744728126.7034643,
-                    dequeued_time=1744728128.198447,
-                    scheduled_time=1744728128.1984534,
-                    worker_start=1744728128.198509,
-                    request_start=1744728128.1986883,
-                    request_end=1744728129.6919055,
-                    worker_end=1744728129.692606,
-                    process_id=0,
-                ),
-                prompt="struck her, that _she_ was selected from among her sisters as worthy of being the mistress of Hunsford Parsonage, and of assisting to form a quadrille table at Rosings, in the absence of more eligible visitors. The idea soon reached to conviction, as she observed his increasing civilities towards herself, and heard his frequent attempt at a compliment on her wit and vivacity; and though more astonished than gratified herself by this effect of her charms, it was not long before her mother gave her to understand that the probability of their marriage was exceedingly agreeable to _her_. Elizabeth, however, did not choose",  # noqa: E501
-                output=" to improve this conversation into a prophecy, and her mother would hardly take on herself to announce so important a phenomenon. At last he was to drive to Hunsford from Meryton on Sunday; they staid for an hour at eight o'clock, and the following day appeared to be hung up on the walls of",  # noqa: E501
-                prompt_tokens=128,
-                output_tokens=64,
-                start_time=1744728128.1986883,
-                end_time=1744728129.6919055,
-                first_token_time=1744728128.2481627,
-                last_token_time=1744728129.6914039,
-            ),
-            GenerativeTextResponseStats(
-                request_id="a95b96be-05d4-4130-b0dd-9528c01c9909",
-                request_type="text_completions",
-                scheduler_info=SchedulerRequestInfo(
-                    requested=True,
-                    completed=True,
-                    errored=False,
-                    canceled=False,
-                    targeted_start_time=1744728128.1987216,
-                    queued_time=1744728128.1991177,
-                    dequeued_time=1744728129.6953137,
-                    scheduled_time=1744728129.695318,
-                    worker_start=1744728129.695379,
-                    request_start=1744728129.6955585,
-                    request_end=1744728131.187553,
-                    worker_end=1744728131.188169,
-                    process_id=0,
-                ),
-                prompt="were comfortable on this subject. Day after day passed away without bringing any other tidings of him than the report which shortly prevailed in Meryton of his coming no more to Netherfield the whole winter; a report which highly incensed Mrs. Bennet, and which she never failed to contradict as a most scandalous falsehood. Even Elizabeth began to fear not that Bingley was indifferent but that his sisters would be successful in keeping him away. Unwilling as she was to admit an idea so destructive to Jane s happiness, and so dishonourable to the stability of her lover, she could not prevent its frequently recurring",  # noqa: E501
-                output=" during these indefinite disputes; and was often seriously engaged in blaming her sisters for increasing a suspense which might only be caused by their own inattention to a subject of so much moment. Whether she had really made that impression on the s+.ayers, or whether she had merely imagined it, she could decide no farther, for",  # noqa: E501
-                prompt_tokens=128,
-                output_tokens=64,
-                start_time=1744728129.6955585,
-                end_time=1744728131.187553,
-                first_token_time=1744728129.7438853,
-                last_token_time=1744728131.187019,
-            ),
-            GenerativeTextResponseStats(
-                request_id="714b751c-bbfe-4b2a-a0af-7c1bf2c224ae",
-                request_type="text_completions",
-                scheduler_info=SchedulerRequestInfo(
-                    requested=True,
-                    completed=True,
-                    errored=False,
-                    canceled=False,
-                    targeted_start_time=1744728129.6975086,
-                    queued_time=1744728129.6978767,
-                    dequeued_time=1744728131.190093,
-                    scheduled_time=1744728131.190101,
-                    worker_start=1744728131.1901798,
-                    request_start=1744728131.1904676,
-                    request_end=1744728132.6833503,
-                    worker_end=1744728132.6839745,
-                    process_id=0,
-                ),
-                prompt="? cried Elizabeth, brightening up for a moment. Upon my word, said Mrs. Gardiner, I begin to be of your uncle s opinion. It is really too great a violation of decency, honour, and interest, for him to be guilty of it. I cannot think so very ill of Wickham. Can you, yourself, Lizzie, so wholly give him up, as to believe him capable of it? Not perhaps of neglecting his own interest. But of every other neglect I can believe him capable. If, indeed, it should be so! But I dare not hope it. Why should they not go on",  # noqa: E501
-                output=" together? This is still a motive incapable of being denied. He has such a faculty of pleasing, and you know how much she likes him. \nQuestion: What made elder sisters the center of their families?\nSometimes early this would be discussed in the family circle, but that was a very exceptional treatment.\nThank you,",  # noqa: E501
-                prompt_tokens=128,
-                output_tokens=64,
-                start_time=1744728131.1904676,
-                end_time=1744728132.6833503,
-                first_token_time=1744728131.2394557,
-                last_token_time=1744728132.6828275,
-            ),
-            GenerativeTextResponseStats(
-                request_id="ef73ae8a-4c8f-4c88-b303-cfff152ce378",
-                request_type="text_completions",
-                scheduler_info=SchedulerRequestInfo(
-                    requested=True,
-                    completed=True,
-                    errored=False,
-                    canceled=False,
-                    targeted_start_time=1744728131.1891043,
-                    queued_time=1744728131.1893764,
-                    dequeued_time=1744728132.6859632,
-                    scheduled_time=1744728132.6859682,
-                    worker_start=1744728132.6860242,
-                    request_start=1744728132.6862206,
-                    request_end=1744728134.1805167,
-                    worker_end=1744728134.1813161,
-                    process_id=0,
-                ),
-                prompt="was. But her commendation, though costing her some trouble, could by no means satisfy Mr. Collins, and he was very soon obliged to take her Ladyship s praise into his own hands. Sir William stayed only a week at Hunsford; but his visit was long enough to convince him of his daughter s being most comfortably settled, and of her possessing such a husband and such a neighbour as were not often met with. While Sir William was with them, Mr. Collins devoted his mornings to driving him out in his gig, and showing him the country but when he went away, the whole family returned to their usual employments",  # noqa: E501
-                output=", and the sides of the family in which he was more particularly interested, to their respective places in the establishment. Here Jane was occasionally up as a substitute to her indolent sister, in her matron s stead, but was more frequently left idle, and with her hours of quietness, the unwelcome intrusion",  # noqa: E501
-                prompt_tokens=128,
-                output_tokens=64,
-                start_time=1744728132.6862206,
-                end_time=1744728134.1805167,
-                first_token_time=1744728132.7354612,
-                last_token_time=1744728134.1797993,
-            ),
-        ],
-        errored=[],
-        incomplete=[
-            GenerativeTextErrorStats(
-                request_id="1b3def04-ca81-4f59-a56c-452a069d91af",
-                request_type="text_completions",
-                scheduler_info=SchedulerRequestInfo(
-                    requested=True,
-                    completed=False,
-                    errored=True,
-                    canceled=True,
-                    targeted_start_time=1744728132.686177,
-                    queued_time=1744728132.6866345,
-                    dequeued_time=1744728134.1831052,
-                    scheduled_time=1744728134.1831107,
-                    worker_start=1744728134.183183,
-                    request_start=1744728134.183544,
-                    request_end=1744728135.2031732,
-                    worker_end=1744728135.2033112,
-                    process_id=0,
-                ),
-                prompt="is to tempt anyone to our humble abode. Our plain manner of living, our small rooms, and few domestics, and the little we see of the world, must make Hunsford extremely dull to a young lady like yourself; but I hope you will believe us grateful for the condescension, and that we have done everything in our power to prevent you spending your time unpleasantly. Elizabeth was eager with her thanks and assurances of happiness. She had spent six weeks with great enjoyment; and the pleasure of being with Charlotte, and the kind attention she had received, must make _her_ feel the obliged. Mr. Collins",  # noqa: E501
-                output=", who certainly had an eye to Elizabeth's manner, was glad _he was not to lose the curiosity she had given, and requested her away_ , _for the politeness of her conciliating manner would",  # noqa: E501
-                prompt_tokens=128,
-                output_tokens=43,
-                start_time=1744728134.183544,
-                end_time=1744728135.2031732,
-                first_token_time=1744728134.2323751,
-                last_token_time=1744728135.1950455,
-                error="TimeoutError: The request timed out before completing.",
-            )
-        ],
-        args=BenchmarkArgs(
-            profile=SynchronousProfile(),
-            strategy_index=0,
+    """Create a minimal mock GenerativeBenchmark for testing purposes."""
+    return GenerativeBenchmark(
+        run_id="test-run-gen",
+        run_index=0,
+        scheduler=SchedulerDict(
             strategy=SynchronousStrategy(),
-            max_number=None,
-            max_duration=10.0,
-            warmup_number=None,
-            warmup_duration=None,
-            cooldown_number=None,
-            cooldown_duration=None,
+            constraints={},
+            state=SchedulerState(node_id=0, num_processes=1),
         ),
-        run_stats=BenchmarkRunStats(
-            start_time=1744728125.0772898,
-            end_time=1744728135.8407037,
+        benchmarker=BenchmarkerDict(
+            profile=SynchronousProfile.create("synchronous", rate=None),
+            requests={},
+            backend={},
+            environment={},
+            aggregators={},
+        ),
+        env_args=StandardBaseDict(),
+        extras=StandardBaseDict(),
+        run_stats=BenchmarkSchedulerStats(
+            start_time=1,
+            end_time=2,
             requests_made=StatusBreakdown(
-                successful=6,
+                successful=1,
+                incomplete=0,
                 errored=0,
-                incomplete=1,
-                total=7,
+                total=1,
             ),
-            queued_time_avg=1.2821388585226876,
-            scheduled_time_delay_avg=7.96999250139509e-6,
-            scheduled_time_sleep_avg=0.0,
-            worker_start_delay_avg=6.399835859026228e-5,
-            worker_time_avg=1.4266603674207414,
-            worker_start_time_targeted_delay_avg=1.2825865745544434,
-            request_start_time_delay_avg=0.6414163964135307,
-            request_start_time_targeted_delay_avg=1.2827096836907523,
-            request_time_delay_avg=0.0004316908972603934,
-            request_time_avg=1.426228676523481,
+            queued_time_avg=0.1,
+            worker_resolve_start_delay_avg=0.1,
+            worker_resolve_time_avg=0.1,
+            worker_resolve_end_delay_avg=0.1,
+            finalized_delay_avg=0.1,
+            worker_targeted_start_delay_avg=0.1,
+            request_start_delay_avg=0.1,
+            request_time_avg=0.1,
+            request_targeted_delay_avg=0.1,
         ),
-        worker=GenerativeRequestsWorkerDescription(
-            backend_type="openai_http",
-            backend_target="http://localhost:8000",
-            backend_model="neuralmagic/Qwen2.5-7B-quantized.w8a8",
-            backend_info={
-                "max_output_tokens": 16384,
-                "timeout": 300,
-                "http2": True,
-                "authorization": False,
-                "organization": None,
-                "project": None,
-                "text_completions_path": "/v1/completions",
-                "chat_completions_path": "/v1/chat/completions",
-            },
+        start_time=1000.0,
+        end_time=2000.0,
+        metrics=GenerativeMetrics(
+            requests_per_second=_create_status_dist(),
+            request_concurrency=_create_status_dist(),
+            request_latency=_create_status_dist(),
+            prompt_token_count=_create_status_dist(),
+            output_token_count=_create_status_dist(),
+            total_token_count=_create_status_dist(),
+            time_to_first_token_ms=_create_status_dist(),
+            time_per_output_token_ms=_create_status_dist(),
+            inter_token_latency_ms=_create_status_dist(),
+            output_tokens_per_second=_create_status_dist(),
+            tokens_per_second=_create_status_dist(),
         ),
-        requests_loader=GenerativeRequestLoaderDescription(
-            data='{"prompt_tokens": 128, "output_tokens": 64}',
-            data_args=None,
-            processor="neuralmagic/Qwen2.5-7B-quantized.w8a8",
-            processor_args=None,
+        request_totals=StatusBreakdown(
+            successful=1,
+            incomplete=0,
+            errored=0,
+            total=1,
         ),
-        extras={},
+        requests=StatusBreakdown(
+            successful=[
+                GenerativeRequestStats(
+                    scheduler_info=ScheduledRequestInfo(
+                        request_timings=GenerationRequestTimings(
+                            request_start=1,
+                            first_iteration=2,
+                            last_iteration=6,
+                            request_end=6,
+                        )
+                    ),
+                    request_id="a",
+                    request_type="text_completions",
+                    prompt="p",
+                    request_args={},
+                    output="o",
+                    iterations=1,
+                    prompt_tokens=1,
+                    output_tokens=2,
+                )
+            ],
+            incomplete=[],
+            errored=[],
+            total=None,
+        ),
     )
