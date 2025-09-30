@@ -398,6 +398,7 @@ class ThroughputProfile(Profile):
         description="Maximum number of concurrent requests to schedule",
     )
     startup_duration: NonNegativeFloat = Field(
+        default=0.0,
         description=(
             "Duration in seconds for distributing startup requests "
             "before full throughput scheduling"
