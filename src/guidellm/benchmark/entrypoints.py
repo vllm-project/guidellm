@@ -1,13 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal
-
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
-from transformers import (  # type: ignore[import]
-    PreTrainedTokenizerBase,
-)
 
 from guidellm.backends import (
     Backend,
@@ -16,8 +10,6 @@ from guidellm.backends import (
     GenerationResponse,
 )
 from guidellm.benchmark.aggregator import (
-    Aggregator,
-    CompilableAggregator,
     GenerativeRequestsAggregator,
     GenerativeStatsProgressAggregator,
     SchedulerStatsAggregator,
@@ -29,11 +21,15 @@ from guidellm.benchmark.output import (
     GenerativeBenchmarkerOutput,
 )
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.progress import (
-    BenchmarkerProgress,
-    BenchmarkerProgressGroup,
+from guidellm.benchmark.progress import BenchmarkerProgressGroup
+from guidellm.benchmark.scenario import enable_scenarios
+from guidellm.benchmark.types import (
+    AggregatorInputT,
+    DataInputT,
+    OutputFormatT,
+    ProcessorInputT,
+    ProgressInputT,
 )
-from guidellm.benchmark.scenario import GenerativeTextScenario, Scenario
 from guidellm.request import GenerativeRequestLoader
 from guidellm.scheduler import (
     ConstraintInitializer,
@@ -44,7 +40,6 @@ from guidellm.utils import Console, InfoMixin
 
 __all__ = [
     "benchmark_generative_text",
-    "benchmark_with_scenario",
     "reimport_benchmarks_report",
 ]
 
@@ -52,28 +47,8 @@ __all__ = [
 _CURRENT_WORKING_DIR = Path.cwd()
 
 
-# Data types
-
-DataType = (
-    Iterable[str]
-    | Iterable[dict[str, Any]]
-    | Dataset
-    | DatasetDict
-    | IterableDataset
-    | IterableDatasetDict
-    | str
-    | Path
-)
-
-OutputFormatType = (
-    tuple[str, ...]
-    | list[str]
-    | dict[str, str | dict[str, Any] | GenerativeBenchmarkerOutput]
-    | None
-)
-
-
 # Helper functions
+
 
 async def initialize_backend(
     backend: BackendType | Backend,
@@ -82,9 +57,7 @@ async def initialize_backend(
     backend_kwargs: dict[str, Any] | None,
 ) -> Backend:
     backend = (
-        Backend.create(
-            backend, target=target, model=model, **(backend_kwargs or {})
-        )
+        Backend.create(backend, target=target, model=model, **(backend_kwargs or {}))
         if not isinstance(backend, Backend)
         else backend
     )
@@ -121,18 +94,19 @@ async def resolve_profile(
         )
     return profile
 
+
 async def resolve_output_formats(
-    output_formats: OutputFormatType,
+    output_formats: OutputFormatT,
     output_path: str | Path | None,
 ) -> dict[str, GenerativeBenchmarkerOutput]:
-    output_formats = GenerativeBenchmarkerOutput.resolve(
+    return GenerativeBenchmarkerOutput.resolve(
         output_formats=(output_formats or {}), output_path=output_path
     )
-    return output_formats
+
 
 async def finalize_outputs(
     report: GenerativeBenchmarksReport,
-    resolved_output_formats: dict[str, GenerativeBenchmarkerOutput]
+    resolved_output_formats: dict[str, GenerativeBenchmarkerOutput],
 ):
     output_format_results = {}
     for key, output in resolved_output_formats.items():
@@ -143,43 +117,32 @@ async def finalize_outputs(
 
 # Complete entrypoints
 
-async def benchmark_with_scenario(scenario: Scenario, **kwargs):
-    """
-    Run a benchmark using a scenario and specify any extra arguments
-    """
-
-    if isinstance(scenario, GenerativeTextScenario):
-        return await benchmark_generative_text(**vars(scenario), **kwargs)
-    else:
-        raise ValueError(f"Unsupported Scenario type {type(scenario)}")
-
 
 # @validate_call(config={"arbitrary_types_allowed": True})
+@enable_scenarios
 async def benchmark_generative_text(  # noqa: C901
     target: str,
-    data: DataType,
+    data: DataInputT,
     profile: StrategyType | ProfileType | Profile,
-    rate: float | list[float] | None = None,
+    rate: list[float] | None = None,
     random_seed: int = 42,
     # Backend configuration
     backend: BackendType | Backend = "openai_http",
     backend_kwargs: dict[str, Any] | None = None,
     model: str | None = None,
     # Data configuration
-    processor: str | Path | PreTrainedTokenizerBase | None = None,
+    processor: ProcessorInputT | None = None,
     processor_args: dict[str, Any] | None = None,
     data_args: dict[str, Any] | None = None,
     data_sampler: Literal["random"] | None = None,
     # Output configuration
     output_path: str | Path | None = _CURRENT_WORKING_DIR,
-    output_formats: OutputFormatType = ("console", "json", "html", "csv"),
+    output_formats: OutputFormatT = ("console", "json", "html", "csv"),
     # Updates configuration
-    progress: tuple[str, ...] | list[str] | list[BenchmarkerProgress] | None = None,
+    progress: ProgressInputT | None = None,
     print_updates: bool = False,
     # Aggregators configuration
-    add_aggregators: (
-        dict[str, str | dict[str, Any] | Aggregator | CompilableAggregator] | None
-    ) = None,
+    add_aggregators: AggregatorInputT | None = None,
     warmup: float | None = None,
     cooldown: float | None = None,
     request_samples: int | None = 20,
@@ -296,7 +259,9 @@ async def benchmark_generative_text(  # noqa: C901
         )
 
     with console.print_update_step(title="Resolving output formats") as console_step:
-        resolved_output_formats = await resolve_output_formats(output_formats, output_path)
+        resolved_output_formats = await resolve_output_formats(
+            output_formats, output_path
+        )
         console_step.finish(
             title="Output formats resolved",
             details={key: str(val) for key, val in resolved_output_formats.items()},
@@ -351,7 +316,7 @@ async def benchmark_generative_text(  # noqa: C901
 async def reimport_benchmarks_report(
     file: Path,
     output_path: Path | None,
-    output_formats: OutputFormatType = ("console", "json", "html", "csv"),
+    output_formats: OutputFormatT = ("console", "json", "html", "csv"),
 ) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
     """
     The command-line entry point for re-importing and displaying an
@@ -363,10 +328,15 @@ async def reimport_benchmarks_report(
         title=f"Loading benchmarks from {file}"
     ) as console_step:
         report = GenerativeBenchmarksReport.load_file(file)
-        console_step.finish(f"Import of old benchmarks complete; loaded {len(report.benchmarks)} benchmark(s)")
+        console_step.finish(
+            "Import of old benchmarks complete;"
+            f" loaded {len(report.benchmarks)} benchmark(s)"
+        )
 
     with console.print_update_step(title="Resolving output formats") as console_step:
-        resolved_output_formats = await resolve_output_formats(output_formats, output_path)
+        resolved_output_formats = await resolve_output_formats(
+            output_formats, output_path
+        )
         console_step.finish(
             title="Output formats resolved",
             details={key: str(val) for key, val in resolved_output_formats.items()},
