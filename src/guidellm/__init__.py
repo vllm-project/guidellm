@@ -20,7 +20,8 @@ with (
     hf_logging.set_verbosity_error()
     logging.getLogger("transformers").setLevel(logging.ERROR)
 
-from .config import (
+from .logger import configure_logger, logger
+from .settings import (
     DatasetSettings,
     Environment,
     LoggingSettings,
@@ -30,7 +31,6 @@ from .config import (
     reload_settings,
     settings,
 )
-from .logger import configure_logger, logger
 
 __all__ = [
     "DatasetSettings",
