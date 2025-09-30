@@ -7,13 +7,11 @@ from typing import Any, Optional, TypeVar, Union
 
 import pytest
 from pydantic import ValidationError
-from typing_extensions import TypeAliasType
 
 from guidellm.scheduler import (
     BackendInterface,
     BackendT,
     MeasuredRequestTimings,
-    MultiTurnRequestT,
     RequestSchedulerTimings,
     RequestT,
     ResponseT,
@@ -47,20 +45,6 @@ def test_backend_t():
     assert BackendT.__name__ == "BackendT"
     assert BackendT.__bound__.__name__ == "BackendInterface"
     assert BackendT.__constraints__ == ()
-
-
-def test_multi_turn_request_t():
-    """Validate MultiTurnRequestT is a TypeAliasType for multi-turn requests."""
-    assert isinstance(MultiTurnRequestT, TypeAliasType)
-    assert MultiTurnRequestT.__name__ == "MultiTurnRequestT"
-
-    value = MultiTurnRequestT.__value__
-    assert hasattr(value, "__origin__")
-    assert value.__origin__ is Union
-
-    type_params = getattr(MultiTurnRequestT, "__type_params__", ())
-    assert len(type_params) == 1
-    assert type_params[0].__name__ == "RequestT"
 
 
 class TestBackendInterface:
