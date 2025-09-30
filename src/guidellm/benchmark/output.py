@@ -5,6 +5,7 @@ import json
 import math
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -36,6 +37,7 @@ from guidellm.utils import (
     safe_format_timestamp,
     split_text_list_by_length,
 )
+from guidellm.utils import recursive_key_update, camelize_str
 
 __all__ = [
     "GenerativeBenchmarkerCSV",
@@ -711,8 +713,6 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
         :param report: The completed benchmark report.
         :return: Path to the saved HTML file.
         """
-        import humps
-
         output_path = self.output_path
         if output_path.is_dir():
             output_path = output_path / GenerativeBenchmarkerHTML.DEFAULT_FILE
@@ -720,13 +720,13 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
 
         data_builder = UIDataBuilder(report.benchmarks)
         data = data_builder.to_dict()
-        camel_data = humps.camelize(data)
+        camel_data = recursive_key_update(deepcopy(data), camelize_str)
 
         ui_api_data = {}
-        for key, value in camel_data.items():
-            placeholder_key = f"window.{humps.decamelize(key)} = {{}};"
+        for k, v in camel_data.items():
+            placeholder_key = f"window.{k} = {{}};"
             replacement_value = (
-                f"window.{humps.decamelize(key)} = {json.dumps(value, indent=2)};\n"
+                f"window.{k} = {json.dumps(v, indent=2)};\n"
             )
             ui_api_data[placeholder_key] = replacement_value
 
