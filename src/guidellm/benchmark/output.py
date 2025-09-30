@@ -724,9 +724,9 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
 
         ui_api_data = {}
         for key, value in camel_data.items():
-            placeholder_key = f"window.{humps.decamelize(key)} = {{}};"
+            placeholder_key = f"window.{key} = {{}};"
             replacement_value = (
-                f"window.{humps.decamelize(key)} = {json.dumps(value, indent=2)};\n"
+                f"window.{key} = {json.dumps(value, indent=2)};\n"
             )
             ui_api_data[placeholder_key] = replacement_value
 
