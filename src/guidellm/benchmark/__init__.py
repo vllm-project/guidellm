@@ -46,9 +46,17 @@ from .scenario import (
     enable_scenarios,
     get_builtin_scenarios,
 )
+from .types import (
+    AggregatorInputT,
+    DataInputT,
+    OutputFormatT,
+    ProcessorInputT,
+    ProgressInputT,
+)
 
 __all__ = [
     "Aggregator",
+    "AggregatorInputT",
     "AggregatorState",
     "AsyncProfile",
     "Benchmark",
@@ -60,6 +68,7 @@ __all__ = [
     "BenchmarkerProgressGroup",
     "CompilableAggregator",
     "ConcurrentProfile",
+    "DataInputT",
     "GenerativeBenchmark",
     "GenerativeBenchmarkerCSV",
     "GenerativeBenchmarkerConsole",
@@ -73,8 +82,11 @@ __all__ = [
     "GenerativeStatsProgressAggregator",
     "GenerativeTextScenario",
     "InjectExtrasAggregator",
+    "OutputFormatT",
+    "ProcessorInputT",
     "Profile",
     "ProfileType",
+    "ProgressInputT",
     "Scenario",
     "SchedulerStatsAggregator",
     "SerializableAggregator",
