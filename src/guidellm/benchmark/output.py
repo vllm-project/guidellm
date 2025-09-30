@@ -37,8 +37,7 @@ from guidellm.utils import (
     safe_format_timestamp,
     split_text_list_by_length,
 )
-from guidellm.utils.dict import recursive_key_update
-from guidellm.utils.text import camelize_str
+from guidellm.utils import recursive_key_update, camelize_str
 
 __all__ = [
     "GenerativeBenchmarkerCSV",
