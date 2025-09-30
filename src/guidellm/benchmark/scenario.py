@@ -9,21 +9,18 @@ from typing import Annotated, Any, Callable, Literal, TypeVar
 import yaml
 from loguru import logger
 from pydantic import BeforeValidator, Field, PositiveFloat, PositiveInt, SkipValidation
-from transformers.tokenization_utils_base import (  # type: ignore[import]
-    PreTrainedTokenizerBase,
-)
 
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.types import DataInputType, ProcessorInputType, AggregatorInputType
+from guidellm.benchmark.types import AggregatorInputT, DataInputT, ProcessorInputT
 from guidellm.scheduler import StrategyType
 from guidellm.utils import StandardBaseModel
 
-__ALL__ = [
-    "Scenario",
+__all__ = [
     "GenerativeTextScenario",
-    "get_builtin_scenarios",
+    "Scenario",
     "enable_scenarios",
+    "get_builtin_scenarios",
 ]
 
 SCENARIO_DIR = Path(__file__).parent / "scenarios/"
@@ -111,7 +108,7 @@ class GenerativeTextScenario(Scenario):
         arbitrary_types_allowed = True
 
     data: Annotated[
-        DataInputType,
+        DataInputT,
         # BUG: See https://github.com/pydantic/pydantic/issues/9541
         SkipValidation,
     ]
@@ -125,12 +122,12 @@ class GenerativeTextScenario(Scenario):
     backend_kwargs: dict[str, Any] | None = None
     model: str | None = None
     # Data configuration
-    processor: ProcessorInputType | None = None
+    processor: ProcessorInputT | None = None
     processor_args: dict[str, Any] | None = None
     data_args: dict[str, Any] | None = None
     data_sampler: Literal["random"] | None = None
     # Aggregators configuration
-    add_aggregators: AggregatorInputType | None = None
+    add_aggregators: AggregatorInputT | None = None
     warmup: Annotated[float | None, Field(gt=0, le=1)] = None
     cooldown: Annotated[float | None, Field(gt=0, le=1)] = None
     request_samples: PositiveInt | None = 20
