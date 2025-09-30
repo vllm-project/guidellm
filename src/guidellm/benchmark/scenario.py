@@ -84,7 +84,7 @@ class Scenario(StandardBaseModel):
             logger.error(f"Failed to parse {filename} as type {cls.__name__}")
             raise ValueError(f"Error when parsing file: {filename}") from e
 
-        data.update(overrides)
+        data.update(overrides or {})
         return cls.model_validate(data)
 
     @classmethod
@@ -144,7 +144,7 @@ def enable_scenarios(func: Callable) -> Any:
     @wraps(func)
     async def decorator(*args, scenario: Scenario | None = None, **kwargs) -> Any:
         if scenario is not None:
-            kwargs.update(**scenario.model_dump())
+            kwargs.update(scenario.model_dump())
         return await func(*args, **kwargs)
 
     # Modify the signature of the decorator to include the `scenario` argument
