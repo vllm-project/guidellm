@@ -31,6 +31,7 @@ GenerativeRequestType = Literal[
 GenerativeDatasetColumnType = Literal[
     "prompt_tokens_count_column",
     "output_tokens_count_column",
+    "prefix_column",
     "text_column",
     "image_column",
     "video_column",
@@ -195,6 +196,7 @@ class GenerativeDatasetArgs(StandardBaseDict):
     split: str | None = None
     prompt_tokens_count_column: str | None = None
     output_tokens_count_column: str | None = None
+    prefix_column: str | None = None
     text_column: str | list[str] | None = None
     image_column: str | list[str] | None = None
     video_column: str | list[str] | None = None

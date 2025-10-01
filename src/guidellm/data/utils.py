@@ -80,6 +80,11 @@ DEFAULT_SPLITS: dict[Literal["train", "calib", "val", "test"], list[str]] = {
 DEFAULT_COLUMN_NAMES: dict[str, list[str]] = {
     "prompt_tokens_count": ["prompt_tokens_count", "input_tokens_count"],
     "output_tokens_count": ["output_tokens_count", "completion_tokens_count"],
+    "prefix_column": [
+        "system_prompt",
+        "system",
+        "prefix",
+    ],
     "text_column": [
         "prompt",
         "instruction",
