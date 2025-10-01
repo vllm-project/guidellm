@@ -21,7 +21,7 @@ def test_default_settings():
     assert settings.openai == OpenAISettings()
     assert (
         settings.report_generation.source
-        == "https://blog.vllm.ai/guidellm/ui/latest/index.html"
+        == "https://blog.vllm.ai/guidellm/ui/v0.3.0/index.html"
     )
 
 
@@ -60,13 +60,13 @@ def test_report_generation_default_source():
     settings = Settings(env=Environment.STAGING)
     assert (
         settings.report_generation.source
-        == "https://blog.vllm.ai/guidellm/ui/release/latest/index.html"
+        == "https://blog.vllm.ai/guidellm/ui/release/v0.3.0/index.html"
     )
 
     settings = Settings(env=Environment.PROD)
     assert (
         settings.report_generation.source
-        == "https://blog.vllm.ai/guidellm/ui/latest/index.html"
+        == "https://blog.vllm.ai/guidellm/ui/v0.3.0/index.html"
     )
 
 
