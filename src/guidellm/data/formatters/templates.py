@@ -22,11 +22,7 @@ DEFAULT_TEXT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("text_comple
     textwrap.dedent("""
         {% set obj = {
             "json_body": {
-                "prompt": (
-                    text_column[0]
-                    if text_column and text_column|length == 1
-                    else text_column
-                )
+                "prompt": prefix_column[0]|default("") + text_column[0]
             }
         } %}
 
@@ -53,6 +49,10 @@ DEFAULT_CHAT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("chat_comple
             "json_body": {
                 "messages": [
                     {
+                        "role": "system",
+                        "content": prefix_column[0]|default("")
+                    },
+                    {
                         "role": "user",
                         "content": []
                     }
@@ -61,11 +61,11 @@ DEFAULT_CHAT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("chat_comple
         } %}
 
         {%- for item in text_column or [] %}
-            {% do obj["json_body"].messages[0].content.append({"type": "text", "text": item}) %}
+            {% do obj["json_body"].messages[1].content.append({"type": "text", "text": item}) %}
         {%- endfor %}
 
         {%- for item in image_column or [] %}
-            {% do obj["json_body"].messages[0].content.append({
+            {% do obj["json_body"].messages[1].content.append({
                 "type": "image_url",
                 "image_url": encode_image(
                     item,
@@ -78,7 +78,7 @@ DEFAULT_CHAT_COMPLETIONS_TEMPLATE = JinjaTemplatesRegistry.register("chat_comple
         {%- endfor %}
 
         {%- for item in video_column or [] %}
-            {% do obj["json_body"].messages[0].content.append({
+            {% do obj["json_body"].messages[1].content.append({
                 "type": "video_url",
                 "video_url": encode_video(
                     item,
