@@ -330,20 +330,6 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
         return ", ".join(f"{key}={value}" for key, value in profile_args.items())
 
-    def _get_args_str(self, benchmark: GenerativeBenchmark) -> str:
-        args = benchmark.args
-        args_dict = OrderedDict(
-            {
-                "max_number": args.max_number,
-                "max_duration": args.max_duration,
-                "warmup_number": args.warmup_number,
-                "warmup_duration": args.warmup_duration,
-                "cooldown_number": args.cooldown_number,
-                "cooldown_duration": args.cooldown_duration,
-            }
-        )
-        return ", ".join(f"{key}={value}" for key, value in args_dict.items())
-
     def _print_section_header(self, title: str, indent: int = 0, new_lines: int = 2):
         self._print_line(
             f"{title}:",
