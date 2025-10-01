@@ -36,6 +36,9 @@ class SingletonMixin:
         assert manager1 is manager2
     """
 
+    _singleton_initialized: bool
+    _init_lock: threading.Lock
+
     def __new__(cls, *args, **kwargs):  # noqa: ARG004
         """
         Create or return the singleton instance.

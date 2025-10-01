@@ -10,7 +10,7 @@ plugin architectures.
 
 from __future__ import annotations
 
-from typing import Callable, ClassVar, Generic, TypeVar, cast
+from typing import Any, Callable, ClassVar, Generic, TypeVar, cast
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 
@@ -19,7 +19,7 @@ __all__ = ["RegisterT", "RegistryMixin", "RegistryObjT"]
 
 RegistryObjT = TypeVar("RegistryObjT")
 """Generic type variable for objects managed by the registry system."""
-RegisterT = TypeVar("RegisterT")
+RegisterT = TypeVar("RegisterT", bound=type)  # Must be bound to type to ensure __name__ is available.
 """Generic type variable for the args and return values within the registry."""
 
 
@@ -62,7 +62,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
     :cvar registry_populated: Track whether auto-discovery has completed
     """
 
-    registry: ClassVar[dict[str, RegistryObjT] | None] = None
+    registry: ClassVar[dict[str, Any] | None] = None
     registry_auto_discovery: ClassVar[bool] = False
     registry_populated: ClassVar[bool] = False
 
@@ -209,6 +209,8 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
         if name in cls.registry:
             return cls.registry[name]
 
-        lower_key_map = {key.lower(): key for key in cls.registry}
+        for k, v in cls.registry.items():
+            if name.lower() == k.lower():
+                return v
 
-        return cls.registry.get(lower_key_map.get(name.lower()))
+        return None  # Not found
