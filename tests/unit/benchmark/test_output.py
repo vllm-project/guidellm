@@ -29,20 +29,28 @@ def test_generative_benchmark_invalid_initilization():
         GenerativeBenchmarksReport(benchmarks="invalid_type")  # type: ignore[arg-type]
 
 
-@pytest.mark.skip(reason="Computed fields are duplicated.")
 def test_generative_benchmark_marshalling():
     mock_benchmark = mock_generative_benchmark()
     report = GenerativeBenchmarksReport(benchmarks=[mock_benchmark])
 
     serialized = report.model_dump()
+    print("Serialized: ", serialized)
     deserialized = GenerativeBenchmarksReport.model_validate(serialized)
+    print("Deserialized: ", deserialized)
     deserialized_benchmark = deserialized.benchmarks[0]
+    serialized = deserialized.model_dump()
+    print("Re-serialized: ", serialized)
 
-    for field in mock_benchmark.model_fields_set:
-        assert getattr(mock_benchmark, field) == getattr(deserialized_benchmark, field)
+    print("Fields:", {name: getattr(deserialized, name) for name in deserialized.model_fields})
+    print("Extras:", deserialized.__pydantic_extra__)
 
 
-@pytest.mark.skip(reason="Computed fields are duplicated.")
+    #for field in mock_benchmark.model_fields_set:
+    #    assert getattr(mock_benchmark, field) == getattr(deserialized_benchmark, field)
+    # Workaround for duplicate fields for computed fields.
+    assert mock_benchmark.model_dump() == deserialized_benchmark.model_dump()
+
+
 def test_file_json():
     mock_benchmark = mock_generative_benchmark()
     report = GenerativeBenchmarksReport(benchmarks=[mock_benchmark])
@@ -57,13 +65,14 @@ def test_file_json():
     loaded_report = GenerativeBenchmarksReport.load_file(mock_path)
     loaded_benchmark = loaded_report.benchmarks[0]
 
-    for field in mock_benchmark.model_fields_set:
-        assert getattr(mock_benchmark, field) == getattr(loaded_benchmark, field)
+    #for field in mock_benchmark.model_fields_set:
+    #    assert getattr(mock_benchmark, field) == getattr(loaded_benchmark, field)
+    # Workaround for duplicate fields for computed fields.
+    assert mock_benchmark.model_dump() == loaded_benchmark.model_dump()
 
     mock_path.unlink()
 
 
-@pytest.mark.skip(reason="Computed fields are duplicated.")
 def test_file_yaml():
     mock_benchmark = mock_generative_benchmark()
     report = GenerativeBenchmarksReport(benchmarks=[mock_benchmark])
@@ -78,8 +87,10 @@ def test_file_yaml():
     loaded_report = GenerativeBenchmarksReport.load_file(mock_path)
     loaded_benchmark = loaded_report.benchmarks[0]
 
-    for field in mock_benchmark.model_fields_set:
-        assert getattr(mock_benchmark, field) == getattr(loaded_benchmark, field)
+    #for field in mock_benchmark.model_fields_set:
+    #    assert getattr(mock_benchmark, field) == getattr(loaded_benchmark, field)
+    # Workaround for duplicate fields for computed fields.
+    assert mock_benchmark.model_dump() == loaded_benchmark.model_dump()
 
     mock_path.unlink()
 
