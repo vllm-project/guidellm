@@ -89,9 +89,7 @@ class Dataset(BaseModel):
                 if creator == SyntheticDatasetCreator:
                     data_dict = SyntheticDatasetConfig.parse_str(data)
                     dataset_name = data_dict.source
-                if creator == FileDatasetCreator or isinstance(
-                    creator, HFDatasetsCreator
-                ):
+                if creator == FileDatasetCreator or creator == HFDatasetsCreator:
                     dataset_name = data
                 if creator == InMemoryDatasetCreator:
                     dataset_name = "In-memory"
