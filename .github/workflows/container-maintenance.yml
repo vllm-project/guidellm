@@ -1,0 +1,53 @@
+name: Container Image Maintenance
+
+on:
+  schedule:
+    - cron: '0 2 * * 3'  # Runs at 2am on Wednesdays
+  workflow_dispatch:  # Enables manual triggering of the workflow
+
+# Only run one at a time
+concurrency:
+  group: ${{ github.workflow }}
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup-container-tags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete PR and untagged images older than 2 weeks
+        uses: snok/container-retention-policy@v3.0.0
+        with:
+          account: ${{ github.repository_owner }}
+          token: ${{ github.token }}
+          image-names: ${{ github.event.repository.name }}
+          image-tags: "pr-*"
+          cut-off: 2w
+          dry-run: false
+
+  push-container-tags:
+    runs-on: ubuntu-latest
+    needs: cleanup-container-tags
+    if: always() # Run after cleanup even if it fails
+    steps:
+      - name: Log into ghcr.io
+        uses: redhat-actions/podman-login@v1
+        with:
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+          registry: ghcr.io/${{ github.repository_owner }}
+      - name: Get list of tags
+        run: |
+          set -euo pipefail  # Fail pipe if any command fails
+          skopeo list-tags docker://ghcr.io/${{ github.repository }} | jq --raw-output '.Tags[]' > tags
+      - name: Get latest release and rc tags
+        run: |
+          STABLE_TAG="$(grep -P '^v\d+\.\d+\.\d+$' tags | sort -rV | head -n1)"
+          echo "stable_tag=${STABLE_TAG:-v0.0.0}" >> $GITHUB_ENV
+          LATEST_TAG="$(grep -P '^v\d+\.\d+\.\d+' tags | sort -rV | head -n1)"
+          echo "latest_tag=${LATEST_TAG:-v0.0.0}" >> $GITHUB_ENV
+      - name: Update latest and stable tags
+        run: |
+          skopeo copy docker://ghcr.io/${{ github.repository }}:${{ env.stable_tag }} docker://ghcr.io/${{ github.repository }}:stable
+          skopeo copy docker://ghcr.io/${{ github.repository }}:${{ env.latest_tag }} docker://ghcr.io/${{ github.repository }}:latest

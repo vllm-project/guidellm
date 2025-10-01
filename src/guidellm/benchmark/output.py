@@ -144,10 +144,9 @@ class GenerativeBenchmarksReport(StandardBaseModel):
             )
 
         model_dict = self.model_dump()
-        model_json = json.dumps(model_dict)
 
-        with path.open("w") as file:
-            file.write(model_json)
+        with path.open("w", encoding="utf-8") as file:
+            json.dump(model_dict, file, ensure_ascii=False, indent=4)
 
         return path
 
