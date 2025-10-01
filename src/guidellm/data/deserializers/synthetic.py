@@ -25,6 +25,11 @@ __all__ = [
 
 
 class SyntheticTextDatasetConfig(StandardBaseModel):
+    prefix_tokens: int = Field(
+        description="The number of shared prefix tokens to prepend to each prompt.",
+        ge=0,
+        default=0,
+    )
     prompt_tokens: int = Field(
         description="The average number of text tokens generated for prompts.",
         gt=0,
@@ -104,20 +109,29 @@ class SyntheticTextGenerator:
             )
         )
 
+        # Create a shared prefix if specified
+        if self.config.prefix_tokens > 0:
+            prefix = self._create_prompt(self.config.prefix_tokens, faker)
+        else:
+            prefix = ""  # Always have a prefix key for consistency
+
         while True:
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
 
             yield {
+                "prefix": prefix,
                 "prompt": self._create_prompt(
-                    prompt_tokens_count, samples_generated, faker
+                    prompt_tokens_count, faker, f"{samples_generated} "
                 ),
                 "prompt_tokens_count": prompt_tokens_count,
                 "output_tokens_count": output_tokens_count,
             }
             samples_generated += 1
 
-    def _create_prompt(self, prompt_tokens_count: int, index: int, faker: Faker) -> str:
+    def _create_prompt(
+        self, prompt_tokens_count: int, faker: Faker, unique: str = ""
+    ) -> str:
         prompt_token_ids = []
         avg_chars_per_token = 5
         margin_of_safety = 1.5
@@ -128,7 +142,7 @@ class SyntheticTextGenerator:
             num_chars = (
                 prompt_tokens_count * avg_chars_per_token * margin_of_safety * attempts
             )
-            text = f"{index} " + faker.text(max_nb_chars=num_chars)
+            text = unique + faker.text(max_nb_chars=num_chars)
             prompt_token_ids = self.processor.encode(text)
 
         return self.processor.decode(
@@ -166,6 +180,7 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             ),
             features=Features(
                 {
+                    "prefix": Value("string"),
                     "prompt": Value("string"),
                     "prompt_tokens_count": Value("int32"),
                     "output_tokens_count": Value("int32"),
