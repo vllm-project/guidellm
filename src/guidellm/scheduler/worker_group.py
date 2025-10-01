@@ -98,10 +98,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :raises ValueError: If neither requests nor cycle_requests are provided,
             or if cycle_requests is an Iterator rather than Iterable
         """
-        if not requests and not cycle_requests:
+        if requests is None and cycle_requests is None:
             raise ValueError(
                 "At least one of 'requests' or 'cycle_requests' must be provided. "
-                f"Got requests: {requests}, cycle_requests: {cycle_requests}"
             )
 
         if isinstance(cycle_requests, Iterator):
@@ -487,10 +486,10 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         """
 
         def _iter():
-            if requests:
+            if requests is not None:
                 yield from requests
 
-            if cycle_requests:
+            if cycle_requests is not None:
                 while True:
                     yield from cycle_requests
 
@@ -512,6 +511,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 scheduler_start_time=self.start_time,
             )
             state_update = self._locked_update(request_info)
+            request_info.scheduler_timings.queued = time.time()
+
             yield (request, request_info)
 
             if state_update.stop_queueing:

@@ -115,5 +115,6 @@ class Backend(
     async def default_model(self) -> str | None:
         """
         :return: The default model name or identifier for generation requests.
+            None if no default model is available.
         """
         ...

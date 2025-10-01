@@ -532,116 +532,117 @@ class GenerativeStatsProgressAggregator(
         :return: Updated aggregation state for progress reporting.
         """
         _ = (request,)  # unused
-        if request_info.status not in {"completed", "errored", "cancelled"}:
-            # Only compile progress stats for processed requests
-            return None
 
-        state["updated_generative_stats"] = True
-        start_time = scheduler_state.start_time
-        end_time = (
-            safe_getattr(request_info.request_timings, "request_end")
-            or request_info.scheduler_timings.resolve_end
+        # Request Concurrency
+        state.set_metric(
+            key="requests",
+            value=scheduler_state.processing_requests,
+            type_="avg",
         )
-        duration = end_time - start_time if end_time else None
 
-        for prefix in (request_info.status, None):
-            requests_count = (
-                scheduler_state.processed_requests
-                if prefix is None
-                else scheduler_state.successful_requests
-                if request_info.status == "completed"
-                else scheduler_state.cancelled_requests
-                if request_info.status == "cancelled"
-                else scheduler_state.errored_requests
+        if request_info.status in {"completed", "errored", "cancelled"}:
+            # Only compile progress stats for processed requests
+            state["updated_generative_stats"] = True
+            start_time = scheduler_state.start_time
+            end_time = (
+                safe_getattr(request_info.request_timings, "request_end")
+                or request_info.scheduler_timings.resolve_end
             )
+            duration = end_time - start_time if end_time else None
 
-            # Requests per Second
-            if duration is not None:
-                state.set_metric(
-                    key="requests",
-                    value=safe_divide(requests_count, duration),
-                    type_="rate",
+            for prefix in (request_info.status, None):
+                requests_count = (
+                    scheduler_state.processed_requests
+                    if prefix is None
+                    else scheduler_state.successful_requests
+                    if request_info.status == "completed"
+                    else scheduler_state.cancelled_requests
+                    if request_info.status == "cancelled"
+                    else scheduler_state.errored_requests
+                )
+
+                # Requests per Second
+                if duration is not None:
+                    state.set_metric(
+                        key="requests",
+                        value=safe_divide(requests_count, duration),
+                        type_="rate",
+                        prefix=prefix,
+                    )
+
+                # Request Latency
+                state.add_metric(
+                    key="request_latency",
+                    value=safe_getattr(request_info.request_timings, "request_end"),
+                    start_val=safe_getattr(
+                        request_info.request_timings, "request_start"
+                    ),
                     prefix=prefix,
                 )
 
-            # Request Concurrency
-            state.set_metric(
-                key="requests",
-                value=scheduler_state.processing_requests,
-                type_="avg",
-                prefix=prefix,
-            )
+                # Time to First Token
+                state.add_metric(
+                    key="time_to_first_token",
+                    value=safe_getattr(request_info.request_timings, "first_iteration"),
+                    start_val=safe_getattr(
+                        request_info.request_timings, "request_start"
+                    ),
+                    prefix=prefix,
+                )
 
-            # Request Latency
-            state.add_metric(
-                key="request_latency",
-                value=safe_getattr(request_info.request_timings, "request_end"),
-                start_val=safe_getattr(request_info.request_timings, "request_start"),
-                prefix=prefix,
-            )
+                output_tokens = response.output_stats.value() if response else None
+                prompt_tokens = response.prompt_stats.value() if response else None
+                total_tokens = response.total_tokens() if response else None
 
-            # Time to First Token
-            state.add_metric(
-                key="time_to_first_token",
-                value=safe_getattr(request_info.request_timings, "first_iteration"),
-                start_val=safe_getattr(request_info.request_timings, "request_start"),
-                prefix=prefix,
-            )
+                # Inter Token Latency
+                state.add_metric(
+                    key="inter_token_latency",
+                    value=safe_getattr(request_info.request_timings, "last_iteration"),
+                    start_val=safe_getattr(
+                        request_info.request_timings, "first_iteration"
+                    ),
+                    count=(
+                        output_tokens - 1
+                        if output_tokens and output_tokens > 1
+                        else None
+                    ),
+                    prefix=prefix,
+                )
 
-            output_tokens = safe_getattr(response, "output_tokens")
-            prompt_tokens = safe_getattr(response, "prompt_tokens")
+                # Time per Output Token
+                state.add_metric(
+                    key="time_per_output_token",
+                    value=safe_getattr(request_info.request_timings, "request_start"),
+                    start_val=safe_getattr(
+                        request_info.request_timings, "last_iteration"
+                    ),
+                    count=output_tokens,
+                    prefix=prefix,
+                )
 
-            # Inter Token Latency
-            state.add_metric(
-                key="inter_token_latency",
-                value=safe_getattr(request_info.request_timings, "last_iteration"),
-                start_val=safe_getattr(request_info.request_timings, "first_iteration"),
-                count=(
-                    output_tokens - 1 if output_tokens and output_tokens > 1 else None
-                ),
-                prefix=prefix,
-            )
+                # Prompt Tokens
+                state.add_metric(
+                    key="prompt_tokens",
+                    value=prompt_tokens,
+                    duration=duration,
+                    prefix=prefix,
+                )
 
-            # Time per Output Token
-            state.add_metric(
-                key="time_per_output_token",
-                value=safe_getattr(request_info.request_timings, "request_start"),
-                start_val=safe_getattr(request_info.request_timings, "last_iteration"),
-                count=output_tokens,
-                prefix=prefix,
-            )
+                # Output Tokens
+                state.add_metric(
+                    key="output_tokens",
+                    value=output_tokens,
+                    duration=duration,
+                    prefix=prefix,
+                )
 
-            # Prompt Tokens
-            state.add_metric(
-                key="prompt_tokens",
-                value=prompt_tokens,
-                duration=duration,
-                prefix=prefix,
-            )
-
-            # Output Tokens
-            state.add_metric(
-                key="output_tokens",
-                value=output_tokens,
-                duration=duration,
-                prefix=prefix,
-            )
-
-            # Total Tokens
-            state.add_metric(
-                key="total_tokens",
-                value=(
-                    prompt_tokens + output_tokens
-                    if all_defined(prompt_tokens, output_tokens)
-                    else prompt_tokens
-                    if all_defined(prompt_tokens)
-                    else output_tokens
-                    if all_defined(output_tokens)
-                    else None
-                ),
-                duration=duration,
-                prefix=prefix,
-            )
+                # Total Tokens
+                state.add_metric(
+                    key="total_tokens",
+                    value=total_tokens,
+                    duration=duration,
+                    prefix=prefix,
+                )
 
         return state
 
@@ -929,29 +930,29 @@ class GenerativeRequestsAggregator(
     @classmethod
     def _create_generative_request_stats(
         cls,
-        response: GenerationResponse,
+        response: GenerationResponse | None,
         request: GenerationRequest,
         request_info: ScheduledRequestInfo,
     ) -> GenerativeRequestStats:
-        prompt_tokens = response.preferred_prompt_tokens(
-            settings.preferred_prompt_tokens_source
-        )
-        output_tokens = response.preferred_output_tokens(
-            settings.preferred_output_tokens_source
-        )
-
         return GenerativeRequestStats(
             request_id=request.request_id,
             request_type=request.request_type,
-            prompt=str(request.content),
-            request_args=response.request_args,
-            output=response.value,
-            iterations=response.iterations,
-            prompt_tokens=prompt_tokens,
-            output_tokens=output_tokens,
+            request_args=request.arguments,
+            output=response.text if response else None,
+            iterations=response.iterations if response else 0,
+            prompt_tokens=(
+                response.prompt_stats.value(settings.preferred_prompt_tokens_source)
+                if response
+                else None
+            ),
+            output_tokens=(
+                response.output_stats.value(settings.preferred_output_tokens_source)
+                if response
+                else None
+            ),
             total_tokens=(
-                prompt_tokens + output_tokens
-                if prompt_tokens is not None and output_tokens is not None
+                response.total_tokens(settings.preferred_output_tokens_source)
+                if response
                 else None
             ),
             scheduler_info=request_info,

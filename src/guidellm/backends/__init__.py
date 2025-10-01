@@ -13,6 +13,7 @@ from .objects import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,
+    GenerationTokenStats,
 )
 from .openai import OpenAIHTTPBackend
 
@@ -22,5 +23,6 @@ __all__ = [
     "GenerationRequest",
     "GenerationRequestTimings",
     "GenerationResponse",
+    "GenerationTokenStats",
     "OpenAIHTTPBackend",
 ]

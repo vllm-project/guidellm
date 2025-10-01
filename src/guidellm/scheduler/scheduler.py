@@ -124,7 +124,7 @@ class Scheduler(
 
                 # Setup the worker group, sync start with the environment
                 worker_group = WorkerProcessGroup[RequestT, ResponseT](
-                    requests=None,
+                    requests=local_requests,
                     cycle_requests=local_requests,
                     backend=backend,
                     strategy=local_strategy,

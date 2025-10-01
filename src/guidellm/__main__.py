@@ -56,6 +56,11 @@ from guidellm.benchmark import (
 from guidellm.benchmark.scenario import (
     GenerativeTextScenario,
 )
+from guidellm.data import (
+    GenerativeDatasetArgs,
+    GenerativeRequestFormatter,
+    GenerativeRequestType,
+)
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
@@ -143,6 +148,7 @@ def benchmark():
 @click.option(
     "--data",
     type=str,
+    multiple=True,
     help=(
         "The HuggingFace dataset ID, a path to a HuggingFace dataset, "
         "a path to a data file csv, json, jsonl, or txt, "
@@ -197,9 +203,7 @@ def benchmark():
     default=None,
     help=(
         "A JSON string containing any arguments to pass to the backend as a "
-        "dict with **kwargs. Headers can be removed by setting their value to "
-        "null. For example: "
-        """'{"headers": {"Authorization": null, "Custom-Header": "Custom-Value"}}'"""
+        "dict with **kwargs."
     ),
 )
 @click.option(
@@ -234,19 +238,72 @@ def benchmark():
 @click.option(
     "--data-args",
     default=None,
-    callback=cli_tools.parse_json,
+    callback=(
+        lambda _ctx, _param, value: [
+            GenerativeDatasetArgs.model_validate_json(val)
+            if val
+            else GenerativeDatasetArgs()
+            for val in value
+        ]
+        if value
+        else None
+    ),
     help=(
         "A JSON string containing any arguments to pass to the dataset creation "
         "as a dict with **kwargs."
     ),
 )
 @click.option(
+    "--data-samples",
+    default=-1,
+    type=int,
+    help=(
+        "The number of samples to use from the dataset. If -1 (default), will use all "
+        "samples in the dataset."
+    ),
+)
+@click.option(
     "--data-sampler",
     default=None,
-    type=click.Choice(["random"]),
+    type=click.Choice(["shuffle"]),
+    help="The data sampler type to use.",
+)
+@click.option(
+    "--data-request-type",
+    default="text_completions",
+    type=str,
     help=(
-        "The data sampler type to use. 'random' will add a random shuffle on the data. "
-        "Defaults to None"
+        "The type of request to create for each data sample. "
+        f"For example, {list(get_literal_vals(GenerativeRequestType))}."
+    ),
+)
+@click.option(
+    "--data-request-template",
+    default=None,
+    help=(
+        "A Jinja2 template string or path to a Jinja2 template file to use for "
+        "creating requests from the data samples. If not provided, will use a "
+        "default template based on the request type."
+    ),
+)
+@click.option(
+    "--data-request-extras",
+    default=None,
+    callback=cli_tools.parse_json,
+    help=("A JSON string of extra data to include with each data request."),
+)
+@click.option(
+    "--data-request-nonstreaming",
+    is_flag=True,
+    help="Set this flag to disable streaming for the data requests.",
+)
+@click.option(
+    "--dataloader_kwargs",
+    default=None,
+    callback=cli_tools.parse_json,
+    help=(
+        "A JSON string containing any arguments to pass to the dataloader constructor "
+        "as a dict with **kwargs."
     ),
 )
 # Output configuration
@@ -387,7 +444,13 @@ def run(
     processor,
     processor_args,
     data_args,
+    data_samples,
     data_sampler,
+    data_request_type,
+    data_request_template,
+    data_request_extras,
+    data_request_nonstreaming,
+    dataloader_kwargs,
     # Output configuration
     output_path,
     output_formats,
@@ -420,7 +483,8 @@ def run(
     asyncio.run(
         benchmark_generative_text(
             target=target,
-            data=data,
+            data=list(data),
+            # Benchmark configuration
             profile=profile,
             rate=rate,
             random_seed=random_seed,
@@ -432,7 +496,22 @@ def run(
             processor=processor,
             processor_args=processor_args,
             data_args=data_args,
-            data_sampler=data_sampler,
+            data_samples=data_samples,
+            data_column_mapper=None,  # use default
+            data_request_formatter=GenerativeRequestFormatter(
+                request_type=data_request_type,
+                request_template=data_request_template,
+                request_extras=data_request_extras,
+                request_defaults=(
+                    {}  # disable defaults if non-streaming
+                    if data_request_nonstreaming
+                    else None
+                ),
+            ),
+            data_preprocessors=None,  # no preprocessors through CLI for now
+            dataloader_sampler=data_sampler,
+            dataloader_collate_fn=None,  # use default
+            dataloader_kwargs=dataloader_kwargs,
             # Output configuration
             output_path=output_path,
             output_formats=[

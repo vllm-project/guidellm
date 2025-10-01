@@ -7,6 +7,8 @@ import contextlib
 import logging
 import os
 
+from datasets.utils.logging import disable_progress_bar
+
 with (
     open(os.devnull, "w") as devnull,  # noqa: PTH123
     contextlib.redirect_stderr(devnull),
@@ -19,6 +21,7 @@ with (
     os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Silence warnings for tokenizers
     hf_logging.set_verbosity_error()
     logging.getLogger("transformers").setLevel(logging.ERROR)
+    disable_progress_bar()
 
 from .logger import configure_logger, logger
 from .settings import (

@@ -34,6 +34,9 @@ from pydantic import Field, computed_field
 from guidellm.benchmark.profile import (
     Profile,
 )
+from guidellm.data import (
+    GenerationRequestArguments,
+)
 from guidellm.scheduler import (
     ScheduledRequestInfo,
     SchedulerState,
@@ -214,9 +217,8 @@ class GenerativeRequestStats(BenchmarkRequestStats):
     request_type: Literal["text_completions", "chat_completions"] = Field(
         description="Type of generative request: text or chat completion"
     )
-    prompt: str = Field(description="Input text prompt for generation")
-    request_args: dict[str, Any] = Field(
-        description="Generation parameters and configuration options"
+    request_args: GenerationRequestArguments | None = Field(
+        default=None, description="Arguments passed to the backend for this request"
     )
     output: str | None = Field(
         description="Generated text output, if request completed successfully"
