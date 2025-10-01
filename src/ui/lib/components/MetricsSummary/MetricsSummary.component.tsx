@@ -54,7 +54,7 @@ export const Component = () => {
 
   const {
     ttft: ttftSLO,
-    tpot: tpotSLO,
+    itl: itlSLO,
     timePerRequest: timePerRequestSLO,
     throughput: throughputSLO,
     percentile,
@@ -62,7 +62,7 @@ export const Component = () => {
     maxX,
     errors,
     handleTtft,
-    handleTpot,
+    handleItl,
     handleTimePerRequest,
     handleThroughput,
     handlePercentileChange,
@@ -72,8 +72,8 @@ export const Component = () => {
   const isTtftMatch = Boolean(
     ttftSLO && interpolatedMetricData.ttft.enforcedPercentileValue <= ttftSLO
   );
-  const isTpotMatch = Boolean(
-    tpotSLO && interpolatedMetricData.tpot.enforcedPercentileValue <= tpotSLO
+  const isItlMatch = Boolean(
+    itlSLO && interpolatedMetricData.itl.enforcedPercentileValue <= itlSLO
   );
   const isTprMatch = Boolean(
     timePerRequestSLO &&
@@ -133,12 +133,12 @@ export const Component = () => {
             </FieldCell>
             <FieldCell data-id="field-cell-2">
               <Input
-                label="TPOT (ms)"
-                value={tpotSLO}
-                onChange={handleTpot}
+                label="ITL (ms)"
+                value={itlSLO}
+                onChange={handleItl}
                 fullWidth
                 fontColor={LineColor.Secondary}
-                error={errors?.tpot}
+                error={errors?.itl}
               />
             </FieldCell>
             <FieldCell data-id="field-cell-3">
@@ -222,17 +222,17 @@ export const Component = () => {
         <MiddleColumn sx={{ paddingLeft: '0px !important' }} item xs={9}>
           <GraphContainer>
             <MetricLine
-              data={[{ id: 'tpot', data: lineDataByRps.tpot || [] }]}
-              threshold={tpotSLO}
+              data={[{ id: 'itl', data: lineDataByRps.itl || [] }]}
+              threshold={itlSLO}
               lineColor={LineColor.Secondary}
             />
           </GraphContainer>
         </MiddleColumn>
         <MiddleColumn item xs={3}>
           <MetricValue
-            label="TPOT"
-            value={`${formatNumber(interpolatedMetricData.tpot.enforcedPercentileValue)} ms`}
-            match={isTpotMatch}
+            label="ITL"
+            value={`${formatNumber(interpolatedMetricData.itl.enforcedPercentileValue)} ms`}
+            match={isItlMatch}
             valueColor={LineColor.Secondary}
           />
         </MiddleColumn>

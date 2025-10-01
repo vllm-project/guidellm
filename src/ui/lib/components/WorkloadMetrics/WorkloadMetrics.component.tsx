@@ -36,14 +36,14 @@ export const leftColumn3 = (rpsValue: number, value: number, units: string) => (
 
 export const Component = () => {
   const { data } = useGetBenchmarksQuery();
-  const { ttft, tpot, timePerRequest, throughput } = useSelector(
+  const { ttft, itl, timePerRequest, throughput } = useSelector(
     selectMetricsDetailsLineData
   );
   const { currentRequestRate } = useSelector(selectSloState);
   const formattedRequestRate = formatNumber(currentRequestRate);
   const {
     ttft: ttftAtRPS,
-    tpot: tpotAtRPS,
+    itl: itlAtRPS,
     timePerRequest: timePerRequestAtRPS,
     throughput: throughputAtRPS,
   } = useSelector(selectInterpolatedMetrics);
@@ -77,21 +77,21 @@ export const Component = () => {
           </GraphsWrapper>
         </MetricsContainer>
         <MetricsContainer
-          header="TPOT"
+          header="ITL"
           leftColumn={leftColumn3(
             formattedRequestRate,
-            formatNumber(tpotAtRPS.mean),
+            formatNumber(itlAtRPS.mean),
             'ms'
           )}
-          rightColumn={columnContent(formattedRequestRate, tpotAtRPS.percentiles, 'ms')}
+          rightColumn={columnContent(formattedRequestRate, itlAtRPS.percentiles, 'ms')}
         >
-          <GraphTitle title="TPOT vs RPS" />
+          <GraphTitle title="ITL vs RPS" />
           <GraphsWrapper>
             <DashedLine
-              data={tpot}
+              data={itl}
               margins={{ left: 50, bottom: 50 }}
               xLegend="request per sec"
-              yLegend="tpot (ms)"
+              yLegend="itl (ms)"
               minX={minX}
             />
           </GraphsWrapper>

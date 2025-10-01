@@ -95,7 +95,7 @@ export const benchmarks = [
       ],
       bucketWidth: 0,
     },
-    tpot: {
+    itl: {
       statistics: {
         total: 0,
         mean: 0,
