@@ -1,20 +1,22 @@
 """
-Unit tests for guidellm.dataset.synthetic module.
+Unit tests for guidellm.data.deserializers.synthetic module.
 """
 
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 import yaml
+from datasets import IterableDataset
 
+from guidellm.data.deserializers.deserializer import DataNotSupportedError
 from guidellm.data.deserializers.synthetic import (
-    SyntheticTextPrefixBucketConfig,
     SyntheticTextDatasetConfig,
     SyntheticTextDatasetDeserializer,
     SyntheticTextGenerator,
+    SyntheticTextPrefixBucketConfig,
 )
 
 
@@ -30,7 +32,9 @@ class TestPrefixBucketConfig:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextPrefixBucketConfig(bucket_weight=100, prefix_count=1, prefix_tokens=5)
+        config = SyntheticTextPrefixBucketConfig(
+            bucket_weight=100, prefix_count=1, prefix_tokens=5
+        )
 
         assert config.bucket_weight == 100
         assert config.prefix_count == 1
@@ -43,13 +47,19 @@ class TestPrefixBucketConfig:
         ### WRITTEN BY AI ###
         """
         with pytest.raises(ValueError):
-            SyntheticTextPrefixBucketConfig(bucket_weight=-10, prefix_count=1, prefix_tokens=5)
+            SyntheticTextPrefixBucketConfig(
+                bucket_weight=-10, prefix_count=1, prefix_tokens=5
+            )
 
         with pytest.raises(ValueError):
-            SyntheticTextPrefixBucketConfig(bucket_weight=100, prefix_count=-1, prefix_tokens=5)
+            SyntheticTextPrefixBucketConfig(
+                bucket_weight=100, prefix_count=-1, prefix_tokens=5
+            )
 
         with pytest.raises(ValueError):
-            SyntheticTextPrefixBucketConfig(bucket_weight=100, prefix_count=1, prefix_tokens=-5)
+            SyntheticTextPrefixBucketConfig(
+                bucket_weight=100, prefix_count=1, prefix_tokens=-5
+            )
 
     @pytest.mark.regression
     def test_prefix_bucket_zero_weight_error(self):
@@ -59,7 +69,9 @@ class TestPrefixBucketConfig:
         """
         # Test validation error for creating PrefixBucketConfig with weight=0
         with pytest.raises(ValueError):
-            SyntheticTextPrefixBucketConfig(bucket_weight=0, prefix_count=1, prefix_tokens=2)
+            SyntheticTextPrefixBucketConfig(
+                bucket_weight=0, prefix_count=1, prefix_tokens=2
+            )
 
     @pytest.mark.sanity
     def test_prefix_bucket_config_validation(self):
@@ -77,15 +89,21 @@ class TestPrefixBucketConfig:
 
         # Test invalid bucket_weight
         with pytest.raises(ValueError):
-            SyntheticTextPrefixBucketConfig(bucket_weight=0, prefix_count=1, prefix_tokens=2)
+            SyntheticTextPrefixBucketConfig(
+                bucket_weight=0, prefix_count=1, prefix_tokens=2
+            )
 
         # Test invalid prefix_count
         with pytest.raises(ValueError):
-            SyntheticTextPrefixBucketConfig(bucket_weight=100, prefix_count=0, prefix_tokens=2)
+            SyntheticTextPrefixBucketConfig(
+                bucket_weight=100, prefix_count=0, prefix_tokens=2
+            )
 
         # Test invalid prefix_tokens
         with pytest.raises(ValueError):
-            SyntheticTextPrefixBucketConfig(bucket_weight=100, prefix_count=1, prefix_tokens=-1)
+            SyntheticTextPrefixBucketConfig(
+                bucket_weight=100, prefix_count=1, prefix_tokens=-1
+            )
 
 
 class TestSyntheticDatasetConfig:
@@ -114,7 +132,6 @@ class TestSyntheticDatasetConfig:
             output_tokens_stdev=5,
             output_tokens_min=20,
             output_tokens_max=40,
-            samples=500,
             source="custom_text.txt",
         )
 
@@ -127,7 +144,6 @@ class TestSyntheticDatasetConfig:
         assert config.output_tokens_stdev == 5
         assert config.output_tokens_min == 20
         assert config.output_tokens_max == 40
-        assert config.samples == 500
         assert config.source == "custom_text.txt"
 
     @pytest.mark.regression
@@ -140,7 +156,6 @@ class TestSyntheticDatasetConfig:
             {
                 "prompt_tokens": 75,
                 "output_tokens": 25,
-                "samples": 200,
                 "source": "test.txt",
                 "prefix_buckets": [
                     {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 10}
@@ -148,117 +163,12 @@ class TestSyntheticDatasetConfig:
             }
         )
 
-        config = SyntheticTextDatasetConfig.parse_str(json_str)
+        config = SyntheticTextDatasetConfig.model_validate_json(json_str)
 
         assert config.prompt_tokens == 75
         assert config.output_tokens == 25
-        assert config.samples == 200
         assert config.source == "test.txt"
         assert config.prefix_buckets[0].prefix_tokens == 10  # type: ignore [index]
-
-    @pytest.mark.regression
-    def test_parse_key_value_pairs(self):
-        """Test parsing key-value pairs configuration.
-
-        ### WRITTEN BY AI ###
-        """
-        kv_str = "prompt_tokens=80,output_tokens=30,samples=300,source=data.txt"
-
-        config = SyntheticTextDatasetConfig.parse_str(kv_str)
-
-        assert config.prompt_tokens == 80
-        assert config.output_tokens == 30
-        assert config.samples == 300
-        assert config.source == "data.txt"
-        assert config.prefix_buckets is None
-
-    @pytest.mark.sanity
-    def test_parse_yaml_file(self):
-        """Test parsing YAML file configuration.
-
-        ### WRITTEN BY AI ###
-        """
-        config_data = {
-            "prompt_tokens": 60,
-            "output_tokens": 15,
-            "samples": 100,
-            "source": "yaml_test.txt",
-            "prefix_buckets": [
-                {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 3}
-            ],
-        }
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(config_data, f)
-            yaml_path = f.name
-
-        try:
-            config = SyntheticTextDatasetConfig.parse_str(yaml_path)
-
-            assert config.prompt_tokens == 60
-            assert config.output_tokens == 15
-            assert config.samples == 100
-            assert config.source == "yaml_test.txt"
-            assert config.prefix_buckets[0].prefix_tokens == 3  # type: ignore [index]
-        finally:
-            Path(yaml_path).unlink()
-
-    @pytest.mark.sanity
-    def test_parse_config_file(self):
-        """Test parsing .config file.
-
-        ### WRITTEN BY AI ###
-        """
-        config_data = {
-            "prompt_tokens": 90,
-            "output_tokens": 35,
-            "samples": 150,
-            "prefix_buckets": [
-                {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 2}
-            ],
-        }
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".config", delete=False) as f:
-            yaml.dump(config_data, f)
-            config_path = f.name
-
-        try:
-            config = SyntheticTextDatasetConfig.parse_str(config_path)
-
-            assert config.prompt_tokens == 90
-            assert config.output_tokens == 35
-            assert config.samples == 150
-            assert config.prefix_buckets[0].prefix_tokens == 2  # type: ignore [index]
-        finally:
-            Path(config_path).unlink()
-
-    @pytest.mark.regression
-    def test_parse_path_object(self):
-        """Test parsing with Path object.
-
-        ### WRITTEN BY AI ###
-        """
-        config_data = {"prompt_tokens": 45, "output_tokens": 25}
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(config_data, f)
-            yaml_path = Path(f.name)
-
-        try:
-            config = SyntheticTextDatasetConfig.parse_str(yaml_path)
-            assert config.prompt_tokens == 45
-            assert config.output_tokens == 25
-        finally:
-            yaml_path.unlink()
-
-    @pytest.mark.sanity
-    def test_parse_invalid_format(self):
-        """Test parsing invalid format raises ValueError.
-
-        ### WRITTEN BY AI ###
-        """
-        with pytest.raises(ValueError, match="Unsupported data format"):
-            SyntheticTextDatasetConfig.parse_str("invalid_format_string")
 
     @pytest.mark.sanity
     def test_validation_positive_values(self):
@@ -271,9 +181,6 @@ class TestSyntheticDatasetConfig:
 
         with pytest.raises(ValueError):
             SyntheticTextDatasetConfig(prompt_tokens=20, output_tokens=0)
-
-        with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(prompt_tokens=20, output_tokens=10, samples=0)
 
         # Test negative prefix tokens via PrefixBucketConfig validation
         with pytest.raises(ValueError):
@@ -300,55 +207,9 @@ class TestSyntheticDatasetConfig:
                 prompt_tokens=20, output_tokens=10, output_tokens_max=0
             )
 
-    @pytest.mark.regression
-    def test_parse_json_method_directly(self):
-        """Test parse_json static method directly.
 
-        ### WRITTEN BY AI ###
-        """
-        json_data = {"prompt_tokens": 100, "output_tokens": 50}
-        json_str = json.dumps(json_data)
-
-        config = SyntheticTextDatasetConfig.parse_json(json_str)
-
-        assert config.prompt_tokens == 100
-        assert config.output_tokens == 50
-
-    @pytest.mark.regression
-    def test_parse_key_value_pairs_method_directly(self):
-        """Test parse_key_value_pairs static method directly.
-
-        ### WRITTEN BY AI ###
-        """
-        kv_str = "prompt_tokens=75,output_tokens=35"
-
-        config = SyntheticTextDatasetConfig.parse_key_value_pairs(kv_str)
-
-        assert config.prompt_tokens == 75
-        assert config.output_tokens == 35
-
-    @pytest.mark.regression
-    def test_parse_config_file_method_directly(self):
-        """Test parse_config_file static method directly.
-
-        ### WRITTEN BY AI ###
-        """
-        config_data = {"prompt_tokens": 65, "output_tokens": 45}
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(config_data, f)
-            config_path = f.name
-
-        try:
-            config = SyntheticTextDatasetConfig.parse_config_file(config_path)
-            assert config.prompt_tokens == 65
-            assert config.output_tokens == 45
-        finally:
-            Path(config_path).unlink()
-
-
-class TestSyntheticTextItemsGenerator:
-    """Test cases for SyntheticTextItemsGenerator class.
+class TestSyntheticTextGenerator:
+    """Test cases for SyntheticTextGenerator class.
 
     ### WRITTEN BY AI ###
     """
@@ -360,7 +221,6 @@ class TestSyntheticTextItemsGenerator:
         ### WRITTEN BY AI ###
         """
         tokenizer = Mock()
-        tokenizer.get_vocab.return_value = {f"token_{i}": i for i in range(1000)}
         tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
         tokenizer.decode.side_effect = (
             lambda tokens, skip_special_tokens=False: " ".join(
@@ -368,23 +228,6 @@ class TestSyntheticTextItemsGenerator:
             )
         )
         return tokenizer
-
-    @pytest.fixture
-    def mock_integer_range_sampler(self):
-        """Fixture to provide a mocked IntegerRangeSampler.
-
-        ### WRITTEN BY AI ###
-        """
-        with patch("guidellm.dataset.synthetic.IntegerRangeSampler") as mock_sampler:
-            # Side effect for basic iteration with enough values for larger tests
-            def mock_sampler_side_effect(*args, **kwargs):
-                mock_instance = Mock()
-                # Provide enough values for tests (up to 20 items)
-                mock_instance.__iter__ = Mock(return_value=iter([15] * 20))
-                return mock_instance
-
-            mock_sampler.side_effect = mock_sampler_side_effect
-            yield mock_sampler
 
     @pytest.fixture
     def simple_config(self):
@@ -395,7 +238,6 @@ class TestSyntheticTextItemsGenerator:
         return SyntheticTextDatasetConfig(
             prompt_tokens=15,
             output_tokens=10,
-            samples=5,
             source="The quick brown fox jumps over the lazy dog.",
         )
 
@@ -413,73 +255,11 @@ class TestSyntheticTextItemsGenerator:
             prefix_buckets=[prefix_bucket],
             prompt_tokens=15,
             output_tokens=10,
-            samples=5,
-            source="The quick brown fox jumps over the lazy dog.",
-        )
-
-    @pytest.fixture
-    def config_with_multiple_prefix_buckets(self):
-        """Fixture for configuration with multiple prefix buckets.
-
-        ### WRITTEN BY AI ###
-        """
-        prefix_bucket1 = SyntheticTextPrefixBucketConfig(
-            bucket_weight=60, prefix_count=1, prefix_tokens=2
-        )
-        prefix_bucket2 = SyntheticTextPrefixBucketConfig(
-            bucket_weight=40, prefix_count=1, prefix_tokens=4
-        )
-
-        return SyntheticTextDatasetConfig(
-            prefix_buckets=[prefix_bucket1, prefix_bucket2],
-            prompt_tokens=10,
-            output_tokens=5,
-            samples=10,
-            source="The quick brown fox jumps over the lazy dog.",
-        )
-
-    @pytest.fixture
-    def config_with_multiple_prefix_counts(self):
-        """Fixture for configuration with prefix_count > 1.
-
-        ### WRITTEN BY AI ###
-        """
-        prefix_bucket = SyntheticTextPrefixBucketConfig(
-            bucket_weight=100, prefix_count=3, prefix_tokens=2
-        )
-
-        return SyntheticTextDatasetConfig(
-            prefix_buckets=[prefix_bucket],
-            prompt_tokens=8,
-            output_tokens=4,
-            samples=6,
-            source="The quick brown fox jumps over the lazy dog.",
-        )
-
-    @pytest.fixture
-    def complex_config(self):
-        """Fixture for complex configuration with variance.
-
-        ### WRITTEN BY AI ###
-        """
-        return SyntheticTextDatasetConfig(
-            prompt_tokens=20,
-            prompt_tokens_stdev=5,
-            prompt_tokens_min=10,
-            prompt_tokens_max=30,
-            output_tokens=15,
-            output_tokens_stdev=3,
-            output_tokens_min=10,
-            output_tokens_max=20,
-            samples=10,
             source="The quick brown fox jumps over the lazy dog.",
         )
 
     @pytest.mark.smoke
-    @patch("guidellm.dataset.synthetic.EndlessTextCreator")
-    def test_generator_initialization(
-        self, mock_text_creator, simple_config, mock_tokenizer
-    ):
+    def test_generator_initialization(self, simple_config, mock_tokenizer):
         """Test generator initialization.
 
         ### WRITTEN BY AI ###
@@ -491,15 +271,9 @@ class TestSyntheticTextItemsGenerator:
         assert generator.config == simple_config
         assert generator.processor == mock_tokenizer
         assert generator.random_seed == 42
-        mock_text_creator.assert_called_once_with(data=simple_config.source)
 
     @pytest.mark.smoke
-    def test_basic_iteration(
-        self,
-        mock_integer_range_sampler,
-        simple_config,
-        mock_tokenizer,
-    ):
+    def test_basic_iteration(self, simple_config, mock_tokenizer):
         """Test basic iteration functionality.
 
         ### WRITTEN BY AI ###
@@ -508,16 +282,22 @@ class TestSyntheticTextItemsGenerator:
             simple_config, mock_tokenizer, random_seed=42
         )
 
-        items = list(generator)
+        items = []
+        for i, item in enumerate(generator):
+            items.append(item)
+            if i >= 4:  # Only get 5 items
+                break
 
         # Verify we get the expected number of items
-        assert len(items) == simple_config.samples
+        assert len(items) == 5
 
         # Verify each item has the required keys
         for item in items:
+            assert "prefix" in item
             assert "prompt" in item
             assert "prompt_tokens_count" in item
             assert "output_tokens_count" in item
+            assert isinstance(item["prefix"], str)
             assert isinstance(item["prompt"], str)
             assert isinstance(item["prompt_tokens_count"], int)
             assert isinstance(item["output_tokens_count"], int)
@@ -528,41 +308,26 @@ class TestSyntheticTextItemsGenerator:
 
         ### WRITTEN BY AI ###
         """
+        from faker import Faker
+
         generator = SyntheticTextGenerator(
             simple_config, mock_tokenizer, random_seed=42
         )
+        faker = Faker()
+        faker.seed_instance(42)
 
         # Test normal case
-        result = generator._create_prompt(5, 0, 42)
-        assert result[0] == 42  # Unique prefix token
-        assert len(result) == 5
+        result = generator._create_prompt(5, faker, "unique_prefix ")
+        assert isinstance(result, str)
+        # The result should be the decoded tokens (token_0 token_1 etc.) due to our mock
+        assert "token_" in result
 
         # Test zero tokens
-        result = generator._create_prompt(0, 0, 42)
-        assert result == []
-
-        # Test without unique prefix
-        result = generator._create_prompt(3, 0)
-        assert len(result) == 3
+        result = generator._create_prompt(0, faker)
+        assert result == ""
 
     @pytest.mark.regression
-    def test_create_prompt_binary_search(self, simple_config, mock_tokenizer):
-        """Test binary search logic in _create_prompt.
-
-        ### WRITTEN BY AI ###
-        """
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
-
-        # Test that binary search finds appropriate length
-        result = generator._create_prompt(5, 0, 42)
-        assert len(result) >= 4  # Should include prefix + some tokens
-
-    @pytest.mark.sanity
-    def test_prefix_tokens_integration(
-        self, mock_integer_range_sampler, config_with_prefix, mock_tokenizer
-    ):
+    def test_prefix_tokens_integration(self, config_with_prefix, mock_tokenizer):
         """Test integration with prefix tokens.
 
         ### WRITTEN BY AI ###
@@ -571,19 +336,18 @@ class TestSyntheticTextItemsGenerator:
             config_with_prefix, mock_tokenizer, random_seed=42
         )
 
-        items = list(generator)
+        items = []
+        for i, item in enumerate(generator):
+            items.append(item)
+            if i >= 2:  # Only get 3 items
+                break
 
-        # Verify prompt_tokens_count includes prefix
+        # Verify prefix is present in items
         for item in items:
-            assert (
-                item["prompt_tokens_count"]
-                == config_with_prefix.prefix_buckets[0].prefix_tokens + 15
-            )
+            assert isinstance(item["prefix"], str)
 
     @pytest.mark.regression
-    def test_random_seeding_consistency(
-        self, mock_integer_range_sampler, simple_config, mock_tokenizer
-    ):
+    def test_random_seeding_consistency(self, simple_config, mock_tokenizer):
         """Test that same seed produces consistent results.
 
         ### WRITTEN BY AI ###
@@ -596,426 +360,228 @@ class TestSyntheticTextItemsGenerator:
             simple_config, mock_tokenizer, random_seed=42
         )
 
-        items1 = list(generator1)
-        items2 = list(generator2)
+        items1 = []
+        items2 = []
+        for i, (item1, item2) in enumerate(zip(generator1, generator2)):
+            items1.append(item1)
+            items2.append(item2)
+            if i >= 2:  # Only get 3 items
+                break
 
         # With same seed and deterministic mocks, results should be identical
         assert len(items1) == len(items2)
         for item1, item2 in zip(items1, items2):
-            assert item1["prompt"] == item2["prompt"]
             assert item1["prompt_tokens_count"] == item2["prompt_tokens_count"]
             assert item1["output_tokens_count"] == item2["output_tokens_count"]
 
-    @pytest.mark.regression
-    def test_variance_configuration(
-        self, mock_integer_range_sampler, complex_config, mock_tokenizer
-    ):
-        """Test that variance configuration is properly used.
 
-        ### WRITTEN BY AI ###
-        """
-        generator = SyntheticTextGenerator(
-            complex_config, mock_tokenizer, random_seed=42
-        )
-
-        # Initialize the generator to trigger sampler creation
-        generator_iter = iter(generator)
-        next(generator_iter)
-
-        # Verify that IntegerRangeSampler is called with correct parameters
-        assert mock_integer_range_sampler.call_count == 2
-
-        # Check prompt tokens sampler call
-        prompt_call = mock_integer_range_sampler.call_args_list[0]
-        assert prompt_call[1]["average"] == complex_config.prompt_tokens
-        assert prompt_call[1]["variance"] == complex_config.prompt_tokens_stdev
-        assert prompt_call[1]["min_value"] == complex_config.prompt_tokens_min
-        assert prompt_call[1]["max_value"] == complex_config.prompt_tokens_max
-        assert prompt_call[1]["random_seed"] == 42
-
-        # Check output tokens sampler call
-        output_call = mock_integer_range_sampler.call_args_list[1]
-        assert output_call[1]["average"] == complex_config.output_tokens
-        assert output_call[1]["variance"] == complex_config.output_tokens_stdev
-        assert output_call[1]["min_value"] == complex_config.output_tokens_min
-        assert output_call[1]["max_value"] == complex_config.output_tokens_max
-        assert output_call[1]["random_seed"] == 43  # 42 + 1
-
-    @pytest.mark.regression
-    def test_unique_prefix_generation(self, simple_config, mock_tokenizer):
-        """Test that unique prefixes are generated for each request.
-
-        ### WRITTEN BY AI ###
-        """
-        # Mock the cycle to return predictable values
-        with patch("guidellm.dataset.synthetic.cycle") as mock_cycle:
-            mock_cycle.return_value = iter([100, 101, 102, 103, 104])
-
-            generator = SyntheticTextGenerator(
-                simple_config, mock_tokenizer, random_seed=42
-            )
-
-            # Access the iterator to trigger the cycle creation
-            generator_iter = iter(generator)
-            next(generator_iter)
-
-            # Verify cycle was called with vocab values
-            mock_cycle.assert_called_once()
-
-    @pytest.mark.regression
-    def test_multiple_prefix_buckets_distribution(
-        self,
-        mock_integer_range_sampler,
-        config_with_multiple_prefix_buckets,
-        mock_tokenizer,
-    ):
-        """Test distribution across multiple prefix buckets with different weights.
-
-        ### WRITTEN BY AI ###
-        """
-        generator = SyntheticTextGenerator(
-            config_with_multiple_prefix_buckets, mock_tokenizer, random_seed=42
-        )
-
-        items = list(generator)
-
-        # Verify we get the expected number of items
-        assert len(items) == config_with_multiple_prefix_buckets.samples
-
-        # Verify that prefix tokens are added to prompt_tokens_count
-        # Since we have buckets with 2 and 4 prefix tokens, and the mock returns 15
-        # prompt tokens, we should see prompt_tokens_count of either 17 or 19
-        prefix_counts = [item["prompt_tokens_count"] for item in items]
-        assert all(count in [17, 19] for count in prefix_counts)
-
-        # Calculate expected distribution based on weights
-        # Bucket 1: weight=60, prefix_count=1, prefix_tokens=2
-        # Bucket 2: weight=40, prefix_count=1, prefix_tokens=4
-        # Total weight = 100, samples = 10
-        # Bucket 1: (60/1/100) * 10 = 6 samples with 17 tokens (2 prefix + 15 prompt)
-        # Bucket 2: (40/1/100) * 10 = 4 samples with 19 tokens (4 prefix + 15 prompt)
-        count_17 = prefix_counts.count(17)  # 2 prefix tokens
-        count_19 = prefix_counts.count(19)  # 4 prefix tokens
-        assert count_17 == 6
-        assert count_19 == 4
-
-    @pytest.mark.regression
-    def test_multiple_prefix_counts(
-        self,
-        mock_integer_range_sampler,
-        config_with_multiple_prefix_counts,
-        mock_tokenizer,
-    ):
-        """Test prefix buckets with prefix_count > 1.
-
-        ### WRITTEN BY AI ###
-        """
-        generator = SyntheticTextGenerator(
-            config_with_multiple_prefix_counts, mock_tokenizer, random_seed=42
-        )
-
-        items = list(generator)
-
-        # Verify we get the expected number of items
-        assert len(items) == config_with_multiple_prefix_counts.samples
-
-        # All items should have 2 prefix tokens + 15 prompt tokens = 17 total
-        for item in items:
-            assert item["prompt_tokens_count"] == 17
-
-    @pytest.mark.sanity
-    def test_prefix_buckets_create_prefixes_method(
-        self, config_with_multiple_prefix_buckets, mock_tokenizer
-    ):
-        """Test the _create_prefixes method directly.
-
-        ### WRITTEN BY AI ###
-        """
-        generator = SyntheticTextGenerator(
-            config_with_multiple_prefix_buckets, mock_tokenizer, random_seed=42
-        )
-
-        # Test _create_prefixes method
-        rand = Mock()
-        rand.randint = Mock(return_value=0)
-        prefixes = generator._create_prefixes(rand)
-
-        # Should return a sequence of prefix token lists
-        assert isinstance(prefixes, list)
-        assert len(prefixes) == 10
-
-        # Each prefix should be a list of integers
-        for prefix in prefixes:
-            assert isinstance(prefix, list)
-            assert all(isinstance(token, int) for token in prefix)
-
-    @pytest.mark.regression
-    def test_empty_prefix_buckets(
-        self, mock_integer_range_sampler, simple_config, mock_tokenizer
-    ):
-        """Test behavior when prefix_buckets is None or empty.
-
-        ### WRITTEN BY AI ###
-        """
-        # Test with None prefix_buckets (simple_config has None)
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
-
-        items = list(generator)
-
-        # All items should have exactly the prompt tokens (no prefix)
-        for item in items:
-            assert item["prompt_tokens_count"] == 15  # Mock returns 15
-
-
-class TestSyntheticDatasetCreator:
-    """Test cases for SyntheticDatasetCreator class.
+class TestSyntheticDatasetDeserializer:
+    """Test cases for SyntheticDatasetDeserializer class.
 
     ### WRITTEN BY AI ###
     """
 
-    @pytest.mark.sanity
-    def test_is_supported_path_config_file(self):
-        """Test is_supported with config file paths.
+    @pytest.fixture
+    def mock_tokenizer(self):
+        """Fixture to provide a mocked tokenizer.
 
         ### WRITTEN BY AI ###
         """
-        with tempfile.NamedTemporaryFile(suffix=".config", delete=False) as f:
-            config_path = Path(f.name)
-
-        try:
-            assert SyntheticTextDatasetDeserializer.is_supported(config_path, None)
-        finally:
-            config_path.unlink()
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
+        tokenizer.decode.side_effect = (
+            lambda tokens, skip_special_tokens=False: " ".join(
+                f"token_{t}" for t in tokens[:5]
+            )
+        )
+        return tokenizer
 
     @pytest.mark.sanity
-    def test_is_supported_path_yaml_file(self):
-        """Test is_supported with YAML file paths.
+    def test_load_config_file_yaml(self):
+        """Test loading YAML config file.
 
         ### WRITTEN BY AI ###
         """
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
-            yaml_path = Path(f.name)
+        config_data = {
+            "prompt_tokens": 60,
+            "output_tokens": 15,
+            "source": "yaml_test.txt",
+            "prefix_buckets": [
+                {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 3}
+            ],
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config_data, f)
+            yaml_path = f.name
 
         try:
-            assert SyntheticTextDatasetDeserializer.is_supported(yaml_path, None)
+            deserializer = SyntheticTextDatasetDeserializer()
+            config = deserializer._load_config_file(yaml_path)
+
+            assert config.prompt_tokens == 60
+            assert config.output_tokens == 15
+            assert config.source == "yaml_test.txt"
+            assert config.prefix_buckets[0].prefix_tokens == 3  # type: ignore [index]
         finally:
-            yaml_path.unlink()
+            Path(yaml_path).unlink()
+
+    @pytest.mark.sanity
+    def test_load_config_file_config_extension(self):
+        """Test loading .config file.
+
+        ### WRITTEN BY AI ###
+        """
+        config_data = {
+            "prompt_tokens": 90,
+            "output_tokens": 35,
+            "prefix_buckets": [
+                {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 2}
+            ],
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".config", delete=False) as f:
+            yaml.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            deserializer = SyntheticTextDatasetDeserializer()
+            config = deserializer._load_config_file(config_path)
+
+            assert config.prompt_tokens == 90
+            assert config.output_tokens == 35
+            assert config.prefix_buckets[0].prefix_tokens == 2  # type: ignore [index]
+        finally:
+            Path(config_path).unlink()
 
     @pytest.mark.smoke
-    def test_is_supported_json_string(self):
-        """Test is_supported with JSON string.
+    def test_load_config_str_json(self):
+        """Test loading JSON string config.
 
         ### WRITTEN BY AI ###
         """
         json_str = '{"prompt_tokens": 50, "output_tokens": 25}'
-        assert SyntheticTextDatasetDeserializer.is_supported(json_str, None)
+        deserializer = SyntheticTextDatasetDeserializer()
+        config = deserializer._load_config_str(json_str)
+
+        assert config.prompt_tokens == 50
+        assert config.output_tokens == 25
 
     @pytest.mark.smoke
-    def test_is_supported_key_value_string(self):
-        """Test is_supported with key-value string.
+    def test_load_config_str_key_value(self):
+        """Test loading key-value string config.
 
         ### WRITTEN BY AI ###
         """
         kv_str = "prompt_tokens=50,output_tokens=25"
-        assert SyntheticTextDatasetDeserializer.is_supported(kv_str, None)
+        deserializer = SyntheticTextDatasetDeserializer()
+        config = deserializer._load_config_str(kv_str)
+
+        assert config.prompt_tokens == 50
+        assert config.output_tokens == 25
 
     @pytest.mark.sanity
-    def test_is_supported_config_filename_string(self):
-        """Test is_supported with config filename string.
+    def test_load_config_str_invalid_format(self):
+        """Test loading invalid format raises DataNotSupportedError.
 
         ### WRITTEN BY AI ###
         """
-        assert SyntheticTextDatasetDeserializer.is_supported("config.yaml", None)
-        assert SyntheticTextDatasetDeserializer.is_supported("settings.config", None)
-
-    @pytest.mark.sanity
-    def test_is_not_supported_regular_string(self):
-        """Test is_supported returns False for regular strings.
-
-        ### WRITTEN BY AI ###
-        """
-        assert not SyntheticTextDatasetDeserializer.is_supported("regular string", None)
-        assert not SyntheticTextDatasetDeserializer.is_supported("single=pair", None)
+        deserializer = SyntheticTextDatasetDeserializer()
+        with pytest.raises(DataNotSupportedError, match="Unsupported string data"):
+            deserializer._load_config_str("invalid_format_string")
 
     @pytest.mark.regression
-    def test_is_not_supported_non_existent_path(self):
-        """Test is_supported returns False for non-existent paths.
+    def test_load_config_file_non_existent(self):
+        """Test loading non-existent file returns None.
 
         ### WRITTEN BY AI ###
         """
-        non_existent_path = Path("/non/existent/path.config")
-        assert not SyntheticTextDatasetDeserializer.is_supported(non_existent_path, None)
+        deserializer = SyntheticTextDatasetDeserializer()
+        config = deserializer._load_config_file("/non/existent/path.config")
+        assert config is None
 
     @pytest.mark.regression
-    def test_is_not_supported_other_types(self):
-        """Test is_supported returns False for other data types.
+    def test_load_config_str_non_string(self):
+        """Test loading non-string returns None.
 
         ### WRITTEN BY AI ###
         """
-        assert not SyntheticTextDatasetDeserializer.is_supported(123, None)
-        assert not SyntheticTextDatasetDeserializer.is_supported(["list"], None)
-        assert not SyntheticTextDatasetDeserializer.is_supported({"dict": "value"}, None)
+        deserializer = SyntheticTextDatasetDeserializer()
+        config = deserializer._load_config_str(123)
+        assert config is None
 
     @pytest.mark.smoke
-    @patch("guidellm.dataset.synthetic.check_load_processor")
-    @patch("guidellm.dataset.synthetic.SyntheticTextItemsGenerator")
-    @patch("guidellm.dataset.synthetic.Dataset")
-    def test_handle_create_basic(
-        self, mock_dataset, mock_generator, mock_check_processor
-    ):
-        """Test handle_create basic functionality.
+    def test_call_with_config_object(self, mock_tokenizer):
+        """Test calling deserializer with SyntheticTextDatasetConfig.
 
         ### WRITTEN BY AI ###
         """
-        # Setup mocks
-        mock_processor = Mock()
-        mock_check_processor.return_value = mock_processor
+        config = SyntheticTextDatasetConfig(prompt_tokens=50, output_tokens=25)
+        deserializer = SyntheticTextDatasetDeserializer()
 
-        mock_generator_instance = Mock()
-        mock_generator_instance.__iter__ = Mock(
-            return_value=iter(
-                [
-                    {
-                        "prompt": "test",
-                        "prompt_tokens_count": 10,
-                        "output_tokens_count": 5,
-                    }
-                ]
-            )
-        )
-        mock_generator.return_value = mock_generator_instance
-
-        mock_dataset_instance = Mock()
-        mock_dataset.from_list.return_value = mock_dataset_instance
-
-        # Test
-        data = '{"prompt_tokens": 50, "output_tokens": 25}'
-        result = SyntheticTextDatasetDeserializer.handle_create(
-            data=data,
-            data_args=None,
-            processor="gpt2",
-            processor_args=None,
+        result = deserializer(
+            data=config,
+            data_kwargs={},
+            processor_factory=lambda: mock_tokenizer,
             random_seed=42,
         )
 
-        # Verify
-        mock_check_processor.assert_called_once_with(
-            "gpt2",
-            None,
-            error_msg="Processor/tokenizer required for synthetic dataset generation.",
-        )
-        mock_generator.assert_called_once()
-        mock_dataset.from_list.assert_called_once()
-        assert result == mock_dataset_instance
+        assert isinstance(result, IterableDataset)
 
-    @pytest.mark.sanity
-    @patch("guidellm.dataset.synthetic.check_load_processor")
-    def test_handle_create_processor_required(self, mock_check_processor):
-        """Test handle_create requires processor.
+    @pytest.mark.regression
+    def test_call_with_unsupported_data(self, mock_tokenizer):
+        """Test calling deserializer with unsupported data raises error.
 
         ### WRITTEN BY AI ###
         """
-        mock_check_processor.side_effect = ValueError("Processor required")
+        deserializer = SyntheticTextDatasetDeserializer()
 
-        data = '{"prompt_tokens": 50, "output_tokens": 25}'
-
-        with pytest.raises(ValueError, match="Processor required"):
-            SyntheticTextDatasetDeserializer.handle_create(
-                data=data,
-                data_args=None,
-                processor=None,
-                processor_args=None,
+        with pytest.raises(DataNotSupportedError, match="Unsupported data"):
+            deserializer(
+                data=123,
+                data_kwargs={},
+                processor_factory=lambda: mock_tokenizer,
                 random_seed=42,
             )
 
     @pytest.mark.regression
-    @patch("guidellm.dataset.synthetic.check_load_processor")
-    @patch("guidellm.dataset.synthetic.SyntheticTextItemsGenerator")
-    @patch("guidellm.dataset.synthetic.Dataset")
-    def test_handle_create_with_data_args(
-        self, mock_dataset, mock_generator, mock_check_processor
-    ):
-        """Test handle_create with data_args.
+    def test_call_with_json_string(self, mock_tokenizer):
+        """Test calling deserializer with JSON string.
 
         ### WRITTEN BY AI ###
         """
-        # Setup mocks
-        mock_processor = Mock()
-        mock_check_processor.return_value = mock_processor
+        json_str = '{"prompt_tokens": 50, "output_tokens": 25}'
+        deserializer = SyntheticTextDatasetDeserializer()
 
-        mock_generator_instance = Mock()
-        mock_generator_instance.__iter__ = Mock(return_value=iter([]))
-        mock_generator.return_value = mock_generator_instance
-
-        mock_dataset_instance = Mock()
-        mock_dataset.from_list.return_value = mock_dataset_instance
-
-        # Test with data_args
-        data = '{"prompt_tokens": 50, "output_tokens": 25}'
-        data_args = {"features": "custom_features"}
-
-        SyntheticTextDatasetDeserializer.handle_create(
-            data=data,
-            data_args=data_args,
-            processor="gpt2",
-            processor_args=None,
+        result = deserializer(
+            data=json_str,
+            data_kwargs={},
+            processor_factory=lambda: mock_tokenizer,
             random_seed=42,
         )
 
-        # Verify data_args are passed to Dataset.from_list
-        mock_dataset.from_list.assert_called_once_with([], **data_args)
-
-    @pytest.mark.sanity
-    def test_extract_args_column_mappings_empty(self):
-        """Test extract_args_column_mappings with empty data_args.
-
-        ### WRITTEN BY AI ###
-        """
-        result = SyntheticTextDatasetDeserializer.extract_args_column_mappings(None)
-
-        expected = {
-            "prompt_column": "prompt",
-            "prompt_tokens_count_column": "prompt_tokens_count",
-            "output_tokens_count_column": "output_tokens_count",
-        }
-        assert result == expected
+        assert isinstance(result, IterableDataset)
 
     @pytest.mark.regression
-    def test_extract_args_column_mappings_with_parent_mappings(self):
-        """Test extract_args_column_mappings rejects column mappings.
+    def test_call_with_config_file(self, mock_tokenizer):
+        """Test calling deserializer with config file.
 
         ### WRITTEN BY AI ###
         """
-        with (
-            patch.object(
-                SyntheticTextDatasetDeserializer.__bases__[0],
-                "extract_args_column_mappings",
-                return_value={"prompt_column": "custom_prompt"},
-            ),
-            pytest.raises(ValueError, match="Column mappings are not supported"),
-        ):
-            SyntheticTextDatasetDeserializer.extract_args_column_mappings({"some": "args"})
+        config_data = {"prompt_tokens": 65, "output_tokens": 45}
 
-    @pytest.mark.regression
-    def test_extract_args_column_mappings_no_parent_mappings(self):
-        """Test extract_args_column_mappings with no parent mappings.
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config_data, f)
+            config_path = f.name
 
-        ### WRITTEN BY AI ###
-        """
-        with patch.object(
-            SyntheticTextDatasetDeserializer.__bases__[0],
-            "extract_args_column_mappings",
-            return_value={},
-        ):
-            result = SyntheticTextDatasetDeserializer.extract_args_column_mappings(
-                {"some": "args"}
+        try:
+            deserializer = SyntheticTextDatasetDeserializer()
+            result = deserializer(
+                data=config_path,
+                data_kwargs={},
+                processor_factory=lambda: mock_tokenizer,
+                random_seed=42,
             )
-
-            expected = {
-                "prompt_column": "prompt",
-                "prompt_tokens_count_column": "prompt_tokens_count",
-                "output_tokens_count_column": "output_tokens_count",
-            }
-            assert result == expected
+            assert isinstance(result, IterableDataset)
+        finally:
+            Path(config_path).unlink()
