@@ -25,6 +25,7 @@ from .synthetic import (
     SyntheticTextDatasetConfig,
     SyntheticTextDatasetDeserializer,
     SyntheticTextGenerator,
+    SyntheticTextPrefixBucketConfig,
 )
 
 __all__ = [
@@ -46,6 +47,7 @@ __all__ = [
     "SyntheticTextDatasetConfig",
     "SyntheticTextDatasetDeserializer",
     "SyntheticTextGenerator",
+    "SyntheticTextPrefixBucketConfig",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
 ]

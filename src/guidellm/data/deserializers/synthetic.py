@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from math import gcd
 from pathlib import Path
-from typing import Any, Callable
+from random import Random
+from typing import Any, Callable, ClassVar
 
 import yaml
 from datasets import Features, IterableDataset, Value
@@ -21,14 +23,32 @@ __all__ = [
     "SyntheticTextDatasetConfig",
     "SyntheticTextDatasetDeserializer",
     "SyntheticTextGenerator",
+    "SyntheticTextPrefixBucketConfig",
 ]
 
 
-class SyntheticTextDatasetConfig(StandardBaseModel):
+class SyntheticTextPrefixBucketConfig(StandardBaseModel):
+    bucket_weight: int = Field(
+        description="Weight of this bucket in the overall distribution.",
+        gt=0,
+        default=100,
+    )
+    prefix_count: int = Field(
+        description="The number of unique prefixs to generate for this bucket.",
+        ge=1,
+        default=1,
+    )
     prefix_tokens: int = Field(
-        description="The number of shared prefix tokens to prepend to each prompt.",
+        description="The number of prefix tokens per-prompt for this bucket.",
         ge=0,
         default=0,
+    )
+
+
+class SyntheticTextDatasetConfig(StandardBaseModel):
+    prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
+        description="Buckets for the prefix tokens distribution.",
+        default=None,
     )
     prompt_tokens: int = Field(
         description="The average number of text tokens generated for prompts.",
@@ -75,6 +95,8 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
 
 
 class SyntheticTextGenerator:
+    PREFIX_DISTRIBUTION_PRECISION: ClassVar[int] = 1000
+
     def __init__(
         self,
         config: SyntheticTextDatasetConfig,
@@ -110,17 +132,15 @@ class SyntheticTextGenerator:
         )
 
         # Create a shared prefix if specified
-        if self.config.prefix_tokens > 0:
-            prefix = self._create_prompt(self.config.prefix_tokens, faker)
-        else:
-            prefix = ""  # Always have a prefix key for consistency
+        rand = Random(self.random_seed + 3)
+        prefix_iter = self._create_prefix_iter(faker, rand)
 
         while True:
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
 
             yield {
-                "prefix": prefix,
+                "prefix": next(prefix_iter),
                 "prompt": self._create_prompt(
                     prompt_tokens_count, faker, f"{samples_generated} "
                 ),
@@ -148,6 +168,43 @@ class SyntheticTextGenerator:
         return self.processor.decode(
             prompt_token_ids[:prompt_tokens_count], skip_special_tokens=True
         )
+
+    def _create_prefix_iter(self, faker: Faker, rand: Random) -> Iterator[str]:
+        if not self.config.prefix_buckets:
+            while True:
+                yield ""
+
+        total_weight = sum(
+            bucket.bucket_weight for bucket in self.config.prefix_buckets
+        )
+        if total_weight <= 0:
+            raise ValueError("Total weight of prefix buckets must be greater than 0.")
+
+        # Calculate the divisor needed to achieve the minimum
+        # number of prompts given the weight ratios
+        percents = [
+            int(
+                self.PREFIX_DISTRIBUTION_PRECISION
+                * bucket.bucket_weight
+                / bucket.prefix_count
+                / total_weight
+            )
+            for bucket in self.config.prefix_buckets
+        ]
+        common_divisor = gcd(*percents)
+
+        # Create prefix list maintaining the correct distribution
+        prefixes = []
+        for bucket, percent in zip(self.config.prefix_buckets, percents):
+            bucket_prefixes = [
+                self._create_prompt(bucket.prefix_tokens, faker)
+                for _ in range(bucket.prefix_count)
+            ]
+            sample_count = percent // common_divisor
+            prefixes.extend([bucket_prefixes] * sample_count)
+
+        while True:
+            yield rand.choice(prefixes)
 
 
 @DatasetDeserializerFactory.register("synthetic_text")
