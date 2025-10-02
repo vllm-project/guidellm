@@ -13,6 +13,13 @@ include = ["*"]
 [tool.pdm]
 distribution = true
 
+[[tool.pdm.source]]
+name = "torch"
+type = "find_links"
+#url = "https://download.pytorch.org/whl/cpu/torch_stable.html"
+url = "https://download.pytorch.org/whl/cpu/torch/"
+include_packages = ["torch"]
+
 
 # ************************************************
 # ********** Project Metadata **********
@@ -64,6 +71,8 @@ dependencies = [
     "sanic",
     "transformers",
     "uvloop>=0.18",
+    "librosa>=0.11.0",
+    "torch>=2.8.0",
 ]
 
 [project.optional-dependencies]
