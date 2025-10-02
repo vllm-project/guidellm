@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
-from math import gcd
 from pathlib import Path
 from random import Random
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable
 
 import yaml
 from datasets import Features, IterableDataset, Value
@@ -95,8 +95,6 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
 
 
 class SyntheticTextGenerator:
-    PREFIX_DISTRIBUTION_PRECISION: ClassVar[int] = 1000
-
     def __init__(
         self,
         config: SyntheticTextDatasetConfig,
@@ -174,34 +172,26 @@ class SyntheticTextGenerator:
             while True:
                 yield ""
 
-        total_weight = sum(
-            bucket.bucket_weight for bucket in self.config.prefix_buckets
+        # Increase weights to ensure an integer number of samples per per-prefix
+        least_common_prefix_count = math.lcm(
+            *(bucket.prefix_count for bucket in self.config.prefix_buckets)
         )
-        if total_weight <= 0:
-            raise ValueError("Total weight of prefix buckets must be greater than 0.")
-
-        # Calculate the divisor needed to achieve the minimum
-        # number of prompts given the weight ratios
-        percents = [
-            int(
-                self.PREFIX_DISTRIBUTION_PRECISION
-                * bucket.bucket_weight
-                / bucket.prefix_count
-                / total_weight
-            )
+        unnorm_weights = [
+            least_common_prefix_count * bucket.bucket_weight // bucket.prefix_count
             for bucket in self.config.prefix_buckets
         ]
-        common_divisor = gcd(*percents)
+        # Use GCD to reduce the weights to smallest integer ratio
+        common_divisor = math.gcd(*unnorm_weights)
 
         # Create prefix list maintaining the correct distribution
         prefixes = []
-        for bucket, percent in zip(self.config.prefix_buckets, percents):
+        for bucket, weight in zip(self.config.prefix_buckets, unnorm_weights):
             bucket_prefixes = [
                 self._create_prompt(bucket.prefix_tokens, faker)
                 for _ in range(bucket.prefix_count)
             ]
-            sample_count = percent // common_divisor
-            prefixes.extend([bucket_prefixes] * sample_count)
+            sample_count = weight // common_divisor
+            prefixes.extend(bucket_prefixes * sample_count)
 
         while True:
             yield rand.choice(prefixes)
