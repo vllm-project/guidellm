@@ -4,12 +4,12 @@ import math
 from collections.abc import Iterator
 from pathlib import Path
 from random import Random
-from typing import Any, Callable
+from typing import Any, Callable, Self
 
 import yaml
 from datasets import Features, IterableDataset, Value
 from faker import Faker
-from pydantic import Field
+from pydantic import ConfigDict, Field, model_validator
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -34,7 +34,7 @@ class SyntheticTextPrefixBucketConfig(StandardBaseModel):
         default=100,
     )
     prefix_count: int = Field(
-        description="The number of unique prefixs to generate for this bucket.",
+        description="The number of unique prefixes to generate for this bucket.",
         ge=1,
         default=1,
     )
@@ -46,6 +46,10 @@ class SyntheticTextPrefixBucketConfig(StandardBaseModel):
 
 
 class SyntheticTextDatasetConfig(StandardBaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+
     prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
         description="Buckets for the prefix tokens distribution.",
         default=None,
@@ -92,6 +96,26 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
         description="The source of the text data to be used for generation.",
         default="data:prideandprejudice.txt.gz",
     )
+
+    @model_validator(mode="after")
+    def check_prefix_options(self) -> Self:
+        prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+        prefix_tokens = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+        if prefix_count is not None or prefix_tokens is not None:
+            if self.prefix_buckets:
+                raise ValueError(
+                    "prefix_buckets is mutually exclusive"
+                    " with prefix_count and prefix_tokens"
+                )
+
+            self.prefix_buckets = [
+                SyntheticTextPrefixBucketConfig(
+                    prefix_count=prefix_count or 1,
+                    prefix_tokens=prefix_tokens or 0,
+                )
+            ]
+
+        return self
 
 
 class SyntheticTextGenerator:
