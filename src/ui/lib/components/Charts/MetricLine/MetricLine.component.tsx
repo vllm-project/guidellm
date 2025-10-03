@@ -1,8 +1,10 @@
-import { useTheme } from '@mui/material';
+import { Typography, useTheme } from '@mui/material';
 import { ResponsiveLine } from '@nivo/line';
+import { BasicTooltip } from '@nivo/tooltip';
 import React, { FC } from 'react';
 
 import { useColor } from '@/lib/hooks/useColor';
+import { formatNumber } from '@/lib/utils/helpers';
 
 import { MetricLineProps } from '.';
 import CustomAxes from './components/CustomAxes';
@@ -50,10 +52,33 @@ export const Component: FC<MetricLineProps> = ({
     };
   }
 
+  const getUnits = (seriesId: string) => {
+    switch (seriesId) {
+      case 'timePerRequest':
+        return 's';
+      case 'throughput':
+        return 'tok/s';
+      default:
+        return 'ms';
+    }
+  };
+
   return (
     <ResponsiveLine
       curve="monotoneX"
       data={data}
+      tooltip={(point) => (
+        <BasicTooltip
+          id={
+            <Typography variant="body2">
+              {`${formatNumber(Number(point.point.data.x))} rps, ${formatNumber(Number(point.point.data.y))} ${getUnits(`${point.point.serieId}`)}`}
+            </Typography>
+          }
+          color={point.point.color}
+          enableChip={true}
+        />
+      )}
+      pointSize={10}
       colors={[selectedColor]}
       margin={{ top: 20, right: 10, bottom: 20, left: 35.5 }}
       xScale={{ type: 'linear', min: minX }}
@@ -92,7 +117,6 @@ export const Component: FC<MetricLineProps> = ({
       }}
       enableGridX={false}
       enableGridY={false}
-      pointSize={0}
       useMesh={true}
       layers={[
         CustomAxes,
@@ -115,6 +139,9 @@ export const Component: FC<MetricLineProps> = ({
         ),
         'axes',
         'lines',
+        'points',
+        'markers',
+        'mesh',
       ]}
       theme={lineTheme}
     />
