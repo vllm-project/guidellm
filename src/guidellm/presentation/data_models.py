@@ -3,8 +3,9 @@ from collections import defaultdict
 from math import ceil
 from typing import TYPE_CHECKING, Optional, Union
 
-from guidellm.scheduler.strategy import SchedulingStrategy
 from pydantic import BaseModel, computed_field
+
+from guidellm.scheduler.strategy import SchedulingStrategy
 
 if TYPE_CHECKING:
     from guidellm.benchmark.benchmark import GenerativeBenchmark
@@ -215,14 +216,14 @@ class BenchmarkDatum(BaseModel):
     time_per_request: TabularDistributionSummary
     strategy_display_str: str
 
-    def strategy_display_str(strategy: SchedulingStrategy):
+    @classmethod
+    def get_strategy_display_str(cls, strategy: SchedulingStrategy):
         strategy_type = strategy if isinstance(strategy, str) else strategy.type_
-        strategy_instance = strategy if isinstance(strategy, SchedulingStrategy) else None
 
         if strategy_type == "concurrent":
-            rate = f"@{strategy_instance.streams}" if strategy_instance else "@##"  # type: ignore[attr-defined]
+            rate = f"@{strategy.streams}"
         elif strategy_type in ("constant", "poisson"):
-            rate = f"@{strategy_instance.rate:.2f}" if strategy_instance else "@#.##"  # type: ignore[attr-defined]
+            rate = f"@{strategy.rate:.2f}"
         else:
             rate = ""
         return f"{strategy_type}{rate}"
@@ -231,7 +232,7 @@ class BenchmarkDatum(BaseModel):
     def from_benchmark(cls, bm: "GenerativeBenchmark"):
         rps = bm.metrics.requests_per_second.successful.mean
         return cls(
-            strategy_display_str=cls.strategy_display_str(bm.args.strategy),
+            strategy_display_str=cls.get_strategy_display_str(bm.args.strategy),
             requests_per_second=rps,
             tpot=TabularDistributionSummary.from_distribution_summary(
                 bm.metrics.inter_token_latency_ms.successful
