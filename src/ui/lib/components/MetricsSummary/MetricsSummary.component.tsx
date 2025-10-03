@@ -123,7 +123,7 @@ export const Component = () => {
           <FieldsContainer data-id="fields-container">
             <FieldCell data-id="field-cell-1">
               <Input
-                label="TTFT (ms)"
+                label="TIME TO FIRST TOKEN (ms)"
                 value={ttftSLO}
                 onChange={handleTtft}
                 fullWidth
@@ -133,7 +133,7 @@ export const Component = () => {
             </FieldCell>
             <FieldCell data-id="field-cell-2">
               <Input
-                label="ITL (ms)"
+                label="INTER-TOKEN LATENCY (ms)"
                 value={itlSLO}
                 onChange={handleItl}
                 fullWidth
@@ -212,7 +212,7 @@ export const Component = () => {
         </MiddleColumn>
         <MiddleColumn item xs={3}>
           <MetricValue
-            label="TTFT"
+            label="time to first token"
             value={`${formatNumber(interpolatedMetricData.ttft.enforcedPercentileValue)} ms`}
             match={isTtftMatch}
             valueColor={LineColor.Primary}
@@ -230,7 +230,7 @@ export const Component = () => {
         </MiddleColumn>
         <MiddleColumn item xs={3}>
           <MetricValue
-            label="ITL"
+            label="inter-token latency"
             value={`${formatNumber(interpolatedMetricData.itl.enforcedPercentileValue)} ms`}
             match={isItlMatch}
             valueColor={LineColor.Secondary}
