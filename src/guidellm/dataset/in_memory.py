@@ -28,6 +28,7 @@ class InMemoryDatasetCreator(DatasetCreator):
         processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],  # noqa: ARG003
         processor_args: Optional[dict[str, Any]],  # noqa: ARG003
         random_seed: int,  # noqa: ARG003
+        max_requests: Optional[int] = None,  # noqa: ARG003
     ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
         if not isinstance(data, Iterable):
             raise TypeError(
