@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Callable
+from random import Random
+from typing import Any, Callable, Self
 
 import yaml
 from datasets import Features, IterableDataset, Value
 from faker import Faker
-from pydantic import Field
+from pydantic import ConfigDict, Field, model_validator
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -21,10 +23,37 @@ __all__ = [
     "SyntheticTextDatasetConfig",
     "SyntheticTextDatasetDeserializer",
     "SyntheticTextGenerator",
+    "SyntheticTextPrefixBucketConfig",
 ]
 
 
+class SyntheticTextPrefixBucketConfig(StandardBaseModel):
+    bucket_weight: int = Field(
+        description="Weight of this bucket in the overall distribution.",
+        gt=0,
+        default=100,
+    )
+    prefix_count: int = Field(
+        description="The number of unique prefixes to generate for this bucket.",
+        ge=1,
+        default=1,
+    )
+    prefix_tokens: int = Field(
+        description="The number of prefix tokens per-prompt for this bucket.",
+        ge=0,
+        default=0,
+    )
+
+
 class SyntheticTextDatasetConfig(StandardBaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+
+    prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
+        description="Buckets for the prefix tokens distribution.",
+        default=None,
+    )
     prompt_tokens: int = Field(
         description="The average number of text tokens generated for prompts.",
         gt=0,
@@ -68,6 +97,26 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
         default="data:prideandprejudice.txt.gz",
     )
 
+    @model_validator(mode="after")
+    def check_prefix_options(self) -> Self:
+        prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+        prefix_tokens = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+        if prefix_count is not None or prefix_tokens is not None:
+            if self.prefix_buckets:
+                raise ValueError(
+                    "prefix_buckets is mutually exclusive"
+                    " with prefix_count and prefix_tokens"
+                )
+
+            self.prefix_buckets = [
+                SyntheticTextPrefixBucketConfig(
+                    prefix_count=prefix_count or 1,
+                    prefix_tokens=prefix_tokens or 0,
+                )
+            ]
+
+        return self
+
 
 class SyntheticTextGenerator:
     def __init__(
@@ -104,20 +153,27 @@ class SyntheticTextGenerator:
             )
         )
 
+        # Create a shared prefix if specified
+        rand = Random(self.random_seed + 3)
+        prefix_iter = self._create_prefix_iter(faker, rand)
+
         while True:
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
 
             yield {
+                "prefix": next(prefix_iter),
                 "prompt": self._create_prompt(
-                    prompt_tokens_count, samples_generated, faker
+                    prompt_tokens_count, faker, f"{samples_generated} "
                 ),
                 "prompt_tokens_count": prompt_tokens_count,
                 "output_tokens_count": output_tokens_count,
             }
             samples_generated += 1
 
-    def _create_prompt(self, prompt_tokens_count: int, index: int, faker: Faker) -> str:
+    def _create_prompt(
+        self, prompt_tokens_count: int, faker: Faker, unique: str = ""
+    ) -> str:
         prompt_token_ids = []
         avg_chars_per_token = 5
         margin_of_safety = 1.5
@@ -128,12 +184,41 @@ class SyntheticTextGenerator:
             num_chars = (
                 prompt_tokens_count * avg_chars_per_token * margin_of_safety * attempts
             )
-            text = f"{index} " + faker.text(max_nb_chars=num_chars)
+            text = unique + faker.text(max_nb_chars=num_chars)
             prompt_token_ids = self.processor.encode(text)
 
         return self.processor.decode(
             prompt_token_ids[:prompt_tokens_count], skip_special_tokens=True
         )
+
+    def _create_prefix_iter(self, faker: Faker, rand: Random) -> Iterator[str]:
+        if not self.config.prefix_buckets:
+            while True:
+                yield ""
+
+        # Increase weights to ensure an integer number of samples per per-prefix
+        least_common_prefix_count = math.lcm(
+            *(bucket.prefix_count for bucket in self.config.prefix_buckets)
+        )
+        unnorm_weights = [
+            least_common_prefix_count * bucket.bucket_weight // bucket.prefix_count
+            for bucket in self.config.prefix_buckets
+        ]
+        # Use GCD to reduce the weights to smallest integer ratio
+        common_divisor = math.gcd(*unnorm_weights)
+
+        # Create prefix list maintaining the correct distribution
+        prefixes = []
+        for bucket, weight in zip(self.config.prefix_buckets, unnorm_weights):
+            bucket_prefixes = [
+                self._create_prompt(bucket.prefix_tokens, faker)
+                for _ in range(bucket.prefix_count)
+            ]
+            sample_count = weight // common_divisor
+            prefixes.extend(bucket_prefixes * sample_count)
+
+        while True:
+            yield rand.choice(prefixes)
 
 
 @DatasetDeserializerFactory.register("synthetic_text")
@@ -166,6 +251,7 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             ),
             features=Features(
                 {
+                    "prefix": Value("string"),
                     "prompt": Value("string"),
                     "prompt_tokens_count": Value("int32"),
                     "output_tokens_count": Value("int32"),
