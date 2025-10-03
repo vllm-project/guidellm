@@ -1,10 +1,9 @@
 import { Typography, useTheme } from '@mui/material';
-import { ResponsiveLine } from '@nivo/line';
+import { PointTooltipProps, ResponsiveLine } from '@nivo/line';
 import { BasicTooltip } from '@nivo/tooltip';
 import React, { FC } from 'react';
 
 import { useColor } from '@/lib/hooks/useColor';
-import { formatNumber } from '@/lib/utils/helpers';
 
 import { MetricLineProps } from '.';
 import CustomAxes from './components/CustomAxes';
@@ -51,16 +50,12 @@ export const Component: FC<MetricLineProps> = ({
       reverse: false,
     };
   }
-
-  const getUnits = (seriesId: string) => {
-    switch (seriesId) {
-      case 'timePerRequest':
-        return 's';
-      case 'throughput':
-        return 'tok/s';
-      default:
-        return 'ms';
-    }
+  type PointTooltipPropsWithLabel = PointTooltipProps & {
+    point: {
+      data: {
+        label: string;
+      };
+    };
   };
 
   return (
@@ -71,7 +66,7 @@ export const Component: FC<MetricLineProps> = ({
         <BasicTooltip
           id={
             <Typography variant="body2">
-              {`${formatNumber(Number(point.point.data.x))} rps, ${formatNumber(Number(point.point.data.y))} ${getUnits(`${point.point.serieId}`)}`}
+              {(point as PointTooltipPropsWithLabel).point.data.label}
             </Typography>
           }
           color={point.point.color}

@@ -3,6 +3,7 @@ from collections import defaultdict
 from math import ceil
 from typing import TYPE_CHECKING, Optional, Union
 
+from guidellm.scheduler.strategy import SchedulingStrategy
 from pydantic import BaseModel, computed_field
 
 if TYPE_CHECKING:
@@ -212,11 +213,26 @@ class BenchmarkDatum(BaseModel):
     ttft: TabularDistributionSummary
     throughput: TabularDistributionSummary
     time_per_request: TabularDistributionSummary
+    strategy_display_str: str
+
+    def strategy_display_str(strategy: SchedulingStrategy):
+        strategy_type = strategy if isinstance(strategy, str) else strategy.type_
+        strategy_instance = strategy if isinstance(strategy, SchedulingStrategy) else None
+
+        if strategy_type == "concurrent":
+            rate = f"@{strategy_instance.streams}" if strategy_instance else "@##"  # type: ignore[attr-defined]
+        elif strategy_type in ("constant", "poisson"):
+            rate = f"@{strategy_instance.rate:.2f}" if strategy_instance else "@#.##"  # type: ignore[attr-defined]
+        else:
+            rate = ""
+        return f"{strategy_type}{rate}"
 
     @classmethod
     def from_benchmark(cls, bm: "GenerativeBenchmark"):
+        rps = bm.metrics.requests_per_second.successful.mean
         return cls(
-            requests_per_second=bm.metrics.requests_per_second.successful.mean,
+            strategy_display_str=cls.strategy_display_str(bm.args.strategy),
+            requests_per_second=rps,
             tpot=TabularDistributionSummary.from_distribution_summary(
                 bm.metrics.inter_token_latency_ms.successful
             ),

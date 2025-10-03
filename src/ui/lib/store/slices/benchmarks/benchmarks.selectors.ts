@@ -18,8 +18,10 @@ export const selectMetricsSummaryLineData = createSelector(
       ?.slice()
       ?.sort((bm1, bm2) => (bm1.requestsPerSecond > bm2.requestsPerSecond ? 1 : -1));
     const selectedPercentile = sloState.enforcedPercentile;
-
-    const lineData: { [K in keyof BenchmarkMetrics]: Point[] } = {
+    interface PointWithLabel extends Point {
+      label: string;
+    }
+    const lineData: { [K in keyof BenchmarkMetrics]: PointWithLabel[] } = {
       ttft: [],
       tpot: [],
       timePerRequest: [],
@@ -32,7 +34,7 @@ export const selectMetricsSummaryLineData = createSelector(
       'throughput',
     ];
     metrics.forEach((metric) => {
-      const data: Point[] = [];
+      const data: PointWithLabel[] = [];
       sortedByRPS?.forEach((benchmark) => {
         const percentile = benchmark[metric].percentileRows.find(
           (p) => p.percentile === selectedPercentile
@@ -40,6 +42,7 @@ export const selectMetricsSummaryLineData = createSelector(
         data.push({
           x: benchmark.requestsPerSecond,
           y: percentile?.value ?? 0,
+          label: benchmark.strategyDisplayStr,
         });
       });
 
