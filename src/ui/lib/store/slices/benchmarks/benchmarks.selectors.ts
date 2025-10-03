@@ -23,13 +23,13 @@ export const selectMetricsSummaryLineData = createSelector(
     }
     const lineData: { [K in keyof BenchmarkMetrics]: PointWithLabel[] } = {
       ttft: [],
-      tpot: [],
+      itl: [],
       timePerRequest: [],
       throughput: [],
     };
     const metrics: (keyof BenchmarkMetrics)[] = [
       'ttft',
-      'tpot',
+      'itl',
       'timePerRequest',
       'throughput',
     ];
@@ -69,7 +69,7 @@ export const selectInterpolatedMetrics = createSelector(
       };
     } = {
       ttft: getDefaultMetricValues(),
-      tpot: getDefaultMetricValues(),
+      itl: getDefaultMetricValues(),
       timePerRequest: getDefaultMetricValues(),
       throughput: getDefaultMetricValues(),
       mean: getDefaultMetricValues(),
@@ -84,7 +84,7 @@ export const selectInterpolatedMetrics = createSelector(
     const { enforcedPercentile, currentRequestRate } = sloState;
     const metrics: (keyof BenchmarkMetrics)[] = [
       'ttft',
-      'tpot',
+      'itl',
       'timePerRequest',
       'throughput',
     ];
@@ -140,13 +140,13 @@ export const selectMetricsDetailsLineData = createSelector(
       [K in keyof BenchmarkMetrics]: { data: Point[]; id: string; solid?: boolean }[];
     } = {
       ttft: [],
-      tpot: [],
+      itl: [],
       timePerRequest: [],
       throughput: [],
     };
     const props: (keyof BenchmarkMetrics)[] = [
       'ttft',
-      'tpot',
+      'itl',
       'timePerRequest',
       'throughput',
     ];

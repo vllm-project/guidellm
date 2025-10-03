@@ -210,7 +210,7 @@ class TabularDistributionSummary(DistributionSummary):
 
 class BenchmarkDatum(BaseModel):
     requests_per_second: float
-    tpot: TabularDistributionSummary
+    itl: TabularDistributionSummary
     ttft: TabularDistributionSummary
     throughput: TabularDistributionSummary
     time_per_request: TabularDistributionSummary
@@ -234,7 +234,7 @@ class BenchmarkDatum(BaseModel):
         return cls(
             strategy_display_str=cls.get_strategy_display_str(bm.args.strategy),
             requests_per_second=rps,
-            tpot=TabularDistributionSummary.from_distribution_summary(
+            itl=TabularDistributionSummary.from_distribution_summary(
                 bm.metrics.inter_token_latency_ms.successful
             ),
             ttft=TabularDistributionSummary.from_distribution_summary(

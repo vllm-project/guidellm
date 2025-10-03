@@ -4,7 +4,7 @@ export interface MetricsState {
   currentRequestRate: number;
   timePerRequest: SingleMetricsState;
   ttft: SingleMetricsState;
-  tpot: SingleMetricsState;
+  itl: SingleMetricsState;
   throughput: SingleMetricsState;
 }
 

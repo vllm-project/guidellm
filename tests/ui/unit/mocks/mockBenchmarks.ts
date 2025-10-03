@@ -1,7 +1,7 @@
 export const mockBenchmarks = [
   {
     requestsPerSecond: 0.6668550387660497,
-    tpot: {
+    itl: {
       total: 80,
       mean: 23.00635663936911,
       median: 22.959455611213805,
@@ -132,7 +132,7 @@ export const mockBenchmarks = [
   },
   {
     requestsPerSecond: 28.075330129628725,
-    tpot: {
+    itl: {
       total: 3416,
       mean: 126.08707076148656,
       median: 125.30853256346687,

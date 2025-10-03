@@ -2,7 +2,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "synchronous",
     requestsPerSecond: 11.411616848282272,
-    tpot: {
+    itl: {
       mean: 8.758024845683707,
       median: 8.788176945277623,
       mode: 7.119315011160714,
@@ -174,7 +174,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@36.28",
     requestsPerSecond: 36.289181300710815,
-    tpot: {
+    itl: {
       mean: 588.0161376137819,
       median: 461.7137227739607,
       mode: 323.1611592429025,
@@ -346,7 +346,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@20.75",
     requestsPerSecond: 20.752070927855794,
-    tpot: {
+    itl: {
       mean: 116.28360712595156,
       median: 26.769569941929408,
       mode: 10.624987738473076,
@@ -518,7 +518,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@26.81",
     requestsPerSecond: 26.81917480361788,
-    tpot: {
+    itl: {
       mean: 299.7306064613554,
       median: 372.7384294782366,
       mode: 13.360295976911273,
@@ -690,7 +690,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@26.82",
     requestsPerSecond: 26.823988819498975,
-    tpot: {
+    itl: {
       mean: 683.8011571339198,
       median: 742.2689029148647,
       mode: 317.1694278717041,
@@ -862,7 +862,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@24.50",
     requestsPerSecond: 24.50047903792646,
-    tpot: {
+    itl: {
       mean: 742.9258901891964,
       median: 773.0941431862967,
       mode: 538.750410079956,
@@ -1034,7 +1034,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@25.61",
     requestsPerSecond: 25.617829792196602,
-    tpot: {
+    itl: {
       mean: 663.3098317044122,
       median: 613.7458937508719,
       mode: 440.9824098859514,
@@ -1206,7 +1206,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@37.02",
     requestsPerSecond: 37.02892550982192,
-    tpot: {
+    itl: {
       mean: 606.4144710877113,
       median: 543.5235500335693,
       mode: 331.6155501774379,
@@ -1378,7 +1378,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "constant@37.29",
     requestsPerSecond: 37.29183354201869,
-    tpot: {
+    itl: {
       mean: 603.3237551205925,
       median: 528.1183038439069,
       mode: 400.96027510506764,
@@ -1550,7 +1550,7 @@ export const benchmarksScript = `window.benchmarks = [
   {
     strategyDisplayStr: "throughput",
     requestsPerSecond: 37.45318312972309,
-    tpot: {
+    itl: {
       mean: 600.7204526769262,
       median: 626.2100083487375,
       mode: 398.7384523664202,
