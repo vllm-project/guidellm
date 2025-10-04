@@ -219,11 +219,14 @@ class BenchmarkDatum(BaseModel):
     @classmethod
     def get_strategy_display_str(cls, strategy: SchedulingStrategy):
         strategy_type = strategy if isinstance(strategy, str) else strategy.type_
+        strategy_instance = (
+            strategy if isinstance(strategy, SchedulingStrategy) else None
+        )
 
         if strategy_type == "concurrent":
-            rate = f"@{strategy.streams}"
+            rate = f"@{strategy.streams}" if strategy_instance else "@##"  # type: ignore[attr-defined]
         elif strategy_type in ("constant", "poisson"):
-            rate = f"@{strategy.rate:.2f}"
+            rate = f"@{strategy.rate:.2f}" if strategy_instance else "@#.##"  # type: ignore[attr-defined]
         else:
             rate = ""
         return f"{strategy_type}{rate}"
