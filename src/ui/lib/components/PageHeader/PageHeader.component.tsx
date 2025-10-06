@@ -2,12 +2,14 @@
 import { Box, Typography } from '@mui/material';
 
 import { useGetRunInfoQuery } from '../../store/slices/runInfo';
-import { formateDate } from '../../utils/helpers';
+import { formateDate, getFileSize } from '../../utils/helpers';
 import { SpecBadge } from '../SpecBadge';
 import { HeaderCell, HeaderWrapper } from './PageHeader.styles';
 
 export const Component = () => {
   const { data } = useGetRunInfoQuery();
+  const modelSize = getFileSize(data?.model?.size || 0);
+
   return (
     <Box py={2}>
       <Typography variant="subtitle2" color="surface.onSurfaceAccent">
@@ -24,11 +26,24 @@ export const Component = () => {
             variant="metric2"
             withTooltip
           />
+          <SpecBadge
+            label="Model size"
+            value={data?.model?.size ? `${modelSize?.size} ${modelSize?.units}` : '0B'}
+            variant="body1"
+          />
+        </HeaderCell>
+        <HeaderCell item xs={5} withDivider>
+          <SpecBadge
+            label="Dataset"
+            value={data?.dataset?.name || 'N/A'}
+            variant="caption"
+            withTooltip
+          />
         </HeaderCell>
         <HeaderCell item xs={2} sx={{ paddingRight: 0 }}>
           <SpecBadge
             label="Time Stamp"
-            value={data?.timestamp ? formateDate(data?.timestamp) : 'n/a'}
+            value={data?.timestamp ? formateDate(data?.timestamp) : 'N/A'}
             variant="caption"
           />
         </HeaderCell>
