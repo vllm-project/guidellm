@@ -20,6 +20,7 @@ from typing import (
     Protocol,
     TypeVar,
     Union,
+    runtime_checkable,
 )
 
 from pydantic import Field, computed_field
@@ -232,6 +233,7 @@ class ScheduledRequestInfo(StandardBaseModel):
         )
 
 
+@runtime_checkable
 class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
     """
     Abstract interface for request processing backends.
