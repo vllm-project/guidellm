@@ -246,7 +246,7 @@ class TestNonDistributedEnvironment:
 
         with (
             patch("time.time", return_value=mock_time),
-            patch("guidellm.scheduler.environment.settings") as mock_settings,
+            patch("guidellm.scheduler.environments.settings") as mock_settings,
         ):
             mock_settings.scheduler_start_delay_non_distributed = delay
             start_time = await instance.sync_run_start()

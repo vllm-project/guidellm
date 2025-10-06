@@ -110,7 +110,7 @@ class TestBackendInterface:
 
         if hasattr(generic_base, "__args__"):
             type_params = generic_base.__args__
-            assert len(type_params) == 3, "Should have 3 type parameters"
+            assert len(type_params) == 2, "Should have 2 type parameters"
             param_names = [param.__name__ for param in type_params]
             expected_names = ["RequestT", "ResponseT"]
             assert param_names == expected_names
@@ -119,7 +119,7 @@ class TestBackendInterface:
     def test_implementation_construction(self):
         """Test that a complete concrete implementation can be instantiated."""
 
-        class ConcreteBackend(BackendInterface[str, MeasuredRequestTimings, str]):
+        class ConcreteBackend(BackendInterface[str, str]):
             @property
             def processes_limit(self) -> int | None:
                 return 4
@@ -162,7 +162,7 @@ class TestBackendInterface:
     async def test_implementation_async_methods(self):  # noqa: C901
         """Test that async methods work correctly in concrete implementation."""
 
-        class AsyncBackend(BackendInterface[dict, MeasuredRequestTimings, dict]):
+        class AsyncBackend(BackendInterface[dict, dict]):
             def __init__(self):
                 self.startup_called = False
                 self.validate_called = False
@@ -434,7 +434,6 @@ class TestRequestTimings:
     @pytest.mark.smoke
     def test_class_signatures(self):
         """Test MeasuredRequestTimings inheritance and type relationships."""
-        assert issubclass(MeasuredRequestTimings, StandardBaseModel)
         assert hasattr(MeasuredRequestTimings, "model_dump")
         assert hasattr(MeasuredRequestTimings, "model_validate")
 
