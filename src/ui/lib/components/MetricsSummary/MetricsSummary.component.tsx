@@ -102,7 +102,7 @@ export const Component = () => {
   return (
     <>
       <BlockHeader label="Metrics Summary" />
-      <MetricsSummaryContainer container>
+      <MetricsSummaryContainer sx={{ overflow: 'visible' }} container>
         <HeaderLeftCell item xs={9}>
           <Box display="flex" flexDirection="row" justifyContent="space-between">
             <Typography variant="h6" color="surface.onSurface" mb={2}>
