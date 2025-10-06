@@ -237,7 +237,7 @@ class TestOpenAIHTTPBackend:
             target="http://test", model="test-model", timeout=30.0
         )
 
-        info = backend.info()
+        info = backend.info
 
         assert info["target"] == "http://test"
         assert info["model"] == "test-model"
@@ -1074,7 +1074,7 @@ class TestOpenAICompletions:
         mock_image = Mock(spec=Image.Image)
         mock_image.tobytes.return_value = b"fake_jpeg_data"
 
-        with patch("guidellm.backend.openai.Image.open", return_value=mock_image):
+        with patch("guidellm.backends.openai.Image.open", return_value=mock_image):
             result = backend._get_chat_message_media_item(mock_jpeg_path)
 
         expected_data = base64.b64encode(b"fake_jpeg_data").decode("utf-8")
