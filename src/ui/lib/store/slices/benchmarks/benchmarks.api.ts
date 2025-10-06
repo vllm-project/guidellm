@@ -45,9 +45,9 @@ const setDefaultSLOs = (
     lastBM?.ttft,
     defaultPercentile
   );
-  const tpotAvg = getAverageValueForPercentile(
-    firstBM?.tpot,
-    lastBM?.tpot,
+  const itlAvg = getAverageValueForPercentile(
+    firstBM?.itl,
+    lastBM?.itl,
     defaultPercentile
   );
   const timePerRequestAvg = getAverageValueForPercentile(
@@ -66,13 +66,13 @@ const setDefaultSLOs = (
       currentRequestRate: firstBM?.requestsPerSecond,
       current: {
         ttft: formatNumber(ttftAvg, 0),
-        tpot: formatNumber(tpotAvg, 0),
+        itl: formatNumber(itlAvg, 0),
         timePerRequest: formatNumber(timePerRequestAvg, 0),
         throughput: formatNumber(throughputAvg, 0),
       },
       tasksDefaults: {
         ttft: formatNumber(ttftAvg, 0),
-        tpot: formatNumber(tpotAvg, 0),
+        itl: formatNumber(itlAvg, 0),
         timePerRequest: formatNumber(timePerRequestAvg, 0),
         throughput: formatNumber(throughputAvg, 0),
       },

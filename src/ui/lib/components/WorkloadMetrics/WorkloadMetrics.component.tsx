@@ -36,14 +36,14 @@ export const leftColumn3 = (rpsValue: number, value: number, units: string) => (
 
 export const Component = () => {
   const { data } = useGetBenchmarksQuery();
-  const { ttft, tpot, timePerRequest, throughput } = useSelector(
+  const { ttft, itl, timePerRequest, throughput } = useSelector(
     selectMetricsDetailsLineData
   );
   const { currentRequestRate } = useSelector(selectSloState);
   const formattedRequestRate = formatNumber(currentRequestRate);
   const {
     ttft: ttftAtRPS,
-    tpot: tpotAtRPS,
+    itl: itlAtRPS,
     timePerRequest: timePerRequestAtRPS,
     throughput: throughputAtRPS,
   } = useSelector(selectInterpolatedMetrics);
@@ -57,7 +57,7 @@ export const Component = () => {
       <BlockHeader label="Metrics Details" />
       <Box display="flex" flexDirection="row" gap={3} mt={3}>
         <MetricsContainer
-          header="TTFT"
+          header="TIME TO FIRST TOKEN"
           leftColumn={leftColumn(
             formattedRequestRate,
             formatNumber(ttftAtRPS.mean),
@@ -65,33 +65,33 @@ export const Component = () => {
           )}
           rightColumn={columnContent(formattedRequestRate, ttftAtRPS.percentiles, 'ms')}
         >
-          <GraphTitle title="TTFS vs RPS" />
+          <GraphTitle title="Time to First Token vs RPS" />
           <GraphsWrapper>
             <DashedLine
               data={ttft}
               margins={{ left: 50, bottom: 50 }}
               xLegend="request per sec"
-              yLegend="ttft (ms)"
+              yLegend="time to first token (ms)"
               minX={minX}
             />
           </GraphsWrapper>
         </MetricsContainer>
         <MetricsContainer
-          header="TPOT"
+          header="INTER-TOKEN LATENCY"
           leftColumn={leftColumn3(
             formattedRequestRate,
-            formatNumber(tpotAtRPS.mean),
+            formatNumber(itlAtRPS.mean),
             'ms'
           )}
-          rightColumn={columnContent(formattedRequestRate, tpotAtRPS.percentiles, 'ms')}
+          rightColumn={columnContent(formattedRequestRate, itlAtRPS.percentiles, 'ms')}
         >
-          <GraphTitle title="TPOT vs RPS" />
+          <GraphTitle title="Inter-token Latency vs RPS" />
           <GraphsWrapper>
             <DashedLine
-              data={tpot}
+              data={itl}
               margins={{ left: 50, bottom: 50 }}
               xLegend="request per sec"
-              yLegend="tpot (ms)"
+              yLegend="inter-token latency (ms)"
               minX={minX}
             />
           </GraphsWrapper>
@@ -99,7 +99,7 @@ export const Component = () => {
       </Box>
       <Box display="flex" flexDirection="row" gap={3} mt={3}>
         <MetricsContainer
-          header="E2E Latency"
+          header="Time Per Request"
           leftColumn={leftColumn(
             formattedRequestRate,
             formatNumber(timePerRequestAtRPS.mean),
@@ -111,13 +111,13 @@ export const Component = () => {
             's'
           )}
         >
-          <GraphTitle title="E2E Latency vs RPS" />
+          <GraphTitle title="Time Per Request vs RPS" />
           <GraphsWrapper>
             <DashedLine
               data={timePerRequest}
               margins={{ left: 50, bottom: 50 }}
               xLegend="request per sec"
-              yLegend="latency (s)"
+              yLegend="time per request (s)"
               minX={minX}
             />
           </GraphsWrapper>

@@ -20,7 +20,7 @@ interface Percentile {
 
 export interface BenchmarkMetrics {
   ttft: Statistics;
-  tpot: Statistics;
+  itl: Statistics;
   timePerRequest: Statistics;
   throughput: Statistics;
 }

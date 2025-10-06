@@ -9,6 +9,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}
 
+permissions:
+  packages: write
+
 jobs:
   cleanup-container-tags:
     runs-on: ubuntu-latest
@@ -16,12 +19,12 @@ jobs:
       - name: Delete PR and untagged images older than 2 weeks
         uses: snok/container-retention-policy@v3.0.0
         with:
-          account: ${{ github.actor }}
+          account: ${{ github.repository_owner }}
           token: ${{ github.token }}
           image-names: ${{ github.event.repository.name }}
           image-tags: "pr-*"
           cut-off: 2w
-          dry-run: true
+          dry-run: false
 
   push-container-tags:
     runs-on: ubuntu-latest
@@ -31,19 +34,20 @@ jobs:
       - name: Log into ghcr.io
         uses: redhat-actions/podman-login@v1
         with:
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ github.token }}
           registry: ghcr.io/${{ github.repository_owner }}
       - name: Get list of tags
         run: |
-          skopeo list-tags docker://${{ github.repository }} | jq --raw-output '.Tags[]' > tags
+          set -euo pipefail  # Fail pipe if any command fails
+          skopeo list-tags docker://ghcr.io/${{ github.repository }} | jq --raw-output '.Tags[]' > tags
       - name: Get latest release and rc tags
         run: |
           STABLE_TAG="$(grep -P '^v\d+\.\d+\.\d+$' tags | sort -rV | head -n1)"
-          echo "STABLE_TAG=${STABLE_TAG:-v0.0.0}" >> $GITHUB_ENV
+          echo "stable_tag=${STABLE_TAG:-v0.0.0}" >> $GITHUB_ENV
           LATEST_TAG="$(grep -P '^v\d+\.\d+\.\d+' tags | sort -rV | head -n1)"
-          echo "LATEST_TAG=${LATEST_TAG:-v0.0.0}" >> $GITHUB_ENV
+          echo "latest_tag=${LATEST_TAG:-v0.0.0}" >> $GITHUB_ENV
       - name: Update latest and stable tags
         run: |
-          skopeo copy docker://${{ github.repository }}:${{ env.stable_tag }} docker://${{ github.repository }}:stable
-          skopeo copy docker://${{ github.repository }}:${{ env.latest_tag }} docker://${{ github.repository }}:latest
+          skopeo copy docker://ghcr.io/${{ github.repository }}:${{ env.stable_tag }} docker://ghcr.io/${{ github.repository }}:stable
+          skopeo copy docker://ghcr.io/${{ github.repository }}:${{ env.latest_tag }} docker://ghcr.io/${{ github.repository }}:latest

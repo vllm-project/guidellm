@@ -13,7 +13,7 @@ type Errors = { [key: string]: string | undefined };
 
 const initErrorsState: Errors = {
   ttft: undefined,
-  tpot: undefined,
+  itl: undefined,
   timePerRequest: undefined,
   throughput: undefined,
 };
@@ -47,20 +47,20 @@ export const useSummary = () => {
   const dispatch = useDispatch();
 
   const { current, enforcedPercentile, tasksDefaults } = useSelector(selectSloState);
-  const { ttft, tpot, timePerRequest, throughput } = useSelector(
+  const { ttft, itl, timePerRequest, throughput } = useSelector(
     selectMetricsSummaryLineData
   );
 
   const [errors, setErrors] = useState<Errors>(initErrorsState);
 
   const ttftLimits = findMinMax(ttft || []);
-  const tpotLimits = findMinMax(tpot || []);
+  const itlLimits = findMinMax(itl || []);
   const timePerRequestLimits = findMinMax(timePerRequest || []);
   const throughputLimits = findMinMax(throughput || []);
 
   const limitsByMetric = {
     ttft: ttftLimits,
-    tpot: tpotLimits,
+    itl: itlLimits,
     timePerRequest: timePerRequestLimits,
     throughput: throughputLimits,
   };
@@ -112,7 +112,7 @@ export const useSummary = () => {
     maxX: ttftLimits.maxX,
     errors,
     handleTtft: handleChange('ttft'),
-    handleTpot: handleChange('tpot'),
+    handleItl: handleChange('itl'),
     handleTimePerRequest: handleChange('timePerRequest'),
     handleThroughput: handleChange('throughput'),
     handlePercentileChange,
