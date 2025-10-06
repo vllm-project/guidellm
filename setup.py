@@ -7,7 +7,7 @@ from packaging.version import Version
 from setuptools import setup
 from setuptools_git_versioning import count_since, get_branch, get_sha, get_tags
 
-LAST_RELEASE_VERSION = Version("0.0.0")
+LAST_RELEASE_VERSION = Version("0.3.0")
 TAG_VERSION_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+)$")
 
 
