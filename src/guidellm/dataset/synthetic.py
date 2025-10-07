@@ -1,6 +1,7 @@
 import json
+import math
 import random
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator
 from itertools import cycle
 from pathlib import Path
 from typing import Any, Optional, TypedDict, Union
@@ -12,8 +13,9 @@ from datasets import (
     IterableDataset,
     IterableDatasetDict,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from transformers import PreTrainedTokenizerBase  # type: ignore[import]
+from typing_extensions import Self
 
 from guidellm.dataset.creator import ColumnInputTypes, DatasetCreator
 from guidellm.utils import EndlessTextCreator, IntegerRangeSampler, check_load_processor
@@ -45,6 +47,10 @@ class PrefixBucketConfig(BaseModel):
 
 
 class SyntheticDatasetConfig(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+
     prefix_buckets: Optional[list[PrefixBucketConfig]] = Field(
         description="Buckets for the prefix tokens distribution.",
         default=None,
@@ -116,6 +122,26 @@ class SyntheticDatasetConfig(BaseModel):
         description="The source of the text data to be used for generation.",
         default="data:prideandprejudice.txt.gz",
     )
+
+    @model_validator(mode="after")
+    def check_prefix_options(self) -> Self:
+        prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+        prefix_tokens = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+        if prefix_count is not None or prefix_tokens is not None:
+            if self.prefix_buckets:
+                raise ValueError(
+                    "prefix_buckets is mutually exclusive"
+                    " with prefix_count and prefix_tokens"
+                )
+
+            self.prefix_buckets = [
+                PrefixBucketConfig(
+                    prefix_count=prefix_count or 1,
+                    prefix_tokens=prefix_tokens or 0,
+                )
+            ]
+
+        return self
 
     @staticmethod
     def parse_str(data: Union[str, Path]) -> "SyntheticDatasetConfig":
@@ -207,8 +233,8 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
             random_seed=self.random_seed + 7,  # ensure diff dist
         )
         # ensure diff distribution from output tokens
-        rand = random.Random(self.random_seed + 2)  # noqa: S311
-        shared_prefix_iter = iter(self._create_prefixes(rand))
+        rand = random.Random(self.random_seed + 3)  # noqa: S311
+        shared_prefix_iter = self._create_prefix_iter(rand)
         unique_prefix_iter = cycle(self.processor.get_vocab().values())
 
         for _, turns in zip(range(self.config.samples), turns_sampler):
@@ -255,31 +281,35 @@ class SyntheticTextItemsGenerator(Iterable[SyntheticDatasetRow]):
         """Generate a random start index for text generation."""
         return rand.randint(0, len(self.text_creator.words) - 1)
 
-    def _create_prefixes(self, rand: random.Random) -> Sequence[list[int]]:
-        """Create an iterator for shared prefix tokens."""
-        buckets = self.config.prefix_buckets
+    def _create_prefix_iter(self, rand: random.Random) -> Iterator[list[int]]:
+        if not self.config.prefix_buckets:
+            while True:
+                yield []
 
-        if not buckets:
-            return []
+        # Increase weights to ensure an integer number of samples per per-prefix
+        least_common_prefix_count = math.lcm(
+            *(bucket.prefix_count for bucket in self.config.prefix_buckets)
+        )
+        unnorm_weights = [
+            least_common_prefix_count * bucket.bucket_weight // bucket.prefix_count
+            for bucket in self.config.prefix_buckets
+        ]
+        # Use GCD to reduce the weights to smallest integer ratio
+        common_divisor = math.gcd(*unnorm_weights)
 
-        total_weight = sum(bucket.bucket_weight for bucket in buckets)
-        if total_weight <= 0:
-            raise ValueError("Total weight of prefix buckets must be greater than 0.")
-
-        prompts = []
-        for bucket in buckets:
+        # Create prefix list maintaining the correct distribution
+        prefixes = []
+        for bucket, weight in zip(self.config.prefix_buckets, unnorm_weights):
+            bucket_prefixes = []
             for _ in range(bucket.prefix_count):
                 start_index = self._rand_start_index(rand)
                 prompt_tokens = self._create_prompt(bucket.prefix_tokens, start_index)
-                sample_percent = (
-                    bucket.bucket_weight / bucket.prefix_count / total_weight
-                )
-                sample_count = sample_percent * self.config.samples
-                for _ in range(int(round(sample_count))):
-                    prompts.append(prompt_tokens)
+                bucket_prefixes.append(prompt_tokens)
+            sample_count = weight // common_divisor
+            prefixes.extend(bucket_prefixes * sample_count)
 
-        rand.shuffle(prompts)
-        return prompts
+        while True:
+            yield rand.choice(prefixes)
 
     def _create_prompt(
         self, prompt_tokens: int, start_index: int, unique_prefix: Optional[int] = None
