@@ -27,9 +27,9 @@ class HuggingFaceDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
 

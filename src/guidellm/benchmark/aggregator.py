@@ -678,20 +678,20 @@ class GenerativeRequestsAggregator(
     @classmethod
     def validated_kwargs(
         cls,
-        request_samples: int | None = 20,
+        sample_requests: int | None = 20,
         warmup: int | float | None = None,
         cooldown: int | float | None = None,
         **_kwargs,
     ) -> dict[str, Any]:
         return {
-            "request_samples": request_samples,
+            "sample_requests": sample_requests,
             "warmup": warmup,
             "cooldown": cooldown,
         }
 
     type_: Literal["generative_requests"] = Field(default="generative_requests")
 
-    request_samples: int | None = Field(default=20, description="")
+    sample_requests: int | None = Field(default=20, description="")
     warmup: int | float | None = Field(
         default=None,
         description="Number of warmup requests to ignore at benchmark start",
@@ -828,9 +828,9 @@ class GenerativeRequestsAggregator(
                 list[GenerativeRequestStats],
                 list[GenerativeRequestStats],
             ](
-                successful=self._sample_request_stats(successful, self.request_samples),
-                incomplete=self._sample_request_stats(incomplete, self.request_samples),
-                errored=self._sample_request_stats(errored, self.request_samples),
+                successful=self._sample_request_stats(successful, self.sample_requests),
+                incomplete=self._sample_request_stats(incomplete, self.sample_requests),
+                errored=self._sample_request_stats(errored, self.sample_requests),
             ),
             "metrics": GenerativeMetrics(
                 requests_per_second=self._calculate_requests_per_second(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import io
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 import datasets
 import httpx
@@ -11,15 +11,15 @@ import librosa
 import numpy as np
 import soundfile
 from PIL import Image as PILImage
-
-from guidellm.utils import RegistryMixin
+from pydub import AudioSegment
 
 __all__ = [
-    "JinjaFiltersRegistry",
     "download_audio",
     "download_image",
     "download_video",
     "encode_audio",
+    "encode_audio_as_dict",
+    "encode_audio_as_file",
     "encode_image",
     "encode_image_base64",
     "encode_video",
@@ -30,16 +30,10 @@ __all__ = [
 ]
 
 
-class JinjaFiltersRegistry(RegistryMixin[Callable[..., Any]]):
-    pass
-
-
-@JinjaFiltersRegistry.register("is_url")
 def is_url(text: Any) -> bool:
     return isinstance(text, str) and text.startswith(("http://", "https://"))
 
 
-@JinjaFiltersRegistry.register("encode_image")
 def encode_image(
     image: bytes | str | Path | np.ndarray | PILImage.Image | datasets.Image,
     max_size: int | None = None,
@@ -90,7 +84,6 @@ def encode_image(
     )
 
 
-@JinjaFiltersRegistry.register("encode_image_base64")
 def encode_image_base64(
     image: bytes | str | Path | np.ndarray | PILImage.Image,
     width: int | None = None,
@@ -137,7 +130,6 @@ def encode_image_base64(
     return f"data:image/jpeg;base64,{image_base64}"
 
 
-@JinjaFiltersRegistry.register("resize_image")
 def resize_image(
     image: PILImage.Image,
     width: int | None = None,
@@ -183,14 +175,12 @@ def resize_image(
     return image
 
 
-@JinjaFiltersRegistry.register("download_image")
 def download_image(url: str) -> bytes:
     response = httpx.get(url)
     response.raise_for_status()
     return response.content
 
 
-@JinjaFiltersRegistry.register("encode_video")
 def encode_video(
     video: bytes | str | Path | datasets.Video,
     encode_type: Literal["base64", "url"] | None = None,
@@ -221,7 +211,6 @@ def encode_video(
     return encode_video_base64(video=video)
 
 
-@JinjaFiltersRegistry.register("encode_video_base64")
 def encode_video_base64(video: bytes | str | Path) -> str:
     if (
         isinstance(video, str)
@@ -246,78 +235,121 @@ def encode_video_base64(video: bytes | str | Path) -> str:
     return f"data:video/{video_format};base64,{video_base64}"
 
 
-@JinjaFiltersRegistry.register("download_video")
 def download_video(url: str) -> tuple[bytes, str]:
     response = httpx.get(url)
     response.raise_for_status()
     return response.content, get_file_format(url)
 
 
-@JinjaFiltersRegistry.register("encode_audio")
-def encode_audio(
+def encode_audio_as_dict(
     audio: bytes | str | Path | dict | np.ndarray,
-    sample_rate: int | None = None,
+    sample_rate: int | None = 16000,
     max_duration: float | None = None,
-) -> dict[str, str]:
-    """
-    Input audio types:
-    - bytes: raw audio bytes
-    - str: file path on disk or URL
-    - pathlib.Path: file path on disk
-    - dict: {"data": base64_string, "format": "wav"} format
-    - numpy.ndarray: audio array, assumed to be at sample_rate if provided
+    mono: bool = True,
+    audio_format: str = "mp3",
+    bitrate: str = "64k",
+) -> dict[Literal["data", "format"], Any]:
+    content, file_name, file_format = encode_audio(
+        audio=audio,
+        sample_rate=sample_rate or 16000,
+        max_duration=max_duration,
+        mono=mono,
+        audio_format=audio_format,
+        bitrate=bitrate,
+    )
 
-    sample_rate: sample rate of the input audio if input is np.ndarray
-    target_sample_rate: resample to this rate if provided
-    duration: limit audio to this duration in seconds if provided
-
-    Returns dict with format:
-    {
-        "data": base64_encoded_audio_bytes,
-        "format": "wav"
+    return {
+        "data": base64.b64encode(content).decode("utf-8"),
+        "format": file_format,
     }
-    """
+
+
+def encode_audio_as_file(
+    audio: bytes | str | Path | dict | np.ndarray,
+    sample_rate: int | None = 16000,
+    max_duration: float | None = None,
+    mono: bool = True,
+    audio_format: str = "mp3",
+    bitrate: str = "64k",
+) -> tuple[str, bytes, str]:
+    content, file_name, file_format = encode_audio(
+        audio=audio,
+        sample_rate=sample_rate or 16000,
+        max_duration=max_duration,
+        mono=mono,
+        audio_format=audio_format,
+        bitrate=bitrate,
+    )
+
+    return file_name, content, f"audio/{file_format}"
+
+
+def encode_audio(
+    audio: bytes | str | Path | dict,
+    sample_rate: int = 16000,
+    max_duration: float | None = None,
+    mono: bool = True,
+    audio_format: str = "mp3",
+    bitrate: str = "64k",
+) -> tuple[bytes, str, str]:
+    file_name = "audio.wav"
+
     if is_url(audio):
-        audio, _ = download_audio(audio)
-
-    if isinstance(audio, dict):
-        if "data" not in audio:
-            raise ValueError("Audio dict must contain 'data' key")
+        audio, file_name, _ = download_audio(audio)
+    elif isinstance(audio, dict):
+        file_name = audio.get("name", "audio")
         audio = base64.b64decode(audio["data"])
-
-    if isinstance(audio, bytes):
-        audio_data, sample_rate = librosa.load(io.BytesIO(audio), sr=sample_rate)
     elif isinstance(audio, (str, Path)):
-        audio_data, sample_rate = librosa.load(str(audio), sr=sample_rate)
-    elif isinstance(audio, np.ndarray):
-        if sample_rate is None:
-            raise ValueError("sample_rate must be provided for numpy arrays")
-        audio_data = audio
-    else:
+        path = Path(audio)
+        file_name = get_file_name(path)
+        audio = path.read_bytes()
+    elif not isinstance(audio, bytes):
         raise ValueError(f"Unsupported audio type: {type(audio)}")
 
-    if max_duration is not None:
-        max_samples = int(max_duration * sample_rate)
-        if len(audio_data) > max_samples:
-            audio_data = audio_data[:max_samples]
+    processed_audio, sample_rate = librosa.load(
+        io.BytesIO(audio),
+        sr=sample_rate,
+        mono=mono,
+        duration=max_duration,
+    )
 
+    # Encode to target format
     buffer = io.BytesIO()
-    soundfile.write(buffer, audio_data, sample_rate, format="WAV", subtype="PCM_16")
+    if audio_format.lower() == "mp3":
+        temp_wav = io.BytesIO()
+        soundfile.write(
+            temp_wav,
+            processed_audio,
+            sample_rate,
+            format="WAV",
+            subtype="PCM_16",
+        )
+        temp_wav.seek(0)
+        AudioSegment.from_wav(temp_wav).export(buffer, format="mp3", bitrate=bitrate)
+    else:
+        soundfile.write(
+            buffer,
+            processed_audio,
+            sample_rate,
+            format=audio_format.upper(),
+        )
 
-    return {"data": buffer.getvalue(), "format": "wav"}
+    return buffer.getvalue(), file_name, audio_format.lower()
 
 
-@JinjaFiltersRegistry.register("download_audio")
-def download_audio(url: str) -> tuple[bytes, str]:
-    """Download audio from URL and return bytes with format."""
+def download_audio(url: str) -> tuple[bytes, str, str]:
     response = httpx.get(url)
     response.raise_for_status()
     content = response.content
-    audio_format = get_file_format(url)
-    return content, audio_format
+
+    return content, get_file_name(url), get_file_format(url)
 
 
-@JinjaFiltersRegistry.register("get_file_format")
+def get_file_name(path: Path | str) -> str:
+    """Get file name from path."""
+    return Path(path).name
+
+
 def get_file_format(path: Path | str) -> str:
     """Get file format from path extension."""
     suffix = Path(path).suffix.lower()

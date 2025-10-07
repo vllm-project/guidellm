@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from torch.utils.data import Sampler
 from transformers import (  # type: ignore[import]
-    AutoTokenizer,
     PreTrainedTokenizerBase,
 )
 
@@ -35,13 +34,13 @@ from guidellm.benchmark.progress import (
     BenchmarkerProgressGroup,
 )
 from guidellm.data import (
+    DataLoader,
     DatasetPreprocessor,
-    GenerativeColumnMapper,
-    GenerativeDataLoader,
     GenerativeRequestCollator,
-    GenerativeRequestFormatter,
+    PreprocessorRegistry,
+    ProcessorFactory,
 )
-from guidellm.data.objects import GenerativeDatasetArgs
+from guidellm.data.preprocessors import GenerativeColumnMapper
 from guidellm.scheduler import (
     ConstraintInitializer,
     NonDistributedEnvironment,
@@ -59,14 +58,13 @@ _CURRENT_WORKING_DIR = Path.cwd()
 
 
 # @validate_call(config={"arbitrary_types_allowed": True})
-async def benchmark_generative_text(  # noqa: C901, PLR0915
+async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
     # Required
     target: str,
     data: list[Any],
     # Benchmark configuration
     profile: StrategyType | ProfileType | Profile = "sweep",
     rate: float | list[float] | None = None,
-    random_seed: int = 42,
     # Backend configuration
     backend: BackendType | Backend = "openai_http",
     backend_kwargs: dict[str, Any] | None = None,
@@ -74,14 +72,19 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915
     # Data configuration
     processor: str | Path | PreTrainedTokenizerBase | None = None,
     processor_args: dict[str, Any] | None = None,
-    data_args: list[GenerativeDatasetArgs] | None = None,
+    data_args: list[dict[str, Any]] | None = None,
     data_samples: int = -1,
-    data_column_mapper: GenerativeColumnMapper | None = None,
-    data_preprocessors: list[DatasetPreprocessor] | None = None,
-    data_request_formatter: GenerativeRequestFormatter | None = None,
-    dataloader_sampler: Sampler[int] | Literal["shuffle"] | None = None,
-    dataloader_collate_fn: GenerativeRequestCollator | None = None,
+    data_column_mapper: (
+        DatasetPreprocessor | dict[str, str] | Literal["generative_column_mapper"]
+    ) = "generative_column_mapper",
+    data_request_formatter: (
+        DatasetPreprocessor | dict[str, str] | str
+    ) = "chat_completions",
+    data_collator: Callable | Literal["generative"] | None = "generative",
+    data_sampler: Sampler[int] | Literal["shuffle"] | None = None,
+    data_num_workers: int | None = 1,
     dataloader_kwargs: dict[str, Any] | None = None,
+    random_seed: int = 42,
     # Output configuration
     output_path: str | Path | None = _CURRENT_WORKING_DIR,
     output_formats: (
@@ -99,7 +102,7 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915
     ) = None,
     warmup: float | None = None,
     cooldown: float | None = None,
-    request_samples: int | None = 20,
+    sample_requests: int | None = 10,
     # Constraints configuration
     max_seconds: int | float | None = None,
     max_requests: int | None = None,
@@ -123,8 +126,17 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915
         console_step.update(f"{backend.__class__.__name__} backend initialized")
         await backend.process_startup()
         await backend.validate()
+        if model is None:
+            console_step.update(
+                title="Resolving default model from backend.default_model",
+                status_level="info",
+            )
+            model = await backend.default_model()
+        await backend.process_shutdown()
         console_step.finish(
-            title=f"{backend.__class__.__name__} backend initialized",
+            title=(
+                f"{backend.__class__.__name__} backend validated with model {model}"
+            ),
             details=backend.info,
             status_level="success",
         )
@@ -136,54 +148,56 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915
                 details=f"Using processor '{processor}'",
                 status_level="success",
             )
-        elif model is not None:
-            console_step.finish(
-                title="Processor resolved",
-                details=f"Using model '{model}' as processor",
-                status_level="success",
-            )
-            processor = model
         else:
-            console_step.update(
-                title="Resolving processor from backend.default_model",
-                status_level="info",
-            )
-            processor = await backend.default_model()
+            processor = model
             console_step.finish(
                 title="Processor resolved",
-                details=(
-                    f"Using model '{processor}' from backend "
-                    f"{backend.__class__.__name__} as processor"
-                ),
+                details=f"Using model '{processor}' as processor",
                 status_level="success",
             )
-        await backend.process_shutdown()
 
     with console.print_update_step(
         title=f"Initializing request loader from {data}"
     ) as console_step:
+        if not isinstance(data_column_mapper, DatasetPreprocessor):
+            column_mappings = (
+                data_column_mapper if isinstance(data_column_mapper, dict) else None
+            )
+            data_column_mapper = GenerativeColumnMapper(
+                column_mappings=column_mappings,
+            )
+        if not isinstance(data_request_formatter, DatasetPreprocessor):
+            request_type = (
+                data_request_formatter
+                if isinstance(data_request_formatter, str)
+                else data_request_formatter.pop("request_type", "chat_completions")
+            )
+            data_request_formatter = PreprocessorRegistry.get_registered_object(
+                request_type
+            )(
+                model=model,
+                **(
+                    data_request_formatter
+                    if isinstance(data_request_formatter, dict)
+                    else {}
+                ),
+            )
 
-        def processor_factory() -> PreTrainedTokenizerBase:
-            nonlocal processor
-            if isinstance(processor, PreTrainedTokenizerBase):
-                return processor
-            else:
-                processor = AutoTokenizer.from_pretrained(
-                    processor,
-                    **(processor_args or {}),
-                )
-                return processor
-
-        request_loader = GenerativeDataLoader(
+        request_loader = DataLoader(
             data=data,
             data_args=data_args,
             data_samples=data_samples,
-            processor_factory=processor_factory,
-            column_mapper=data_column_mapper or GenerativeColumnMapper(),
-            preprocessors=data_preprocessors or [],
-            request_formatter=data_request_formatter or GenerativeRequestFormatter(),
-            sampler=dataloader_sampler,
-            collate_fn=dataloader_collate_fn,
+            processor_factory=ProcessorFactory(
+                processor=processor, processor_args=processor_args
+            ),
+            preprocessors=[data_column_mapper, data_request_formatter],
+            collator=(
+                data_collator
+                if callable(data_collator)
+                else GenerativeRequestCollator()
+            ),
+            sampler=data_sampler,
+            num_workers=data_num_workers,
             random_seed=random_seed,
             **(dataloader_kwargs or {}),
         )
@@ -234,7 +248,7 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915
             "scheduler_stats": SchedulerStatsAggregator(),
             "requests_progress": GenerativeStatsProgressAggregator(),
             "requests": GenerativeRequestsAggregator(
-                request_samples=request_samples,
+                request_samples=sample_requests,
                 warmup=warmup,
                 cooldown=cooldown,
             ),

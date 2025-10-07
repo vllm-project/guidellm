@@ -495,6 +495,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         count = 0
         request_info: ScheduledRequestInfo = None
+
         for request in _iter():
             count += 1
 

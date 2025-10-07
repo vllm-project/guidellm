@@ -66,25 +66,21 @@ dependencies = [
     "protobuf",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.0.0",
+    "pydub",
     "pyyaml>=6.0.0",
     "rich",
     "sanic",
     "transformers",
     "uvloop>=0.18",
     "librosa>=0.11.0",
-    "torch>=2.8.0",
+    "torch",
 ]
 
 [project.optional-dependencies]
-perf = [
-    "orjson",
-    "msgpack",
-    "msgspec",
-    "uvloop",
-]
+perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 recommended = [
-    "tiktoken>=0.11.0",  # For OpenAI tokenizer
-    "blobfile>=3.1.0",   # For OpenAI tokenizer
+    "tiktoken>=0.11.0", # For OpenAI tokenizer
+    "blobfile>=3.1.0",  # For OpenAI tokenizer
 ]
 dev = [
     # build
@@ -127,7 +123,7 @@ dev = [
 ]
 
 [dependency-groups]
-dev = [ "guidellm[dev]" ]
+dev = ["guidellm[dev]"]
 
 [project.urls]
 homepage = "https://github.com/vllm-project/guidellm"

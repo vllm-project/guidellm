@@ -1,31 +1,29 @@
-from .datasets import GenerativeRequestsDataset
+from .collators import GenerativeRequestCollator
 from .deserializers import (
     DataNotSupportedError,
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from .formatters import (
-    GenerativeRequestFormatter,
-    JinjaEnvironmentMixin,
-    JinjaFiltersRegistry,
-    JinjaGlobalsRegistry,
-    JinjaTemplatesRegistry,
-)
-from .loaders import GenerativeDataLoader, GenerativeRequestCollator
+from .loaders import DataLoader
 from .objects import (
     GenerationRequest,
     GenerationRequestArguments,
     GenerationRequestTimings,
-    GenerativeDatasetArgs,
     GenerativeDatasetColumnType,
     GenerativeRequestType,
 )
 from .preprocessors import (
+    DataDependentPreprocessor,
     DatasetPreprocessor,
-    GenerativeColumnMapper,
+    PreprocessorRegistry,
 )
+from .processor import ProcessorFactory
 
 __all__ = [
+    "ColumnMapper",
+    "ColumnMapperRegistry",
+    "DataDependentPreprocessor",
+    "DataLoader",
     "DataNotSupportedError",
     "DatasetDeserializer",
     "DatasetDeserializerFactory",
@@ -33,16 +31,12 @@ __all__ = [
     "GenerationRequest",
     "GenerationRequestArguments",
     "GenerationRequestTimings",
-    "GenerativeColumnMapper",
-    "GenerativeDataLoader",
     "GenerativeDatasetArgs",
     "GenerativeDatasetColumnType",
     "GenerativeRequestCollator",
-    "GenerativeRequestFormatter",
     "GenerativeRequestType",
-    "GenerativeRequestsDataset",
-    "JinjaEnvironmentMixin",
-    "JinjaFiltersRegistry",
-    "JinjaGlobalsRegistry",
-    "JinjaTemplatesRegistry",
+    "PreprocessorRegistry",
+    "ProcessorFactory",
+    "RequestFormatter",
+    "RequestFormatterRegistry",
 ]

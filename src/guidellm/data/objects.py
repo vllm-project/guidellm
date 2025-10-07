@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal, get_args
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -15,7 +15,6 @@ __all__ = [
     "GenerationRequest",
     "GenerationRequestArguments",
     "GenerationRequestTimings",
-    "GenerativeDatasetArgs",
     "GenerativeDatasetColumnType",
     "GenerativeRequestType",
 ]
@@ -47,66 +46,23 @@ class GenerationRequestArguments(StandardBaseDict):
         combined = {}
 
         for args in arguments:
-            if (
-                url := args.get("url") if isinstance(args, dict) else args.url
-            ) is not None:
-                combined["url"] = url
+            args_dict = args if isinstance(args, dict) else args.model_dump()
+            combined["url"] = args_dict.get("url", combined.get("url"))
+            combined["path"] = args_dict.get("path", combined.get("path"))
+            combined["method"] = args_dict.get("method", combined.get("method"))
+            combined["stream"] = args_dict.get("stream", combined.get("stream"))
+            combined["content_body"] = args_dict.get(
+                "content_body", combined.get("content_body")
+            )
 
-            if (
-                path := args.get("path") if isinstance(args, dict) else args.path
-            ) is not None:
-                combined["path"] = path
-
-            if (
-                method := args.get("method") if isinstance(args, dict) else args.method
-            ) is not None:
-                combined["method"] = method
-
-            if (
-                stream := args.get("stream") if isinstance(args, dict) else args.stream
-            ) is not None:
-                combined["stream"] = stream
-
-            if (
-                content_body := (
-                    args.get("content_body")
-                    if isinstance(args, dict)
-                    else args.content_body
-                )
-            ) is not None:
-                combined["content_body"] = content_body
-
-            if (
-                json_body := (
-                    args.get("json_body") if isinstance(args, dict) else args.json_body
-                )
-            ) is not None:
-                if "json_body" not in combined:
-                    combined["json_body"] = {}
-                combined["json_body"].update(json_body)
-
-            if (
-                files := args.get("files") if isinstance(args, dict) else args.files
-            ) is not None:
-                if "files" not in combined:
-                    combined["files"] = {}
-                combined["files"].update(files)
-
-            if (
-                params := args.get("params") if isinstance(args, dict) else args.params
-            ) is not None:
-                if "params" not in combined:
-                    combined["params"] = {}
-                combined["params"].update(params)
-
-            if (
-                headers := (
-                    args.get("headers") if isinstance(args, dict) else args.headers
-                )
-            ) is not None:
-                if "headers" not in combined:
-                    combined["headers"] = {}
-                combined["headers"].update(headers)
+            if (json_body := args_dict.get("json_body")) is not None:
+                combined["json_body"] = combined.get("json_body", {}) + json_body
+            if (files := args_dict.get("files")) is not None:
+                combined["files"] = combined.get("files", {}) + files
+            if (params := args_dict.get("params")) is not None:
+                combined["params"] = combined.get("params", {}) + params
+            if (headers := args_dict.get("headers")) is not None:
+                combined["headers"] = combined.get("headers", {}) + headers
 
         return combined
 
@@ -189,44 +145,3 @@ class GenerationRequestTimings(MeasuredRequestTimings):
         default=None,
         description="Unix timestamp when the last generation iteration completed.",
     )
-
-
-class GenerativeDatasetArgs(StandardBaseDict):
-    type_: str | None = None
-    split: str | None = None
-    prompt_tokens_count_column: str | None = None
-    output_tokens_count_column: str | None = None
-    prefix_column: str | None = None
-    text_column: str | list[str] | None = None
-    image_column: str | list[str] | None = None
-    video_column: str | list[str] | None = None
-    audio_column: str | list[str] | None = None
-
-    def to_kwargs(self) -> dict[str, Any]:
-        return {
-            key: value
-            for key, value in self.model_extra.items()
-            if not key.endswith("_column")
-        }
-
-    def get_mapped_columns(
-        self,
-    ) -> dict[GenerativeDatasetColumnType | str, str | list[str]]:
-        column_mapping: dict[GenerativeDatasetColumnType | str, list[str] | None] = {}
-
-        # Add in any non None columns from the fields
-        for column in get_args(GenerativeDatasetColumnType):
-            value = getattr(self, column)
-            if value is not None:
-                column_mapping[column] = value
-
-        # Enable flexibility for extra columns to be passed through and referenced later
-        for extra in self.model_extra:
-            if (
-                extra.endswith("_column")
-                and extra not in column_mapping
-                and self.model_extra[extra] is not None
-            ):
-                column_mapping[extra] = self.model_extra[extra]
-
-        return column_mapping

@@ -145,7 +145,7 @@ class Settings(BaseSettings):
     mp_max_pending_buffer_percent: float = 0.5
     mp_max_worker_buffer_percent: float = 0.2
     max_concurrency: int = 512
-    max_worker_processes: int = 10
+    max_worker_processes: int = 2
     scheduler_start_delay_non_distributed: float = 1.0
     constraint_error_window_size: float = 30
     constraint_error_min_processed: float = 30

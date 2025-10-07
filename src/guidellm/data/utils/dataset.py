@@ -1,18 +1,10 @@
 from __future__ import annotations
 
-import contextlib
-import math
-from collections.abc import Iterator
-from typing import Any, Literal
+from typing import Literal
 
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 
-__all__ = [
-    "DEFAULT_COLUMN_NAMES",
-    "DEFAULT_SPLITS",
-    "datasets_item_iterator",
-    "resolve_dataset_split",
-]
+__all__ = ["DEFAULT_SPLITS", "resolve_dataset_split"]
 
 
 DEFAULT_SPLITS: dict[Literal["train", "calib", "val", "test"], list[str]] = {
@@ -77,54 +69,9 @@ DEFAULT_SPLITS: dict[Literal["train", "calib", "val", "test"], list[str]] = {
 }
 
 
-DEFAULT_COLUMN_NAMES: dict[str, list[str]] = {
-    "prompt_tokens_count": ["prompt_tokens_count", "input_tokens_count"],
-    "output_tokens_count": ["output_tokens_count", "completion_tokens_count"],
-    "prefix_column": [
-        "system_prompt",
-        "system",
-        "prefix",
-    ],
-    "text_column": [
-        "prompt",
-        "instruction",
-        "question",
-        "input",
-        "context",
-        "content",
-        "conversation",
-        "turn",
-        "text",
-    ],
-    "image_column": [
-        "image",
-        "picture",
-        "photo",
-        "img",
-    ],
-    "video_column": [
-        "video",
-        "clip",
-        "movie",
-        "footage",
-        "mp4",
-        "mov",
-        "avi",
-    ],
-    "audio_column": [
-        "audio",
-        "sound",
-        "voice",
-        "speech",
-        "wav",
-        "mp3",
-    ],
-}
-
-
 def resolve_dataset_split(
     dataset: Dataset | IterableDataset | DatasetDict | IterableDatasetDict,
-    split: str | None,
+    split: str | None = None,
 ) -> Dataset | IterableDataset:
     if split is not None and isinstance(dataset, (DatasetDict, IterableDatasetDict)):
         if split in dataset:
@@ -145,22 +92,3 @@ def resolve_dataset_split(
                 return dataset[default_split]
 
     return dataset[list(dataset.keys())[0]]
-
-
-def datasets_item_iterator(
-    datasets: list[Dataset | IterableDataset],
-    data_samples: int,
-) -> Iterator[dict[Literal["items"], tuple[dict[str, Any]]]]:
-    dataset_iters = [iter(dataset) for dataset in datasets]
-    gen_count = 0
-
-    with contextlib.suppress(StopIteration):
-        while gen_count < data_samples or data_samples <= 0 or data_samples == math.inf:
-            yield {"items": tuple(next(dataset_iter) for dataset_iter in dataset_iters)}
-            gen_count += 1
-
-    if gen_count < data_samples and data_samples > 0 and data_samples != math.inf:
-        raise ValueError(
-            f"Requested {data_samples} samples, but only {gen_count} available "
-            "from the provided datasets."
-        )

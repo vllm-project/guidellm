@@ -29,9 +29,9 @@ class InMemoryDictDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
@@ -63,9 +63,9 @@ class InMemoryDictListDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
@@ -104,9 +104,9 @@ class InMemoryItemListDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
@@ -131,9 +131,9 @@ class InMemoryJsonStrDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         if (
             isinstance(data, str)
@@ -167,9 +167,9 @@ class InMemoryCsvDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         if (
             isinstance(data, str)
@@ -182,7 +182,7 @@ class InMemoryCsvDatasetDeserializer(DatasetDeserializer):
                 rows = list(reader)
 
                 return InMemoryDictListDatasetDeserializer()(
-                    rows, data_kwargs, processor_factory, random_seed
+                    rows, processor_factory, random_seed, **data_kwargs
                 )
 
         raise DataNotSupportedError(

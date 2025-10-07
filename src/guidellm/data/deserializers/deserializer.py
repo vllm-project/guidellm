@@ -4,9 +4,10 @@ import contextlib
 from collections.abc import Callable
 from typing import Any, Protocol, Union, runtime_checkable
 
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
+from datasets import Dataset, IterableDataset
 from transformers import PreTrainedTokenizerBase
 
+from guidellm.data.utils import resolve_dataset_split
 from guidellm.utils import RegistryMixin
 
 __all__ = [
@@ -25,9 +26,9 @@ class DatasetDeserializer(Protocol):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]: ...
 
 
@@ -38,44 +39,43 @@ class DatasetDeserializerFactory(
     def deserialize(
         cls,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int = 42,
         type_: str | None = None,
-    ) -> Dataset | IterableDataset | DatasetDict | IterableDatasetDict:
-        if type_ is not None:
-            deserializer = cls.get_registered_object(type_)
+        resolve_split: bool = True,
+        **data_kwargs: dict[str, Any],
+    ) -> Dataset | IterableDataset:
+        dataset = None
 
-            if deserializer is None:
-                raise DataNotSupportedError(
-                    f"Deserializer type '{type_}' is not registered. "
-                    f"Available types: {cls.registry}"
+        if type_ is None:
+            for deserializer in cls.registered_objects():
+                deserializer_fn: DatasetDeserializer = (
+                    deserializer() if isinstance(deserializer, type) else deserializer
                 )
-            elif isinstance(deserializer, type):
-                deserializer_fn = deserializer()
-            else:
-                deserializer_fn = deserializer
 
-            return deserializer_fn(
-                data=data,
-                data_kwargs=data_kwargs,
-                processor_factory=processor_factory,
-                random_seed=random_seed,
-            )
-
-        for deserializer in cls.registered_objects():
+                with contextlib.suppress(DataNotSupportedError):
+                    dataset = deserializer_fn(
+                        data=data,
+                        processor_factory=processor_factory,
+                        random_seed=random_seed,
+                        **data_kwargs,
+                    )
+        elif deserializer := cls.get_registered_object(type_) is not None:
             deserializer_fn: DatasetDeserializer = (
                 deserializer() if isinstance(deserializer, type) else deserializer
             )
 
-            with contextlib.suppress(DataNotSupportedError):
-                return deserializer_fn(
-                    data=data,
-                    data_kwargs=data_kwargs,
-                    processor_factory=processor_factory,
-                    random_seed=random_seed,
-                )
+            dataset = deserializer_fn(
+                data=data,
+                processor_factory=processor_factory,
+                random_seed=random_seed,
+                **data_kwargs,
+            )
 
-        raise DataNotSupportedError(
-            f"No suitable deserializer found for data {data} with kwargs {data_kwargs}."
-        )
+        if dataset is None:
+            raise DataNotSupportedError(
+                f"No suitable deserializer found for data {data} "
+                f"with kwargs {data_kwargs} and type_ {type_}."
+            )
+
+        return resolve_dataset_split(dataset) if resolve_split else dataset

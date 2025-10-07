@@ -4,7 +4,7 @@ import math
 from collections.abc import Iterator
 from pathlib import Path
 from random import Random
-from typing import Any, Callable, Self
+from typing import Any, Callable
 
 import yaml
 from datasets import Features, IterableDataset, Value
@@ -98,7 +98,7 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
     )
 
     @model_validator(mode="after")
-    def check_prefix_options(self) -> Self:
+    def check_prefix_options(self) -> SyntheticTextDatasetConfig:
         prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
         prefix_tokens = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
         if prefix_count is not None or prefix_tokens is not None:
@@ -226,17 +226,17 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> IterableDataset:
         # Config file pathways, deserialize and call self again
         if (config := self._load_config_file(data)) is not None:
-            return self(config, data_kwargs, processor_factory, random_seed)
+            return self(config, processor_factory, random_seed, **data_kwargs)
 
         # Config str pathways, deserialize and call self again
         if (config := self._load_config_str(data)) is not None:
-            return self(config, data_kwargs, processor_factory, random_seed)
+            return self(config, processor_factory, random_seed, **data_kwargs)
 
         if not isinstance(data, SyntheticTextDatasetConfig):
             raise DataNotSupportedError(
@@ -246,9 +246,12 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             )
 
         return IterableDataset.from_generator(
-            lambda: SyntheticTextGenerator(
-                config=data, processor=processor_factory(), random_seed=random_seed
-            ),
+            SyntheticTextGenerator,
+            gen_kwargs={
+                "config": data,
+                "processor": processor_factory(),
+                "random_seed": random_seed,
+            },
             features=Features(
                 {
                     "prefix": Value("string"),

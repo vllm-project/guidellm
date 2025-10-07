@@ -610,6 +610,8 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                 except (culsans.QueueFull, queue.Full):
                     pass
 
+            time.sleep(0)  # Yield to other threads
+
     def _receive_messages_task_thread(  # noqa: C901
         self,
         receive_callback: Callable[[Any], Any] | None,
@@ -648,6 +650,8 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                     received_item = None
                 except (culsans.QueueFull, queue.Full):
                     pass
+
+            time.sleep(0)  # Yield to other threads
 
 
 class InterProcessMessagingManagerQueue(

@@ -30,9 +30,9 @@ class TextFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
@@ -58,9 +58,9 @@ class CSVFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
@@ -82,9 +82,9 @@ class JSONFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
@@ -106,9 +106,9 @@ class ParquetFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
@@ -130,9 +130,9 @@ class ArrowFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
@@ -154,9 +154,9 @@ class HDF5FileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
@@ -178,9 +178,9 @@ class DBFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
@@ -202,9 +202,9 @@ class TarFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
         data: Any,
-        data_kwargs: dict[str, Any],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
+        **data_kwargs: dict[str, Any],
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
