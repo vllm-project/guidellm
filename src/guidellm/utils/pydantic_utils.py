@@ -275,6 +275,17 @@ class PydanticClassRegistryMixin(
 
     schema_discriminator: ClassVar[str] = "model_type"
 
+    def __new__(cls, *args, **kwargs):  # noqa: ARG004
+        """
+        Prevent direct instantiation of base classes that use this mixin.
+
+        Only allows instantiation of concrete subclasses, not the base class.
+        """
+        base_type = cls.__pydantic_schema_base_type__()
+        if cls is base_type:
+            raise TypeError(f"only children of '{cls.__name__}' may be instantiated")
+        return super().__new__(cls)
+
     @classmethod
     def register_decorator(
         cls, clazz: RegisterClassT, name: str | list[str] | None = None
