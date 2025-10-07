@@ -163,7 +163,19 @@ class TestWorkerProcessGroup:
         """Fixture providing test data for WorkerProcessGroup."""
         constructor_args = request.param.copy()
         instance = WorkerProcessGroup(**request.param, backend=MockBackend())
-        return instance, constructor_args
+        yield instance, constructor_args
+
+        # Shutting down. Attempting shut down.
+        try:
+            if hasattr(instance, "processes") and instance.processes is not None:
+                asyncio.run(instance.shutdown())
+        # It's not...it's-it's not...it's not shutting down...it's not...
+        except Exception:  # noqa: BLE001
+            if hasattr(instance, "processes") and instance.processes is not None:
+                # Gahhh...!
+                for proc in instance.processes:
+                    proc.kill()
+                    proc.join(timeout=1.0)
 
     @pytest.mark.smoke
     def test_class_signatures(self, valid_instances):
