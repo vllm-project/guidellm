@@ -126,7 +126,7 @@ class SyntheticDatasetConfig(BaseModel):
     @model_validator(mode="after")
     def check_prefix_options(self) -> Self:
         prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
-        prefix_tokens = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+        prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
         if prefix_count is not None or prefix_tokens is not None:
             if self.prefix_buckets:
                 raise ValueError(
