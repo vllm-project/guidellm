@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, TypeAliasType
+from typing import Any
 
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import (  # type: ignore[import]
     PreTrainedTokenizerBase,
 )
+from typing_extensions import TypeAliasType
 
 from guidellm.benchmark.aggregator import (
     Aggregator,
