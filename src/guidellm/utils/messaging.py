@@ -22,7 +22,7 @@ from multiprocessing.context import BaseContext
 from multiprocessing.managers import SyncManager
 from multiprocessing.synchronize import Event as ProcessingEvent
 from threading import Event as ThreadingEvent
-from typing import Any, Callable, Generic, Protocol, TypeVar
+from typing import Any, Callable, cast, Generic, List, Protocol, TypeVar
 
 import culsans
 from pydantic import BaseModel
@@ -48,19 +48,20 @@ SendMessageT = TypeVar("SendMessageT", bound=Any)
 ReceiveMessageT = TypeVar("ReceiveMessageT", bound=Any)
 """Generic type variable for messages received through the messaging system"""
 
+CheckStopCallableT = Callable[[bool, int], bool]
 
 class MessagingStopCallback(Protocol):
     """Protocol for evaluating stop conditions in messaging operations."""
 
     def __call__(
-        self, messaging: InterProcessMessaging, pending: bool, queue_empty: int
+        self, messaging: InterProcessMessaging, pending: bool, queue_empty_count: int
     ) -> bool:
         """
         Evaluate whether messaging operations should stop.
 
         :param messaging: The messaging instance to evaluate
         :param pending: Whether there are pending operations
-        :param queue_empty: The number of times in a row the queue has been empty
+        :param queue_empty_count: The number of times in a row the queue has been empty
         :return: True if operations should stop, False otherwise
         """
         ...
@@ -90,7 +91,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         await messaging.stop()
     """
 
-    STOP_REQUIRED_QUEUE_EMPTY: int = 3
+    STOP_REQUIRED_QUEUE_EMPTY_COUNT: int = 3
 
     def __init__(
         self,
@@ -126,13 +127,13 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self.max_buffer_receive_size = max_buffer_receive_size
         self.poll_interval = poll_interval
 
-        self.send_stopped_event: ThreadingEvent | ProcessingEvent = None
-        self.receive_stopped_event: ThreadingEvent | ProcessingEvent = None
-        self.shutdown_event: ThreadingEvent = None
-        self.buffer_send_queue: culsans.Queue[SendMessageT] = None
-        self.buffer_receive_queue: culsans.Queue[ReceiveMessageT] = None
-        self.send_task: asyncio.Task = None
-        self.receive_task: asyncio.Task = None
+        self.send_stopped_event: ThreadingEvent | ProcessingEvent | None = None
+        self.receive_stopped_event: ThreadingEvent | ProcessingEvent | None = None
+        self.shutdown_event: ThreadingEvent | None = None
+        self.buffer_send_queue: culsans.Queue[SendMessageT] | None = None
+        self.buffer_receive_queue: culsans.Queue[ReceiveMessageT] | None = None
+        self.send_task: asyncio.Task | None = None
+        self.receive_task: asyncio.Task | None = None
         self.running = False
 
     @abstractmethod
@@ -152,7 +153,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self,
         send_items: Iterable[Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ) -> list[tuple[Callable, tuple[Any, ...]]]:
         """
         Create send message processing threads for transport implementation.
@@ -169,7 +170,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self,
         receive_callback: Callable[[Any], Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ) -> list[tuple[Callable, tuple[Any, ...]]]:
         """
         Create receive message processing threads for transport implementation.
@@ -216,9 +217,8 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self.buffer_receive_queue = culsans.Queue[ReceiveMessageT](
             maxsize=self.max_buffer_receive_size or 0
         )
-        self.tasks_lock = threading.Lock()
 
-        message_encoding = MessageEncoding(
+        message_encoding: MessageEncoding = MessageEncoding(
             serialization=self.serialization,
             encoding=self.encoding,
             pydantic_models=pydantic_models,
@@ -245,18 +245,26 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         """
         Stop message processing tasks and clean up resources.
         """
-        self.shutdown_event.set()
-        with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.gather(
-                self.send_task, self.receive_task, return_exceptions=True
-            )
+        if self.shutdown_event is not None:
+            self.shutdown_event.set()
+        else:
+            raise RuntimeError("shutdown_event is not set; was start() not called or is this a redundant stop() call?")
+        tasks = [self.send_task, self.receive_task]
+        tasks_to_run: List[asyncio.Task[Any]] = [task for task in tasks if task is not None]
+        if len(tasks_to_run) > 0:
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(
+                    *tasks_to_run, return_exceptions=True
+                )
         self.send_task = None
         self.receive_task = None
         if self.worker_index is None:
-            self.buffer_send_queue.clear()
-            await self.buffer_send_queue.aclose()
-            self.buffer_receive_queue.clear()
-            await self.buffer_receive_queue.aclose()
+            if self.buffer_send_queue is not None:
+                self.buffer_send_queue.clear()
+                await self.buffer_send_queue.aclose()
+            if self.buffer_receive_queue is not None:
+                self.buffer_receive_queue.clear()
+                await self.buffer_receive_queue.aclose()
         self.buffer_send_queue = None
         self.buffer_receive_queue = None
         self.send_stopped_event = None
@@ -298,7 +306,8 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
             canceled_event.set()
             raise
         finally:
-            self.send_stopped_event.set()
+            if self.send_stopped_event is not None:
+                self.send_stopped_event.set()
 
     async def receive_messages_coroutine(
         self,
@@ -334,15 +343,18 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
             canceled_event.set()
             raise
         finally:
-            self.receive_stopped_event.set()
+            if self.receive_stopped_event is not None:
+                self.receive_stopped_event.set()
 
     async def get(self, timeout: float | None = None) -> ReceiveMessageT:
         """
-        Retrieve message from receive buffer with optional timeout.
+        Retrieve a message from receive buffer with optional timeout.
 
         :param timeout: Maximum time to wait for a message
         :return: Decoded message from the receive buffer
         """
+        if self.buffer_receive_queue is None:
+            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
         return await asyncio.wait_for(
             self.buffer_receive_queue.async_get(), timeout=timeout
         )
@@ -354,6 +366,8 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :param timeout: Maximum time to wait for a message, if <=0 uses get_nowait
         :return: Decoded message from the receive buffer
         """
+        if self.buffer_receive_queue is None:
+            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
         if timeout is not None and timeout <= 0:
             return self.buffer_receive_queue.get_nowait()
         else:
@@ -366,6 +380,8 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :param item: Message item to add to the send buffer
         :param timeout: Maximum time to wait for buffer space
         """
+        if self.buffer_send_queue is None:
+            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
         await asyncio.wait_for(self.buffer_send_queue.async_put(item), timeout=timeout)
 
     def put_sync(self, item: SendMessageT, timeout: float | None = None):
@@ -375,6 +391,8 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :param item: Message item to add to the send buffer
         :param timeout: Maximum time to wait for buffer space, if <=0 uses put_nowait
         """
+        if self.buffer_send_queue is None:
+            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
         if timeout is not None and timeout <= 0:
             self.buffer_send_queue.put_nowait(item)
         else:
@@ -394,18 +412,21 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         )
         stop_callbacks = tuple(item for item in stop_criteria or [] if callable(item))
 
-        def check_stop(pending: bool, queue_empty: int) -> bool:
+        def check_stop(pending: bool, queue_empty_count: int) -> bool:
             if canceled_event.is_set():
                 return True
 
             if stop_callbacks and any(
-                cb(self, pending, queue_empty) for cb in stop_callbacks
+                cb(self, pending, queue_empty_count) for cb in stop_callbacks
             ):
+                return True
+
+            if self.shutdown_event is None:
                 return True
 
             return (
                 not pending
-                and queue_empty >= self.STOP_REQUIRED_QUEUE_EMPTY
+                and queue_empty_count >= self.STOP_REQUIRED_QUEUE_EMPTY_COUNT
                 and (
                     self.shutdown_event.is_set()
                     or any(event.is_set() for event in stop_events)
@@ -436,6 +457,8 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         # Create worker copy for distributed processing
         worker_messaging = messaging.create_worker_copy(worker_index=0)
     """
+    pending_queue: multiprocessing.Queue | queue.Queue[Any] | None
+    done_queue: multiprocessing.Queue | queue.Queue[Any] | None
 
     def __init__(
         self,
@@ -448,8 +471,8 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         max_buffer_receive_size: int | None = None,
         poll_interval: float = 0.1,
         worker_index: int | None = None,
-        pending_queue: multiprocessing.Queue | None = None,
-        done_queue: multiprocessing.Queue | None = None,
+        pending_queue: multiprocessing.Queue | queue.Queue[Any] | None = None,
+        done_queue: multiprocessing.Queue | queue.Queue[Any] | None = None,
     ):
         """
         Initialize queue-based messaging for inter-process communication.
@@ -506,9 +529,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
             "pending_queue": self.pending_queue,
             "done_queue": self.done_queue,
         }
-        copy_args.update(kwargs)
+        final_args = {**copy_args, **kwargs}
 
-        return InterProcessMessagingQueue[ReceiveMessageT, SendMessageT](**copy_args)
+        return InterProcessMessagingQueue[ReceiveMessageT, SendMessageT](**final_args)
 
     async def stop(self):
         """
@@ -517,15 +540,21 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         await super().stop()
         if self.worker_index is None:
             # only main process should close the queues
+            if self.pending_queue is None:
+                raise RuntimeError("pending_queue is None; was stop() already called?")
             with contextlib.suppress(queue.Empty):
                 while True:
                     self.pending_queue.get_nowait()
-            self.pending_queue.close()
+            if hasattr(self.pending_queue, 'close'):
+                self.pending_queue.close()
 
+            if self.done_queue is None:
+                raise RuntimeError("done_queue is None; was stop() already called?")
             with contextlib.suppress(queue.Empty):
                 while True:
                     self.done_queue.get_nowait()
-            self.done_queue.close()
+            if hasattr(self.done_queue, 'close'):
+                self.done_queue.close()
 
         self.pending_queue = None
         self.done_queue = None
@@ -534,7 +563,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         self,
         send_items: Iterable[Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ) -> list[tuple[Callable, tuple[Any, ...]]]:
         """
         Create send message processing threads for queue-based transport.
@@ -555,7 +584,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         self,
         receive_callback: Callable[[Any], Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ) -> list[tuple[Callable, tuple[Any, ...]]]:
         """
         Create receive message processing threads for queue-based transport.
@@ -576,35 +605,43 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         self,
         send_items: Iterable[Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ):
         send_items_iter = iter(send_items) if send_items is not None else None
         pending_item = None
-        queue_empty = 0
+        queue_empty_count = 0
 
-        while not check_stop(pending_item is not None, queue_empty):
+        while not check_stop(pending_item is not None, queue_empty_count):
             if pending_item is None:
                 try:
                     if send_items_iter is not None:
                         item = next(send_items_iter)
                     else:
+                        if self.buffer_send_queue is None:
+                            raise RuntimeError("buffer_send_queue is None; was stop() already called?")
                         item = self.buffer_send_queue.sync_get(
                             timeout=self.poll_interval
                         )
                     pending_item = message_encoding.encode(item)
-                    queue_empty = 0
+                    queue_empty_count = 0
                 except (culsans.QueueEmpty, queue.Empty, StopIteration):
-                    queue_empty += 1
+                    queue_empty_count += 1
 
             if pending_item is not None:
                 try:
                     if self.worker_index is None:
                         # Main publisher
+                        if self.pending_queue is None:
+                            raise RuntimeError("pending_queue is None; was stop() already called?")
                         self.pending_queue.put(pending_item, timeout=self.poll_interval)
                     else:
                         # Worker
+                        if self.done_queue is None:
+                            raise RuntimeError("done_queue is None; was stop() already called?")
                         self.done_queue.put(pending_item, timeout=self.poll_interval)
                     if send_items_iter is None:
+                        if self.buffer_send_queue is None:
+                            raise RuntimeError("buffer_send_queue is None; was stop() already called?")
                         self.buffer_send_queue.task_done()
                     pending_item = None
                 except (culsans.QueueFull, queue.Full):
@@ -614,25 +651,29 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         self,
         receive_callback: Callable[[Any], Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ):
         pending_item = None
         received_item = None
-        queue_empty = 0
+        queue_empty_count = 0
 
-        while not check_stop(pending_item is not None, queue_empty):
+        while not check_stop(pending_item is not None, queue_empty_count):
             if pending_item is None:
                 try:
                     if self.worker_index is None:
                         # Main publisher
+                        if self.done_queue is None:
+                            raise RuntimeError("done_queue is None; check start()/stop() calls")
                         item = self.done_queue.get(timeout=self.poll_interval)
                     else:
                         # Worker
+                        if self.pending_queue is None:
+                            raise RuntimeError("pending_queue is None; check start()/stop() calls")
                         item = self.pending_queue.get(timeout=self.poll_interval)
                     pending_item = message_encoding.decode(item)
-                    queue_empty = 0
+                    queue_empty_count = 0
                 except (culsans.QueueEmpty, queue.Empty):
-                    queue_empty += 1
+                    queue_empty_count += 1
 
             if pending_item is not None or received_item is not None:
                 try:
@@ -643,7 +684,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                             else receive_callback(pending_item)
                         )
 
-                    self.buffer_receive_queue.sync_put(received_item)
+                    if self.buffer_receive_queue is None:
+                        raise RuntimeError("buffer_receive_queue is None; check start()/stop() calls")
+                    self.buffer_receive_queue.sync_put(cast(ReceiveMessageT, received_item))
                     pending_item = None
                     received_item = None
                 except (culsans.QueueFull, queue.Full):
@@ -714,8 +757,8 @@ class InterProcessMessagingManagerQueue(
             max_buffer_receive_size=max_buffer_receive_size,
             poll_interval=poll_interval,
             worker_index=worker_index,
-            pending_queue=pending_queue or manager.Queue(maxsize=max_pending_size or 0),  # type: ignore [assignment]
-            done_queue=done_queue or manager.Queue(maxsize=max_done_size or 0),  # type: ignore [assignment]
+            pending_queue=pending_queue or manager.Queue(maxsize=max_pending_size or 0),
+            done_queue=done_queue or manager.Queue(maxsize=max_done_size or 0),
         )
 
     def create_worker_copy(
@@ -741,9 +784,9 @@ class InterProcessMessagingManagerQueue(
             "pending_queue": self.pending_queue,
             "done_queue": self.done_queue,
         }
-        copy_args.update(kwargs)
+        final_args = {**copy_args, **kwargs}
 
-        return InterProcessMessagingManagerQueue(**copy_args)
+        return InterProcessMessagingManagerQueue(**final_args)
 
     async def stop(self):
         """
@@ -818,12 +861,13 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         )
         self.num_workers = num_workers
 
+        self.pipes: list[tuple[Connection, Connection]]
         if pipe is None:
-            self.pipes: list[tuple[Connection, Connection]] = [
+            self.pipes = [
                 self.mp_context.Pipe(duplex=True) for _ in range(num_workers)
             ]
         else:
-            self.pipes: list[tuple[Connection, Connection]] = [pipe]
+            self.pipes = [pipe]
 
     def create_worker_copy(
         self, worker_index: int, **kwargs
@@ -847,9 +891,10 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
             "worker_index": worker_index,
             "pipe": self.pipes[worker_index],
         }
-        copy_args.update(kwargs)
 
-        return InterProcessMessagingPipe(**copy_args)
+        final_args = {**copy_args, **kwargs}
+
+        return InterProcessMessagingPipe(**final_args)
 
     async def stop(self):
         """
@@ -866,7 +911,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         self,
         send_items: Iterable[Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ) -> list[tuple[Callable, tuple[Any, ...]]]:
         """
         Create send message processing threads for pipe-based transport.
@@ -897,7 +942,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         self,
         receive_callback: Callable[[Any], Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ) -> list[tuple[Callable, tuple[Any, ...]]]:
         """
         Create receive message processing threads for pipe-based transport.
@@ -929,13 +974,13 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         pipe: tuple[Connection, Connection],
         send_items: Iterable[Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ):
         local_stop = ThreadingEvent()
         send_connection: Connection = pipe[0] if self.worker_index is None else pipe[1]
         send_items_iter = iter(send_items) if send_items is not None else None
         pending_item = None
-        queue_empty = 0
+        queue_empty_count = 0
         pipe_item = None
         pipe_lock = threading.Lock()
 
@@ -957,19 +1002,21 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
             threading.Thread(target=_background_pipe_recv, daemon=True).start()
 
         try:
-            while not check_stop(pending_item is not None, queue_empty):
+            while not check_stop(pending_item is not None, queue_empty_count):
                 if pending_item is None:
                     try:
                         if send_items_iter is not None:
                             item = next(send_items_iter)
                         else:
+                            if self.buffer_send_queue is None:
+                                raise RuntimeError("buffer_send_queue is None; check start()/stop() calls")
                             item = self.buffer_send_queue.sync_get(
                                 timeout=self.poll_interval
                             )
                         pending_item = message_encoding.encode(item)
-                        queue_empty = 0
+                        queue_empty_count = 0
                     except (culsans.QueueEmpty, queue.Empty, StopIteration):
-                        queue_empty += 1
+                        queue_empty_count += 1
 
                 if pending_item is not None:
                     try:
@@ -980,6 +1027,8 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                             else:
                                 pipe_item = pending_item
                         if send_items_iter is None:
+                            if self.buffer_send_queue is None:
+                                raise RuntimeError("buffer_send_queue is None; check start()/stop() calls")
                             self.buffer_send_queue.task_done()
                         pending_item = None
                     except (culsans.QueueFull, queue.Full):
@@ -992,16 +1041,16 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         pipe: tuple[Connection, Connection],
         receive_callback: Callable[[Any], Any] | None,
         message_encoding: MessageEncoding,
-        check_stop: Callable[[bool, bool], bool],
+        check_stop: CheckStopCallableT,
     ):
         receive_connection: Connection = (
             pipe[0] if self.worker_index is not None else pipe[1]
         )
         pending_item = None
         received_item = None
-        queue_empty = 0
+        queue_empty_count = 0
 
-        while not check_stop(pending_item is not None, queue_empty):
+        while not check_stop(pending_item is not None, queue_empty_count):
             if pending_item is None:
                 try:
                     if receive_connection.poll(self.poll_interval):
@@ -1009,9 +1058,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                         pending_item = message_encoding.decode(item)
                     else:
                         raise queue.Empty
-                    queue_empty = 0
+                    queue_empty_count = 0
                 except (culsans.QueueEmpty, queue.Empty):
-                    queue_empty += 1
+                    queue_empty_count += 1
 
             if pending_item is not None or received_item is not None:
                 try:
@@ -1021,8 +1070,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                             if not receive_callback
                             else receive_callback(pending_item)
                         )
-
-                    self.buffer_receive_queue.sync_put(received_item)
+                    if self.buffer_receive_queue is None:
+                        raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
+                    self.buffer_receive_queue.sync_put(cast(ReceiveMessageT, received_item))
                     pending_item = None
                     received_item = None
                 except (culsans.QueueFull, queue.Full):
