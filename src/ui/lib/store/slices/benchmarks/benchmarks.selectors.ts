@@ -11,6 +11,18 @@ import { selectSloState } from '../slo/slo.selectors';
 
 export const selectBenchmarks = (state: RootState) => state.benchmarks.data;
 
+const getUnitsByMetric = (metric: string) => {
+  switch (metric) {
+    case 'ttft':
+    case 'tpot':
+      return 'ms';
+    case 'timePerRequest':
+      return 'sec';
+    case 'throughput':
+      return 'tok/s';
+  }
+};
+
 export const selectMetricsSummaryLineData = createSelector(
   [selectBenchmarks, selectSloState],
   (benchmarks, sloState) => {
@@ -39,10 +51,12 @@ export const selectMetricsSummaryLineData = createSelector(
         const percentile = benchmark[metric].percentileRows.find(
           (p) => p.percentile === selectedPercentile
         );
+        const yValue = percentile?.value ?? 0;
+        const units = getUnitsByMetric(metric);
         data.push({
           x: benchmark.requestsPerSecond,
-          y: percentile?.value ?? 0,
-          label: benchmark.strategyDisplayStr,
+          y: yValue,
+          label: `${benchmark.strategyDisplayStr} ${yValue} ${units}`,
         });
       });
 
