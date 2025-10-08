@@ -155,7 +155,7 @@ class Console(RichConsole):
             block = Padding(
                 Text.from_markup(str(details)),
                 (0, 0, 0, 2),
-                style=StatusStyles.get("debug"),
+                style=StatusStyles.get("debug", "dim"),
             )
             self.print(block)
 

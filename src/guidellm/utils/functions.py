@@ -96,19 +96,20 @@ def safe_add(
     if not values:
         return default
 
-    values = list(values)
+    values_list = list(values)
 
     if signs is None:
-        signs = [1] * len(values)
+        signs = [1] * len(values_list)
 
-    if len(signs) != len(values):
+    if len(signs) != len(values_list):
         raise ValueError("Length of signs must match length of values")
 
-    result = values[0] if values[0] is not None else default
+    result = values_list[0] if values_list[0] is not None else default
 
-    for ind in range(1, len(values)):
-        val = values[ind] if values[ind] is not None else default
-        result += signs[ind] * val
+    for ind in range(1, len(values_list)):
+        value = values_list[ind]
+        checked_value = value if value is not None else default
+        result += signs[ind] * checked_value
 
     return result
 

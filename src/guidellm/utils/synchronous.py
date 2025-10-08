@@ -131,8 +131,9 @@ async def wait_for_sync_objects(
     :param poll_interval: Time in seconds between polling checks for each object
     :return: Index (for list/single) or key name (for dict) of the first
         completed object
-    :raises asyncio.CancelledError: If the async task is cancelled
+    :raises asyncio.CancelledError: If the async task is canceled
     """
+    keys: list[int | str]
     if isinstance(objects, dict):
         keys = list(objects.keys())
         objects = list(objects.values())
