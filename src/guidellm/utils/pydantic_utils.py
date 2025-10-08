@@ -11,7 +11,7 @@ structured result organization.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, cast, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, Field, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
@@ -300,7 +300,7 @@ class PydanticClassRegistryMixin(
         super().register_decorator(clazz, name=name)
         cls.reload_schema()
 
-        return cast(RegisterClassT, clazz)
+        return cast("RegisterClassT", clazz)
 
     @classmethod
     def __get_pydantic_core_schema__(

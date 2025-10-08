@@ -22,7 +22,7 @@ from multiprocessing.context import BaseContext
 from multiprocessing.managers import SyncManager
 from multiprocessing.synchronize import Event as ProcessingEvent
 from threading import Event as ThreadingEvent
-from typing import Any, Callable, cast, Generic, List, Protocol, TypeVar
+from typing import Any, Callable, Generic, Protocol, TypeVar, cast
 
 import culsans
 from pydantic import BaseModel
@@ -49,6 +49,7 @@ ReceiveMessageT = TypeVar("ReceiveMessageT", bound=Any)
 """Generic type variable for messages received through the messaging system"""
 
 CheckStopCallableT = Callable[[bool, int], bool]
+
 
 class MessagingStopCallback(Protocol):
     """Protocol for evaluating stop conditions in messaging operations."""
@@ -248,14 +249,17 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         if self.shutdown_event is not None:
             self.shutdown_event.set()
         else:
-            raise RuntimeError("shutdown_event is not set; was start() not called or is this a redundant stop() call?")
+            raise RuntimeError(
+                "shutdown_event is not set; was start() not called or "
+                "is this a redundant stop() call?"
+            )
         tasks = [self.send_task, self.receive_task]
-        tasks_to_run: List[asyncio.Task[Any]] = [task for task in tasks if task is not None]
+        tasks_to_run: list[asyncio.Task[Any]] = [
+            task for task in tasks if task is not None
+        ]
         if len(tasks_to_run) > 0:
             with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(
-                    *tasks_to_run, return_exceptions=True
-                )
+                await asyncio.gather(*tasks_to_run, return_exceptions=True)
         self.send_task = None
         self.receive_task = None
         if self.worker_index is None:
@@ -354,7 +358,9 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :return: Decoded message from the receive buffer
         """
         if self.buffer_receive_queue is None:
-            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
+            raise RuntimeError(
+                "buffer receive queue is None; check start()/stop() calls"
+            )
         return await asyncio.wait_for(
             self.buffer_receive_queue.async_get(), timeout=timeout
         )
@@ -367,7 +373,9 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :return: Decoded message from the receive buffer
         """
         if self.buffer_receive_queue is None:
-            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
+            raise RuntimeError(
+                "buffer receive queue is None; check start()/stop() calls"
+            )
         if timeout is not None and timeout <= 0:
             return self.buffer_receive_queue.get_nowait()
         else:
@@ -381,7 +389,9 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :param timeout: Maximum time to wait for buffer space
         """
         if self.buffer_send_queue is None:
-            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
+            raise RuntimeError(
+                "buffer receive queue is None; check start()/stop() calls"
+            )
         await asyncio.wait_for(self.buffer_send_queue.async_put(item), timeout=timeout)
 
     def put_sync(self, item: SendMessageT, timeout: float | None = None):
@@ -392,7 +402,9 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         :param timeout: Maximum time to wait for buffer space, if <=0 uses put_nowait
         """
         if self.buffer_send_queue is None:
-            raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
+            raise RuntimeError(
+                "buffer receive queue is None; check start()/stop() calls"
+            )
         if timeout is not None and timeout <= 0:
             self.buffer_send_queue.put_nowait(item)
         else:
@@ -457,6 +469,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         # Create worker copy for distributed processing
         worker_messaging = messaging.create_worker_copy(worker_index=0)
     """
+
     pending_queue: multiprocessing.Queue | queue.Queue[Any] | None
     done_queue: multiprocessing.Queue | queue.Queue[Any] | None
 
@@ -545,7 +558,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
             with contextlib.suppress(queue.Empty):
                 while True:
                     self.pending_queue.get_nowait()
-            if hasattr(self.pending_queue, 'close'):
+            if hasattr(self.pending_queue, "close"):
                 self.pending_queue.close()
 
             if self.done_queue is None:
@@ -553,7 +566,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
             with contextlib.suppress(queue.Empty):
                 while True:
                     self.done_queue.get_nowait()
-            if hasattr(self.done_queue, 'close'):
+            if hasattr(self.done_queue, "close"):
                 self.done_queue.close()
 
         self.pending_queue = None
@@ -618,7 +631,9 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                         item = next(send_items_iter)
                     else:
                         if self.buffer_send_queue is None:
-                            raise RuntimeError("buffer_send_queue is None; was stop() already called?")
+                            raise RuntimeError(
+                                "buffer_send_queue is None; was stop() already called?"
+                            )
                         item = self.buffer_send_queue.sync_get(
                             timeout=self.poll_interval
                         )
@@ -632,16 +647,22 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                     if self.worker_index is None:
                         # Main publisher
                         if self.pending_queue is None:
-                            raise RuntimeError("pending_queue is None; was stop() already called?")
+                            raise RuntimeError(
+                                "pending_queue is None; was stop() already called?"
+                            )
                         self.pending_queue.put(pending_item, timeout=self.poll_interval)
                     else:
                         # Worker
                         if self.done_queue is None:
-                            raise RuntimeError("done_queue is None; was stop() already called?")
+                            raise RuntimeError(
+                                "done_queue is None; was stop() already called?"
+                            )
                         self.done_queue.put(pending_item, timeout=self.poll_interval)
                     if send_items_iter is None:
                         if self.buffer_send_queue is None:
-                            raise RuntimeError("buffer_send_queue is None; was stop() already called?")
+                            raise RuntimeError(
+                                "buffer_send_queue is None; was stop() already called?"
+                            )
                         self.buffer_send_queue.task_done()
                     pending_item = None
                 except (culsans.QueueFull, queue.Full):
@@ -663,12 +684,16 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                     if self.worker_index is None:
                         # Main publisher
                         if self.done_queue is None:
-                            raise RuntimeError("done_queue is None; check start()/stop() calls")
+                            raise RuntimeError(
+                                "done_queue is None; check start()/stop() calls"
+                            )
                         item = self.done_queue.get(timeout=self.poll_interval)
                     else:
                         # Worker
                         if self.pending_queue is None:
-                            raise RuntimeError("pending_queue is None; check start()/stop() calls")
+                            raise RuntimeError(
+                                "pending_queue is None; check start()/stop() calls"
+                            )
                         item = self.pending_queue.get(timeout=self.poll_interval)
                     pending_item = message_encoding.decode(item)
                     queue_empty_count = 0
@@ -685,8 +710,12 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                         )
 
                     if self.buffer_receive_queue is None:
-                        raise RuntimeError("buffer_receive_queue is None; check start()/stop() calls")
-                    self.buffer_receive_queue.sync_put(cast(ReceiveMessageT, received_item))
+                        raise RuntimeError(
+                            "buffer_receive_queue is None; check start()/stop() calls"
+                        )
+                    self.buffer_receive_queue.sync_put(
+                        cast("ReceiveMessageT", received_item)
+                    )
                     pending_item = None
                     received_item = None
                 except (culsans.QueueFull, queue.Full):
@@ -863,9 +892,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
 
         self.pipes: list[tuple[Connection, Connection]]
         if pipe is None:
-            self.pipes = [
-                self.mp_context.Pipe(duplex=True) for _ in range(num_workers)
-            ]
+            self.pipes = [self.mp_context.Pipe(duplex=True) for _ in range(num_workers)]
         else:
             self.pipes = [pipe]
 
@@ -969,7 +996,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                 )
             ]
 
-    def _send_messages_task_thread(  # noqa: C901, PLR0912
+    def _send_messages_task_thread(  # noqa: C901, PLR0912, PLR0915
         self,
         pipe: tuple[Connection, Connection],
         send_items: Iterable[Any] | None,
@@ -1009,7 +1036,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                             item = next(send_items_iter)
                         else:
                             if self.buffer_send_queue is None:
-                                raise RuntimeError("buffer_send_queue is None; check start()/stop() calls")
+                                raise RuntimeError(
+                                    "buffer_send_queue is None; check start()/stop() calls"  # noqa: E501
+                                )
                             item = self.buffer_send_queue.sync_get(
                                 timeout=self.poll_interval
                             )
@@ -1028,7 +1057,9 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                                 pipe_item = pending_item
                         if send_items_iter is None:
                             if self.buffer_send_queue is None:
-                                raise RuntimeError("buffer_send_queue is None; check start()/stop() calls")
+                                raise RuntimeError(
+                                    "buffer_send_queue is None; check start()/stop() calls"  # noqa: E501
+                                )
                             self.buffer_send_queue.task_done()
                         pending_item = None
                     except (culsans.QueueFull, queue.Full):
@@ -1071,8 +1102,12 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
                             else receive_callback(pending_item)
                         )
                     if self.buffer_receive_queue is None:
-                        raise RuntimeError("buffer receive queue is None; check start()/stop() calls")
-                    self.buffer_receive_queue.sync_put(cast(ReceiveMessageT, received_item))
+                        raise RuntimeError(
+                            "buffer receive queue is None; check start()/stop() calls"
+                        )
+                    self.buffer_receive_queue.sync_put(
+                        cast("ReceiveMessageT", received_item)
+                    )
                     pending_item = None
                     received_item = None
                 except (culsans.QueueFull, queue.Full):
