@@ -56,7 +56,7 @@ export const selectMetricsSummaryLineData = createSelector(
         data.push({
           x: benchmark.requestsPerSecond,
           y: yValue,
-          label: `${benchmark.strategyDisplayStr} ${yValue} ${units}`,
+          label: `${benchmark.strategyDisplayStr} ${formatNumber(yValue)} ${units}`,
         });
       });
 
