@@ -174,7 +174,7 @@ class ScheduledRequestInfo(StandardBaseModel):
     )
     scheduler_start_time: float = Field(
         description="Unix timestamp for the local time when scheduler processing began",
-        default=-1,
+        default=-1.0,
     )
 
     error: str | None = Field(

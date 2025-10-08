@@ -71,6 +71,15 @@ podman run \
 
 Replace `latest` with `stable` for the newest tagged release or set a specific release if desired.
 
+#### Available Tags
+
+| Tags                                                                                       | Notes                                         |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `nightly`                                                                                  | Built from `main` every night                 |
+| [`v0.3.0`](https://github.com/vllm-project/guidellm/releases/tag/v0.3.0) `stable` `latest` | -                                             |
+| [`v0.2.1`](https://github.com/vllm-project/guidellm/releases/tag/v0.2.1)                   | -                                             |
+| `pr-*`                                                                                     | Development builds (DO NOT USE IN PRODUCTION) |
+
 ### Quick Start
 
 #### 1. Start an OpenAI Compatible Server (vLLM)

@@ -124,7 +124,7 @@ class Benchmarker(
                     backend=backend,
                     strategy=strategy,
                     env=environment,
-                    **constraints,
+                    **constraints or {},
                 ):
                     aggregators_update = AggregatorState()
                     for key, aggregator in benchmark_aggregators.items():
