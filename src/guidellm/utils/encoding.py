@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Annotated, Any, cast, ClassVar, Generic, Literal, Optional, TypeVar
+from typing import Annotated, Any, ClassVar, Generic, Literal, Optional, TypeVar, cast
 
 try:
-    import msgpack # type: ignore[import-untyped] # Optional dependency
+    import msgpack  # type: ignore[import-untyped] # Optional dependency
     from msgpack import Packer, Unpacker
 
     HAS_MSGPACK = True
@@ -24,8 +24,12 @@ except ImportError:
     HAS_MSGPACK = False
 
 try:
-    from msgspec.msgpack import Decoder as MsgspecDecoder # type: ignore[import-not-found] # Optional dependency
-    from msgspec.msgpack import Encoder as MsgspecEncoder # type: ignore[import-not-found] # Optional dependency
+    from msgspec.msgpack import (  # type: ignore[import-not-found] # Optional dependency
+        Decoder as MsgspecDecoder,
+    )
+    from msgspec.msgpack import (  # type: ignore[import-not-found] # Optional dependency
+        Encoder as MsgspecEncoder,
+    )
 
     HAS_MSGSPEC = True
 except ImportError:
@@ -33,7 +37,7 @@ except ImportError:
     HAS_MSGSPEC = False
 
 try:
-    import orjson # type: ignore[import-not-found] # Optional dependency
+    import orjson  # type: ignore[import-not-found] # Optional dependency
 
     HAS_ORJSON = True
 except ImportError:
@@ -116,7 +120,7 @@ class MessageEncoding(Generic[ObjT, MsgT]):
         """
         serialized = serializer.serialize(obj) if serializer else obj
 
-        return cast(MsgT, encoder.encode(serialized) if encoder else serialized)
+        return cast("MsgT", encoder.encode(serialized) if encoder else serialized)
 
     @classmethod
     def decode_message(
@@ -137,7 +141,9 @@ class MessageEncoding(Generic[ObjT, MsgT]):
         """
         serialized = encoder.decode(message) if encoder else message
 
-        return cast(ObjT, serializer.deserialize(serialized) if serializer else serialized)
+        return cast(
+            "ObjT", serializer.deserialize(serialized) if serializer else serialized
+        )
 
     def __init__(
         self,
@@ -296,7 +302,14 @@ class Encoder:
         return None, None, None
 
 
-PayloadType = Literal['pydantic', 'python', 'collection_tuple', 'collection_sequence', 'collection_mapping']
+PayloadType = Literal[
+    "pydantic",
+    "python",
+    "collection_tuple",
+    "collection_sequence",
+    "collection_mapping",
+]
+
 
 class Serializer:
     """
@@ -518,7 +531,9 @@ class Serializer:
             payload_type = "python"
             payload = self.to_sequence_python(obj)
 
-        return self.pack_next_sequence(payload_type, payload if payload is not None else "", None)
+        return self.pack_next_sequence(
+            payload_type, payload if payload is not None else "", None
+        )
 
     def from_sequence(self, data: str | Any) -> Any:  # noqa: C901, PLR0912
         """
@@ -709,8 +724,10 @@ class Serializer:
             delimiter = "|"
 
         # Type ignores because types are enforced at runtime
-        next_sequence = payload_type + delimiter + payload_len_output + delimiter + payload # type: ignore[operator]
-        return current + next_sequence if current else next_sequence # type: ignore[operator]
+        next_sequence = (
+            payload_type + delimiter + payload_len_output + delimiter + payload  # type: ignore[operator]
+        )
+        return current + next_sequence if current else next_sequence  # type: ignore[operator]
 
     def unpack_next_sequence(  # noqa: C901, PLR0912
         self, data: str | bytes
