@@ -12,6 +12,7 @@ import numpy as np
 import soundfile
 from PIL import Image as PILImage
 from pydub import AudioSegment
+from torch import Tensor
 
 __all__ = [
     "download_audio",
@@ -182,7 +183,7 @@ def download_image(url: str) -> bytes:
 
 
 def encode_video(
-    video: bytes | str | Path | datasets.Video,
+    video: bytes | str | Path,
     encode_type: Literal["base64", "url"] | None = None,
 ) -> str:
     """
@@ -201,11 +202,13 @@ def encode_video(
     - video url
     - "data:video/{type};base64, {data}" string
     """
-    url = is_url(video)
-
-    if url and (encode_type is None or encode_type == "url"):
+    if (
+        isinstance(video, str)
+        and is_url(video)
+        and (encode_type is None or encode_type == "url")
+    ):
         return video
-    elif url and encode_type == "base64":
+    elif isinstance(video, str) and is_url(video) and encode_type == "base64":
         raise ValueError(f"Cannot encode URL video {video}")
 
     return encode_video_base64(video=video)
@@ -221,7 +224,7 @@ def encode_video_base64(video: bytes | str | Path) -> str:
 
     video_format = "unknown"
 
-    if is_url(video):
+    if isinstance(video, str) and is_url(video):
         video, video_format = download_video(video)
 
     if isinstance(video, (str, Path)):
@@ -242,16 +245,18 @@ def download_video(url: str) -> tuple[bytes, str]:
 
 
 def encode_audio_as_dict(
-    audio: bytes | str | Path | dict | np.ndarray,
-    sample_rate: int | None = 16000,
+    audio: Any,
+    sample_rate: int = 16000,
+    encode_sample_rate: int = 16000,
     max_duration: float | None = None,
     mono: bool = True,
     audio_format: str = "mp3",
     bitrate: str = "64k",
 ) -> dict[Literal["data", "format"], Any]:
-    content, file_name, file_format = encode_audio(
+    content, _, file_format = encode_audio(
         audio=audio,
-        sample_rate=sample_rate or 16000,
+        sample_rate=sample_rate,
+        encode_sample_rate=encode_sample_rate,
         max_duration=max_duration,
         mono=mono,
         audio_format=audio_format,
@@ -265,8 +270,9 @@ def encode_audio_as_dict(
 
 
 def encode_audio_as_file(
-    audio: bytes | str | Path | dict | np.ndarray,
-    sample_rate: int | None = 16000,
+    audio: Any,
+    sample_rate: int = 16000,
+    encode_sample_rate: int = 16000,
     max_duration: float | None = None,
     mono: bool = True,
     audio_format: str = "mp3",
@@ -274,7 +280,8 @@ def encode_audio_as_file(
 ) -> tuple[str, bytes, str]:
     content, file_name, file_format = encode_audio(
         audio=audio,
-        sample_rate=sample_rate or 16000,
+        sample_rate=sample_rate,
+        encode_sample_rate=encode_sample_rate,
         max_duration=max_duration,
         mono=mono,
         audio_format=audio_format,
@@ -284,57 +291,136 @@ def encode_audio_as_file(
     return file_name, content, f"audio/{file_format}"
 
 
-def encode_audio(
-    audio: bytes | str | Path | dict,
+def encode_audio(  # noqa: PLR0912, PLR0911, C901
+    audio: Any,
     sample_rate: int = 16000,
+    file_name: str = "audio.wav",
+    encode_sample_rate: int = 16000,
     max_duration: float | None = None,
     mono: bool = True,
     audio_format: str = "mp3",
     bitrate: str = "64k",
 ) -> tuple[bytes, str, str]:
-    file_name = "audio.wav"
+    audio_buffer: io.BytesIO = io.BytesIO()
 
-    if is_url(audio):
-        audio, file_name, _ = download_audio(audio)
-    elif isinstance(audio, dict):
-        file_name = audio.get("name", "audio")
-        audio = base64.b64decode(audio["data"])
-    elif isinstance(audio, (str, Path)):
-        path = Path(audio)
-        file_name = get_file_name(path)
-        audio = path.read_bytes()
-    elif not isinstance(audio, bytes):
+    if hasattr(audio, "get_samples_played_in_range"):
+        # HF datasets Audio object
+        audio_samples = audio.get_samples_played_in_range(
+            start_seconds=0.0,
+            stop_seconds=None
+            if max_duration is None
+            else min(max_duration, audio.metadata.duration_seconds_from_header),
+        )
+        return encode_audio(
+            audio=audio_samples.data.numpy(),
+            sample_rate=audio_samples.sample_rate,
+            encode_sample_rate=encode_sample_rate,
+            max_duration=max_duration,
+            mono=mono,
+            audio_format=audio_format,
+            bitrate=bitrate,
+        )
+
+    if isinstance(audio, Tensor):
+        return encode_audio(
+            audio=audio.numpy(),
+            sample_rate=sample_rate,
+            encode_sample_rate=encode_sample_rate,
+            max_duration=max_duration,
+            mono=mono,
+            audio_format=audio_format,
+            bitrate=bitrate,
+        )
+
+    if isinstance(audio, dict):
+        sample_rate = audio.get("sample_rate", audio.get("sampling_rate", sample_rate))
+        if "data" not in audio and "url" not in audio:
+            raise ValueError(
+                f"Audio dict must contain either 'data' or 'url' keys, got {audio}"
+            )
+        return encode_audio(
+            audio=audio.get("data") or audio.get("url"),
+            sample_rate=sample_rate,
+            encode_sample_rate=encode_sample_rate,
+            max_duration=max_duration,
+            mono=mono,
+            audio_format=audio_format,
+            bitrate=bitrate,
+        )
+
+    if isinstance(audio, str) and is_url(audio):
+        audio_bytes, file_name, _ = download_audio(audio)
+        return encode_audio(
+            audio=audio_bytes,
+            sample_rate=sample_rate,
+            encode_sample_rate=encode_sample_rate,
+            max_duration=max_duration,
+            mono=mono,
+            audio_format=audio_format,
+            bitrate=bitrate,
+        )
+
+    if isinstance(audio, (str, Path)):
+        if not Path(audio).exists():
+            raise ValueError(f"Audio file does not exist: {audio}")
+        file_name = get_file_name(audio)
+        data, sample_rate = soundfile.read(str(audio), dtype="float32")
+
+        return encode_audio(
+            audio=data,
+            sample_rate=sample_rate,
+            encode_sample_rate=encode_sample_rate,
+            max_duration=max_duration,
+            mono=mono,
+            audio_format=audio_format,
+            bitrate=bitrate,
+        )
+
+    if isinstance(audio, bytes):
+        data, sample_rate = soundfile.read(io.BytesIO(audio), dtype="float32")
+
+        return encode_audio(
+            audio=data,
+            sample_rate=sample_rate,
+            encode_sample_rate=encode_sample_rate,
+            max_duration=max_duration,
+            mono=mono,
+            audio_format=audio_format,
+            bitrate=bitrate,
+        )
+
+    if not isinstance(audio, np.ndarray):
         raise ValueError(f"Unsupported audio type: {type(audio)}")
 
-    processed_audio, sample_rate = librosa.load(
-        io.BytesIO(audio),
-        sr=sample_rate,
-        mono=mono,
-        duration=max_duration,
-    )
+    if sample_rate != encode_sample_rate:
+        audio = librosa.resample(
+            audio.astype(np.float32), orig_sr=sample_rate, target_sr=encode_sample_rate
+        )
+        sample_rate = encode_sample_rate
 
-    # Encode to target format
-    buffer = io.BytesIO()
+    audio = librosa.to_mono(audio)
+
+    if (
+        max_duration is not None
+        and max_duration > 0
+        and (max_samples := int(max_duration * sample_rate)) < len(audio)
+    ):
+        audio = audio[:max_samples]
+
+    audio_buffer = io.BytesIO()
+
     if audio_format.lower() == "mp3":
-        temp_wav = io.BytesIO()
-        soundfile.write(
-            temp_wav,
-            processed_audio,
-            sample_rate,
-            format="WAV",
-            subtype="PCM_16",
-        )
-        temp_wav.seek(0)
-        AudioSegment.from_wav(temp_wav).export(buffer, format="mp3", bitrate=bitrate)
-    else:
-        soundfile.write(
-            buffer,
-            processed_audio,
-            sample_rate,
-            format=audio_format.upper(),
-        )
+        wav = io.BytesIO()
+        soundfile.write(wav, audio, sample_rate, format="WAV", subtype="PCM_16")
+        wav.seek(0)
 
-    return buffer.getvalue(), file_name, audio_format.lower()
+        sound = AudioSegment.from_wav(wav)
+        sound.export(audio_buffer, format="mp3", bitrate=bitrate)
+    else:
+        soundfile.write(audio_buffer, audio, sample_rate, format=audio_format.upper())
+
+    audio_buffer.seek(0)
+    return audio_buffer.read(), file_name, audio_format.lower()
 
 
 def download_audio(url: str) -> tuple[bytes, str, str]:

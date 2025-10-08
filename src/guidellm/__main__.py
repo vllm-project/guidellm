@@ -245,6 +245,7 @@ def benchmark():
 )
 @click.option(
     "--data-args",
+    multiple=True,
     default=None,
     callback=cli_tools.parse_json,
     help=(

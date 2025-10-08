@@ -46,7 +46,7 @@ class LoggingSettings(BaseModel):
 
     disabled: bool = False
     clear_loggers: bool = True
-    console_log_level: str = "WARNING"
+    console_log_level: str = "DEBUG"
     log_file: str | None = None
     log_file_level: str | None = None
 

@@ -103,6 +103,16 @@ class GenerationRequestArguments(StandardBaseDict):
         description="HTTP headers to include in the request, if applicable.",
     )
 
+    @property
+    def request_files(self) -> dict[str, Any] | None:
+        if not self.files:
+            return None
+
+        return {
+            key: value if not isinstance(value, list) else tuple(value)
+            for key, value in self.files.items()
+        }
+
 
 @SchedulerMessagingPydanticRegistry.register()
 class GenerationRequest(StandardBaseModel):

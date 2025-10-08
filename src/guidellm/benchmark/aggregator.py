@@ -937,7 +937,7 @@ class GenerativeRequestsAggregator(
         return GenerativeRequestStats(
             request_id=request.request_id,
             request_type=request.request_type,
-            request_args=request.arguments,
+            request_args=str(request.arguments),
             output=response.text if response else None,
             iterations=response.iterations if response else 0,
             prompt_tokens=(

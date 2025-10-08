@@ -35,7 +35,7 @@ from guidellm.benchmark.profile import (
     Profile,
 )
 from guidellm.data import (
-    GenerationRequestArguments,
+    GenerativeRequestType,
 )
 from guidellm.scheduler import (
     ScheduledRequestInfo,
@@ -214,10 +214,10 @@ class GenerativeRequestStats(BenchmarkRequestStats):
 
     type_: Literal["generative_request_stats"] = "generative_request_stats"
     request_id: str = Field(description="Unique identifier for the request")
-    request_type: Literal["text_completions", "chat_completions"] = Field(
+    request_type: GenerativeRequestType | str = Field(
         description="Type of generative request: text or chat completion"
     )
-    request_args: GenerationRequestArguments | None = Field(
+    request_args: str | None = Field(
         default=None, description="Arguments passed to the backend for this request"
     )
     output: str | None = Field(

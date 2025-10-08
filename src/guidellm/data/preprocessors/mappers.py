@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from datasets import Dataset, IterableDataset
 
@@ -66,7 +66,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
     @classmethod
     def datasets_default_mappings(
         cls, datasets: list[Dataset | IterableDataset]
-    ) -> dict[str, list[tuple[int, str]]]:
+    ) -> dict[GenerativeDatasetColumnType, list[tuple[int, str]]]:
         mappings: dict[GenerativeDatasetColumnType, list[tuple[int, str]]] = (
             defaultdict(list)
         )
@@ -92,7 +92,8 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
 
                 for name in type_names:
                     if name in dataset_columns:
-                        mappings[column_type].append((index, name))
+                        key = cast("GenerativeDatasetColumnType", column_type)
+                        mappings[key].append((index, name))
                         break
 
         return mappings
@@ -123,20 +124,26 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             mappings[column_type] = []
 
             for name in names if isinstance(names, list) else [names]:
-                dataset, column_name = name.split(".", 1)
-                dataset_index = (
-                    int(dataset)
-                    if dataset.isdigit()
-                    else datasets_named_indices.get(dataset)
-                )
+                if "." in name:
+                    dataset, column_name = name.split(".", 1)
+                    dataset_index = (
+                        int(dataset)
+                        if dataset.isdigit()
+                        else datasets_named_indices.get(dataset)
+                    )
+                else:
+                    dataset_index = 0
+                    column_name = name
+
                 if dataset_index is None or dataset_index >= len(datasets):
                     raise ValueError(
-                        f"Dataset '{dataset}' not found in datasets: "
+                        f"Dataset '{name}' not found in datasets: "
                         f"{datasets_named_indices}."
                     )
                 if column_name not in datasets_columns[dataset_index]:
                     raise ValueError(
-                        f"Column '{column_name}' not found in dataset '{dataset}' "
+                        f"Column '{column_name}' not found in dataset "
+                        f"'{datasets[dataset_index]}' "
                         f"columns: {datasets_columns[dataset_index]}."
                     )
                 mappings[column_type].append((dataset_index, column_name))
@@ -153,11 +160,13 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             dict[GenerativeDatasetColumnType, list[tuple[int, str]]] | None
         )
 
-    def __call__(self, row: dict[int, list[dict[str, Any]]]) -> dict[str, list[Any]]:
+    def __call__(
+        self, row: dict[str, Any]
+    ) -> dict[GenerativeDatasetColumnType, list[Any]]:
         if self.datasets_column_mappings is None:
             raise ValueError("DefaultGenerativeColumnMapper not setup with data.")
 
-        items = row.pop("items")
+        items = cast("dict[int, dict[str, Any]]", row.pop("items"))
         mapped: dict[GenerativeDatasetColumnType, list[Any]] = defaultdict(list)
 
         for column_type, column_mappings in self.datasets_column_mappings.items():

@@ -62,6 +62,12 @@ class HuggingFaceDatasetDeserializer(DatasetDeserializer):
             except Exception as err:  # noqa: BLE001
                 load_error = err
 
+        try:
+            # Handle dataset identifier from the Hugging Face Hub
+            return load_dataset(str(data), **data_kwargs)
+        except Exception as err:  # noqa: BLE001
+            load_error = err
+
         not_supported = DataNotSupportedError(
             "Unsupported data for HuggingFaceDatasetDeserializer, "
             "expected Dataset, IterableDataset, DatasetDict, IterableDatasetDict, "

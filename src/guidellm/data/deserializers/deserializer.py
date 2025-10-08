@@ -43,6 +43,8 @@ class DatasetDeserializerFactory(
         random_seed: int = 42,
         type_: str | None = None,
         resolve_split: bool = True,
+        select_columns: list[str] | None = None,
+        remove_columns: list[str] | None = None,
         **data_kwargs: dict[str, Any],
     ) -> Dataset | IterableDataset:
         dataset = None
@@ -78,4 +80,16 @@ class DatasetDeserializerFactory(
                 f"with kwargs {data_kwargs} and type_ {type_}."
             )
 
-        return resolve_dataset_split(dataset) if resolve_split else dataset
+        if resolve_split:
+            dataset = resolve_dataset_split(dataset)
+
+        if select_columns is not None or remove_columns is not None:
+            column_names = dataset.column_names or list(next(iter(dataset)).keys())
+            if select_columns is not None:
+                remove_columns = [
+                    col for col in column_names if col not in select_columns
+                ]
+
+            dataset = dataset.remove_columns(remove_columns)
+
+        return dataset

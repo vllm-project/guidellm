@@ -14,30 +14,46 @@ from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.objects import GenerationRequest
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
 
-__all__ = ["DataLoader", "datasets_item_iterator"]
+__all__ = ["DataIterator", "DataLoader"]
 
 
-def datasets_item_iterator(
-    datasets: list[Dataset | IterableDataset],
-    data_samples: int,
-    preprocessors: tuple[DatasetPreprocessor | DataDependentPreprocessor],
-) -> Iterator[Any]:
-    gen_count = 0
-    dataset_iters = [iter(dataset) for dataset in datasets]
-
-    with contextlib.suppress(StopIteration):
-        while gen_count < data_samples or data_samples == math.inf:
-            row = {"items": [next(dataset_iter) for dataset_iter in dataset_iters]}
-            for preprocessor in preprocessors:
-                row = preprocessor(row)
-            yield row
-            gen_count += 1
-
-    if data_samples != math.inf and gen_count < data_samples:
-        raise ValueError(
-            f"Requested {data_samples} samples, but only {gen_count} "
-            "available from the provided datasets."
+class DataIterator:
+    def __init__(
+        self,
+        datasets: list[Dataset | IterableDataset],
+        preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
+        precache_size: int | None = None,
+    ):
+        self.datasets = datasets
+        self.preprocessors = preprocessors
+        self.precache = (
+            None if not precache_size else list(self.generator(precache_size))
         )
+
+    def __iter__(self):
+        if self.precache is not None:
+            yield from self.precache
+        else:
+            yield from self.generator()
+
+    def generator(self, max_items: int | None = None) -> Iterator[Any]:
+        gen_count = 0
+
+        with contextlib.suppress(StopIteration):
+            dataset_iters = [iter(dataset) for dataset in self.datasets]
+
+            while max_items is None or gen_count < max_items:
+                row = {"items": [next(dataset_iter) for dataset_iter in dataset_iters]}
+                for preprocessor in self.preprocessors:
+                    row = preprocessor(row)
+                yield row
+                gen_count += 1
+
+        if max_items is not None and gen_count < max_items:
+            raise ValueError(
+                f"Requested {max_items} samples, but only {gen_count} "
+                "available from the provided datasets."
+            )
 
 
 class DataLoader(PyTorchDataLoader[GenerationRequest]):
@@ -68,14 +84,11 @@ class DataLoader(PyTorchDataLoader[GenerationRequest]):
 
         datasets = []
         for datum, data_kwargs in zip(data, data_args):
-            type_ = data_kwargs.pop("type_") if "type_" in data_kwargs else None
             datasets.append(
                 DatasetDeserializerFactory.deserialize(
                     data=datum,
-                    data_kwargs=data_args,
                     processor_factory=processor_factory,
                     random_seed=random_seed,
-                    type_=type_,
                     **data_kwargs,
                 )
             )
@@ -85,20 +98,15 @@ class DataLoader(PyTorchDataLoader[GenerationRequest]):
                     datasets=datasets,
                     data_args=data_args,
                 )
-        if data_samples != math.inf and data_samples > 0:
-            cached_samples = list(
-                datasets_item_iterator(datasets, data_samples, tuple(preprocessors))
-            )
-            dataset = IterableDataset.from_generator(lambda: cached_samples)
-        else:
-            dataset = IterableDataset.from_generator(
-                datasets_item_iterator,
-                gen_kwargs={
-                    "datasets": datasets,
-                    "data_samples": math.inf,
-                    "preprocessors": tuple(preprocessors),
-                },
-            )
+
+        data_iterator = DataIterator(
+            datasets=datasets,
+            preprocessors=preprocessors,
+            precache_size=data_samples
+            if data_samples != math.inf and data_samples > 0
+            else None,
+        )
+        dataset = IterableDataset.from_generator(data_iterator.__iter__)
 
         super().__init__(
             dataset=dataset,

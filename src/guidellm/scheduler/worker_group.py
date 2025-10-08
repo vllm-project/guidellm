@@ -557,7 +557,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         # based on no more requests sent and all requests removed from queue
         if (
             state_update.state.queued_requests == 0
-            and self.send_requests_stopped_event.is_set()
+            and self.stop_send_requests_event.is_set()
             and not self.requests_generated_event.is_set()
         ):
             self.requests_generated_event.set()
@@ -569,7 +569,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         # Check if all requests have been processed and can shutdown
         if (
             state_update.state.processed_requests == state_update.state.created_requests
-            and self.send_requests_stopped_event.is_set()
+            and self.stop_send_requests_event.is_set()
             and self.requests_generated_event.is_set()
             and self.constraint_reached_event.is_set()
             and not self.shutdown_event.is_set()

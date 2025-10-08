@@ -61,7 +61,7 @@ dependencies = [
     "httpx[http2]<1.0.0",
     "loguru",
     "msgpack",
-    "numpy",
+    "numpy<2.0.0",
     "pillow",
     "protobuf",
     "pydantic>=2.11.7",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from guidellm.data.objects import (
     GenerationRequest,
@@ -242,7 +242,7 @@ class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
     def __call__(
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
-        arguments = {"json_body": {}}
+        arguments = {"json_body": {}, "files": {}}
         stats = {}
 
         # Add model
@@ -251,6 +251,7 @@ class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
 
         # Configure streaming
         if self.stream:
+            arguments["stream"] = True
             arguments["json_body"].update(
                 {"stream": True, "stream_options": {"include_usage": True}}
             )
@@ -282,13 +283,11 @@ class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
         ):
             arguments["json_body"]["prompt"] = "".join(prefix) + "".join(text)
 
-        return {
-            "request": {
-                "request_type": "audio_transcriptions",
-                "arguments": arguments,
-                "stats": stats,
-            }
-        }
+        return GenerationRequest(
+            request_type="audio_transcriptions",
+            arguments=GenerationRequestArguments(**arguments),
+            stats=stats,
+        )
 
 
 @PreprocessorRegistry.register("audio_translations")
@@ -297,7 +296,8 @@ class GenerativeAudioTranslationRequestFormatter(
 ):
     def __call__(
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
-    ) -> dict[Literal["request"], dict[Literal["request_type"], Any]]:
+    ) -> GenerationRequest:
         result = super().__call__(columns)
-        result["request"]["request_type"] = "audio_translations"
+        result.request_type = "audio_translations"
+
         return result
