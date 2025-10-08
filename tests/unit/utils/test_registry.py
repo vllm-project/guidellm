@@ -579,7 +579,9 @@ class TestRegistryMixin:
         if hasattr(inspect, "get_annotations"):
             # Python 3.10+
             try:
-                annotations = inspect.get_annotations(registered_class.__init__)
+                annotations = inspect.get_annotations(
+                    registered_class.__init__, eval_str=True
+                )
                 assert "value" in annotations
                 assert annotations["value"] is int
                 return_ann = annotations.get("return")
