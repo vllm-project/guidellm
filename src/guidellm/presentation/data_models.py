@@ -1,14 +1,19 @@
 import random
 from collections import defaultdict
 from math import ceil
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
+import httpx
 from pydantic import BaseModel, computed_field
 
 if TYPE_CHECKING:
     from guidellm.benchmark import GenerativeBenchmark
 
 from guidellm.utils import DistributionSummary
+from guidellm.dataset.file import FileDatasetCreator
+from guidellm.dataset.hf_datasets import HFDatasetsCreator
+from guidellm.dataset.in_memory import InMemoryDatasetCreator
+from guidellm.dataset.synthetic import SyntheticDatasetConfig, SyntheticDatasetCreator
 
 
 class Bucket(BaseModel):
@@ -58,6 +63,39 @@ class Model(BaseModel):
 class Dataset(BaseModel):
     name: str
 
+    @classmethod
+    def from_data(cls, request_loader: Any):
+        creators = [
+            InMemoryDatasetCreator,
+            SyntheticDatasetCreator,
+            FileDatasetCreator,
+            HFDatasetsCreator,
+        ]
+        dataset_name = None
+        data = request_loader.data
+        data_args = request_loader.data_args
+        processor = request_loader.processor
+        processor_args = request_loader.processor_args
+
+        for creator in creators:
+            if not creator.is_supported(data, None):
+                continue
+            random_seed = 42
+            dataset = creator.handle_create(
+                data, data_args, processor, processor_args, random_seed
+            )
+            dataset_name = creator.extract_dataset_name(dataset)
+            if dataset_name is None or dataset_name == "":
+                if creator == SyntheticDatasetCreator:
+                    data_dict = SyntheticDatasetConfig.parse_str(data)
+                    dataset_name = data_dict.source
+                if creator in (FileDatasetCreator, HFDatasetsCreator):
+                    dataset_name = data
+                if creator == InMemoryDatasetCreator:
+                    dataset_name = "In-memory"
+                break
+        return cls(name=dataset_name or "")
+
 
 class RunInfo(BaseModel):
     model: Model
@@ -71,11 +109,14 @@ class RunInfo(BaseModel):
         timestamp = max(
             bm.run_stats.start_time for bm in benchmarks if bm.start_time is not None
         )
+        response = httpx.get(f"https://huggingface.co/api/models/{model}")
+        model_json = response.json()
+
         return cls(
-            model=Model(name=model, size=0),
+            model=Model(name=model, size=model_json.get("usedStorage", 0)),
             task="N/A",
             timestamp=timestamp,
-            dataset=Dataset(name="N/A"),
+            dataset=Dataset.from_data(benchmarks[0].request_loader),
         )
 
 
