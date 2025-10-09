@@ -311,7 +311,7 @@ jobs:
           image: ${{ github.event.repository.name }}
           build-args: |
             GUIDELLM_BUILD_TYPE=candidate
-          tags: ${{ env.package_version= }}~rc
+          tags: ${{ env.package_version }}~rc
           containerfiles: |
             ./Containerfile
       - name: Push To ghcr.io
