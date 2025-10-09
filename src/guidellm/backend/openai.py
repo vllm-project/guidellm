@@ -31,10 +31,11 @@ __all__ = [
 TEXT_COMPLETIONS_PATH = "/v1/completions"
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 
-EndpointType = Literal["chat_completions", "models", "text_completions"]
-CHAT_COMPLETIONS: EndpointType = "chat_completions"
+CompletionEndpointType = Literal["text_completions", "chat_completions"]
+EndpointType = Union[Literal["models"], CompletionEndpointType]
+CHAT_COMPLETIONS: CompletionEndpointType = "chat_completions"
 MODELS: EndpointType = "models"
-TEXT_COMPLETIONS: EndpointType = "text_completions"
+TEXT_COMPLETIONS: CompletionEndpointType = "text_completions"
 
 
 @Backend.register("openai_http")
@@ -447,7 +448,7 @@ class OpenAIHTTPBackend(Backend):
 
     def _completions_payload(
         self,
-        endpoint_type: EndpointType,
+        endpoint_type: CompletionEndpointType,
         orig_kwargs: Optional[dict],
         max_output_tokens: Optional[int],
         **kwargs,
@@ -467,7 +468,10 @@ class OpenAIHTTPBackend(Backend):
                 self.__class__.__name__,
                 max_output_tokens or self.max_output_tokens,
             )
-            payload["max_tokens"] = max_output_tokens or self.max_output_tokens
+            max_output_key = settings.openai.max_output_key.get(
+                endpoint_type, "max_tokens"
+            )
+            payload[max_output_key] = max_output_tokens or self.max_output_tokens
 
             if max_output_tokens:
                 # only set stop and ignore_eos if max_output_tokens set at request level

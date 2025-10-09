@@ -88,6 +88,10 @@ class OpenAISettings(BaseModel):
     base_url: str = "http://localhost:8000"
     max_output_tokens: int = 16384
     verify: bool = True
+    max_output_key: dict[Literal["text_completions", "chat_completions"], str] = {
+        "text_completions": "max_tokens",
+        "chat_completions": "max_completion_tokens",
+    }
 
 
 class ReportGenerationSettings(BaseModel):
