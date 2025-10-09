@@ -76,7 +76,11 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
         ),
         benchmarker=BenchmarkerDict(
             profile=SynchronousProfile.create("synchronous", rate=None),
-            requests={},
+            requests={
+                "attributes": {
+                    "data": "prompt_tokens=256,output_tokens=128",
+                },
+            },
             backend={},
             environment={},
             aggregators={},

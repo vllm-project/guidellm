@@ -80,7 +80,6 @@ def test_file_yaml():
 
     mock_path.unlink()
 
-@pytest.mark.skip(reason="CSV fix not merged yet")
 @pytest.mark.asyncio
 async def test_file_csv():
     mock_benchmark = mock_generative_benchmark()
@@ -96,6 +95,7 @@ async def test_file_csv():
         rows = list(reader)
 
     assert "Type" in headers
+    assert "Profile" in headers
     assert len(rows) == 1
 
     mock_path.unlink()
