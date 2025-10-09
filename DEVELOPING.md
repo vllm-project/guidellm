@@ -8,7 +8,7 @@ Thank you for your interest in contributing to GuideLLM! This document provides 
 
 Before you begin, ensure you have the following installed:
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - pip (Python package manager)
 - Tox
 - Git
