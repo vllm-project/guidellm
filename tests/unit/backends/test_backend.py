@@ -80,7 +80,7 @@ class TestBackend:
     def test_class_signatures(self):
         """Test Backend inheritance and type relationships."""
         assert issubclass(Backend, RegistryMixin)
-        assert issubclass(Backend, BackendInterface)
+        assert isinstance(Backend, BackendInterface)
         assert hasattr(Backend, "create")
         assert hasattr(Backend, "register")
         assert hasattr(Backend, "get_registered_object")
