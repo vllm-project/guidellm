@@ -90,7 +90,7 @@ class GenerativeBenchmarkerOutput(
         if not output_formats:
             return {}
 
-        if isinstance(output_formats, (list, tuple)):
+        if isinstance(output_formats, list | tuple):
             # support list of output keys: ["csv", "json"]
             # support list of files: ["path/to/file.json", "path/to/file.csv"]
             formats_list = output_formats

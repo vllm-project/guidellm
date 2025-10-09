@@ -10,7 +10,8 @@ plugin architectures.
 
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar, Generic, TypeVar, cast
+from collections.abc import Callable
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 
@@ -103,7 +104,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
 
         if name is None:
             name = obj.__name__
-        elif not isinstance(name, (str, list)):
+        elif not isinstance(name, str | list):
             raise ValueError(
                 "RegistryMixin.register_decorator name must be a string or "
                 f"an iterable of strings. Got {name}."

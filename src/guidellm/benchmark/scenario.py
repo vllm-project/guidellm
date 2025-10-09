@@ -38,7 +38,7 @@ def parse_float_list(value: str | float | list[float]) -> list[float]:
     or convert single float list of one or pass float
     list through.
     """
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return [value]
     elif isinstance(value, list):
         return value

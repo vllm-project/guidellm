@@ -31,7 +31,7 @@ class FileDatasetCreator(DatasetCreator):
 
     @classmethod
     def is_supported(cls, data: Any, data_args: Optional[dict[str, Any]]) -> bool:  # noqa: ARG003
-        if isinstance(data, (str, Path)) and (path := Path(data)).exists():
+        if isinstance(data, str | Path) and (path := Path(data)).exists():
             # local folder or py file, assume supported
             return path.suffix.lower() in cls.SUPPORTED_TYPES
 
@@ -46,7 +46,7 @@ class FileDatasetCreator(DatasetCreator):
         processor_args: Optional[dict[str, Any]],  # noqa: ARG003
         random_seed: int,  # noqa: ARG003
     ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
-        if not isinstance(data, (str, Path)):
+        if not isinstance(data, str | Path):
             raise ValueError(f"Unsupported data type: {type(data)} given for {data}. ")
 
         path = Path(data)

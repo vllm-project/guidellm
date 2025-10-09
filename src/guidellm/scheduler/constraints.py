@@ -450,7 +450,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         current_index = max(0, self.current_index)
         max_num = (
             self.max_num
-            if isinstance(self.max_num, (int, float))
+            if isinstance(self.max_num, int | float)
             else self.max_num[min(current_index, len(self.max_num) - 1)]
         )
 
@@ -489,7 +489,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
                 raise ValueError(
                     f"max_num must be set and truthful, received {value} ({val} failed)"
                 )
-            if not isinstance(val, (int, float)) or val <= 0:
+            if not isinstance(val, int | float) or val <= 0:
                 raise ValueError(
                     f"max_num must be a positive num, received {value} ({val} failed)"
                 )
@@ -568,7 +568,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         current_index = max(0, self.current_index)
         max_duration = (
             self.max_duration
-            if isinstance(self.max_duration, (int, float))
+            if isinstance(self.max_duration, int | float)
             else self.max_duration[min(current_index, len(self.max_duration) - 1)]
         )
 
@@ -607,7 +607,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
                     "max_duration must be set and truthful, "
                     f"received {value} ({val} failed)"
                 )
-            if not isinstance(val, (int, float)) or val <= 0:
+            if not isinstance(val, int | float) or val <= 0:
                 raise ValueError(
                     "max_duration must be a positive num,"
                     f"received {value} ({val} failed)"
@@ -682,7 +682,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         current_index = max(0, self.current_index)
         max_errors = (
             self.max_errors
-            if isinstance(self.max_errors, (int, float))
+            if isinstance(self.max_errors, int | float)
             else self.max_errors[min(current_index, len(self.max_errors) - 1)]
         )
         errors_exceeded = state.errored_requests >= max_errors
@@ -710,7 +710,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
                     "max_errors must be set and truthful, "
                     f"received {value} ({val} failed)"
                 )
-            if not isinstance(val, (int, float)) or val <= 0:
+            if not isinstance(val, int | float) or val <= 0:
                 raise ValueError(
                     f"max_errors must be a positive num,received {value} ({val} failed)"
                 )
@@ -799,7 +799,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         current_index = max(0, self.current_index)
         max_error_rate = (
             self.max_error_rate
-            if isinstance(self.max_error_rate, (int, float))
+            if isinstance(self.max_error_rate, int | float)
             else self.max_error_rate[min(current_index, len(self.max_error_rate) - 1)]
         )
 
@@ -850,7 +850,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
                     "max_error_rate must be set and truthful, "
                     f"received {value} ({val} failed)"
                 )
-            if not isinstance(val, (int, float)) or val <= 0 or val >= 1:
+            if not isinstance(val, int | float) or val <= 0 or val >= 1:
                 raise ValueError(
                     "max_error_rate must be a number between 0 and 1,"
                     f"received {value} ({val} failed)"
@@ -940,7 +940,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         current_index = max(0, self.current_index)
         max_error_rate = (
             self.max_error_rate
-            if isinstance(self.max_error_rate, (int, float))
+            if isinstance(self.max_error_rate, int | float)
             else self.max_error_rate[min(current_index, len(self.max_error_rate) - 1)]
         )
 
@@ -982,7 +982,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
                     "max_error_rate must be set and truthful, "
                     f"received {value} ({val} failed)"
                 )
-            if not isinstance(val, (int, float)) or val <= 0 or val >= 1:
+            if not isinstance(val, int | float) or val <= 0 or val >= 1:
                 raise ValueError(
                     "max_error_rate must be a number between 0 and 1,"
                     f"received {value} ({val} failed)"

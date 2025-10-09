@@ -95,10 +95,10 @@ class DatasetCreator(ABC):
             data, data_args, processor, processor_args, random_seed
         )
 
-        if isinstance(dataset, (DatasetDict, IterableDatasetDict)):
+        if isinstance(dataset, DatasetDict | IterableDatasetDict):
             dataset = cls.extract_dataset_split(dataset, split, split_pref_order)
 
-        if not isinstance(dataset, (Dataset, IterableDataset)):
+        if not isinstance(dataset, Dataset | IterableDataset):
             raise ValueError(
                 f"Unsupported data type: {type(dataset)} given for {dataset}."
             )
@@ -145,10 +145,10 @@ class DatasetCreator(ABC):
     def extract_dataset_name(
         cls, dataset: Union[Dataset, IterableDataset, DatasetDict, IterableDatasetDict]
     ) -> Optional[str]:
-        if isinstance(dataset, (DatasetDict, IterableDatasetDict)):
+        if isinstance(dataset, DatasetDict | IterableDatasetDict):
             dataset = dataset[list(dataset.keys())[0]]
 
-        if isinstance(dataset, (Dataset, IterableDataset)):
+        if isinstance(dataset, Dataset | IterableDataset):
             if not hasattr(dataset, "info") or not hasattr(
                 dataset.info, "dataset_name"
             ):
@@ -165,7 +165,7 @@ class DatasetCreator(ABC):
         specified_split: Union[Literal["auto"], str] = "auto",
         split_pref_order: Optional[Union[Literal["auto"], list[str]]] = "auto",
     ) -> Union[Dataset, IterableDataset]:
-        if not isinstance(dataset, (DatasetDict, IterableDatasetDict)):
+        if not isinstance(dataset, DatasetDict | IterableDatasetDict):
             raise ValueError(
                 f"Unsupported data type: {type(dataset)} given for {dataset}."
             )

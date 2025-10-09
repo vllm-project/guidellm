@@ -267,7 +267,7 @@ class SerializableAggregator(
         resolved = {}
 
         for key, val in aggregators.items():
-            if isinstance(val, (Aggregator, CompilableAggregator)):
+            if isinstance(val, Aggregator | CompilableAggregator):
                 resolved[key] = val
             else:
                 aggregator_class = cls.get_registered_object(key)

@@ -310,7 +310,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Pull request from the queue
             request, request_info = await self.messaging.get()
 
-            if isinstance(request, (list, tuple)):
+            if isinstance(request, list | tuple):
                 raise NotImplementedError("Multi-turn requests are not yet supported")
 
             # Calculate targeted start and set pending state for request

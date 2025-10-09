@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Annotated, Any, ClassVar, Generic, Literal, Optional, TypeVar, cast
+from typing import Any, ClassVar, Generic, Literal, TypeVar, cast
 
 try:
     import msgpack  # type: ignore[import-untyped] # Optional dependency
@@ -45,7 +45,6 @@ except ImportError:
     HAS_ORJSON = False
 
 from pydantic import BaseModel
-from typing_extensions import TypeAlias
 
 __all__ = [
     "Encoder",
@@ -60,14 +59,10 @@ __all__ = [
 ObjT = TypeVar("ObjT")
 MsgT = TypeVar("MsgT")
 
-SerializationTypesAlias: TypeAlias = Annotated[
-    Optional[Literal["dict", "sequence"]],
-    "Type alias for available serialization strategies",
-]
-EncodingTypesAlias: TypeAlias = Annotated[
-    Optional[Literal["msgpack", "msgspec"]],
-    "Type alias for available binary encoding formats",
-]
+# Type alias for available serialization strategies
+SerializationTypesAlias = Literal["dict", "sequence"] | None
+# "Type alias for available binary encoding formats"
+EncodingTypesAlias = Literal["msgpack", "msgspec"]
 
 
 class MessageEncoding(Generic[ObjT, MsgT]):
@@ -405,7 +400,7 @@ class Serializer:
         if isinstance(obj, BaseModel):
             return self.to_dict_pydantic(obj)
 
-        if isinstance(obj, (list, tuple)) and any(
+        if isinstance(obj, list | tuple) and any(
             isinstance(item, BaseModel) for item in obj
         ):
             return [
@@ -432,7 +427,7 @@ class Serializer:
         :param data: Dictionary representation possibly containing type metadata
         :return: Reconstructed object with proper types restored
         """
-        if isinstance(data, (list, tuple)):
+        if isinstance(data, list | tuple):
             return [
                 self.from_dict_pydantic(item)
                 if isinstance(item, dict) and "*PYD*" in item
@@ -493,7 +488,7 @@ class Serializer:
         if isinstance(obj, BaseModel):
             payload_type = "pydantic"
             payload = self.to_sequence_pydantic(obj)
-        elif isinstance(obj, (list, tuple)) and any(
+        elif isinstance(obj, list | tuple) and any(
             isinstance(item, BaseModel) for item in obj
         ):
             payload_type = "collection_sequence"
@@ -694,33 +689,36 @@ class Serializer:
                 length=(payload_len.bit_length() + 7) // 8 if payload_len > 0 else 1,
                 byteorder="big",
             )
-            if type_ == "pydantic":
-                payload_type = b"P"
-            elif type_ == "python":
-                payload_type = b"p"
-            elif type_ == "collection_tuple":
-                payload_type = b"T"
-            elif type_ == "collection_sequence":
-                payload_type = b"S"
-            elif type_ == "collection_mapping":
-                payload_type = b"M"
-            else:
-                raise ValueError(f"Unknown type for packing: {type_}")
+            match type_:
+                case "pydantic":
+                    payload_type = b"P"
+                case "python":
+                    payload_type = b"p"
+                case "collection_tuple":
+                    payload_type = b"T"
+                case "collection_sequence":
+                    payload_type = b"S"
+                case "collection_mapping":
+                    payload_type = b"M"
+                case _:
+                    raise ValueError(f"Unknown type for packing: {type_}")
             delimiter = b"|"
         else:
             payload_len_output = str(payload_len)
-            if type_ == "pydantic":
-                payload_type = "P"
-            elif type_ == "python":
-                payload_type = "p"
-            elif type_ == "collection_tuple":
-                payload_type = "T"
-            elif type_ == "collection_sequence":
-                payload_type = "S"
-            elif type_ == "collection_mapping":
-                payload_type = "M"
-            else:
-                raise ValueError(f"Unknown type for packing: {type_}")
+
+            match type_:
+                case "pydantic":
+                    payload_type = "P"
+                case "python":
+                    payload_type = "p"
+                case "collection_tuple":
+                    payload_type = "T"
+                case "collection_sequence":
+                    payload_type = "S"
+                case "collection_mapping":
+                    payload_type = "M"
+                case _:
+                    raise ValueError(f"Unknown type for packing: {type_}")
             delimiter = "|"
 
         # Type ignores because types are enforced at runtime

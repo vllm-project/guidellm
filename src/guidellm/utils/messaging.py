@@ -16,13 +16,13 @@ import queue
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from multiprocessing.connection import Connection
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import SyncManager
 from multiprocessing.synchronize import Event as ProcessingEvent
 from threading import Event as ThreadingEvent
-from typing import Any, Callable, Generic, Protocol, TypeVar, cast
+from typing import Any, Generic, Protocol, TypeVar, cast
 
 import culsans
 from pydantic import BaseModel
@@ -420,7 +420,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         stop_events = tuple(
             item
             for item in stop_criteria or []
-            if isinstance(item, (ThreadingEvent, ProcessingEvent))
+            if isinstance(item, ThreadingEvent | ProcessingEvent)
         )
         stop_callbacks = tuple(item for item in stop_criteria or [] if callable(item))
 

@@ -559,7 +559,7 @@ class OpenAIHTTPBackend(Backend):
                 resolved_content.append(item)
             elif isinstance(item, str):
                 resolved_content.append({"type": "text", "text": item})
-            elif isinstance(item, (Image.Image, Path)):
+            elif isinstance(item, Image.Image | Path):
                 resolved_content.append(self._get_chat_message_media_item(item))
             else:
                 raise ValueError(f"Unsupported content item type: {type(item)}")

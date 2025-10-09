@@ -25,11 +25,11 @@ class HFDatasetsCreator(DatasetCreator):
             # base type is supported
             return True
 
-        if isinstance(data, (str, Path)) and (path := Path(data)).exists():
+        if isinstance(data, str | Path) and (path := Path(data)).exists():
             # local folder or py file, assume supported
             return path.is_dir() or path.suffix == ".py"
 
-        if isinstance(data, (str, Path)):
+        if isinstance(data, str | Path):
             try:
                 # try to load dataset
                 return get_dataset_config_info(data) is not None
@@ -47,7 +47,7 @@ class HFDatasetsCreator(DatasetCreator):
         processor_args: Optional[dict[str, Any]],  # noqa: ARG003
         random_seed: int,  # noqa: ARG003
     ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
-        if isinstance(data, (str, Path)):
+        if isinstance(data, str | Path):
             data = load_dataset(data, **(data_args or {}))
         elif data_args:
             raise ValueError(
