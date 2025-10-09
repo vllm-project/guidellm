@@ -247,6 +247,15 @@ def benchmark():
     type=int,
     help="The random seed to use for benchmarking to ensure reproducibility.",
 )
+@click.option(
+    "--consistent-synthetic-data",
+    is_flag=True,
+    default=GenerativeTextScenario.get_default("consistent_synthetic_data"),
+    help=(
+        "Ensure synthetic datasets generate the same prompts across different "
+        "concurrency levels for fair comparison. Only applies to synthetic data."
+    ),
+)
 def run(
     scenario,
     target,
@@ -271,6 +280,7 @@ def run(
     output_extras,
     output_sampling,
     random_seed,
+    consistent_synthetic_data,
 ):
     click_ctx = click.get_current_context()
 
@@ -293,6 +303,7 @@ def run(
         cooldown_percent=cooldown_percent,
         output_sampling=output_sampling,
         random_seed=random_seed,
+        consistent_synthetic_data=consistent_synthetic_data,
     )
 
     try:

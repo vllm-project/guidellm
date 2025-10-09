@@ -59,6 +59,7 @@ async def benchmark_generative_text(
     output_extras: Optional[dict[str, Any]],
     output_sampling: Optional[int],
     random_seed: int,
+    consistent_synthetic_data: bool = False,
     show_progress: bool = True,
     show_progress_scheduler_stats: bool = False,
     output_console: bool = True,
@@ -89,6 +90,7 @@ async def benchmark_generative_text(
             else "infinite"  # default to infinite so we don't run out of data
         ),
         random_seed=random_seed,
+        consistent_synthetic_data=consistent_synthetic_data,
     )
     unique_requests = request_loader.num_unique_items(raise_err=False)
     console.print_line(
