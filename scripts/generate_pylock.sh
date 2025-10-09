@@ -14,5 +14,5 @@ fi
 # Locking all dependencies to the same version for all supported
 # python versions is not possible (mostly due to numpy)
 # so we need to lock separately for python >=3.12 and <3.12
-pdm lock --python "~=3.10" --update-reuse
-pdm lock --append --python "<3.10" --update-reuse
+pdm lock --python "~=3.12" --update-reuse
+pdm lock --append --python "<3.12" --update-reuse
