@@ -10,7 +10,10 @@ from pydantic import ValidationError
 from guidellm.benchmark import (
     GenerativeBenchmarksReport,
 )
-from guidellm.benchmark.output import GenerativeBenchmarkerConsole, GenerativeBenchmarkerCSV
+from guidellm.benchmark.output import (
+    GenerativeBenchmarkerConsole,
+    GenerativeBenchmarkerCSV,
+)
 from tests.unit.mock_benchmark import mock_generative_benchmark
 
 
@@ -80,6 +83,7 @@ def test_file_yaml():
 
     mock_path.unlink()
 
+
 @pytest.mark.asyncio
 async def test_file_csv():
     mock_benchmark = mock_generative_benchmark()
@@ -105,7 +109,8 @@ def test_console_benchmarks_profile_str():
     console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
     assert (
-        console._get_profile_str(mock_benchmark) == "type=synchronous, strategies=['synchronous']"
+        console._get_profile_str(mock_benchmark)
+        == "type=synchronous, strategies=['synchronous']"
     )
 
 

@@ -1,4 +1,5 @@
 """Mock benchmark objects for unit testing."""
+
 from guidellm.backends import GenerationRequestTimings
 from guidellm.benchmark import (
     BenchmarkSchedulerStats,

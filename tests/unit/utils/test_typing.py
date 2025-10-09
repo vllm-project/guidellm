@@ -2,10 +2,9 @@
 Test suite for the typing utilities module.
 """
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, TypeAlias, Union
 
 import pytest
-from typing_extensions import TypeAlias
 
 from guidellm.utils.typing import get_literal_vals
 
@@ -15,7 +14,7 @@ LocalStrategyType = Annotated[
     Literal["synchronous", "concurrent", "throughput", "constant", "poisson"],
     "Valid strategy type identifiers for scheduling request patterns",
 ]
-StrategyProfileType: TypeAlias = Union[LocalStrategyType, LocalProfileType]
+StrategyProfileType: TypeAlias = LocalStrategyType | LocalProfileType
 
 
 class TestGetLiteralVals:

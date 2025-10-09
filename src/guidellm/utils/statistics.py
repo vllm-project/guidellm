@@ -389,8 +389,7 @@ class DistributionSummary(StandardBaseModel):
         events[global_end] = 0
 
         for (_, end), first_iter, first_iter_count, total_count in zip(
-            requests, first_iter_times, first_iter_counts, iter_counts,
-            strict=True
+            requests, first_iter_times, first_iter_counts, iter_counts, strict=True
         ):
             events[first_iter] += first_iter_count
 

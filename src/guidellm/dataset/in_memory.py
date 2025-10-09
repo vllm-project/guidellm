@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from datasets import (
     Dataset,
@@ -17,18 +17,18 @@ __all__ = ["InMemoryDatasetCreator"]
 
 class InMemoryDatasetCreator(DatasetCreator):
     @classmethod
-    def is_supported(cls, data: Any, data_args: Optional[dict[str, Any]]) -> bool:  # noqa: ARG003
+    def is_supported(cls, data: Any, data_args: dict[str, Any] | None) -> bool:  # noqa: ARG003
         return isinstance(data, Iterable) and not isinstance(data, str)
 
     @classmethod
     def handle_create(
         cls,
         data: Any,
-        data_args: Optional[dict[str, Any]],
-        processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],  # noqa: ARG003
-        processor_args: Optional[dict[str, Any]],  # noqa: ARG003
+        data_args: dict[str, Any] | None,
+        processor: str | Path | PreTrainedTokenizerBase | None,  # noqa: ARG003
+        processor_args: dict[str, Any] | None,  # noqa: ARG003
         random_seed: int,  # noqa: ARG003
-    ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
+    ) -> Dataset | DatasetDict | IterableDataset | IterableDatasetDict:
         if not isinstance(data, Iterable):
             raise TypeError(
                 f"Unsupported data format. Expected Iterable[Any], got {type(data)}"

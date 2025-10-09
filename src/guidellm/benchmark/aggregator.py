@@ -975,7 +975,7 @@ class GenerativeRequestsAggregator(
         filtered_statuses = []
         filtered_times = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(
                 safe_getattr(request.scheduler_info.request_timings, "request_start"),
                 safe_getattr(request.scheduler_info.request_timings, "request_end"),
@@ -1005,7 +1005,7 @@ class GenerativeRequestsAggregator(
         filtered_statuses = []
         filtered_times = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(
                 safe_getattr(request.scheduler_info.request_timings, "request_start"),
                 safe_getattr(request.scheduler_info.request_timings, "request_end"),
@@ -1035,7 +1035,7 @@ class GenerativeRequestsAggregator(
         filtered_statuses = []
         filtered_values = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.request_latency):
                 continue
 
@@ -1056,7 +1056,7 @@ class GenerativeRequestsAggregator(
         filtered_statuses = []
         filtered_values = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.prompt_tokens):
                 continue
 
@@ -1077,7 +1077,7 @@ class GenerativeRequestsAggregator(
         filtered_statuses = []
         filtered_values = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.output_tokens):
                 continue
 
@@ -1098,7 +1098,7 @@ class GenerativeRequestsAggregator(
         filtered_statuses = []
         filtered_values = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.total_tokens):
                 continue
 
@@ -1119,7 +1119,7 @@ class GenerativeRequestsAggregator(
         filtered_statuses = []
         filtered_values = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.time_to_first_token_ms):
                 continue
 
@@ -1141,7 +1141,7 @@ class GenerativeRequestsAggregator(
         filtered_values = []
         filtered_weights = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.time_to_first_token_ms):
                 continue
 
@@ -1174,7 +1174,7 @@ class GenerativeRequestsAggregator(
         filtered_values = []
         filtered_weights = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.inter_token_latency_ms):
                 continue
 
@@ -1199,7 +1199,7 @@ class GenerativeRequestsAggregator(
         filtered_first_iter_times = []
         filtered_iter_counts = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.output_tokens_per_second):
                 continue
 
@@ -1234,7 +1234,7 @@ class GenerativeRequestsAggregator(
         filtered_iter_counts = []
         filtered_first_iter_counts = []
 
-        for status, request in zip(statuses, requests):
+        for status, request in zip(statuses, requests, strict=False):
             if not all_defined(request.tokens_per_second):
                 continue
 

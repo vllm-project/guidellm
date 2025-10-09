@@ -476,7 +476,7 @@ class TestSerializer:
         seq = inst.to_sequence(collection)
         out = inst.from_sequence(seq)
         assert len(out) == len(collection)
-        assert all(a == b for a, b in zip(out, list(collection)))
+        assert all(a == b for a, b in zip(out, list(collection), strict=False))
 
     @pytest.mark.sanity
     def test_to_from_sequence_mapping(self):

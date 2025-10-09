@@ -1,7 +1,7 @@
 import random
 from collections import defaultdict
 from math import ceil
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, computed_field
 
@@ -12,14 +12,14 @@ from guidellm.utils import DistributionSummary
 
 
 class Bucket(BaseModel):
-    value: Union[float, int]
+    value: float | int
     count: int
 
     @staticmethod
     def from_data(
-        data: Union[list[float], list[int]],
-        bucket_width: Optional[float] = None,
-        n_buckets: Optional[int] = None,
+        data: list[float] | list[int],
+        bucket_width: float | None = None,
+        n_buckets: int | None = None,
     ) -> tuple[list["Bucket"], float]:
         if not data:
             return [], 1.0
@@ -35,7 +35,7 @@ class Bucket(BaseModel):
         else:
             n_buckets = ceil(range_v / bucket_width)
 
-        bucket_counts: defaultdict[Union[float, int], int] = defaultdict(int)
+        bucket_counts: defaultdict[float | int, int] = defaultdict(int)
         for val in data:
             idx = int((val - min_v) // bucket_width)
             if idx >= n_buckets:
@@ -80,7 +80,7 @@ class RunInfo(BaseModel):
 
 
 class Distribution(BaseModel):
-    statistics: Optional[DistributionSummary] = None
+    statistics: DistributionSummary | None = None
     buckets: list[Bucket]
     bucket_width: float
 
@@ -190,7 +190,7 @@ class TabularDistributionSummary(DistributionSummary):
     """
 
     @computed_field
-    def percentile_rows(self) -> list[dict[str, Union[str, float]]]:
+    def percentile_rows(self) -> list[dict[str, str | float]]:
         rows = [
             {"percentile": name, "value": value}
             for name, value in self.percentiles.model_dump().items()
