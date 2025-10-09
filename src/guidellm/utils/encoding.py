@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Annotated, Any, ClassVar, Generic, Literal, Optional, TypeVar
+from typing import Annotated, Any, ClassVar, Generic, Literal, Optional, TypeVar, cast
 
 try:
-    import msgpack
+    import msgpack  # type: ignore[import-untyped] # Optional dependency
     from msgpack import Packer, Unpacker
 
     HAS_MSGPACK = True
@@ -24,8 +24,12 @@ except ImportError:
     HAS_MSGPACK = False
 
 try:
-    from msgspec.msgpack import Decoder as MsgspecDecoder
-    from msgspec.msgpack import Encoder as MsgspecEncoder
+    from msgspec.msgpack import (  # type: ignore[import-not-found] # Optional dependency
+        Decoder as MsgspecDecoder,
+    )
+    from msgspec.msgpack import (  # type: ignore[import-not-found] # Optional dependency
+        Encoder as MsgspecEncoder,
+    )
 
     HAS_MSGSPEC = True
 except ImportError:
@@ -33,7 +37,7 @@ except ImportError:
     HAS_MSGSPEC = False
 
 try:
-    import orjson
+    import orjson  # type: ignore[import-not-found] # Optional dependency
 
     HAS_ORJSON = True
 except ImportError:
@@ -116,7 +120,7 @@ class MessageEncoding(Generic[ObjT, MsgT]):
         """
         serialized = serializer.serialize(obj) if serializer else obj
 
-        return encoder.encode(serialized) if encoder else serialized
+        return cast("MsgT", encoder.encode(serialized) if encoder else serialized)
 
     @classmethod
     def decode_message(
@@ -137,7 +141,9 @@ class MessageEncoding(Generic[ObjT, MsgT]):
         """
         serialized = encoder.decode(message) if encoder else message
 
-        return serializer.deserialize(serialized) if serializer else serialized
+        return cast(
+            "ObjT", serializer.deserialize(serialized) if serializer else serialized
+        )
 
     def __init__(
         self,
@@ -294,6 +300,15 @@ class Encoder:
                 return test_encoding, encoder, decoder
 
         return None, None, None
+
+
+PayloadType = Literal[
+    "pydantic",
+    "python",
+    "collection_tuple",
+    "collection_sequence",
+    "collection_mapping",
+]
 
 
 class Serializer:
@@ -474,6 +489,7 @@ class Serializer:
         :param obj: Object to serialize to sequence format
         :return: Serialized sequence string or bytes
         """
+        payload_type: PayloadType
         if isinstance(obj, BaseModel):
             payload_type = "pydantic"
             payload = self.to_sequence_pydantic(obj)
@@ -515,7 +531,9 @@ class Serializer:
             payload_type = "python"
             payload = self.to_sequence_python(obj)
 
-        return self.pack_next_sequence(payload_type, payload, None)
+        return self.pack_next_sequence(
+            payload_type, payload if payload is not None else "", None
+        )
 
     def from_sequence(self, data: str | Any) -> Any:  # noqa: C901, PLR0912
         """
@@ -529,6 +547,7 @@ class Serializer:
         :raises ValueError: If sequence format is invalid or contains multiple
             packed sequences
         """
+        payload: str | bytes | None
         type_, payload, remaining = self.unpack_next_sequence(data)
         if remaining is not None:
             raise ValueError("Data contains multiple packed sequences; expected one.")
@@ -540,16 +559,16 @@ class Serializer:
             return self.from_sequence_python(payload)
 
         if type_ in {"collection_sequence", "collection_tuple"}:
-            items = []
+            c_items = []
             while payload:
                 type_, item_payload, payload = self.unpack_next_sequence(payload)
                 if type_ == "pydantic":
-                    items.append(self.from_sequence_pydantic(item_payload))
+                    c_items.append(self.from_sequence_pydantic(item_payload))
                 elif type_ == "python":
-                    items.append(self.from_sequence_python(item_payload))
+                    c_items.append(self.from_sequence_python(item_payload))
                 else:
                     raise ValueError("Invalid type in collection sequence")
-            return items
+            return c_items
 
         if type_ != "collection_mapping":
             raise ValueError(f"Invalid type for mapping sequence: {type_}")
@@ -604,6 +623,7 @@ class Serializer:
         :param data: Sequence data containing class metadata and JSON
         :return: Reconstructed Pydantic model instance
         """
+        json_data: str | bytes | bytearray
         if isinstance(data, bytes):
             class_name_end = data.index(b"|")
             class_name = data[:class_name_end].decode()
@@ -647,13 +667,7 @@ class Serializer:
 
     def pack_next_sequence(  # noqa: C901, PLR0912
         self,
-        type_: Literal[
-            "pydantic",
-            "python",
-            "collection_tuple",
-            "collection_sequence",
-            "collection_mapping",
-        ],
+        type_: PayloadType,
         payload: str | bytes,
         current: str | bytes | None,
     ) -> str | bytes:
@@ -672,9 +686,11 @@ class Serializer:
             raise ValueError("Payload and current must be of the same type")
 
         payload_len = len(payload)
-
+        payload_len_output: str | bytes
+        payload_type: str | bytes
+        delimiter: str | bytes
         if isinstance(payload, bytes):
-            payload_len = payload_len.to_bytes(
+            payload_len_output = payload_len.to_bytes(
                 length=(payload_len.bit_length() + 7) // 8 if payload_len > 0 else 1,
                 byteorder="big",
             )
@@ -692,7 +708,7 @@ class Serializer:
                 raise ValueError(f"Unknown type for packing: {type_}")
             delimiter = b"|"
         else:
-            payload_len = str(payload_len)
+            payload_len_output = str(payload_len)
             if type_ == "pydantic":
                 payload_type = "P"
             elif type_ == "python":
@@ -707,20 +723,16 @@ class Serializer:
                 raise ValueError(f"Unknown type for packing: {type_}")
             delimiter = "|"
 
-        next_sequence = payload_type + delimiter + payload_len + delimiter + payload
-
-        return current + next_sequence if current else next_sequence
+        # Type ignores because types are enforced at runtime
+        next_sequence = (
+            payload_type + delimiter + payload_len_output + delimiter + payload  # type: ignore[operator]
+        )
+        return current + next_sequence if current else next_sequence  # type: ignore[operator]
 
     def unpack_next_sequence(  # noqa: C901, PLR0912
         self, data: str | bytes
     ) -> tuple[
-        Literal[
-            "pydantic",
-            "python",
-            "collection_tuple",
-            "collection_sequence",
-            "collection_mapping",
-        ],
+        PayloadType,
         str | bytes,
         str | bytes | None,
     ]:
@@ -731,57 +743,58 @@ class Serializer:
         :return: Tuple of (type, payload, remaining_data)
         :raises ValueError: If sequence format is invalid or unknown type character
         """
+        type_: PayloadType
         if isinstance(data, bytes):
             if len(data) < len(b"T|N") or data[1:2] != b"|":
                 raise ValueError("Invalid packed data format")
 
-            type_char = data[0:1]
-            if type_char == b"P":
+            type_char_b = data[0:1]
+            if type_char_b == b"P":
                 type_ = "pydantic"
-            elif type_char == b"p":
+            elif type_char_b == b"p":
                 type_ = "python"
-            elif type_char == b"T":
+            elif type_char_b == b"T":
                 type_ = "collection_tuple"
-            elif type_char == b"S":
+            elif type_char_b == b"S":
                 type_ = "collection_sequence"
-            elif type_char == b"M":
+            elif type_char_b == b"M":
                 type_ = "collection_mapping"
             else:
                 raise ValueError("Unknown type character in packed data")
 
             len_end = data.index(b"|", 2)
             payload_len = int.from_bytes(data[2:len_end], "big")
-            payload = data[len_end + 1 : len_end + 1 + payload_len]
-            remaining = (
+            payload_b = data[len_end + 1 : len_end + 1 + payload_len]
+            remaining_b = (
                 data[len_end + 1 + payload_len :]
                 if len_end + 1 + payload_len < len(data)
                 else None
             )
 
-            return type_, payload, remaining
+            return type_, payload_b, remaining_b
 
         if len(data) < len("T|N") or data[1] != "|":
             raise ValueError("Invalid packed data format")
 
-        type_char = data[0]
-        if type_char == "P":
+        type_char_s = data[0]
+        if type_char_s == "P":
             type_ = "pydantic"
-        elif type_char == "p":
+        elif type_char_s == "p":
             type_ = "python"
-        elif type_char == "S":
+        elif type_char_s == "S":
             type_ = "collection_sequence"
-        elif type_char == "M":
+        elif type_char_s == "M":
             type_ = "collection_mapping"
         else:
             raise ValueError("Unknown type character in packed data")
 
         len_end = data.index("|", 2)
         payload_len = int(data[2:len_end])
-        payload = data[len_end + 1 : len_end + 1 + payload_len]
-        remaining = (
+        payload_s = data[len_end + 1 : len_end + 1 + payload_len]
+        remaining_s = (
             data[len_end + 1 + payload_len :]
             if len_end + 1 + payload_len < len(data)
             else None
         )
 
-        return type_, payload, remaining
+        return type_, payload_s, remaining_s

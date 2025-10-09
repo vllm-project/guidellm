@@ -11,7 +11,7 @@ structured result organization.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, Field, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
@@ -29,7 +29,7 @@ __all__ = [
 
 
 BaseModelT = TypeVar("BaseModelT", bound=BaseModel)
-RegisterClassT = TypeVar("RegisterClassT")
+RegisterClassT = TypeVar("RegisterClassT", bound=type)
 SuccessfulT = TypeVar("SuccessfulT")
 ErroredT = TypeVar("ErroredT")
 IncompleteT = TypeVar("IncompleteT")
@@ -311,7 +311,7 @@ class PydanticClassRegistryMixin(
         super().register_decorator(clazz, name=name)
         cls.reload_schema()
 
-        return clazz
+        return cast("RegisterClassT", clazz)
 
     @classmethod
     def __get_pydantic_core_schema__(
