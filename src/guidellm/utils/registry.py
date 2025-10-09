@@ -211,8 +211,9 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
         if name in cls.registry:
             return cls.registry[name]
 
+        name_casefold = name.lower()
         for k, v in cls.registry.items():
-            if name.lower() == k.lower():
+            if name_casefold == k.lower():
                 return v
 
         return None  # Not found
