@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from guidellm.config import settings
 from guidellm.presentation.injector import create_report, inject_data
+from guidellm.settings import settings
 
 
 class ExampleModel(BaseModel):
