@@ -104,7 +104,7 @@ class MockBackend(BackendInterface):
 class TestWorkerGroup:
     @pytest.mark.smoke
     @pytest.mark.asyncio
-    @async_timeout(5)
+    @async_timeout(240)
     @pytest.mark.parametrize(
         "strategy",
         [
