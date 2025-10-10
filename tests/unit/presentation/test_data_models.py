@@ -6,7 +6,7 @@ from guidellm.dataset.file import FileDatasetCreator
 from guidellm.dataset.hf_datasets import HFDatasetsCreator
 from guidellm.dataset.in_memory import InMemoryDatasetCreator
 from guidellm.dataset.synthetic import SyntheticDatasetCreator
-from guidellm.presentation.data_models import Bucket, Dataset
+from guidellm.presentation.data_models import Bucket, Dataset, BenchmarkDatum, Bucket
 from tests.unit.mock_benchmark import mock_generative_benchmark
 
 
@@ -136,3 +136,9 @@ def test_dataset_from_data_with_hf_dataset():
     ):
         dataset = Dataset.from_data(mock_benchmark.request_loader)
         assert dataset.name == "openai/gsm8k"
+
+@pytest.mark.smoke
+def test_from_benchmark_includes_strategy_display_str():
+    mock_bm = mock_generative_benchmark()
+    bm = BenchmarkDatum.from_benchmark(mock_bm)
+    assert bm.strategy_display_str == "synchronous"
