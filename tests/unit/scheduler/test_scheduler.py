@@ -4,7 +4,6 @@ import asyncio
 import inspect
 import random
 import uuid
-from functools import wraps
 from typing import Any, Generic
 
 import pytest
@@ -20,19 +19,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
 )
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
-
-
-def async_timeout(delay: float):
-    """Decorator to add timeout to async test functions."""
-
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 class MockRequest(BaseModel):

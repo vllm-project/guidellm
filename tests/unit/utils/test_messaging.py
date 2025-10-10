@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import multiprocessing
 import threading
-from functools import wraps
 from typing import Any, TypeVar
 
 import culsans
@@ -22,19 +21,7 @@ from guidellm.utils import (
     InterProcessMessagingQueue,
 )
 from guidellm.utils.messaging import ReceiveMessageT, SendMessageT
-
-
-def async_timeout(delay: float):
-    """Decorator to add timeout to async test functions."""
-
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 class MockMessage(BaseModel):

@@ -4,9 +4,7 @@ Unit tests for OpenAIHTTPBackend implementation.
 
 from __future__ import annotations
 
-import asyncio
 import base64
-from functools import wraps
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -22,17 +20,7 @@ from guidellm.backends.objects import (
 )
 from guidellm.backends.openai import OpenAIHTTPBackend, UsageStats
 from guidellm.scheduler import ScheduledRequestInfo
-
-
-def async_timeout(delay):
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 def test_usage_stats():
