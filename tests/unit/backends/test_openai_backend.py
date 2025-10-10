@@ -218,7 +218,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_info(self):
         """Test info method."""
         backend = OpenAIHTTPBackend(
@@ -238,7 +237,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_startup(self):
         """Test process startup."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -255,7 +253,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_startup_already_started(self):
         """Test process startup when already started."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -267,7 +264,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_shutdown(self):
         """Test process shutdown."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -284,7 +280,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_shutdown_not_started(self):
         """Test process shutdown when not started."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -295,7 +290,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_check_in_process(self):
         """Test _check_in_process method."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -313,7 +307,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_available_models(self):
         """Test available_models method."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -334,7 +327,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_default_model(self):
         """Test default_model method."""
         # Test when model is already set
@@ -357,7 +349,6 @@ class TestOpenAIHTTPBackend:
 
     @pytest.mark.regression
     @pytest.mark.asyncio
-    @async_timeout(10.0)
     @async_timeout(10.0)
     async def test_validate_with_model(self):
         """Test validate method when model is set."""
