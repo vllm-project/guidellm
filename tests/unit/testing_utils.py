@@ -17,11 +17,8 @@ def async_timeout(delay: float = 10.0, hard_fail: bool = False) -> Callable[[F],
     """
     Decorator to add timeout to async test functions.
 
-    Uses a longer default timeout (30s) to reduce intermittent failures
-    while still catching truly hanging tests.
-
     Args:
-        delay: Timeout in seconds (default: 30.0)
+        delay: Timeout in seconds (default: 10.0)
 
     Returns:
         Decorated function with timeout applied
