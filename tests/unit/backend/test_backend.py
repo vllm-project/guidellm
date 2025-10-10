@@ -13,11 +13,11 @@ from unittest.mock import Mock, patch
 import pytest
 
 from guidellm.backends.backend import Backend, BackendType
-from guidellm.backends.objects import (
+from guidellm.scheduler import BackendInterface, ScheduledRequestInfo
+from guidellm.schemas.response import (
     GenerationRequest,
     GenerationRequestTimings,
 )
-from guidellm.scheduler import BackendInterface, ScheduledRequestInfo
 from guidellm.utils import RegistryMixin
 
 

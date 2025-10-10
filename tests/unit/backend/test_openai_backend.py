@@ -15,13 +15,13 @@ import pytest
 from PIL import Image
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.objects import (
+from guidellm.backends.openai import OpenAIHTTPBackend, UsageStats
+from guidellm.scheduler import ScheduledRequestInfo
+from guidellm.schemas.response import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,
 )
-from guidellm.backends.openai import OpenAIHTTPBackend, UsageStats
-from guidellm.scheduler import ScheduledRequestInfo
 
 
 def async_timeout(delay):

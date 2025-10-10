@@ -2,21 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from guidellm.data.objects import (
-    GenerationRequest,
-    GenerationRequestArguments,
-    GenerativeDatasetColumnType,
-)
 from guidellm.data.preprocessors.preprocessor import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
+from guidellm.data.schemas import GenerativeDatasetColumnType
 from guidellm.data.utils import (
     encode_audio_as_dict,
     encode_audio_as_file,
     encode_image,
     encode_video,
 )
+from guidellm.schemas import GenerationRequest, GenerationRequestArguments, UsageMetrics
 
 __all__ = [
     "GenerativeAudioTranscriptionRequestFormatter",
@@ -48,49 +45,52 @@ class GenerativeTextCompletionsRequestFormatter(DatasetPreprocessor):
     def __call__(
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
-        arguments = {"json_body": {}}
-        stats = {}
+        body: dict[str, Any] = {}
+        arguments: GenerationRequestArguments = GenerationRequestArguments(body=body)
+        input_metrics = UsageMetrics()
+        output_metrics = UsageMetrics()
 
         # Add model
         if self.model is not None:
-            arguments["json_body"]["model"] = self.model
+            body["model"] = self.model
 
         # Configure streaming
         if self.stream:
-            arguments["json_body"].update(
-                {"stream": True, "stream_options": {"include_usage": True}}
-            )
-            arguments["stream"] = True
+            arguments.stream = True
+            body["stream"] = True
 
         # Handle output tokens
-        if output_tokens := columns.get("output_tokens_count_column", []):
-            output_count = output_tokens[0]
-            stats["output_tokens"] = output_count
-            arguments["json_body"].update(
-                {"max_tokens": output_count, "stop": None, "ignore_eos": True}
-            )
+        if output_tokens := sum(
+            count for count in columns.get("output_tokens_count_column", []) if count
+        ):
+            output_metrics.text_tokens = output_tokens
+            body["max_tokens"] = output_tokens
+            body["stop"] = None
+            body["ignore_eos"] = True
         elif self.max_tokens is not None:
-            arguments["json_body"]["max_tokens"] = self.max_tokens
+            body["max_tokens"] = self.max_tokens
 
         # Handle prompt tokens
-        if prompt_tokens := columns.get("prompt_tokens_count_column", []):
-            stats["prompt_tokens"] = prompt_tokens[0]
+        if prompt_tokens := sum(
+            count for count in columns.get("prompt_tokens_count_column", []) if count
+        ):
+            input_metrics.text_tokens = prompt_tokens
 
         # Apply extra arguments
         if self.extras:
-            arguments = GenerationRequestArguments.model_combine_dict(
-                arguments, self.extras
-            )
+            arguments.model_combine(self.extras)
 
         # Build prompt
-        arguments["json_body"]["prompt"] = "".join(
-            columns.get("prefix_column", []) + columns.get("text_column", [])
-        )
+        prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
+        text = "".join(txt for txt in columns.get("text_column", []) if txt)
+        if prefix or text:
+            body["prompt"] = prefix + text
 
         return GenerationRequest(
             request_type="text_completions",
-            arguments=GenerationRequestArguments(**arguments),
-            stats=stats,
+            arguments=arguments,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
         )
 
 
@@ -126,53 +126,56 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
     def __call__(
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
-        arguments = {"json_body": {}}
-        stats = {}
+        body: dict[str, Any] = {}
+        arguments = GenerationRequestArguments(body=body)
+        input_metrics = UsageMetrics()
+        output_metrics = UsageMetrics()
 
         # Add model
         if self.model is not None:
-            arguments["json_body"]["model"] = self.model
+            body["model"] = self.model
 
         # Configure streaming
         if self.stream:
-            arguments["json_body"].update(
-                {"stream": True, "stream_options": {"include_usage": True}}
-            )
-            arguments["stream"] = True
+            arguments.stream = True
+            body.update({"stream": True, "stream_options": {"include_usage": True}})
 
         # Handle output tokens
-        if output_tokens := columns.pop("output_tokens_count_column", []):
-            output_count = output_tokens[0]
-            stats["output_tokens"] = output_count
-            arguments["json_body"].update(
+        if output_tokens := sum(
+            count for count in columns.get("output_tokens_count_column", []) if count
+        ):
+            output_metrics.text_tokens = output_tokens
+            body.update(
                 {
-                    "max_completion_tokens": output_count,
+                    "max_completion_tokens": output_tokens,
                     "stop": None,
                     "ignore_eos": True,
                 }
             )
         elif self.max_completion_tokens is not None:
-            arguments["json_body"]["max_completion_tokens"] = self.max_completion_tokens
+            body["max_completion_tokens"] = self.max_completion_tokens
 
         # Handle prompt tokens
-        if prompt_tokens := columns.pop("prompt_tokens_count_column", []):
-            stats["prompt_tokens"] = prompt_tokens[0]
+        if prompt_tokens := sum(
+            count for count in columns.get("prompt_tokens_count_column", []) if count
+        ):
+            input_metrics.text_tokens = prompt_tokens
 
         # Apply extra arguments
         if self.extras:
-            arguments = GenerationRequestArguments.model_combine_dict(
-                arguments, self.extras
-            )
+            arguments.model_combine(self.extras)
 
         # Build messages
-        arguments["json_body"]["messages"] = (
+        body["messages"] = (
             [
                 {"role": "system", "content": prefix}
-                for prefix in columns.pop("prefix_column", [])
+                for prefix in columns.get("prefix_column", [])
+                if prefix
             ]
             + [
                 {"role": "user", "content": [{"type": "text", "text": text}]}
-                for text in columns.pop("text_column", [])
+                for text in columns.get("text_column", [])
+                if text
             ]
             + [
                 {
@@ -186,7 +189,8 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
                         }
                     ],
                 }
-                for image in columns.pop("image_column", [])
+                for image in columns.get("image_column", [])
+                if image
             ]
             + [
                 {
@@ -200,7 +204,8 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
                         }
                     ],
                 }
-                for video in columns.pop("video_column", [])
+                for video in columns.get("video_column", [])
+                if video
             ]
             + [
                 {
@@ -214,14 +219,16 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
                         }
                     ],
                 }
-                for audio in columns.pop("audio_column", [])
+                for audio in columns.get("audio_column", [])
+                if audio
             ]
         )
 
         return GenerationRequest(
             request_type="chat_completions",
-            arguments=GenerationRequestArguments(**arguments),
-            stats=stats,
+            arguments=arguments,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
         )
 
 
@@ -230,63 +237,72 @@ class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
     def __init__(
         self,
         model: str,
-        extra_args: dict[str, Any] | GenerationRequestArguments | None = None,
+        extras: dict[str, Any] | GenerationRequestArguments | None = None,
         stream: bool = True,
         encode_kwargs: dict[str, Any] | None = None,
     ):
         self.model = model
-        self.extra_args = extra_args
+        self.extras = (
+            GenerationRequestArguments(**extras)
+            if extras and isinstance(extras, dict)
+            else extras
+        )
         self.stream = stream
         self.encode_audio_kwargs = encode_kwargs or {}
 
-    def __call__(
+    def __call__(  # noqa: C901
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
-        arguments = {"json_body": {}, "files": {}}
-        stats = {}
+        body: dict[str, Any] = {}
+        arguments = GenerationRequestArguments(body=body, files={})
+        input_metrics = UsageMetrics()
+        output_metrics = UsageMetrics()
 
         # Add model
         if self.model is not None:
-            arguments["json_body"]["model"] = self.model
+            body["model"] = self.model
 
         # Configure streaming
         if self.stream:
-            arguments["stream"] = True
-            arguments["json_body"].update(
-                {"stream": True, "stream_options": {"include_usage": True}}
-            )
+            arguments.stream = True
+            body.update({"stream": True, "stream_options": {"include_usage": True}})
+
+        # Handle output tokens
+        if output_tokens := sum(
+            count for count in columns.get("output_tokens_count_column", []) if count
+        ):
+            output_metrics.text_tokens = output_tokens
+
+        # Handle prompt tokens (for audio duration tracking)
+        if prompt_tokens := sum(
+            count for count in columns.get("prompt_tokens_count_column", []) if count
+        ):
+            input_metrics.text_tokens = prompt_tokens
 
         # Apply extra arguments
-        if self.extra_args:
-            arguments = GenerationRequestArguments.model_combine_dict(
-                arguments, self.extra_args
-            )
-
-        # Handle stats tokens
-        if output_tokens := columns.get("output_tokens_count_column", []):
-            output_count = output_tokens[0]
-            stats["output_tokens"] = output_count
-        if prompt_tokens := columns.get("prompt_tokens_count_column", []):
-            stats["prompt_tokens"] = prompt_tokens[0]
+        if self.extras:
+            arguments.model_combine(self.extras)
 
         # Build audio input
-        if audio := columns.get("audio_column", []):
-            arguments["files"]["file"] = encode_audio_as_file(
+        if audio := [aud for aud in columns.get("audio_column", []) if aud]:
+            file_name, content, mime_type = encode_audio_as_file(
                 audio[0], **self.encode_audio_kwargs
             )
+            arguments.files = {"file": (file_name, content, mime_type)}
         else:
             raise ValueError("No audio column found for audio transcription request.")
 
         # Build prompt
-        if (prefix := columns.get("prefix_column", [])) or (
-            text := columns.get("text_column", [])
-        ):
-            arguments["json_body"]["prompt"] = "".join(prefix) + "".join(text)
+        prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
+        text = "".join(txt for txt in columns.get("text_column", []) if txt)
+        if prefix or text:
+            body["prompt"] = prefix + text
 
         return GenerationRequest(
             request_type="audio_transcriptions",
-            arguments=GenerationRequestArguments(**arguments),
-            stats=stats,
+            arguments=arguments,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
         )
 
 
@@ -299,5 +315,4 @@ class GenerativeAudioTranslationRequestFormatter(
     ) -> GenerationRequest:
         result = super().__call__(columns)
         result.request_type = "audio_translations"
-
         return result

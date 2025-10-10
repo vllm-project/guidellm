@@ -4,35 +4,17 @@ from pathlib import Path
 from typing import Any, Callable, Literal
 
 from torch.utils.data import Sampler
-from transformers import (  # type: ignore[import]
-    PreTrainedTokenizerBase,
-)
+from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 
-from guidellm.backends import (
-    Backend,
-    BackendType,
-    GenerationRequest,
-    GenerationResponse,
-)
-from guidellm.benchmark.aggregator import (
-    Aggregator,
-    CompilableAggregator,
-    GenerativeRequestsAggregator,
-    GenerativeStatsProgressAggregator,
-    SchedulerStatsAggregator,
-    SerializableAggregator,
-)
+from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.benchmarker import Benchmarker
-from guidellm.benchmark.objects import GenerativeBenchmark, GenerativeBenchmarksReport
 from guidellm.benchmark.output import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,
 )
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.progress import (
-    BenchmarkerProgress,
-    BenchmarkerProgressGroup,
-)
+from guidellm.benchmark.progress import BenchmarkerProgress, BenchmarkerProgressGroup
+from guidellm.benchmark.schemas import GenerativeBenchmark, GenerativeBenchmarksReport
 from guidellm.data import (
     DataLoader,
     DatasetPreprocessor,
@@ -46,6 +28,7 @@ from guidellm.scheduler import (
     NonDistributedEnvironment,
     StrategyType,
 )
+from guidellm.schemas import GenerationRequest, GenerationResponse
 from guidellm.utils import Console, InfoMixin
 
 __all__ = [
@@ -96,13 +79,11 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
     # Updates configuration
     progress: tuple[str, ...] | list[str] | list[BenchmarkerProgress] | None = None,
     print_updates: bool = False,
-    # Aggregators configuration
-    add_aggregators: (
-        dict[str, str | dict[str, Any] | Aggregator | CompilableAggregator] | None
-    ) = None,
+    # Benchmarker configuration
+    benchmark_cls: type[GenerativeBenchmark] = GenerativeBenchmark,
+    sample_requests: int | None = 10,
     warmup: float | None = None,
     cooldown: float | None = None,
-    sample_requests: int | None = 10,
     # Constraints configuration
     max_seconds: int | float | None = None,
     max_requests: int | None = None,
@@ -241,25 +222,6 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
             status_level="success",
         )
 
-    with console.print_update_step(
-        title="Creating benchmark aggregators"
-    ) as console_step:
-        aggregators = {
-            "scheduler_stats": SchedulerStatsAggregator(),
-            "requests_progress": GenerativeStatsProgressAggregator(),
-            "requests": GenerativeRequestsAggregator(
-                request_samples=sample_requests,
-                warmup=warmup,
-                cooldown=cooldown,
-            ),
-            **SerializableAggregator.resolve(add_aggregators or {}),
-        }
-        console_step.finish(
-            title="Benchmark aggregators created",
-            details={key: str(val) for key, val in aggregators.items()},
-            status_level="success",
-        )
-
     with console.print_update_step(title="Resolving output formats") as console_step:
         output_formats = GenerativeBenchmarkerOutput.resolve(
             output_formats=(output_formats or {}), output_path=output_path
@@ -291,12 +253,15 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
             GenerationRequest,
             GenerationResponse,
         ]().run(
+            benchmark_class=benchmark_cls,
             requests=request_loader,
             backend=backend,
             profile=profile,
             environment=NonDistributedEnvironment(),
-            benchmark_aggregators=aggregators,
-            benchmark_class=GenerativeBenchmark,
+            sample_requests=sample_requests,
+            warmup=warmup,
+            cooldown=cooldown,
+            prefer_response_metrics=True,
         ),
     ):
         if benchmark:

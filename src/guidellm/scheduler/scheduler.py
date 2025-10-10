@@ -18,16 +18,16 @@ from guidellm.scheduler.constraints import (
     ConstraintsInitializerFactory,
 )
 from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
-from guidellm.scheduler.objects import (
+from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerState,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker_group import WorkerProcessGroup
+from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
 __all__ = ["Scheduler"]
@@ -75,7 +75,7 @@ class Scheduler(
         tuple[
             ResponseT | None,
             RequestT,
-            ScheduledRequestInfo,
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -146,6 +146,7 @@ class Scheduler(
                     )
                     yield response, request, request_info, state
             except Exception as err:  # noqa: BLE001
+                raise err
                 await env.sync_run_error(err)
             finally:
                 # Ensure all worker processes are cleaned up for error or completion

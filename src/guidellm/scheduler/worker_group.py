@@ -23,18 +23,17 @@ from multiprocessing.synchronize import Barrier, Event
 from typing import Generic, NamedTuple
 
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
-from guidellm.scheduler.objects import (
+from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
-    SchedulerMessagingPydanticRegistry,
     SchedulerState,
     SchedulerUpdateAction,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils import (
     InterProcessMessaging,
@@ -130,12 +129,12 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.messaging: InterProcessMessaging[
             tuple[
                 RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo,
+                RequestInfo,
             ],
             tuple[
                 ResponseT | None,
                 RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo,
+                RequestInfo,
                 SchedulerState,
             ],
         ] = None
@@ -303,7 +302,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             send_stopped_event=send_requests_stopped_event,
             send_stop_criteria=[stop_send_requests_event],
             receive_stop_criteria=[self.shutdown_event],
-            pydantic_models=list(SchedulerMessagingPydanticRegistry.registry.values()),
         )
 
         if (wait_time := start_time - time.time()) > 0:
@@ -320,7 +318,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         tuple[
             ResponseT | None,
             RequestT,
-            ScheduledRequestInfo,
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -485,7 +483,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         :return: Generator yielding (request, request_info) tuples
         """
 
-        def _iter():
+        def _iter() -> Iterator[RequestT | MultiTurnRequestT[RequestT]]:
             if requests is not None:
                 yield from requests
 
@@ -494,7 +492,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                     yield from cycle_requests
 
         count = 0
-        request_info: ScheduledRequestInfo = None
+        request_info: RequestInfo = None
 
         for request in _iter():
             count += 1
@@ -505,14 +503,14 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 request_id = request.id
             else:
                 request_id = str(uuid.uuid4())
-            request_info: ScheduledRequestInfo = ScheduledRequestInfo(
+            request_info: RequestInfo = RequestInfo(
                 request_id=request_id,
                 status="queued",
                 scheduler_process_id=0,
                 scheduler_start_time=self.start_time,
             )
             state_update = self._locked_update(request_info)
-            request_info.scheduler_timings.queued = time.time()
+            request_info.timings.queued = time.time()
 
             yield (request, request_info)
 
@@ -532,12 +530,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         update: tuple[
             ResponseT | None,
             RequestT | MultiTurnRequestT,
-            ScheduledRequestInfo,
+            RequestInfo,
         ],
     ) -> tuple[
         ResponseT | None,
         RequestT | MultiTurnRequestT,
-        ScheduledRequestInfo,
+        RequestInfo,
         SchedulerState,
     ]:
         """
@@ -585,7 +583,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
     def _locked_update(
         self,
-        info: ScheduledRequestInfo | None = None,
+        info: RequestInfo | None = None,
         **add_constraints: dict[str, Constraint],
     ) -> _StateUpdate:
         with self._update_lock:
@@ -605,7 +603,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             state_copy.end_processing_time is not None,
         )
 
-    def _update_state_request_counts(self, info: ScheduledRequestInfo):
+    def _update_state_request_counts(self, info: RequestInfo):
         if info.status == "queued":
             self._queued_requests.add(info.request_id)
             self._state.queued_requests = len(self._queued_requests)
@@ -642,7 +640,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         else:
             raise ValueError(f"Unknown request_info status {info.status} for {info}")
 
-    def _update_with_constraints(self, info: ScheduledRequestInfo):
+    def _update_with_constraints(self, info: RequestInfo):
         actions: dict[str, SchedulerUpdateAction] = {
             name: const(self._state, info) for name, const in self.constraints.items()
         }

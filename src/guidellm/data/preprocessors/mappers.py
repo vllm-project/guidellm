@@ -5,11 +5,11 @@ from typing import Any, ClassVar, cast
 
 from datasets import Dataset, IterableDataset
 
-from guidellm.data.objects import GenerativeDatasetColumnType
 from guidellm.data.preprocessors.preprocessor import (
     DataDependentPreprocessor,
     PreprocessorRegistry,
 )
+from guidellm.data.schemas import GenerativeDatasetColumnType
 
 __all__ = ["GenerativeColumnMapper"]
 

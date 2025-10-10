@@ -48,7 +48,6 @@ except ImportError:
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
     GenerativeConsoleBenchmarkerProgress,
-    InjectExtrasAggregator,
     ProfileType,
     benchmark_generative_text,
     reimport_benchmarks_report,
@@ -56,10 +55,10 @@ from guidellm.benchmark import (
 from guidellm.benchmark.scenario import (
     GenerativeTextScenario,
 )
-from guidellm.data import GenerativeRequestType
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
+from guidellm.schemas import GenerativeRequestType
 from guidellm.settings import print_config
 from guidellm.utils import Console, DefaultGroupHandler, get_literal_vals
 from guidellm.utils import cli as cli_tools
@@ -375,9 +374,9 @@ def benchmark():
     ),
 )
 @click.option(
-    "--request-samples",
+    "--sample-requests",
     "--output-sampling",  # legacy alias
-    "request_samples",
+    "sample_requests",
     type=int,
     help=(
         "The number of samples for each request status and each benchmark to save "
@@ -451,11 +450,10 @@ def run(
     disable_console_outputs,
     disable_progress,
     display_scheduler_stats,
-    # Aggregators configuration
-    output_extras,
+    # Benchmarker configuration
+    sample_requests,
     warmup,
     cooldown,
-    request_samples,
     # Constraints configuration
     max_seconds,
     max_requests,
@@ -519,11 +517,10 @@ def run(
                 else None
             ),
             print_updates=not disable_console_outputs,
-            # Aggregators configuration
-            add_aggregators={"extras": InjectExtrasAggregator(extras=output_extras)},
+            # Benchmarker configuration
+            sample_requests=sample_requests,
             warmup=warmup,
             cooldown=cooldown,
-            sample_requests=request_samples,
             # Constraints configuration
             max_seconds=max_seconds,
             max_requests=max_requests,

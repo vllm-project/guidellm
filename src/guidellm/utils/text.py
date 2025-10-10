@@ -13,7 +13,6 @@ from __future__ import annotations
 import gzip
 import re
 import textwrap
-from importlib.resources import as_file, files  # type: ignore[attr-defined]
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +20,6 @@ import ftfy
 import httpx
 from loguru import logger
 
-from guidellm import data as package_data
 from guidellm.settings import settings
 from guidellm.utils.console import Colors
 
@@ -237,15 +235,6 @@ def load_text(data: str | Path, encoding: str | None = None) -> str:
             response = client.get(data.strip())
             response.raise_for_status()
             return response.text
-
-    # check package data
-    if isinstance(data, str) and data.startswith("data:"):
-        resource_path = files(package_data).joinpath(data[5:])
-        with (
-            as_file(resource_path) as resource_file,
-            gzip.open(resource_file, "rt", encoding=encoding) as file,
-        ):
-            return file.read()
 
     # check gzipped files
     if isinstance(data, str) and data.endswith(".gz"):

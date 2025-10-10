@@ -9,20 +9,22 @@ from .backend import (
     Backend,
     BackendType,
 )
-from .objects import (
-    GenerationRequest,
-    GenerationRequestTimings,
-    GenerationResponse,
-    GenerationTokenStats,
-)
 from .openai import OpenAIHTTPBackend
+from .response_handlers import (
+    AudioResponseHandler,
+    ChatCompletionsResponseHandler,
+    GenerationResponseHandler,
+    GenerationResponseHandlerFactory,
+    TextCompletionsResponseHandler,
+)
 
 __all__ = [
+    "AudioResponseHandler",
     "Backend",
     "BackendType",
-    "GenerationRequest",
-    "GenerationRequestTimings",
-    "GenerationResponse",
-    "GenerationTokenStats",
+    "ChatCompletionsResponseHandler",
+    "GenerationResponseHandler",
+    "GenerationResponseHandlerFactory",
     "OpenAIHTTPBackend",
+    "TextCompletionsResponseHandler",
 ]

@@ -13,22 +13,19 @@ Classes:
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import Any
 
 import httpx
-from pydantic import dataclasses
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.objects import (
+from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
+from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
-    GenerationTokenStats,
+    RequestInfo,
 )
-from guidellm.scheduler import ScheduledRequestInfo
 
 try:
     import orjson
@@ -38,25 +35,7 @@ except ImportError:
     orjson = None
     HAS_ORJSON = False
 
-__all__ = ["OpenAIHTTPBackend", "UsageStats"]
-
-
-@dataclasses.dataclass
-class UsageStats:
-    """Token usage statistics for generation requests."""
-
-    prompt_tokens: int | None = None
-    output_tokens: int | None = None
-
-
-open_ai_paths: dict[str, str] = {
-    "health": "health",
-    "models": "v1/models",
-    "text_completions": "v1/completions",
-    "chat_completions": "v1/chat/completions",
-    "audio_transcriptions": "v1/audio/transcriptions",
-    "audio_translations": "v1/audio/translations",
-}
+__all__ = ["OpenAIHTTPBackend"]
 
 
 @Backend.register("openai_http")
@@ -87,6 +66,8 @@ class OpenAIHTTPBackend(Backend):
         self,
         target: str,
         model: str | None = None,
+        api_routes: dict[str, str] | None = None,
+        response_handlers: dict[str, Any] | None = None,
         timeout: float = 60.0,
         http2: bool = True,
         follow_redirects: bool = True,
@@ -100,6 +81,15 @@ class OpenAIHTTPBackend(Backend):
         self.model = model
 
         # Store configuration
+        self.api_routes = api_routes or {
+            "health": "health",
+            "models": "v1/models",
+            "text_completions": "v1/completions",
+            "chat_completions": "v1/chat/completions",
+            "audio_transcriptions": "v1/audio/transcriptions",
+            "audio_translations": "v1/audio/translations",
+        }
+        self.response_handlers = response_handlers
         self.timeout = timeout
         self.http2 = http2
         self.follow_redirects = follow_redirects
@@ -124,7 +114,7 @@ class OpenAIHTTPBackend(Backend):
             "http2": self.http2,
             "follow_redirects": self.follow_redirects,
             "verify": self.verify,
-            "openai_paths": open_ai_paths,
+            "openai_paths": self.api_routes,
             "validate_backend": self.validate_backend,
         }
 
@@ -169,7 +159,8 @@ class OpenAIHTTPBackend(Backend):
 
         :raises RuntimeError: If backend cannot connect or validate configuration.
         """
-        self._check_in_process()
+        if self._async_client is None:
+            raise RuntimeError("Backend not started up for process.")
 
         if not self.validate_backend:
             return
@@ -191,9 +182,10 @@ class OpenAIHTTPBackend(Backend):
         :raises HTTPError: If models endpoint returns an error.
         :raises RuntimeError: If backend is not initialized.
         """
-        self._check_in_process()
+        if self._async_client is None:
+            raise RuntimeError("Backend not started up for process.")
 
-        target = f"{self.target}/{open_ai_paths['models']}"
+        target = f"{self.target}/{self.api_routes['models']}"
         response = await self._async_client.get(target)
         response.raise_for_status()
 
@@ -214,9 +206,9 @@ class OpenAIHTTPBackend(Backend):
     async def resolve(  # noqa: C901
         self,
         request: GenerationRequest,
-        request_info: ScheduledRequestInfo,
+        request_info: RequestInfo,
         history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
-    ) -> AsyncIterator[tuple[GenerationResponse, ScheduledRequestInfo]]:
+    ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Process a generation request and yield progressive responses.
 
@@ -229,181 +221,104 @@ class OpenAIHTTPBackend(Backend):
         :raises NotImplementedError: If history is provided.
         :yields: Tuples of (response, updated_request_info) as generation progresses.
         """
-        self._check_in_process()
+        if self._async_client is None:
+            raise RuntimeError("Backend not started up for process.")
+
         if history is not None:
             raise NotImplementedError(
                 "Multi-turn requests with conversation history are not yet supported"
             )
 
-        request_info.request_timings = GenerationRequestTimings()
-        request.arguments.url = (
-            request.arguments.url or f"{self.target}/{request.arguments.path}"
-            if request.arguments.path is not None
-            else f"{self.target}/{open_ai_paths[request.request_type]}"
+        response_handler = (
+            self.response_handlers.get(request.request_type)
+            if self.response_handlers
+            else None
         )
-        request_info.request_timings.request_start = time.time()
+        if response_handler is None:
+            response_handler_class = (
+                GenerationResponseHandlerFactory.get_registered_object(
+                    request.request_type
+                )
+            )
+            if response_handler_class is None:
+                raise ValueError(
+                    "No response handler registered for request type "
+                    f"'{request.request_type}'"
+                )
+            response_handler = response_handler_class()
+
+        if (request_path := self.api_routes.get(request.request_type)) is None:
+            raise ValueError(f"Unsupported request type '{request.request_type}'")
+        request_url = f"{self.target}/{request_path}"
+        request_info.timings.request_start = time.time()
 
         if not request.arguments.stream:
             response = await self._async_client.request(
                 request.arguments.method or "POST",
-                request.arguments.url,
-                content=request.arguments.content_body,
-                files=request.arguments.request_files,
-                json=request.arguments.json_body,
+                request_url,
                 params=request.arguments.params,
                 headers=request.arguments.headers,
+                json=request.arguments.body if not request.arguments.files else None,
+                data=request.arguments.body if request.arguments.files else None,
+                files=(
+                    {
+                        key: tuple(value) if isinstance(value, list) else value
+                        for key, value in request.arguments.files.items()
+                    }
+                    if request.arguments.files
+                    else None
+                ),
             )
+            request_info.timings.request_end = time.time()
             response.raise_for_status()
             data = response.json()
-            prompt_stats, output_stats = self._extract_response_stats(data, request)
-            request_info.request_timings.request_end = time.time()
-
-            yield (
-                GenerationResponse(
-                    request_id=request.request_id,
-                    request_args=request.arguments,
-                    text=self._extract_response_text(data),
-                    iterations=0,
-                    prompt_stats=prompt_stats,
-                    output_stats=output_stats,
-                ),
-                request_info,
-            )
+            yield response_handler.compile_non_streaming(request, data), request_info
             return
-
-        deltas = []
-        prompt_stats = None
-        output_stats = None
-        end_reached = False
 
         try:
             async with self._async_client.stream(
                 request.arguments.method or "POST",
-                request.arguments.url,
-                content=request.arguments.content_body,
-                files=request.arguments.request_files,
-                json=request.arguments.json_body,
+                request_url,
                 params=request.arguments.params,
                 headers=request.arguments.headers,
+                json=request.arguments.body if not request.arguments.files else None,
+                data=request.arguments.body if request.arguments.files else None,
+                files=(
+                    {
+                        key: tuple(value) if isinstance(value, list) else value
+                        for key, value in request.arguments.files.items()
+                    }
+                    if request.arguments.files
+                    else None
+                ),
             ) as stream:
                 stream.raise_for_status()
-                buffer = bytearray()
+                end_reached = False
 
-                async for chunk in stream.aiter_bytes():
-                    if not chunk or end_reached:
+                async for chunk in stream.aiter_lines():
+                    if end_reached:
                         continue
-                    buffer.extend(chunk)
 
-                    while (start := buffer.find(b"data:")) != -1 and (
-                        end := buffer.find(b"\n", start)
-                    ) != -1:
-                        line = buffer[start + len(b"data:") : end].strip()
-                        buffer = buffer[end + 1 :]
+                    if (
+                        iterations := response_handler.add_streaming_line(chunk)
+                    ) is None or iterations < 0:
+                        end_reached = end_reached or iterations is None
+                        continue
 
-                        if not line:
-                            continue
+                    if request_info.timings.first_iteration is None:
+                        request_info.timings.first_iteration = time.time()
+                    request_info.timings.last_iteration = time.time()
 
-                        if line == b"[DONE]":
-                            if request_info.request_timings.request_end is None:
-                                request_info.request_timings.request_end = time.time()
-                            end_reached = True
-                            break
+                    if request_info.timings.iterations is None:
+                        request_info.timings.iterations = 0
+                    request_info.timings.iterations += iterations
 
-                        data = (
-                            json.loads(line) if not HAS_ORJSON else orjson.loads(line)
-                        )
+                request_info.timings.request_end = time.time()
 
-                        if "usage" in data and data["usage"] is not None:
-                            request_info.request_timings.request_end = time.time()
-                            prompt_stats, output_stats = self._extract_response_stats(
-                                data, request
-                            )
-                        else:
-                            if request_info.request_timings.first_iteration is None:
-                                request_info.request_timings.first_iteration = (
-                                    time.time()
-                                )
-                            request_info.request_timings.last_iteration = time.time()
-                            deltas.append(self._extract_response_text(data))
-
-            yield (
-                GenerationResponse(
-                    request_id=request.request_id,
-                    request_args=request.arguments,
-                    text="".join(deltas) if deltas else None,
-                    iterations=len(deltas),
-                    prompt_stats=prompt_stats or GenerationTokenStats(),
-                    output_stats=output_stats or GenerationTokenStats(),
-                ),
-                request_info,
-            )
+            yield response_handler.compile_streaming(request), request_info
         except asyncio.CancelledError as err:
-            yield (  # Ensure we yield what we have so far before stopping
-                GenerationResponse(
-                    request_id=request.request_id,
-                    request_args=request.arguments,
-                    text="".join(deltas) if deltas else None,
-                    iterations=len(deltas),
-                    prompt_stats=prompt_stats or GenerationTokenStats(),
-                    output_stats=output_stats or GenerationTokenStats(),
-                ),
-                request_info,
-            )
+            yield response_handler.compile_streaming(request), request_info
             raise err
-
-    def _extract_response_text(self, data: dict) -> str:
-        if not data:
-            return None
-
-        object_type = data.get("object") or data.get("type")
-
-        if object_type == "text_completion":
-            return data.get("choices", [{}])[0].get("text", "")
-
-        if object_type == "chat.completion":
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-        if object_type == "chat.completion.chunk":
-            return data.get("choices", [{}])[0].get("delta", {}).get("content", "")
-
-        if "text" in data:
-            return data.get("text", "")
-
-        if "delta" in data:
-            return data.get("delta", "")
-
-        raise ValueError(f"Unsupported response format: {data}")
-
-    def _extract_response_stats(
-        self, data: dict, request: GenerationRequest
-    ) -> tuple[GenerationTokenStats, GenerationTokenStats]:
-        prompt_stats = GenerationTokenStats()
-        output_stats = GenerationTokenStats()
-
-        if not data or not (usage := cast("dict", data.get("usage"))):
-            return prompt_stats, output_stats
-
-        prompt_stats.request = request.stats.get("prompt_tokens")
-        prompt_stats.response = usage.get("prompt_tokens", usage.get("input_tokens"))
-        prompt_token_details = usage.get(
-            "prompt_tokens_details", usage.get("input_tokens_details")
-        )
-        if prompt_token_details:
-            for key, val in prompt_token_details.items():
-                setattr(prompt_stats, key, val)
-
-        output_stats.request = request.stats.get("output_tokens")
-        output_stats.response = usage.get(
-            "completion_tokens", usage.get("output_tokens")
-        )
-        output_token_details = usage.get(
-            "completion_tokens_details", usage.get("output_tokens_details")
-        )
-        if output_token_details:
-            for key, val in output_token_details.items():
-                setattr(output_stats, key, val)
-
-        return prompt_stats, output_stats
 
     def _resolve_validate_kwargs(
         self, validate_backend: bool | str | dict[str, Any]
@@ -414,8 +329,8 @@ class OpenAIHTTPBackend(Backend):
         if validate_kwargs is True:
             validate_kwargs = "health"
 
-        if isinstance(validate_kwargs, str) and validate_kwargs in open_ai_paths:
-            validate_kwargs = f"{self.target}/{open_ai_paths[validate_kwargs]}"
+        if isinstance(validate_kwargs, str) and validate_kwargs in self.api_routes:
+            validate_kwargs = f"{self.target}/{self.api_routes[validate_kwargs]}"
 
         if isinstance(validate_kwargs, str):
             validate_kwargs = {
@@ -433,9 +348,3 @@ class OpenAIHTTPBackend(Backend):
             validate_kwargs["method"] = "GET"
 
         return validate_kwargs
-
-    def _check_in_process(self):
-        if not self._in_process or self._async_client is None:
-            raise RuntimeError(
-                "Backend not started up for process, cannot process requests."
-            )

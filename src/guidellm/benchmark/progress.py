@@ -37,14 +37,10 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from guidellm.benchmark.aggregator import AggregatorState
-from guidellm.benchmark.objects import BenchmarkT, GenerativeBenchmark
+from guidellm.benchmark.aggregator import EstimatedBenchmarkState
 from guidellm.benchmark.profile import Profile
-from guidellm.scheduler import (
-    SchedulerState,
-    SchedulingStrategy,
-    StrategyType,
-)
+from guidellm.benchmark.schemas import BenchmarkT, GenerativeBenchmark
+from guidellm.scheduler import SchedulerState, SchedulingStrategy, StrategyType
 from guidellm.utils import Colors, format_value_display
 
 __all__ = [
@@ -98,7 +94,7 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
         profile: Profile,
         agen: AsyncIterable[
             tuple[
-                AggregatorState | None,
+                EstimatedBenchmarkState | None,
                 BenchmarkT | None,
                 SchedulingStrategy,
                 SchedulerState | None,
@@ -106,7 +102,7 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
         ],
     ) -> AsyncIterator[
         tuple[
-            AggregatorState | None,
+            EstimatedBenchmarkState | None,
             BenchmarkT | None,
             SchedulingStrategy,
             SchedulerState | None,
@@ -125,7 +121,7 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
 
         async def aiterator() -> AsyncIterator[
             tuple[
-                AggregatorState | None,
+                EstimatedBenchmarkState | None,
                 BenchmarkT | None,
                 SchedulingStrategy,
                 SchedulerState | None,
@@ -181,7 +177,9 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
 
     @abstractmethod
     async def on_benchmark_update(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
+        self,
+        aggregator_update: EstimatedBenchmarkState,
+        scheduler_state: SchedulerState,
     ):
         """
         Handle benchmark execution progress update.
@@ -205,7 +203,7 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
     async def on_raw_update(
         self,
         profile: Profile,
-        aggregator_update: AggregatorState | None,
+        aggregator_update: EstimatedBenchmarkState | None,
         benchmark: BenchmarkT | None,
         strategy: SchedulingStrategy,
         scheduler_state: SchedulerState | None,
@@ -290,7 +288,9 @@ class BenchmarkerProgressGroup(BenchmarkerProgress[BenchmarkT]):
         )
 
     async def on_benchmark_update(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
+        self,
+        aggregator_update: EstimatedBenchmarkState,
+        scheduler_state: SchedulerState,
     ):
         """
         Distribute benchmark updates to all handlers.
@@ -322,7 +322,7 @@ class BenchmarkerProgressGroup(BenchmarkerProgress[BenchmarkT]):
     async def on_raw_update(
         self,
         profile: Profile,
-        aggregator_update: AggregatorState | None,
+        aggregator_update: EstimatedBenchmarkState | None,
         benchmark: BenchmarkT | None,
         strategy: SchedulingStrategy,
         scheduler_state: SchedulerState | None,
@@ -432,7 +432,9 @@ class GenerativeConsoleBenchmarkerProgress(
         self._sync_run_progress()
 
     async def on_benchmark_update(
-        self, aggregator_update: AggregatorState | None, scheduler_state: SchedulerState
+        self,
+        aggregator_update: EstimatedBenchmarkState | None,
+        scheduler_state: SchedulerState,
     ):
         """
         Update display with current benchmark progress.
@@ -545,7 +547,9 @@ class _GenerativeProgressTasks(Progress):
         )
 
     def update_benchmark(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
+        self,
+        aggregator_update: EstimatedBenchmarkState,
+        scheduler_state: SchedulerState,
     ):
         self.benchmark_task_states[self.current_index].update(
             aggregator_update, scheduler_state
@@ -800,7 +804,9 @@ class _GenerativeProgressTaskState:
         self.strategy_type = strategy.type_
 
     def update(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
+        self,
+        aggregator_update: EstimatedBenchmarkState,
+        scheduler_state: SchedulerState,
     ):
         self.progress = (
             (1.0 - scheduler_state.remaining_fraction)

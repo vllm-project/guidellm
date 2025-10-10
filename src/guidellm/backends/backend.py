@@ -16,11 +16,11 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Literal
 
-from guidellm.backends.objects import (
+from guidellm.scheduler import BackendInterface
+from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
 )
-from guidellm.scheduler import BackendInterface
 from guidellm.utils import RegistryMixin
 
 __all__ = [

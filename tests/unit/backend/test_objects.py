@@ -9,12 +9,12 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from guidellm.backends.objects import (
+from guidellm.scheduler import MeasuredRequestTimings
+from guidellm.schemas.response import (
     GenerationRequest,
     GenerationRequestTimings,
     GenerationResponse,
 )
-from guidellm.scheduler import MeasuredRequestTimings
 from guidellm.utils import StandardBaseModel
 
 

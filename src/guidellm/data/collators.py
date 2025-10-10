@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from guidellm.data.objects import GenerationRequest
+from guidellm.schemas import GenerationRequest
 
 __all__ = ["GenerativeRequestCollator"]
 

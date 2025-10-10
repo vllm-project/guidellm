@@ -25,14 +25,14 @@ from typing import (
 )
 
 from guidellm.scheduler.constraints import Constraint
-from guidellm.scheduler.objects import (
+from guidellm.scheduler.schemas import (
     MultiTurnRequestT,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerState,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils import InfoMixin
 
@@ -93,7 +93,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         self,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo,
+        request_info: RequestInfo,
         state: SchedulerState,
     ):
         """
@@ -131,7 +131,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         tuple[
             ResponseT,
             RequestT | MultiTurnRequestT[RequestT],
-            ScheduledRequestInfo,
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -162,7 +162,7 @@ class NonDistributedEnvironment(Environment):
         from guidellm.scheduler import (
             MaxNumberConstraint,
             NonDistributedEnvironment,
-            ScheduledRequestInfo,
+            RequestInfo,
             SchedulerState,
             SynchronousStrategy,
         )
@@ -182,7 +182,7 @@ class NonDistributedEnvironment(Environment):
         for req in local_req:
             state.processed_requests += 1
             await env.update_run_iteration(
-                f"resp_{req}", req, ScheduledRequestInfo(), state
+                f"resp_{req}", req, RequestInfo(), state
             )
         async for nonlocal_req in env.sync_run_end():
             state.processed_requests += 1
@@ -224,7 +224,7 @@ class NonDistributedEnvironment(Environment):
         self,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo,
+        request_info: RequestInfo,
         state: SchedulerState,
     ):
         """
@@ -251,7 +251,7 @@ class NonDistributedEnvironment(Environment):
         tuple[
             ResponseT,
             RequestT | MultiTurnRequestT[RequestT],
-            ScheduledRequestInfo,
+            RequestInfo,
             SchedulerState,
         ]
     ]:

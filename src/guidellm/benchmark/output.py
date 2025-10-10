@@ -14,16 +14,16 @@ from rich.console import Console
 from rich.padding import Padding
 from rich.text import Text
 
-from guidellm.benchmark.objects import (
-    GenerativeBenchmark,
-    GenerativeBenchmarksReport,
-    GenerativeMetrics,
-)
 from guidellm.benchmark.profile import (
     AsyncProfile,
     ConcurrentProfile,
     SweepProfile,
     ThroughputProfile,
+)
+from guidellm.benchmark.schemas import (
+    GenerativeBenchmark,
+    GenerativeBenchmarksReport,
+    GenerativeMetrics,
 )
 from guidellm.presentation import UIDataBuilder
 from guidellm.presentation.injector import create_report

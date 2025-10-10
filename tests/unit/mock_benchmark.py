@@ -7,8 +7,8 @@ from guidellm.benchmark import (
     GenerativeMetrics,
     GenerativeRequestStats,
 )
-from guidellm.benchmark.objects import BenchmarkerDict, SchedulerDict
 from guidellm.benchmark.profile import SynchronousProfile
+from guidellm.benchmark.schemas import BenchmarkerDict, SchedulerDict
 from guidellm.scheduler import ScheduledRequestInfo, SchedulerState, SynchronousStrategy
 from guidellm.utils import (
     DistributionSummary,
