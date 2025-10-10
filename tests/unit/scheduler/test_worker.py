@@ -5,7 +5,6 @@ import inspect
 import random
 import time
 from dataclasses import dataclass
-from functools import wraps
 from multiprocessing import Barrier, Event, Process
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
@@ -27,19 +26,9 @@ from guidellm.scheduler import (
     WorkerProcess,
 )
 from guidellm.utils import InterProcessMessagingQueue
+from tests.unit.testing_utils import async_timeout
 
 STANDARD_NUM_REQUESTS: int = 200
-
-
-def async_timeout(delay):
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
 
 
 @dataclass

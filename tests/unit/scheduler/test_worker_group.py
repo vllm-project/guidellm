@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from functools import wraps
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
 from multiprocessing.process import BaseProcess
@@ -30,17 +29,7 @@ from guidellm.scheduler import (
 )
 from guidellm.scheduler.worker_group import WorkerGroupState
 from guidellm.utils import InterProcessMessaging
-
-
-def async_timeout(delay):
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 class MockRequestTimings(MeasuredRequestTimings):
