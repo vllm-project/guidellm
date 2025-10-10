@@ -167,7 +167,7 @@ ignore_missing_imports = true
 target-version = "py310"
 line-length = 88
 indent-width = 4
-exclude = ["build", "dist", "env", ".venv"]
+exclude = ["build", "dist", "env", ".venv*"]
 
 [tool.ruff.format]
 quote-style = "double"

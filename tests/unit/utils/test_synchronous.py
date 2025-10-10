@@ -226,7 +226,7 @@ class TestWaitForSyncObjects:
         async def set_target():
             await asyncio.sleep(0.01)
             obj = objects[expected_result]
-            if isinstance(obj, (threading.Event, ProcessingEvent)):
+            if isinstance(obj, threading.Event | ProcessingEvent):
                 obj.set()
             else:
                 await asyncio.to_thread(obj.wait)

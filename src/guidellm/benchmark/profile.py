@@ -680,7 +680,8 @@ class SweepProfile(Profile):
             )
             if self.synchronous_rate <= 0 and self.throughput_rate <= 0:
                 raise RuntimeError(
-                    "Invalid rates in sweep; aborting. Were there any successful requests?"
+                    "Invalid rates in sweep; aborting. "
+                    "Were there any successful requests?"
                 )
             self.measured_rates = list(
                 np.linspace(

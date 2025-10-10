@@ -93,7 +93,7 @@ async def test_file_csv():
     csv_benchmarker = GenerativeBenchmarkerCSV(output_path=mock_path)
     await csv_benchmarker.finalize(report)
 
-    with mock_path.open("r") as file:
+    with mock_path.open("r") as file:  # noqa: ASYNC230  # This is a test.
         reader = csv.reader(file)
         headers = next(reader)
         rows = list(reader)

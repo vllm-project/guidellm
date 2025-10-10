@@ -33,6 +33,8 @@ from guidellm.scheduler import ScheduledRequestInfo
 
 __all__ = ["OpenAIHTTPBackend", "UsageStats"]
 
+ContentT = str | list[str | dict[str, str | dict[str, str]] | Path | Image.Image] | Any
+
 
 @dataclasses.dataclass
 class UsageStats:
@@ -431,7 +433,7 @@ class OpenAIHTTPBackend(Backend):
 
     async def chat_completions(
         self,
-        content: str | list[str | dict[str, str | dict[str, str]] | Path | Image.Image] | Any,
+        content: ContentT,
         request_id: str | None = None,  # noqa: ARG002
         output_token_count: int | None = None,
         raw_content: bool = False,
@@ -537,7 +539,7 @@ class OpenAIHTTPBackend(Backend):
 
     def _get_chat_messages(
         self,
-        content: str | list[str | dict[str, str | dict[str, str]] | Path | Image.Image] | Any,
+        content: ContentT,
     ) -> list[dict[str, Any]]:
         if isinstance(content, str):
             return [{"role": "user", "content": content}]

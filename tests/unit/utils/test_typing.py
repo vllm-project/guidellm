@@ -2,7 +2,7 @@
 Test suite for the typing utilities module.
 """
 
-from typing import Annotated, Literal, TypeAlias, Union
+from typing import Annotated, Literal, TypeAlias
 
 import pytest
 
@@ -53,7 +53,7 @@ class TestGetLiteralVals:
 
         ### WRITTEN BY AI ###
         """
-        result = get_literal_vals(Union[LocalProfileType, LocalStrategyType])
+        result = get_literal_vals(LocalProfileType | LocalStrategyType)
         expected = frozenset(
             {
                 "synchronous",
@@ -117,6 +117,6 @@ class TestGetLiteralVals:
 
         ### WRITTEN BY AI ###
         """
-        result = get_literal_vals(Union[Literal["test", "test2"], Literal["test3"]])
+        result = get_literal_vals(Literal["test", "test2"] | Literal["test3"])
         expected = frozenset({"test", "test2", "test3"})
         assert result == expected

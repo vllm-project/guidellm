@@ -67,7 +67,8 @@ class GenerativeRequestLoader(RequestLoader):
 
     def __init__(
         self,
-        data: str | Path | Iterable[str | dict[str, Any]] | Dataset | DatasetDict | IterableDataset | IterableDatasetDict,
+        data: str | Path | Iterable[str | dict[str, Any]] | Dataset | DatasetDict | \
+              IterableDataset | IterableDatasetDict,
         data_args: dict[str, Any] | None,
         processor: str | Path | PreTrainedTokenizerBase | None,
         processor_args: dict[str, Any] | None,

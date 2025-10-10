@@ -20,7 +20,7 @@ class HFDatasetsCreator(DatasetCreator):
     @classmethod
     def is_supported(cls, data: Any, data_args: dict[str, Any] | None) -> bool:  # noqa: ARG003
         if isinstance(
-            data, (Dataset, DatasetDict, IterableDataset, IterableDatasetDict)
+            data, Dataset | DatasetDict | IterableDataset | IterableDatasetDict
         ):
             # base type is supported
             return True
@@ -55,7 +55,7 @@ class HFDatasetsCreator(DatasetCreator):
             )
 
         if isinstance(
-            data, (Dataset, DatasetDict, IterableDataset, IterableDatasetDict)
+            data, Dataset | DatasetDict | IterableDataset | IterableDatasetDict
         ):
             return data
 
