@@ -11,11 +11,10 @@ structured result organization.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Generic, TypeVar, cast
+from typing import Any, ClassVar, Generic, TypeVar, cast, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from typing_extensions import get_args, get_origin
 
 from guidellm.utils.registry import RegistryMixin
 

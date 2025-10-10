@@ -530,7 +530,7 @@ class TestSyntheticTextItemsGenerator:
 
         # Results should be identical with same seed
         assert len(items1) == len(items2)
-        for item1, item2 in zip(items1, items2):
+        for item1, item2 in zip(items1, items2, strict=False):
             assert item1["prompt"] == item2["prompt"]
             assert item1["prompt_tokens_count"] == item2["prompt_tokens_count"]
             assert item1["output_tokens_count"] == item2["output_tokens_count"]

@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -33,7 +33,7 @@ class GenerationRequest(StandardBaseModel):
         of output tokens. Used for controlling the behavior of the backend.
     """
 
-    request_id: Optional[str] = Field(
+    request_id: str | None = Field(
         default_factory=lambda: str(uuid.uuid4()),
         description="The unique identifier for the request.",
     )

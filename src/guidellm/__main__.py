@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 from pathlib import Path
-from typing import Annotated, Union
+from typing import Annotated
 
 import click
 from pydantic import ValidationError
@@ -78,9 +78,8 @@ __all__ = [
     "run",
 ]
 
-STRATEGY_PROFILE_CHOICES: Annotated[
-    list[str], "Available strategy and profile choices for benchmark execution types"
-] = list(get_literal_vals(Union[ProfileType, StrategyType]))
+# Available strategy and profile choices for benchmark execution types
+STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
 
 
 def decode_escaped_str(_ctx, _param, value):

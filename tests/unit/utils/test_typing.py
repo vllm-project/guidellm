@@ -2,10 +2,9 @@
 Test suite for the typing utilities module.
 """
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, TypeAlias
 
 import pytest
-from typing_extensions import TypeAlias
 
 from guidellm.utils.typing import get_literal_vals
 
@@ -15,7 +14,7 @@ LocalStrategyType = Annotated[
     Literal["synchronous", "concurrent", "throughput", "constant", "poisson"],
     "Valid strategy type identifiers for scheduling request patterns",
 ]
-StrategyProfileType: TypeAlias = Union[LocalStrategyType, LocalProfileType]
+StrategyProfileType: TypeAlias = LocalStrategyType | LocalProfileType
 
 
 class TestGetLiteralVals:
@@ -54,7 +53,7 @@ class TestGetLiteralVals:
 
         ### WRITTEN BY AI ###
         """
-        result = get_literal_vals(Union[LocalProfileType, LocalStrategyType])
+        result = get_literal_vals(LocalProfileType | LocalStrategyType)
         expected = frozenset(
             {
                 "synchronous",
@@ -118,6 +117,6 @@ class TestGetLiteralVals:
 
         ### WRITTEN BY AI ###
         """
-        result = get_literal_vals(Union[Literal["test", "test2"], Literal["test3"]])
+        result = get_literal_vals(Literal["test", "test2"] | Literal["test3"])
         expected = frozenset({"test", "test2", "test3"})
         assert result == expected

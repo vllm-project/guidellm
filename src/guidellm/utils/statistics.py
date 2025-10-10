@@ -149,7 +149,7 @@ class DistributionSummary(StandardBaseModel):
             in the output
         :return: DistributionSummary instance with calculated statistical metrics
         """
-        values, weights = zip(*distribution) if distribution else ([], [])
+        values, weights = zip(*distribution, strict=True) if distribution else ([], [])
         values = np.array(values)  # type: ignore[assignment]
         weights = np.array(weights)  # type: ignore[assignment]
 
@@ -247,7 +247,7 @@ class DistributionSummary(StandardBaseModel):
             )
 
         return DistributionSummary.from_distribution_function(
-            distribution=list(zip(values, weights)),
+            distribution=list(zip(values, weights, strict=True)),
             include_cdf=include_cdf,
         )
 
@@ -389,7 +389,7 @@ class DistributionSummary(StandardBaseModel):
         events[global_end] = 0
 
         for (_, end), first_iter, first_iter_count, total_count in zip(
-            requests, first_iter_times, first_iter_counts, iter_counts
+            requests, first_iter_times, first_iter_counts, iter_counts, strict=True
         ):
             events[first_iter] += first_iter_count
 
@@ -499,36 +499,36 @@ class StatusDistributionSummary(
             )
 
         _, successful_values, successful_weights = (
-            zip(*successful)
+            zip(*successful, strict=True)
             if (
                 successful := list(
                     filter(
                         lambda val: val[0] == "successful",
-                        zip(value_types, values, weights),
+                        zip(value_types, values, weights, strict=True),
                     )
                 )
             )
             else ([], [], [])
         )
         _, incomplete_values, incomplete_weights = (
-            zip(*incomplete)
+            zip(*incomplete, strict=True)
             if (
                 incomplete := list(
                     filter(
                         lambda val: val[0] == "incomplete",
-                        zip(value_types, values, weights),
+                        zip(value_types, values, weights, strict=True),
                     )
                 )
             )
             else ([], [], [])
         )
         _, errored_values, errored_weights = (
-            zip(*errored)
+            zip(*errored, strict=True)
             if (
                 errored := list(
                     filter(
                         lambda val: val[0] == "error",
-                        zip(value_types, values, weights),
+                        zip(value_types, values, weights, strict=True),
                     )
                 )
             )
@@ -604,36 +604,36 @@ class StatusDistributionSummary(
             )
 
         _, successful_requests = (
-            zip(*successful)
+            zip(*successful, strict=True)
             if (
                 successful := list(
                     filter(
                         lambda val: val[0] == "successful",
-                        zip(request_types, requests),
+                        zip(request_types, requests, strict=True),
                     )
                 )
             )
             else ([], [])
         )
         _, incomplete_requests = (
-            zip(*incomplete)
+            zip(*incomplete, strict=True)
             if (
                 incomplete := list(
                     filter(
                         lambda val: val[0] == "incomplete",
-                        zip(request_types, requests),
+                        zip(request_types, requests, strict=True),
                     )
                 )
             )
             else ([], [])
         )
         _, errored_requests = (
-            zip(*errored)
+            zip(*errored, strict=True)
             if (
                 errored := list(
                     filter(
                         lambda val: val[0] == "error",
-                        zip(request_types, requests),
+                        zip(request_types, requests, strict=True),
                     )
                 )
             )
@@ -734,7 +734,7 @@ class StatusDistributionSummary(
             successful_iter_counts,
             successful_first_iter_counts,
         ) = (
-            zip(*successful)
+            zip(*successful, strict=True)
             if (
                 successful := list(
                     filter(
@@ -745,6 +745,7 @@ class StatusDistributionSummary(
                             first_iter_times,
                             iter_counts,
                             first_iter_counts,
+                            strict=True,
                         ),
                     )
                 )
@@ -758,7 +759,7 @@ class StatusDistributionSummary(
             incomplete_iter_counts,
             incomplete_first_iter_counts,
         ) = (
-            zip(*incomplete)
+            zip(*incomplete, strict=True)
             if (
                 incomplete := list(
                     filter(
@@ -769,6 +770,7 @@ class StatusDistributionSummary(
                             first_iter_times,
                             iter_counts,
                             first_iter_counts,
+                            strict=True,
                         ),
                     )
                 )
@@ -782,7 +784,7 @@ class StatusDistributionSummary(
             errored_iter_counts,
             errored_first_iter_counts,
         ) = (
-            zip(*errored)
+            zip(*errored, strict=True)
             if (
                 errored := list(
                     filter(
@@ -793,6 +795,7 @@ class StatusDistributionSummary(
                             first_iter_times,
                             iter_counts,
                             first_iter_counts,
+                            strict=True,
                         ),
                     )
                 )
@@ -904,7 +907,7 @@ class RunningStats(StandardBaseModel):
         :return: Updated mean after adding the value
         :raises ValueError: If value is not numeric (int or float)
         """
-        if not isinstance(value, (int, float)):
+        if not isinstance(value, int | float):
             raise ValueError(
                 f"Value must be an int or float, got {type(value)} instead.",
             )
@@ -921,7 +924,7 @@ class RunningStats(StandardBaseModel):
         :return: Self reference for method chaining
         :raises ValueError: If value is not numeric (int or float)
         """
-        if not isinstance(value, (int, float)):
+        if not isinstance(value, int | float):
             raise ValueError(
                 f"Value must be an int or float, got {type(value)} instead.",
             )

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from datasets import (
     Dataset,
@@ -18,18 +18,18 @@ __all__ = ["HFDatasetsCreator"]
 
 class HFDatasetsCreator(DatasetCreator):
     @classmethod
-    def is_supported(cls, data: Any, data_args: Optional[dict[str, Any]]) -> bool:  # noqa: ARG003
+    def is_supported(cls, data: Any, data_args: dict[str, Any] | None) -> bool:  # noqa: ARG003
         if isinstance(
-            data, (Dataset, DatasetDict, IterableDataset, IterableDatasetDict)
+            data, Dataset | DatasetDict | IterableDataset | IterableDatasetDict
         ):
             # base type is supported
             return True
 
-        if isinstance(data, (str, Path)) and (path := Path(data)).exists():
+        if isinstance(data, str | Path) and (path := Path(data)).exists():
             # local folder or py file, assume supported
             return path.is_dir() or path.suffix == ".py"
 
-        if isinstance(data, (str, Path)):
+        if isinstance(data, str | Path):
             try:
                 # try to load dataset
                 return get_dataset_config_info(data) is not None
@@ -42,12 +42,12 @@ class HFDatasetsCreator(DatasetCreator):
     def handle_create(
         cls,
         data: Any,
-        data_args: Optional[dict[str, Any]],
-        processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],  # noqa: ARG003
-        processor_args: Optional[dict[str, Any]],  # noqa: ARG003
+        data_args: dict[str, Any] | None,
+        processor: str | Path | PreTrainedTokenizerBase | None,  # noqa: ARG003
+        processor_args: dict[str, Any] | None,  # noqa: ARG003
         random_seed: int,  # noqa: ARG003
-    ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
-        if isinstance(data, (str, Path)):
+    ) -> Dataset | DatasetDict | IterableDataset | IterableDatasetDict:
+        if isinstance(data, str | Path):
             data = load_dataset(data, **(data_args or {}))
         elif data_args:
             raise ValueError(
@@ -55,7 +55,7 @@ class HFDatasetsCreator(DatasetCreator):
             )
 
         if isinstance(
-            data, (Dataset, DatasetDict, IterableDataset, IterableDatasetDict)
+            data, Dataset | DatasetDict | IterableDataset | IterableDatasetDict
         ):
             return data
 

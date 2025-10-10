@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import typing
 from collections.abc import AsyncIterator
+from types import UnionType
 from typing import Any, Literal, Optional, TypeVar, Union
 
 import pytest
@@ -62,8 +63,7 @@ def test_multi_turn_request_t():
     assert MultiTurnRequestT.__name__ == "MultiTurnRequestT"
 
     value = MultiTurnRequestT.__value__
-    assert hasattr(value, "__origin__")
-    assert value.__origin__ is Union
+    assert isinstance(value, UnionType)
 
     type_params = getattr(MultiTurnRequestT, "__type_params__", ())
     assert len(type_params) == 1
@@ -340,7 +340,7 @@ class TestRequestSchedulerTimings:
         for key in self.CHECK_KEYS:
             assert key in fields
             field_info = fields[key]
-            assert field_info.annotation in (Union[float, None], Optional[float])
+            assert field_info.annotation in (Union[float, None], Optional[float])  # noqa: UP007
             assert field_info.default is None
 
     @pytest.mark.smoke
@@ -453,7 +453,7 @@ class TestRequestTimings:
         for key in self.CHECK_KEYS:
             assert key in fields
             field_info = fields[key]
-            assert field_info.annotation in (Union[float, None], Optional[float])
+            assert field_info.annotation in (Union[float, None], Optional[float])  # noqa: UP007
             assert field_info.default is None
 
     @pytest.mark.smoke
@@ -704,11 +704,11 @@ class TestScheduledRequestInfo:
                 else:
                     assert original_value is None or isinstance(
                         original_value,
-                        (RequestSchedulerTimings, MeasuredRequestTimings),
+                        RequestSchedulerTimings | MeasuredRequestTimings,
                     )
                     assert reconstructed_value is None or isinstance(
                         reconstructed_value,
-                        (RequestSchedulerTimings, MeasuredRequestTimings),
+                        RequestSchedulerTimings | MeasuredRequestTimings,
                     )
             else:
                 assert original_value == reconstructed_value

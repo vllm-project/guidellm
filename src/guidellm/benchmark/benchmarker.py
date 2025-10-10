@@ -228,12 +228,12 @@ class Benchmarker(
             existing: dict[str, Any] | StandardBaseDict,
             addition: dict[str, Any] | StandardBaseDict,
         ) -> dict[str, Any] | StandardBaseDict:
-            if not isinstance(existing, (dict, StandardBaseDict)):
+            if not isinstance(existing, dict | StandardBaseDict):
                 raise ValueError(
                     f"Existing value {existing} (type: {type(existing).__name__}) "
                     f"is not a valid type for merging."
                 )
-            if not isinstance(addition, (dict, StandardBaseDict)):
+            if not isinstance(addition, dict | StandardBaseDict):
                 raise ValueError(
                     f"Addition value {addition} (type: {type(addition).__name__}) "
                     f"is not a valid type for merging."

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase  # type: ignore[import]
@@ -80,12 +80,12 @@ class DatasetCreator(ABC):
     def create(
         cls,
         data: Any,
-        data_args: Optional[dict[str, Any]],
-        processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
-        processor_args: Optional[dict[str, Any]],
+        data_args: dict[str, Any] | None,
+        processor: str | Path | PreTrainedTokenizerBase | None,
+        processor_args: dict[str, Any] | None,
         random_seed: int = 42,
-        split_pref_order: Optional[list[str]] = None,
-    ) -> tuple[Union[Dataset, IterableDataset], dict[ColumnInputTypes, str]]:
+        split_pref_order: list[str] | None = None,
+    ) -> tuple[Dataset | IterableDataset, dict[ColumnInputTypes, str]]:
         if not cls.is_supported(data, data_args):
             raise ValueError(f"Unsupported data type: {type(data)} given for {data}. ")
 
@@ -95,10 +95,10 @@ class DatasetCreator(ABC):
             data, data_args, processor, processor_args, random_seed
         )
 
-        if isinstance(dataset, (DatasetDict, IterableDatasetDict)):
+        if isinstance(dataset, DatasetDict | IterableDatasetDict):
             dataset = cls.extract_dataset_split(dataset, split, split_pref_order)
 
-        if not isinstance(dataset, (Dataset, IterableDataset)):
+        if not isinstance(dataset, Dataset | IterableDataset):
             raise ValueError(
                 f"Unsupported data type: {type(dataset)} given for {dataset}."
             )
@@ -106,7 +106,7 @@ class DatasetCreator(ABC):
         return dataset, column_mappings
 
     @classmethod
-    def extract_args_split(cls, data_args: Optional[dict[str, Any]]) -> str:
+    def extract_args_split(cls, data_args: dict[str, Any] | None) -> str:
         split = "auto"
 
         if data_args and "split" in data_args:
@@ -118,7 +118,7 @@ class DatasetCreator(ABC):
     @classmethod
     def extract_args_column_mappings(
         cls,
-        data_args: Optional[dict[str, Any]],
+        data_args: dict[str, Any] | None,
     ) -> dict[ColumnInputTypes, str]:
         columns: dict[ColumnInputTypes, str] = {}
 
@@ -143,12 +143,12 @@ class DatasetCreator(ABC):
 
     @classmethod
     def extract_dataset_name(
-        cls, dataset: Union[Dataset, IterableDataset, DatasetDict, IterableDatasetDict]
-    ) -> Optional[str]:
-        if isinstance(dataset, (DatasetDict, IterableDatasetDict)):
+        cls, dataset: Dataset | IterableDataset | DatasetDict | IterableDatasetDict
+    ) -> str | None:
+        if isinstance(dataset, DatasetDict | IterableDatasetDict):
             dataset = dataset[list(dataset.keys())[0]]
 
-        if isinstance(dataset, (Dataset, IterableDataset)):
+        if isinstance(dataset, Dataset | IterableDataset):
             if not hasattr(dataset, "info") or not hasattr(
                 dataset.info, "dataset_name"
             ):
@@ -161,11 +161,11 @@ class DatasetCreator(ABC):
     @classmethod
     def extract_dataset_split(
         cls,
-        dataset: Union[DatasetDict, IterableDatasetDict],
-        specified_split: Union[Literal["auto"], str] = "auto",
-        split_pref_order: Optional[Union[Literal["auto"], list[str]]] = "auto",
-    ) -> Union[Dataset, IterableDataset]:
-        if not isinstance(dataset, (DatasetDict, IterableDatasetDict)):
+        dataset: DatasetDict | IterableDatasetDict,
+        specified_split: Literal["auto"] | str = "auto",
+        split_pref_order: Literal["auto"] | list[str] | None = "auto",
+    ) -> Dataset | IterableDataset:
+        if not isinstance(dataset, DatasetDict | IterableDatasetDict):
             raise ValueError(
                 f"Unsupported data type: {type(dataset)} given for {dataset}."
             )
@@ -199,15 +199,15 @@ class DatasetCreator(ABC):
 
     @classmethod
     @abstractmethod
-    def is_supported(cls, data: Any, data_args: Optional[dict[str, Any]]) -> bool: ...
+    def is_supported(cls, data: Any, data_args: dict[str, Any] | None) -> bool: ...
 
     @classmethod
     @abstractmethod
     def handle_create(
         cls,
         data: Any,
-        data_args: Optional[dict[str, Any]],
-        processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
-        processor_args: Optional[dict[str, Any]],
+        data_args: dict[str, Any] | None,
+        processor: str | Path | PreTrainedTokenizerBase | None,
+        processor_args: dict[str, Any] | None,
         random_seed: int,
-    ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]: ...
+    ) -> Dataset | DatasetDict | IterableDataset | IterableDatasetDict: ...

@@ -4,8 +4,6 @@ from pathlib import Path
 from typing import (
     Any,
     Literal,
-    Optional,
-    Union,
 )
 
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
@@ -43,9 +41,9 @@ class RequestLoader(Iterable):
 class GenerativeRequestLoaderDescription(RequestLoaderDescription):
     type_: Literal["generative_request_loader"] = "generative_request_loader"  # type: ignore[assignment]
     data: str
-    data_args: Optional[dict[str, Any]]
+    data_args: dict[str, Any] | None
     processor: str
-    processor_args: Optional[dict[str, Any]]
+    processor_args: dict[str, Any] | None
 
 
 class GenerativeRequestLoader(RequestLoader):
@@ -69,18 +67,11 @@ class GenerativeRequestLoader(RequestLoader):
 
     def __init__(
         self,
-        data: Union[
-            str,
-            Path,
-            Iterable[Union[str, dict[str, Any]]],
-            Dataset,
-            DatasetDict,
-            IterableDataset,
-            IterableDatasetDict,
-        ],
-        data_args: Optional[dict[str, Any]],
-        processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
-        processor_args: Optional[dict[str, Any]],
+        data: str | Path | Iterable[str | dict[str, Any]] | Dataset | DatasetDict | \
+              IterableDataset | IterableDatasetDict,
+        data_args: dict[str, Any] | None,
+        processor: str | Path | PreTrainedTokenizerBase | None,
+        processor_args: dict[str, Any] | None,
         shuffle: bool = True,
         iter_type: Literal["finite", "infinite"] = "finite",
         random_seed: int = 42,
@@ -202,7 +193,7 @@ class GenerativeRequestLoader(RequestLoader):
             "'data_args' dictionary."
         )
 
-    def _extract_prompt_tokens_count_column(self) -> Optional[str]:
+    def _extract_prompt_tokens_count_column(self) -> str | None:
         column_names = self._dataset_columns()
 
         if column_names and "prompt_tokens_count" in column_names:
@@ -213,7 +204,7 @@ class GenerativeRequestLoader(RequestLoader):
 
         return None
 
-    def _extract_output_tokens_count_column(self) -> Optional[str]:
+    def _extract_output_tokens_count_column(self) -> str | None:
         column_names = self._dataset_columns()
 
         if column_names and "output_tokens_count" in column_names:
@@ -224,7 +215,7 @@ class GenerativeRequestLoader(RequestLoader):
 
         return None
 
-    def _dataset_columns(self, err_msg: Optional[str] = None) -> Optional[list[str]]:
+    def _dataset_columns(self, err_msg: str | None = None) -> list[str] | None:
         try:
             column_names = self.dataset.column_names
 
@@ -240,7 +231,7 @@ class GenerativeRequestLoader(RequestLoader):
 
     def _get_dataset_iter(
         self, scope_create_count: int
-    ) -> Optional[Iterator[dict[str, Any]]]:
+    ) -> Iterator[dict[str, Any]] | None:
         if scope_create_count > 0 and self.iter_type != "infinite":
             return None
 

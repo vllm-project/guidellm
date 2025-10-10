@@ -17,7 +17,7 @@ import json
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Union
+from typing import Any, ClassVar
 
 import httpx
 from PIL import Image
@@ -33,13 +33,15 @@ from guidellm.scheduler import ScheduledRequestInfo
 
 __all__ = ["OpenAIHTTPBackend", "UsageStats"]
 
+ContentT = str | list[str | dict[str, str | dict[str, str]] | Path | Image.Image] | Any
+
 
 @dataclasses.dataclass
 class UsageStats:
     """Token usage statistics for generation requests."""
 
-    prompt_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
+    prompt_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 @Backend.register("openai_http")
@@ -78,19 +80,19 @@ class OpenAIHTTPBackend(Backend):
     def __init__(
         self,
         target: str,
-        model: Optional[str] = None,
-        api_key: Optional[str] = None,
-        organization: Optional[str] = None,
-        project: Optional[str] = None,
+        model: str | None = None,
+        api_key: str | None = None,
+        organization: str | None = None,
+        project: str | None = None,
         timeout: float = 60.0,
         http2: bool = True,
         follow_redirects: bool = True,
-        max_output_tokens: Optional[int] = None,
+        max_output_tokens: int | None = None,
         stream_response: bool = True,
-        extra_query: Optional[dict] = None,
-        extra_body: Optional[dict] = None,
-        remove_from_body: Optional[list[str]] = None,
-        headers: Optional[dict] = None,
+        extra_query: dict | None = None,
+        extra_body: dict | None = None,
+        remove_from_body: list[str] | None = None,
+        headers: dict | None = None,
         verify: bool = False,
     ):
         """
@@ -137,7 +139,7 @@ class OpenAIHTTPBackend(Backend):
 
         # Runtime state
         self._in_process = False
-        self._async_client: Optional[httpx.AsyncClient] = None
+        self._async_client: httpx.AsyncClient | None = None
 
     @property
     def info(self) -> dict[str, Any]:
@@ -264,7 +266,7 @@ class OpenAIHTTPBackend(Backend):
 
         return [item["id"] for item in response.json()["data"]]
 
-    async def default_model(self) -> Optional[str]:
+    async def default_model(self) -> str | None:
         """
         Get the default model for this backend.
 
@@ -280,7 +282,7 @@ class OpenAIHTTPBackend(Backend):
         self,
         request: GenerationRequest,
         request_info: ScheduledRequestInfo,
-        history: Optional[list[tuple[GenerationRequest, GenerationResponse]]] = None,
+        history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
     ) -> AsyncIterator[tuple[GenerationResponse, ScheduledRequestInfo]]:
         """
         Process a generation request and yield progressive responses.
@@ -363,12 +365,12 @@ class OpenAIHTTPBackend(Backend):
 
     async def text_completions(
         self,
-        prompt: Union[str, list[str]],
-        request_id: Optional[str],  # noqa: ARG002
-        output_token_count: Optional[int] = None,
+        prompt: str | list[str],
+        request_id: str | None,  # noqa: ARG002
+        output_token_count: int | None = None,
         stream_response: bool = True,
         **kwargs,
-    ) -> AsyncIterator[tuple[Optional[str], Optional[UsageStats]]]:
+    ) -> AsyncIterator[tuple[str | None, UsageStats | None]]:
         """
         Generate text completions using the /v1/completions endpoint.
 
@@ -431,17 +433,13 @@ class OpenAIHTTPBackend(Backend):
 
     async def chat_completions(
         self,
-        content: Union[
-            str,
-            list[Union[str, dict[str, Union[str, dict[str, str]]], Path, Image.Image]],
-            Any,
-        ],
-        request_id: Optional[str] = None,  # noqa: ARG002
-        output_token_count: Optional[int] = None,
+        content: ContentT,
+        request_id: str | None = None,  # noqa: ARG002
+        output_token_count: int | None = None,
         raw_content: bool = False,
         stream_response: bool = True,
         **kwargs,
-    ) -> AsyncIterator[tuple[Optional[str], Optional[UsageStats]]]:
+    ) -> AsyncIterator[tuple[str | None, UsageStats | None]]:
         """
         Generate chat completions using the /v1/chat/completions endpoint.
 
@@ -502,10 +500,10 @@ class OpenAIHTTPBackend(Backend):
 
     def _build_headers(
         self,
-        api_key: Optional[str],
-        organization: Optional[str],
-        project: Optional[str],
-        user_headers: Optional[dict],
+        api_key: str | None,
+        organization: str | None,
+        project: str | None,
+        user_headers: dict | None,
     ) -> dict[str, str]:
         headers = {}
 
@@ -541,11 +539,7 @@ class OpenAIHTTPBackend(Backend):
 
     def _get_chat_messages(
         self,
-        content: Union[
-            str,
-            list[Union[str, dict[str, Union[str, dict[str, str]]], Path, Image.Image]],
-            Any,
-        ],
+        content: ContentT,
     ) -> list[dict[str, Any]]:
         if isinstance(content, str):
             return [{"role": "user", "content": content}]
@@ -559,7 +553,7 @@ class OpenAIHTTPBackend(Backend):
                 resolved_content.append(item)
             elif isinstance(item, str):
                 resolved_content.append({"type": "text", "text": item})
-            elif isinstance(item, (Image.Image, Path)):
+            elif isinstance(item, Image.Image | Path):
                 resolved_content.append(self._get_chat_message_media_item(item))
             else:
                 raise ValueError(f"Unsupported content item type: {type(item)}")
@@ -567,7 +561,7 @@ class OpenAIHTTPBackend(Backend):
         return [{"role": "user", "content": resolved_content}]
 
     def _get_chat_message_media_item(
-        self, item: Union[Path, Image.Image]
+        self, item: Path | Image.Image
     ) -> dict[str, Any]:
         if isinstance(item, Image.Image):
             encoded = base64.b64encode(item.tobytes()).decode("utf-8")
@@ -597,8 +591,8 @@ class OpenAIHTTPBackend(Backend):
     def _get_body(
         self,
         endpoint_type: str,
-        request_kwargs: Optional[dict[str, Any]],
-        max_output_tokens: Optional[int] = None,
+        request_kwargs: dict[str, Any] | None,
+        max_output_tokens: int | None = None,
         **kwargs,
     ) -> dict[str, Any]:
         # Start with endpoint-specific extra body parameters
@@ -628,7 +622,7 @@ class OpenAIHTTPBackend(Backend):
 
         return {key: val for key, val in body.items() if val is not None}
 
-    def _get_completions_text_content(self, data: dict) -> Optional[str]:
+    def _get_completions_text_content(self, data: dict) -> str | None:
         if not data.get("choices"):
             return None
 
@@ -639,7 +633,7 @@ class OpenAIHTTPBackend(Backend):
             or choice.get("message", {}).get("content")
         )
 
-    def _get_completions_usage_stats(self, data: dict) -> Optional[UsageStats]:
+    def _get_completions_usage_stats(self, data: dict) -> UsageStats | None:
         if not data.get("usage"):
             return None
 

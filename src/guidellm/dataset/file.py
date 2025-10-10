@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import pandas as pd  # type: ignore[import]
 from datasets import (
@@ -30,8 +30,8 @@ class FileDatasetCreator(DatasetCreator):
     }
 
     @classmethod
-    def is_supported(cls, data: Any, data_args: Optional[dict[str, Any]]) -> bool:  # noqa: ARG003
-        if isinstance(data, (str, Path)) and (path := Path(data)).exists():
+    def is_supported(cls, data: Any, data_args: dict[str, Any] | None) -> bool:  # noqa: ARG003
+        if isinstance(data, str | Path) and (path := Path(data)).exists():
             # local folder or py file, assume supported
             return path.suffix.lower() in cls.SUPPORTED_TYPES
 
@@ -41,12 +41,12 @@ class FileDatasetCreator(DatasetCreator):
     def handle_create(
         cls,
         data: Any,
-        data_args: Optional[dict[str, Any]],
-        processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],  # noqa: ARG003
-        processor_args: Optional[dict[str, Any]],  # noqa: ARG003
+        data_args: dict[str, Any] | None,
+        processor: str | Path | PreTrainedTokenizerBase | None,  # noqa: ARG003
+        processor_args: dict[str, Any] | None,  # noqa: ARG003
         random_seed: int,  # noqa: ARG003
-    ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
-        if not isinstance(data, (str, Path)):
+    ) -> Dataset | DatasetDict | IterableDataset | IterableDatasetDict:
+        if not isinstance(data, str | Path):
             raise ValueError(f"Unsupported data type: {type(data)} given for {data}. ")
 
         path = Path(data)
@@ -63,8 +63,8 @@ class FileDatasetCreator(DatasetCreator):
 
     @classmethod
     def load_dataset(
-        cls, path: Path, data_args: Optional[dict[str, Any]]
-    ) -> Union[Dataset, IterableDataset]:
+        cls, path: Path, data_args: dict[str, Any] | None
+    ) -> Dataset | IterableDataset:
         if path.suffix.lower() in {".txt", ".text"}:
             with path.open("r") as file:
                 items = file.readlines()

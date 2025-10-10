@@ -7,7 +7,7 @@ implementations.
 """
 
 import uuid
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -73,32 +73,32 @@ class GenerationResponse(StandardBaseModel):
     request_args: dict[str, Any] = Field(
         description="Arguments passed to the backend for this request."
     )
-    value: Optional[str] = Field(
+    value: str | None = Field(
         default=None,
         description="Complete generated text content. None for streaming responses.",
     )
-    delta: Optional[str] = Field(
+    delta: str | None = Field(
         default=None, description="Incremental text content for streaming responses."
     )
     iterations: int = Field(
         default=0, description="Number of generation iterations completed."
     )
-    request_prompt_tokens: Optional[int] = Field(
+    request_prompt_tokens: int | None = Field(
         default=None, description="Token count from the original request prompt."
     )
-    request_output_tokens: Optional[int] = Field(
+    request_output_tokens: int | None = Field(
         default=None,
         description="Expected output token count from the original request.",
     )
-    response_prompt_tokens: Optional[int] = Field(
+    response_prompt_tokens: int | None = Field(
         default=None, description="Actual prompt token count reported by the backend."
     )
-    response_output_tokens: Optional[int] = Field(
+    response_output_tokens: int | None = Field(
         default=None, description="Actual output token count reported by the backend."
     )
 
     @property
-    def prompt_tokens(self) -> Optional[int]:
+    def prompt_tokens(self) -> int | None:
         """
         :return: The number of prompt tokens used in the request
             (response_prompt_tokens if available, otherwise request_prompt_tokens).
@@ -106,7 +106,7 @@ class GenerationResponse(StandardBaseModel):
         return self.response_prompt_tokens or self.request_prompt_tokens
 
     @property
-    def output_tokens(self) -> Optional[int]:
+    def output_tokens(self) -> int | None:
         """
         :return: The number of output tokens generated in the response
             (response_output_tokens if available, otherwise request_output_tokens).
@@ -114,7 +114,7 @@ class GenerationResponse(StandardBaseModel):
         return self.response_output_tokens or self.request_output_tokens
 
     @property
-    def total_tokens(self) -> Optional[int]:
+    def total_tokens(self) -> int | None:
         """
         :return: The total number of tokens used in the request and response.
             Sum of prompt_tokens and output_tokens.
@@ -125,7 +125,7 @@ class GenerationResponse(StandardBaseModel):
 
     def preferred_prompt_tokens(
         self, preferred_source: Literal["request", "response"]
-    ) -> Optional[int]:
+    ) -> int | None:
         if preferred_source == "request":
             return self.request_prompt_tokens or self.response_prompt_tokens
         else:
@@ -133,7 +133,7 @@ class GenerationResponse(StandardBaseModel):
 
     def preferred_output_tokens(
         self, preferred_source: Literal["request", "response"]
-    ) -> Optional[int]:
+    ) -> int | None:
         if preferred_source == "request":
             return self.request_output_tokens or self.response_output_tokens
         else:
@@ -146,11 +146,11 @@ class GenerationRequestTimings(MeasuredRequestTimings):
     """Timing model for tracking generation request lifecycle events."""
 
     timings_type: Literal["generation_request_timings"] = "generation_request_timings"
-    first_iteration: Optional[float] = Field(
+    first_iteration: float | None = Field(
         default=None,
         description="Unix timestamp when the first generation iteration began.",
     )
-    last_iteration: Optional[float] = Field(
+    last_iteration: float | None = Field(
         default=None,
         description="Unix timestamp when the last generation iteration completed.",
     )

@@ -34,10 +34,11 @@ from guidellm.utils import (
     DistributionSummary,
     RegistryMixin,
     StatusDistributionSummary,
+    camelize_str,
+    recursive_key_update,
     safe_format_timestamp,
     split_text_list_by_length,
 )
-from guidellm.utils import recursive_key_update, camelize_str
 
 __all__ = [
     "GenerativeBenchmarkerCSV",
@@ -90,7 +91,7 @@ class GenerativeBenchmarkerOutput(
         if not output_formats:
             return {}
 
-        if isinstance(output_formats, (list, tuple)):
+        if isinstance(output_formats, list | tuple):
             # support list of output keys: ["csv", "json"]
             # support list of files: ["path/to/file.json", "path/to/file.csv"]
             formats_list = output_formats
@@ -369,7 +370,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 f"Value and style length mismatch: {len(value)} vs {len(style)}"
             )
 
-        for val, sty in zip(value, style):
+        for val, sty in zip(value, style, strict=False):
             text.append(val, style=sty)
 
         self.console.print(Padding.indent(text, indent))
@@ -568,8 +569,8 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 benchmark_values: list[str | float | list[float]] = []
 
                 # Add basic run description info
-                desc_headers, desc_values = (
-                    self._get_benchmark_desc_headers_and_values(benchmark)
+                desc_headers, desc_values = self._get_benchmark_desc_headers_and_values(
+                    benchmark
                 )
                 benchmark_headers.extend(desc_headers)
                 benchmark_values.extend(desc_values)
@@ -680,7 +681,8 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         return headers, values
 
     def _get_benchmark_extras_headers_and_values(
-        self, benchmark: GenerativeBenchmark,
+        self,
+        benchmark: GenerativeBenchmark,
     ) -> tuple[list[str], list[str]]:
         headers = ["Profile", "Backend", "Generator Data"]
         values: list[str] = [
@@ -733,9 +735,7 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
         ui_api_data = {}
         for k, v in camel_data.items():
             placeholder_key = f"window.{k} = {{}};"
-            replacement_value = (
-                f"window.{k} = {json.dumps(v, indent=2)};\n"
-            )
+            replacement_value = f"window.{k} = {json.dumps(v, indent=2)};\n"
             ui_api_data[placeholder_key] = replacement_value
 
         create_report(ui_api_data, output_path)

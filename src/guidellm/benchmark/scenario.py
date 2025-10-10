@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from functools import cache, wraps
 from inspect import Parameter, signature
 from pathlib import Path
-from typing import Annotated, Any, Callable, Literal, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 import yaml
 from loguru import logger
@@ -38,7 +39,7 @@ def parse_float_list(value: str | float | list[float]) -> list[float]:
     or convert single float list of one or pass float
     list through.
     """
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return [value]
     elif isinstance(value, list):
         return value

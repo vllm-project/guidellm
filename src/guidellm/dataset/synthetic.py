@@ -3,7 +3,7 @@ import random
 from collections.abc import Iterable, Iterator
 from itertools import cycle
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 import yaml
 from datasets import (
@@ -35,17 +35,17 @@ class SyntheticDatasetConfig(BaseModel):
         description="The average number of text tokens generated for prompts.",
         gt=0,
     )
-    prompt_tokens_stdev: Optional[int] = Field(
+    prompt_tokens_stdev: int | None = Field(
         description="The standard deviation of the tokens generated for prompts.",
         gt=0,
         default=None,
     )
-    prompt_tokens_min: Optional[int] = Field(
+    prompt_tokens_min: int | None = Field(
         description="The minimum number of text tokens generated for prompts.",
         gt=0,
         default=None,
     )
-    prompt_tokens_max: Optional[int] = Field(
+    prompt_tokens_max: int | None = Field(
         description="The maximum number of text tokens generated for prompts.",
         gt=0,
         default=None,
@@ -54,17 +54,17 @@ class SyntheticDatasetConfig(BaseModel):
         description="The average number of text tokens generated for outputs.",
         gt=0,
     )
-    output_tokens_stdev: Optional[int] = Field(
+    output_tokens_stdev: int | None = Field(
         description="The standard deviation of the tokens generated for outputs.",
         gt=0,
         default=None,
     )
-    output_tokens_min: Optional[int] = Field(
+    output_tokens_min: int | None = Field(
         description="The minimum number of text tokens generated for outputs.",
         gt=0,
         default=None,
     )
-    output_tokens_max: Optional[int] = Field(
+    output_tokens_max: int | None = Field(
         description="The maximum number of text tokens generated for outputs.",
         gt=0,
         default=None,
@@ -80,7 +80,7 @@ class SyntheticDatasetConfig(BaseModel):
     )
 
     @staticmethod
-    def parse_str(data: Union[str, Path]) -> "SyntheticDatasetConfig":
+    def parse_str(data: str | Path) -> "SyntheticDatasetConfig":
         if (
             isinstance(data, Path)
             or data.strip().endswith(".config")
@@ -117,7 +117,7 @@ class SyntheticDatasetConfig(BaseModel):
         return SyntheticDatasetConfig(**config_dict)  # type: ignore[arg-type]
 
     @staticmethod
-    def parse_config_file(data: Union[str, Path]) -> "SyntheticDatasetConfig":
+    def parse_config_file(data: str | Path) -> "SyntheticDatasetConfig":
         with Path(data).open("r") as file:
             config_dict = yaml.safe_load(file)
 
@@ -128,7 +128,7 @@ class SyntheticTextItemsGenerator(
     Iterable[
         dict[
             Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
-            Union[str, int],
+            str | int,
         ]
     ]
 ):
@@ -150,7 +150,7 @@ class SyntheticTextItemsGenerator(
     ) -> Iterator[
         dict[
             Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
-            Union[str, int],
+            str | int,
         ]
     ]:
         prompt_tokens_sampler = IntegerRangeSampler(
@@ -177,7 +177,7 @@ class SyntheticTextItemsGenerator(
         for _, prompt_tokens, output_tokens in zip(
             range(self.config.samples),
             prompt_tokens_sampler,
-            output_tokens_sampler,
+            output_tokens_sampler, strict=False,
         ):
             start_index = rand.randint(0, len(self.text_creator.words))
             prompt_text = self.processor.decode(
@@ -194,7 +194,7 @@ class SyntheticTextItemsGenerator(
             }
 
     def _create_prompt(
-        self, prompt_tokens: int, start_index: int, unique_prefix: Optional[int] = None
+        self, prompt_tokens: int, start_index: int, unique_prefix: int | None = None
     ) -> list[int]:
         if prompt_tokens <= 0:
             return []
@@ -224,7 +224,7 @@ class SyntheticDatasetCreator(DatasetCreator):
     def is_supported(
         cls,
         data: Any,
-        data_args: Optional[dict[str, Any]],  # noqa: ARG003
+        data_args: dict[str, Any] | None,  # noqa: ARG003
     ) -> bool:
         if (
             isinstance(data, Path)
@@ -248,11 +248,11 @@ class SyntheticDatasetCreator(DatasetCreator):
     def handle_create(
         cls,
         data: Any,
-        data_args: Optional[dict[str, Any]],
-        processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
-        processor_args: Optional[dict[str, Any]],
+        data_args: dict[str, Any] | None,
+        processor: str | Path | PreTrainedTokenizerBase | None,
+        processor_args: dict[str, Any] | None,
         random_seed: int,
-    ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
+    ) -> Dataset | DatasetDict | IterableDataset | IterableDatasetDict:
         processor = check_load_processor(
             processor,
             processor_args,
@@ -270,7 +270,7 @@ class SyntheticDatasetCreator(DatasetCreator):
     @classmethod
     def extract_args_column_mappings(
         cls,
-        data_args: Optional[dict[str, Any]],
+        data_args: dict[str, Any] | None,
     ) -> dict[ColumnInputTypes, str]:
         data_args_columns = super().extract_args_column_mappings(data_args)
 
