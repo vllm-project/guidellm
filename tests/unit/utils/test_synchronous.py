@@ -6,7 +6,7 @@ import threading
 from functools import wraps
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
-from typing import Union
+from typing import get_args
 
 import pytest
 
@@ -32,17 +32,25 @@ def async_timeout(delay: float):
 
 
 def test_sync_object_types_alias():
-    """Test that SyncObjectTypesAlias is defined correctly as a type alias."""
-    assert hasattr(SyncObjectTypesAlias, "__origin__")
-    if hasattr(SyncObjectTypesAlias, "__args__"):
-        actual_type = SyncObjectTypesAlias.__args__[0]
-        assert hasattr(actual_type, "__origin__")
-        assert actual_type.__origin__ is Union
-        union_args = actual_type.__args__
-        assert threading.Event in union_args
-        assert ProcessingEvent in union_args
-        assert threading.Barrier in union_args
-        assert ProcessingBarrier in union_args
+    """
+    Test that SyncObjectTypesAlias is defined correctly as a type alias.
+
+    ## WRITTEN BY AI ##
+    """
+    # Get the actual types from the union alias
+    actual_types = get_args(SyncObjectTypesAlias)
+
+    # Define the set of expected types
+    expected_types = {
+        threading.Event,
+        ProcessingEvent,
+        threading.Barrier,
+        ProcessingBarrier,
+    }
+
+    # Assert that the set of actual types matches the expected set.
+    # Using a set comparison is robust as it ignores the order.
+    assert set(actual_types) == expected_types
 
 
 class TestWaitForSyncEvent:

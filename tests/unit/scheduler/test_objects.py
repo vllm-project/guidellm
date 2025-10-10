@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import typing
 from collections.abc import AsyncIterator
+from types import UnionType
 from typing import Any, Literal, Optional, TypeVar, Union
 
 import pytest
@@ -62,8 +63,7 @@ def test_multi_turn_request_t():
     assert MultiTurnRequestT.__name__ == "MultiTurnRequestT"
 
     value = MultiTurnRequestT.__value__
-    assert hasattr(value, "__origin__")
-    assert value.__origin__ is Union
+    assert isinstance(value, UnionType)
 
     type_params = getattr(MultiTurnRequestT, "__type_params__", ())
     assert len(type_params) == 1
