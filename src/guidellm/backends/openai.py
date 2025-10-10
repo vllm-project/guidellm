@@ -30,6 +30,7 @@ from guidellm.backends.objects import (
     GenerationResponse,
 )
 from guidellm.scheduler import HistoryT, ScheduledRequestInfo
+from guidellm.settings import settings
 
 __all__ = ["OpenAIHTTPBackend", "UsageStats"]
 
@@ -628,12 +629,10 @@ class OpenAIHTTPBackend(Backend):
         # Handle token limits
         max_tokens = max_output_tokens or self.max_output_tokens
         if max_tokens is not None:
-            body.update(
-                {
-                    "max_tokens": max_tokens,
-                    "max_completion_tokens": max_tokens,
-                }
+            max_output_key = settings.openai.max_output_key.get(
+                endpoint_type, "max_tokens"
             )
+            body[max_output_key] = max_output_tokens
             # Set stop conditions only for request-level limits
             if max_output_tokens:
                 body.update({"stop": None, "ignore_eos": True})
