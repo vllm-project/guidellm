@@ -227,7 +227,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./ui/out
+          publish_dir: ./src/ui/out
           destination_dir: ui/${TAG}
           keep_files: false
           user_name: ${{ github.actor }}
@@ -294,15 +294,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get version from branch
+        run: |
+          echo "package_version=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      - name: Fail if version is unset
+        if: ${{ env.package_version == '' }}
+        run: |
+          exit 1
       - name: Buildah build
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ github.event.repository.name }}
-          # TODO: Tag version
-          tags: latest stable
+          build-args: |
+            GUIDELLM_BUILD_TYPE=release
+          tags: ${{ env.package_version }}
           containerfiles: |
-            ./deploy/Containerfile
+            ./Containerfile
       - name: Push To ghcr.io
         id: push-to-ghcr
         uses: redhat-actions/push-to-registry@v2
