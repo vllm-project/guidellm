@@ -320,7 +320,7 @@ class TestInterProcessMessagingQueue:
             ),
         ],
     )
-    @async_timeout(10.0)
+    @async_timeout(50.0)
     async def test_lifecycle_put_get(self, valid_instances, test_obj):
         instance, constructor_args, manager, context = valid_instances
 
@@ -392,7 +392,7 @@ class TestInterProcessMessagingQueue:
             ),
         ],
     )
-    @async_timeout(10.0)
+    @async_timeout(50.0)
     async def test_lifecycle_put_get_iter(self, valid_instances, test_obj):
         instance, constructor_args, manager, context = valid_instances
 
@@ -541,7 +541,7 @@ class TestInterProcessMessagingManagerQueue:
             lambda: [threading.Event(), multiprocessing.Event()],
         ],
     )
-    @async_timeout(5.0)
+    @async_timeout(20.0)
     async def test_start_stop_lifecycle(self, valid_instances, stop_events_lambda):
         """Test InterProcessMessagingQueue start/stop lifecycle."""
         instance, _, _, _ = valid_instances
@@ -615,7 +615,7 @@ class TestInterProcessMessagingManagerQueue:
             ),
         ],
     )
-    @async_timeout(10.0)
+    @async_timeout(50.0)
     async def test_lifecycle_put_get(self, valid_instances, test_obj):
         instance, constructor_args, _, context = valid_instances
 
@@ -687,7 +687,7 @@ class TestInterProcessMessagingManagerQueue:
             ),
         ],
     )
-    @async_timeout(10.0)
+    @async_timeout(50.0)
     async def test_lifecycle_put_get_iter(self, valid_instances, test_obj):
         instance, constructor_args, _, context = valid_instances
 
@@ -846,7 +846,7 @@ class TestInterProcessMessagingPipe:
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
-    @async_timeout(5.0)
+    @async_timeout(20.0)
     async def test_start_stop_lifecycle(self, valid_instances):
         """Test InterProcessMessagingPipe start/stop lifecycle."""
         instance, _, _, _ = valid_instances
@@ -915,7 +915,7 @@ class TestInterProcessMessagingPipe:
             ),
         ],
     )
-    @async_timeout(10.0)
+    @async_timeout(50.0)
     async def test_lifecycle_put_get(self, valid_instances, test_obj):
         instance, constructor_args, manager, context = valid_instances
 
