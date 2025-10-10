@@ -132,6 +132,7 @@ def httpx_openai_mock(request):
             assert payload["stream_options"] == {"include_usage": True}
             assert payload["prompt"] is not None
             assert len(payload["prompt"]) > 0
+            assert payload["max_completion_tokens"] > 0
             assert payload["max_tokens"] > 0
 
             return httpx.Response(  # type: ignore
@@ -140,7 +141,7 @@ def httpx_openai_mock(request):
                     type_="text",
                     prompt=payload["prompt"],
                     output_token_count=(
-                        payload["max_tokens"]
+                        payload["max_completion_tokens"]
                         if payload.get("ignore_eos", False)
                         else None
                     ),
@@ -161,6 +162,7 @@ def httpx_openai_mock(request):
             assert payload["messages"] is not None
             assert len(payload["messages"]) > 0
             assert payload["max_completion_tokens"] > 0
+            assert payload["max_tokens"] > 0
 
             return httpx.Response(  # type: ignore
                 200,
