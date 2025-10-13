@@ -9,11 +9,11 @@ from typing import Annotated, Any, Literal, TypeVar
 
 import yaml
 from loguru import logger
-from pydantic import BeforeValidator, Field, PositiveFloat, PositiveInt, SkipValidation
+from pydantic import BeforeValidator, Field, PositiveFloat, PositiveInt
 
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.types import AggregatorInputT, DataInputT, ProcessorInputT
+from guidellm.benchmark.types import ProcessorInputT
 from guidellm.scheduler import StrategyType
 from guidellm.utils import StandardBaseModel
 
@@ -108,11 +108,7 @@ class GenerativeTextScenario(Scenario):
         # types like PreTrainedTokenizerBase
         arbitrary_types_allowed = True
 
-    data: Annotated[
-        DataInputT,
-        # BUG: See https://github.com/pydantic/pydantic/issues/9541
-        SkipValidation,
-    ]
+    data: Any
     profile: StrategyType | ProfileType | Profile
     rate: Annotated[list[PositiveFloat] | None, BeforeValidator(parse_float_list)] = (
         None
@@ -128,7 +124,6 @@ class GenerativeTextScenario(Scenario):
     data_args: dict[str, Any] | None = None
     data_sampler: Literal["random"] | None = None
     # Aggregators configuration
-    add_aggregators: AggregatorInputT | None = None
     warmup: Annotated[float | None, Field(gt=0, le=1)] = None
     cooldown: Annotated[float | None, Field(gt=0, le=1)] = None
     request_samples: PositiveInt | None = 20

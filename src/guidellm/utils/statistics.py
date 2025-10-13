@@ -288,13 +288,14 @@ class DistributionSummary(StandardBaseModel):
         if distribution_type == "concurrency":
             # For concurrency, each request adds to concurrency at start
             # and subtracts at end
-            for (start, end), weight in zip(requests, weights):
+            for (start, end), weight in zip(requests, weights, strict=False):
                 events.append((start, weight))
                 events.append((end, -1 * weight))
         elif distribution_type == "rate":
             # For rate, each request is added at the end time only
-            events.append((min(0, *(start for start, _ in requests)), 0.0))
-            for (_, end), weight in zip(requests, weights):
+            global_start = min(start for start, _ in requests) if requests else 0.0
+            events.append((global_start, 0.0))
+            for (_, end), weight in zip(requests, weights, strict=False):
                 events.append((end, weight))
         else:
             raise ValueError(
@@ -633,36 +634,36 @@ class StatusDistributionSummary(
             )
 
         _, successful_requests, successful_weights = (
-            zip(*successful)
+            zip(*successful, strict=False)
             if (
                 successful := list(
                     filter(
                         lambda val: val[0] == "successful",
-                        zip(request_types, requests, weights),
+                        zip(request_types, requests, weights, strict=False),
                     )
                 )
             )
             else ([], [], [])
         )
         _, incomplete_requests, incomplete_weights = (
-            zip(*incomplete)
+            zip(*incomplete, strict=False)
             if (
                 incomplete := list(
                     filter(
                         lambda val: val[0] == "incomplete",
-                        zip(request_types, requests, weights),
+                        zip(request_types, requests, weights, strict=False),
                     )
                 )
             )
             else ([], [], [])
         )
         _, errored_requests, errored_weights = (
-            zip(*errored)
+            zip(*errored, strict=False)
             if (
                 errored := list(
                     filter(
                         lambda val: val[0] == "error",
-                        zip(request_types, requests, weights),
+                        zip(request_types, requests, weights, strict=False),
                     )
                 )
             )

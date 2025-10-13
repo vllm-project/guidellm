@@ -808,7 +808,7 @@ class _GenerativeProgressTaskState:
 
     def update(
         self,
-        aggregator_update: EstimatedBenchmarkState,
+        estimated_state: EstimatedBenchmarkState,
         scheduler_state: SchedulerState,
     ):
         self.progress = (
@@ -816,64 +816,66 @@ class _GenerativeProgressTaskState:
             if scheduler_state.remaining_fraction is not None
             else 0.0
         )
-        status: Literal["in_warmup", "in_progress", "in_cooldown"] | None = (
-            "in_progress"  # Need to handle requests_in_* isn't in aggregator_update
-        )
-        if aggregator_update.get("requests_in_warmup"):
-            status = "in_warmup"
-        elif aggregator_update.get("requests_in_cooldown"):
-            status = "in_cooldown"
         self._update_processing_states(
-            benchmark_status=status,
+            benchmark_status=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_state_group,
+                key="status",
+                default=None,
+            ),
             start_time=scheduler_state.start_time,
             successful_requests=scheduler_state.successful_requests,
             cancelled_requests=scheduler_state.cancelled_requests,
             errored_requests=scheduler_state.errored_requests,
         )
         self._update_request_stats(
-            request_concurrency=aggregator_update.get_metric(
-                key="requests", type_="avg", prefix="completed"
+            request_concurrency=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="concurrency_requests",
             ),
-            requests_per_second=aggregator_update.get_metric(
-                key="requests",
-                type_="rate",
-                prefix="completed",
+            requests_per_second=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_requests_per_second",
             ),
-            request_latency=aggregator_update.get_metric(
-                key="request_latency", type_="avg", prefix="completed"
+            request_latency=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_request_latency",
             ),
         )
         self._update_token_stats(
-            output_tokens=aggregator_update.get_metric(
-                key="output_tokens", type_="avg", prefix="completed"
+            output_tokens=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_output_tokens_total",
             ),
-            output_tokens_rate=aggregator_update.get_metric(
-                key="output_tokens", type_="rate"
+            output_tokens_rate=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_output_tokens",
             ),
-            prompt_tokens=aggregator_update.get_metric(
-                key="prompt_tokens", type_="avg", prefix="completed"
+            prompt_tokens=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_input_tokens_total",
             ),
-            total_tokens_rate=aggregator_update.get_metric(
-                key="total_tokens", type_="rate"
+            total_tokens_rate=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_total_tokens",
             ),
-            time_to_first_token=(
-                aggregator_update.get_metric(key="time_to_first_token", type_="avg")
+            time_to_first_token=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_time_to_first_token",
             ),
-            inter_token_latency=(
-                aggregator_update.get_metric(key="inter_token_latency", type_="avg")
+            inter_token_latency=estimated_state.get_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="completed_inter_token_latency",
             ),
         )
-        if aggregator_update.get("updated_scheduler_stats"):
+        if estimated_state.get("updated_scheduler_stats"):
             self._update_system_stats(
-                request_targeted_start_delay=(
-                    aggregator_update.get_metric(
-                        key="request_targeted_start_delay", type_="avg", default=0.0
-                    )
+                request_targeted_start_delay=estimated_state.get_metric(
+                    group=EstimatedBenchmarkState.scheduler_state_group,
+                    key="request_targeted_start_delay",
                 ),
-                queued_time=(
-                    aggregator_update.get_metric(
-                        key="queued_time", type_="avg", default=0.0
-                    )
+                queued_time=estimated_state.get_metric(
+                    group=EstimatedBenchmarkState.scheduler_state_group,
+                    key="queued_time",
                 ),
                 scheduler_overheads_time=0.0,  # Need to add up metrics here
             )

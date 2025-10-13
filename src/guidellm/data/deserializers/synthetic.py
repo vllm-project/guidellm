@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from random import Random
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 from datasets import Features, IterableDataset, Value
@@ -209,7 +209,7 @@ class SyntheticTextGenerator:
 
         # Create prefix list maintaining the correct distribution
         prefixes = []
-        for bucket, weight in zip(self.config.prefix_buckets, unnorm_weights):
+        for bucket, weight in zip(self.config.prefix_buckets, unnorm_weights, strict=False):
             bucket_prefixes = [
                 self._create_prompt(bucket.prefix_tokens, faker)
                 for _ in range(bucket.prefix_count)

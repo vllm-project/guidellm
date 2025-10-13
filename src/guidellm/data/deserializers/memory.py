@@ -3,8 +3,9 @@ from __future__ import annotations
 import contextlib
 import csv
 import json
+from collections.abc import Callable
 from io import StringIO
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from datasets import Dataset
 from transformers import PreTrainedTokenizerBase

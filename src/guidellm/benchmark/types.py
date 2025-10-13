@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 from typing_extensions import TypeAliasType
 

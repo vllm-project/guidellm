@@ -36,7 +36,6 @@ import yaml
 from pydantic import Field, computed_field
 
 from guidellm.benchmark.profile import Profile
-from guidellm.benchmark.schemas import BenchmarkerDict, SchedulerDict
 from guidellm.scheduler import (
     BackendInterface,
     Environment,
@@ -309,8 +308,8 @@ class Benchmark(ABC):
         float,
     ]: ...
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def update_estimate(
         cls,
         args: BenchmarkArgs,
@@ -321,8 +320,8 @@ class Benchmark(ABC):
         scheduler_state: SchedulerState,
     ): ...
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def compile(
         cls,
         args: BenchmarkArgs,
@@ -537,7 +536,7 @@ class GenerativeMetricsSummary(StandardBaseDict):
     ) -> GenerativeMetricsSummary:
         total_values = [
             input_val + output_val
-            for input_val, output_val in zip(input_values, output_values)
+            for input_val, output_val in zip(input_values, output_values, strict=False)
         ]
 
         return GenerativeMetricsSummary(
@@ -828,7 +827,7 @@ class GenerativeMetrics(StandardBaseDict):
         # Always track concurrency
         state.add_time_averaged_metric(
             group=EstimatedBenchmarkState.benchmark_metrics_group,
-            key="concurrency",
+            key="concurrency_requests",
             value=scheduler_state.processing_requests,
         )
 
@@ -847,7 +846,7 @@ class GenerativeMetrics(StandardBaseDict):
         for prefix in (request_info.status, "total"):
             requests_count = (
                 scheduler_state.successful_requests
-                if prefix == "successful"
+                if prefix == "completed"
                 else scheduler_state.errored_requests
                 if prefix == "errored"
                 else scheduler_state.cancelled_requests
@@ -914,11 +913,16 @@ class GenerativeMetrics(StandardBaseDict):
                 value=(response.output_metrics.total_tokens if response else None)
                 or request.output_metrics.total_tokens,
             )
-
-            # General stats
             output_tokens = (
                 response.output_metrics.total_tokens if response else None
             ) or request.output_metrics.total_tokens
+            state.add_avg_rate_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="total_tokens",
+                value=output_tokens,
+            )
+
+            # General stats
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_time_to_first_token",
@@ -1162,6 +1166,13 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
         request_info: RequestInfo,
         scheduler_state: SchedulerState,
     ):
+        if (
+            request_info.status == "cancelled"
+            and request_info.timings.resolve_start is None
+        ):
+            # Cancelled requests that never started should be ignored
+            return
+
         # Update child metric groups
         BenchmarkSchedulerStats.update_estimate(state, request_info)
         GenerativeMetrics.update_estimate(
@@ -1176,29 +1187,37 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
             state["samples_errored"] = []
             state["requests_incomplete"] = []
             state["samples_incomplete"] = []
+        in_warmup = state.set_metric(
+            group=EstimatedBenchmarkState.benchmark_state_group,
+            key="in_warmup",
+            value=args.is_in_warmup(request_info, scheduler_state),
+        )
+        in_cooldown = state.set_metric(
+            group=EstimatedBenchmarkState.benchmark_state_group,
+            key="in_cooldown",
+            value=args.is_in_cooldown(request_info, scheduler_state),
+        )
+        state[f"{EstimatedBenchmarkState.benchmark_state_group}_status"] = (
+            "in_cooldown"
+            if in_cooldown
+            else "in_warmup"
+            if in_warmup
+            else "in_progress"
+        )
 
-        if request_info.status not in {"completed", "errored", "cancelled"}:
+        if (
+            request_info.status not in {"completed", "errored", "cancelled"}
+            or in_warmup
+            or in_cooldown
+        ):
             # Must be fully resolved to be added
             return
 
-        if (
-            request_info.status == "cancelled"
-            and request_info.timings.resolve_start is None
-        ):
-            # Cancelled requests that never started should not be added
-            return
-
-        state.set_metric(group=cls.group_name, key="updated", value=True)
-        if state.set_metric(
-            group=cls.group_name,
-            key="in_warmup",
-            value=args.is_in_warmup(request_info, scheduler_state),
-        ) or state.set_metric(
-            group=cls.group_name,
-            key="in_cooldown",
-            value=args.is_in_cooldown(request_info, scheduler_state),
-        ):
-            return
+        state.set_metric(
+            group=EstimatedBenchmarkState.benchmark_state_group,
+            key="updated",
+            value=True,
+        )
 
         if response is None:
             response = GenerationResponse(

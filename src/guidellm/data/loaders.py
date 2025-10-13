@@ -39,7 +39,7 @@ class DatasetsIterator(TorchIterableDataset):
             )
 
         self.datasets = []
-        for datum, data_kwargs in zip(data, data_args):
+        for datum, data_kwargs in zip(data, data_args, strict=False):
             self.datasets.append(
                 DatasetDeserializerFactory.deserialize(
                     data=datum,

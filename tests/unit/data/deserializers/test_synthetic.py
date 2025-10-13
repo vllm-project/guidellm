@@ -362,7 +362,7 @@ class TestSyntheticTextGenerator:
 
         items1 = []
         items2 = []
-        for i, (item1, item2) in enumerate(zip(generator1, generator2)):
+        for i, (item1, item2) in enumerate(zip(generator1, generator2, strict=False)):
             items1.append(item1)
             items2.append(item2)
             if i >= 2:  # Only get 3 items
@@ -370,7 +370,7 @@ class TestSyntheticTextGenerator:
 
         # With same seed and deterministic mocks, results should be identical
         assert len(items1) == len(items2)
-        for item1, item2 in zip(items1, items2):
+        for item1, item2 in zip(items1, items2, strict=False):
             assert item1["prompt_tokens_count"] == item2["prompt_tokens_count"]
             assert item1["output_tokens_count"] == item2["output_tokens_count"]
 

@@ -11,7 +11,7 @@ plugin architectures.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, ClassVar, Generic, TypeVar, cast
+from typing import ClassVar, Generic, TypeVar, cast
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 

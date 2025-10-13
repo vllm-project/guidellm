@@ -43,7 +43,7 @@ from guidellm.benchmark import (
     benchmark_generative_text,
     reimport_benchmarks_report,
 )
-from guidellm.benchmark.scenario import GenerativeTextScenario, get_builtin_scenarios
+from guidellm.benchmark.scenario import GenerativeTextScenario
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
@@ -123,25 +123,25 @@ def benchmark():
     help="Run a benchmark against a generative model using the specified arguments.",
     context_settings={"auto_envvar_prefix": "GUIDELLM"},
 )
-@click.option(
-    "--scenario",
-    type=cli_tools.Union(
-        click.Path(
-            exists=True,
-            readable=True,
-            file_okay=True,
-            dir_okay=False,
-            path_type=Path,
-        ),
-        click.Choice(get_builtin_scenarios()),
-    ),
-    default=None,
-    help=(
-        "The name of a builtin scenario or path to a config file. "
-        "Missing values from the config will use defaults. "
-        "Options specified on the commandline will override the scenario."
-    ),
-)
+# @click.option(
+#     "--scenario",
+#     type=cli_tools.Union(
+#         click.Path(
+#             exists=True,
+#             readable=True,
+#             file_okay=True,
+#             dir_okay=False,
+#             path_type=Path,
+#         ),
+#         click.Choice(get_builtin_scenarios()),
+#     ),
+#     default=None,
+#     help=(
+#         "The name of a builtin scenario or path to a config file. "
+#         "Missing values from the config will use defaults. "
+#         "Options specified on the commandline will override the scenario."
+#     ),
+# )
 @click.option(
     "--target",
     type=str,
@@ -347,11 +347,6 @@ def benchmark():
     help="Set this flag to display stats for the processes running the benchmarks",
 )
 # Aggregators configuration
-@click.option(
-    "--output-extras",
-    callback=cli_tools.parse_json,
-    help="A JSON string of extra data to save with the output benchmarks",
-)
 @click.option(
     "--warmup",
     "--warmup-percent",  # legacy alias
