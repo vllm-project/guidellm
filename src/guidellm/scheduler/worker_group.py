@@ -161,7 +161,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 self.backend.requests_limit or math.inf,
             )
         ) != math.inf:
-            max_conc = requests_limit  # type: ignore[assignment]
+            max_conc = int(requests_limit)
         else:
             # If concurrency not specified, use settings
             max_conc = settings.max_concurrency
