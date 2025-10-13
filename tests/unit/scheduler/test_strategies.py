@@ -225,7 +225,7 @@ class TestLastCompletionRequestTimings:
 
         for index in range(max(5, startup_requests + 2)):
             offset = instance.next_offset()
-            assert isinstance(offset, (int, float))
+            assert isinstance(offset, int | float)
 
             if index < startup_requests:
                 expected_offset = initial_offset + (index + 1) * startup_delay

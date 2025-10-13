@@ -1,35 +1,48 @@
 """
-Backend object models for request and response handling.
+Backend response models for request and response handling.
 
-Provides standardized models for generation requests, responses, and timing
-information to ensure consistent data handling across different backend
+Provides standardized response models for generation operations that capture
+output text, usage metrics, and compilation of request statistics. Ensures
+consistent data handling and statistics aggregation across different backend
 implementations.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from pydantic import Field
 
 from guidellm.schemas.info import RequestInfo
 from guidellm.schemas.request import GenerationRequest, UsageMetrics
+from guidellm.schemas.stats import GenerativeRequestStats
 from guidellm.utils import StandardBaseModel
-
-if TYPE_CHECKING:
-    from guidellm.schemas.stats import GenerativeRequestStats
 
 __all__ = ["GenerationResponse"]
 
 
 class GenerationResponse(StandardBaseModel):
-    """Response model for backend generation operations."""
+    """
+    Response model for backend generation operations.
+
+    Captures the output and metrics from a generation request, providing structured
+    data for text output, token usage statistics, and compilation of detailed
+    request statistics for analysis and monitoring purposes.
+
+    Example:
+    ::
+        response = GenerationResponse(
+            request_id="req-123",
+            text="Generated response text",
+            input_metrics=UsageMetrics(token_count=50),
+            output_metrics=UsageMetrics(token_count=25)
+        )
+        stats = response.compile_stats(request, info)
+    """
 
     request_id: str = Field(
         description="Unique identifier matching the original GenerationRequest."
     )
     request_args: str | None = Field(
-        description="Arguments passed to the backend for this request."
+        description="Arguments passed to the backend for request processing."
     )
     text: str | None = Field(
         default=None,
@@ -37,11 +50,11 @@ class GenerationResponse(StandardBaseModel):
     )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
-        description="Token statistics from the input.",
+        description="Token usage statistics from the input prompt.",
     )
     output_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
-        description="Token statistics from the generated output.",
+        description="Token usage statistics from the generated output.",
     )
 
     def compile_stats(
@@ -50,11 +63,19 @@ class GenerationResponse(StandardBaseModel):
         info: RequestInfo,
         prefer_response: bool = True,
     ) -> GenerativeRequestStats:
-        """Compile and return request statistics.
+        """
+        Compile and return comprehensive request statistics.
 
-        :param request: The original generation request.
-        :param info: Metadata and timing information for the request.
-        :return: A GenerativeRequestStats object containing detailed statistics.
+        Merges metrics from the request and response objects to create a complete
+        statistical record, with preference given to response-level metrics when
+        available to ensure accuracy of actual execution data.
+
+        :param request: The original generation request containing input data
+        :param info: Metadata and timing information for the request execution
+        :param prefer_response: Whether to prefer response metrics over request
+            metrics when both are available
+        :return: A GenerativeRequestStats object containing detailed statistics
+        :raises ValueError: When request IDs don't match between objects
         """
         if request.request_id != self.request_id:
             raise ValueError("Mismatched request IDs between request and response.")
@@ -63,7 +84,8 @@ class GenerationResponse(StandardBaseModel):
             raise ValueError("Mismatched request IDs between info and response.")
 
         if info.status != "completed":
-            # clear out request output metrics if the request failed since those are not valid
+            # clear out request output metrics if the request failed since
+            # those are not valid
             request.output_metrics = UsageMetrics()
 
         base_input = request.input_metrics if prefer_response else self.input_metrics

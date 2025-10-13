@@ -1,24 +1,9 @@
 """
-Benchmark data models and metrics for performance measurement and analysis.
+Request statistics and metrics for generative AI benchmark analysis.
 
-Provides comprehensive data structures for capturing, storing, and analyzing
-benchmark results from scheduler executions. Includes timing measurements,
-token statistics, and performance metrics for generative AI workloads.
-
-Classes:
-    BenchmarkSchedulerStats: Scheduler timing and performance statistics.
-    BenchmarkMetrics: Core benchmark metrics and distributions.
-    BenchmarkRequestStats: Individual request processing statistics.
-    Benchmark: Base benchmark result container with generic metrics.
-    GenerativeRequestStats: Request statistics for generative AI workloads.
-    GenerativeMetrics: Comprehensive metrics for generative benchmarks.
-    GenerativeBenchmark: Complete generative benchmark results and analysis.
-    GenerativeBenchmarksReport: Container for multiple benchmark results.
-
-Type Variables:
-    BenchmarkMetricsT: Generic benchmark metrics type.
-    BenchmarkRequestStatsT: Generic request statistics type.
-    BenchmarkT: Generic benchmark container type.
+Provides data structures for capturing and analyzing performance metrics from
+generative AI workloads. Contains request-level statistics including token counts,
+latency measurements, and throughput calculations for text generation benchmarks.
 """
 
 from __future__ import annotations
@@ -35,7 +20,25 @@ __all__ = ["GenerativeRequestStats"]
 
 
 class GenerativeRequestStats(StandardBaseDict):
-    """Request statistics for generative AI text generation workloads."""
+    """
+    Request statistics for generative AI text generation workloads.
+
+    Captures comprehensive performance metrics for individual generative requests,
+    including token counts, timing measurements, and derived performance statistics.
+    Provides computed properties for latency analysis, throughput calculations,
+    and token generation metrics essential for benchmark evaluation.
+
+    Example:
+    ::
+        stats = GenerativeRequestStats(
+            request_id="req_123",
+            request_type="text_completion",
+            info=request_info,
+            input_metrics=input_usage,
+            output_metrics=output_usage
+        )
+        throughput = stats.output_tokens_per_second
+    """
 
     type_: Literal["generative_request_stats"] = "generative_request_stats"
     request_id: str = Field(description="Unique identifier for the request")
@@ -72,23 +75,35 @@ class GenerativeRequestStats(StandardBaseDict):
 
         return self.info.timings.request_end - self.info.timings.request_start
 
-    # Genral token stats
+    # General token stats
     @computed_field  # type: ignore[misc]
     @property
     def prompt_tokens(self) -> int | None:
-        """Number of tokens in the input prompt."""
+        """
+        Number of tokens in the input prompt.
+
+        :return: Input prompt token count, or None if unavailable.
+        """
         return self.input_metrics.text_tokens
 
     @computed_field  # type: ignore[misc]
     @property
     def input_tokens(self) -> int | None:
-        """Number of tokens in the input prompt."""
+        """
+        Number of tokens in the input prompt.
+
+        :return: Input prompt token count, or None if unavailable.
+        """
         return self.input_metrics.total_tokens
 
     @computed_field  # type: ignore[misc]
     @property
     def output_tokens(self) -> int | None:
-        """Number of tokens in the generated output."""
+        """
+        Number of tokens in the generated output.
+
+        :return: Generated output token count, or None if unavailable.
+        """
         return self.output_metrics.total_tokens
 
     @computed_field  # type: ignore[misc]

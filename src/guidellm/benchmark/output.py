@@ -5,6 +5,7 @@ import json
 import math
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -33,6 +34,8 @@ from guidellm.utils import (
     DistributionSummary,
     RegistryMixin,
     StatusDistributionSummary,
+    camelize_str,
+    recursive_key_update,
     safe_format_timestamp,
     split_text_list_by_length,
 )
@@ -88,7 +91,7 @@ class GenerativeBenchmarkerOutput(
         if not output_formats:
             return {}
 
-        if isinstance(output_formats, (list, tuple)):
+        if isinstance(output_formats, list | tuple):
             # support list of output keys: ["csv", "json"]
             # support list of files: ["path/to/file.json", "path/to/file.csv"]
             formats_list = output_formats
@@ -328,20 +331,6 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
         return ", ".join(f"{key}={value}" for key, value in profile_args.items())
 
-    def _get_args_str(self, benchmark: GenerativeBenchmark) -> str:
-        args = benchmark.args
-        args_dict = OrderedDict(
-            {
-                "max_number": args.max_number,
-                "max_duration": args.max_duration,
-                "warmup_number": args.warmup_number,
-                "warmup_duration": args.warmup_duration,
-                "cooldown_number": args.cooldown_number,
-                "cooldown_duration": args.cooldown_duration,
-            }
-        )
-        return ", ".join(f"{key}={value}" for key, value in args_dict.items())
-
     def _print_section_header(self, title: str, indent: int = 0, new_lines: int = 2):
         self._print_line(
             f"{title}:",
@@ -381,7 +370,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 f"Value and style length mismatch: {len(value)} vs {len(style)}"
             )
 
-        for val, sty in zip(value, style):
+        for val, sty in zip(value, style, strict=False):
             text.append(val, style=sty)
 
         self.console.print(Padding.indent(text, indent))
@@ -579,6 +568,13 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 benchmark_headers: list[str] = []
                 benchmark_values: list[str | float | list[float]] = []
 
+                # Add basic run description info
+                desc_headers, desc_values = self._get_benchmark_desc_headers_and_values(
+                    benchmark
+                )
+                benchmark_headers.extend(desc_headers)
+                benchmark_values.extend(desc_values)
+
                 # Add status-based metrics
                 for status in StatusDistributionSummary.model_fields:
                     status_headers, status_values = (
@@ -684,6 +680,22 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         ]
         return headers, values
 
+    def _get_benchmark_extras_headers_and_values(
+        self,
+        benchmark: GenerativeBenchmark,
+    ) -> tuple[list[str], list[str]]:
+        headers = ["Profile", "Backend", "Generator Data"]
+        values: list[str] = [
+            benchmark.benchmarker.profile.model_dump_json(),
+            json.dumps(benchmark.benchmarker.backend),
+            json.dumps(benchmark.benchmarker.requests["attributes"]["data"]),
+        ]
+
+        if len(headers) != len(values):
+            raise ValueError("Headers and values length mismatch.")
+
+        return headers, values
+
 
 @GenerativeBenchmarkerOutput.register("html")
 class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
@@ -711,8 +723,6 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
         :param report: The completed benchmark report.
         :return: Path to the saved HTML file.
         """
-        import humps
-
         output_path = self.output_path
         if output_path.is_dir():
             output_path = output_path / GenerativeBenchmarkerHTML.DEFAULT_FILE
@@ -720,14 +730,12 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
 
         data_builder = UIDataBuilder(report.benchmarks)
         data = data_builder.to_dict()
-        camel_data = humps.camelize(data)
+        camel_data = recursive_key_update(deepcopy(data), camelize_str)
 
         ui_api_data = {}
-        for key, value in camel_data.items():
-            placeholder_key = f"window.{humps.decamelize(key)} = {{}};"
-            replacement_value = (
-                f"window.{humps.decamelize(key)} = {json.dumps(value, indent=2)};\n"
-            )
+        for k, v in camel_data.items():
+            placeholder_key = f"window.{k} = {{}};"
+            replacement_value = f"window.{k} = {json.dumps(v, indent=2)};\n"
             ui_api_data[placeholder_key] = replacement_value
 
         create_report(ui_api_data, output_path)

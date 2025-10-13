@@ -125,7 +125,7 @@ class Benchmarker(
                     backend=backend,
                     strategy=strategy,
                     env=environment,
-                    **constraints,
+                    **constraints or {},
                 ):
                     benchmark_class.update_estimate(
                         args,

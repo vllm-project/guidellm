@@ -331,7 +331,7 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         return None
 
     def create_request_timings(
-        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int | float
     ) -> ScheduledRequestTimings:
         """
         Create a timing instance to define scheduling behavior for a worker process.

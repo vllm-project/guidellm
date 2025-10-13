@@ -1,3 +1,12 @@
+"""
+Request schema definitions for generation operations.
+
+Contains request models and data structures used to define and execute generation
+requests across different backend services. Provides standardized interfaces for
+request arguments, usage metrics tracking, and request type definitions that enable
+consistent interaction with various AI generation APIs.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -24,6 +33,14 @@ GenerativeRequestType = Literal[
 
 
 class GenerationRequestArguments(StandardBaseDict):
+    """
+    HTTP request arguments for generation operations.
+
+    Encapsulates all necessary HTTP request components including method, headers,
+    parameters, and payload data required to execute generation requests against
+    backend services. Supports file uploads and streaming responses.
+    """
+
     method: str | None = Field(
         default=None,
         description="The HTTP method to use for the request (e.g., 'POST', 'GET').",
@@ -34,11 +51,11 @@ class GenerationRequestArguments(StandardBaseDict):
     )
     headers: dict[str, str] | None = Field(
         default=None,
-        description="HTTP headers to include in the request, if applicable.",
+        description="Any headers to include in the request, if applicable.",
     )
     params: dict[str, Any] | None = Field(
         default=None,
-        description="Query parameters to include in the request URL, if applicable.",
+        description="Query parameters to include in the request, if applicable.",
     )
     body: dict[str, Any] | None = Field(
         default=None,
@@ -52,6 +69,15 @@ class GenerationRequestArguments(StandardBaseDict):
     def model_combine(
         self, additional: GenerationRequestArguments | dict[str, Any]
     ) -> GenerationRequestArguments:
+        """
+        Merge additional request arguments into the current instance.
+
+        Combines method and stream fields by overwriting, while merging collection
+        fields like headers, params, json_body, and files by extending existing values.
+
+        :param additional: Additional arguments to merge with current instance
+        :return: Updated instance with merged arguments
+        """
         additional_dict = (
             additional.model_dump()
             if isinstance(additional, GenerationRequestArguments)
@@ -70,6 +96,14 @@ class GenerationRequestArguments(StandardBaseDict):
 
 
 class UsageMetrics(StandardBaseDict):
+    """
+    Multimodal usage metrics for generation requests.
+
+    Tracks resource consumption across different modalities including text, images,
+    video, and audio. Provides granular metrics for tokens, bytes, duration, and
+    format-specific measurements to enable comprehensive usage monitoring and billing.
+    """
+
     # Text stats
     text_tokens: int | None = Field(
         default=None, description="Number of text tokens processed/generated."
@@ -129,13 +163,34 @@ class UsageMetrics(StandardBaseDict):
     @computed_field  # type: ignore[misc]
     @property
     def total_tokens(self) -> int | None:
+        """
+        Calculate total tokens across all modalities.
+
+        :return: Sum of text, image, video, and audio tokens, or None if all are None
+        """
         return (self.text_tokens or 0) + (self.image_tokens or 0) + (
             self.video_tokens or 0
         ) + (self.audio_tokens or 0) or None
 
 
 class GenerationRequest(StandardBaseModel):
-    """Request model for backend generation operations."""
+    """
+    Complete request specification for backend generation operations.
+
+    Encapsulates all components needed to execute a generation request including
+    unique identification, request type specification, HTTP arguments, and input/output
+    usage metrics. Serves as the primary interface between the scheduler and backend
+    services for coordinating AI generation tasks.
+
+    Example::
+        request = GenerationRequest(
+            request_type="text_completions",
+            arguments=GenerationRequestArguments(
+                method="POST",
+                body={"prompt": "Hello world", "max_tokens": 100}
+            )
+        )
+    """
 
     request_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
@@ -156,9 +211,9 @@ class GenerationRequest(StandardBaseModel):
     )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
-        description="Input statistics including token counts and audio duration.",
+        description="Input statistics including counts, sizes, and durations.",
     )
     output_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
-        description="Output statistics including token counts and audio duration.",
+        description="Output statistics including counts, sizes, and durations.",
     )

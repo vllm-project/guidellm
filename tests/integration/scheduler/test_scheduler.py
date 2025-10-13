@@ -168,6 +168,7 @@ async def test_scheduler_run_integration(
         received_updates.keys(),
         received_updates.values(),
         received_responses,
+        strict=False,
     ):
         assert req == f"req_{index}"
         assert resp in (f"response_for_{req}", f"mock_error_for_{req}")

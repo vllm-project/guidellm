@@ -17,7 +17,6 @@ from typing import (
     Literal,
     Protocol,
     TypeVar,
-    Union,
 )
 
 from pydantic import Field
@@ -50,10 +49,7 @@ ResponseT = TypeVar("ResponseT")
 
 MultiTurnRequestT = TypeAliasType(
     "MultiTurnRequestT",
-    Union[
-        list[Union[RequestT, tuple[RequestT, float]]],
-        tuple[Union[RequestT, tuple[RequestT, float]]],
-    ],
+    list[RequestT | tuple[RequestT, float]] | tuple[RequestT | tuple[RequestT, float]],
     type_params=(RequestT,),
 )
 """Multi-turn request structure supporting conversation history with optional delays."""

@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from functools import wraps
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
 from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Barrier, Event
 from typing import Any, Generic, Literal
+from unittest.mock import patch
 
 import pytest
 from pydantic import Field
@@ -29,23 +29,30 @@ from guidellm.scheduler import (
 )
 from guidellm.scheduler.worker_group import WorkerGroupState
 from guidellm.utils import InterProcessMessaging
-
-
-def async_timeout(delay):
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 class MockRequestTimings(MeasuredRequestTimings):
     """Mock timing implementation for testing."""
 
     timings_type: Literal["mock"] = Field(default="mock")
+
+
+class MockTime:
+    """Deterministic time mock for testing."""
+
+    def __init__(self, start_time: float = 1000.0):
+        self.current_time = start_time
+        self.increment = 0.1
+
+    def time(self) -> float:
+        """Return current mock time and increment for next call."""
+        current = self.current_time
+        self.current_time += self.increment
+        return current
+
+
+mock_time = MockTime()
 
 
 class MockBackend(BackendInterface):
@@ -67,6 +74,7 @@ class MockBackend(BackendInterface):
     def requests_limit(self) -> int | None:
         return self._requests_limit
 
+    @property
     def info(self) -> dict[str, Any]:
         return {"type": "mock"}
 
@@ -144,7 +152,19 @@ class TestWorkerProcessGroup:
         """Fixture providing test data for WorkerProcessGroup."""
         constructor_args = request.param.copy()
         instance = WorkerProcessGroup(**request.param, backend=MockBackend())
-        return instance, constructor_args
+        yield instance, constructor_args
+
+        # Shutting down. Attempting shut down.
+        try:
+            if hasattr(instance, "processes") and instance.processes is not None:
+                asyncio.run(instance.shutdown())
+        # It's not...it's-it's not...it's not shutting down...it's not...
+        except Exception:  # noqa: BLE001
+            if hasattr(instance, "processes") and instance.processes is not None:
+                # Gahhh...!
+                for proc in instance.processes:
+                    proc.kill()
+                    proc.join(timeout=1.0)
 
     @pytest.mark.smoke
     def test_class_signatures(self, valid_instances):
@@ -249,6 +269,7 @@ class TestWorkerProcessGroup:
     @pytest.mark.smoke
     @async_timeout(10)
     @pytest.mark.asyncio
+    @patch.object(time, "time", mock_time.time)
     async def test_lifecycle(self, valid_instances: tuple[WorkerProcessGroup, dict]):  # noqa: C901, PLR0912
         """Test the lifecycle methods of WorkerProcessGroup."""
         instance, constructor_args = valid_instances

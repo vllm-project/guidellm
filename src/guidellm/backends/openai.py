@@ -4,10 +4,8 @@ OpenAI HTTP backend implementation for GuideLLM.
 Provides HTTP-based backend for OpenAI-compatible servers including OpenAI API,
 vLLM servers, and other compatible inference engines. Supports text and chat
 completions with streaming, authentication, and multimodal capabilities.
-
-Classes:
-    UsageStats: Token usage statistics for generation requests.
-    OpenAIHTTPBackend: HTTP backend for OpenAI-compatible API servers.
+Handles request formatting, response parsing, error handling, and token usage
+tracking with flexible parameter customization.
 """
 
 from __future__ import annotations
@@ -20,20 +18,11 @@ from typing import Any
 import httpx
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
-from guidellm.schemas import (
-    GenerationRequest,
-    GenerationResponse,
-    RequestInfo,
+from guidellm.backends.response_handlers import (
+    GenerationResponseHandler,
+    GenerationResponseHandlerFactory,
 )
-
-try:
-    import orjson
-
-    HAS_ORJSON = True
-except ImportError:
-    orjson = None
-    HAS_ORJSON = False
+from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo
 
 __all__ = ["OpenAIHTTPBackend"]
 
@@ -74,6 +63,19 @@ class OpenAIHTTPBackend(Backend):
         verify: bool = False,
         validate_backend: bool | str | dict[str, Any] = True,
     ):
+        """
+        Initialize OpenAI HTTP backend with server configuration.
+
+        :param target: Base URL of the OpenAI-compatible server
+        :param model: Model identifier for generation requests
+        :param api_routes: Custom API endpoint routes mapping
+        :param response_handlers: Custom response handlers for different request types
+        :param timeout: Request timeout in seconds
+        :param http2: Enable HTTP/2 protocol support
+        :param follow_redirects: Follow HTTP redirects automatically
+        :param verify: Enable SSL certificate verification
+        :param validate_backend: Backend validation configuration
+        """
         super().__init__(type_="openai_http")
 
         # Request Values
@@ -105,7 +107,9 @@ class OpenAIHTTPBackend(Backend):
     @property
     def info(self) -> dict[str, Any]:
         """
-        :return: Dictionary containing backend configuration details.
+        Get backend configuration details.
+
+        :return: Dictionary containing backend configuration details
         """
         return {
             "target": self.target,
@@ -122,8 +126,8 @@ class OpenAIHTTPBackend(Backend):
         """
         Initialize HTTP client and backend resources.
 
-        :raises RuntimeError: If backend is already initialized.
-        :raises httpx.Exception: If HTTP client cannot be created.
+        :raises RuntimeError: If backend is already initialized
+        :raises httpx.RequestError: If HTTP client cannot be created
         """
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
@@ -140,8 +144,8 @@ class OpenAIHTTPBackend(Backend):
         """
         Clean up HTTP client and backend resources.
 
-        :raises RuntimeError: If backend was not properly initialized.
-        :raises httpx.Exception: If HTTP client cannot be closed.
+        :raises RuntimeError: If backend was not properly initialized
+        :raises httpx.RequestError: If HTTP client cannot be closed
         """
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
@@ -152,12 +156,9 @@ class OpenAIHTTPBackend(Backend):
 
     async def validate(self):
         """
-        Validate backend configuration and connectivity.
+        Validate backend connectivity and configuration.
 
-        Validate backend configuration and connectivity through test requests,
-        and auto-selects first available model if none is configured.
-
-        :raises RuntimeError: If backend cannot connect or validate configuration.
+        :raises RuntimeError: If backend cannot connect or validate configuration
         """
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
@@ -178,9 +179,9 @@ class OpenAIHTTPBackend(Backend):
         """
         Get available models from the target server.
 
-        :return: List of model identifiers.
-        :raises HTTPError: If models endpoint returns an error.
-        :raises RuntimeError: If backend is not initialized.
+        :return: List of model identifiers
+        :raises httpx.HTTPError: If models endpoint returns an error
+        :raises RuntimeError: If backend is not initialized
         """
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
@@ -195,7 +196,7 @@ class OpenAIHTTPBackend(Backend):
         """
         Get the default model for this backend.
 
-        :return: Model name or None if no model is available.
+        :return: Model name or None if no model is available
         """
         if self.model or not self._in_process:
             return self.model
@@ -203,71 +204,59 @@ class OpenAIHTTPBackend(Backend):
         models = await self.available_models()
         return models[0] if models else None
 
-    async def resolve(  # noqa: C901
+    async def resolve(
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
         history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
-        Process a generation request and yield progressive responses.
+        Process generation request and yield progressive responses.
 
         Handles request formatting, timing tracking, API communication, and
         response parsing with streaming support.
 
-        :param request: Generation request with content and parameters.
-        :param request_info: Request tracking info updated with timing metadata.
-        :param history: Conversation history. Currently not supported.
-        :raises NotImplementedError: If history is provided.
-        :yields: Tuples of (response, updated_request_info) as generation progresses.
+        :param request: Generation request with content and parameters
+        :param request_info: Request tracking info updated with timing metadata
+        :param history: Conversation history (currently not supported)
+        :raises NotImplementedError: If history is provided
+        :raises RuntimeError: If backend is not initialized
+        :raises ValueError: If request type is unsupported
+        :yields: Tuples of (response, updated_request_info) as generation progresses
         """
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
         if history is not None:
-            raise NotImplementedError(
-                "Multi-turn requests with conversation history are not yet supported"
-            )
+            raise NotImplementedError("Multi-turn requests  not yet supported")
 
-        response_handler = (
-            self.response_handlers.get(request.request_type)
-            if self.response_handlers
-            else None
+        response_handler = self._resolve_response_handler(
+            request_type=request.request_type
         )
-        if response_handler is None:
-            response_handler_class = (
-                GenerationResponseHandlerFactory.get_registered_object(
-                    request.request_type
-                )
-            )
-            if response_handler_class is None:
-                raise ValueError(
-                    "No response handler registered for request type "
-                    f"'{request.request_type}'"
-                )
-            response_handler = response_handler_class()
-
         if (request_path := self.api_routes.get(request.request_type)) is None:
             raise ValueError(f"Unsupported request type '{request.request_type}'")
         request_url = f"{self.target}/{request_path}"
-        request_info.timings.request_start = time.time()
+        request_files = (
+            {
+                key: tuple(value) if isinstance(value, list) else value
+                for key, value in request.arguments.files.items()
+            }
+            if request.arguments.files
+            else None
+        )
+        request_json = request.arguments.body if not request_files else None
+        request_data = request.arguments.body if request_files else None
 
         if not request.arguments.stream:
+            request_info.timings.request_start = time.time()
             response = await self._async_client.request(
                 request.arguments.method or "POST",
                 request_url,
                 params=request.arguments.params,
                 headers=request.arguments.headers,
-                json=request.arguments.body if not request.arguments.files else None,
-                data=request.arguments.body if request.arguments.files else None,
-                files=(
-                    {
-                        key: tuple(value) if isinstance(value, list) else value
-                        for key, value in request.arguments.files.items()
-                    }
-                    if request.arguments.files
-                    else None
-                ),
+                json=request_json,
+                data=request_data,
+                files=request_files,
             )
             request_info.timings.request_end = time.time()
             response.raise_for_status()
@@ -276,47 +265,46 @@ class OpenAIHTTPBackend(Backend):
             return
 
         try:
+            request_info.timings.request_start = time.time()
+
             async with self._async_client.stream(
                 request.arguments.method or "POST",
                 request_url,
                 params=request.arguments.params,
                 headers=request.arguments.headers,
-                json=request.arguments.body if not request.arguments.files else None,
-                data=request.arguments.body if request.arguments.files else None,
-                files=(
-                    {
-                        key: tuple(value) if isinstance(value, list) else value
-                        for key, value in request.arguments.files.items()
-                    }
-                    if request.arguments.files
-                    else None
-                ),
+                json=request_json,
+                data=request_data,
+                files=request_files,
             ) as stream:
                 stream.raise_for_status()
                 end_reached = False
 
                 async for chunk in stream.aiter_lines():
-                    if end_reached:
-                        continue
+                    iter_time = time.time()
 
                     if (
-                        iterations := response_handler.add_streaming_line(chunk)
-                    ) is None or iterations < 0:
+                        (iterations := response_handler.add_streaming_line(chunk))
+                        is None
+                        or iterations < 0
+                        or end_reached
+                    ):
                         end_reached = end_reached or iterations is None
                         continue
 
-                    if request_info.timings.first_iteration is None:
-                        request_info.timings.first_iteration = time.time()
-                    request_info.timings.last_iteration = time.time()
-
-                    if request_info.timings.iterations is None:
+                    if (
+                        request_info.timings.first_iteration is None
+                        or request_info.timings.iterations is None
+                    ):
+                        request_info.timings.first_iteration = iter_time
                         request_info.timings.iterations = 0
+
+                    request_info.timings.last_iteration = iter_time
                     request_info.timings.iterations += iterations
 
-                request_info.timings.request_end = time.time()
-
+            request_info.timings.request_end = time.time()
             yield response_handler.compile_streaming(request), request_info
         except asyncio.CancelledError as err:
+            # Yield current result to store iterative results before propagating
             yield response_handler.compile_streaming(request), request_info
             raise err
 
@@ -348,3 +336,20 @@ class OpenAIHTTPBackend(Backend):
             validate_kwargs["method"] = "GET"
 
         return validate_kwargs
+
+    def _resolve_response_handler(self, request_type: str) -> GenerationResponseHandler:
+        if (
+            self.response_handlers is not None
+            and (handler := self.response_handlers.get(request_type)) is not None
+        ):
+            return handler
+
+        handler_class = GenerationResponseHandlerFactory.get_registered_object(
+            request_type
+        )
+        if handler_class is None:
+            raise ValueError(
+                f"No response handler registered for request type '{request_type}'"
+            )
+
+        return handler_class()

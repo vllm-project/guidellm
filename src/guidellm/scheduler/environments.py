@@ -20,9 +20,7 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterable
-from typing import (
-    Generic,
-)
+from typing import Generic
 
 from guidellm.scheduler.constraints import Constraint
 from guidellm.scheduler.schemas import (
@@ -129,8 +127,8 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         self,
     ) -> AsyncIterator[
         tuple[
-            ResponseT,
-            RequestT | MultiTurnRequestT[RequestT],
+            ResponseT | None,
+            RequestT,
             RequestInfo,
             SchedulerState,
         ]
@@ -146,10 +144,10 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
             remote nodes in distributed environments, empty for non-distributed
         :raises Exception: Any errors that occurred during execution
         """
-        ...
+        yield None  # type: ignore[misc]
 
 
-class NonDistributedEnvironment(Environment):
+class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
     """
     Single-node scheduler execution environment with minimal coordination overhead.
 
@@ -236,7 +234,7 @@ class NonDistributedEnvironment(Environment):
         :param state: Current scheduler state with metrics and progress
         """
 
-    async def sync_run_error(self, err: Exception):
+    async def sync_run_error(self, err: Exception | list[Exception]):
         """
         Store error for later propagation during run finalization.
 
@@ -249,8 +247,8 @@ class NonDistributedEnvironment(Environment):
         self,
     ) -> AsyncIterator[
         tuple[
-            ResponseT,
-            RequestT | MultiTurnRequestT[RequestT],
+            ResponseT | None,
+            RequestT,
             RequestInfo,
             SchedulerState,
         ]
@@ -269,5 +267,6 @@ class NonDistributedEnvironment(Environment):
                     f"Errors occurred during execution: {self.run_errors}"
                 )
 
-        return
-        yield  # needed to force generator compilation
+        if False:
+            # Force compiler to recognize as generator
+            yield None  # type: ignore[misc]

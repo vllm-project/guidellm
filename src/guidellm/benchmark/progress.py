@@ -37,9 +37,12 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from guidellm.benchmark.aggregator import EstimatedBenchmarkState
 from guidellm.benchmark.profile import Profile
-from guidellm.benchmark.schemas import BenchmarkT, GenerativeBenchmark
+from guidellm.benchmark.schemas import (
+    BenchmarkT,
+    EstimatedBenchmarkState,
+    GenerativeBenchmark,
+)
 from guidellm.scheduler import SchedulerState, SchedulingStrategy, StrategyType
 from guidellm.utils import Colors, format_value_display
 

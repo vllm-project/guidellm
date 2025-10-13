@@ -41,7 +41,7 @@ def test_register_class_t():
     """Test that RegisterClassT is configured correctly as a TypeVar."""
     assert isinstance(RegisterClassT, type(TypeVar("test")))
     assert RegisterClassT.__name__ == "RegisterClassT"
-    assert RegisterClassT.__bound__ is None
+    assert RegisterClassT.__bound__ is type
     assert RegisterClassT.__constraints__ == ()
 
 

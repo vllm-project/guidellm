@@ -26,6 +26,7 @@ from guidellm.utils.console import Colors
 __all__ = [
     "MAX_PATH_LENGTH",
     "EndlessTextCreator",
+    "camelize_str",
     "clean_text",
     "filter_text",
     "format_value_display",
@@ -268,6 +269,12 @@ def is_punctuation(text: str) -> bool:
     :return: True if the character is punctuation, False otherwise
     """
     return len(text) == 1 and not text.isalnum() and not text.isspace()
+
+
+def camelize_str(snake_case_string: str) -> str:
+    return (words := snake_case_string.split("_"))[0].lower() + "".join(
+        word.capitalize() for word in words[1:]
+    )
 
 
 class EndlessTextCreator:

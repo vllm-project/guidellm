@@ -1,6 +1,7 @@
 from .auto_importer import AutoImporterMixin
 from .console import Colors, Console, ConsoleUpdateStep, StatusIcons, StatusStyles
 from .default_group import DefaultGroupHandler
+from .dict import recursive_key_update
 from .encoding import (
     Encoder,
     EncodingTypesAlias,
@@ -55,6 +56,7 @@ from .synchronous import (
 )
 from .text import (
     EndlessTextCreator,
+    camelize_str,
     clean_text,
     filter_text,
     format_value_display,
@@ -104,6 +106,7 @@ __all__ = [
     "ThreadSafeSingletonMixin",
     "TimeRunningStats",
     "all_defined",
+    "camelize_str",
     "check_load_processor",
     "clean_text",
     "filter_text",
@@ -111,6 +114,7 @@ __all__ = [
     "get_literal_vals",
     "is_punctuation",
     "load_text",
+    "recursive_key_update",
     "safe_add",
     "safe_divide",
     "safe_format_timestamp",

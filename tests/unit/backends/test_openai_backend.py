@@ -4,9 +4,7 @@ Unit tests for OpenAIHTTPBackend implementation.
 
 from __future__ import annotations
 
-import asyncio
 import base64
-from functools import wraps
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -15,24 +13,14 @@ import pytest
 from PIL import Image
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.openai import OpenAIHTTPBackend, UsageStats
-from guidellm.scheduler import ScheduledRequestInfo
-from guidellm.schemas.response import (
+from guidellm.backends.openai import OpenAIHTTPBackend
+from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
+    RequestInfo,
+    RequestTimings,
 )
-
-
-def async_timeout(delay):
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 def test_usage_stats():
@@ -230,14 +218,13 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_info(self):
         """Test info method."""
         backend = OpenAIHTTPBackend(
             target="http://test", model="test-model", timeout=30.0
         )
 
-        info = backend.info()
+        info = backend.info
 
         assert info["target"] == "http://test"
         assert info["model"] == "test-model"
@@ -250,7 +237,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_startup(self):
         """Test process startup."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -267,7 +253,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_startup_already_started(self):
         """Test process startup when already started."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -279,7 +264,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_shutdown(self):
         """Test process shutdown."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -296,7 +280,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_process_shutdown_not_started(self):
         """Test process shutdown when not started."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -307,7 +290,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_check_in_process(self):
         """Test _check_in_process method."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -325,7 +307,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_available_models(self):
         """Test available_models method."""
         backend = OpenAIHTTPBackend(target="http://test")
@@ -346,7 +327,6 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    @async_timeout(5.0)
     async def test_default_model(self):
         """Test default_model method."""
         # Test when model is already set
@@ -369,7 +349,6 @@ class TestOpenAIHTTPBackend:
 
     @pytest.mark.regression
     @pytest.mark.asyncio
-    @async_timeout(10.0)
     @async_timeout(10.0)
     async def test_validate_with_model(self):
         """Test validate method when model is set."""
@@ -634,13 +613,13 @@ class TestOpenAIHTTPBackend:
         await backend.process_startup()
 
         request = GenerationRequest(content="test")
-        request_info = ScheduledRequestInfo(
+        request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=GenerationRequestTimings(),
+            request_timings=RequestTimings(),
         )
         history = [(request, GenerationResponse(request_id="test", request_args={}))]
 
@@ -662,13 +641,13 @@ class TestOpenAIHTTPBackend:
             params={"temperature": 0.7},
             constraints={"output_tokens": 100},
         )
-        request_info = ScheduledRequestInfo(
+        request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=GenerationRequestTimings(),
+            request_timings=RequestTimings(),
         )
 
         # Mock text_completions method
@@ -703,13 +682,13 @@ class TestOpenAIHTTPBackend:
             request_type="chat_completions",
             params={"temperature": 0.5},
         )
-        request_info = ScheduledRequestInfo(
+        request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=GenerationRequestTimings(),
+            request_timings=RequestTimings(),
         )
 
         # Mock chat_completions method
@@ -1074,7 +1053,7 @@ class TestOpenAICompletions:
         mock_image = Mock(spec=Image.Image)
         mock_image.tobytes.return_value = b"fake_jpeg_data"
 
-        with patch("guidellm.backend.openai.Image.open", return_value=mock_image):
+        with patch("guidellm.backends.openai.Image.open", return_value=mock_image):
             result = backend._get_chat_message_media_item(mock_jpeg_path)
 
         expected_data = base64.b64encode(b"fake_jpeg_data").decode("utf-8")
@@ -1144,13 +1123,13 @@ class TestOpenAICompletions:
                 request_type="text_completions",
                 constraints={"output_tokens": 50},
             )
-            request_info = ScheduledRequestInfo(
+            request_info = RequestInfo(
                 request_id="test-id",
                 status="pending",
                 scheduler_node_id=1,
                 scheduler_process_id=1,
                 scheduler_start_time=123.0,
-                request_timings=GenerationRequestTimings(),
+                request_timings=RequestTimings(),
             )
 
             # Mock text_completions to test timing edge cases

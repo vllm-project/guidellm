@@ -91,7 +91,7 @@ class InfoMixin:
             "attributes": (
                 {
                     key: val
-                    if isinstance(val, (str, int, float, bool, list, dict))
+                    if isinstance(val, str | int | float | bool | list | dict)
                     else repr(val)
                     for key, val in obj.__dict__.items()
                     if not key.startswith("_")

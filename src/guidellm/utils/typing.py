@@ -1,13 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from types import UnionType
 from typing import Annotated, Literal, Union, get_args, get_origin
-
-# Backwards compatibility for Python <3.10
-try:
-    from types import UnionType  # type: ignore[attr-defined]
-except ImportError:
-    UnionType = Union
 
 # Backwards compatibility for Python <3.12
 try:

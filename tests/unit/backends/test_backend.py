@@ -4,9 +4,7 @@ Unit tests for the Backend base class and registry functionality.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
-from functools import wraps
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -19,17 +17,7 @@ from guidellm.schemas.response import (
     GenerationRequestTimings,
 )
 from guidellm.utils import RegistryMixin
-
-
-def async_timeout(delay):
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 def test_backend_type():
@@ -80,7 +68,7 @@ class TestBackend:
     def test_class_signatures(self):
         """Test Backend inheritance and type relationships."""
         assert issubclass(Backend, RegistryMixin)
-        assert issubclass(Backend, BackendInterface)
+        assert isinstance(Backend, BackendInterface)
         assert hasattr(Backend, "create")
         assert hasattr(Backend, "register")
         assert hasattr(Backend, "get_registered_object")

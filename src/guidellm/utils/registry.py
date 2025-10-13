@@ -10,7 +10,8 @@ plugin architectures.
 
 from __future__ import annotations
 
-from typing import Callable, ClassVar, Generic, TypeVar, cast
+from collections.abc import Callable
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 
@@ -19,7 +20,9 @@ __all__ = ["RegisterT", "RegistryMixin", "RegistryObjT"]
 
 RegistryObjT = TypeVar("RegistryObjT")
 """Generic type variable for objects managed by the registry system."""
-RegisterT = TypeVar("RegisterT")
+RegisterT = TypeVar(
+    "RegisterT", bound=type
+)  # Must be bound to type to ensure __name__ is available.
 """Generic type variable for the args and return values within the registry."""
 
 
@@ -101,7 +104,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
 
         if name is None:
             name = obj.__name__
-        elif not isinstance(name, (str, list)):
+        elif not isinstance(name, str | list):
             raise ValueError(
                 "RegistryMixin.register_decorator name must be a string or "
                 f"an iterable of strings. Got {name}."
@@ -209,6 +212,9 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
         if name in cls.registry:
             return cls.registry[name]
 
-        lower_key_map = {key.lower(): key for key in cls.registry}
+        name_casefold = name.lower()
+        for k, v in cls.registry.items():
+            if name_casefold == k.lower():
+                return v
 
-        return cls.registry.get(lower_key_map.get(name.lower()))
+        return None  # Not found

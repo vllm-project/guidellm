@@ -66,5 +66,7 @@ __all__ = [
     "SynchronousProfile",
     "ThroughputProfile",
     "benchmark_generative_text",
+    "enable_scenarios",
+    "get_builtin_scenarios",
     "reimport_benchmarks_report",
 ]

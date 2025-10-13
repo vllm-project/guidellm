@@ -4,6 +4,7 @@ Unit tests for the auto_importer module.
 
 from __future__ import annotations
 
+import sys
 from unittest import mock
 
 import pytest
@@ -191,9 +192,9 @@ class TestAutoImporterMixin:
             mock_import.assert_any_call("test.package.subpackage")
 
     @pytest.mark.sanity
-    @mock.patch("sys.modules", {"test.package.existing": mock.MagicMock()})
     @mock.patch("importlib.import_module")
     @mock.patch("pkgutil.walk_packages")
+    @mock.patch.dict(sys.modules, {"test.package.existing": mock.MagicMock()})
     def test_skip_already_imported_modules(self, mock_walk, mock_import):
         """Test that modules already in sys.modules are tracked but not re-imported."""
 

@@ -1,6 +1,5 @@
 import re
 from pathlib import Path
-from typing import Union
 
 from loguru import logger
 
@@ -8,7 +7,7 @@ from guidellm.settings import settings
 from guidellm.utils.text import load_text
 
 
-def create_report(js_data: dict, output_path: Union[str, Path]) -> Path:
+def create_report(js_data: dict, output_path: str | Path) -> Path:
     """
     Creates a report from the dictionary and saves it to the output path.
 

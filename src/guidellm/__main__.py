@@ -28,22 +28,13 @@ from __future__ import annotations
 import asyncio
 import codecs
 from pathlib import Path
-from typing import Annotated, Union
 
 import click
 
 try:
     import uvloop
-
-    HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
-    ] = True
 except ImportError:
     uvloop = None
-
-    HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
-    ] = False
 
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
@@ -52,9 +43,7 @@ from guidellm.benchmark import (
     benchmark_generative_text,
     reimport_benchmarks_report,
 )
-from guidellm.benchmark.scenario import (
-    GenerativeTextScenario,
-)
+from guidellm.benchmark.scenario import GenerativeTextScenario, get_builtin_scenarios
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
@@ -76,9 +65,8 @@ __all__ = [
     "run",
 ]
 
-STRATEGY_PROFILE_CHOICES: Annotated[
-    list[str], "Available strategy and profile choices for benchmark execution types"
-] = list(get_literal_vals(Union[ProfileType, StrategyType]))
+# Available strategy and profile choices for benchmark execution types
+STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
 
 
 def decode_escaped_str(_ctx, _param, value):
@@ -136,6 +124,25 @@ def benchmark():
     context_settings={"auto_envvar_prefix": "GUIDELLM"},
 )
 @click.option(
+    "--scenario",
+    type=cli_tools.Union(
+        click.Path(
+            exists=True,
+            readable=True,
+            file_okay=True,
+            dir_okay=False,
+            path_type=Path,
+        ),
+        click.Choice(get_builtin_scenarios()),
+    ),
+    default=None,
+    help=(
+        "The name of a builtin scenario or path to a config file. "
+        "Missing values from the config will use defaults. "
+        "Options specified on the commandline will override the scenario."
+    ),
+)
+@click.option(
     "--target",
     type=str,
     help="The target path for the backend to run benchmarks against. For example, http://localhost:8000",
@@ -162,7 +169,7 @@ def benchmark():
 )
 @click.option(
     "--rate",
-    default=None,
+    default=GenerativeTextScenario.get_default("rate"),
     help=(
         "The rates to run the benchmark at. "
         "Can be a single number or a comma-separated list of numbers. "
@@ -178,18 +185,18 @@ def benchmark():
     "--backend-type",  # legacy alias
     "backend",
     type=click.Choice(list(get_literal_vals(BackendType))),
+    default=GenerativeTextScenario.get_default("backend"),
     help=(
         "The type of backend to use to run requests against. Defaults to 'openai_http'."
         f" Supported types: {', '.join(get_literal_vals(BackendType))}"
     ),
-    default="openai_http",
 )
 @click.option(
     "--backend-kwargs",
     "--backend-args",  # legacy alias
     "backend_kwargs",
     callback=cli_tools.parse_json,
-    default=None,
+    default=GenerativeTextScenario.get_default("backend_kwargs"),
     help=(
         "A JSON string containing any arguments to pass to the backend as a "
         "dict with **kwargs."
@@ -197,7 +204,7 @@ def benchmark():
 )
 @click.option(
     "--model",
-    default=None,
+    default=GenerativeTextScenario.get_default("model"),
     type=str,
     help=(
         "The ID of the model to benchmark within the backend. "
@@ -225,7 +232,7 @@ def benchmark():
 )
 @click.option(
     "--processor",
-    default=None,
+    default=GenerativeTextScenario.get_default("processor"),
     type=str,
     help=(
         "The processor or tokenizer to use to calculate token counts for statistics "
@@ -235,7 +242,7 @@ def benchmark():
 )
 @click.option(
     "--processor-args",
-    default=None,
+    default=GenerativeTextScenario.get_default("processor_args"),
     callback=cli_tools.parse_json,
     help=(
         "A JSON string containing any arguments to pass to the processor constructor "
@@ -350,7 +357,7 @@ def benchmark():
     "--warmup-percent",  # legacy alias
     "warmup",
     type=float,
-    default=None,
+    default=GenerativeTextScenario.get_default("warmup"),
     help=(
         "The specification around the number of requests to run before benchmarking. "
         "If within (0, 1), then the percent of requests/time to use for warmup. "
@@ -364,7 +371,7 @@ def benchmark():
     "--cooldown-percent",  # legacy alias
     "cooldown",
     type=float,
-    default=GenerativeTextScenario.get_default("cooldown_percent"),
+    default=GenerativeTextScenario.get_default("cooldown"),
     help=(
         "The specification around the number of requests to run after benchmarking. "
         "If within (0, 1), then the percent of requests/time to use for cooldown. "
@@ -383,13 +390,12 @@ def benchmark():
         "in the output file. If None (default), will save all samples. "
         "Defaults to 20."
     ),
-    default=20,
 )
 # Constraints configuration
 @click.option(
     "--max-seconds",
     type=float,
-    default=None,
+    default=GenerativeTextScenario.get_default("max_seconds"),
     help=(
         "The maximum number of seconds each benchmark can run for. "
         "If None, will run until max_requests or the data is exhausted."
@@ -398,7 +404,7 @@ def benchmark():
 @click.option(
     "--max-requests",
     type=int,
-    default=None,
+    default=GenerativeTextScenario.get_default("max_requests"),
     help=(
         "The maximum number of requests each benchmark can run for. "
         "If None, will run until max_seconds or the data is exhausted."
@@ -407,19 +413,19 @@ def benchmark():
 @click.option(
     "--max-errors",
     type=int,
-    default=None,
+    default=GenerativeTextScenario.get_default("max_errors"),
     help="Maximum number of errors allowed before stopping the benchmark",
 )
 @click.option(
     "--max-error-rate",
     type=float,
-    default=None,
+    default=GenerativeTextScenario.get_default("max_error_rate"),
     help="Maximum error rate allowed before stopping the benchmark",
 )
 @click.option(
     "--max-global-error-rate",
     type=float,
-    default=None,
+    default=GenerativeTextScenario.get_default("max_global_error_rate"),
     help="Maximum global error rate allowed across all benchmarks",
 )
 def run(
@@ -475,7 +481,7 @@ def run(
         else {"request_type": request_type, **request_formatter_kwargs}
     )
 
-    if HAS_UVLOOP:
+    if uvloop is not None:
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     asyncio.run(
         benchmark_generative_text(
@@ -501,11 +507,7 @@ def run(
             random_seed=random_seed,
             # Output configuration
             output_path=output_path,
-            output_formats=[
-                fmt
-                for fmt in output_formats
-                if not disable_console_outputs or fmt != "console"
-            ],
+            output_formats=output_formats,
             # Updates configuration
             progress=(
                 [

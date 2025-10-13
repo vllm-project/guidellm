@@ -397,7 +397,6 @@ class TestGenerationRequestTimings:
     def test_class_signatures(self):
         """Test GenerationRequestTimings inheritance and type relationships."""
         assert issubclass(GenerationRequestTimings, MeasuredRequestTimings)
-        assert issubclass(GenerationRequestTimings, StandardBaseModel)
         assert hasattr(GenerationRequestTimings, "model_dump")
         assert hasattr(GenerationRequestTimings, "model_validate")
 

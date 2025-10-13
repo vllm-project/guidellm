@@ -1,6 +1,6 @@
 """Mock benchmark objects for unit testing."""
 
-from guidellm.backend import GenerationRequestTimings
+from guidellm.backends import GenerationRequestTimings
 from guidellm.benchmark import (
     BenchmarkSchedulerStats,
     GenerativeBenchmark,
@@ -77,7 +77,11 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
         ),
         benchmarker=BenchmarkerDict(
             profile=SynchronousProfile.create("synchronous", rate=None),
-            requests={},
+            requests={
+                "attributes": {
+                    "data": "prompt_tokens=256,output_tokens=128",
+                },
+            },
             backend={},
             environment={},
             aggregators={},
@@ -101,7 +105,7 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
             worker_targeted_start_delay_avg=0.1,
             request_start_delay_avg=0.1,
             request_time_avg=0.1,
-            request_targeted_delay_avg=0.1,
+            request_targeted_start_delay_avg=0.1,
         ),
         start_time=1000.0,
         end_time=2000.0,
@@ -130,8 +134,6 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
                     scheduler_info=ScheduledRequestInfo(
                         request_timings=GenerationRequestTimings(
                             request_start=1,
-                            first_iteration=2,
-                            last_iteration=6,
                             request_end=6,
                         )
                     ),

@@ -20,52 +20,82 @@ __all__ = ["RequestInfo", "RequestTimings"]
 
 
 class RequestTimings(StandardBaseDict):
+    """
+    Timing measurements for tracking request lifecycle events.
+
+    Provides comprehensive timing data for distributed request processing, capturing
+    key timestamps from initial targeting through final completion. Essential for
+    performance analysis, SLA monitoring, and debugging request processing bottlenecks
+    across scheduler workers and backend systems.
+    """
+
     targeted_start: float | None = Field(
         default=None,
-        description="When the request was initially targeted for execution",
+        description="Unix timestamp when request was initially targeted for execution",
     )
     queued: float | None = Field(
         default=None,
-        description="When the request was placed into the processing queue",
+        description="Unix timestamp when request was placed into processing queue",
     )
     dequeued: float | None = Field(
         default=None,
-        description="When the request was removed from the queue for processing",
+        description="Unix timestamp when request was removed from queue for processing",
     )
     scheduled_at: float | None = Field(
-        default=None, description="When the request was scheduled for processing"
+        default=None,
+        description="Unix timestamp when the request was scheduled for processing",
     )
     resolve_start: float | None = Field(
-        default=None, description="When backend resolution of the request began"
+        default=None,
+        description="Unix timestamp when backend resolution of the request began",
     )
     request_start: float | None = Field(
-        default=None, description="When the backend began processing the request"
+        default=None,
+        description="Unix timestamp when the backend began processing the request",
     )
     first_iteration: float | None = Field(
         default=None,
-        description="Unix timestamp when the first generation iteration began.",
+        description="Unix timestamp when the first iteration for a streaming began",
     )
     last_iteration: float | None = Field(
         default=None,
-        description="Unix timestamp when the last generation iteration completed.",
+        description="Unix timestamp when the last iteration for a streaming completed",
     )
     iterations: int | None = Field(
         default=None,
-        description="Total number of streaming update iterations performed.",
+        description="Total number of streaming update iterations performed",
     )
     request_end: float | None = Field(
-        default=None, description="When the backend completed processing the request"
+        default=None,
+        description="Unix timestamp when the backend completed processing the request",
     )
     resolve_end: float | None = Field(
-        default=None, description="When backend resolution of the request completed"
+        default=None,
+        description="Unix timestamp when backend resolution of the request completed",
     )
     finalized: float | None = Field(
         default=None,
-        description="When the request was processed/acknowledged by the scheduler",
+        description="Unix timestamp when request was processed by the scheduler",
     )
 
 
 class RequestInfo(StandardBaseModel):
+    """
+    Complete information about a request in the scheduler system.
+
+    Encapsulates all metadata, status tracking, and timing information for requests
+    processed through the distributed scheduler. Provides comprehensive lifecycle
+    tracking from initial queuing through final completion, including error handling
+    and node identification for debugging and performance analysis.
+
+    Example:
+    ::
+        request = RequestInfo()
+        request.status = "in_progress"
+        start_time = request.started_at
+        completion_time = request.completed_at
+    """
+
     request_id: str = Field(
         description="Unique identifier for the request",
         default_factory=lambda: str(uuid.uuid4()),
@@ -82,7 +112,7 @@ class RequestInfo(StandardBaseModel):
         default=-1,
     )
     scheduler_start_time: float = Field(
-        description="Unix timestamp for the local time when scheduler processing began",
+        description="Unix timestamp when scheduler processing began",
         default=-1,
     )
     timings: RequestTimings = Field(
@@ -91,7 +121,7 @@ class RequestInfo(StandardBaseModel):
     )
 
     error: str | None = Field(
-        default=None, description="Error message if the request.status is 'errored'"
+        default=None, description="Error message if the request status is 'errored'"
     )
 
     @computed_field  # type: ignore[misc]
@@ -100,11 +130,9 @@ class RequestInfo(StandardBaseModel):
         """
         Get the effective request processing start time.
 
-        :return: Unix timestamp when processing began, or None if not started.
+        :return: Unix timestamp when processing began, or None if not started
         """
-        request_start = self.timings.request_start if self.timings else None
-
-        return request_start or self.timings.resolve_start
+        return self.timings.request_start or self.timings.resolve_start
 
     @computed_field  # type: ignore[misc]
     @property
@@ -112,17 +140,16 @@ class RequestInfo(StandardBaseModel):
         """
         Get the effective request processing completion time.
 
-        :return: Unix timestamp when processing completed, or None if not completed.
+        :return: Unix timestamp when processing completed, or None if not completed
         """
-        request_end = self.timings.request_end if self.timings else None
+        return self.timings.request_end or self.timings.resolve_end
 
-        return request_end or self.timings.resolve_end
-
-    def model_copy(self, **kwargs) -> RequestInfo:  # type: ignore[override]  # noqa: ARG002
+    def model_copy(self, **_kwargs) -> RequestInfo:  # type: ignore[override]  # noqa: ARG002
         """
         Create a deep copy of the request info with copied timing objects.
 
-        :return: New ScheduledRequestInfo instance with independent timing objects
+        :param kwargs: Additional keyword arguments for model copying
+        :return: New RequestInfo instance with independent timing objects
         """
         return super().model_copy(
             update={

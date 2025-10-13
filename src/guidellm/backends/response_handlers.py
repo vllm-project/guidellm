@@ -1,3 +1,13 @@
+"""
+Response handlers for processing API responses from different generation backends.
+
+This module provides a pluggable system for handling responses from various language
+model backends, supporting both streaming and non-streaming responses. Each handler
+implements the GenerationResponseHandler protocol to parse API responses, extract
+usage metrics, and convert them into standardized GenerationResponse objects for the
+benchmark system.
+"""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +19,7 @@ from guidellm.utils import RegistryMixin
 try:
     import orjson
 except ImportError:
-    orjson = None
+    orjson = None  # type: ignore[assignment]
 
 __all__ = [
     "AudioResponseHandler",
@@ -21,28 +31,90 @@ __all__ = [
 
 
 class GenerationResponseHandler(Protocol):
+    """
+    Protocol defining the interface for handling generation API responses.
+
+    Response handlers implement this protocol to process both streaming and
+    non-streaming responses from different backend APIs, converting them into
+    standardized GenerationResponse objects with consistent metrics extraction.
+    """
+
     def compile_non_streaming(
         self, request: GenerationRequest, response: Any
-    ) -> GenerationResponse: ...
+    ) -> GenerationResponse:
+        """
+        Process a complete non-streaming API response.
 
-    def add_streaming_line(self, line: str) -> int | None: ...
+        :param request: The original generation request
+        :param response: Raw API response data from the backend
+        :return: Standardized GenerationResponse with extracted metrics
+        """
+        ...
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse: ...
+    def add_streaming_line(self, line: str) -> int | None:
+        """
+        Process a single line from a streaming response.
+
+        :param line: Raw line from the streaming response
+        :return: 1 if content was updated, 0 if line was ignored, None if done
+        """
+        ...
+
+    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Compile accumulated streaming data into a final response.
+
+        :param request: The original generation request
+        :return: Standardized GenerationResponse with extracted metrics
+        """
+        ...
 
 
 class GenerationResponseHandlerFactory(RegistryMixin[type[GenerationResponseHandler]]):
-    pass
+    """
+    Factory for registering and creating response handlers by backend type.
+
+    Provides a registry-based system for associating handler classes with specific
+    backend API types, enabling automatic selection of the appropriate handler
+    for processing responses from different generation services.
+    """
 
 
 @GenerationResponseHandlerFactory.register("text_completions")
 class TextCompletionsResponseHandler(GenerationResponseHandler):
+    """
+    Response handler for OpenAI-style text completion endpoints.
+
+    Processes responses from text completion APIs that return generated text
+    in the 'choices' array with 'text' fields. Handles both streaming and
+    non-streaming responses, extracting usage metrics for input and output tokens.
+
+    Example:
+    ::
+        handler = TextCompletionsResponseHandler()
+        response = handler.compile_non_streaming(request, api_response)
+    """
+
     def __init__(self):
+        """
+        Initialize the text completions response handler.
+
+        Sets up internal state for accumulating streaming response data including
+        text chunks and usage metrics.
+        """
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
 
     def compile_non_streaming(
         self, request: GenerationRequest, response: dict
     ) -> GenerationResponse:
+        """
+        Process a complete text completion response.
+
+        :param request: The original generation request
+        :param response: Complete API response containing choices and usage data
+        :return: Standardized GenerationResponse with extracted text and metrics
+        """
         choices = cast("list[dict]", response.get("choices", []))
         usage = cast("dict[str, int | dict[str, int]]", response.get("usage", {}))
         input_metrics, output_metrics = self.extract_metrics(usage)
@@ -58,6 +130,15 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         )
 
     def add_streaming_line(self, line: str) -> int | None:
+        """
+        Process a single line from a text completion streaming response.
+
+        Parses Server-Sent Events (SSE) formatted lines, extracting text content
+        and usage metrics. Accumulates text chunks for final response compilation.
+
+        :param line: Raw SSE line from the streaming response
+        :return: 1 if text content was extracted, 0 if line ignored, None if done
+        """
         if line == "data: [DONE]":
             return None
 
@@ -83,6 +164,12 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         return 1 if updated else 0
 
     def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Compile accumulated streaming text chunks into a final response.
+
+        :param request: The original generation request
+        :return: Standardized GenerationResponse with concatenated text and metrics
+        """
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
 
         return GenerationResponse(
@@ -98,6 +185,12 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
+        """
+        Extract input and output usage metrics from API response usage data.
+
+        :param usage: Usage data dictionary from API response
+        :return: Tuple of (input_metrics, output_metrics) as UsageMetrics objects
+        """
         if not usage:
             return UsageMetrics(), UsageMetrics()
 
@@ -107,15 +200,19 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         )
 
         return UsageMetrics(
-            text_tokens=input_details.get("prompt_tokens")
-            or cast("int", usage.get("prompt_tokens")),
+            text_tokens=(
+                input_details.get("prompt_tokens")
+                or cast("int", usage.get("prompt_tokens"))
+            ),
             image_tokens=input_details.get("image_tokens"),
             video_tokens=input_details.get("video_tokens"),
             audio_tokens=input_details.get("audio_tokens"),
             audio_seconds=input_details.get("seconds"),
         ), UsageMetrics(
-            text_tokens=output_details.get("completion_tokens")
-            or cast("int", usage.get("completion_tokens")),
+            text_tokens=(
+                output_details.get("completion_tokens")
+                or cast("int", usage.get("completion_tokens"))
+            ),
             image_tokens=output_details.get("image_tokens"),
             video_tokens=output_details.get("video_tokens"),
             audio_tokens=output_details.get("audio_tokens"),
@@ -125,9 +222,27 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
 @GenerationResponseHandlerFactory.register("chat_completions")
 class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
+    """
+    Response handler for OpenAI-style chat completion endpoints.
+
+    Extends TextCompletionsResponseHandler to handle chat completion responses
+    where generated text is nested within message objects in the choices array.
+    Processes both streaming and non-streaming chat completion responses.
+    """
+
     def compile_non_streaming(
         self, request: GenerationRequest, response: dict
     ) -> GenerationResponse:
+        """
+        Process a complete chat completion response.
+
+        Extracts content from the message object within choices, handling the
+        nested structure specific to chat completion endpoints.
+
+        :param request: The original generation request
+        :param response: Complete API response containing choices and usage data
+        :return: Standardized GenerationResponse with extracted content and metrics
+        """
         choices = cast("list[dict]", response.get("choices", []))
         usage = cast("dict[str, int | dict[str, int]]", response.get("usage", {}))
         input_metrics, output_metrics = self.extract_metrics(usage)
@@ -145,6 +260,15 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         )
 
     def add_streaming_line(self, line: str) -> int | None:
+        """
+        Process a single line from a chat completion streaming response.
+
+        Handles the chat completion specific delta structure where content
+        is nested within delta objects in the streaming response chunks.
+
+        :param line: Raw SSE line from the streaming response
+        :return: 1 if content was extracted, 0 if line ignored, None if done
+        """
         if line == "data: [DONE]":
             return None
 
@@ -171,6 +295,12 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         return 1 if updated else 0
 
     def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Compile accumulated streaming chat completion content into a final response.
+
+        :param request: The original generation request
+        :return: Standardized GenerationResponse with concatenated content and metrics
+        """
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
 
         return GenerationResponse(
@@ -188,7 +318,26 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
     ["audio_transcriptions", "audio_translations"]
 )
 class AudioResponseHandler:
+    """
+    Response handler for audio transcription and translation endpoints.
+
+    Processes responses from audio processing APIs that convert speech to text,
+    handling both transcription and translation services. Manages audio-specific
+    usage metrics including audio tokens and processing duration.
+
+    Example:
+    ::
+        handler = AudioResponseHandler()
+        response = handler.compile_non_streaming(request, api_response)
+    """
+
     def __init__(self):
+        """
+        Initialize the audio response handler.
+
+        Sets up internal state for accumulating streaming response data including
+        audio buffers, text chunks, and usage metrics.
+        """
         self.streaming_buffer: bytearray = bytearray()
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
@@ -196,6 +345,16 @@ class AudioResponseHandler:
     def compile_non_streaming(
         self, request: GenerationRequest, response: dict
     ) -> GenerationResponse:
+        """
+        Process a complete audio transcription or translation response.
+
+        Extracts transcribed or translated text and audio-specific usage metrics
+        including processing duration and token counts for audio content.
+
+        :param request: The original generation request
+        :param response: Complete API response containing text and usage data
+        :return: Standardized GenerationResponse with extracted text and metrics
+        """
         usage = cast("dict[str, int]", response.get("usage", {}))
         input_details = cast("dict[str, int]", usage.get("input_token_details", {}))
         output_details = cast("dict[str, int]", usage.get("output_token_details", {}))
@@ -222,6 +381,15 @@ class AudioResponseHandler:
         )
 
     def add_streaming_line(self, line: str) -> int | None:
+        """
+        Process a single line from an audio streaming response.
+
+        Handles JSON-formatted streaming responses from audio processing endpoints,
+        extracting text content and usage metrics as they become available.
+
+        :param line: Raw JSON line from the streaming response
+        :return: 1 if text content was extracted, 0 if line ignored, None if done
+        """
         if line == "data: [DONE]":
             return None
 
@@ -244,6 +412,12 @@ class AudioResponseHandler:
         return 1 if updated else 0
 
     def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Compile accumulated streaming audio text into a final response.
+
+        :param request: The original generation request
+        :return: Standardized GenerationResponse with concatenated text and metrics
+        """
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
 
         return GenerationResponse(
@@ -259,6 +433,15 @@ class AudioResponseHandler:
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
+        """
+        Extract input and output usage metrics from audio API response usage data.
+
+        Handles audio-specific metrics including processing duration and audio tokens
+        in addition to standard text token counts.
+
+        :param usage: Usage data dictionary from audio API response
+        :return: Tuple of (input_metrics, output_metrics) as UsageMetrics objects
+        """
         if not usage:
             return UsageMetrics(), UsageMetrics()
 
