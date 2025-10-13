@@ -16,7 +16,6 @@ import copy
 import json
 import time
 from collections.abc import AsyncIterator
-from itertools import chain
 from pathlib import Path
 from typing import Any, ClassVar, Optional, Union
 
@@ -508,11 +507,13 @@ class OpenAIHTTPBackend(Backend):
         Apply conversation history to the current request.
         """
 
-        def turn_to_text(turn: tuple[GenerationRequest, GenerationResponse]) -> str:
-            req, res = turn
-            return f"{req.content}{res.value}"
+        if len(history) > 0:
+            last_request = history[-1][0]
+            last_response = history[-1][1]
+            request.content = (
+                f"{last_request.content}{last_response.value} {request.content}"
+            )
 
-        request.content = "".join(chain(map(turn_to_text, history), (request.content,)))
         return request
 
     def _build_headers(
