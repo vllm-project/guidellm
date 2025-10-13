@@ -1,6 +1,7 @@
 import pytest
 
-from guidellm.presentation.data_models import Bucket
+from guidellm.presentation.data_models import BenchmarkDatum, Bucket
+from tests.unit.mock_benchmark import mock_generative_benchmark
 
 
 @pytest.mark.smoke
@@ -18,3 +19,10 @@ def test_bucket_from_data():
     assert buckets[1].value == 8.0
     assert buckets[1].count == 5
     assert bucket_width == 1
+
+
+@pytest.mark.smoke
+def test_from_benchmark_includes_strategy_display_str():
+    mock_bm = mock_generative_benchmark()
+    bm = BenchmarkDatum.from_benchmark(mock_bm)
+    assert bm.strategy_display_str == "synchronous"
