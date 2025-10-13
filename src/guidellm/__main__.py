@@ -160,8 +160,20 @@ def benchmark():
         "For rate-type=sweep, this is the number of benchmarks it runs in the sweep. "
         "For rate-type=concurrent, this is the number of concurrent requests. "
         "For rate-type=async,constant,poisson, this is the rate requests per second. "
-        "For rate-type=synchronous,throughput, this must not be set."
+        "For rate-type=synchronous,throughput,steps, this must not be set."
     ),
+)
+@click.option(
+    "--steps-duration",
+    type=str,
+    default=None,
+    help="Comma-separated list of durations for each step in seconds. Only used with --rate-type=steps.",
+)
+@click.option(
+    "--steps-rate",
+    type=str,
+    default=None,
+    help="Comma-separated list of rates for each step in requests per second. Only used with --rate-type=steps.",
 )
 @click.option(
     "--max-seconds",
@@ -260,6 +272,8 @@ def run(
     data_sampler,
     rate_type,
     rate,
+    steps_duration,
+    steps_rate,
     max_seconds,
     max_requests,
     warmup_percent,
@@ -287,6 +301,8 @@ def run(
         data_sampler=data_sampler,
         rate_type=rate_type,
         rate=rate,
+        steps_duration=steps_duration,
+        steps_rate=steps_rate,
         max_seconds=max_seconds,
         max_requests=max_requests,
         warmup_percent=warmup_percent,

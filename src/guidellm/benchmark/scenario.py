@@ -4,7 +4,14 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, TypeVar, Union
 
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
-from pydantic import BeforeValidator, Field, NonNegativeInt, PositiveFloat, PositiveInt
+from pydantic import (
+    BeforeValidator,
+    Field,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    model_validator,
+)
 from transformers.tokenization_utils_base import (  # type: ignore[import]
     PreTrainedTokenizerBase,
 )
@@ -35,6 +42,29 @@ def parse_float_list(value: Union[str, float, list[float]]) -> list[float]:
         return [value]
     elif isinstance(value, list):
         return value
+
+    values = value.split(",") if "," in value else [value]
+
+    try:
+        return [float(val) for val in values]
+    except ValueError as err:
+        raise ValueError(
+            "must be a number or comma-separated list of numbers."
+        ) from err
+
+
+def parse_int_list(value: Union[str, float, list[float]]) -> Optional[list[float]]:
+    """
+    Parse a comma separated string to a list of float
+    or convert single float list of one or pass float
+    list through.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return [float(value)]
+    elif isinstance(value, list):
+        return [float(v) for v in value]
 
     values = value.split(",") if "," in value else [value]
 
@@ -96,9 +126,31 @@ class GenerativeTextScenario(Scenario):
     rate: Annotated[
         Optional[list[PositiveFloat]], BeforeValidator(parse_float_list)
     ] = None
+    steps_duration: Annotated[
+        Optional[list[PositiveFloat]], BeforeValidator(parse_int_list)
+    ] = None
+    steps_rate: Annotated[
+        Optional[list[PositiveFloat]], BeforeValidator(parse_float_list)
+    ] = None
     max_seconds: Optional[PositiveFloat] = None
     max_requests: Optional[PositiveInt] = None
     warmup_percent: Annotated[Optional[float], Field(gt=0, le=1)] = None
     cooldown_percent: Annotated[Optional[float], Field(gt=0, le=1)] = None
     output_sampling: Optional[NonNegativeInt] = None
     random_seed: int = 42
+
+    @model_validator(mode="after")
+    def validate_steps(self) -> "GenerativeTextScenario":
+        if self.rate_type == "steps":
+            if not self.steps_duration:
+                raise ValueError("steps_duration is required for rate_type 'steps'")
+            if not self.steps_rate:
+                raise ValueError("steps_rate is required for rate_type 'steps'")
+            if len(self.steps_duration) != len(self.steps_rate):
+                raise ValueError(
+                    "steps_duration and steps_rate must have the same length"
+                )
+
+            self.max_seconds = sum(self.steps_duration)
+
+        return self

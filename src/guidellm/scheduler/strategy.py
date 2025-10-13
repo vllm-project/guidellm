@@ -21,11 +21,14 @@ __all__ = [
     "StrategyType",
     "SynchronousStrategy",
     "ThroughputStrategy",
+    "StepsStrategy",
     "strategy_display_str",
 ]
 
 
-StrategyType = Literal["synchronous", "concurrent", "throughput", "constant", "poisson"]
+StrategyType = Literal[
+    "synchronous", "concurrent", "throughput", "constant", "poisson", "steps"
+]
 
 
 class SchedulingStrategy(StandardBaseModel):
@@ -479,6 +482,63 @@ class AsyncPoissonStrategy(ThroughputStrategy):
             inter_arrival_time = rand.expovariate(self.rate)
             init_time += inter_arrival_time
             yield init_time
+
+
+class StepsStrategy(ThroughputStrategy):
+    """
+    A class representing a steps scheduling strategy.
+    This strategy schedules requests asynchronously at different rates for different durations.
+
+    :param type_: The steps StrategyType to schedule requests asynchronously.
+    :param steps_duration: A list of durations for each step in seconds.
+    :param steps_rate: A list of rates for each step in requests per second.
+    """
+
+    type_: Literal["steps"] = "steps"  # type: ignore[assignment]
+
+    steps_duration: list[int] = Field(
+        description="A list of durations for each step in seconds.",
+    )
+    steps_rate: list[float] = Field(
+        description="A list of rates for each step in requests per second.",
+    )
+
+    def request_times(self) -> Generator[float, None, None]:
+        """
+        A generator that yields timestamps for when requests should be sent.
+        This method schedules requests asynchronously at different rates for different durations.
+
+        :return: A generator that yields timestamps for request scheduling.
+        """
+        step_start_time = self.start_time
+
+        for i, duration in enumerate(self.steps_duration):
+            rate = self.steps_rate[i]
+            step_end_time = step_start_time + duration
+
+            if rate <= 0:
+                # If rate is 0, we just wait for the duration of the step.
+                # No requests are yielded.
+                step_start_time = step_end_time
+                continue
+
+            increment = 1.0 / rate
+
+            # initial burst for the step
+            burst_count = math.floor(rate)
+            for _ in range(burst_count):
+                yield step_start_time
+
+            request_time = step_start_time + increment
+            counter = 0
+            while True:
+                next_request_time = request_time + increment * counter
+                if next_request_time >= step_end_time:
+                    break
+                yield next_request_time
+                counter += 1
+
+            step_start_time = step_end_time
 
 
 def strategy_display_str(strategy: Union[StrategyType, SchedulingStrategy]) -> str:
