@@ -120,9 +120,16 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             for index, dataset in enumerate(datasets)
         }
 
+        # Parse out user mappings that were passed in and validate them
+        # Must be in the format of:
+        # {<column_type>: [<column_names>]}
+        # where <column_names> can be a single string or list of strings
+        # and each string can be any of:
+        # - a column name (assumes the first dataset was intended)
+        # - <int>.<column_name> where <int> is the dataset index
+        # - <str>.<column_name> where <str> is the dataset name
         for column_type, names in input_mappings.items():
             mappings[column_type] = []
-
             for name in names if isinstance(names, list) else [names]:
                 if "." in name:
                     dataset, column_name = name.split(".", 1)

@@ -232,17 +232,17 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend_started = True
         await self.backend.validate()
 
-        # Wait for all processes to be ready
-        await wait_for_sync_barrier(
-            self.startup_barrier,
-            poll_interval=self.messaging.poll_interval,
-        )
-
         # Get messaging system ready
         await self.messaging.start(
             receive_stop_criteria=[self.requests_generated_event]
         )
         self.messaging_started = True
+
+        # Wait for all processes to be ready
+        await wait_for_sync_barrier(
+            self.startup_barrier,
+            poll_interval=self.messaging.poll_interval,
+        )
 
         self.startup_completed = True
 

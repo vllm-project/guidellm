@@ -17,13 +17,9 @@ from .functions import (
     safe_getattr,
     safe_multiply,
 )
-from .hf_datasets import (
-    SUPPORTED_TYPES,
-    save_dataset_to_file,
-)
-from .hf_transformers import (
-    check_load_processor,
-)
+from .hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
+from .hf_transformers import check_load_processor
+from .imports import json
 from .messaging import (
     InterProcessMessaging,
     InterProcessMessagingManagerQueue,
@@ -113,6 +109,7 @@ __all__ = [
     "format_value_display",
     "get_literal_vals",
     "is_punctuation",
+    "json",
     "load_text",
     "recursive_key_update",
     "safe_add",

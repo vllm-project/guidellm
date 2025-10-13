@@ -10,16 +10,10 @@ benchmark system.
 
 from __future__ import annotations
 
-import json
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
-from guidellm.utils import RegistryMixin
-
-try:
-    import orjson
-except ImportError:
-    orjson = None  # type: ignore[assignment]
+from guidellm.utils import RegistryMixin, json
 
 __all__ = [
     "AudioResponseHandler",
@@ -115,8 +109,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         :param response: Complete API response containing choices and usage data
         :return: Standardized GenerationResponse with extracted text and metrics
         """
-        choices = cast("list[dict]", response.get("choices", []))
-        usage = cast("dict[str, int | dict[str, int]]", response.get("usage", {}))
+        choices, usage = self.extract_choices_and_usage(response)
         input_metrics, output_metrics = self.extract_metrics(usage)
 
         return GenerationResponse(
@@ -139,26 +132,17 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         :param line: Raw SSE line from the streaming response
         :return: 1 if text content was extracted, 0 if line ignored, None if done
         """
-        if line == "data: [DONE]":
-            return None
+        if not (data := self.extract_line_data(line)):
+            return None if data is None else 0
 
-        if not line or not (line := line.strip()) or not line.startswith("data:"):
-            return 0
-
-        line = line[len("data:") :].strip()
-        data = cast(
-            "dict[str, Any]",
-            json.loads(line) if orjson is None else orjson.loads(line),
-        )
         updated = False
+        choices, usage = self.extract_choices_and_usage(data)
 
-        if (choices := cast("list[dict]", data.get("choices"))) and (
-            text := choices[0].get("text")
-        ):
+        if text := choices[0].get("text"):
             self.streaming_texts.append(text)
             updated = True
 
-        if usage := cast("dict[str, int | dict[str, int]]", data.get("usage")):
+        if usage:
             self.streaming_usage = usage
 
         return 1 if updated else 0
@@ -182,6 +166,34 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
             output_metrics=output_metrics,
         )
 
+    def extract_line_data(self, line: str) -> dict[str, Any] | None:
+        """
+        Extract JSON data from a streaming response line.
+
+        :param line: Raw line from the streaming response
+        :return: Parsed JSON data as a dictionary, or None if line is invalid
+        """
+        if line == "data: [DONE]":
+            return None
+
+        if not line or not (line := line.strip()) or not line.startswith("data:"):
+            return {}
+
+        line = line[len("data:") :].strip()
+
+        return json.loads(line)
+
+    def extract_choices_and_usage(
+        self, response: dict
+    ) -> tuple[list[dict], dict[str, int | dict[str, int]]]:
+        """
+        Extract choices and usage data from the API response.
+
+        :param response: Complete API response containing choices and usage data
+        :return: Tuple of (choices list, usage dictionary)
+        """
+        return response.get("choices", []), response.get("usage", {})
+
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
@@ -194,15 +206,14 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         if not usage:
             return UsageMetrics(), UsageMetrics()
 
-        input_details = cast("dict[str, int]", usage.get("prompt_tokens_details", {}))
-        output_details = cast(
-            "dict[str, int]", usage.get("completion_tokens_details", {})
+        input_details: dict[str, int] = usage.get("prompt_tokens_details", {}) or {}
+        output_details: dict[str, int] = (
+            usage.get("completion_tokens_details", {}) or {}
         )
 
         return UsageMetrics(
             text_tokens=(
-                input_details.get("prompt_tokens")
-                or cast("int", usage.get("prompt_tokens"))
+                input_details.get("prompt_tokens") or usage.get("prompt_tokens")
             ),
             image_tokens=input_details.get("image_tokens"),
             video_tokens=input_details.get("video_tokens"),
@@ -211,7 +222,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         ), UsageMetrics(
             text_tokens=(
                 output_details.get("completion_tokens")
-                or cast("int", usage.get("completion_tokens"))
+                or usage.get("completion_tokens")
             ),
             image_tokens=output_details.get("image_tokens"),
             video_tokens=output_details.get("video_tokens"),
@@ -243,8 +254,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         :param response: Complete API response containing choices and usage data
         :return: Standardized GenerationResponse with extracted content and metrics
         """
-        choices = cast("list[dict]", response.get("choices", []))
-        usage = cast("dict[str, int | dict[str, int]]", response.get("usage", {}))
+        choices, usage = self.extract_choices_and_usage(response)
         input_metrics, output_metrics = self.extract_metrics(usage)
 
         return GenerationResponse(
@@ -252,9 +262,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            text=cast("dict", choices[0].get("message", {})).get("content", "")
-            if choices
-            else "",
+            text=(choices[0].get("message", {}).get("content", "") if choices else ""),
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -269,27 +277,17 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         :param line: Raw SSE line from the streaming response
         :return: 1 if content was extracted, 0 if line ignored, None if done
         """
-        if line == "data: [DONE]":
-            return None
+        if not (data := self.extract_line_data(line)):
+            return None if data is None else 0
 
-        if not line or not (line := line.strip()) or not line.startswith("data:"):
-            return 0
-
-        line = line[len("data:") :].strip()
-        data = cast(
-            "dict[str, Any]",
-            json.loads(line) if orjson is None else orjson.loads(line),
-        )
         updated = False
+        choices, usage = self.extract_choices_and_usage(data)
 
-        # Extract delta content for chat completion chunks
-        if choices := cast("list[dict]", data.get("choices")):
-            delta = choices[0].get("delta", {})
-            if content := delta.get("content"):
-                self.streaming_texts.append(content)
+        if choices and (content := choices[0].get("delta", {}).get("content")):
+            self.streaming_texts.append(content)
             updated = True
 
-        if usage := cast("dict[str, int | dict[str, int]]", data.get("usage")):
+        if usage:
             self.streaming_usage = usage
 
         return 1 if updated else 0
@@ -355,10 +353,10 @@ class AudioResponseHandler:
         :param response: Complete API response containing text and usage data
         :return: Standardized GenerationResponse with extracted text and metrics
         """
-        usage = cast("dict[str, int]", response.get("usage", {}))
-        input_details = cast("dict[str, int]", usage.get("input_token_details", {}))
-        output_details = cast("dict[str, int]", usage.get("output_token_details", {}))
-        text = response.get("text", "")
+        usage: dict[str, int | dict[str, int]] = response.get("usage", {})
+        input_details: dict[str, int] = usage.get("input_token_details", {}) or {}
+        output_details: dict[str, int] = usage.get("output_token_details", {}) or {}
+        text: str = response.get("text", "")
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -396,17 +394,16 @@ class AudioResponseHandler:
         if not line or not (line := line.strip()) or not line.startswith("{"):
             return 0
 
-        data = cast(
-            "dict[str, Any]",
-            json.loads(line) if orjson is None else orjson.loads(line),
-        )
+        data: dict[str, Any] = json.loads(line)
+        text: str
+        usage: dict[str, int | dict[str, int]]
         updated = False
 
         if text := data.get("text"):
             self.streaming_texts.append(text)
             updated = True
 
-        if usage := cast("dict[str, int | dict[str, int]]", data.get("usage")):
+        if usage := data.get("usage"):
             self.streaming_usage = usage
 
         return 1 if updated else 0
@@ -445,22 +442,15 @@ class AudioResponseHandler:
         if not usage:
             return UsageMetrics(), UsageMetrics()
 
-        input_details = cast("dict[str, int]", usage.get("input_token_details", {}))
-        output_details = cast("dict[str, int]", usage.get("output_token_details", {}))
+        input_details: dict[str, int] = usage.get("input_token_details", {}) or {}
+        output_details: dict[str, int] = usage.get("output_token_details", {}) or {}
 
         return UsageMetrics(
-            text_tokens=(
-                input_details.get("text_tokens")
-                or cast("int", usage.get("input_tokens"))
-            ),
+            text_tokens=(input_details.get("text_tokens") or usage.get("input_tokens")),
             audio_tokens=(
-                input_details.get("audio_tokens")
-                or cast("int", usage.get("audio_tokens"))
+                input_details.get("audio_tokens") or usage.get("audio_tokens")
             ),
-            audio_seconds=(
-                input_details.get("seconds") or cast("int", usage.get("seconds"))
-            ),
+            audio_seconds=(input_details.get("seconds") or usage.get("seconds")),
         ), UsageMetrics(
-            text_tokens=output_details.get("text_tokens")
-            or cast("int", usage.get("output_tokens")),
+            text_tokens=output_details.get("text_tokens") or usage.get("output_tokens"),
         )

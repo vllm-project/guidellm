@@ -9,13 +9,7 @@ from typing_extensions import TypeAliasType
 from guidellm.benchmark.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.progress import BenchmarkerProgress
 
-__all__ = [
-    "AggregatorInputT",
-    "DataInputT",
-    "OutputFormatT",
-    "ProcessorInputT",
-    "ProgressInputT",
-]
+__all__ = ["OutputFormatT", "ProcessorInputT", "ProgressInputT"]
 
 
 OutputFormatT = TypeAliasType(

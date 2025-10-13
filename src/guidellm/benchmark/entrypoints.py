@@ -5,15 +5,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 from torch.utils.data import Sampler
-from transformers import PreTrainedTokenizerBase
-from typing_extensions import TypeAliasType
 
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.progress import BenchmarkerProgress, BenchmarkerProgressGroup
+from guidellm.benchmark.progress import BenchmarkerProgressGroup
 from guidellm.benchmark.schemas import GenerativeBenchmark, GenerativeBenchmarksReport
+from guidellm.benchmark.types import OutputFormatT, ProcessorInputT, ProgressInputT
 from guidellm.data import (
     DataLoader,
     DatasetPreprocessor,
@@ -39,20 +38,6 @@ __all__ = [
 # Helper Variables
 
 _CURRENT_WORKING_DIR = Path.cwd()
-
-OutputFormatT = TypeAliasType(
-    "OutputFormatT",
-    tuple[str, ...]
-    | list[str]
-    | dict[str, str | dict[str, Any] | GenerativeBenchmarkerOutput]
-    | None,
-)
-
-ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokenizerBase)
-
-ProgressInputT = TypeAliasType(
-    "ProgressInputT", tuple[str, ...] | list[str] | list[BenchmarkerProgress]
-)
 
 
 # Helper Functions

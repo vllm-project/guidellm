@@ -78,10 +78,8 @@ dependencies = [
 
 [project.optional-dependencies]
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
-recommended = [
-    "tiktoken>=0.11.0", # For OpenAI tokenizer
-    "blobfile>=3.1.0",  # For OpenAI tokenizer
-]
+openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
+recommended = ["guidellm[perf,openai]"]
 dev = [
     # build
     "build>=1.0.0",

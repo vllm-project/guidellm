@@ -209,7 +209,9 @@ class SyntheticTextGenerator:
 
         # Create prefix list maintaining the correct distribution
         prefixes = []
-        for bucket, weight in zip(self.config.prefix_buckets, unnorm_weights, strict=False):
+        for bucket, weight in zip(
+            self.config.prefix_buckets, unnorm_weights, strict=False
+        ):
             bucket_prefixes = [
                 self._create_prompt(bucket.prefix_tokens, faker)
                 for _ in range(bucket.prefix_count)
