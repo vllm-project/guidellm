@@ -76,11 +76,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Meta Extras
+all = ["guidellm[perf,openai,multimodal]"]
+recommended = ["guidellm[perf,openai]"]
+# Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
 multimodal = ["datasets[audio,vision]>=4.1.0", "torchcodec"]
-recommended = ["guidellm[perf,openai]"]
+# Dev Tooling
 dev = [
+    # Install all optional dependencies
+    "guidellm[all]",
+
     # build
     "build>=1.0.0",
     "setuptools>=61.0",
