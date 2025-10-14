@@ -15,11 +15,7 @@ from .profile import (
     SynchronousProfile,
     ThroughputProfile,
 )
-from .progress import (
-    BenchmarkerProgress,
-    BenchmarkerProgressGroup,
-    GenerativeConsoleBenchmarkerProgress,
-)
+from .progress import BenchmarkerProgress, GenerativeConsoleBenchmarkerProgress
 from .schemas import (
     Benchmark,
     BenchmarkArgs,
@@ -44,7 +40,6 @@ __all__ = [
     "Benchmarker",
     "BenchmarkerDict",
     "BenchmarkerProgress",
-    "BenchmarkerProgressGroup",
     "ConcurrentProfile",
     "EstimatedBenchmarkState",
     "GenerativeAudioMetricsSummary",

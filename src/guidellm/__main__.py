@@ -286,7 +286,7 @@ def benchmark():
 )
 @click.option(
     "--data-num-workers",
-    default=1,
+    default=None,
     type=int,
     help="The number of worker processes to use for data loading.",
 )
@@ -505,11 +505,9 @@ def run(
             output_formats=output_formats,
             # Updates configuration
             progress=(
-                [
-                    GenerativeConsoleBenchmarkerProgress(
-                        display_scheduler_stats=display_scheduler_stats
-                    )
-                ]
+                GenerativeConsoleBenchmarkerProgress(
+                    display_scheduler_stats=display_scheduler_stats
+                )
                 if not disable_progress
                 else None
             ),

@@ -23,20 +23,19 @@ from collections.abc import AsyncIterator, Iterable
 from typing import Generic
 
 from guidellm.benchmark.profile import Profile
+from guidellm.benchmark.progress import BenchmarkerProgress
 from guidellm.benchmark.schemas import (
     BenchmarkArgs,
     BenchmarkT,
     EstimatedBenchmarkState,
 )
+from guidellm.logger import logger
 from guidellm.scheduler import (
     BackendInterface,
     Environment,
-    NonDistributedEnvironment,
     RequestT,
     ResponseT,
     Scheduler,
-    SchedulerState,
-    SchedulingStrategy,
 )
 from guidellm.utils import ThreadSafeSingletonMixin
 
@@ -65,19 +64,13 @@ class Benchmarker(
         requests: Iterable[RequestT | Iterable[RequestT | tuple[RequestT, float]]],
         backend: BackendInterface[RequestT, ResponseT],
         profile: Profile,
-        environment: Environment | None = None,
+        environment: Environment,
+        progress: BenchmarkerProgress[BenchmarkT] | None = None,
         sample_requests: int | None = 20,
         warmup: float | None = None,
         cooldown: float | None = None,
         prefer_response_metrics: bool = True,
-    ) -> AsyncIterator[
-        tuple[
-            EstimatedBenchmarkState | None,
-            BenchmarkT | None,
-            SchedulingStrategy,
-            SchedulerState | None,
-        ]
-    ]:
+    ) -> AsyncIterator[BenchmarkT]:
         """
         Execute benchmark runs across multiple scheduling strategies.
 
@@ -95,15 +88,17 @@ class Benchmarker(
         :raises Exception: If benchmark execution or compilation fails.
         """
         with self.thread_lock:
-            if environment is None:
-                environment = NonDistributedEnvironment()
+            if progress:
+                await progress.on_initialize(profile)
 
             run_id = str(uuid.uuid4())
             strategies_generator = profile.strategies_generator()
             strategy, constraints = next(strategies_generator)
 
             while strategy is not None:
-                yield None, None, strategy, None
+                if progress:
+                    await progress.on_benchmark_start(strategy)
+
                 args = BenchmarkArgs(
                     run_id=run_id,
                     run_index=len(profile.completed_strategies),
@@ -127,18 +122,23 @@ class Benchmarker(
                     env=environment,
                     **constraints or {},
                 ):
-                    benchmark_class.update_estimate(
-                        args,
-                        estimated_state,
-                        response,
-                        request,
-                        request_info,
-                        scheduler_state,
-                    )
-                    yield estimated_state, None, strategy, scheduler_state
-
-                if scheduler_state is None:
-                    raise RuntimeError("Scheduler state is None after execution.")
+                    try:
+                        benchmark_class.update_estimate(
+                            args,
+                            estimated_state,
+                            response,
+                            request,
+                            request_info,
+                            scheduler_state,
+                        )
+                        if progress:
+                            await progress.on_benchmark_update(
+                                estimated_state, scheduler_state
+                            )
+                    except Exception as err:
+                        logger.error(
+                            f"Error updating benchmark estimate/progress: {err}"
+                        )
 
                 benchmark = benchmark_class.compile(
                     args=args,
@@ -151,10 +151,16 @@ class Benchmarker(
                     strategy=strategy,
                     constraints=constraints,
                 )
-                yield None, benchmark, strategy, None
+                if progress:
+                    await progress.on_benchmark_complete(benchmark)
+
+                yield benchmark
 
                 try:
                     strategy, constraints = strategies_generator.send(benchmark)
                 except StopIteration:
                     strategy = None
                     constraints = None
+
+            if progress:
+                await progress.on_finalize()

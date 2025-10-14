@@ -157,6 +157,7 @@ class EstimatedBenchmarkState(dict[str, Any]):
         if self.get(start_time_key) is None:
             if start_time is None:
                 start_time = time.time()
+            self[start_time_key] = start_time
         else:
             self[start_time_key] = start_time or self[start_time_key]
 
@@ -595,7 +596,6 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
     tokens: GenerativeMetricsSummary = Field(description="")
     words: GenerativeMetricsSummary = Field(description="")
     characters: GenerativeMetricsSummary = Field(description="")
-    bytes: GenerativeMetricsSummary = Field(description="")
 
     @classmethod
     def compile(
@@ -627,12 +627,6 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
                 output_values=[
                     metrics.text_characters or 0 for metrics in output_metrics
                 ],
-            ),
-            bytes=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.text_bytes or 0 for metrics in input_metrics],
-                output_values=[metrics.text_bytes or 0 for metrics in output_metrics],
             ),
         )
 

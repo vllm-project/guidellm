@@ -22,6 +22,7 @@ from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Barrier, Event
 from typing import Generic, NamedTuple
 
+from guidellm.logger import logger
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
 from guidellm.scheduler.schemas import (
     BackendInterface,
@@ -349,6 +350,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         """
         while True:
             if self.error_event.is_set():  # type: ignore[union-attr]
+                logger.error("Error event set in WorkerProcessGroup")
                 raise RuntimeError(
                     "error_event is set in WorkerProcessGroup, "
                     "indicating an error occurred in one of the worker processes."
@@ -507,40 +509,47 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 while True:
                     yield from cycle_requests
 
-        count = 0
+        try:
+            count = 0
+            request_iter = _iter()
+            for request in request_iter:
+                count += 1
 
-        for request in _iter():
-            count += 1
+                if hasattr(request, "request_id"):
+                    request_id = request.request_id
+                elif hasattr(request, "id"):
+                    request_id = request.id
+                else:
+                    request_id = str(uuid.uuid4())
+                request_info: RequestInfo = RequestInfo(
+                    request_id=request_id,
+                    status="queued",
+                    scheduler_process_id=0,
+                    scheduler_start_time=self.start_time,
+                )
+                state_update = self._locked_update(request_info)
+                request_info.timings.queued = time.time()
 
-            if hasattr(request, "request_id"):
-                request_id = request.request_id
-            elif hasattr(request, "id"):
-                request_id = request.id
-            else:
-                request_id = str(uuid.uuid4())
-            request_info: RequestInfo = RequestInfo(
-                request_id=request_id,
-                status="queued",
-                scheduler_process_id=0,
-                scheduler_start_time=self.start_time,
+                yield (request, request_info)
+
+                if state_update.stop_queueing:
+                    self.stop_send_requests_event.set()
+                    return
+
+            # Reached the end, inject a RequestsExhaustedConstraint to record
+            self._locked_update(
+                info=None,
+                requests_exhausted={
+                    "requests_exhausted": RequestsExhaustedConstraint(
+                        num_requests=count
+                    )
+                },
             )
-            state_update = self._locked_update(request_info)
-            request_info.timings.queued = time.time()
-
-            yield (request, request_info)
-
-            if state_update.stop_queueing:
-                self.stop_send_requests_event.set()
-                return
-
-        # Reached the end, inject a RequestsExhaustedConstraint to record
-        self._locked_update(
-            info=None,
-            requests_exhausted={
-                "requests_exhausted": RequestsExhaustedConstraint(num_requests=count)
-            },
-        )
-        self.stop_send_requests_event.set()
+            self.stop_send_requests_event.set()
+        except Exception as err:
+            logger.error(f"Error generating requests: {err}")
+            self.error_event.set()
+            raise err
 
     def received_callback(
         self,
@@ -565,31 +574,40 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         :param update: Tuple containing response, request, and request info
         :return: Updated tuple with injected scheduler state
         """
-        response, request, request_info = update
-        state_update = self._locked_update(info=request_info)
+        try:
+            response, request, request_info = update
+            state_update = self._locked_update(info=request_info)
 
-        # Check if we need to tell workers to stop pulling new requests
-        # based on no more requests sent and all requests removed from queue
-        if (
-            state_update.state.queued_requests == 0
-            and self.stop_send_requests_event.is_set()
-            and not self.requests_generated_event.is_set()
-        ):
-            self.requests_generated_event.set()
+            # Check if we need to tell workers to stop pulling new requests
+            # based on no more requests sent and all requests removed from queue
+            if (
+                state_update.state.queued_requests == 0
+                and self.stop_send_requests_event.is_set()
+                and not self.requests_generated_event.is_set()
+            ):
+                self.requests_generated_event.set()
 
-        # Check if we need to tell workers to stop processing requests (constraints)
-        if state_update.stop_processing and not self.constraint_reached_event.is_set():
-            self.constraint_reached_event.set()
+            # Check if we need to tell workers to stop processing requests (constraints)
+            if (
+                state_update.stop_processing
+                and not self.constraint_reached_event.is_set()
+            ):
+                self.constraint_reached_event.set()
 
-        # Check if all requests have been processed and can shutdown
-        if (
-            state_update.state.processed_requests == state_update.state.created_requests
-            and self.stop_send_requests_event.is_set()
-            and self.requests_generated_event.is_set()
-            and self.constraint_reached_event.is_set()
-            and not self.shutdown_event.is_set()
-        ):
-            self.shutdown_event.set()
+            # Check if all requests have been processed and can shutdown
+            if (
+                state_update.state.processed_requests
+                == state_update.state.created_requests
+                and self.stop_send_requests_event.is_set()
+                and self.requests_generated_event.is_set()
+                and self.constraint_reached_event.is_set()
+                and not self.shutdown_event.is_set()
+            ):
+                self.shutdown_event.set()
+        except Exception as err:
+            logger.error(f"Error processing received update: {err}")
+            self.error_event.set()
+            raise err
 
         return (
             response,

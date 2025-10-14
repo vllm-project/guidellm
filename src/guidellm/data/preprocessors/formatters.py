@@ -7,12 +7,7 @@ from guidellm.data.preprocessors.preprocessor import (
     PreprocessorRegistry,
 )
 from guidellm.data.schemas import GenerativeDatasetColumnType
-from guidellm.data.utils import (
-    encode_audio_as_dict,
-    encode_audio_as_file,
-    encode_image,
-    encode_video,
-)
+from guidellm.data.utils import encode_audio, encode_image, encode_video, text_stats
 from guidellm.schemas import GenerationRequest, GenerationRequestArguments, UsageMetrics
 
 __all__ = [
@@ -45,30 +40,29 @@ class GenerativeTextCompletionsRequestFormatter(DatasetPreprocessor):
     def __call__(
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
-        body: dict[str, Any] = {}
-        arguments: GenerationRequestArguments = GenerationRequestArguments(body=body)
+        arguments: GenerationRequestArguments = GenerationRequestArguments(body={})
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
         # Add model
         if self.model is not None:
-            body["model"] = self.model
+            arguments.body["model"] = self.model
 
         # Configure streaming
         if self.stream:
             arguments.stream = True
-            body["stream"] = True
+            arguments.body["stream"] = True
 
         # Handle output tokens
         if output_tokens := sum(
             count for count in columns.get("output_tokens_count_column", []) if count
         ):
             output_metrics.text_tokens = output_tokens
-            body["max_tokens"] = output_tokens
-            body["stop"] = None
-            body["ignore_eos"] = True
+            arguments.body["max_tokens"] = output_tokens
+            arguments.body["stop"] = None
+            arguments.body["ignore_eos"] = True
         elif self.max_tokens is not None:
-            body["max_tokens"] = self.max_tokens
+            arguments.body["max_tokens"] = self.max_tokens
 
         # Handle prompt tokens
         if prompt_tokens := sum(
@@ -84,7 +78,10 @@ class GenerativeTextCompletionsRequestFormatter(DatasetPreprocessor):
         prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
         text = "".join(txt for txt in columns.get("text_column", []) if txt)
         if prefix or text:
-            body["prompt"] = prefix + text
+            arguments.body["prompt"] = prefix + text
+            stats = text_stats(arguments.body["prompt"])
+            input_metrics.text_characters = stats.get("num_chars")
+            input_metrics.text_words = stats.get("num_words")
 
         return GenerationRequest(
             request_type="text_completions",
@@ -126,26 +123,27 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
     def __call__(
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
-        body: dict[str, Any] = {}
-        arguments = GenerationRequestArguments(body=body)
+        arguments = GenerationRequestArguments(body={})
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
         # Add model
         if self.model is not None:
-            body["model"] = self.model
+            arguments.body["model"] = self.model
 
         # Configure streaming
         if self.stream:
             arguments.stream = True
-            body.update({"stream": True, "stream_options": {"include_usage": True}})
+            arguments.body.update(
+                {"stream": True, "stream_options": {"include_usage": True}}
+            )
 
         # Handle output tokens
         if output_tokens := sum(
             count for count in columns.get("output_tokens_count_column", []) if count
         ):
             output_metrics.text_tokens = output_tokens
-            body.update(
+            arguments.body.update(
                 {
                     "max_completion_tokens": output_tokens,
                     "stop": None,
@@ -153,7 +151,7 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
                 }
             )
         elif self.max_completion_tokens is not None:
-            body["max_completion_tokens"] = self.max_completion_tokens
+            arguments.body["max_completion_tokens"] = self.max_completion_tokens
 
         # Handle prompt tokens
         if prompt_tokens := sum(
@@ -166,63 +164,120 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
             arguments.model_combine(self.extras)
 
         # Build messages
-        body["messages"] = (
-            [
-                {"role": "system", "content": prefix}
-                for prefix in columns.get("prefix_column", [])
-                if prefix
-            ]
-            + [
+        arguments.body["messages"] = []
+
+        for prefix in columns.get("prefix_column", []):
+            if not prefix:
+                continue
+
+            stats = text_stats(prefix)
+            if (num_chars := stats.get("num_chars")) is not None:
+                input_metrics.text_characters = (
+                    input_metrics.text_characters or 0
+                ) + num_chars
+            if (num_words := stats.get("num_words")) is not None:
+                input_metrics.text_words = (input_metrics.text_words or 0) + num_words
+
+            arguments.body["messages"].append({"role": "system", "content": prefix})
+
+        for text in columns.get("text_column", []):
+            if not text:
+                continue
+
+            stats = text_stats(text)
+            if (num_chars := stats.get("num_chars")) is not None:
+                input_metrics.text_characters = (
+                    input_metrics.text_characters or 0
+                ) + num_chars
+            if (num_words := stats.get("num_words")) is not None:
+                input_metrics.text_words = (input_metrics.text_words or 0) + num_words
+
+            arguments.body["messages"].append(
                 {"role": "user", "content": [{"type": "text", "text": text}]}
-                for text in columns.get("text_column", [])
-                if text
-            ]
-            + [
+            )
+
+        for image in columns.get("image_column", []):
+            if not image:
+                continue
+
+            image_dict = encode_image(image, **self.encode_image_kwargs)
+            if (image_pixels := image_dict.get("image_pixels")) is not None:
+                input_metrics.image_pixels = (
+                    input_metrics.image_pixels or 0
+                ) + image_pixels
+            if (image_bytes := image_dict.get("image_bytes")) is not None:
+                input_metrics.image_bytes = (
+                    input_metrics.image_bytes or 0
+                ) + image_bytes
+
+            arguments.body["messages"].append(
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": encode_image(
-                                image, **self.encode_image_kwargs
-                            ),
-                        }
+                        {"type": "image_url", "image_url": image_dict.get("image")}
                     ],
                 }
-                for image in columns.get("image_column", [])
-                if image
-            ]
-            + [
+            )
+
+        for video in columns.get("video_column", []):
+            if not video:
+                continue
+
+            video_dict = encode_video(video, **self.encode_video_kwargs)
+            if (video_frames := video_dict.get("video_frames")) is not None:
+                input_metrics.video_frames = (
+                    input_metrics.video_frames or 0
+                ) + video_frames
+            if (video_seconds := video_dict.get("video_seconds")) is not None:
+                input_metrics.video_seconds = (
+                    input_metrics.video_seconds or 0.0
+                ) + video_seconds
+            if (video_bytes := video_dict.get("video_bytes")) is not None:
+                input_metrics.video_bytes = (
+                    input_metrics.video_bytes or 0
+                ) + video_bytes
+
+            arguments.body["messages"].append(
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "video_url",
-                            "video_url": encode_video(
-                                video, **self.encode_video_kwargs
-                            ),
-                        }
+                        {"type": "video_url", "video_url": video_dict.get("video")}
                     ],
                 }
-                for video in columns.get("video_column", [])
-                if video
-            ]
-            + [
+            )
+
+        for audio in columns.get("audio_column", []):
+            if not audio:
+                continue
+
+            audio_dict = encode_audio(audio, b64encode=True, **self.encode_audio_kwargs)
+            if (audio_samples := audio_dict.get("audio_samples")) is not None:
+                input_metrics.audio_samples = (
+                    input_metrics.audio_samples or 0
+                ) + audio_samples
+            if (audio_seconds := audio_dict.get("audio_seconds")) is not None:
+                input_metrics.audio_seconds = (
+                    input_metrics.audio_seconds or 0.0
+                ) + audio_seconds
+            if (audio_bytes := audio_dict.get("audio_bytes")) is not None:
+                input_metrics.audio_bytes = (
+                    input_metrics.audio_bytes or 0
+                ) + audio_bytes
+
+            arguments.body["messages"].append(
                 {
                     "role": "user",
                     "content": [
                         {
                             "type": "input_audio",
-                            "input_audio": encode_audio_as_dict(
-                                audio, **self.encode_audio_kwargs
-                            ),
+                            "input_audio": {
+                                "data": audio_dict.get("audio"),
+                                "format": audio_dict.get("format"),
+                            },
                         }
                     ],
                 }
-                for audio in columns.get("audio_column", [])
-                if audio
-            ]
-        )
+            )
 
         return GenerationRequest(
             request_type="chat_completions",
@@ -253,19 +308,18 @@ class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
     def __call__(  # noqa: C901
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
-        body: dict[str, Any] = {}
-        arguments = GenerationRequestArguments(body=body, files={})
+        arguments = GenerationRequestArguments(body={}, files={})
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
         # Add model
         if self.model is not None:
-            body["model"] = self.model
+            arguments.body["model"] = self.model
 
         # Configure streaming
         if self.stream:
             arguments.stream = True
-            body.update({"stream": True, "stream_options": {"include_usage": True}})
+            arguments.body["stream"] = True
 
         # Handle output tokens
         if output_tokens := sum(
@@ -284,19 +338,36 @@ class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
             arguments.model_combine(self.extras)
 
         # Build audio input
-        if audio := [aud for aud in columns.get("audio_column", []) if aud]:
-            file_name, content, mime_type = encode_audio_as_file(
-                audio[0], **self.encode_audio_kwargs
+        audio_columns = columns.get("audio_column", [])
+        if len(audio_columns) != 1:
+            raise ValueError(
+                f"GenerativeAudioTranscriptionRequestFormatter expects exactly "
+                f"one audio column, but got {len(audio_columns)}."
             )
-            arguments.files = {"file": (file_name, content, mime_type)}
-        else:
-            raise ValueError("No audio column found for audio transcription request.")
+
+        audio_dict = encode_audio(
+            audio_columns[0], b64encode=False, **self.encode_audio_kwargs
+        )
+        input_metrics.audio_samples = audio_dict.get("audio_samples")
+        input_metrics.audio_seconds = audio_dict.get("audio_seconds")
+        input_metrics.audio_bytes = audio_dict.get("audio_bytes")
+
+        arguments.files = {
+            "file": (
+                audio_dict.get("file_name", "audio_input"),
+                audio_dict.get("audio"),
+                audio_dict.get("mimetype"),
+            )
+        }
 
         # Build prompt
         prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
         text = "".join(txt for txt in columns.get("text_column", []) if txt)
         if prefix or text:
-            body["prompt"] = prefix + text
+            arguments.body["prompt"] = prefix + text
+            stats = text_stats(arguments.body["prompt"])
+            input_metrics.text_characters = stats.get("num_chars")
+            input_metrics.text_words = stats.get("num_words")
 
         return GenerationRequest(
             request_type="audio_transcriptions",

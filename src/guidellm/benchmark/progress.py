@@ -16,9 +16,7 @@ Type Variables:
 
 from __future__ import annotations
 
-import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterable, AsyncIterator, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generic, Literal
@@ -46,11 +44,7 @@ from guidellm.benchmark.schemas import (
 from guidellm.scheduler import SchedulerState, SchedulingStrategy, StrategyType
 from guidellm.utils import Colors, format_value_display
 
-__all__ = [
-    "BenchmarkerProgress",
-    "BenchmarkerProgressGroup",
-    "GenerativeConsoleBenchmarkerProgress",
-]
+__all__ = ["BenchmarkerProgress", "GenerativeConsoleBenchmarkerProgress"]
 
 
 class BenchmarkerProgress(Generic[BenchmarkT], ABC):
@@ -62,105 +56,14 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
     enable/disable functionality for conditional progress tracking.
     """
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self):
         """
         Initialize progress tracker.
 
         :param enabled: Whether to enable progress tracking and display.
         """
-        self._enabled = enabled
         self.profile: Profile = None
         self.current_strategy: SchedulingStrategy = None
-
-    @property
-    def enabled(self) -> bool:
-        """
-        :return: Whether progress tracking is currently enabled.
-        """
-        return self._enabled
-
-    @enabled.setter
-    def enabled(self, value: bool) -> None:
-        """
-        :param value: True to enable progress tracking, False to disable.
-        :raises RuntimeError: If called after progress run has started.
-        """
-        if self.profile is not None:
-            raise RuntimeError(
-                "Cannot change enabled state after __call__ for progress run"
-            )
-
-        self._enabled = value
-
-    def __call__(
-        self,
-        profile: Profile,
-        agen: AsyncIterable[
-            tuple[
-                EstimatedBenchmarkState | None,
-                BenchmarkT | None,
-                SchedulingStrategy,
-                SchedulerState | None,
-            ]
-        ],
-    ) -> AsyncIterator[
-        tuple[
-            EstimatedBenchmarkState | None,
-            BenchmarkT | None,
-            SchedulingStrategy,
-            SchedulerState | None,
-        ]
-    ]:
-        """
-        Track progress through benchmark execution pipeline.
-
-        Wraps the provided async generator to monitor benchmark progress,
-        calling appropriate lifecycle hooks based on execution state.
-
-        :param profile: Benchmark profile configuration.
-        :param agen: Async generator yielding benchmark execution updates.
-        :return: Async iterator forwarding original updates with progress tracking.
-        """
-
-        async def aiterator() -> AsyncIterator[
-            tuple[
-                EstimatedBenchmarkState | None,
-                BenchmarkT | None,
-                SchedulingStrategy,
-                SchedulerState | None,
-            ]
-        ]:
-            self.profile = profile
-            if self.enabled:
-                await self.on_initialize(profile)
-
-            async for aggregator_update, benchmark, strategy, scheduler_state in agen:
-                if self.enabled:
-                    await self.on_raw_update(
-                        profile,
-                        aggregator_update,
-                        benchmark,
-                        strategy,
-                        scheduler_state,
-                    )
-
-                    if self.current_strategy != strategy:
-                        self.current_strategy = strategy
-                        await self.on_benchmark_start(strategy)
-                    elif benchmark is not None:
-                        await self.on_benchmark_complete(benchmark)
-                        self.current_strategy = None
-                    else:
-                        await self.on_benchmark_update(
-                            aggregator_update, scheduler_state
-                        )
-
-                yield aggregator_update, benchmark, strategy, scheduler_state
-
-            if self.enabled:
-                await self.on_finalize()
-
-        return aiterator()
 
     @abstractmethod
     async def on_initialize(self, profile: Profile):
@@ -180,14 +83,12 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
 
     @abstractmethod
     async def on_benchmark_update(
-        self,
-        aggregator_update: EstimatedBenchmarkState,
-        scheduler_state: SchedulerState,
+        self, estimated_state: EstimatedBenchmarkState, scheduler_state: SchedulerState
     ):
         """
         Handle benchmark execution progress update.
 
-        :param aggregator_update: Current benchmark metrics and statistics.
+        :param estimated_state: Current benchmark metrics and statistics.
         :param scheduler_state: Current scheduler execution state.
         """
 
@@ -203,155 +104,6 @@ class BenchmarkerProgress(Generic[BenchmarkT], ABC):
     async def on_finalize(self):
         """Finalize progress tracking and cleanup resources."""
 
-    async def on_raw_update(
-        self,
-        profile: Profile,
-        aggregator_update: EstimatedBenchmarkState | None,
-        benchmark: BenchmarkT | None,
-        strategy: SchedulingStrategy,
-        scheduler_state: SchedulerState | None,
-    ):
-        """
-        Handle raw benchmark execution update.
-
-        Optional hook for accessing all execution state updates. Default
-        implementation does nothing.
-
-        :param profile: Benchmark profile configuration.
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param benchmark: Completed benchmark if available.
-        :param strategy: Current scheduling strategy.
-        :param scheduler_state: Current scheduler execution state.
-        """
-
-
-class BenchmarkerProgressGroup(BenchmarkerProgress[BenchmarkT]):
-    """
-    Composite progress handler that manages multiple progress instances.
-
-    Distributes progress events to all contained progress instances, enabling
-    parallel progress tracking through multiple channels (e.g., console display
-    and file logging).
-
-    :param instances: Collection of progress handlers to manage.
-    :param enabled: Whether the group is active.
-    """
-
-    def __init__(
-        self,
-        instances: (
-            Iterable[BenchmarkerProgress[BenchmarkT]]
-            | list[BenchmarkerProgress[BenchmarkT]]
-        ),
-        enabled: bool = True,
-    ):
-        """
-        Initialize progress group with handler instances.
-
-        :param instances: Progress handler instances to coordinate.
-        :param enabled: Whether to enable the progress group.
-        """
-        self.instances: list[BenchmarkerProgress[BenchmarkT]] = list(instances)
-        super().__init__(enabled=enabled)
-
-    @property
-    def enabled(self) -> bool:
-        """Whether the progress group is currently enabled."""
-        return self._enabled
-
-    @enabled.setter
-    def enabled(self, value: bool):
-        """
-        Set enabled state for group and all contained instances.
-
-        :param value: New enabled state.
-        """
-        self._enabled = value
-        for instance in self.instances:
-            instance.enabled = value
-
-    async def on_initialize(self, profile: Profile):
-        """
-        Initialize all progress handler instances.
-
-        :param profile: Benchmark profile configuration.
-        """
-        await asyncio.gather(
-            *[child.on_initialize(profile) for child in self.instances]
-        )
-
-    async def on_benchmark_start(self, strategy: SchedulingStrategy):
-        """
-        Notify all handlers of benchmark strategy start.
-
-        :param strategy: Scheduling strategy being executed.
-        """
-        await asyncio.gather(
-            *[child.on_benchmark_start(strategy) for child in self.instances]
-        )
-
-    async def on_benchmark_update(
-        self,
-        aggregator_update: EstimatedBenchmarkState,
-        scheduler_state: SchedulerState,
-    ):
-        """
-        Distribute benchmark updates to all handlers.
-
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param scheduler_state: Current scheduler execution state.
-        """
-        await asyncio.gather(
-            *[
-                child.on_benchmark_update(aggregator_update, scheduler_state)
-                for child in self.instances
-            ]
-        )
-
-    async def on_benchmark_complete(self, benchmark: BenchmarkT):
-        """
-        Notify all handlers of benchmark completion.
-
-        :param benchmark: Completed benchmark results.
-        """
-        await asyncio.gather(
-            *[child.on_benchmark_complete(benchmark) for child in self.instances]
-        )
-
-    async def on_finalize(self):
-        """Finalize all progress handler instances."""
-        await asyncio.gather(*[child.on_finalize() for child in self.instances])
-
-    async def on_raw_update(
-        self,
-        profile: Profile,
-        aggregator_update: EstimatedBenchmarkState | None,
-        benchmark: BenchmarkT | None,
-        strategy: SchedulingStrategy,
-        scheduler_state: SchedulerState | None,
-    ):
-        """
-        Distribute raw updates to all handlers.
-
-        :param profile: Benchmark profile configuration.
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param benchmark: Completed benchmark if available.
-        :param strategy: Current scheduling strategy.
-        :param scheduler_state: Current scheduler execution state.
-        """
-        await asyncio.gather(
-            *[
-                child.on_raw_update(
-                    profile,
-                    aggregator_update,
-                    benchmark,
-                    strategy,
-                    scheduler_state,
-                )
-                for child in self.instances
-            ]
-        )
-
 
 class GenerativeConsoleBenchmarkerProgress(
     BenchmarkerProgress[GenerativeBenchmark], Live
@@ -364,14 +116,14 @@ class GenerativeConsoleBenchmarkerProgress(
     bars in a structured console interface.
     """
 
-    def __init__(self, enabled: bool = True, display_scheduler_stats: bool = False):
+    def __init__(self, display_scheduler_stats: bool = False):
         """
         Initialize console progress display.
 
         :param enabled: Whether to enable progress tracking and display.
         :param display_scheduler_stats: Whether to display scheduler statistics.
         """
-        BenchmarkerProgress.__init__(self, enabled=enabled)
+        BenchmarkerProgress.__init__(self)
         Live.__init__(
             self,
             refresh_per_second=4,

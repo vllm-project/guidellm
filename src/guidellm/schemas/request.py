@@ -114,9 +114,6 @@ class UsageMetrics(StandardBaseDict):
     text_characters: int | None = Field(
         default=None, description="Number of text characters processed/generated."
     )
-    text_bytes: int | None = Field(
-        default=None, description="Number of text bytes processed/generated."
-    )
 
     # Vision image stats
     image_tokens: int | None = Field(

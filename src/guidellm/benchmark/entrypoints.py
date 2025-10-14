@@ -10,9 +10,9 @@ from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.profile import Profile, ProfileType
-from guidellm.benchmark.progress import BenchmarkerProgressGroup
+from guidellm.benchmark.progress import BenchmarkerProgress
 from guidellm.benchmark.schemas import GenerativeBenchmark, GenerativeBenchmarksReport
-from guidellm.benchmark.types import OutputFormatT, ProcessorInputT, ProgressInputT
+from guidellm.benchmark.types import OutputFormatT, ProcessorInputT
 from guidellm.data import (
     DataLoader,
     DatasetPreprocessor,
@@ -271,7 +271,6 @@ async def resolve_output_formats(
     return resolved
 
 
-# @validate_call(config={"arbitrary_types_allowed": True})
 async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
     # Required
     target: str,
@@ -296,7 +295,7 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
     ) = "chat_completions",
     data_collator: Callable | Literal["generative"] | None = "generative",
     data_sampler: Sampler[int] | Literal["shuffle"] | None = None,
-    data_num_workers: int | None = 1,
+    data_num_workers: int | None = None,
     dataloader_kwargs: dict[str, Any] | None = None,
     random_seed: int = 42,
     # Output configuration
@@ -308,7 +307,7 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
         | None
     ) = ("console", "json", "html", "csv"),
     # Updates configuration
-    progress: ProgressInputT | None = None,
+    progress: BenchmarkerProgress | None = None,
     print_updates: bool = False,
     # Benchmarker configuration
     benchmark_cls: type[GenerativeBenchmark] = GenerativeBenchmark,
@@ -366,37 +365,26 @@ async def benchmark_generative_text(  # noqa: C901, PLR0915, PLR0912
         output_formats=output_formats, output_path=output_path, console=console
     )
 
-    progress_group = BenchmarkerProgressGroup(
-        instances=progress or [], enabled=bool(progress)
-    )
     report = GenerativeBenchmarksReport()
     console.print_update(
         title="Setup complete, starting benchmarks...", status="success"
     )
     console.print("\n\n")
 
-    async for (
-        _aggregator_update,
-        benchmark,
-        _strategy,
-        _scheduler_state,
-    ) in progress_group(
-        profile,
-        Benchmarker[
-            GenerativeBenchmark,
-            GenerationRequest,
-            GenerationResponse,
-        ]().run(
-            benchmark_class=benchmark_cls,
-            requests=request_loader,
-            backend=backend,
-            profile=profile,
-            environment=NonDistributedEnvironment(),
-            sample_requests=sample_requests,
-            warmup=warmup,
-            cooldown=cooldown,
-            prefer_response_metrics=True,
-        ),
+    benchmarker: Benchmarker[
+        GenerativeBenchmark, GenerationRequest, GenerationResponse
+    ] = Benchmarker()
+    async for benchmark in benchmarker.run(
+        benchmark_class=benchmark_cls,
+        requests=request_loader,
+        backend=backend,
+        profile=profile,
+        environment=NonDistributedEnvironment(),
+        progress=progress,
+        sample_requests=sample_requests,
+        warmup=warmup,
+        cooldown=cooldown,
+        prefer_response_metrics=True,
     ):
         if benchmark:
             report.benchmarks.append(benchmark)

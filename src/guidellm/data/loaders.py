@@ -12,6 +12,7 @@ from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
+from guidellm.logger import logger
 
 __all__ = ["DataLoader", "DatasetsIterator"]
 
@@ -29,7 +30,7 @@ class DatasetsIterator(TorchIterableDataset):
         if not data or not isinstance(data, list):
             raise ValueError(f"Data must be a non-empty list, got {data}.")
 
-        if data_args is None:
+        if not data_args:
             data_args = [{} for _ in data]
 
         if len(data) != len(data_args):
@@ -61,15 +62,15 @@ class DatasetsIterator(TorchIterableDataset):
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
-        modulus = worker_info.num_workers if worker_info is not None else 1
-        index = worker_info.id if worker_info is not None else 0
+        worker_modulus = worker_info.num_workers if worker_info is not None else 1
+        worker_index = worker_info.id if worker_info is not None else 0
 
         if self.precache is not None:
             for index, item in enumerate(self.precache):
-                if index == index % modulus:
+                if (index + worker_index) % worker_modulus == 0:
                     yield item
         else:
-            yield from self.generator(modulus=modulus, offset=index)
+            yield from self.generator(modulus=worker_modulus, offset=worker_index)
 
     def generator(
         self,
@@ -83,19 +84,25 @@ class DatasetsIterator(TorchIterableDataset):
             dataset_iters = [iter(dataset) for dataset in self.datasets]
 
             while max_items is None or gen_count < max_items:
-                row = {"items": [next(dataset_iter) for dataset_iter in dataset_iters]}
-                gen_count += 1
+                try:
+                    row = {
+                        "items": [next(dataset_iter) for dataset_iter in dataset_iters]
+                    }
+                    gen_count += 1
 
-                if (
-                    modulus is not None
-                    and offset is not None
-                    and (gen_count % modulus) != offset
-                ):
-                    continue
+                    if (
+                        modulus is not None
+                        and offset is not None
+                        and (gen_count % modulus) != offset
+                    ):
+                        continue
 
-                for preprocessor in self.preprocessors:
-                    row = preprocessor(row)
-                yield row
+                    for preprocessor in self.preprocessors:
+                        row = preprocessor(row)
+                    yield row
+                except Exception as err:
+                    logger.error(f"Skipping data row due to error: {err}")
+                    gen_count -= 1
 
         if max_items is not None and gen_count < max_items:
             raise ValueError(

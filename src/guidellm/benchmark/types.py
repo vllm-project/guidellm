@@ -7,9 +7,8 @@ from transformers import PreTrainedTokenizerBase  # type: ignore[import]
 from typing_extensions import TypeAliasType
 
 from guidellm.benchmark.output import GenerativeBenchmarkerOutput
-from guidellm.benchmark.progress import BenchmarkerProgress
 
-__all__ = ["OutputFormatT", "ProcessorInputT", "ProgressInputT"]
+__all__ = ["OutputFormatT", "ProcessorInputT"]
 
 
 OutputFormatT = TypeAliasType(
@@ -21,7 +20,3 @@ OutputFormatT = TypeAliasType(
 )
 
 ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokenizerBase)
-
-ProgressInputT = TypeAliasType(
-    "ProgressInputT", tuple[str, ...] | list[str] | list[BenchmarkerProgress]
-)
