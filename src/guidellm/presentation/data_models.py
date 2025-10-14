@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, computed_field
 
-from guidellm.scheduler.strategy import SchedulingStrategy
-
 if TYPE_CHECKING:
     from guidellm.benchmark import GenerativeBenchmark
 
@@ -214,30 +212,12 @@ class BenchmarkDatum(BaseModel):
     ttft: TabularDistributionSummary
     throughput: TabularDistributionSummary
     time_per_request: TabularDistributionSummary
-    strategy_display_str: str
-
-    @classmethod
-    def get_strategy_display_str(cls, strategy: SchedulingStrategy):
-        strategy_type = strategy if isinstance(strategy, str) else strategy.type_
-        strategy_instance = (
-            strategy if isinstance(strategy, SchedulingStrategy) else None
-        )
-
-        if strategy_type == "concurrent":
-            rate = f"@{strategy.streams}" if strategy_instance else "@##"  # type: ignore[attr-defined]
-        elif strategy_type in ("constant", "poisson"):
-            rate = f"@{strategy.rate:.2f}" if strategy_instance else "@#.##"  # type: ignore[attr-defined]
-        else:
-            rate = ""
-        return f"{strategy_type}{rate}"
 
     @classmethod
     def from_benchmark(cls, bm: "GenerativeBenchmark"):
-        rps = bm.metrics.requests_per_second.successful.mean
         return cls(
-            strategy_display_str=cls.get_strategy_display_str(bm.args.strategy),
-            requests_per_second=rps,
-            itl=TabularDistributionSummary.from_distribution_summary(
+            requests_per_second=bm.metrics.requests_per_second.successful.mean,
+            tpot=TabularDistributionSummary.from_distribution_summary(
                 bm.metrics.inter_token_latency_ms.successful
             ),
             ttft=TabularDistributionSummary.from_distribution_summary(

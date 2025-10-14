@@ -1,6 +1,5 @@
 export const benchmarksScript = `window.benchmarks = [
   {
-    strategyDisplayStr: "synchronous",
     requestsPerSecond: 11.411616848282272,
     tpot: {
       mean: 8.758024845683707,
@@ -172,7 +171,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@36.28",
     requestsPerSecond: 36.289181300710815,
     tpot: {
       mean: 588.0161376137819,
@@ -344,7 +342,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@20.75",
     requestsPerSecond: 20.752070927855794,
     tpot: {
       mean: 116.28360712595156,
@@ -516,7 +513,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@26.81",
     requestsPerSecond: 26.81917480361788,
     tpot: {
       mean: 299.7306064613554,
@@ -688,7 +684,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@26.82",
     requestsPerSecond: 26.823988819498975,
     tpot: {
       mean: 683.8011571339198,
@@ -860,7 +855,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@24.50",
     requestsPerSecond: 24.50047903792646,
     tpot: {
       mean: 742.9258901891964,
@@ -1032,7 +1026,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@25.61",
     requestsPerSecond: 25.617829792196602,
     tpot: {
       mean: 663.3098317044122,
@@ -1204,7 +1197,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@37.02",
     requestsPerSecond: 37.02892550982192,
     tpot: {
       mean: 606.4144710877113,
@@ -1376,7 +1368,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "constant@37.29",
     requestsPerSecond: 37.29183354201869,
     tpot: {
       mean: 603.3237551205925,
@@ -1548,7 +1539,6 @@ export const benchmarksScript = `window.benchmarks = [
     },
   },
   {
-    strategyDisplayStr: "throughput",
     requestsPerSecond: 37.45318312972309,
     tpot: {
       mean: 600.7204526769262,
