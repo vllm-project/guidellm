@@ -27,7 +27,6 @@ export interface BenchmarkMetrics {
 
 export interface Benchmark extends BenchmarkMetrics {
   requestsPerSecond: number;
-  strategyDisplayStr: string;
 }
 
 export type Benchmarks = Benchmark[];

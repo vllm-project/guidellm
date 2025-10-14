@@ -1,6 +1,5 @@
-import { Typography, useTheme } from '@mui/material';
-import { PointTooltipProps, ResponsiveLine } from '@nivo/line';
-import { BasicTooltip } from '@nivo/tooltip';
+import { useTheme } from '@mui/material';
+import { ResponsiveLine } from '@nivo/line';
 import React, { FC } from 'react';
 
 import { useColor } from '@/lib/hooks/useColor';
@@ -50,30 +49,11 @@ export const Component: FC<MetricLineProps> = ({
       reverse: false,
     };
   }
-  type PointTooltipPropsWithLabel = PointTooltipProps & {
-    point: {
-      data: {
-        label: string;
-      };
-    };
-  };
 
   return (
     <ResponsiveLine
       curve="monotoneX"
       data={data}
-      tooltip={(point) => (
-        <BasicTooltip
-          id={
-            <Typography variant="body2">
-              {(point as PointTooltipPropsWithLabel).point.data.label}
-            </Typography>
-          }
-          color={point.point.color}
-          enableChip={true}
-        />
-      )}
-      pointSize={10}
       colors={[selectedColor]}
       margin={{ top: 20, right: 10, bottom: 20, left: 35.5 }}
       xScale={{ type: 'linear', min: minX }}
@@ -112,6 +92,7 @@ export const Component: FC<MetricLineProps> = ({
       }}
       enableGridX={false}
       enableGridY={false}
+      pointSize={0}
       useMesh={true}
       layers={[
         CustomAxes,
@@ -134,9 +115,6 @@ export const Component: FC<MetricLineProps> = ({
         ),
         'axes',
         'lines',
-        'points',
-        'markers',
-        'mesh',
       ]}
       theme={lineTheme}
     />

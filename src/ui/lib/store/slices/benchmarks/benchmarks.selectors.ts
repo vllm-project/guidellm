@@ -11,18 +11,6 @@ import { selectSloState } from '../slo/slo.selectors';
 
 export const selectBenchmarks = (state: RootState) => state.benchmarks.data;
 
-const getUnitsByMetric = (metric: string) => {
-  switch (metric) {
-    case 'ttft':
-    case 'tpot':
-      return 'ms';
-    case 'timePerRequest':
-      return 'sec';
-    case 'throughput':
-      return 'tok/s';
-  }
-};
-
 export const selectMetricsSummaryLineData = createSelector(
   [selectBenchmarks, selectSloState],
   (benchmarks, sloState) => {
@@ -30,10 +18,8 @@ export const selectMetricsSummaryLineData = createSelector(
       ?.slice()
       ?.sort((bm1, bm2) => (bm1.requestsPerSecond > bm2.requestsPerSecond ? 1 : -1));
     const selectedPercentile = sloState.enforcedPercentile;
-    interface PointWithLabel extends Point {
-      label: string;
-    }
-    const lineData: { [K in keyof BenchmarkMetrics]: PointWithLabel[] } = {
+
+    const lineData: { [K in keyof BenchmarkMetrics]: Point[] } = {
       ttft: [],
       tpot: [],
       timePerRequest: [],
@@ -46,17 +32,14 @@ export const selectMetricsSummaryLineData = createSelector(
       'throughput',
     ];
     metrics.forEach((metric) => {
-      const data: PointWithLabel[] = [];
+      const data: Point[] = [];
       sortedByRPS?.forEach((benchmark) => {
         const percentile = benchmark[metric].percentileRows.find(
           (p) => p.percentile === selectedPercentile
         );
-        const yValue = percentile?.value ?? 0;
-        const units = getUnitsByMetric(metric);
         data.push({
           x: benchmark.requestsPerSecond,
-          y: yValue,
-          label: `${benchmark.strategyDisplayStr} ${formatNumber(yValue)} ${units}`,
+          y: percentile?.value ?? 0,
         });
       });
 
