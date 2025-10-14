@@ -412,7 +412,7 @@ async def reimport_benchmarks_report(
 ) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
     """
     The command-line entry point for re-importing and displaying an
-    existing benchmarks report. Can also specify
+    existing benchmarks report. Can also specify an output format.
     Assumes the file provided exists.
     """
     console = Console()
