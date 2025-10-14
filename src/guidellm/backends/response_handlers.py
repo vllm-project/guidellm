@@ -1,11 +1,10 @@
 """
 Response handlers for processing API responses from different generation backends.
 
-This module provides a pluggable system for handling responses from various language
-model backends, supporting both streaming and non-streaming responses. Each handler
-implements the GenerationResponseHandler protocol to parse API responses, extract
-usage metrics, and convert them into standardized GenerationResponse objects for the
-benchmark system.
+Provides a pluggable system for handling responses from language model backends,
+supporting both streaming and non-streaming responses. Each handler implements the
+GenerationResponseHandler protocol to parse API responses, extract usage metrics,
+and convert them into standardized GenerationResponse objects.
 """
 
 from __future__ import annotations
@@ -26,11 +25,11 @@ __all__ = [
 
 class GenerationResponseHandler(Protocol):
     """
-    Protocol defining the interface for handling generation API responses.
+    Protocol for handling generation API responses.
 
-    Response handlers implement this protocol to process both streaming and
-    non-streaming responses from different backend APIs, converting them into
-    standardized GenerationResponse objects with consistent metrics extraction.
+    Defines the interface for processing both streaming and non-streaming responses
+    from backend APIs, converting them into standardized GenerationResponse objects
+    with consistent metrics extraction.
     """
 
     def compile_non_streaming(
@@ -39,7 +38,7 @@ class GenerationResponseHandler(Protocol):
         """
         Process a complete non-streaming API response.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :param response: Raw API response data from the backend
         :return: Standardized GenerationResponse with extracted metrics
         """
@@ -58,7 +57,7 @@ class GenerationResponseHandler(Protocol):
         """
         Compile accumulated streaming data into a final response.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :return: Standardized GenerationResponse with extracted metrics
         """
         ...
@@ -68,9 +67,9 @@ class GenerationResponseHandlerFactory(RegistryMixin[type[GenerationResponseHand
     """
     Factory for registering and creating response handlers by backend type.
 
-    Provides a registry-based system for associating handler classes with specific
-    backend API types, enabling automatic selection of the appropriate handler
-    for processing responses from different generation services.
+    Registry-based system for associating handler classes with specific backend API
+    types, enabling automatic selection of the appropriate handler for processing
+    responses from different generation services.
     """
 
 
@@ -79,9 +78,9 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
     """
     Response handler for OpenAI-style text completion endpoints.
 
-    Processes responses from text completion APIs that return generated text
-    in the 'choices' array with 'text' fields. Handles both streaming and
-    non-streaming responses, extracting usage metrics for input and output tokens.
+    Processes responses from text completion APIs that return generated text in the
+    'choices' array with 'text' fields. Handles both streaming and non-streaming
+    responses, extracting usage metrics for input and output tokens.
 
     Example:
     ::
@@ -105,7 +104,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         """
         Process a complete text completion response.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :param response: Complete API response containing choices and usage data
         :return: Standardized GenerationResponse with extracted text and metrics
         """
@@ -151,7 +150,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         """
         Compile accumulated streaming text chunks into a final response.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated text and metrics
         """
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
@@ -171,7 +170,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         Extract JSON data from a streaming response line.
 
         :param line: Raw line from the streaming response
-        :return: Parsed JSON data as a dictionary, or None if line is invalid
+        :return: Parsed JSON data as dictionary, or None if line indicates completion
         """
         if line == "data: [DONE]":
             return None
@@ -190,7 +189,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         Extract choices and usage data from the API response.
 
         :param response: Complete API response containing choices and usage data
-        :return: Tuple of (choices list, usage dictionary)
+        :return: Tuple of choices list and usage dictionary
         """
         return response.get("choices", []), response.get("usage", {})
 
@@ -201,7 +200,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         Extract input and output usage metrics from API response usage data.
 
         :param usage: Usage data dictionary from API response
-        :return: Tuple of (input_metrics, output_metrics) as UsageMetrics objects
+        :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
         if not usage:
             return UsageMetrics(), UsageMetrics()
@@ -236,9 +235,9 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
     """
     Response handler for OpenAI-style chat completion endpoints.
 
-    Extends TextCompletionsResponseHandler to handle chat completion responses
-    where generated text is nested within message objects in the choices array.
-    Processes both streaming and non-streaming chat completion responses.
+    Extends TextCompletionsResponseHandler to handle chat completion responses where
+    generated text is nested within message objects in the choices array. Processes
+    both streaming and non-streaming chat completion responses.
     """
 
     def compile_non_streaming(
@@ -247,10 +246,10 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         """
         Process a complete chat completion response.
 
-        Extracts content from the message object within choices, handling the
-        nested structure specific to chat completion endpoints.
+        Extracts content from the message object within choices, handling the nested
+        structure specific to chat completion endpoints.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :param response: Complete API response containing choices and usage data
         :return: Standardized GenerationResponse with extracted content and metrics
         """
@@ -271,8 +270,8 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         """
         Process a single line from a chat completion streaming response.
 
-        Handles the chat completion specific delta structure where content
-        is nested within delta objects in the streaming response chunks.
+        Handles the chat completion specific delta structure where content is nested
+        within delta objects in the streaming response chunks.
 
         :param line: Raw SSE line from the streaming response
         :return: 1 if content was extracted, 0 if line ignored, None if done
@@ -296,7 +295,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         """
         Compile accumulated streaming chat completion content into a final response.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
@@ -349,7 +348,7 @@ class AudioResponseHandler:
         Extracts transcribed or translated text and audio-specific usage metrics
         including processing duration and token counts for audio content.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :param response: Complete API response containing text and usage data
         :return: Standardized GenerationResponse with extracted text and metrics
         """
@@ -412,7 +411,7 @@ class AudioResponseHandler:
         """
         Compile accumulated streaming audio text into a final response.
 
-        :param request: The original generation request
+        :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated text and metrics
         """
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
@@ -437,7 +436,7 @@ class AudioResponseHandler:
         in addition to standard text token counts.
 
         :param usage: Usage data dictionary from audio API response
-        :return: Tuple of (input_metrics, output_metrics) as UsageMetrics objects
+        :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
         if not usage:
             return UsageMetrics(), UsageMetrics()
