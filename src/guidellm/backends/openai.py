@@ -228,7 +228,7 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         if history is not None:
-            raise NotImplementedError("Multi-turn requests  not yet supported")
+            raise NotImplementedError("Multi-turn requests not yet supported")
 
         response_handler = self._resolve_response_handler(
             request_type=request.request_type
