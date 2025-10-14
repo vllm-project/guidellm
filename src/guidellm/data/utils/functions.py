@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-import librosa
 import numpy as np
-import soundfile
+import torch
 from PIL import Image as PILImage
-from pydub import AudioSegment
 from torch import Tensor
+from torchcodec.decoders import AudioDecoder
+from torchcodec.encoders import AudioEncoder
 
 __all__ = [
     "encode_audio",
@@ -253,7 +253,7 @@ def encode_video(
 
 def encode_audio(
     audio: Any,
-    b64encode: bool,
+    b64encode: bool = False,
     sample_rate: int = 16000,
     file_name: str = "audio.wav",
     encode_sample_rate: int = 16000,
@@ -289,72 +289,60 @@ def encode_audio(
             bitrate=bitrate,
         )
 
-    audio_numpy: np.ndarray
+    decoder: AudioDecoder
 
-    if hasattr(audio, "get_samples_played_in_range"):
-        # HF datasets Audio object
-        audio_samples = audio.get_samples_played_in_range(
-            start_seconds=0.0,
-            stop_seconds=(
-                None
-                if max_duration is None
-                else min(max_duration, audio.metadata.duration_seconds_from_header)
-            ),
+    if isinstance(audio, AudioDecoder):
+        decoder = audio
+    elif isinstance(audio, Tensor | bytes):
+        decoder = AudioDecoder(
+            source=audio,
+            sample_rate=sample_rate,
         )
-        audio_numpy = np.array(audio_samples.data)
-    elif isinstance(audio, Tensor):
-        audio_numpy = audio.numpy()
     elif isinstance(audio, str | Path):
         if is_url(audio):
             response = httpx.get(audio)
             response.raise_for_status()
-            audio_stream = response.content
             file_name = get_file_name(audio)
+            decoder = AudioDecoder(
+                source=response.content,
+            )
         else:
             if not Path(audio).exists():
                 raise ValueError(f"Audio file does not exist: {audio}")
             file_name = get_file_name(audio)
-            audio_stream = Path(audio).read_bytes()
-
-        audio_numpy, sample_rate = soundfile.read(
-            io.BytesIO(audio_stream), dtype="float32"
-        )
-    elif isinstance(audio, bytes):
-        audio_numpy, sample_rate = soundfile.read(io.BytesIO(audio), dtype="float32")
+            decoder = AudioDecoder(
+                source=audio,
+            )
     elif isinstance(audio, np.ndarray):
-        audio_numpy = audio
+        # AudioDecoder really needs a from_raw method
+        pre_encoder = AudioEncoder(
+            samples=torch.from_numpy(audio),
+            sample_rate=sample_rate,
+        )
+        decoder = AudioDecoder(source=pre_encoder.to_tensor(format="wav"))
     else:
         raise ValueError(f"Unsupported audio type: {type(audio)}")
 
-    if sample_rate != encode_sample_rate:
-        audio_numpy = librosa.resample(
-            audio_numpy.astype(np.float32),
-            orig_sr=sample_rate,
-            target_sr=encode_sample_rate,
-        )
-        sample_rate = encode_sample_rate
+    samples = decoder.get_samples_played_in_range(stop_seconds=max_duration)
+    encoder = AudioEncoder(
+        samples=samples.data,
+        sample_rate=samples.sample_rate,
+    )
 
-    audio_numpy = librosa.to_mono(audio_numpy)
+    bit_rate_val = (
+        int(bitrate.rstrip("k")) * 1000 if bitrate.endswith("k") else int(bitrate)
+    )
+    format_val = audio_format.lower()
 
-    if (
-        max_duration is not None
-        and max_duration > 0
-        and (max_samples := int(max_duration * sample_rate)) < len(audio_numpy)
-    ):
-        audio_numpy = audio_numpy[max_samples:]
+    audio_tensor = encoder.to_tensor(
+        format=format_val,
+        bit_rate=bit_rate_val if format_val == "mp3" else None,
+        num_channels=1 if mono else None,
+        sample_rate=encode_sample_rate if sample_rate != encode_sample_rate else None,
+    )
 
     audio_buffer = io.BytesIO()
-
-    if audio_format.lower() == "mp3":
-        wav = io.BytesIO()
-        soundfile.write(wav, audio_numpy, sample_rate, format="WAV", subtype="PCM_16")
-        wav.seek(0)
-
-        sound = AudioSegment.from_wav(wav)
-        sound.export(audio_buffer, format="mp3", bitrate=bitrate)
-    else:
-        soundfile.write(audio_buffer, audio, sample_rate, format=audio_format.upper())
-
+    torch.save(audio_tensor, audio_buffer)
     audio_buffer.seek(0)
     decoded_audio = audio_buffer.read()
 
@@ -367,9 +355,9 @@ def encode_audio(
         ),
         "file_name": file_name,
         "format": audio_format,
-        "mimetype": f"audio/{audio_format}",
-        "audio_samples": len(audio_numpy),
-        "audio_seconds": len(audio_numpy) / sample_rate,
+        "mimetype": f"audio/{format_val}",
+        "audio_samples": samples.sample_rate,
+        "audio_seconds": samples.duration_seconds,
         "audio_bytes": len(decoded_audio),
     }
 
