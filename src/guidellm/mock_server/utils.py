@@ -58,12 +58,15 @@ class MockTokenizer(PreTrainedTokenizer):
             return self.convert_tokens_to_ids(tokens)
         elif isinstance(text, list):
             # Handle batch processing
-            return [self.__call__(t) for t in text]
+            result = []
+            for t in text:
+                result.extend(self.__call__(t))
+            return result
         else:
             msg = f"text input must be of type `str` or `list[str]`, got {type(text)}"
             raise ValueError(msg)
 
-    def tokenize(self, text: TextInput, **_kwargs) -> list[str]:
+    def tokenize(self, text: TextInput, **_kwargs) -> list[str]:  # type: ignore[override]
         """
         Tokenize input text into a list of token strings.
 
@@ -76,7 +79,7 @@ class MockTokenizer(PreTrainedTokenizer):
         # Split text into tokens: words, spaces, and punctuation
         return re.findall(r"\w+|[^\w\s]|\s+", text)
 
-    def convert_tokens_to_ids(self, tokens: str | list[str]) -> int | list[int]:
+    def convert_tokens_to_ids(self, tokens: str | list[str]) -> list[int]:
         """
         Convert token strings to numeric token IDs.
 
@@ -87,12 +90,12 @@ class MockTokenizer(PreTrainedTokenizer):
         :return: Single token ID or list of token IDs
         """
         if isinstance(tokens, str):
-            return hash(tokens) % self.VocabSize
+            return [hash(tokens) % self.VocabSize]
         return [hash(token) % self.VocabSize for token in tokens]
 
-    def convert_ids_to_tokens(
-        self, ids: int | list[int], _skip_special_tokens: bool = False
-    ) -> str | list[str]:
+    def convert_ids_to_tokens(  # type: ignore[override]
+        self, ids: list[int], _skip_special_tokens: bool = False
+    ) -> list[str]:
         """
         Convert numeric token IDs back to token strings.
 
@@ -102,16 +105,8 @@ class MockTokenizer(PreTrainedTokenizer):
         :param ids: Single token ID or list of token IDs to convert
         :return: Single token string or list of token strings
         """
-        if not ids and not isinstance(ids, list):
-            return ""
-        elif not ids:
+        if not ids:
             return [""]
-
-        if isinstance(ids, int):
-            fake = Faker()
-            fake.seed_instance(ids % self.VocabSize)
-
-            return fake.word()
 
         fake = Faker()
         fake.seed_instance(sum(ids) % self.VocabSize)
@@ -162,7 +157,7 @@ class MockTokenizer(PreTrainedTokenizer):
         """
         return 0
 
-    def apply_chat_template(
+    def apply_chat_template(  # type: ignore[override]
         self,
         conversation: list,
         tokenize: bool = False,  # Changed default to False to match transformers
@@ -193,7 +188,7 @@ class MockTokenizer(PreTrainedTokenizer):
             return self.convert_tokens_to_ids(self.tokenize(formatted_text))
         return formatted_text
 
-    def decode(
+    def decode(  # type: ignore[override]
         self,
         token_ids: list[int],
         skip_special_tokens: bool = True,
@@ -255,7 +250,7 @@ def create_fake_tokens_str(
         fake = Faker()
     fake.seed_instance(seed)
 
-    tokens = []
+    tokens: list[str] = []
 
     while len(tokens) < num_tokens:
         text = fake.text(
