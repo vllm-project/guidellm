@@ -255,6 +255,7 @@ class DistributionSummary(StandardBaseModel):
     def from_request_times(
         requests: list[tuple[float, float]],
         distribution_type: Literal["concurrency", "rate"],
+        weights: list[float] | None = None,
         include_cdf: bool = False,
         epsilon: float = 1e-6,
     ) -> DistributionSummary:
@@ -273,67 +274,86 @@ class DistributionSummary(StandardBaseModel):
         :return: DistributionSummary with timing-based statistical metrics
         :raises ValueError: If distribution_type is not "concurrency" or "rate"
         """
+        if not weights:
+            weights = [1.0] * len(requests)
+
+        if len(requests) != len(weights):
+            raise ValueError(
+                "The length of requests and weights must be the same.",
+            )
+
+        # First convert to timing events based on type
+        events: list[tuple[float, float]] = []
+
         if distribution_type == "concurrency":
-            # convert to delta changes based on when requests were running
-            events = [(start, 1) for start, _ in requests] + [
-                (end, -1) for _, end in requests
-            ]
+            # For concurrency, each request adds to concurrency at start
+            # and subtracts at end
+            for (start, end), weight in zip(requests, weights, strict=False):
+                events.append((start, weight))
+                events.append((end, -1 * weight))
         elif distribution_type == "rate":
-            # convert to events for when requests finished
-            global_start = min(start for start, _ in requests) if requests else 0
-            events = [(global_start, 1)] + [(end, 1) for _, end in requests]
+            # For rate, each request is added at the end time only
+            global_start = min(start for start, _ in requests) if requests else 0.0
+            events.append((global_start, 0.0))
+            for (_, end), weight in zip(requests, weights, strict=False):
+                events.append((end, weight))
         else:
             raise ValueError(
                 f"Invalid distribution_type '{distribution_type}'. "
                 "Must be 'concurrency' or 'rate'."
             )
 
-        # combine any events that are very close together
-        flattened_events: list[tuple[float, float]] = []
-        for time, val in sorted(events):
-            last_time, last_val = (
-                flattened_events[-1] if flattened_events else (None, None)
-            )
+        # Combine any events within epsilon of each other for stability
+        sorted_events = sorted(events, key=lambda event: event[0])
+        flattened_events: list[tuple[float, float]] = (
+            [sorted_events.pop(0)] if sorted_events else []
+        )
+        last_time = flattened_events[0][0] if flattened_events else 0.0
 
-            if (
-                last_time is not None
-                and last_val is not None
-                and abs(last_time - time) <= epsilon
-            ):
+        for time, val in sorted_events:
+            if abs(time - last_time) <= epsilon:
+                last_val = flattened_events[-1][1]
                 flattened_events[-1] = (last_time, last_val + val)
             else:
+                last_time = time
                 flattened_events.append((time, val))
 
-        if distribution_type == "concurrency":
-            # convert to the events over time measuring concurrency changes
-            events_over_time: list[tuple[float, float]] = []
-            active = 0
-            for time, delta in flattened_events:
-                active += delta  # type: ignore [assignment]
-                events_over_time.append((time, active))
-
-            flattened_events = events_over_time
-
-        # convert to value distribution function
+        # Convert events to value distribution function
         distribution: dict[float, float] = defaultdict(float)
 
-        for ind in range(len(flattened_events) - 1):
-            start_time, value = flattened_events[ind]
-            end_time, _ = flattened_events[ind + 1]
-            duration = end_time - start_time
+        if distribution_type == "concurrency":
+            # For concurrency, convert to active concurrency over time
+            active = 0.0
+            for ind in range(len(flattened_events)):
+                time, change = flattened_events[ind]
+                active += change
+                flattened_events[ind] = (time, active)
 
-            if distribution_type == "concurrency":
-                # weight the concurrency value by the duration
+            # Then convert to distribution by weighting each concurrency
+            # by duration to next event (last event is 0 concurrency)
+            for ind in range(len(flattened_events) - 1):
+                time, value = flattened_events[ind]
+                next_time = flattened_events[ind + 1][0]
+                duration = next_time - time
                 distribution[value] += duration
-            elif distribution_type == "rate":
-                # weight the rate value by the duration
-                rate = value / duration
+        elif distribution_type == "rate":
+            # For rate, convert to distribution by converting each value
+            # to a rate (value/duration) weighted by duration from previous
+            # (first event is 0 rate)
+            for ind in range(1, len(flattened_events)):
+                time, value = flattened_events[ind]
+                prev_time = flattened_events[ind - 1][0]
+                duration = time - prev_time
+                rate = value / duration if duration > 0 else 0.0
                 distribution[rate] += duration
-
-        distribution_list: list[tuple[float, float]] = sorted(distribution.items())
+        else:
+            raise ValueError(
+                f"Invalid distribution_type '{distribution_type}'. "
+                "Must be 'concurrency' or 'rate'."
+            )
 
         return DistributionSummary.from_distribution_function(
-            distribution=distribution_list,
+            distribution=sorted(distribution.items()),
             include_cdf=include_cdf,
         )
 
@@ -563,6 +583,7 @@ class StatusDistributionSummary(
         request_types: list[Literal["successful", "incomplete", "error"]],
         requests: list[tuple[float, float]],
         distribution_type: Literal["concurrency", "rate"],
+        weights: list[float] | None = None,
         include_cdf: bool = False,
         epsilon: float = 1e-6,
     ) -> StatusDistributionSummary:
@@ -603,65 +624,78 @@ class StatusDistributionSummary(
                 f"Got {len(request_types)} and {len(requests)} instead.",
             )
 
-        _, successful_requests = (
-            zip(*successful, strict=True)
+        if weights is None:
+            weights = [1.0] * len(requests)
+
+        if len(requests) != len(weights):
+            raise ValueError(
+                "The length of requests and weights must be the same."
+                f"Got {len(requests)} and {len(weights)} instead.",
+            )
+
+        _, successful_requests, successful_weights = (
+            zip(*successful, strict=False)
             if (
                 successful := list(
                     filter(
                         lambda val: val[0] == "successful",
-                        zip(request_types, requests, strict=True),
+                        zip(request_types, requests, weights, strict=False),
                     )
                 )
             )
-            else ([], [])
+            else ([], [], [])
         )
-        _, incomplete_requests = (
-            zip(*incomplete, strict=True)
+        _, incomplete_requests, incomplete_weights = (
+            zip(*incomplete, strict=False)
             if (
                 incomplete := list(
                     filter(
                         lambda val: val[0] == "incomplete",
-                        zip(request_types, requests, strict=True),
+                        zip(request_types, requests, weights, strict=False),
                     )
                 )
             )
-            else ([], [])
+            else ([], [], [])
         )
-        _, errored_requests = (
-            zip(*errored, strict=True)
+        _, errored_requests, errored_weights = (
+            zip(*errored, strict=False)
             if (
                 errored := list(
                     filter(
                         lambda val: val[0] == "error",
-                        zip(request_types, requests, strict=True),
+                        zip(request_types, requests, weights, strict=False),
                     )
                 )
             )
-            else ([], [])
+            else ([], [], [])
         )
 
         return StatusDistributionSummary(
             total=DistributionSummary.from_request_times(
                 requests,
                 distribution_type=distribution_type,
+                weights=weights,
                 include_cdf=include_cdf,
                 epsilon=epsilon,
             ),
             successful=DistributionSummary.from_request_times(
                 successful_requests,  # type: ignore[arg-type]
                 distribution_type=distribution_type,
+                weights=successful_weights,  # type: ignore[arg-type]
                 include_cdf=include_cdf,
                 epsilon=epsilon,
             ),
             incomplete=DistributionSummary.from_request_times(
                 incomplete_requests,  # type: ignore[arg-type]
                 distribution_type=distribution_type,
+                weights=incomplete_weights,  # type: ignore[arg-type]
                 include_cdf=include_cdf,
                 epsilon=epsilon,
             ),
             errored=DistributionSummary.from_request_times(
                 errored_requests,  # type: ignore[arg-type]
                 distribution_type=distribution_type,
+                weights=errored_weights,  # type: ignore[arg-type]
                 include_cdf=include_cdf,
                 epsilon=epsilon,
             ),

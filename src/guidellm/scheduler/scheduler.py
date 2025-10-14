@@ -13,21 +13,18 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterable
 from typing import Any, Generic
 
-from guidellm.scheduler.constraints import (
-    Constraint,
-    ConstraintsInitializerFactory,
-)
+from guidellm.scheduler.constraints import Constraint, ConstraintsInitializerFactory
 from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
-from guidellm.scheduler.objects import (
+from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerState,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker_group import WorkerProcessGroup
+from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
 __all__ = ["Scheduler"]
@@ -69,13 +66,13 @@ class Scheduler(
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
-        env: Environment | None,
-        **constraints: dict[str, Any | dict[str, Any] | Constraint],
+        env: Environment[RequestT, ResponseT] | None,
+        **constraints: Any | dict[str, Any] | Constraint,
     ) -> AsyncIterator[
         tuple[
             ResponseT | None,
             RequestT,
-            ScheduledRequestInfo,
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -104,7 +101,7 @@ class Scheduler(
         """
         with self.thread_lock:
             if env is None:
-                env = NonDistributedEnvironment()
+                env = NonDistributedEnvironment[RequestT, ResponseT]()
 
             worker_group: WorkerProcessGroup[RequestT, ResponseT] | None = None
 
@@ -113,18 +110,18 @@ class Scheduler(
             # and will ensure clean up before raising the error.
             try:
                 # Setup local run parameters, sync with the environment
-                constraints = ConstraintsInitializerFactory.resolve_constraints(
-                    constraints
+                resolved_constraints = (
+                    ConstraintsInitializerFactory.resolve_constraints(constraints)
                 )
                 (
                     local_requests,
                     local_strategy,
                     local_constraints,
-                ) = await env.sync_run_params(requests, strategy, constraints)
+                ) = await env.sync_run_params(requests, strategy, resolved_constraints)
 
                 # Setup the worker group, sync start with the environment
                 worker_group = WorkerProcessGroup[RequestT, ResponseT](
-                    requests=None,
+                    requests=local_requests,
                     cycle_requests=local_requests,
                     backend=backend,
                     strategy=local_strategy,
@@ -147,19 +144,20 @@ class Scheduler(
                     yield response, request, request_info, state
             except Exception as err:  # noqa: BLE001
                 await env.sync_run_error(err)
+                raise err
             finally:
                 # Ensure all worker processes are cleaned up for error or completion
                 if worker_group is not None:
-                    err = await worker_group.shutdown()
+                    err = await worker_group.shutdown()  # type: ignore[misc]
                     if err is not None:
                         await env.sync_run_error(err)
 
             # Ensure any errors are raised and all responses
             # are yielded for aggregation on the primary node
             async for (
-                response,
-                request,
-                request_info,
-                state,
+                dist_response,
+                dist_request,
+                dist_request_info,
+                dist_state,
             ) in env.sync_run_end():
-                yield response, request, request_info, state
+                yield dist_response, dist_request, dist_request_info, dist_state

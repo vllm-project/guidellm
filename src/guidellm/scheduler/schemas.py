@@ -10,23 +10,20 @@ coordination, and state management across distributed worker processes.
 from __future__ import annotations
 
 import time
-import uuid
 from collections.abc import AsyncIterator
 from typing import (
     Any,
-    ClassVar,
     Generic,
     Literal,
     Protocol,
     TypeVar,
-    runtime_checkable,
 )
 
-from pydantic import Field, computed_field
+from pydantic import Field
 from typing_extensions import TypeAliasType, TypedDict
 
+from guidellm.schemas import RequestInfo
 from guidellm.utils import (
-    PydanticClassRegistryMixin,
     RegistryMixin,
     StandardBaseModel,
 )
@@ -35,12 +32,9 @@ from guidellm.utils.registry import RegistryObjT
 __all__ = [
     "BackendInterface",
     "BackendT",
-    "MeasuredRequestTimings",
     "MultiTurnRequestT",
-    "RequestSchedulerTimings",
     "RequestT",
     "ResponseT",
-    "ScheduledRequestInfo",
     "SchedulerMessagingPydanticRegistry",
     "SchedulerState",
     "SchedulerUpdateAction",
@@ -68,168 +62,6 @@ class SchedulerMessagingPydanticRegistry(RegistryMixin[RegistryObjT]):
     """
 
 
-@SchedulerMessagingPydanticRegistry.register()
-class RequestSchedulerTimings(StandardBaseModel):
-    """
-    Scheduler-level timing measurements for request lifecycle tracking.
-    All timestamps are expected to be in Unix time (seconds since epoch).
-    """
-
-    targeted_start: float | None = Field(
-        default=None,
-        description="When the request was initially targeted for execution",
-    )
-    queued: float | None = Field(
-        default=None,
-        description="When the request was placed into the processing queue",
-    )
-    dequeued: float | None = Field(
-        default=None,
-        description="When the request was removed from the queue for processing",
-    )
-    scheduled_at: float | None = Field(
-        default=None, description="When the request was scheduled for processing"
-    )
-    resolve_start: float | None = Field(
-        default=None, description="When backend resolution of the request began"
-    )
-    resolve_end: float | None = Field(
-        default=None, description="When backend resolution of the request completed"
-    )
-    finalized: float | None = Field(
-        default=None,
-        description="When the request was processed/acknowledged by the scheduler",
-    )
-
-
-@SchedulerMessagingPydanticRegistry.register()
-class MeasuredRequestTimings(PydanticClassRegistryMixin["MeasuredRequestTimings"]):
-    """
-    Base timing measurements for backend request processing.
-    All timestamps are expected to be in Unix time (seconds since epoch).
-    """
-
-    @classmethod
-    def __pydantic_schema_base_type__(cls) -> type[MeasuredRequestTimings]:
-        if cls.__name__ == "MeasuredRequestTimings":
-            return cls
-
-        return MeasuredRequestTimings
-
-    schema_discriminator: ClassVar[str] = "timings_type"
-
-    timings_type: Literal["measured_request_timings"] = Field(
-        default="measured_request_timings",
-        description="Type identifier for the timing measurement",
-    )
-    request_start: float | None = Field(
-        default=None, description="When the backend began processing the request"
-    )
-    request_end: float | None = Field(
-        default=None, description="When the backend completed processing the request"
-    )
-
-
-@SchedulerMessagingPydanticRegistry.register()
-class ScheduledRequestInfo(StandardBaseModel):
-    """
-    Complete request information including status, timings, and metadata.
-
-    Central data structure for tracking request lifecycle from creation through
-    completion, containing scheduling metadata, timing measurements, and processing
-    status. Used by scheduler components to coordinate request processing across
-    distributed worker processes.
-
-    Example:
-    ::
-        from guidellm.scheduler.objects import ScheduledRequestInfo
-
-        # Create request info with automatic ID generation
-        request_info = ScheduledRequestInfo()
-        request_info.status = "in_progress"
-        request_info.scheduler_timings.queued = time.time()
-
-        # Check processing completion
-        if request_info.completed_at:
-            duration = request_info.completed_at - request_info.started_at
-    """
-
-    request_id: str = Field(
-        description="Unique identifier for the request",
-        default_factory=lambda: str(uuid.uuid4()),
-    )
-    status: Literal[
-        "queued", "pending", "in_progress", "completed", "errored", "cancelled"
-    ] = Field(description="Current processing status of the request", default="queued")
-    scheduler_node_id: int = Field(
-        description="ID/rank of the scheduler node handling the request",
-        default=-1,
-    )
-    scheduler_process_id: int = Field(
-        description="ID/rank of the node's scheduler process handling the request",
-        default=-1,
-    )
-    scheduler_start_time: float = Field(
-        description="Unix timestamp for the local time when scheduler processing began",
-        default=-1.0,
-    )
-
-    error: str | None = Field(
-        default=None, description="Error message if the request.status is 'errored'"
-    )
-    scheduler_timings: RequestSchedulerTimings = Field(
-        default_factory=RequestSchedulerTimings,
-        description="Scheduler-level timing measurements for request lifecycle",
-    )
-    request_timings: MeasuredRequestTimings | None = Field(
-        default=None,
-        description="Backend-specific timing measurements for request processing",
-    )
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def started_at(self) -> float | None:
-        """
-        Get the effective request processing start time.
-
-        :return: Unix timestamp when processing began, or None if not started.
-        """
-        request_start = (
-            self.request_timings.request_start if self.request_timings else None
-        )
-
-        return request_start or self.scheduler_timings.resolve_start
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def completed_at(self) -> float | None:
-        """
-        Get the effective request processing completion time.
-
-        :return: Unix timestamp when processing completed, or None if not completed.
-        """
-        request_end = self.request_timings.request_end if self.request_timings else None
-
-        return request_end or self.scheduler_timings.resolve_end
-
-    def model_copy(self, **kwargs) -> ScheduledRequestInfo:  # type: ignore[override]  # noqa: ARG002
-        """
-        Create a deep copy of the request info with copied timing objects.
-
-        :return: New ScheduledRequestInfo instance with independent timing objects
-        """
-        return super().model_copy(
-            update={
-                "scheduler_timings": self.scheduler_timings.model_copy(),
-                "request_timings": (
-                    self.request_timings.model_copy() if self.request_timings else None
-                ),
-            },
-            deep=False,
-        )
-
-
-@runtime_checkable
 class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
     """
     Abstract interface for request processing backends.
@@ -295,9 +127,9 @@ class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
     async def resolve(
         self,
         request: RequestT,
-        request_info: ScheduledRequestInfo,
+        request_info: RequestInfo,
         history: list[tuple[RequestT, ResponseT]] | None = None,
-    ) -> AsyncIterator[tuple[ResponseT, ScheduledRequestInfo]]:
+    ) -> AsyncIterator[tuple[ResponseT, RequestInfo]]:
         """
         Process a request and yield incremental response updates.
 

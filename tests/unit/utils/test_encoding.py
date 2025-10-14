@@ -6,11 +6,11 @@ from typing import Any, Generic, TypeVar
 import pytest
 from pydantic import BaseModel, Field
 
-from guidellm.backends.objects import (
+from guidellm.scheduler.schemas import RequestSchedulerTimings, ScheduledRequestInfo
+from guidellm.schemas.response import (
     GenerationRequest,
     GenerationResponse,
 )
-from guidellm.scheduler.objects import RequestSchedulerTimings, ScheduledRequestInfo
 from guidellm.utils.encoding import Encoder, MessageEncoding, Serializer
 
 

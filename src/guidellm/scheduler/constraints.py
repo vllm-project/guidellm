@@ -16,12 +16,12 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import Field, field_validator
 
-from guidellm.scheduler.objects import (
-    ScheduledRequestInfo,
+from guidellm.scheduler.schemas import (
     SchedulerState,
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
 )
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils import InfoMixin, RegistryMixin, StandardBaseModel
 
@@ -46,7 +46,7 @@ class Constraint(Protocol):
     """Protocol for constraint evaluation functions that control scheduler behavior."""
 
     def __call__(
-        self, state: SchedulerState, request: ScheduledRequestInfo
+        self, state: SchedulerState, request: RequestInfo
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against scheduler state and request information.
@@ -176,7 +176,7 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
     @classmethod
     def deserialize(
         cls, initializer_dict: dict[str, Any]
-    ) -> SerializableConstraintInitializer:
+    ) -> SerializableConstraintInitializer | UnserializableConstraintInitializer:
         """
         Deserialize constraint initializer from dictionary format.
 
@@ -370,7 +370,7 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
     def __call__(
         self,
         state: SchedulerState,  # noqa: ARG002
-        request: ScheduledRequestInfo,  # noqa: ARG002
+        request: RequestInfo,  # noqa: ARG002
     ) -> SchedulerUpdateAction:
         """
         Raise error since unserializable constraints cannot be invoked.
@@ -438,7 +438,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
     def __call__(
         self,
         state: SchedulerState,
-        request_info: ScheduledRequestInfo,  # noqa: ARG002
+        request_info: RequestInfo,  # noqa: ARG002
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current scheduler state and request count.
@@ -556,7 +556,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
     def __call__(
         self,
         state: SchedulerState,
-        request_info: ScheduledRequestInfo,  # noqa: ARG002
+        request_info: RequestInfo,  # noqa: ARG002
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current scheduler state and elapsed time.
@@ -670,7 +670,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
     def __call__(
         self,
         state: SchedulerState,
-        request_info: ScheduledRequestInfo,  # noqa: ARG002
+        request_info: RequestInfo,  # noqa: ARG002
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current error count.
@@ -787,7 +787,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         return self.model_copy()  # type: ignore[return-value]
 
     def __call__(
-        self, state: SchedulerState, request_info: ScheduledRequestInfo
+        self, state: SchedulerState, request_info: RequestInfo
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against sliding window error rate.
@@ -928,7 +928,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
     def __call__(
         self,
         state: SchedulerState,
-        request_info: ScheduledRequestInfo,  # noqa: ARG002
+        request_info: RequestInfo,  # noqa: ARG002
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against global error rate.
@@ -1007,7 +1007,7 @@ class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
     def __call__(
         self,
         state: SchedulerState,
-        request_info: ScheduledRequestInfo,  # noqa: ARG002
+        request_info: RequestInfo,  # noqa: ARG002
     ) -> SchedulerUpdateAction:
         create_exceeded = state.created_requests >= self.num_requests
         processed_exceeded = state.processed_requests >= self.num_requests

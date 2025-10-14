@@ -11,7 +11,6 @@ from loguru import logger
 from pydantic import BaseModel, Field
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.dataset import load_dataset as guidellm_load_dataset
 from guidellm.utils import IntegerRangeSampler, check_load_processor
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
 
@@ -271,9 +270,7 @@ def process_dataset(
         f"Starting dataset conversion | Input: {data} | Output directory: {output_path}"
     )
 
-    dataset, column_mappings = guidellm_load_dataset(
-        data, data_args, processor, processor_args
-    )
+    dataset, column_mappings = None, None
     tokenizer = check_load_processor(
         processor,
         processor_args,

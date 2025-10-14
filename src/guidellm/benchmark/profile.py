@@ -55,7 +55,7 @@ from guidellm.scheduler import (
 from guidellm.utils import PydanticClassRegistryMixin
 
 if TYPE_CHECKING:
-    from guidellm.benchmark.objects import Benchmark
+    from guidellm.benchmark.schemas import Benchmark
 
 __all__ = [
     "AsyncProfile",
@@ -665,9 +665,9 @@ class SweepProfile(Profile):
             return SynchronousStrategy()
 
         if prev_strategy.type_ == "synchronous":
-            self.synchronous_rate = (
-                prev_benchmark.metrics.requests_per_second.successful.mean
-            )
+            self.synchronous_rate = prev_benchmark.get_request_metrics_sample()[
+                "request_throughput"
+            ]
 
             return ThroughputStrategy(
                 max_concurrency=self.max_concurrency,
@@ -675,9 +675,9 @@ class SweepProfile(Profile):
             )
 
         if prev_strategy.type_ == "throughput":
-            self.throughput_rate = (
-                prev_benchmark.metrics.requests_per_second.successful.mean
-            )
+            self.throughput_rate = prev_benchmark.get_request_metrics_sample()[
+                "request_throughput"
+            ]
             if self.synchronous_rate <= 0 and self.throughput_rate <= 0:
                 raise RuntimeError(
                     "Invalid rates in sweep; aborting. "

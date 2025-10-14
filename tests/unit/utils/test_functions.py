@@ -190,7 +190,8 @@ def force_us_eastern_timezone(monkeypatch):
     ## WRITTEN BY AI ##
     """
     monkeypatch.setenv("TZ", "America/New_York")
-    time.tzset() # Propagates the change to the underlying C library
+    time.tzset()  # Propagates the change to the underlying C library
+
 
 class TestSafeFormatTimestamp:
     """Test suite for safe_format_timestamp function."""

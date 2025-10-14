@@ -10,7 +10,6 @@ pipeline: object serialization (to dict/sequence) followed by binary encoding
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Any, ClassVar, Generic, Literal, TypeVar, cast
 
@@ -24,11 +23,11 @@ except ImportError:
     HAS_MSGPACK = False
 
 try:
-    from msgspec.msgpack import (  # type: ignore[import-not-found] # Optional dependency
-        Decoder as MsgspecDecoder,
+    from msgspec.msgpack import (
+        Decoder as MsgspecDecoder,  # type: ignore[import-not-found] # Optional dependency
     )
-    from msgspec.msgpack import (  # type: ignore[import-not-found] # Optional dependency
-        Encoder as MsgspecEncoder,
+    from msgspec.msgpack import (
+        Encoder as MsgspecEncoder,  # type: ignore[import-not-found] # Optional dependency
     )
 
     HAS_MSGSPEC = True
@@ -36,15 +35,10 @@ except ImportError:
     MsgspecDecoder = MsgspecEncoder = None
     HAS_MSGSPEC = False
 
-try:
-    import orjson  # type: ignore[import-not-found] # Optional dependency
-
-    HAS_ORJSON = True
-except ImportError:
-    orjson = None
-    HAS_ORJSON = False
 
 from pydantic import BaseModel
+
+from guidellm.utils.imports import json
 
 __all__ = [
     "Encoder",
@@ -62,7 +56,7 @@ MsgT = TypeVar("MsgT")
 # Type alias for available serialization strategies
 SerializationTypesAlias = Literal["dict", "sequence"] | None
 # "Type alias for available binary encoding formats"
-EncodingTypesAlias = Literal["msgpack", "msgspec"]
+EncodingTypesAlias = Literal["msgpack", "msgspec"] | None
 
 
 class MessageEncoding(Generic[ObjT, MsgT]):
@@ -510,7 +504,7 @@ class Serializer:
         ):
             payload_type = "collection_mapping"
             keys = ",".join(str(key) for key in obj)
-            payload = keys.encode() + b"|" if HAS_ORJSON else keys + "|"
+            payload = keys.encode() + b"|"
             for item in obj.values():
                 is_pydantic = isinstance(item, BaseModel)
                 payload = self.pack_next_sequence(
@@ -601,15 +595,7 @@ class Serializer:
         class_module: str = obj.__class__.__module__
         json_data = obj.__pydantic_serializer__.to_json(obj)
 
-        return (
-            (class_name.encode() + b"|" + class_module.encode() + b"|" + json_data)
-            if HAS_ORJSON
-            else (
-                class_name + "|" + class_module + "|" + json_data.decode()
-                if isinstance(json_data, bytes)
-                else json_data
-            )
-        )
+        return class_name.encode() + b"|" + class_module.encode() + b"|" + json_data
 
     def from_sequence_pydantic(self, data: str | bytes) -> BaseModel:
         """
@@ -643,7 +629,7 @@ class Serializer:
         :param obj: Python object to serialize
         :return: JSON string or bytes representation
         """
-        return orjson.dumps(obj) if HAS_ORJSON else json.dumps(obj)
+        return json.dumps(obj)
 
     def from_sequence_python(self, data: str | bytes) -> Any:
         """
@@ -651,13 +637,7 @@ class Serializer:
 
         :param data: JSON string or bytes to deserialize
         :return: Reconstructed Python object
-        :raises ImportError: If orjson is required but not available
         """
-        if isinstance(data, bytes):
-            if not HAS_ORJSON:
-                raise ImportError("orjson is not available, cannot deserialize bytes")
-            return orjson.loads(data)
-
         return json.loads(data)
 
     def pack_next_sequence(  # noqa: C901, PLR0912

@@ -17,7 +17,7 @@ from typing import Annotated, ClassVar, Literal, TypeVar
 
 from pydantic import Field, PrivateAttr
 
-from guidellm.scheduler.objects import ScheduledRequestInfo
+from guidellm.schemas import RequestInfo
 from guidellm.utils import InfoMixin, PydanticClassRegistryMixin, StandardBaseModel
 
 __all__ = [
@@ -83,7 +83,7 @@ class ScheduledRequestTimings(StandardBaseModel, ABC):
         """
 
     @abstractmethod
-    def request_completed(self, request_info: ScheduledRequestInfo):
+    def request_completed(self, request_info: RequestInfo):
         """
         Handle request completion and update internal timing state.
 
@@ -129,7 +129,7 @@ class LastCompletionRequestTimings(ScheduledRequestTimings):
 
         return self.offset
 
-    def request_completed(self, request_info: ScheduledRequestInfo):
+    def request_completed(self, request_info: RequestInfo):
         """
         Update timing state based on the completed request.
 
@@ -197,7 +197,7 @@ class NoDelayRequestTimings(ScheduledRequestTimings):
 
         return self.offset + startup_percent * self.startup_duration
 
-    def request_completed(self, request_info: ScheduledRequestInfo):
+    def request_completed(self, request_info: RequestInfo):
         """
         Handle request completion (no action needed for throughput strategy).
 
@@ -236,7 +236,7 @@ class ConstantRateRequestTimings(ScheduledRequestTimings):
 
         return self.offset + interval * num_requests
 
-    def request_completed(self, request_info: ScheduledRequestInfo):
+    def request_completed(self, request_info: RequestInfo):
         """
         Handle request completion (no action needed for constant rate strategy).
 
@@ -283,7 +283,7 @@ class PoissonRateRequestTimings(ScheduledRequestTimings):
 
         return self.offset
 
-    def request_completed(self, request_info: ScheduledRequestInfo):
+    def request_completed(self, request_info: RequestInfo):
         """
         Handle request completion (no action needed for Poisson rate strategy).
 
@@ -331,7 +331,7 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         return None
 
     def create_request_timings(
-        self, local_rank: int, local_world_size: int, local_max_concurrency: int
+        self, local_rank: int, local_world_size: int, local_max_concurrency: int | float
     ) -> ScheduledRequestTimings:
         """
         Create a timing instance to define scheduling behavior for a worker process.

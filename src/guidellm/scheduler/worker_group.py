@@ -22,19 +22,19 @@ from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Barrier, Event
 from typing import Generic, NamedTuple
 
+from guidellm.logger import logger
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
-from guidellm.scheduler.objects import (
+from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
-    SchedulerMessagingPydanticRegistry,
     SchedulerState,
     SchedulerUpdateAction,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils import (
     InterProcessMessaging,
@@ -98,10 +98,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :raises ValueError: If neither requests nor cycle_requests are provided,
             or if cycle_requests is an Iterator rather than Iterable
         """
-        if not requests and not cycle_requests:
+        if requests is None and cycle_requests is None:
             raise ValueError(
                 "At least one of 'requests' or 'cycle_requests' must be provided. "
-                f"Got requests: {requests}, cycle_requests: {cycle_requests}"
             )
 
         if isinstance(cycle_requests, Iterator):
@@ -117,29 +116,32 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.constraints = constraints
 
         # Multiprocessing contexts and primitives, created in create_processes
-        self.mp_context: BaseContext = None
-        self.mp_manager: BaseManager = None
-        self.processes: list[BaseProcess] = None
-        self.startup_barrier: Barrier = None
-        self.requests_generated_event: Event = None
-        self.constraint_reached_event: Event = None
-        self.shutdown_event: Event = None
-        self.error_event: Event = None
+        self.mp_context: BaseContext | None = None
+        self.mp_manager: BaseManager | None = None
+        self.processes: list[BaseProcess] | None = None
+        self.startup_barrier: Barrier | None = None
+        self.requests_generated_event: Event | None = None
+        self.constraint_reached_event: Event | None = None
+        self.shutdown_event: Event | None = None
+        self.error_event: Event | None = None
 
         # Scheduler and messaging state, created in start
-        self.state: WorkerGroupState[ResponseT, RequestT] = None
-        self.messaging: InterProcessMessaging[
-            tuple[
-                RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo,
-            ],
-            tuple[
-                ResponseT | None,
-                RequestT | MultiTurnRequestT[RequestT],
-                ScheduledRequestInfo,
-                SchedulerState,
-            ],
-        ] = None
+        self.state: WorkerGroupState[RequestT, ResponseT] | None = None
+        self.messaging: (
+            InterProcessMessaging[
+                tuple[
+                    RequestT | MultiTurnRequestT[RequestT],
+                    RequestInfo,
+                ],
+                tuple[
+                    ResponseT | None,
+                    RequestT | MultiTurnRequestT[RequestT],
+                    RequestInfo,
+                    SchedulerState,
+                ],
+            ]
+            | None
+        ) = None
 
     async def create_processes(self):
         """
@@ -153,19 +155,23 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If process initialization or startup fails
         """
         # Processes limits and params
-        max_conc: int = min(
-            self.strategy.requests_limit or math.inf,
-            self.backend.requests_limit or math.inf,
-        )
-        if max_conc == math.inf:
-            # if concurrency not specified, use settings
+        max_conc: int
+        if (
+            requests_limit := min(
+                self.strategy.requests_limit or math.inf,
+                self.backend.requests_limit or math.inf,
+            )
+        ) != math.inf:
+            max_conc = int(requests_limit)
+        else:
+            # If concurrency not specified, use settings
             max_conc = settings.max_concurrency
         if max_conc <= 0:
             raise RuntimeError("max_concurrency resolved to 0; increase limits/config")
 
         # Calculate number of processes, ensure we don't exceed the max concurrency,
         # or limits from the backend, strategy, or user settings
-        num_processes = int(
+        num_processes: int = int(
             min(
                 max_conc,
                 self.strategy.processes_limit or math.inf,
@@ -185,7 +191,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         )
 
         # Initialize multiprocessing components
-        self.mp_context: BaseContext = get_context(settings.mp_context_type)
+        self.mp_context = get_context(settings.mp_context_type)
         self.mp_manager = self.mp_context.Manager()
         self.startup_barrier = self.mp_context.Barrier(num_processes + 1)
         self.requests_generated_event = self.mp_context.Event()
@@ -280,7 +286,14 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If workers encounter errors during startup or
             if create_processes() was not called first
         """
-        if not self.processes:
+        if (
+            not self.processes
+            or not self.requests_generated_event
+            or not self.constraint_reached_event
+            or not self.shutdown_event
+            or not self.error_event
+            or not self.messaging
+        ):
             raise RuntimeError("create_processes() must be called before start()")
 
         stop_send_requests_event = threading.Event()
@@ -304,7 +317,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             send_stopped_event=send_requests_stopped_event,
             send_stop_criteria=[stop_send_requests_event],
             receive_stop_criteria=[self.shutdown_event],
-            pydantic_models=list(SchedulerMessagingPydanticRegistry.registry.values()),
         )
 
         if (wait_time := start_time - time.time()) > 0:
@@ -320,8 +332,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
     ) -> AsyncIterator[
         tuple[
             ResponseT | None,
-            RequestT,
-            ScheduledRequestInfo,
+            RequestT | MultiTurnRequestT[RequestT],
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -337,7 +349,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If workers encounter unrecoverable errors
         """
         while True:
-            if self.error_event.is_set():
+            if self.error_event.is_set():  # type: ignore[union-attr]
+                logger.error("Error event set in WorkerProcessGroup")
                 raise RuntimeError(
                     "error_event is set in WorkerProcessGroup, "
                     "indicating an error occurred in one of the worker processes."
@@ -349,11 +362,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                     request,
                     request_info,
                     scheduler_state,
-                ) = await self.messaging.get(timeout=settings.mp_poll_interval)
+                ) = await self.messaging.get(timeout=settings.mp_poll_interval)  # type: ignore[union-attr]
 
                 yield response, request, request_info, scheduler_state
             except asyncio.TimeoutError:
-                if self.shutdown_event.is_set():
+                if self.shutdown_event.is_set():  # type: ignore[union-attr]
                     # Everything yielded, exit
                     break
 
@@ -465,15 +478,17 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             num_processes=len(processes),
             start_time=start_time,
         )
-        self._queued_requests = set()
-        self._pending_requests = set()
-        self._processing_requests = set()
+        self._queued_requests: set[RequestT | MultiTurnRequestT[RequestT]] = set()
+        self._pending_requests: set[RequestT | MultiTurnRequestT[RequestT]] = set()
+        self._processing_requests: set[RequestT | MultiTurnRequestT[RequestT]] = set()
 
     def requests_generator(
         self,
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
         cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
-    ) -> Generator[tuple[RequestT | MultiTurnRequestT[RequestT],], None, None]:
+    ) -> Generator[
+        tuple[RequestT | MultiTurnRequestT[RequestT], RequestInfo], None, None
+    ]:
         """
         Generate request-info pairs for worker processing with constraint evaluation.
 
@@ -486,56 +501,67 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         :return: Generator yielding (request, request_info) tuples
         """
 
-        def _iter():
-            if requests:
+        def _iter() -> Iterator[RequestT | MultiTurnRequestT[RequestT]]:
+            if requests is not None:
                 yield from requests
 
-            if cycle_requests:
+            if cycle_requests is not None:
                 while True:
                     yield from cycle_requests
 
-        count = 0
-        request_info: ScheduledRequestInfo = None
-        for request in _iter():
-            count += 1
+        try:
+            count = 0
+            request_iter = _iter()
+            for request in request_iter:
+                count += 1
 
-            if hasattr(request, "request_id"):
-                request_id = request.request_id
-            elif hasattr(request, "id"):
-                request_id = request.id
-            else:
-                request_id = str(uuid.uuid4())
-            request_info: ScheduledRequestInfo = ScheduledRequestInfo(
-                request_id=request_id,
-                status="queued",
-                scheduler_process_id=0,
-                scheduler_start_time=self.start_time,
+                if hasattr(request, "request_id"):
+                    request_id = request.request_id
+                elif hasattr(request, "id"):
+                    request_id = request.id
+                else:
+                    request_id = str(uuid.uuid4())
+                request_info: RequestInfo = RequestInfo(
+                    request_id=request_id,
+                    status="queued",
+                    scheduler_process_id=0,
+                    scheduler_start_time=self.start_time,
+                )
+                state_update = self._locked_update(request_info)
+                request_info.timings.queued = time.time()
+
+                yield (request, request_info)
+
+                if state_update.stop_queueing:
+                    self.stop_send_requests_event.set()
+                    return
+
+            # Reached the end, inject a RequestsExhaustedConstraint to record
+            self._locked_update(
+                info=None,
+                requests_exhausted={
+                    "requests_exhausted": RequestsExhaustedConstraint(
+                        num_requests=count
+                    )
+                },
             )
-            state_update = self._locked_update(request_info)
-            yield (request, request_info)
-
-            if state_update.stop_queueing:
-                self.stop_send_requests_event.set()
-                return
-
-        # Reached the end, inject a RequestsExhaustedConstraint to record
-        self._locked_update(
-            info=None,
-            requests_exhausted=RequestsExhaustedConstraint(num_requests=count),
-        )
-        self.stop_send_requests_event.set()
+            self.stop_send_requests_event.set()
+        except Exception as err:
+            logger.error(f"Error generating requests: {err}")
+            self.error_event.set()
+            raise err
 
     def received_callback(
         self,
         update: tuple[
             ResponseT | None,
             RequestT | MultiTurnRequestT,
-            ScheduledRequestInfo,
+            RequestInfo,
         ],
     ) -> tuple[
         ResponseT | None,
         RequestT | MultiTurnRequestT,
-        ScheduledRequestInfo,
+        RequestInfo,
         SchedulerState,
     ]:
         """
@@ -548,31 +574,40 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         :param update: Tuple containing response, request, and request info
         :return: Updated tuple with injected scheduler state
         """
-        response, request, request_info = update
-        state_update = self._locked_update(info=request_info)
+        try:
+            response, request, request_info = update
+            state_update = self._locked_update(info=request_info)
 
-        # Check if we need to tell workers to stop pulling new requests
-        # based on no more requests sent and all requests removed from queue
-        if (
-            state_update.state.queued_requests == 0
-            and self.send_requests_stopped_event.is_set()
-            and not self.requests_generated_event.is_set()
-        ):
-            self.requests_generated_event.set()
+            # Check if we need to tell workers to stop pulling new requests
+            # based on no more requests sent and all requests removed from queue
+            if (
+                state_update.state.queued_requests == 0
+                and self.stop_send_requests_event.is_set()
+                and not self.requests_generated_event.is_set()
+            ):
+                self.requests_generated_event.set()
 
-        # Check if we need to tell workers to stop processing requests (constraints)
-        if state_update.stop_processing and not self.constraint_reached_event.is_set():
-            self.constraint_reached_event.set()
+            # Check if we need to tell workers to stop processing requests (constraints)
+            if (
+                state_update.stop_processing
+                and not self.constraint_reached_event.is_set()
+            ):
+                self.constraint_reached_event.set()
 
-        # Check if all requests have been processed and can shutdown
-        if (
-            state_update.state.processed_requests == state_update.state.created_requests
-            and self.send_requests_stopped_event.is_set()
-            and self.requests_generated_event.is_set()
-            and self.constraint_reached_event.is_set()
-            and not self.shutdown_event.is_set()
-        ):
-            self.shutdown_event.set()
+            # Check if all requests have been processed and can shutdown
+            if (
+                state_update.state.processed_requests
+                == state_update.state.created_requests
+                and self.stop_send_requests_event.is_set()
+                and self.requests_generated_event.is_set()
+                and self.constraint_reached_event.is_set()
+                and not self.shutdown_event.is_set()
+            ):
+                self.shutdown_event.set()
+        except Exception as err:
+            logger.error(f"Error processing received update: {err}")
+            self.error_event.set()
+            raise err
 
         return (
             response,
@@ -583,7 +618,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
     def _locked_update(
         self,
-        info: ScheduledRequestInfo | None = None,
+        info: RequestInfo | None = None,
         **add_constraints: dict[str, Constraint],
     ) -> _StateUpdate:
         with self._update_lock:
@@ -603,7 +638,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             state_copy.end_processing_time is not None,
         )
 
-    def _update_state_request_counts(self, info: ScheduledRequestInfo):
+    def _update_state_request_counts(self, info: RequestInfo):
         if info.status == "queued":
             self._queued_requests.add(info.request_id)
             self._state.queued_requests = len(self._queued_requests)
@@ -640,7 +675,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         else:
             raise ValueError(f"Unknown request_info status {info.status} for {info}")
 
-    def _update_with_constraints(self, info: ScheduledRequestInfo):
+    def _update_with_constraints(self, info: RequestInfo):
         actions: dict[str, SchedulerUpdateAction] = {
             name: const(self._state, info) for name, const in self.constraints.items()
         }

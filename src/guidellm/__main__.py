@@ -28,39 +28,26 @@ from __future__ import annotations
 import asyncio
 import codecs
 from pathlib import Path
-from typing import Annotated
 
 import click
-from pydantic import ValidationError
 
 try:
     import uvloop
-
-    HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
-    ] = True
 except ImportError:
     uvloop = None
-
-    HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
-    ] = False
 
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
     GenerativeConsoleBenchmarkerProgress,
-    InjectExtrasAggregator,
     ProfileType,
     benchmark_generative_text,
     reimport_benchmarks_report,
 )
-from guidellm.benchmark.scenario import (
-    GenerativeTextScenario,
-    get_builtin_scenarios,
-)
+from guidellm.benchmark.scenario import GenerativeTextScenario
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
+from guidellm.schemas import GenerativeRequestType
 from guidellm.settings import print_config
 from guidellm.utils import Console, DefaultGroupHandler, get_literal_vals
 from guidellm.utils import cli as cli_tools
@@ -136,25 +123,25 @@ def benchmark():
     help="Run a benchmark against a generative model using the specified arguments.",
     context_settings={"auto_envvar_prefix": "GUIDELLM"},
 )
-@click.option(
-    "--scenario",
-    type=cli_tools.Union(
-        click.Path(
-            exists=True,
-            readable=True,
-            file_okay=True,
-            dir_okay=False,
-            path_type=Path,
-        ),
-        click.Choice(get_builtin_scenarios()),
-    ),
-    default=None,
-    help=(
-        "The name of a builtin scenario or path to a config file. "
-        "Missing values from the config will use defaults. "
-        "Options specified on the commandline will override the scenario."
-    ),
-)
+# @click.option(
+#     "--scenario",
+#     type=cli_tools.Union(
+#         click.Path(
+#             exists=True,
+#             readable=True,
+#             file_okay=True,
+#             dir_okay=False,
+#             path_type=Path,
+#         ),
+#         click.Choice(get_builtin_scenarios()),
+#     ),
+#     default=None,
+#     help=(
+#         "The name of a builtin scenario or path to a config file. "
+#         "Missing values from the config will use defaults. "
+#         "Options specified on the commandline will override the scenario."
+#     ),
+# )
 @click.option(
     "--target",
     type=str,
@@ -163,6 +150,7 @@ def benchmark():
 @click.option(
     "--data",
     type=str,
+    multiple=True,
     help=(
         "The HuggingFace dataset ID, a path to a HuggingFace dataset, "
         "a path to a data file csv, json, jsonl, or txt, "
@@ -191,12 +179,6 @@ def benchmark():
         "For rate-type=synchronous,throughput, this must not be set."
     ),
 )
-@click.option(
-    "--random-seed",
-    default=GenerativeTextScenario.get_default("random_seed"),
-    type=int,
-    help="The random seed to use for benchmarking to ensure reproducibility.",
-)
 # Backend configuration
 @click.option(
     "--backend",
@@ -217,9 +199,7 @@ def benchmark():
     default=GenerativeTextScenario.get_default("backend_kwargs"),
     help=(
         "A JSON string containing any arguments to pass to the backend as a "
-        "dict with **kwargs. Headers can be removed by setting their value to "
-        "null. For example: "
-        """'{"headers": {"Authorization": null, "Custom-Header": "Custom-Value"}}'"""
+        "dict with **kwargs."
     ),
 )
 @click.option(
@@ -232,6 +212,24 @@ def benchmark():
     ),
 )
 # Data configuration
+@click.option(
+    "--request-type",
+    default="chat_completions",
+    type=click.Choice(list(get_literal_vals(GenerativeRequestType))),
+    help=(
+        "The type of request to create for each data sample and send to the backend. "
+        f"Supported types: {list(get_literal_vals(GenerativeRequestType))}."
+    ),
+)
+@click.option(
+    "--request-formatter-kwargs",
+    default=None,
+    callback=cli_tools.parse_json,
+    help=(
+        "A JSON string containing any arguments to pass to the request formatter "
+        "as a dict with **kwargs."
+    ),
+)
 @click.option(
     "--processor",
     default=GenerativeTextScenario.get_default("processor"),
@@ -253,7 +251,8 @@ def benchmark():
 )
 @click.option(
     "--data-args",
-    default=GenerativeTextScenario.get_default("data_args"),
+    multiple=True,
+    default=None,
     callback=cli_tools.parse_json,
     help=(
         "A JSON string containing any arguments to pass to the dataset creation "
@@ -261,13 +260,50 @@ def benchmark():
     ),
 )
 @click.option(
-    "--data-sampler",
-    default=GenerativeTextScenario.get_default("data_sampler"),
-    type=click.Choice(["random"]),
+    "--data-samples",
+    default=-1,
+    type=int,
     help=(
-        "The data sampler type to use. 'random' will add a random shuffle on the data. "
-        "Defaults to None"
+        "The number of samples to use from the dataset. If -1 (default), will use all "
+        "samples in the dataset and dynamically generate samples. "
+        "If >1, will precompile that number of items from the dataset configs."
     ),
+)
+@click.option(
+    "--data-column-mappings",
+    default=None,
+    callback=cli_tools.parse_json,
+    help=(
+        "A JSON string of column mappings to apply to the dataset to map into request "
+        "column types."
+    ),
+)
+@click.option(
+    "--data-sampler",
+    default=None,
+    type=click.Choice(["shuffle"]),
+    help="The data sampler type to use.",
+)
+@click.option(
+    "--data-num-workers",
+    default=None,
+    type=int,
+    help="The number of worker processes to use for data loading.",
+)
+@click.option(
+    "--dataloader_kwargs",
+    default=None,
+    callback=cli_tools.parse_json,
+    help=(
+        "A JSON string containing any arguments to pass to the dataloader constructor "
+        "as a dict with **kwargs."
+    ),
+)
+@click.option(
+    "--random-seed",
+    default=GenerativeTextScenario.get_default("random_seed"),
+    type=int,
+    help="The random seed to use for benchmarking to ensure reproducibility.",
 )
 # Output configuration
 @click.option(
@@ -312,11 +348,6 @@ def benchmark():
 )
 # Aggregators configuration
 @click.option(
-    "--output-extras",
-    callback=cli_tools.parse_json,
-    help="A JSON string of extra data to save with the output benchmarks",
-)
-@click.option(
     "--warmup",
     "--warmup-percent",  # legacy alias
     "warmup",
@@ -345,10 +376,9 @@ def benchmark():
     ),
 )
 @click.option(
-    "--request-samples",
+    "--sample-requests",
     "--output-sampling",  # legacy alias
-    "request_samples",
-    default=GenerativeTextScenario.get_default("request_samples"),
+    "sample_requests",
     type=int,
     help=(
         "The number of samples for each request status and each benchmark to save "
@@ -393,7 +423,45 @@ def benchmark():
     default=GenerativeTextScenario.get_default("max_global_error_rate"),
     help="Maximum global error rate allowed across all benchmarks",
 )
-def run(**kwargs):
+def run(
+    target,
+    data,
+    profile,
+    rate,
+    # Backend Configuration
+    backend,
+    backend_kwargs,
+    model,
+    # Data configuration
+    request_type,
+    request_formatter_kwargs,
+    processor,
+    processor_args,
+    data_args,
+    data_samples,
+    data_column_mappings,
+    data_sampler,
+    data_num_workers,
+    dataloader_kwargs,
+    random_seed,
+    # Output configuration
+    output_path,
+    output_formats,
+    # Updates configuration
+    disable_console_outputs,
+    disable_progress,
+    display_scheduler_stats,
+    # Benchmarker configuration
+    sample_requests,
+    warmup,
+    cooldown,
+    # Constraints configuration
+    max_seconds,
+    max_requests,
+    max_errors,
+    max_error_rate,
+    max_global_error_rate,
+):
     """
     Execute a generative text benchmark against a target model backend.
 
@@ -402,53 +470,58 @@ def run(**kwargs):
     Supports multiple backends, data sources, output formats, and constraint types
     for flexible benchmark configuration.
     """
-    scenario = kwargs.pop("scenario")
-    click_ctx = click.get_current_context()
-    overrides = cli_tools.set_if_not_default(click_ctx, **kwargs)
+    data_request_formatter = (
+        request_type
+        if not request_formatter_kwargs
+        else {"request_type": request_type, **request_formatter_kwargs}
+    )
 
-    try:
-        # If a scenario file was specified read from it
-        if scenario is None:
-            _scenario = GenerativeTextScenario.model_validate(overrides)
-        elif isinstance(scenario, Path):
-            _scenario = GenerativeTextScenario.from_file(scenario, overrides)
-        else:  # Only builtins can make it here; click will catch anything else
-            _scenario = GenerativeTextScenario.from_builtin(scenario, overrides)
-    except ValidationError as e:
-        # Translate pydantic valdation error to click argument error
-        errs = e.errors(include_url=False, include_context=True, include_input=True)
-        param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
-        raise click.BadParameter(
-            errs[0]["msg"], ctx=click_ctx, param_hint=param_name
-        ) from e
-
-    if HAS_UVLOOP:
+    if uvloop is not None:
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     asyncio.run(
         benchmark_generative_text(
-            scenario=_scenario,
+            target=target,
+            data=list(data),
+            # Benchmark configuration
+            profile=profile,
+            rate=rate,
+            # Backend configuration
+            backend=backend,
+            backend_kwargs=backend_kwargs,
+            model=model,
+            # Data configuration
+            processor=processor,
+            processor_args=processor_args,
+            data_args=data_args,
+            data_samples=data_samples,
+            data_column_mapper=data_column_mappings,
+            data_request_formatter=data_request_formatter,
+            data_sampler=data_sampler,
+            data_num_workers=data_num_workers,
+            dataloader_kwargs=dataloader_kwargs,
+            random_seed=random_seed,
             # Output configuration
-            output_path=kwargs["output_path"],
-            output_formats=[
-                fmt
-                for fmt in kwargs["output_formats"]
-                if not kwargs["disable_console_outputs"] or fmt != "console"
-            ],
+            output_path=output_path,
+            output_formats=output_formats,
             # Updates configuration
             progress=(
-                [
-                    GenerativeConsoleBenchmarkerProgress(
-                        display_scheduler_stats=kwargs["display_scheduler_stats"]
-                    )
-                ]
-                if not kwargs["disable_progress"]
+                GenerativeConsoleBenchmarkerProgress(
+                    display_scheduler_stats=display_scheduler_stats
+                )
+                if not disable_progress
                 else None
             ),
-            print_updates=not kwargs["disable_console_outputs"],
-            # Aggregators configuration
-            add_aggregators={
-                "extras": InjectExtrasAggregator(extras=kwargs["output_extras"])
-            },
+            print_updates=not disable_console_outputs,
+            # Benchmarker configuration
+            sample_requests=sample_requests,
+            warmup=warmup,
+            cooldown=cooldown,
+            # Constraints configuration
+            max_seconds=max_seconds,
+            max_requests=max_requests,
+            max_errors=max_errors,
+            max_error_rate=max_error_rate,
+            max_global_error_rate=max_global_error_rate,
         )
     )
 

@@ -13,13 +13,13 @@ import pytest
 from PIL import Image
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.objects import (
+from guidellm.backends.openai import OpenAIHTTPBackend
+from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
+    RequestInfo,
+    RequestTimings,
 )
-from guidellm.backends.openai import OpenAIHTTPBackend, UsageStats
-from guidellm.scheduler import ScheduledRequestInfo
 from tests.unit.testing_utils import async_timeout
 
 
@@ -613,13 +613,13 @@ class TestOpenAIHTTPBackend:
         await backend.process_startup()
 
         request = GenerationRequest(content="test")
-        request_info = ScheduledRequestInfo(
+        request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=GenerationRequestTimings(),
+            request_timings=RequestTimings(),
         )
         history = [(request, GenerationResponse(request_id="test", request_args={}))]
 
@@ -641,13 +641,13 @@ class TestOpenAIHTTPBackend:
             params={"temperature": 0.7},
             constraints={"output_tokens": 100},
         )
-        request_info = ScheduledRequestInfo(
+        request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=GenerationRequestTimings(),
+            request_timings=RequestTimings(),
         )
 
         # Mock text_completions method
@@ -682,13 +682,13 @@ class TestOpenAIHTTPBackend:
             request_type="chat_completions",
             params={"temperature": 0.5},
         )
-        request_info = ScheduledRequestInfo(
+        request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=GenerationRequestTimings(),
+            request_timings=RequestTimings(),
         )
 
         # Mock chat_completions method
@@ -1123,13 +1123,13 @@ class TestOpenAICompletions:
                 request_type="text_completions",
                 constraints={"output_tokens": 50},
             )
-            request_info = ScheduledRequestInfo(
+            request_info = RequestInfo(
                 request_id="test-id",
                 status="pending",
                 scheduler_node_id=1,
                 scheduler_process_id=1,
                 scheduler_start_time=123.0,
-                request_timings=GenerationRequestTimings(),
+                request_timings=RequestTimings(),
             )
 
             # Mock text_completions to test timing edge cases

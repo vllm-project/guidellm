@@ -477,7 +477,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
         self,
         mp_context: BaseContext | None = None,
         serialization: SerializationTypesAlias = "dict",
-        encoding: EncodingTypesAlias = None,
+        encoding: EncodingTypesAlias | list[EncodingTypesAlias] = None,
         max_pending_size: int | None = None,
         max_buffer_send_size: int | None = None,
         max_done_size: int | None = None,
@@ -668,6 +668,8 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                 except (culsans.QueueFull, queue.Full):
                     pass
 
+            time.sleep(0)  # Yield to other threads
+
     def _receive_messages_task_thread(  # noqa: C901
         self,
         receive_callback: Callable[[Any], Any] | None,
@@ -721,6 +723,8 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                 except (culsans.QueueFull, queue.Full):
                     pass
 
+            time.sleep(0)  # Yield to other threads
+
 
 class InterProcessMessagingManagerQueue(
     InterProcessMessagingQueue[SendMessageT, ReceiveMessageT]
@@ -750,7 +754,7 @@ class InterProcessMessagingManagerQueue(
         manager: SyncManager,
         mp_context: BaseContext | None = None,
         serialization: SerializationTypesAlias = "dict",
-        encoding: EncodingTypesAlias = None,
+        encoding: EncodingTypesAlias | list[EncodingTypesAlias] = None,
         max_pending_size: int | None = None,
         max_buffer_send_size: int | None = None,
         max_done_size: int | None = None,
@@ -854,7 +858,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         num_workers: int,
         mp_context: BaseContext | None = None,
         serialization: SerializationTypesAlias = "dict",
-        encoding: EncodingTypesAlias = None,
+        encoding: EncodingTypesAlias | list[EncodingTypesAlias] = None,
         max_pending_size: int | None = None,
         max_buffer_send_size: int | None = None,
         max_done_size: int | None = None,

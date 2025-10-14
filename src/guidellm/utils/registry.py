@@ -11,7 +11,7 @@ plugin architectures.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, ClassVar, Generic, TypeVar, cast
+from typing import ClassVar, Generic, TypeVar, cast
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 
@@ -65,7 +65,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
     :cvar registry_populated: Track whether auto-discovery has completed
     """
 
-    registry: ClassVar[dict[str, Any] | None] = None
+    registry: ClassVar[dict[str, RegistryObjT] | None] = None
     registry_auto_discovery: ClassVar[bool] = False
     registry_populated: ClassVar[bool] = False
 

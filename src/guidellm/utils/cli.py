@@ -5,8 +5,10 @@ import click
 
 
 def parse_json(ctx, param, value):  # noqa: ARG001
-    if value is None:
+    if value is None or value == [None]:
         return None
+    if isinstance(value, (list, tuple)):
+        return [parse_json(ctx, param, val) for val in value]
     try:
         return json.loads(value)
     except json.JSONDecodeError as err:

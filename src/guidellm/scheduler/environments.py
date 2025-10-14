@@ -20,19 +20,17 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterable
-from typing import (
-    Generic,
-)
+from typing import Generic
 
 from guidellm.scheduler.constraints import Constraint
-from guidellm.scheduler.objects import (
+from guidellm.scheduler.schemas import (
     MultiTurnRequestT,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerState,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils import InfoMixin
 
@@ -93,7 +91,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         self,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo,
+        request_info: RequestInfo,
         state: SchedulerState,
     ):
         """
@@ -129,9 +127,9 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         self,
     ) -> AsyncIterator[
         tuple[
-            ResponseT,
-            RequestT | MultiTurnRequestT[RequestT],
-            ScheduledRequestInfo,
+            ResponseT | None,
+            RequestT,
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -146,10 +144,10 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
             remote nodes in distributed environments, empty for non-distributed
         :raises Exception: Any errors that occurred during execution
         """
-        ...
+        yield None  # type: ignore[misc]
 
 
-class NonDistributedEnvironment(Environment):
+class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
     """
     Single-node scheduler execution environment with minimal coordination overhead.
 
@@ -162,7 +160,7 @@ class NonDistributedEnvironment(Environment):
         from guidellm.scheduler import (
             MaxNumberConstraint,
             NonDistributedEnvironment,
-            ScheduledRequestInfo,
+            RequestInfo,
             SchedulerState,
             SynchronousStrategy,
         )
@@ -182,7 +180,7 @@ class NonDistributedEnvironment(Environment):
         for req in local_req:
             state.processed_requests += 1
             await env.update_run_iteration(
-                f"resp_{req}", req, ScheduledRequestInfo(), state
+                f"resp_{req}", req, RequestInfo(), state
             )
         async for nonlocal_req in env.sync_run_end():
             state.processed_requests += 1
@@ -224,7 +222,7 @@ class NonDistributedEnvironment(Environment):
         self,
         response: ResponseT | None,
         request: RequestT,
-        request_info: ScheduledRequestInfo,
+        request_info: RequestInfo,
         state: SchedulerState,
     ):
         """
@@ -236,7 +234,7 @@ class NonDistributedEnvironment(Environment):
         :param state: Current scheduler state with metrics and progress
         """
 
-    async def sync_run_error(self, err: Exception):
+    async def sync_run_error(self, err: Exception | list[Exception]):
         """
         Store error for later propagation during run finalization.
 
@@ -249,9 +247,9 @@ class NonDistributedEnvironment(Environment):
         self,
     ) -> AsyncIterator[
         tuple[
-            ResponseT,
-            RequestT | MultiTurnRequestT[RequestT],
-            ScheduledRequestInfo,
+            ResponseT | None,
+            RequestT,
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -269,5 +267,6 @@ class NonDistributedEnvironment(Environment):
                     f"Errors occurred during execution: {self.run_errors}"
                 )
 
-        return
-        yield  # needed to force generator compilation
+        if False:
+            # Force compiler to recognize as generator
+            yield None  # type: ignore[misc]
