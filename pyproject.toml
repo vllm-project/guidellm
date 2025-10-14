@@ -62,24 +62,23 @@ dependencies = [
     "httpx[http2]<1.0.0",
     "loguru",
     "msgpack",
-    "numpy<2.0.0",
+    "numpy>=2.0.0",
     "pillow",
     "protobuf",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.0.0",
-    "pydub",
     "pyyaml>=6.0.0",
     "rich",
     "sanic",
     "transformers",
     "uvloop>=0.18",
-    "librosa>=0.11.0",
     "torch",
 ]
 
 [project.optional-dependencies]
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
+multimodal = ["datasets[audio,vision]>=4.1.0", "torchcodec"]
 recommended = ["guidellm[perf,openai]"]
 dev = [
     # build
