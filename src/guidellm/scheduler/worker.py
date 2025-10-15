@@ -1,10 +1,11 @@
 """
-Individual worker process management for multi-process request execution.
+Worker process implementation for distributed request execution and coordination.
 
-Manages worker processes that handle request scheduling, backend processing, and
-coordination in distributed benchmark environments. Workers consume requests from
-queues, apply timing strategies, process requests through backends, and publish
-status updates while maintaining synchronization across the process group.
+Manages individual worker processes within the scheduler system, handling request
+lifecycle from queue consumption through backend processing and status publication.
+Workers coordinate with other processes through barriers and events, apply timing
+strategies for request scheduling, maintain concurrency limits, and publish real-time
+status updates throughout request processing.
 """
 
 from __future__ import annotations
@@ -19,13 +20,13 @@ try:
     import uvloop
 
     HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
+        bool, "Flag indicating uvloop availability for event loop optimization"
     ] = True
 except ImportError:
     uvloop = None
 
     HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
+        bool, "Flag indicating uvloop availability for event loop optimization"
     ] = False
 
 
@@ -35,7 +36,7 @@ from guidellm.scheduler.schemas import (
     RequestT,
     ResponseT,
 )
-from guidellm.scheduler.strategies import ScheduledRequestTimings
+from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
 from guidellm.utils import (
     InterProcessMessaging,
@@ -49,29 +50,34 @@ __all__ = ["WorkerProcess"]
 
 class WorkerProcess(Generic[RequestT, ResponseT]):
     """
-    Individual worker process for distributed request execution and coordination.
+    Worker process for distributed request execution in the scheduler system.
 
-    Manages the complete request lifecycle from queue consumption through backend
-    processing and status publication. Coordinates with other workers through
-    barriers and events while maintaining configurable concurrency limits and
-    timing strategies for request scheduling.
+    Manages complete request lifecycle including queue consumption, backend processing,
+    timing strategy application, and status publication. Coordinates with other workers
+    through synchronization primitives while maintaining concurrency limits and handling
+    graceful shutdown scenarios including errors and cancellations.
 
     Example:
     ::
         worker = WorkerProcess(
+            worker_index=0,
             messaging=messaging_interface,
+            backend=backend_instance,
+            strategy=timing_strategy,
             async_limit=10,
+            fut_scheduling_time_limit=5.0,
             startup_barrier=barrier,
+            requests_generated_event=generated_event,
+            constraint_reached_event=constraint_event,
             shutdown_event=shutdown,
             error_event=error,
-            backend=backend_instance,
-            request_timings=timing_strategy
         )
         worker.run()
     """
 
     def __init__(
         self,
+        worker_index: int,
         messaging: InterProcessMessaging[
             tuple[
                 ResponseT | None,
@@ -80,8 +86,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             ],
         ],
         backend: BackendInterface[RequestT, ResponseT],
-        request_timings: ScheduledRequestTimings,
+        strategy: SchedulingStrategy,
         async_limit: int,
+        fut_scheduling_time_limit: float,
         startup_barrier: ProcessingBarrier,
         requests_generated_event: ProcessingEvent,
         constraint_reached_event: ProcessingEvent,
@@ -91,22 +98,25 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         """
         Initialize worker process instance.
 
-        :param messaging: Inter-process communication interface for request coordination
-        :param backend: Backend instance for processing requests
-        :param request_timings: Timing strategy for request scheduling
-        :param async_limit: Maximum concurrent requests this worker can handle
-        :param startup_barrier: Multiprocessing barrier for coordinated startup
-        :param requests_generated_event: Event signaling when request generation is
-            complete
-        :param constraint_reached_event: Event signaling when processing constraints
-            are met
-        :param shutdown_event: Event for signaling graceful shutdown
-        :param error_event: Event for signaling error conditions across processes
+        :param worker_index: Unique identifier for this worker within the process group
+        :param messaging: Inter-process messaging interface for request coordination
+        :param backend: Backend interface for processing requests
+        :param strategy: Scheduling strategy for determining request timing
+        :param async_limit: Maximum concurrent requests this worker can process
+        :param fut_scheduling_time_limit: Maximum time in seconds to schedule requests
+            into the future
+        :param startup_barrier: Synchronization barrier for coordinated startup
+        :param requests_generated_event: Event signaling request generation completion
+        :param constraint_reached_event: Event signaling processing constraint reached
+        :param shutdown_event: Event signaling graceful shutdown request
+        :param error_event: Event signaling error conditions across processes
         """
+        self.worker_index = worker_index
         self.messaging = messaging
         self.backend = backend
-        self.request_timings = request_timings
+        self.strategy = strategy
         self.async_limit = async_limit
+        self.fut_scheduling_time_limit = fut_scheduling_time_limit
         self.startup_barrier = startup_barrier
         self.requests_generated_event = requests_generated_event
         self.constraint_reached_event = constraint_reached_event
@@ -122,8 +132,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         """
         Main entry point for worker process execution.
 
-        Initializes asyncio event loop with optional uvloop optimization and starts
-        worker async operations. Handles event loop cleanup for forked processes.
+        Initializes asyncio event loop with optional uvloop optimization and executes
+        worker async operations. Handles event loop cleanup and error propagation.
 
         :raises RuntimeError: If worker encounters unrecoverable error during execution
         """
@@ -142,9 +152,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         """
         Execute main asynchronous worker process logic.
 
-        Orchestrates concurrent execution of request processing and shutdown monitoring
-        tasks. Handles task cleanup, error propagation, and cancellation coordination
-        when any task completes or fails.
+        Orchestrates concurrent execution of request processing and shutdown monitoring.
+        Handles task cleanup, error propagation, and cancellation coordination when any
+        task completes or encounters an error.
 
         :raises RuntimeError: If worker tasks encounter unrecoverable errors
         :raises asyncio.CancelledError: If worker process was cancelled
@@ -192,6 +202,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
     async def _stop_monitor(
         self,
     ) -> Literal["error_event", "shutdown_event"]:
+        """Monitor shutdown and error events for worker termination."""
         exit_key = await wait_for_sync_objects(
             {
                 "error_event": self.error_event,
@@ -206,6 +217,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             )
 
     async def _process_requests(self):
+        """
+        Manage request processing lifecycle from startup to shutdown.
+
+        Coordinates startup synchronization, processes requests until constraints are
+        reached, then cancels pending requests until shutdown or error occurs.
+        """
         try:
             # 1. Start up synchronization (backend, messaging, and other processes)
             # 2. Messaging startup, receive requests until requests_generated event
@@ -227,6 +244,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             await self._processing_shutdown()
 
     async def _processing_startup(self):
+        """Initialize backend, messaging, and synchronize with other workers."""
         # Get backend ready
         await self.backend.process_startup()
         self.backend_started = True
@@ -258,6 +276,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.startup_completed = False
 
     async def _process_requests_loop(self):
+        """
+        Process requests continuously until cancelled with concurrency limits.
+
+        Schedules and processes requests according to the timing strategy while
+        maintaining the configured concurrency limit through semaphore coordination.
+        """
         try:
             # Run request processing
             async_semaphore = asyncio.Semaphore(self.async_limit)
@@ -273,7 +297,18 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Main loop; loop until canceled
             while True:
                 await async_semaphore.acquire()
-                request_task = asyncio.create_task(self._process_next_request())
+                request_time = await self.strategy.next_request_time(
+                    offset=self.worker_index
+                )
+
+                if (
+                    time_until := request_time - time.time()
+                ) >= self.fut_scheduling_time_limit:
+                    await asyncio.sleep(time_until - self.fut_scheduling_time_limit)
+
+                request_task = asyncio.create_task(
+                    self._process_next_request(target_start=request_time)
+                )
                 pending_tasks.add(request_task)
                 request_task.add_done_callback(_task_done)
         except asyncio.CancelledError as err:
@@ -284,6 +319,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             raise err
 
     async def _cancel_requests_loop(self):
+        """Cancel all remaining queued requests until worker process terminates."""
         while True:
             try:
                 request: RequestT
@@ -299,29 +335,31 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             request_info.timings.resolve_end = time.time()
             self._send_update("cancelled", None, request, request_info)
 
-    async def _process_next_request(self):
+    async def _process_next_request(self, target_start: float):
+        """
+        Process a single request from queue to completion.
+
+        Retrieves request from messaging queue, applies timing strategy, processes
+        through backend, and publishes status updates throughout the lifecycle.
+
+        :param target_start: Unix timestamp when request should begin processing
+        """
         request: RequestT | MultiTurnRequestT[RequestT] | None = None
         request_info: RequestInfo | None = None
         response: ResponseT | None = None
 
         try:
-            # Pull request from the queue
+            # Pull request from the queue, update state, and send "pending" update
             request, request_info = await self.messaging.get()
+            request_info.timings.dequeued = time.time()
+            request_info.scheduler_node_id = self.messaging.worker_index or -1
+            request_info.timings.targeted_start = target_start
+            self._send_update("pending", response, request, request_info)
 
             if request is None or request_info is None:
                 raise RuntimeError("Received invalid request or request info")
-
-            if isinstance(request, (list, tuple)):
+            if isinstance(request, list | tuple):
                 raise NotImplementedError("Multi-turn requests are not yet supported")
-
-            # Calculate targeted start and set pending state for request
-            request_info.scheduler_node_id = self.messaging.worker_index or -1
-            request_info.timings.dequeued = time.time()
-            target_start = (
-                request_info.scheduler_start_time + self.request_timings.next_offset()
-            )
-            request_info.timings.targeted_start = target_start
-            self._send_update("pending", response, request, request_info)
 
             # Schedule the request
             current_time = time.time()
@@ -355,6 +393,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.error = str(exc)
                 request_info.timings.resolve_end = time.time()
                 self._send_update("errored", response, request, request_info)
+        finally:
+            if request_info is not None:
+                self.strategy.request_completed(request_info)
 
     def _send_update(
         self,
@@ -365,6 +406,18 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         request: RequestT | MultiTurnRequestT[RequestT],
         request_info: RequestInfo,
     ):
+        """
+        Publish request status update through messaging system.
+
+        Updates request status and publishes to messaging queue for coordinator
+        consumption. Prevents duplicate status updates for the same state.
+
+        :param new_status: New status for the request
+        :param response: Response object if available, None otherwise
+        :param request: Request object being processed
+        :param request_info: Request metadata and timing information
+        :raises Exception: If messaging system fails to publish the update
+        """
         prev_status = request_info.status
 
         if new_status == prev_status:

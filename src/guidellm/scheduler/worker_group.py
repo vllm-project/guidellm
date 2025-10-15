@@ -14,7 +14,7 @@ import math
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Generator, Iterable, Iterator
+from collections.abc import AsyncIterator, Generator, Iterable
 from multiprocessing import get_context
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
@@ -62,7 +62,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         group = WorkerProcessGroup(
             requests=request_iterable,
-            cycle_requests=None,
             backend=backend_instance,
             strategy=scheduling_strategy,
             constraints={"max_time": time_constraint}
@@ -81,38 +80,25 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
     def __init__(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
-        cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
+        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
-        constraints: dict[str, Constraint],
+        startup_duration: float,
+        **constraints: dict[str, Constraint],
     ):
         """
         Initialize a worker process group for distributed request processing.
 
         :param requests: Finite iterable of requests to process sequentially
-        :param cycle_requests: Iterable of requests to cycle through indefinitely
         :param backend: Backend interface for processing requests
         :param strategy: Scheduling strategy for request timing and distribution
+        :param startup_duration: Duration in seconds for request startup ramping
         :param constraints: Named constraints for controlling execution behavior
-        :raises ValueError: If neither requests nor cycle_requests are provided,
-            or if cycle_requests is an Iterator rather than Iterable
         """
-        if requests is None and cycle_requests is None:
-            raise ValueError(
-                "At least one of 'requests' or 'cycle_requests' must be provided. "
-            )
-
-        if isinstance(cycle_requests, Iterator):
-            raise ValueError(
-                f"cycle_requests must be an Iterable or None, not an Iterator. "
-                f"Got {type(cycle_requests)}"
-            )
-
         self.requests = requests
-        self.cycle_requests = cycle_requests
         self.backend = backend
         self.strategy = strategy
+        self.startup_duration = startup_duration
         self.constraints = constraints
 
         # Multiprocessing contexts and primitives, created in create_processes
@@ -186,9 +172,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         max_pending_size = max(
             1, math.floor(max_conc * settings.mp_max_pending_buffer_percent)
         )
-        per_proc_max_buffer_size = max(
-            1, math.floor(per_proc_max_conc * settings.mp_max_worker_buffer_percent)
-        )
+        per_proc_max_buffer_size = 1
 
         # Initialize multiprocessing components
         self.mp_context = get_context(settings.mp_context_type)
@@ -231,6 +215,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         # Initialize worker processes
         self.processes = []
+        self.strategy.init_processes_timings(
+            worker_count=num_processes,
+            max_concurrency=max_conc,
+            startup_duration=self.startup_duration,
+        )
         for rank in range(num_processes):
             # Distribute any remainder across the first N ranks
             async_limit = per_proc_max_conc + (
@@ -238,18 +227,16 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             )
 
             worker = WorkerProcess[RequestT, ResponseT](
+                worker_index=rank,
                 messaging=self.messaging.create_worker_copy(
                     worker_index=rank,
                     max_buffer_send_size=None,
                     max_buffer_receive_size=per_proc_max_buffer_size,
                 ),
                 backend=self.backend,
-                request_timings=self.strategy.create_request_timings(
-                    local_rank=rank,
-                    local_world_size=num_processes,
-                    local_max_concurrency=async_limit,
-                ),
+                strategy=self.strategy,
                 async_limit=async_limit,
+                fut_scheduling_time_limit=0.0,
                 startup_barrier=self.startup_barrier,
                 requests_generated_event=self.requests_generated_event,
                 constraint_reached_event=self.constraint_reached_event,
@@ -296,6 +283,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         ):
             raise RuntimeError("create_processes() must be called before start()")
 
+        self.strategy.init_processes_start(start_time=start_time)
         stop_send_requests_event = threading.Event()
         send_requests_stopped_event = threading.Event()
         self.state = WorkerGroupState[RequestT, ResponseT](
@@ -308,11 +296,10 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             constraint_reached_event=self.constraint_reached_event,
             shutdown_event=self.shutdown_event,
             error_event=self.error_event,
+            messaging=self.messaging,
         )
         await self.messaging.start(
-            send_items=self.state.requests_generator(
-                self.requests, self.cycle_requests
-            ),
+            send_items=self.state.requests_generator(self.requests),
             receive_callback=self.state.received_callback,
             send_stopped_event=send_requests_stopped_event,
             send_stop_criteria=[stop_send_requests_event],
@@ -424,6 +411,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
 
 class _StateUpdate(NamedTuple):
+    """Internal state update result with control flags."""
+
     state: SchedulerState
     stop_queueing: bool
     stop_processing: bool
@@ -449,6 +438,15 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         constraint_reached_event: Event,
         shutdown_event: Event,
         error_event: Event,
+        messaging: InterProcessMessaging[
+            tuple[RequestT | MultiTurnRequestT[RequestT], RequestInfo],
+            tuple[
+                ResponseT | None,
+                RequestT | MultiTurnRequestT[RequestT],
+                RequestInfo,
+                SchedulerState,
+            ],
+        ],
     ):
         """
         Initialize worker group state management.
@@ -456,6 +454,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         :param start_time: Unix timestamp when processing should begin
         :param processes: List of worker process instances
         :param constraints: Named constraints for controlling execution behavior
+        :param stop_send_requests_event: Threading event for stopping request generation
         :param send_requests_stopped_event: Threading event for request coordination
         :param requests_generated_event: Multiprocessing event for generation completion
         :param constraint_reached_event: Multiprocessing event for constraint stopping
@@ -471,6 +470,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self.constraint_reached_event = constraint_reached_event
         self.shutdown_event = shutdown_event
         self.error_event = error_event
+        self.messaging = messaging
 
         self._update_lock: threading.Lock = threading.Lock()
         self._state: SchedulerState = SchedulerState(
@@ -483,9 +483,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self._processing_requests: set[RequestT | MultiTurnRequestT[RequestT]] = set()
 
     def requests_generator(
-        self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
-        cycle_requests: Iterable[RequestT | MultiTurnRequestT[RequestT]] | None,
+        self, requests: Iterable[RequestT | MultiTurnRequestT[RequestT]]
     ) -> Generator[
         tuple[RequestT | MultiTurnRequestT[RequestT], RequestInfo], None, None
     ]:
@@ -497,22 +495,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         constraints to determine when to stop request generation.
 
         :param requests: Finite iterable of requests to process sequentially
-        :param cycle_requests: Iterable of requests to cycle through indefinitely
         :return: Generator yielding (request, request_info) tuples
         """
 
-        def _iter() -> Iterator[RequestT | MultiTurnRequestT[RequestT]]:
-            if requests is not None:
-                yield from requests
-
-            if cycle_requests is not None:
-                while True:
-                    yield from cycle_requests
-
         try:
             count = 0
-            request_iter = _iter()
-            for request in request_iter:
+            for request in iter(requests):
                 count += 1
 
                 if hasattr(request, "request_id"):
@@ -529,6 +517,9 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 )
                 state_update = self._locked_update(request_info)
                 request_info.timings.queued = time.time()
+                self.messaging.buffer_receive_queue.sync_put(
+                    (None, request, request_info, state_update.state)
+                )
 
                 yield (request, request_info)
 

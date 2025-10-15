@@ -1,3 +1,15 @@
+"""
+Scheduler subsystem for orchestrating benchmark workloads and managing worker processes.
+
+This module provides the core scheduling infrastructure for guidellm, including
+strategies for controlling request timing patterns (synchronous, asynchronous,
+constant rate, Poisson), constraints for limiting benchmark execution (duration,
+error rates, request counts), and distributed execution through worker processes.
+The scheduler coordinates between backend interfaces, manages benchmark state
+transitions, and handles multi-turn request sequences with customizable timing
+strategies and resource constraints.
+"""
+
 from .constraints import (
     Constraint,
     ConstraintInitializer,
@@ -28,11 +40,6 @@ from .strategies import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,
-    ConstantRateRequestTimings,
-    LastCompletionRequestTimings,
-    NoDelayRequestTimings,
-    PoissonRateRequestTimings,
-    ScheduledRequestTimings,
     SchedulingStrategy,
     StrategyT,
     StrategyType,
