@@ -63,7 +63,6 @@ dependencies = [
     "loguru",
     "msgpack",
     "numpy>=2.0.0",
-    "pillow",
     "protobuf",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.0.0",
@@ -82,7 +81,12 @@ recommended = ["guidellm[perf,openai]"]
 # Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
-multimodal = ["datasets[audio,vision]>=4.1.0", "torchcodec==0.7", "torch==2.8.*"]
+multimodal = [
+    "datasets[audio,vision]>=4.1.0",
+    "pillow",
+    "torch==2.8.*",
+    "torchcodec==0.7",
+]
 # Dev Tooling
 dev = [
     # Install all optional dependencies
