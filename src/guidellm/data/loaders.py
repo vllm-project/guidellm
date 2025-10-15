@@ -65,7 +65,7 @@ class DatasetsIterator(TorchIterableDataset):
         worker_modulus = worker_info.num_workers if worker_info is not None else 1
         worker_index = worker_info.id if worker_info is not None else 0
 
-        if self.precache is not None:
+        if self.precache:
             for index, item in enumerate(self.precache):
                 if (index + worker_index) % worker_modulus == 0:
                     yield item

@@ -77,7 +77,7 @@ class DatasetDeserializerFactory(
         if dataset is None:
             raise DataNotSupportedError(
                 f"No suitable deserializer found for data {data} "
-                f"with kwargs {data_kwargs} and type_ {type_}."
+                f"with kwargs {data_kwargs} and deserializer type {type_}."
             )
 
         if resolve_split:

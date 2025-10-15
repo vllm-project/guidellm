@@ -56,7 +56,6 @@ from guidellm.utils import (
     StatusBreakdown,
     StatusDistributionSummary,
 )
-from guidellm.utils.pydantic_utils import StandardBaseDict
 
 __all__ = [
     "Benchmark",
@@ -127,7 +126,7 @@ class EstimatedBenchmarkState(dict[str, Any]):
         self[total_key] = self.get(total_key, 0) + value
         self[count_key] = self.get(count_key, 0) + count
 
-        average = self[total_key] / self[count_key]
+        average = self[total_key] / self[count_key] if self[count_key] > 0 else 0.0
         self.set_metric(
             group=group,
             key=key,
@@ -193,16 +192,19 @@ class EstimatedBenchmarkState(dict[str, Any]):
         time_avg_numerator_key = f"{group}_{key}_time_avg_numerator"
         time_avg_denominator_key = f"{group}_{key}_time_avg_denominator"
         last_recorded_time_key = f"{group}_{key}_last_recorded_time"
+        last_recorded_value_key = f"{group}_{key}_last_recorded_value"
 
         if last_recorded_time_key not in self:
             self[last_recorded_time_key] = recorded_time
+            self[last_recorded_value_key] = value
             self[time_avg_numerator_key] = value
             self[time_avg_denominator_key] = 0.0
         else:
             time_delta = recorded_time - self[last_recorded_time_key]
-            self[time_avg_numerator_key] += value * time_delta
+            self[time_avg_numerator_key] += self[last_recorded_value_key] * time_delta
             self[time_avg_denominator_key] += time_delta
             self[last_recorded_time_key] = recorded_time
+            self[last_recorded_value_key] = value
 
         if self[time_avg_denominator_key] > 0:
             average = self[time_avg_numerator_key] / self[time_avg_denominator_key]
@@ -776,6 +778,9 @@ class GenerativeMetrics(StandardBaseDict):
     request_latency: StatusDistributionSummary = Field(
         description="Distribution of request latencies for completed requests"
     )
+    request_streaming_iterations_count: StatusDistributionSummary = Field(
+        description="Distribution of stream iterations for completed requests"
+    )
 
     # General token stats
     prompt_token_count: StatusDistributionSummary = Field(
@@ -796,8 +801,14 @@ class GenerativeMetrics(StandardBaseDict):
     inter_token_latency_ms: StatusDistributionSummary = Field(
         description="Distribution of inter-token latencies in milliseconds"
     )
+    output_tokens_wo_first_per_iteration: StatusDistributionSummary = Field(
+        description="Distribution of output tokens (without first) generated per streaming iteration"
+    )
     output_tokens_per_second: StatusDistributionSummary = Field(
         description="Distribution of output token generation rates"
+    )
+    output_tokens_per_iteration: StatusDistributionSummary = Field(
+        description="Distribution of output tokens generated per streaming iteration"
     )
     tokens_per_second: StatusDistributionSummary = Field(
         description="Distribution of total token throughput including prompt and output"
@@ -818,12 +829,41 @@ class GenerativeMetrics(StandardBaseDict):
         request_info: RequestInfo,
         scheduler_state: SchedulerState,
     ):
-        # Always track concurrency
-        state.add_time_averaged_metric(
-            group=EstimatedBenchmarkState.benchmark_metrics_group,
-            key="concurrency_requests",
-            value=scheduler_state.processing_requests,
+        benchmark_start_time = scheduler_state.start_time
+        request_start_time = (
+            request_info.timings.request_start or request_info.timings.resolve_start
         )
+        request_end_time = (
+            request_info.timings.request_end or request_info.timings.resolve_end
+        )
+        event_occurence_time = (
+            request_info.timings.queued
+            if request_info.status == "queued"
+            else (
+                request_info.timings.dequeued
+                if request_info.status == "pending"
+                else request_start_time
+                if request_info.status == "in_progress"
+                else request_end_time
+            )
+        )
+        benchmark_duration = (
+            event_occurence_time - benchmark_start_time
+            if event_occurence_time
+            else None
+        )
+        request_duration = (
+            request_end_time - request_start_time if request_end_time else None
+        )
+
+        # Always track concurrency
+        if event_occurence_time is not None:
+            state.add_time_averaged_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="concurrency_requests",
+                value=scheduler_state.processing_requests,
+                recorded_time=event_occurence_time,
+            )
 
         if request_info.status not in {"completed", "errored", "cancelled"}:
             return
@@ -833,9 +873,6 @@ class GenerativeMetrics(StandardBaseDict):
             key="updated",
             value=True,
         )
-        start_time = scheduler_state.start_time
-        end_time = request_info.timings.request_end or request_info.timings.resolve_end
-        duration = end_time - start_time if end_time else None
 
         for prefix in (request_info.status, "total"):
             requests_count = (
@@ -847,8 +884,18 @@ class GenerativeMetrics(StandardBaseDict):
                 if prefix == "cancelled"
                 else scheduler_state.processed_requests
             )
+            input_tokens = (
+                (response.input_metrics.total_tokens if response else None)
+                or request.input_metrics.total_tokens
+                or 0
+            )
+            output_tokens = (
+                (response.output_metrics.total_tokens if response else None)
+                or request.output_metrics.total_tokens
+                or 0
+            )
 
-            # Request stats
+            # Request distribution stats
             state.set_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_requests",
@@ -857,95 +904,119 @@ class GenerativeMetrics(StandardBaseDict):
             state.set_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_requests_per_second",
-                value=requests_count / duration if duration else None,
+                value=(
+                    requests_count / benchmark_duration if benchmark_duration else None
+                ),
             )
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_request_latency",
-                value=(
-                    request_info.timings.request_end or request_info.timings.resolve_end
-                ),
-                start_val=(
-                    request_info.timings.request_start
-                    or request_info.timings.resolve_start
-                ),
+                value=request_duration,
+            )
+            state.add_avg_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key=f"{prefix}_request_streaming_iterations",
+                value=request_info.timings.iterations or 0,
             )
 
-            # Input/output token stats
-            state.add_avg_rate_metric(
+            # Token iteration stats
+            state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="input_tokens",
-                value=(response.input_metrics.total_tokens if response else None)
-                or request.input_metrics.total_tokens,
-            )
-            state.add_avg_rate_metric(
-                group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="input_text_tokens",
-                value=(response.input_metrics.text_tokens if response else None)
-                or request.input_metrics.text_tokens,
-            )
-            state.add_avg_rate_metric(
-                group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="input_images",
-                value=(response.input_metrics.image_count if response else None)
-                or request.input_metrics.image_count,
-            )
-            state.add_avg_rate_metric(
-                group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="input_video_frames",
-                value=(response.input_metrics.video_frames if response else None)
-                or request.input_metrics.video_frames,
-            )
-            state.add_avg_rate_metric(
-                group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="input_audio_seconds",
-                value=request.input_metrics.audio_seconds if request else None,
-            )
-            state.add_avg_rate_metric(
-                group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="output_tokens",
-                value=(response.output_metrics.total_tokens if response else None)
-                or request.output_metrics.total_tokens,
-            )
-            output_tokens = (
-                response.output_metrics.total_tokens if response else None
-            ) or request.output_metrics.total_tokens
-            state.add_avg_rate_metric(
-                group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="total_tokens",
+                key="output_tokens_iterations",
                 value=output_tokens,
+                count=request_info.timings.iterations or 1,
+            )
+            state.add_avg_metric(
+                group=EstimatedBenchmarkState.benchmark_metrics_group,
+                key="output_tokens_wo_first_iterations",
+                value=output_tokens - 1 if output_tokens > 1 else 0,
+                count=request_info.timings.iterations or 1,
             )
 
-            # General stats
+            # Token metrics stats
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_time_to_first_token",
                 value=request_info.timings.first_iteration,
-                start_val=request_info.timings.request_start
-                or request_info.timings.resolve_start,
+                start_val=request_start_time,
             )
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_inter_token_latency",
                 value=request_info.timings.last_iteration,
                 start_val=request_info.timings.first_iteration,
-                count=output_tokens - 1
-                if output_tokens and output_tokens > 1
-                else None,
+                count=(output_tokens or 1) - 1,
             )
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_time_per_output_token",
-                value=(
-                    request_info.timings.request_end or request_info.timings.resolve_end
-                ),
-                start_val=(
-                    request_info.timings.first_iteration
-                    or request_info.timings.request_start
-                    or request_info.timings.resolve_start
-                ),
-                count=output_tokens,
+                value=request_duration,
+                count=output_tokens or 0,
             )
+
+            # Input/output throughput stats
+            if event_occurence_time is not None:
+                state.add_avg_rate_metric(
+                    group=EstimatedBenchmarkState.benchmark_metrics_group,
+                    key="input_tokens",
+                    value=input_tokens,
+                    start_time=benchmark_start_time,
+                    end_time=event_occurence_time,
+                )
+                state.add_avg_rate_metric(
+                    group=EstimatedBenchmarkState.benchmark_metrics_group,
+                    key="output_tokens",
+                    value=output_tokens,
+                    start_time=benchmark_start_time,
+                    end_time=event_occurence_time,
+                )
+                state.add_avg_rate_metric(
+                    group=EstimatedBenchmarkState.benchmark_metrics_group,
+                    key="total_tokens",
+                    value=input_tokens + output_tokens,
+                    start_time=benchmark_start_time,
+                    end_time=event_occurence_time,
+                )
+                state.add_avg_rate_metric(
+                    group=EstimatedBenchmarkState.benchmark_metrics_group,
+                    key="input_text_tokens",
+                    value=(
+                        (response.input_metrics.text_tokens if response else None)
+                        or request.input_metrics.text_tokens
+                        or 0
+                    ),
+                    start_time=benchmark_start_time,
+                    end_time=event_occurence_time,
+                )
+                state.add_avg_rate_metric(
+                    group=EstimatedBenchmarkState.benchmark_metrics_group,
+                    key="input_images",
+                    value=(
+                        (response.input_metrics.image_count if response else None)
+                        or request.input_metrics.image_count
+                        or 0
+                    ),
+                    start_time=benchmark_start_time,
+                    end_time=event_occurence_time,
+                )
+                state.add_avg_rate_metric(
+                    group=EstimatedBenchmarkState.benchmark_metrics_group,
+                    key="input_video_frames",
+                    value=(
+                        (response.input_metrics.video_frames if response else None)
+                        or request.input_metrics.video_frames
+                        or 0
+                    ),
+                    start_time=benchmark_start_time,
+                    end_time=event_occurence_time,
+                )
+                state.add_avg_rate_metric(
+                    group=EstimatedBenchmarkState.benchmark_metrics_group,
+                    key="input_audio_seconds",
+                    value=request.input_metrics.audio_seconds or 0,
+                    start_time=benchmark_start_time,
+                    end_time=event_occurence_time,
+                )
 
     @classmethod
     def compile(
@@ -987,6 +1058,10 @@ class GenerativeMetrics(StandardBaseDict):
                 value_types=request_types,
                 values=[req.request_latency or 0.0 for req in requests],
             ),
+            request_streaming_iterations_count=StatusDistributionSummary.from_values(
+                value_types=request_types,
+                values=[float(req.info.timings.iterations or 0) for req in requests],
+            ),
             # General token stats
             prompt_token_count=StatusDistributionSummary.from_values(
                 value_types=request_types,
@@ -1012,9 +1087,22 @@ class GenerativeMetrics(StandardBaseDict):
                 value_types=request_types,
                 values=[req.inter_token_latency_ms or 0.0 for req in requests],
             ),
+            output_tokens_wo_first_per_iteration=StatusDistributionSummary.from_values(
+                value_types=request_types,
+                values=[
+                    max(0.0, (req.output_metrics.total_tokens or 1.0) - 1.0)
+                    for req in requests
+                ],
+                weights=[req.info.timings.iterations or 1 for req in requests],
+            ),
             output_tokens_per_second=StatusDistributionSummary.from_values(
                 value_types=request_types,
                 values=[req.output_tokens_per_second or 0.0 for req in requests],
+            ),
+            output_tokens_per_iteration=StatusDistributionSummary.from_values(
+                value_types=request_types,
+                values=[req.output_tokens_per_iteration or 0.0 for req in requests],
+                weights=[req.info.timings.iterations or 1 for req in requests],
             ),
             tokens_per_second=StatusDistributionSummary.from_values(
                 value_types=request_types,

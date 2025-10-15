@@ -109,16 +109,18 @@ class Benchmarker(
                 )
                 estimated_state = EstimatedBenchmarkState()
                 scheduler_state = None
+                scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
 
                 async for (
                     response,
                     request,
                     request_info,
                     scheduler_state,
-                ) in Scheduler[RequestT, ResponseT]().run(
+                ) in scheduler.run(
                     requests=requests,
                     backend=backend,
                     strategy=strategy,
+                    startup_duration=warmup if warmup and warmup >= 1 else 0.0,
                     env=environment,
                     **constraints or {},
                 ):
