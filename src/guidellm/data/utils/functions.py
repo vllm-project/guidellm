@@ -341,24 +341,21 @@ def encode_audio(
         sample_rate=encode_sample_rate if sample_rate != encode_sample_rate else None,
     )
 
-    audio_buffer = io.BytesIO()
-    torch.save(audio_tensor, audio_buffer)
-    audio_buffer.seek(0)
-    decoded_audio = audio_buffer.read()
+    encoded_audio = audio_tensor.numpy().tobytes()
 
     return {
         "type": "audio_base64" if b64encode else "audio_file",
         "audio": (
-            base64.b64encode(decoded_audio).decode("utf-8")
+            base64.b64encode(encoded_audio).decode("utf-8")
             if b64encode
-            else decoded_audio
+            else encoded_audio
         ),
         "file_name": file_name,
         "format": audio_format,
         "mimetype": f"audio/{format_val}",
         "audio_samples": samples.sample_rate,
         "audio_seconds": samples.duration_seconds,
-        "audio_bytes": len(decoded_audio),
+        "audio_bytes": len(encoded_audio),
     }
 
 
