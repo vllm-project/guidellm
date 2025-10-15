@@ -65,7 +65,7 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
     type_: Literal["strategy"] = Field(
         description="The type of scheduling strategy to schedule requests with",
     )
-    worker_coount: int = Field(
+    worker_count: int = Field(
         default=0,
         description="Number of worker processes to use for this strategy",
         ge=0,
@@ -117,7 +117,7 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         :param max_concurrency: Maximum number of concurrent requests allowed
         :param startup_duration: Duration in seconds for request startup ramping
         """
-        self.worker_coount = worker_count
+        self.worker_count = worker_count
         self.max_concurrency = max_concurrency
         self.startup_duration = startup_duration
 
@@ -309,7 +309,7 @@ class ConcurrentStrategy(SchedulingStrategy):
 
         start_time = await self.get_processes_start_time()
 
-        return start_time + (offset / self.worker_coount)
+        return start_time + (offset / self.worker_count)
 
     def request_completed(self, request_info: RequestInfo):
         """
