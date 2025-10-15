@@ -12,6 +12,11 @@ from datasets import (
     load_dataset,
     load_from_disk,
 )
+from datasets.exceptions import (
+    DataFilesNotFoundError,
+    DatasetNotFoundError,
+    FileNotFoundDatasetsError,
+)
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -35,38 +40,45 @@ class HuggingFaceDatasetDeserializer(DatasetDeserializer):
         _ = (processor_factory, random_seed)
 
         if isinstance(
-            data, (Dataset, IterableDataset, DatasetDict, IterableDatasetDict)
+            data, Dataset | IterableDataset | DatasetDict | IterableDatasetDict
         ):
             return data
 
         load_error = None
 
         if (
-            isinstance(data, (str, Path))
+            isinstance(data, str | Path)
             and (path := Path(data)).exists()
             and ((path.is_file() and path.suffix == ".py") or path.is_dir())
         ):
             # Handle python script or nested python script in a directory
             try:
                 return load_dataset(str(data), **data_kwargs)
-            except Exception as err:  # noqa: BLE001
+            except (
+                FileNotFoundDatasetsError,
+                DatasetNotFoundError,
+                DataFilesNotFoundError,
+            ) as err:
                 load_error = err
-
-        if (
-            isinstance(data, (str, Path))
-            and (path := Path(data)).exists()
-            and path.is_dir()
-        ):
-            # Handle local dataset directory
-            try:
-                return load_from_disk(str(data), **data_kwargs)
-            except Exception as err:  # noqa: BLE001
-                load_error = err
+            except Exception:  # noqa: BLE001
+                # Try loading as a local dataset directory next
+                try:
+                    return load_from_disk(str(data), **data_kwargs)
+                except (
+                    FileNotFoundDatasetsError,
+                    DatasetNotFoundError,
+                    DataFilesNotFoundError,
+                ) as err2:
+                    load_error = err2
 
         try:
             # Handle dataset identifier from the Hugging Face Hub
             return load_dataset(str(data), **data_kwargs)
-        except Exception as err:  # noqa: BLE001
+        except (
+            FileNotFoundDatasetsError,
+            DatasetNotFoundError,
+            DataFilesNotFoundError,
+        ) as err:
             load_error = err
 
         not_supported = DataNotSupportedError(
