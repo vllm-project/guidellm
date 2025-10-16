@@ -269,7 +269,7 @@ def encode_audio(
     ],
     str | int | float | None,
 ]:
-    """Decode audio (if nessary) and re-encode to specified format."""
+    """Decode audio (if necessary) and re-encode to specified format."""
     samples = _decode_audio(audio, sample_rate=sample_rate, max_duration=max_duration)
 
     bitrate_val = (
