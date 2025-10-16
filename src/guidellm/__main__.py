@@ -376,11 +376,21 @@ def run(**kwargs):
         else {"request_type": request_type, **request_formatter_kwargs}
     )
 
-    if not isinstance((data := kwargs.get("data")), list | tuple):
-        kwargs["data"] = [data] if data else []
+    data = kwargs.get("data")
+    if not (data := kwargs.get("data")):
+        kwargs["data"] = []
+    elif isinstance(data, tuple):
+        kwargs["data"] = list(data)
+    elif not isinstance(data, list):
+        kwargs["data"] = [data]
 
-    if not isinstance((data_args := kwargs.get("data_args")), list | tuple):
-        kwargs["data_args"] = [data_args] if data_args else None
+    data_args = kwargs.get("data_args")
+    if not (data_args := kwargs.get("data_args")):
+        kwargs["data_args"] = []
+    elif isinstance(data_args, tuple):
+        kwargs["data_args"] = list(data_args)
+    elif not isinstance(data_args, list):
+        kwargs["data_args"] = [data_args]
 
     if (
         not (rate := kwargs.get("rate"))
@@ -390,6 +400,8 @@ def run(**kwargs):
         kwargs["rate"] = None
     elif len(rate) == 1:
         kwargs["rate"] = rate[0]
+    elif not isinstance(rate, list):
+        kwargs["rate"] = [rate]
 
     disable_console_outputs = kwargs.pop("disable_console_outputs", False)
     display_scheduler_stats = kwargs.pop("display_scheduler_stats", False)
