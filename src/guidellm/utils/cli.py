@@ -7,8 +7,25 @@ import click
 def parse_json(ctx, param, value):  # noqa: ARG001
     if value is None or value == [None]:
         return None
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [parse_json(ctx, param, val) for val in value]
+
+    if "{" not in value and "}" not in value and "=" in value:
+        # Treat it as a key=value pair if it doesn't look like JSON.
+        result = {}
+        for pair in value.split(","):
+            if "=" not in pair:
+                raise click.BadParameter(
+                    f"{param.name} must be a valid JSON string or key=value pairs."
+                )
+            key, val = pair.split("=", 1)
+            result[key.strip()] = val.strip()
+        return result
+
+    if "{" not in value and "}" not in value:
+        # Treat it as a plain string if it doesn't look like JSON.
+        return value
+
     try:
         return json.loads(value)
     except json.JSONDecodeError as err:

@@ -3,16 +3,9 @@ Benchmark execution orchestration and lifecycle management.
 
 Provides the core benchmarking engine that coordinates request scheduling,
 data aggregation, and result compilation across different execution strategies
-and environments.
-
-Classes:
-    Benchmarker: Abstract benchmark orchestrator for request processing workflows.
-
-Type Variables:
-    BenchmarkT: Generic benchmark result type.
-    RequestT: Generic request object type.
-    RequestTimingsT: Generic request timing object type.
-    ResponseT: Generic response object type.
+and environments. The Benchmarker acts as the primary workflow coordinator,
+managing the complete benchmark lifecycle from request submission through
+result compilation while supporting thread-safe singleton operations.
 """
 
 from __future__ import annotations
@@ -25,7 +18,7 @@ from typing import Generic
 from guidellm.benchmark.profile import Profile
 from guidellm.benchmark.progress import BenchmarkerProgress
 from guidellm.benchmark.schemas import (
-    BenchmarkArgs,
+    BenchmarkerArgs,
     BenchmarkT,
     EstimatedBenchmarkState,
 )
@@ -50,12 +43,11 @@ class Benchmarker(
     """
     Abstract benchmark orchestrator for request processing workflows.
 
-    Coordinates the execution of benchmarking runs across different scheduling
+    Coordinates execution of benchmarking runs across different scheduling
     strategies, aggregating metrics and compiling results. Manages the complete
-    benchmark lifecycle from request submission through result compilation.
-
-    Implements thread-safe singleton pattern to ensure consistent state across
-    concurrent benchmark operations.
+    benchmark lifecycle from request submission through result compilation while
+    implementing thread-safe singleton pattern to ensure consistent state across
+    concurrent operations.
     """
 
     async def run(
@@ -74,18 +66,23 @@ class Benchmarker(
         """
         Execute benchmark runs across multiple scheduling strategies.
 
-        Orchestrates the complete benchmark workflow: iterates through scheduling
-        strategies from the profile, executes requests through the scheduler,
-        aggregates metrics, and compiles final benchmark results.
+        Orchestrates the complete benchmark workflow by iterating through scheduling
+        strategies from the profile, executing requests through the scheduler,
+        aggregating metrics, and compiling final benchmark results.
 
-        :param requests: Request datasets for processing across strategies.
-        :param backend: Backend interface for request processing.
-        :param profile: Benchmark profile defining strategies and constraints.
-        :param environment: Execution environment for coordination.
-        :param benchmark_aggregators: Metric aggregation functions by name.
-        :param benchmark_class: Class for constructing final benchmark objects.
-        :yield: Tuples of (metrics_update, benchmark_result, strategy, state).
-        :raises Exception: If benchmark execution or compilation fails.
+        :param benchmark_class: Class for constructing final benchmark objects
+        :param requests: Request datasets for processing across strategies
+        :param backend: Backend interface for request processing
+        :param profile: Benchmark profile defining strategies and constraints
+        :param environment: Execution environment for coordination
+        :param progress: Optional progress tracker for benchmark lifecycle events
+        :param sample_requests: Number of sample requests to use for estimation
+        :param warmup: Optional warmup duration in seconds before benchmarking
+        :param cooldown: Optional cooldown duration in seconds after benchmarking
+        :param prefer_response_metrics: Whether to prefer response-based metrics over
+            request-based metrics
+        :yield: Compiled benchmark results for each strategy execution
+        :raises Exception: If benchmark execution or compilation fails
         """
         with self.thread_lock:
             if progress:
@@ -99,7 +96,7 @@ class Benchmarker(
                 if progress:
                     await progress.on_benchmark_start(strategy)
 
-                args = BenchmarkArgs(
+                args = BenchmarkerArgs(
                     run_id=run_id,
                     run_index=len(profile.completed_strategies),
                     sample_requests=sample_requests,
@@ -137,7 +134,7 @@ class Benchmarker(
                             await progress.on_benchmark_update(
                                 estimated_state, scheduler_state
                             )
-                    except Exception as err:
+                    except Exception as err:  # noqa: BLE001
                         logger.error(
                             f"Error updating benchmark estimate/progress: {err}"
                         )

@@ -1,24 +1,13 @@
 """
-Benchmark data models and metrics for performance measurement and analysis.
+Benchmark data models and metrics for generative AI performance measurement.
 
 Provides comprehensive data structures for capturing, storing, and analyzing
-benchmark results from scheduler executions. Includes timing measurements,
-token statistics, and performance metrics for generative AI workloads.
-
-Classes:
-    BenchmarkSchedulerStats: Scheduler timing and performance statistics.
-    BenchmarkMetrics: Core benchmark metrics and distributions.
-    BenchmarkRequestStats: Individual request processing statistics.
-    Benchmark: Base benchmark result container with generic metrics.
-    GenerativeRequestStats: Request statistics for generative AI workloads.
-    GenerativeMetrics: Comprehensive metrics for generative benchmarks.
-    GenerativeBenchmark: Complete generative benchmark results and analysis.
-    GenerativeBenchmarksReport: Container for multiple benchmark results.
-
-Type Variables:
-    BenchmarkMetricsT: Generic benchmark metrics type.
-    BenchmarkRequestStatsT: Generic request statistics type.
-    BenchmarkT: Generic benchmark container type.
+benchmark results from scheduler-driven generative AI workload executions.
+Core abstractions include base benchmark interfaces, generative-specific
+metrics with token/latency distributions, request-level statistics tracking,
+and multi-benchmark reporting capabilities. These models enable detailed
+performance analysis including throughput, latency, concurrency patterns, and
+domain-specific metrics for text, image, video, and audio generation tasks.
 """
 
 from __future__ import annotations
@@ -28,27 +17,33 @@ import random
 import time
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar, cast
 
 import yaml
-from pydantic import Field, computed_field
+from pydantic import ConfigDict, Field, computed_field, model_serializer
+from torch.utils.data import Sampler
+from transformers import PreTrainedTokenizerBase
 
-from guidellm.benchmark.profile import Profile
+from guidellm.backends import Backend, BackendType
+from guidellm.benchmark.profile import Profile, ProfileType
+from guidellm.benchmark.scenarios import get_builtin_scenarios
+from guidellm.data import DatasetPreprocessor
 from guidellm.scheduler import (
     BackendInterface,
     Environment,
     SchedulerState,
     SchedulingStrategy,
+    StrategyType,
 )
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
     GenerativeRequestStats,
     RequestInfo,
+    UsageMetrics,
 )
-from guidellm.schemas.request import UsageMetrics
 from guidellm.utils import (
     InfoMixin,
     StandardBaseDict,
@@ -59,9 +54,10 @@ from guidellm.utils import (
 
 __all__ = [
     "Benchmark",
-    "BenchmarkArgs",
+    "BenchmarkGenerativeTextArgs",
     "BenchmarkSchedulerStats",
     "BenchmarkT",
+    "BenchmarkerArgs",
     "BenchmarkerDict",
     "EstimatedBenchmarkState",
     "GenerativeAudioMetricsSummary",
@@ -77,6 +73,19 @@ __all__ = [
 
 
 class EstimatedBenchmarkState(dict[str, Any]):
+    """
+    Accumulator for real-time benchmark metrics during scheduler execution.
+
+    Tracks incremental metrics, running averages, and time-based statistics as
+    requests are processed. Maintains grouped metrics for benchmark state,
+    benchmark-level metrics, and scheduler-level metrics with support for
+    average, rate, and time-averaged metric calculations.
+
+    :cvar benchmark_state_group: Metric group key for benchmark state tracking
+    :cvar benchmark_metrics_group: Metric group key for benchmark-level metrics
+    :cvar scheduler_state_group: Metric group key for scheduler-level metrics
+    """
+
     benchmark_state_group: ClassVar[Literal["benchmark_state"]] = "benchmark_state"
     benchmark_metrics_group: ClassVar[Literal["benchmark_metrics"]] = (
         "benchmark_metrics"
@@ -89,6 +98,14 @@ class EstimatedBenchmarkState(dict[str, Any]):
         key: str,
         default: int | float | None = None,
     ) -> int | float | None:
+        """
+        Retrieve a grouped metric value by group and key.
+
+        :param group: Metric group identifier
+        :param key: Metric key within the group
+        :param default: Value returned if metric doesn't exist
+        :return: The metric value or default if not found
+        """
         return self.get(f"{group}_{key}", default)
 
     def set_metric(
@@ -98,6 +115,15 @@ class EstimatedBenchmarkState(dict[str, Any]):
         value: bool | int | float | None,
         start_val: bool | int | float | None = None,
     ) -> bool | int | float | None:
+        """
+        Set a grouped metric value, optionally adjusting by a starting value.
+
+        :param group: Metric group identifier
+        :param key: Metric key within the group
+        :param value: Metric value to set
+        :param start_val: Optional starting value to subtract from the metric value
+        :return: The adjusted metric value or None if value is None
+        """
         if value is None:
             return None
 
@@ -115,6 +141,15 @@ class EstimatedBenchmarkState(dict[str, Any]):
         start_val: bool | int | float | None = 0.0,
         count: int | None = 1,
     ):
+        """
+        Add a value to a running average metric calculation.
+
+        :param group: Metric group identifier
+        :param key: Metric key within the group
+        :param value: Value to add to the average
+        :param start_val: Optional starting value to subtract before adding
+        :param count: Number of observations this value represents
+        """
         if value is None or count is None:
             return
 
@@ -143,6 +178,17 @@ class EstimatedBenchmarkState(dict[str, Any]):
         end_time: float | None = None,
         numerator_type: Literal["avg", "total", "count"] = "total",
     ):
+        """
+        Add a value to a rate-based average metric calculation.
+
+        :param group: Metric group identifier
+        :param key: Metric key within the group
+        :param value: Value to add to the average
+        :param start_val: Optional starting value to subtract before adding
+        :param start_time: Start time for rate calculation, defaults to current time
+        :param end_time: End time for rate calculation, defaults to current time
+        :param numerator_type: Type of numerator for rate calculation
+        """
         if value is None:
             return
 
@@ -183,6 +229,14 @@ class EstimatedBenchmarkState(dict[str, Any]):
         value: bool | int | float | None,
         recorded_time: float | None = None,
     ):
+        """
+        Add a value to a time-weighted average metric calculation.
+
+        :param group: Metric group identifier
+        :param key: Metric key within the group
+        :param value: Value to add to the time-weighted average
+        :param recorded_time: Time of the observation, defaults to current time
+        """
         if value is None:
             return
 
@@ -218,7 +272,16 @@ class EstimatedBenchmarkState(dict[str, Any]):
         )
 
 
-class BenchmarkArgs(StandardBaseDict):
+class BenchmarkerArgs(StandardBaseDict):
+    """
+    Configuration parameters for benchmark execution and request sampling.
+
+    Defines run identification, request sampling strategy, warmup/cooldown phases,
+    and metric preferences for benchmark executions. Provides methods to determine
+    whether a request falls within warmup or cooldown periods based on time,
+    request count, or percentage-based thresholds.
+    """
+
     run_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         description="Unique identifier for the benchmark run",
@@ -226,7 +289,9 @@ class BenchmarkArgs(StandardBaseDict):
     run_index: int = Field(default=0, description="Index of the benchmark run")
     sample_requests: int | None = Field(
         default=20,
-        description="Number of requests to sample and keep in the final benchmark for metrics",
+        description=(
+            "Number of requests to sample and keep in the final benchmark for metrics"
+        ),
     )
     warmup: int | float | None = Field(
         default=None, description="Warmup time before benchmarking starts"
@@ -242,6 +307,13 @@ class BenchmarkArgs(StandardBaseDict):
     def is_in_warmup(
         self, request_info: RequestInfo, scheduler_state: SchedulerState
     ) -> bool:
+        """
+        Check if a request is in the warmup phase.
+
+        :param request_info: Information about the current request
+        :param scheduler_state: Current state of the scheduler
+        :return: True if the request is in warmup phase, False otherwise
+        """
         if self.warmup is not None and 0 < self.warmup < 1:
             # Percentage-based warmup
             return (
@@ -265,6 +337,13 @@ class BenchmarkArgs(StandardBaseDict):
     def is_in_cooldown(
         self, request_info: RequestInfo, scheduler_state: SchedulerState
     ) -> bool:
+        """
+        Check if a request is in the cooldown phase.
+
+        :param request_info: Information about the current request
+        :param scheduler_state: Current state of the scheduler
+        :return: True if the request is in cooldown phase, False otherwise
+        """
         if self.cooldown is not None and 0 < self.cooldown < 1:
             # Percentage-based cooldown
             return (
@@ -293,10 +372,24 @@ class BenchmarkArgs(StandardBaseDict):
 
 
 class Benchmark(ABC):
+    """
+    Abstract base interface for benchmark result implementations.
+
+    Defines the contract for benchmark classes to provide run metrics sampling,
+    request metrics sampling, real-time estimate updates, and final compilation
+    of benchmark results from scheduler execution data.
+    """
+
     @abstractmethod
     def get_run_metrics_sample(
         self,
-    ) -> dict[Literal["start_time", "end_time", "duration"], float]: ...
+    ) -> dict[Literal["start_time", "end_time", "duration"], float]:
+        """
+        Get a sample of run-level timing metrics.
+
+        :return: Dictionary containing start_time, end_time, and duration metrics
+        """
+        ...
 
     @abstractmethod
     def get_request_metrics_sample(
@@ -309,25 +402,43 @@ class Benchmark(ABC):
             "request_concurrency",
         ],
         float,
-    ]: ...
+    ]:
+        """
+        Get a sample of request-level performance metrics.
+
+        :return: Dictionary containing request count, latency, throughput, and
+            concurrency metrics
+        """
+        ...
 
     @classmethod
     @abstractmethod
     def update_estimate(
         cls,
-        args: BenchmarkArgs,
+        args: BenchmarkerArgs,
         state: EstimatedBenchmarkState,
         response: Any,
         request: Any,
         request_info: RequestInfo,
         scheduler_state: SchedulerState,
-    ): ...
+    ):
+        """
+        Update real-time benchmark estimates with new request data.
+
+        :param args: Benchmark configuration arguments
+        :param state: Current estimated benchmark state to update
+        :param response: Response received from the backend
+        :param request: Original request sent to the backend
+        :param request_info: Metadata about the request execution
+        :param scheduler_state: Current state of the scheduler
+        """
+        ...
 
     @classmethod
     @abstractmethod
     def compile(
         cls,
-        args: BenchmarkArgs,
+        args: BenchmarkerArgs,
         estimated_state: EstimatedBenchmarkState,
         scheduler_state: SchedulerState,
         profile: Profile,
@@ -336,7 +447,22 @@ class Benchmark(ABC):
         environment: Environment,
         strategy: SchedulingStrategy,
         constraints: dict[str, dict[str, Any]],
-    ) -> Any: ...
+    ) -> Any:
+        """
+        Compile final benchmark results from accumulated state.
+
+        :param args: Benchmark configuration arguments
+        :param estimated_state: Accumulated benchmark state from execution
+        :param scheduler_state: Final state of the scheduler
+        :param profile: Benchmark profile configuration
+        :param requests: Collection of requests executed
+        :param backend: Backend interface used for execution
+        :param environment: Execution environment configuration
+        :param strategy: Scheduling strategy used
+        :param constraints: Execution constraints applied
+        :return: Compiled benchmark results instance
+        """
+        ...
 
 
 BenchmarkT = TypeVar("BenchmarkT", bound=Benchmark)
@@ -382,6 +508,12 @@ class BenchmarkSchedulerStats(StandardBaseDict):
 
     @classmethod
     def update_estimate(cls, state: EstimatedBenchmarkState, request_info: RequestInfo):
+        """
+        Update estimated scheduler statistics with request timing information.
+
+        :param state: Current estimated benchmark state to update
+        :param request_info: Metadata about the request execution with timing data
+        """
         state.set_metric(group=cls.group_name, key="updated", value=True)
         state.add_avg_metric(
             group=cls.group_name,
@@ -442,6 +574,13 @@ class BenchmarkSchedulerStats(StandardBaseDict):
     def compile(
         cls, estimated_state: EstimatedBenchmarkState, scheduler_state: SchedulerState
     ) -> BenchmarkSchedulerStats:
+        """
+        Compile final scheduler statistics from accumulated state.
+
+        :param estimated_state: Accumulated benchmark state with scheduler metrics
+        :param scheduler_state: Final state of the scheduler
+        :return: Compiled scheduler statistics instance
+        """
         return BenchmarkSchedulerStats(
             start_time=scheduler_state.start_time,
             end_time=scheduler_state.end_time or scheduler_state.start_time,
@@ -517,17 +656,42 @@ class BenchmarkSchedulerStats(StandardBaseDict):
 
 
 class GenerativeMetricsSummary(StandardBaseDict):
-    input: StatusDistributionSummary = Field(description="")
-    input_per_second: StatusDistributionSummary = Field(description="")
-    input_concurrency: StatusDistributionSummary = Field(description="")
+    """
+    Statistical summaries for input, output, and total metrics.
 
-    output: StatusDistributionSummary = Field(description="")
-    output_per_second: StatusDistributionSummary = Field(description="")
-    output_concurrency: StatusDistributionSummary = Field(description="")
+    Provides distribution summaries across successful, incomplete, and errored
+    requests for absolute values, per-second rates, and concurrency levels.
+    """
 
-    total: StatusDistributionSummary = Field(description="")
-    total_per_second: StatusDistributionSummary = Field(description="")
-    total_concurrency: StatusDistributionSummary = Field(description="")
+    input: StatusDistributionSummary = Field(
+        description="Distribution of input metric values"
+    )
+    input_per_second: StatusDistributionSummary = Field(
+        description="Distribution of input metric rates per second"
+    )
+    input_concurrency: StatusDistributionSummary = Field(
+        description="Distribution of concurrent input metric values"
+    )
+
+    output: StatusDistributionSummary = Field(
+        description="Distribution of output metric values"
+    )
+    output_per_second: StatusDistributionSummary = Field(
+        description="Distribution of output metric rates per second"
+    )
+    output_concurrency: StatusDistributionSummary = Field(
+        description="Distribution of concurrent output metric values"
+    )
+
+    total: StatusDistributionSummary = Field(
+        description="Distribution of total metric values (input + output)"
+    )
+    total_per_second: StatusDistributionSummary = Field(
+        description="Distribution of total metric rates per second"
+    )
+    total_concurrency: StatusDistributionSummary = Field(
+        description="Distribution of concurrent total metric values"
+    )
 
     @classmethod
     def compile(
@@ -537,6 +701,15 @@ class GenerativeMetricsSummary(StandardBaseDict):
         input_values: list[int | float],
         output_values: list[int | float],
     ) -> GenerativeMetricsSummary:
+        """
+        Compile generative metrics summary from request data.
+
+        :param request_types: Status types for each request
+        :param request_times: Start and end times for each request
+        :param input_values: Input metric values for each request
+        :param output_values: Output metric values for each request
+        :return: Compiled generative metrics summary
+        """
         total_values = [
             input_val + output_val
             for input_val, output_val in zip(input_values, output_values, strict=False)
@@ -595,9 +768,22 @@ class GenerativeMetricsSummary(StandardBaseDict):
 
 
 class GenerativeTextMetricsSummary(StandardBaseDict):
-    tokens: GenerativeMetricsSummary = Field(description="")
-    words: GenerativeMetricsSummary = Field(description="")
-    characters: GenerativeMetricsSummary = Field(description="")
+    """
+    Text-specific metric summaries for generative benchmarks.
+
+    Tracks token, word, and character-level metrics across input, output, and
+    total usage for text generation workloads.
+    """
+
+    tokens: GenerativeMetricsSummary = Field(
+        description="Token count metrics and distributions"
+    )
+    words: GenerativeMetricsSummary = Field(
+        description="Word count metrics and distributions"
+    )
+    characters: GenerativeMetricsSummary = Field(
+        description="Character count metrics and distributions"
+    )
 
     @classmethod
     def compile(
@@ -607,6 +793,15 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
         input_metrics: list[UsageMetrics],
         output_metrics: list[UsageMetrics],
     ) -> GenerativeTextMetricsSummary:
+        """
+        Compile text metrics summary from request usage data.
+
+        :param request_types: Status types for each request
+        :param request_times: Start and end times for each request
+        :param input_metrics: Input usage metrics for each request
+        :param output_metrics: Output usage metrics for each request
+        :return: Compiled text metrics summary
+        """
         return GenerativeTextMetricsSummary(
             tokens=GenerativeMetricsSummary.compile(
                 request_types=request_types,
@@ -634,10 +829,25 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
 
 
 class GenerativeImageMetricsSummary(StandardBaseDict):
-    tokens: GenerativeMetricsSummary = Field(description="")
-    images: GenerativeMetricsSummary = Field(description="")
-    pixels: GenerativeMetricsSummary = Field(description="")
-    bytes: GenerativeMetricsSummary = Field(description="")
+    """
+    Image-specific metric summaries for generative benchmarks.
+
+    Tracks token, image count, pixel, and byte-level metrics across input, output,
+    and total usage for image generation workloads.
+    """
+
+    tokens: GenerativeMetricsSummary = Field(
+        description="Image token count metrics and distributions"
+    )
+    images: GenerativeMetricsSummary = Field(
+        description="Image count metrics and distributions"
+    )
+    pixels: GenerativeMetricsSummary = Field(
+        description="Pixel count metrics and distributions"
+    )
+    bytes: GenerativeMetricsSummary = Field(
+        description="Byte size metrics and distributions"
+    )
 
     @classmethod
     def compile(
@@ -647,6 +857,15 @@ class GenerativeImageMetricsSummary(StandardBaseDict):
         input_metrics: list[UsageMetrics],
         output_metrics: list[UsageMetrics],
     ) -> GenerativeImageMetricsSummary:
+        """
+        Compile image metrics summary from request usage data.
+
+        :param request_types: Status types for each request
+        :param request_times: Start and end times for each request
+        :param input_metrics: Input usage metrics for each request
+        :param output_metrics: Output usage metrics for each request
+        :return: Compiled image metrics summary
+        """
         return GenerativeImageMetricsSummary(
             tokens=GenerativeMetricsSummary.compile(
                 request_types=request_types,
@@ -676,10 +895,25 @@ class GenerativeImageMetricsSummary(StandardBaseDict):
 
 
 class GenerativeVideoMetricsSummary(StandardBaseDict):
-    tokens: GenerativeMetricsSummary = Field(description="")
-    frames: GenerativeMetricsSummary = Field(description="")
-    seconds: GenerativeMetricsSummary = Field(description="")
-    bytes: GenerativeMetricsSummary = Field(description="")
+    """
+    Video-specific metric summaries for generative benchmarks.
+
+    Tracks token, frame count, duration, and byte-level metrics across input,
+    output, and total usage for video generation workloads.
+    """
+
+    tokens: GenerativeMetricsSummary = Field(
+        description="Video token count metrics and distributions"
+    )
+    frames: GenerativeMetricsSummary = Field(
+        description="Frame count metrics and distributions"
+    )
+    seconds: GenerativeMetricsSummary = Field(
+        description="Duration metrics in seconds and distributions"
+    )
+    bytes: GenerativeMetricsSummary = Field(
+        description="Byte size metrics and distributions"
+    )
 
     @classmethod
     def compile(
@@ -689,6 +923,15 @@ class GenerativeVideoMetricsSummary(StandardBaseDict):
         input_metrics: list[UsageMetrics],
         output_metrics: list[UsageMetrics],
     ) -> GenerativeVideoMetricsSummary:
+        """
+        Compile video metrics summary from request usage data.
+
+        :param request_types: Status types for each request
+        :param request_times: Start and end times for each request
+        :param input_metrics: Input usage metrics for each request
+        :param output_metrics: Output usage metrics for each request
+        :return: Compiled video metrics summary
+        """
         return GenerativeVideoMetricsSummary(
             tokens=GenerativeMetricsSummary.compile(
                 request_types=request_types,
@@ -720,10 +963,25 @@ class GenerativeVideoMetricsSummary(StandardBaseDict):
 
 
 class GenerativeAudioMetricsSummary(StandardBaseDict):
-    tokens: GenerativeMetricsSummary = Field(description="")
-    samples: GenerativeMetricsSummary = Field(description="")
-    seconds: GenerativeMetricsSummary = Field(description="")
-    bytes: GenerativeMetricsSummary = Field(description="")
+    """
+    Audio-specific metric summaries for generative benchmarks.
+
+    Tracks token, sample count, duration, and byte-level metrics across input,
+    output, and total usage for audio generation workloads.
+    """
+
+    tokens: GenerativeMetricsSummary = Field(
+        description="Audio token count metrics and distributions"
+    )
+    samples: GenerativeMetricsSummary = Field(
+        description="Sample count metrics and distributions"
+    )
+    seconds: GenerativeMetricsSummary = Field(
+        description="Duration metrics in seconds and distributions"
+    )
+    bytes: GenerativeMetricsSummary = Field(
+        description="Byte size metrics and distributions"
+    )
 
     @classmethod
     def compile(
@@ -733,6 +991,15 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
         input_metrics: list[UsageMetrics],
         output_metrics: list[UsageMetrics],
     ) -> GenerativeAudioMetricsSummary:
+        """
+        Compile audio metrics summary from request usage data.
+
+        :param request_types: Status types for each request
+        :param request_times: Start and end times for each request
+        :param input_metrics: Input usage metrics for each request
+        :param output_metrics: Output usage metrics for each request
+        :return: Compiled audio metrics summary
+        """
         return GenerativeAudioMetricsSummary(
             tokens=GenerativeMetricsSummary.compile(
                 request_types=request_types,
@@ -802,7 +1069,10 @@ class GenerativeMetrics(StandardBaseDict):
         description="Distribution of inter-token latencies in milliseconds"
     )
     output_tokens_wo_first_per_iteration: StatusDistributionSummary = Field(
-        description="Distribution of output tokens (without first) generated per streaming iteration"
+        description=(
+            "Distribution of output tokens (without first) generated per "
+            "streaming iteration"
+        )
     )
     output_tokens_per_second: StatusDistributionSummary = Field(
         description="Distribution of output token generation rates"
@@ -815,10 +1085,18 @@ class GenerativeMetrics(StandardBaseDict):
     )
 
     # Domain specific stats
-    text: GenerativeTextMetricsSummary = Field(description="")
-    image: GenerativeImageMetricsSummary = Field(description="")
-    video: GenerativeVideoMetricsSummary = Field(description="")
-    audio: GenerativeAudioMetricsSummary = Field(description="")
+    text: GenerativeTextMetricsSummary = Field(
+        description="Text-specific metrics for tokens, words, and characters"
+    )
+    image: GenerativeImageMetricsSummary = Field(
+        description="Image-specific metrics for tokens, images, pixels, and bytes"
+    )
+    video: GenerativeVideoMetricsSummary = Field(
+        description="Video-specific metrics for tokens, frames, duration, and bytes"
+    )
+    audio: GenerativeAudioMetricsSummary = Field(
+        description="Audio-specific metrics for tokens, samples, duration, and bytes"
+    )
 
     @classmethod
     def update_estimate(
@@ -829,6 +1107,15 @@ class GenerativeMetrics(StandardBaseDict):
         request_info: RequestInfo,
         scheduler_state: SchedulerState,
     ):
+        """
+        Update real-time generative metrics estimates with new request data.
+
+        :param state: Current estimated benchmark state to update
+        :param response: Response received from the backend
+        :param request: Original request sent to the backend
+        :param request_info: Metadata about the request execution
+        :param scheduler_state: Current state of the scheduler
+        """
         benchmark_start_time = scheduler_state.start_time
         request_start_time = (
             request_info.timings.request_start or request_info.timings.resolve_start
@@ -1025,6 +1312,14 @@ class GenerativeMetrics(StandardBaseDict):
         errored: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
     ) -> GenerativeMetrics:
+        """
+        Compile final generative metrics from request statistics.
+
+        :param completed: Successfully completed request statistics
+        :param errored: Failed request statistics
+        :param incomplete: Incomplete/cancelled request statistics
+        :return: Compiled generative metrics with full distributions
+        """
         requests = completed + errored + incomplete
         request_types = cast(
             "list[Literal['successful', 'error', 'incomplete']]",
@@ -1139,19 +1434,30 @@ class GenerativeMetrics(StandardBaseDict):
 class SchedulerDict(StandardBaseDict):
     """Scheduler configuration and execution state dictionary."""
 
-    strategy: SchedulingStrategy
-    constraints: dict[str, dict[str, Any]]
-    state: SchedulerState
+    strategy: SchedulingStrategy = Field(
+        description="Scheduling strategy used for request distribution"
+    )
+    constraints: dict[str, dict[str, Any]] = Field(
+        description="Execution constraints applied during benchmarking"
+    )
+    state: SchedulerState = Field(
+        description="Final state of the scheduler after execution"
+    )
 
 
 class BenchmarkerDict(StandardBaseDict):
     """Benchmarker configuration and component settings dictionary."""
 
-    args: BenchmarkArgs
-    profile: Profile
-    requests: dict[str, Any]
-    backend: dict[str, Any]
-    environment: dict[str, Any]
+    profile: Profile = Field(description="Benchmark profile configuration")
+    requests: dict[str, Any] = Field(
+        description="Request configuration and dataset information"
+    )
+    backend: dict[str, Any] = Field(
+        description="Backend configuration and connection details"
+    )
+    environment: dict[str, Any] = Field(
+        description="Execution environment configuration"
+    )
 
 
 class GenerativeBenchmark(Benchmark, StandardBaseDict):
@@ -1241,13 +1547,26 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
     @classmethod
     def update_estimate(
         cls,
-        args: BenchmarkArgs,
+        args: BenchmarkerArgs,
         state: EstimatedBenchmarkState,
         response: GenerationResponse | None,
         request: GenerationRequest,
         request_info: RequestInfo,
         scheduler_state: SchedulerState,
     ):
+        """
+        Update generative benchmark estimates with new request data.
+
+        Handles warmup/cooldown filtering, request sampling via reservoir sampling,
+        and delegates metric updates to child metric classes.
+
+        :param args: Benchmark configuration arguments
+        :param state: Current estimated benchmark state to update
+        :param response: Response received from the backend
+        :param request: Original request sent to the backend
+        :param request_info: Metadata about the request execution
+        :param scheduler_state: Current state of the scheduler
+        """
         if (
             request_info.status == "cancelled"
             and request_info.timings.resolve_start is None
@@ -1344,7 +1663,7 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
     @classmethod
     def compile(
         cls,
-        args: BenchmarkArgs,
+        args: BenchmarkerArgs,
         estimated_state: EstimatedBenchmarkState,
         scheduler_state: SchedulerState,
         profile: Profile,
@@ -1354,6 +1673,20 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
         strategy: SchedulingStrategy,
         constraints: dict[str, dict[str, Any]],
     ) -> GenerativeBenchmark:
+        """
+        Compile final generative benchmark from accumulated state.
+
+        :param args: Benchmark configuration arguments
+        :param estimated_state: Accumulated benchmark state from execution
+        :param scheduler_state: Final state of the scheduler
+        :param profile: Benchmark profile configuration
+        :param requests: Collection of requests executed
+        :param backend: Backend interface used for execution
+        :param environment: Execution environment configuration
+        :param strategy: Scheduling strategy used
+        :param constraints: Execution constraints applied
+        :return: Compiled generative benchmark instance
+        """
         return GenerativeBenchmark(
             run_id=args.run_id,
             run_index=args.run_index,
@@ -1366,7 +1699,6 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
                 state=scheduler_state,
             ),
             benchmarker=BenchmarkerDict(
-                args=args,
                 profile=profile,
                 requests=InfoMixin.extract_from_obj(requests),
                 backend=backend.info,
@@ -1404,6 +1736,263 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
         )
 
 
+class BenchmarkGenerativeTextArgs(StandardBaseModel):
+    """
+    Configuration arguments for generative text benchmark execution.
+
+    Defines all parameters for benchmark setup including target endpoint, data
+    sources, backend configuration, processing pipeline, output formatting, and
+    execution constraints. Supports loading from scenario files and merging with
+    runtime overrides.
+    """
+
+    @classmethod
+    def create(
+        cls, scenario: Path | str | None, **kwargs: dict[str, Any]
+    ) -> BenchmarkGenerativeTextArgs:
+        """
+        Create benchmark args from scenario file and/or keyword arguments.
+
+        :param scenario: Path to scenario file or name of built-in scenario
+        :param kwargs: Additional keyword arguments to override scenario values
+        :return: Configured benchmark args instance
+        :raises ValueError: If scenario is not found or file format is unsupported
+        """
+        constructor_kwargs = {}
+
+        if scenario is not None:
+            if isinstance(scenario, str) and scenario in (
+                builtin_scenarios := get_builtin_scenarios()
+            ):
+                scenario_path = builtin_scenarios[scenario]
+            elif Path(scenario).exists() and Path(scenario).is_dir():
+                scenario_path = Path(scenario)
+            else:
+                raise ValueError(f"Scenario '{scenario}' not found.")
+
+            with scenario_path.open() as file:
+                if scenario_path.suffix == ".json":
+                    scenario_data = json.load(file)
+                elif scenario_path.suffix in {".yaml", ".yml"}:
+                    scenario_data = yaml.safe_load(file)
+                else:
+                    raise ValueError(
+                        f"Unsupported scenario file format: {scenario_path.suffix}"
+                    )
+            if "args" in scenario_data:
+                # loading from a report file
+                scenario_data = scenario_data["args"]
+            constructor_kwargs.update(scenario_data)
+
+        for key, value in kwargs.items():
+            if value != cls.get_default(key):
+                constructor_kwargs[key] = value
+
+        return cls.model_validate(constructor_kwargs)
+
+    @classmethod
+    def get_default(cls: BenchmarkGenerativeTextArgs, field: str) -> Any:
+        """
+        Get default value for a model field.
+
+        :param field: Name of the field to retrieve default for
+        :return: Default value for the specified field
+        :raises ValueError: If field is not found in model
+        """
+        if field not in BenchmarkGenerativeTextArgs.model_fields:
+            raise ValueError(
+                f"Field '{field}' not found in BenchmarkGenerativeTextArgs"
+            )
+
+        field_info = BenchmarkGenerativeTextArgs.model_fields[field]
+        if field_info.default_factory is not None:
+            return field_info.default_factory()
+
+        return field_info.default
+
+    model_config = ConfigDict(
+        extra="ignore",
+        use_enum_values=True,
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+    )
+
+    # Required
+    target: str = Field(description="Target endpoint URL for benchmark execution")
+    data: list[Any] = Field(description="List of dataset sources or data files")
+    # Benchmark configuration
+    profile: StrategyType | ProfileType | Profile = Field(
+        default="sweep", description="Benchmark profile or scheduling strategy type"
+    )
+    rate: float | list[float] | None = Field(
+        default=None, description="Request rate(s) for rate-based scheduling"
+    )
+    # Backend configuration
+    backend: BackendType | Backend = Field(
+        default="openai_http", description="Backend type or instance for execution"
+    )
+    backend_kwargs: dict[str, Any] | None = Field(
+        default=None, description="Additional backend configuration arguments"
+    )
+    model: str | None = Field(default=None, description="Model identifier for backend")
+    # Data configuration
+    processor: str | Path | PreTrainedTokenizerBase | None = Field(
+        default=None, description="Tokenizer path, name, or instance for processing"
+    )
+    processor_args: dict[str, Any] | None = Field(
+        default=None, description="Additional tokenizer configuration arguments"
+    )
+    data_args: list[dict[str, Any]] | None = Field(
+        default_factory=list, description="Per-dataset configuration arguments"
+    )
+    data_samples: int = Field(
+        default=-1, description="Number of samples to use from datasets (-1 for all)"
+    )
+    data_column_mapper: (
+        DatasetPreprocessor | dict[str, str] | Literal["generative_column_mapper"]
+    ) = Field(
+        default="generative_column_mapper",
+        description="Column mapping preprocessor for dataset fields",
+    )
+    data_request_formatter: DatasetPreprocessor | dict[str, str] | str = Field(
+        default="chat_completions",
+        description="Request formatting preprocessor or template name",
+    )
+    data_collator: Callable | Literal["generative"] | None = Field(
+        default="generative", description="Data collator for batch processing"
+    )
+    data_sampler: Sampler[int] | Literal["shuffle"] | None = Field(
+        default=None, description="Data sampler for request ordering"
+    )
+    data_num_workers: int | None = Field(
+        default=None, description="Number of workers for data loading"
+    )
+    dataloader_kwargs: dict[str, Any] | None = Field(
+        default=None, description="Additional dataloader configuration arguments"
+    )
+    random_seed: int = Field(default=42, description="Random seed for reproducibility")
+    # Output configuration
+    output_path: str | Path | None = Field(
+        default_factory=Path.cwd, description="Directory path for output files"
+    )
+    output_formats: list[str] | dict[str, str | dict[str, Any]] | None = Field(
+        default_factory=lambda: ["console", "json"],
+        description="Output format names or configuration mappings",
+    )
+    # Benchmarker configuration
+    benchmark_cls: type[GenerativeBenchmark] = Field(
+        default=GenerativeBenchmark,
+        description="Benchmark class to use for result compilation",
+    )
+    sample_requests: int | None = Field(
+        default=10,
+        description="Number of requests to sample for detailed metrics (None for all)",
+    )
+    warmup: float | None = Field(
+        default=None,
+        description="Warmup period in seconds, requests, or fraction (0-1)",
+    )
+    cooldown: float | None = Field(
+        default=None,
+        description="Cooldown period in seconds, requests, or fraction (0-1)",
+    )
+    prefer_response_metrics: bool = Field(
+        default=True,
+        description="Whether to prefer backend response metrics over request metrics",
+    )
+    # Constraints configuration
+    max_seconds: int | float | None = Field(
+        default=None, description="Maximum benchmark execution time in seconds"
+    )
+    max_requests: int | None = Field(
+        default=None, description="Maximum number of requests to execute"
+    )
+    max_errors: int | None = Field(
+        default=None, description="Maximum number of errors before stopping"
+    )
+    max_error_rate: float | None = Field(
+        default=None, description="Maximum error rate (0-1) before stopping"
+    )
+    max_global_error_rate: float | None = Field(
+        default=None, description="Maximum global error rate (0-1) before stopping"
+    )
+
+    @model_serializer
+    def serialize_model(self):
+        """
+        Custom serialization logic for benchmark args.
+
+        Converts complex types to serializable formats including Profile to type
+        string, Backend to type string, and Path objects to strings.
+
+        :return: Dictionary representation suitable for JSON/YAML serialization
+        """
+        return {
+            # target - serialize as is
+            "target": self.target,
+            "data": [
+                item if isinstance(item, str | type(None)) else str(item)
+                for item in self.data
+            ],  # data - for each item in the list, if not a str or None, save str(item)
+            "profile": (
+                self.profile.type_
+                if isinstance(self.profile, Profile)
+                else self.profile
+            ),  # profile - if instance of Profile, then save as profile.type_
+            "rate": self.rate,
+            "backend": (
+                self.backend.type_
+                if isinstance(self.backend, Backend)
+                else self.backend
+            ),  # backend - if instance of Backend, then save as backend.type_
+            "backend_kwargs": self.backend_kwargs,
+            "model": self.model,
+            "processor": (
+                self.processor
+                if isinstance(self.processor, str)
+                else str(self.processor)
+                if self.processor is not None
+                else None
+            ),  # processor - if not str, then save as str(processor)
+            "processor_args": self.processor_args,
+            "data_args": self.data_args,
+            "data_samples": self.data_samples,
+            "data_column_mapper": (
+                self.data_column_mapper
+                if isinstance(self.data_column_mapper, dict | str)
+                else {}
+            ),  # data_column_mapper - if not dict or str, then save as an empty dict
+            "data_request_formatter": (
+                self.data_request_formatter
+                if isinstance(self.data_request_formatter, dict | str)
+                else {}
+            ),  # data_request_formatter - if not dict or str, then save as empty dict
+            "data_collator": (
+                self.data_collator if isinstance(self.data_collator, str) else None
+            ),  # data_collator - if not str, then save as None
+            "data_sampler": (
+                self.data_sampler if isinstance(self.data_sampler, str) else None
+            ),  # data_sampler - if not str, then save as None
+            "data_num_workers": self.data_num_workers,
+            "dataloader_kwargs": self.dataloader_kwargs,
+            "random_seed": self.random_seed,
+            "output_path": (
+                str(self.output_path) if self.output_path is not None else None
+            ),  # output_path - if not None, then ensure it's a str
+            "output_formats": self.output_formats,
+            # benchmark_cls - don't save at all (excluded)
+            "sample_requests": self.sample_requests,
+            "warmup": self.warmup,
+            "cooldown": self.cooldown,
+            "prefer_response_metrics": self.prefer_response_metrics,
+            "max_seconds": self.max_seconds,
+            "max_requests": self.max_requests,
+            "max_errors": self.max_errors,
+            "max_error_rate": self.max_error_rate,
+            "max_global_error_rate": self.max_global_error_rate,
+        }
+
+
 class GenerativeBenchmarksReport(StandardBaseModel):
     """Container for multiple benchmark results with load/save functionality."""
 
@@ -1439,6 +2028,9 @@ class GenerativeBenchmarksReport(StandardBaseModel):
 
         return GenerativeBenchmarksReport.model_validate(model_dict)
 
+    args: BenchmarkGenerativeTextArgs = Field(
+        description="The benchmark arguments used for all benchmarks in the report."
+    )
     benchmarks: list[GenerativeBenchmark] = Field(
         description="The list of completed benchmarks contained within the report.",
         default_factory=list,
