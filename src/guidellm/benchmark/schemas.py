@@ -1373,7 +1373,7 @@ class GenerativeMetrics(StandardBaseDict):
             # General token stats
             prompt_token_count=StatusDistributionSummary.from_values(
                 value_types=request_types,
-                values=[float(req.prompt_tokens or 0) for req in requests],
+                values=[float(req.input_tokens or 0) for req in requests],
             ),
             output_token_count=StatusDistributionSummary.from_values(
                 value_types=request_types,
@@ -1390,10 +1390,14 @@ class GenerativeMetrics(StandardBaseDict):
             time_per_output_token_ms=StatusDistributionSummary.from_values(
                 value_types=request_types,
                 values=[req.time_per_output_token_ms or 0.0 for req in requests],
+                weights=[req.output_tokens or 0.0 for req in requests],
             ),
             inter_token_latency_ms=StatusDistributionSummary.from_values(
                 value_types=request_types,
                 values=[req.inter_token_latency_ms or 0.0 for req in requests],
+                weights=[
+                    max(0.0, (req.output_tokens or 1.0) - 1.0) for req in requests
+                ],
             ),
             output_tokens_wo_first_per_iteration=StatusDistributionSummary.from_values(
                 value_types=request_types,
