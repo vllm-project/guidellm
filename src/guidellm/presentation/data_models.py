@@ -123,19 +123,17 @@ class WorkloadDetails(BaseModel):
             for i in sample_indices
         ]
         sample_outputs = [
-            successful_requests[i].output.replace("\n", " ").replace('"', "'")
-            if successful_requests[i].output is not None
-            else ""
+            req.output.replace("\n", " ").replace('"', "'") if (req := successful_requests[i]).output else ""
             for i in sample_indices
         ]
 
         prompt_tokens = [
-            float(req.prompt_tokens)
+            float(req.prompt_tokens) if req.prompt_tokens is not None else -1
             for bm in benchmarks
             for req in bm.requests.successful
         ]
         output_tokens = [
-            float(req.output_tokens)
+            float(req.output_tokens) if req.output_tokens is not None else -1
             for bm in benchmarks
             for req in bm.requests.successful
         ]
