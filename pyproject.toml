@@ -84,8 +84,9 @@ openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
 multimodal = [
     "datasets[audio,vision]>=4.1.0",
     "pillow",
-    "torch==2.8.*",
-    "torchcodec==0.7",
+    # Torchcodec needs specific torch version
+    "torch==2.9.*",
+    "torchcodec==0.8",
 ]
 # Dev Tooling
 dev = [
