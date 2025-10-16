@@ -28,6 +28,7 @@ import codecs
 from pathlib import Path
 
 import click
+from pydantic import ValidationError
 
 try:
     import uvloop
@@ -375,45 +376,37 @@ def run(**kwargs):
         if not request_formatter_kwargs
         else {"request_type": request_type, **request_formatter_kwargs}
     )
-
-    data = kwargs.get("data")
-    if not (data := kwargs.get("data")):
-        kwargs["data"] = []
-    elif isinstance(data, tuple):
-        kwargs["data"] = list(data)
-    elif not isinstance(data, list):
-        kwargs["data"] = [data]
-
-    data_args = kwargs.get("data_args")
-    if not (data_args := kwargs.get("data_args")):
-        kwargs["data_args"] = []
-    elif isinstance(data_args, tuple):
-        kwargs["data_args"] = list(data_args)
-    elif not isinstance(data_args, list):
-        kwargs["data_args"] = [data_args]
-
-    if (
-        not (rate := kwargs.get("rate"))
-        or len(rate) == 0
-        or (len(rate) == 1 and not rate[0])
-    ):
-        kwargs["rate"] = None
-    elif len(rate) == 1:
-        kwargs["rate"] = rate[0]
-    elif not isinstance(rate, list):
-        kwargs["rate"] = [rate]
+    kwargs["data"] = cli_tools.format_list_arg(
+        kwargs.get("data"), default=[], simplify_single=False
+    )
+    kwargs["data_args"] = cli_tools.format_list_arg(
+        kwargs.get("data_args"), default=[], simplify_single=False
+    )
+    kwargs["rate"] = cli_tools.format_list_arg(
+        kwargs.get("rate"), default=None, simplify_single=True
+    )
 
     disable_console_outputs = kwargs.pop("disable_console_outputs", False)
     display_scheduler_stats = kwargs.pop("display_scheduler_stats", False)
     disable_progress = kwargs.pop("disable_progress", False)
 
+    try:
+        args = BenchmarkGenerativeTextArgs.create(
+            scenario=kwargs.pop("scenario", None), **kwargs
+        )
+    except ValidationError as err:
+        # Translate pydantic valdation error to click argument error
+        errs = err.errors(include_url=False, include_context=True, include_input=True)
+        param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
+        raise click.BadParameter(
+            errs[0]["msg"], ctx=click.get_current_context(), param_hint=param_name
+        ) from err
+
     if uvloop is not None:
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     asyncio.run(
         benchmark_generative_text(
-            args=BenchmarkGenerativeTextArgs.create(
-                scenario=kwargs.pop("scenario", None), **kwargs
-            ),
+            args=args,
             progress=(
                 GenerativeConsoleBenchmarkerProgress(
                     display_scheduler_stats=display_scheduler_stats

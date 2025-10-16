@@ -1820,7 +1820,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     # Required
     target: str = Field(description="Target endpoint URL for benchmark execution")
     data: list[Any] = Field(
-        description="List of dataset sources or data files", default_factory=list
+        description="List of dataset sources or data files",
+        default_factory=list,
+        min_length=1,
     )
     # Benchmark configuration
     profile: StrategyType | ProfileType | Profile = Field(
