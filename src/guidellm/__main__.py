@@ -256,7 +256,7 @@ def benchmark():
     help="Number of worker processes for data loading.",
 )
 @click.option(
-    "--dataloader_kwargs",
+    "--dataloader-kwargs",
     default=BenchmarkGenerativeTextArgs.get_default("dataloader_kwargs"),
     callback=cli_tools.parse_json,
     help="JSON string of arguments to pass to the dataloader constructor.",
