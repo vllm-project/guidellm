@@ -1,32 +1,17 @@
 """
-Benchmarking profile configurations for coordinating multi-strategy execution.
+Profile configurations for orchestrating multi-strategy benchmark execution.
 
-Provides configurable profile abstractions for orchestrating sequential and
-parallel execution of different scheduling strategies during benchmarking,
-with automatic strategy generation and constraint management.
-
-Classes:
-    Profile: Abstract base for multi-strategy benchmarking profiles.
-    SynchronousProfile: Single synchronous strategy execution profile.
-    ConcurrentProfile: Fixed-concurrency strategy execution profile.
-    ThroughputProfile: Maximum throughput strategy execution profile.
-    AsyncProfile: Rate-based asynchronous strategy execution profile.
-    SweepProfile: Adaptive multi-strategy sweep execution profile.
-
-Type Aliases:
-    ProfileType: Literal type for supported profile configurations.
+Provides configurable abstractions for coordinating sequential execution of
+scheduling strategies during benchmarking workflows. Profiles automatically
+generate strategies based on configuration parameters, manage runtime
+constraints, and track completion state across the execution sequence.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    ClassVar,
-    Literal,
-)
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import numpy as np
 from pydantic import (
@@ -75,11 +60,14 @@ class Profile(
     ABC,
 ):
     """
-    Abstract base for multi-strategy benchmarking execution profiles.
+    Abstract base for coordinating multi-strategy benchmark execution.
 
-    Coordinates sequential execution of scheduling strategies with automatic
-    strategy generation, constraint management, and completion tracking for
-    comprehensive benchmarking workflows.
+    Manages sequential execution of scheduling strategies with automatic strategy
+    generation, constraint management, and completion tracking. Subclasses define
+    specific execution patterns like synchronous, concurrent, throughput-focused,
+    rate-based async, or adaptive sweep profiles.
+
+    :cvar schema_discriminator: Field name used for polymorphic deserialization
     """
 
     schema_discriminator: ClassVar[str] = "type_"
@@ -100,14 +88,14 @@ class Profile(
         **kwargs: Any,
     ) -> Profile:
         """
-        Create a profile instance based on the specified type.
+        Factory method to create a profile instance based on type.
 
-        :param rate_type: The type of profile to create.
-        :param rate: Rate parameter for profile configuration.
-        :param random_seed: Random seed for stochastic strategies.
-        :param kwargs: Additional arguments for profile configuration.
-        :return: Configured profile instance for the specified type.
-        :raises ValueError: If the profile type is not registered.
+        :param rate_type: Profile type identifier to instantiate
+        :param rate: Rate configuration for the profile strategy
+        :param random_seed: Seed for stochastic strategy reproducibility
+        :param kwargs: Additional profile-specific configuration parameters
+        :return: Configured profile instance for the specified type
+        :raises ValueError: If rate_type is not registered
         """
         profile_class: type[Profile] = cls.get_registered_object(rate_type)
         resolved_kwargs = profile_class.resolve_args(
@@ -128,33 +116,31 @@ class Profile(
         """
         Resolve and validate arguments for profile construction.
 
-        :param rate_type: The type of the profile.
-        :param rate: Rate parameter for configuration.
-        :param random_seed: Random seed for stochastic strategies.
-        :param kwargs: Additional arguments to resolve.
-        :return: Dictionary of resolved arguments for profile construction.
+        :param rate_type: Profile type identifier
+        :param rate: Rate configuration parameter
+        :param random_seed: Seed for stochastic strategies
+        :param kwargs: Additional arguments to resolve and validate
+        :return: Resolved arguments dictionary for profile initialization
         """
         ...
 
     type_: Literal["profile"] = Field(
-        description="The type of benchmarking profile to use",
+        description="Profile type discriminator for polymorphic serialization",
     )
     completed_strategies: list[SchedulingStrategy] = Field(
         default_factory=list,
-        description="The strategies that have completed execution",
+        description="Strategies that have completed execution in this profile",
     )
     constraints: dict[str, Any | dict[str, Any] | ConstraintInitializer] | None = Field(
         default=None,
-        description="Runtime constraints to apply during strategy execution",
+        description="Runtime constraints applied to strategy execution",
     )
 
     @computed_field  # type: ignore[misc]
     @property
     def strategy_types(self) -> list[StrategyType]:
         """
-        :return: List of all strategy types expected to be executed or have been
-            executed in this profile. By default, this returns just the
-            completed strategies.
+        :return: Strategy types executed or expected to execute in this profile
         """
         return [strat.type_ for strat in self.completed_strategies]
 
@@ -169,10 +155,10 @@ class Profile(
         None,
     ]:
         """
-        Generate strategies and constraints for sequential profile execution.
+        Generate strategies and constraints for sequential execution.
 
-        :return: Generator yielding (strategy, constraints) tuples and
-            receiving benchmark results from each execution.
+        :return: Generator yielding (strategy, constraints) tuples and receiving
+            benchmark results after each execution
         """
         prev_strategy: SchedulingStrategy | None = None
         prev_benchmark: Benchmark | None = None
@@ -197,11 +183,11 @@ class Profile(
         prev_benchmark: Benchmark | None,
     ) -> SchedulingStrategy | None:
         """
-        Generate the next strategy to execute in the profile sequence.
+        Generate the next strategy in the profile execution sequence.
 
-        :param prev_strategy: The previously completed strategy.
-        :param prev_benchmark: Benchmark results from the previous strategy.
-        :return: Next strategy to execute, or None if profile is complete.
+        :param prev_strategy: Previously completed strategy instance
+        :param prev_benchmark: Benchmark results from previous strategy execution
+        :return: Next strategy to execute, or None if profile complete
         """
         ...
 
@@ -214,10 +200,10 @@ class Profile(
         """
         Generate constraints for the next strategy execution.
 
-        :param next_strategy: The next strategy to be executed.
-        :param prev_strategy: The previously completed strategy.
-        :param prev_benchmark: Benchmark results from the previous strategy.
-        :return: Constraints dictionary for the next strategy, or None.
+        :param next_strategy: Strategy to be executed next
+        :param prev_strategy: Previously completed strategy instance
+        :param prev_benchmark: Benchmark results from previous strategy execution
+        :return: Constraints dictionary for next strategy, or None
         """
         _ = (prev_strategy, prev_benchmark)  # unused
         return (
@@ -281,12 +267,12 @@ class SynchronousProfile(Profile):
         """
         Resolve arguments for synchronous profile construction.
 
-        :param rate_type: The type/strategy of the profile (ignored).
-        :param rate: Rate parameter (must be None, will be stripped).
-        :param random_seed: Random seed (ignored and stripped).
-        :param kwargs: Additional arguments to pass through.
-        :return: Dictionary of resolved arguments.
-        :raises ValueError: If rate is not None.
+        :param rate_type: Profile type identifier (ignored)
+        :param rate: Rate parameter (must be None)
+        :param random_seed: Random seed (ignored)
+        :param kwargs: Additional arguments passed through unchanged
+        :return: Resolved arguments dictionary
+        :raises ValueError: If rate is not None
         """
         _ = (rate_type, random_seed)  # unused
         if rate is not None:
@@ -297,7 +283,7 @@ class SynchronousProfile(Profile):
     @property
     def strategy_types(self) -> list[StrategyType]:
         """
-        :return: The single synchronous strategy type.
+        :return: Single synchronous strategy type
         """
         return [self.type_]
 
@@ -309,9 +295,9 @@ class SynchronousProfile(Profile):
         """
         Generate synchronous strategy or None if already completed.
 
-        :param prev_strategy: The previously completed strategy (unused).
-        :param prev_benchmark: Benchmark results from the previous strategy (unused).
-        :return: SynchronousStrategy for the first execution, None afterward.
+        :param prev_strategy: Previously completed strategy (unused)
+        :param prev_benchmark: Benchmark results from previous execution (unused)
+        :return: SynchronousStrategy for first execution, None afterward
         """
         _ = (prev_strategy, prev_benchmark)  # unused
         if len(self.completed_strategies) >= 1:
@@ -326,7 +312,7 @@ class ConcurrentProfile(Profile):
 
     type_: Literal["concurrent"] = "concurrent"  # type: ignore[assignment]
     streams: list[PositiveInt] = Field(
-        description="Number of concurrent streams for request scheduling",
+        description="Concurrent stream counts for request scheduling",
     )
     startup_duration: NonNegativeFloat = Field(
         default=0.0,
@@ -347,20 +333,23 @@ class ConcurrentProfile(Profile):
         """
         Resolve arguments for concurrent profile construction.
 
-        :param rate_type: The type/strategy of the profile (ignored).
-        :param rate: Rate parameter, remapped to streams.
-        :param random_seed: Random seed (ignored and stripped).
-        :param kwargs: Additional arguments to pass through.
-        :return: Dictionary of resolved arguments.
-        :raises ValueError: If rate is None.
+        :param rate_type: Profile type identifier (ignored)
+        :param rate: Rate parameter remapped to streams
+        :param random_seed: Random seed (ignored)
+        :param kwargs: Additional arguments passed through unchanged
+        :return: Resolved arguments dictionary
+        :raises ValueError: If rate is None
         """
         _ = (rate_type, random_seed)  # unused
-        kwargs["streams"] = [int(r) for r in rate] if rate else None
+        rate = rate if isinstance(rate, list) or rate is None else [rate]
+        kwargs["streams"] = [int(stream) for stream in rate] if rate else None
         return kwargs
 
     @property
     def strategy_types(self) -> list[StrategyType]:
-        """Get concurrent strategy types for each configured stream count."""
+        """
+        :return: Concurrent strategy types for each configured stream count
+        """
         return [self.type_] * len(self.streams)
 
     def next_strategy(
@@ -371,9 +360,9 @@ class ConcurrentProfile(Profile):
         """
         Generate concurrent strategy for the next stream count.
 
-        :param prev_strategy: The previously completed strategy (unused).
-        :param prev_benchmark: Benchmark results from the previous strategy (unused).
-        :return: ConcurrentStrategy with next stream count, or None if complete.
+        :param prev_strategy: Previously completed strategy (unused)
+        :param prev_benchmark: Benchmark results from previous execution (unused)
+        :return: ConcurrentStrategy with next stream count, or None if complete
         """
         _ = (prev_strategy, prev_benchmark)  # unused
 
@@ -395,7 +384,7 @@ class ThroughputProfile(Profile):
     type_: Literal["throughput"] = "throughput"  # type: ignore[assignment]
     max_concurrency: PositiveInt | None = Field(
         default=None,
-        description="Maximum number of concurrent requests to schedule",
+        description="Maximum concurrent requests to schedule",
     )
     startup_duration: NonNegativeFloat = Field(
         default=0.0,
@@ -416,11 +405,11 @@ class ThroughputProfile(Profile):
         """
         Resolve arguments for throughput profile construction.
 
-        :param rate_type: The type/strategy of the profile (ignored).
-        :param rate: Rate parameter to remap to max_concurrency.
-        :param random_seed: Random seed (ignored and stripped).
-        :param kwargs: Additional arguments to pass through.
-        :return: Dictionary of resolved arguments.
+        :param rate_type: Profile type identifier (ignored)
+        :param rate: Rate parameter remapped to max_concurrency
+        :param random_seed: Random seed (ignored)
+        :param kwargs: Additional arguments passed through unchanged
+        :return: Resolved arguments dictionary
         """
         _ = (rate_type, random_seed)  # unused
         # Remap rate to max_concurrency, strip out random_seed
@@ -431,7 +420,9 @@ class ThroughputProfile(Profile):
 
     @property
     def strategy_types(self) -> list[StrategyType]:
-        """Get the single throughput strategy type."""
+        """
+        :return: Single throughput strategy type
+        """
         return [self.type_]
 
     def next_strategy(
@@ -442,9 +433,9 @@ class ThroughputProfile(Profile):
         """
         Generate throughput strategy or None if already completed.
 
-        :param prev_strategy: The previously completed strategy (unused).
-        :param prev_benchmark: Benchmark results from the previous strategy (unused).
-        :return: ThroughputStrategy for the first execution, None afterward.
+        :param prev_strategy: Previously completed strategy (unused)
+        :param prev_benchmark: Benchmark results from previous execution (unused)
+        :return: ThroughputStrategy for first execution, None afterward
         """
         _ = (prev_strategy, prev_benchmark)  # unused
         if len(self.completed_strategies) >= 1:
@@ -458,13 +449,11 @@ class ThroughputProfile(Profile):
 
 @Profile.register(["async", "constant", "poisson"])
 class AsyncProfile(Profile):
-    """
-    Rate-based asynchronous strategy execution profile with configurable patterns.
-    """
+    """Rate-based asynchronous strategy execution profile with configurable patterns."""
 
     type_: Literal["async", "constant", "poisson"] = "async"  # type: ignore[assignment]
     strategy_type: Literal["constant", "poisson"] = Field(
-        description="Type of asynchronous strategy pattern to use",
+        description="Asynchronous strategy pattern type to use",
     )
     rate: list[PositiveFloat] = Field(
         description="Request scheduling rate in requests per second",
@@ -478,7 +467,7 @@ class AsyncProfile(Profile):
     )
     max_concurrency: PositiveInt | None = Field(
         default=None,
-        description="Maximum number of concurrent requests to schedule",
+        description="Maximum concurrent requests to schedule",
     )
     random_seed: int = Field(
         default=42,
@@ -496,12 +485,12 @@ class AsyncProfile(Profile):
         """
         Resolve arguments for async profile construction.
 
-        :param rate_type: The type/strategy of the profile.
-        :param rate: Rate parameter for the profile.
-        :param random_seed: Random seed for stochastic strategies.
-        :param kwargs: Additional arguments to pass through.
-        :return: Dictionary of resolved arguments.
-        :raises ValueError: If rate is None.
+        :param rate_type: Profile type identifier
+        :param rate: Rate configuration for the profile
+        :param random_seed: Seed for stochastic strategies
+        :param kwargs: Additional arguments passed through unchanged
+        :return: Resolved arguments dictionary
+        :raises ValueError: If rate is None
         """
         if rate is None:
             raise ValueError("AsyncProfile requires a rate parameter")
@@ -516,13 +505,15 @@ class AsyncProfile(Profile):
             if rate_type in ["constant", "poisson"]
             else kwargs.get("strategy_type", "constant")
         )
-        kwargs["rate"] = rate
+        kwargs["rate"] = rate if isinstance(rate, list) else [rate]
         kwargs["random_seed"] = random_seed
         return kwargs
 
     @property
     def strategy_types(self) -> list[StrategyType]:
-        """Get async strategy types for each configured rate."""
+        """
+        :return: Async strategy types for each configured rate
+        """
         num_strategies = len(self.rate)
         return [self.strategy_type] * num_strategies
 
@@ -534,11 +525,11 @@ class AsyncProfile(Profile):
         """
         Generate async strategy for the next configured rate.
 
-        :param prev_strategy: The previously completed strategy (unused).
-        :param prev_benchmark: Benchmark results from the previous strategy (unused).
+        :param prev_strategy: Previously completed strategy (unused)
+        :param prev_benchmark: Benchmark results from previous execution (unused)
         :return: AsyncConstantStrategy or AsyncPoissonStrategy for next rate,
-            or None if all rates completed.
-        :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'.
+            or None if all rates completed
+        :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'
         """
         _ = (prev_strategy, prev_benchmark)  # unused
 
@@ -566,9 +557,7 @@ class AsyncProfile(Profile):
 
 @Profile.register("sweep")
 class SweepProfile(Profile):
-    """
-    Adaptive multi-strategy sweep execution profile with rate discovery.
-    """
+    """Adaptive multi-strategy sweep execution profile with rate discovery."""
 
     type_: Literal["sweep"] = "sweep"  # type: ignore[assignment]
     sweep_size: int = Field(
@@ -585,7 +574,7 @@ class SweepProfile(Profile):
     )
     max_concurrency: PositiveInt | None = Field(
         default=None,
-        description="Maximum number of concurrent requests to schedule",
+        description="Maximum concurrent requests to schedule",
     )
     random_seed: int = Field(
         default=42,
@@ -605,7 +594,7 @@ class SweepProfile(Profile):
     )
     measured_rates: list[float] = Field(
         default_factory=list,
-        description="Calculated interpolated rates between synchronous and throughput",
+        description="Interpolated rates between synchronous and throughput",
     )
 
     @classmethod
@@ -619,11 +608,11 @@ class SweepProfile(Profile):
         """
         Resolve arguments for sweep profile construction.
 
-        :param rate_type: The type/strategy for async strategies in the sweep.
-        :param rate: Rate parameter (ignored for sweep).
-        :param random_seed: Random seed for stochastic strategies.
-        :param kwargs: Additional arguments to pass through.
-        :return: Dictionary of resolved arguments.
+        :param rate_type: Async strategy type for sweep execution
+        :param rate: Rate parameter specifying sweep size (if provided)
+        :param random_seed: Seed for stochastic strategies
+        :param kwargs: Additional arguments passed through unchanged
+        :return: Resolved arguments dictionary
         """
         sweep_size_from_rate = int(rate[0]) if rate else settings.default_sweep_number
         kwargs["sweep_size"] = kwargs.get("sweep_size", sweep_size_from_rate)
@@ -634,7 +623,9 @@ class SweepProfile(Profile):
 
     @property
     def strategy_types(self) -> list[StrategyType]:
-        """Get strategy types for the complete sweep sequence."""
+        """
+        :return: Strategy types for the complete sweep sequence
+        """
         types = ["synchronous", "throughput"]
         types += [self.strategy_type] * (self.sweep_size - len(types))
         return types
@@ -653,13 +644,13 @@ class SweepProfile(Profile):
         """
         Generate the next strategy in the adaptive sweep sequence.
 
-        Executes synchronous and throughput strategies first to measure
-        baseline rates, then generates interpolated rates for async strategies.
+        Executes synchronous and throughput strategies first to measure baseline
+        rates, then generates interpolated rates for async strategies.
 
-        :param prev_strategy: The previously completed strategy.
-        :param prev_benchmark: Benchmark results from the previous strategy.
-        :return: Next strategy in sweep sequence, or None if complete.
-        :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'.
+        :param prev_strategy: Previously completed strategy instance
+        :param prev_benchmark: Benchmark results from previous strategy execution
+        :return: Next strategy in sweep sequence, or None if complete
+        :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'
         """
         if prev_strategy is None:
             return SynchronousStrategy()

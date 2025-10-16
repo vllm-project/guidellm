@@ -50,7 +50,11 @@ class DatasetDeserializerFactory(
         dataset = None
 
         if type_ is None:
-            for deserializer in cls.registered_objects():
+            for name, deserializer in cls.registry.items():
+                if name == "huggingface":
+                    # Save Hugging Face til the end since it is a catch-all.
+                    continue
+
                 deserializer_fn: DatasetDeserializer = (
                     deserializer() if isinstance(deserializer, type) else deserializer
                 )
@@ -62,6 +66,15 @@ class DatasetDeserializerFactory(
                         random_seed=random_seed,
                         **data_kwargs,
                     )
+
+            if dataset is None:
+                deserializer_fn = cls.get_registered_object("huggingface")()
+                dataset = deserializer_fn(
+                    data=data,
+                    processor_factory=processor_factory,
+                    random_seed=random_seed,
+                    **data_kwargs,
+                )
         elif deserializer := cls.get_registered_object(type_) is not None:
             deserializer_fn: DatasetDeserializer = (
                 deserializer() if isinstance(deserializer, type) else deserializer

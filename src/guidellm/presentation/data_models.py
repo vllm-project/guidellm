@@ -72,7 +72,7 @@ class RunInfo(BaseModel):
             bm.run_stats.start_time for bm in benchmarks if bm.start_time is not None
         )
         return cls(
-            model=Model(name=model, size=0),
+            model=Model(name=model or "", size=0),
             task="N/A",
             timestamp=timestamp,
             dataset=Dataset(name="N/A"),
@@ -117,11 +117,15 @@ class WorkloadDetails(BaseModel):
             range(len(successful_requests)), min(5, len(successful_requests))
         )
         sample_prompts = [
-            successful_requests[i].prompt.replace("\n", " ").replace('"', "'")
+            successful_requests[i].request_args.replace("\n", " ").replace('"', "'")
+            if successful_requests[i].request_args is not None
+            else ""
             for i in sample_indices
         ]
         sample_outputs = [
             successful_requests[i].output.replace("\n", " ").replace('"', "'")
+            if successful_requests[i].output is not None
+            else ""
             for i in sample_indices
         ]
 
@@ -155,10 +159,10 @@ class WorkloadDetails(BaseModel):
         min_start_time = benchmarks[0].start_time
 
         all_req_times = [
-            req.scheduler_info.started_at - min_start_time
+            req.info.timings.request_start - min_start_time
             for bm in benchmarks
             for req in bm.requests.successful
-            if req.scheduler_info.started_at is not None
+            if req.info.timings.request_start is not None
         ]
         number_of_buckets = len(benchmarks)
         request_over_time_buckets, bucket_width = Bucket.from_data(
