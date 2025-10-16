@@ -1765,7 +1765,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 builtin_scenarios := get_builtin_scenarios()
             ):
                 scenario_path = builtin_scenarios[scenario]
-            elif Path(scenario).exists() and Path(scenario).is_dir():
+            elif Path(scenario).exists() and Path(scenario).is_file():
                 scenario_path = Path(scenario)
             else:
                 raise ValueError(f"Scenario '{scenario}' not found.")

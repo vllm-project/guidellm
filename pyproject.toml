@@ -9,6 +9,7 @@ include = ["*"]
 
 [tool.setuptools.package-data]
 "guidellm.data" = ["*.gz"]
+"guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
 
 [tool.pdm]
 distribution = true
