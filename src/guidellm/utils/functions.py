@@ -15,6 +15,7 @@ __all__ = [
     "all_defined",
     "safe_add",
     "safe_divide",
+    "safe_format_number",
     "safe_format_timestamp",
     "safe_getattr",
     "safe_multiply",
@@ -131,4 +132,28 @@ def safe_format_timestamp(
     try:
         return datetime.fromtimestamp(timestamp).strftime(format_)
     except (ValueError, OverflowError, OSError):
+        return default
+
+
+def safe_format_number(
+    number: int | float | None, default: str = "--", precision: int = 1
+) -> str:
+    """
+    Safely format a number with specified precision and default handling.
+
+    :param number: Number to format, or None
+    :param default: Value to return if number is None
+    :param precision: Number of decimal places for formatting floats
+    :return: Formatted number string or default value
+    """
+    if number is None:
+        return default
+
+    if isinstance(number, int):
+        return str(number)
+
+    try:
+        format_str = f"{{:.{precision}f}}"
+        return format_str.format(number)
+    except (ValueError, TypeError):
         return default

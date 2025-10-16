@@ -69,6 +69,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "rich",
     "sanic",
+    "tabulate",
     "transformers",
     "uvloop>=0.18",
     "torch",

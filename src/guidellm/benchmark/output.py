@@ -4,16 +4,16 @@ import csv
 import json
 import math
 from abc import ABC, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich.console import Console
 from rich.padding import Padding
 from rich.text import Text
+from tabulate import tabulate
 
 from guidellm.benchmark.profile import (
     AsyncProfile,
@@ -31,11 +31,13 @@ from guidellm.presentation.injector import create_report
 from guidellm.settings import settings
 from guidellm.utils import (
     Colors,
+    Console,
     DistributionSummary,
     RegistryMixin,
     StatusDistributionSummary,
     camelize_str,
     recursive_key_update,
+    safe_format_number,
     safe_format_timestamp,
     split_text_list_by_length,
 )
@@ -175,11 +177,61 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         :param report: The completed benchmark report.
         :return:
         """
-        self._print_benchmarks_metadata(report.benchmarks)
-        self._print_benchmarks_info(report.benchmarks)
-        self._print_benchmarks_stats(report.benchmarks)
+        self.console.print("\n\n")
+        self._print_report_benchmarks_info(report)
 
         return "printed to console"
+
+    def _print_report_benchmarks_info(self, report: GenerativeBenchmarksReport):
+        benchmark_key = "\nBenchmark"
+        start_key = "\nStart"
+        end_key = "\nEnd"
+        timings_key = "Duration, Warmup, Cooldown\nsec, sec, sec"
+        requests_key = "Requests\nCompl, Incomp, Err"
+        input_tokens_key = "Input Tokens\nCompl, Incomp, Err"
+        output_tokens_key = "Output Tokens\nCompl, Incomp, Err"
+
+        columns = defaultdict(list)
+
+        for benchmark in report.benchmarks:
+            columns[benchmark_key].append(str(benchmark.scheduler.strategy))
+            columns[start_key].append(safe_format_timestamp(benchmark.start_time))
+            columns[end_key].append(safe_format_timestamp(benchmark.end_time))
+            columns[timings_key].append(
+                f"{safe_format_number(benchmark.duration)}, "
+                f"{safe_format_number(report.args.warmup)}, "
+                f"{safe_format_number(report.args.cooldown)}"
+            )
+            columns[requests_key].append(
+                f"{safe_format_number(benchmark.request_totals.successful)}, "
+                f"{safe_format_number(benchmark.request_totals.incomplete)}, "
+                f"{safe_format_number(benchmark.request_totals.errored)}"
+            )
+            columns[input_tokens_key].append(
+                f"{safe_format_number(benchmark.metrics.prompt_token_count.successful.total_sum)}, "
+                f"{safe_format_number(benchmark.metrics.prompt_token_count.incomplete.total_sum)}, "
+                f"{safe_format_number(benchmark.metrics.prompt_token_count.errored.total_sum)}"
+            )
+            columns[output_tokens_key].append(
+                f"{safe_format_number(benchmark.metrics.output_token_count.successful.total_sum)}, "
+                f"{safe_format_number(benchmark.metrics.output_token_count.incomplete.total_sum)}, "
+                f"{safe_format_number(benchmark.metrics.output_token_count.errored.total_sum)}"
+            )
+
+        self.console.print_update("Benchmarks Info", None, "info")
+        self.console.print(
+            Padding(
+                tabulate(
+                    columns,
+                    headers="keys",
+                    tablefmt="pipe",
+                    numalign="center",
+                    stralign="center",
+                    rowalign="center",
+                ),
+                (0, 0, 0, 2),
+            )
+        )
 
     def _print_benchmarks_metadata(self, benchmarks: list[GenerativeBenchmark]):
         start_time = benchmarks[0].run_stats.start_time
