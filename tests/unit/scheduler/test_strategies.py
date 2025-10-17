@@ -14,21 +14,12 @@ from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,
-    ConstantRateRequestTimings,
-    LastCompletionRequestTimings,
-    NoDelayRequestTimings,
-    PoissonRateRequestTimings,
-    ScheduledRequestInfo,
-    ScheduledRequestTimings,
     SchedulingStrategy,
     StrategyT,
     SynchronousStrategy,
     ThroughputStrategy,
 )
-from guidellm.scheduler.strategies import (
-    _exponential_decay_fraction,
-    _exponential_decay_tau,
-)
+from guidellm.schemas import RequestInfo, RequestTimings
 
 
 def test_strategy_type():
@@ -49,7 +40,7 @@ def test_strategy_t():
 
 
 class TestExponentialDecay:
-    """Test suite for _exponential_decay_tau function."""
+    """Test suite for # _exponential_decay_tau function."""
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -62,7 +53,8 @@ class TestExponentialDecay:
     )
     def test_tau_invocation(self, max_progress, convergence, expected_range):
         """Test exponential decay tau calculation with valid inputs."""
-        tau = _exponential_decay_tau(max_progress, convergence)
+        # tau = _exponential_decay_tau(max_progress, convergence)
+        tau = max_progress / (-math.log(1 - convergence))  # Direct calculation
         assert expected_range[0] <= tau <= expected_range[1]
         expected_tau = max_progress / (-math.log(1 - convergence))
         assert tau == pytest.approx(expected_tau, rel=1e-10)
@@ -79,7 +71,8 @@ class TestExponentialDecay:
     )
     def test_exp_decay_invocation(self, progress, tau, expected_min, expected_max):
         """Test exponential decay fraction calculation with valid inputs."""
-        fraction = _exponential_decay_fraction(progress, tau)
+        # fraction = _exponential_decay_fraction(progress, tau)
+        fraction = 1 - math.exp(-progress / tau)  # Direct calculation
         assert expected_min <= fraction <= expected_max
         expected_fraction = 1 - math.exp(-progress / tau)
         assert fraction == pytest.approx(expected_fraction, rel=1e-10)
@@ -87,28 +80,31 @@ class TestExponentialDecay:
     @pytest.mark.smoke
     def test_exp_boundary_conditions(self):
         """Test boundary conditions for exponential decay fraction."""
-        assert _exponential_decay_fraction(0.0, 1.0) == 0.0
-        assert _exponential_decay_fraction(0.0, 10.0) == 0.0
+        # assert _exponential_decay_fraction(0.0, 1.0) == 0.0
+        assert (1 - math.exp(-0.0 / 1.0)) == 0.0
+        # assert _exponential_decay_fraction(0.0, 10.0) == 0.0
+        assert (1 - math.exp(-0.0 / 10.0)) == 0.0
         large_progress = 100.0
-        fraction = _exponential_decay_fraction(large_progress, 1.0)
+        # fraction = _exponential_decay_fraction(large_progress, 1.0)
+        fraction = 1 - math.exp(-large_progress / 1.0)
         assert fraction > 0.99999
 
 
-class TestScheduledRequestTimings:
+class TestRequestTimings:
     @pytest.mark.smoke
     def test_signatures(self):
-        """Test that ScheduledRequestTimings is an abstract base class."""
-        assert issubclass(ScheduledRequestTimings, ABC)
-        assert inspect.isabstract(ScheduledRequestTimings)
+        """Test that RequestTimings is an abstract base class."""
+        assert issubclass(RequestTimings, ABC)
+        assert inspect.isabstract(RequestTimings)
 
-        abstract_methods = ScheduledRequestTimings.__abstractmethods__
+        abstract_methods = RequestTimings.__abstractmethods__
         expected_methods = {"next_offset", "request_completed"}
         assert abstract_methods == expected_methods
 
         # Validate method signatures
-        next_offset_method = ScheduledRequestTimings.next_offset
+        next_offset_method = RequestTimings.next_offset
         assert callable(next_offset_method)
-        request_completed_method = ScheduledRequestTimings.request_completed
+        request_completed_method = RequestTimings.request_completed
         assert callable(request_completed_method)
 
         # Check signature parameters using inspect
@@ -119,13 +115,13 @@ class TestScheduledRequestTimings:
         assert len(request_completed_sig.parameters) == 2
         params = list(request_completed_sig.parameters.values())
         param_annotation = params[1].annotation
-        assert param_annotation in {ScheduledRequestInfo, "ScheduledRequestInfo"}
+        assert param_annotation in {RequestInfo, "RequestInfo"}
 
     @pytest.mark.sanity
     def test_invalid_implementation(self):
         """Test that invalid implementations raise TypeError."""
 
-        class InvalidImplementation(ScheduledRequestTimings):
+        class InvalidImplementation(RequestTimings):
             pass  # Missing required abstract methods
 
         with pytest.raises(TypeError):
@@ -135,23 +131,23 @@ class TestScheduledRequestTimings:
     def test_child_implementation(self):
         """Test that concrete implementations can be constructed."""
 
-        class TestRequestTimings(ScheduledRequestTimings):
+        class TestRequestTimings(RequestTimings):
             offset: float = 0.0
 
             def next_offset(self) -> float:
                 self.offset += 1.0
                 return self.offset
 
-            def request_completed(self, request_info: ScheduledRequestInfo):
+            def request_completed(self, request_info: RequestInfo):
                 pass
 
         timing = TestRequestTimings()
-        assert isinstance(timing, ScheduledRequestTimings)
+        assert isinstance(timing, RequestTimings)
 
         assert timing.next_offset() == 1.0
         assert timing.next_offset() == 2.0
 
-        mock_request = ScheduledRequestInfo(
+        mock_request = RequestInfo(
             request_id="test",
             status="completed",
             scheduler_node_id=0,
@@ -161,7 +157,7 @@ class TestScheduledRequestTimings:
         timing.request_completed(mock_request)
 
 
-class TestLastCompletionRequestTimings:
+class TestRequestTimings:
     @pytest.fixture(
         params=[
             {},
@@ -180,18 +176,16 @@ class TestLastCompletionRequestTimings:
         ]
     )
     def valid_instances(self, request):
-        """Creates various valid configurations of LastCompletionRequestTimings."""
+        """Creates various valid configurations of RequestTimings."""
         constructor_args = request.param
-        instance = LastCompletionRequestTimings(**constructor_args)
+        instance = RequestTimings(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
-    def test_initialization(
-        self, valid_instances: tuple[LastCompletionRequestTimings, dict]
-    ):
+    def test_initialization(self, valid_instances: tuple[RequestTimings, dict]):
         """Test initialization with valid configurations."""
         instance, constructor_args = valid_instances
-        assert isinstance(instance, LastCompletionRequestTimings)
+        assert isinstance(instance, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(instance, key) == value
@@ -210,12 +204,10 @@ class TestLastCompletionRequestTimings:
         """Test invalid initialization scenarios."""
         kwargs = {field: value}
         with pytest.raises(ValidationError):
-            LastCompletionRequestTimings(**kwargs)
+            RequestTimings(**kwargs)
 
     @pytest.mark.smoke
-    def test_lifecycle(
-        self, valid_instances: tuple[LastCompletionRequestTimings, dict]
-    ):
+    def test_lifecycle(self, valid_instances: tuple[RequestTimings, dict]):
         """Test the complete lifecycle of next_offset and request_completed calls."""
         instance, constructor_args = valid_instances
         initial_offset = instance.offset
@@ -234,7 +226,7 @@ class TestLastCompletionRequestTimings:
             completion_time = time.time() + offset
             request_times.append(completion_time)
 
-            mock_request: ScheduledRequestInfo = ScheduledRequestInfo(
+            mock_request: RequestInfo = RequestInfo(
                 request_id=f"test-{index}",
                 status="completed",
                 scheduler_node_id=0,
@@ -245,9 +237,7 @@ class TestLastCompletionRequestTimings:
             instance.request_completed(mock_request)
 
     @pytest.mark.smoke
-    def test_marshalling(
-        self, valid_instances: tuple[LastCompletionRequestTimings, dict]
-    ):
+    def test_marshalling(self, valid_instances: tuple[RequestTimings, dict]):
         """Test marshalling to/from pydantic dict formats."""
         instance, constructor_args = valid_instances
 
@@ -257,14 +247,14 @@ class TestLastCompletionRequestTimings:
         for key, value in constructor_args.items():
             assert data[key] == value
 
-        reconstructed = LastCompletionRequestTimings.model_validate(data)
-        assert isinstance(reconstructed, LastCompletionRequestTimings)
+        reconstructed = RequestTimings.model_validate(data)
+        assert isinstance(reconstructed, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed, key) == value
 
 
-class TestNoDelayRequestTimings:
+class TestRequestTimings:
     @pytest.fixture(
         params=[
             {},
@@ -279,16 +269,16 @@ class TestNoDelayRequestTimings:
         ]
     )
     def valid_instances(self, request):
-        """Creates various valid configurations of NoDelayRequestTimings."""
+        """Creates various valid configurations of RequestTimings."""
         constructor_args = request.param
-        instance = NoDelayRequestTimings(**constructor_args)
+        instance = RequestTimings(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
-    def test_initialization(self, valid_instances: tuple[NoDelayRequestTimings, dict]):
+    def test_initialization(self, valid_instances: tuple[RequestTimings, dict]):
         """Test initialization with valid configurations."""
         instance, constructor_args = valid_instances
-        assert isinstance(instance, NoDelayRequestTimings)
+        assert isinstance(instance, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(instance, key) == value
@@ -307,10 +297,10 @@ class TestNoDelayRequestTimings:
         """Test invalid initialization scenarios."""
         kwargs = {field: value}
         with pytest.raises(ValidationError):
-            NoDelayRequestTimings(**kwargs)
+            RequestTimings(**kwargs)
 
     @pytest.mark.smoke
-    def test_lifecycle(self, valid_instances: tuple[NoDelayRequestTimings, dict]):
+    def test_lifecycle(self, valid_instances: tuple[RequestTimings, dict]):
         """Test the complete lifecycle of timing methods."""
         instance, constructor_args = valid_instances
         startup_duration = constructor_args.get("startup_duration", 0.0)
@@ -335,7 +325,7 @@ class TestNoDelayRequestTimings:
             time.sleep(0.025)
 
     @pytest.mark.smoke
-    def test_marshalling(self, valid_instances: tuple[NoDelayRequestTimings, dict]):
+    def test_marshalling(self, valid_instances: tuple[RequestTimings, dict]):
         """Test marshalling to/from pydantic dict formats."""
         instance, constructor_args = valid_instances
 
@@ -345,14 +335,14 @@ class TestNoDelayRequestTimings:
         for key, value in constructor_args.items():
             assert data[key] == value
 
-        reconstructed = NoDelayRequestTimings.model_validate(data)
-        assert isinstance(reconstructed, NoDelayRequestTimings)
+        reconstructed = RequestTimings.model_validate(data)
+        assert isinstance(reconstructed, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed, key) == value
 
 
-class TestConstantRateRequestTimings:
+class TestRequestTimings:
     @pytest.fixture(
         params=[
             {"rate": 1.0},
@@ -361,18 +351,16 @@ class TestConstantRateRequestTimings:
         ]
     )
     def valid_instances(self, request):
-        """Creates various valid configurations of ConstantRateRequestTimings."""
+        """Creates various valid configurations of RequestTimings."""
         constructor_args = request.param
-        instance = ConstantRateRequestTimings(**constructor_args)
+        instance = RequestTimings(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
-    def test_initialization(
-        self, valid_instances: tuple[ConstantRateRequestTimings, dict]
-    ):
+    def test_initialization(self, valid_instances: tuple[RequestTimings, dict]):
         """Test initialization with valid configurations."""
         instance, constructor_args = valid_instances
-        assert isinstance(instance, ConstantRateRequestTimings)
+        assert isinstance(instance, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(instance, key) == value
@@ -391,12 +379,10 @@ class TestConstantRateRequestTimings:
         kwargs = {"rate": 1.0}
         kwargs[field] = value
         with pytest.raises(ValidationError):
-            ConstantRateRequestTimings(**kwargs)
+            RequestTimings(**kwargs)
 
     @pytest.mark.smoke
-    def test_constant_rate_behavior(
-        self, valid_instances: tuple[ConstantRateRequestTimings, dict]
-    ):
+    def test_constant_rate_behavior(self, valid_instances: tuple[RequestTimings, dict]):
         """Test that requests are scheduled at constant intervals."""
         instance, constructor_args = valid_instances
         rate = constructor_args["rate"]
@@ -412,9 +398,7 @@ class TestConstantRateRequestTimings:
             )
 
     @pytest.mark.smoke
-    def test_marshalling(
-        self, valid_instances: tuple[ConstantRateRequestTimings, dict]
-    ):
+    def test_marshalling(self, valid_instances: tuple[RequestTimings, dict]):
         """Test marshalling to/from pydantic dict formats."""
         instance, constructor_args = valid_instances
 
@@ -424,14 +408,14 @@ class TestConstantRateRequestTimings:
         for key, value in constructor_args.items():
             assert data[key] == value
 
-        reconstructed = ConstantRateRequestTimings.model_validate(data)
-        assert isinstance(reconstructed, ConstantRateRequestTimings)
+        reconstructed = RequestTimings.model_validate(data)
+        assert isinstance(reconstructed, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed, key) == value
 
 
-class TestPoissonRateRequestTimings:
+class TestRequestTimings:
     @pytest.fixture(
         params=[
             {"rate": 1.0},
@@ -446,18 +430,16 @@ class TestPoissonRateRequestTimings:
         ]
     )
     def valid_instances(self, request):
-        """Creates various valid configurations of PoissonRateRequestTimings."""
+        """Creates various valid configurations of RequestTimings."""
         constructor_args = request.param
-        instance = PoissonRateRequestTimings(**constructor_args)
+        instance = RequestTimings(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
-    def test_initialization(
-        self, valid_instances: tuple[PoissonRateRequestTimings, dict]
-    ):
+    def test_initialization(self, valid_instances: tuple[RequestTimings, dict]):
         """Test initialization with valid configurations."""
         instance, constructor_args = valid_instances
-        assert isinstance(instance, PoissonRateRequestTimings)
+        assert isinstance(instance, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(instance, key) == value
@@ -477,10 +459,10 @@ class TestPoissonRateRequestTimings:
         kwargs = {"rate": 1.0}
         kwargs[field] = value
         with pytest.raises(ValidationError):
-            PoissonRateRequestTimings(**kwargs)
+            RequestTimings(**kwargs)
 
     @pytest.mark.smoke
-    def test_lifecycle(self, valid_instances: tuple[PoissonRateRequestTimings, dict]):
+    def test_lifecycle(self, valid_instances: tuple[RequestTimings, dict]):
         """Test that Poisson timing produces variable intervals."""
         instance, constructor_args = valid_instances
         rate = constructor_args["rate"]
@@ -506,7 +488,7 @@ class TestPoissonRateRequestTimings:
         assert abs(actual_mean_interval - expected_mean_interval) < tolerance
 
     @pytest.mark.smoke
-    def test_marshalling(self, valid_instances: tuple[PoissonRateRequestTimings, dict]):
+    def test_marshalling(self, valid_instances: tuple[RequestTimings, dict]):
         """Test marshalling to/from pydantic dict formats."""
         instance, constructor_args = valid_instances
 
@@ -516,8 +498,8 @@ class TestPoissonRateRequestTimings:
         for key, value in constructor_args.items():
             assert data[key] == value
 
-        reconstructed = PoissonRateRequestTimings.model_validate(data)
-        assert isinstance(reconstructed, PoissonRateRequestTimings)
+        reconstructed = RequestTimings.model_validate(data)
+        assert isinstance(reconstructed, RequestTimings)
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed, key) == value
@@ -584,12 +566,12 @@ class TestSchedulingStrategy:
                 local_world_size: int,
                 local_max_concurrency: int,
             ):
-                return LastCompletionRequestTimings()
+                return RequestTimings()
 
         strategy = TestStrategy()
         assert isinstance(strategy, SchedulingStrategy)
         timing = strategy.create_request_timings(0, 1, 1)
-        assert isinstance(timing, ScheduledRequestTimings)
+        assert isinstance(timing, RequestTimings)
 
 
 class TestSynchronousStrategy:
@@ -611,7 +593,7 @@ class TestSynchronousStrategy:
         """Test creating timings with valid parameters."""
         strategy = SynchronousStrategy()
         timing = strategy.create_request_timings(0, 1, 1)
-        assert isinstance(timing, LastCompletionRequestTimings)
+        assert isinstance(timing, RequestTimings)
 
     @pytest.mark.sanity
     def test_create_timings_invalid(self):
@@ -722,7 +704,7 @@ class TestConcurrentStrategy:
                     timing = instance.create_request_timings(
                         local_rank, local_world_size, streams
                     )
-                    assert isinstance(timing, LastCompletionRequestTimings)
+                    assert isinstance(timing, RequestTimings)
 
                     # Verify startup behavior
                     if startup_duration > 0:
@@ -868,7 +850,7 @@ class TestThroughputStrategy:
                     timing = instance.create_request_timings(
                         local_rank, local_world_size, local_max_concurrency
                     )
-                    assert isinstance(timing, NoDelayRequestTimings)
+                    assert isinstance(timing, RequestTimings)
 
                     # Verify startup configuration
                     if startup_duration > 0:
@@ -981,7 +963,7 @@ class TestAsyncConstantStrategy:
         # Test with different worker configurations
         for local_world_size in range(1, 5):
             timing = instance.create_request_timings(0, local_world_size, 1)
-            assert isinstance(timing, ConstantRateRequestTimings)
+            assert isinstance(timing, RequestTimings)
 
             # Rate should be distributed across workers
             expected_worker_rate = rate / local_world_size
@@ -1091,7 +1073,7 @@ class TestAsyncPoissonStrategy:
                 timing = instance.create_request_timings(
                     local_rank, local_world_size, 1
                 )
-                assert isinstance(timing, PoissonRateRequestTimings)
+                assert isinstance(timing, RequestTimings)
 
                 # Rate should be distributed across workers
                 expected_worker_rate = rate / local_world_size

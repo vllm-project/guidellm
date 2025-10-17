@@ -19,20 +19,18 @@ from guidellm.scheduler import (
     ConcurrentStrategy,
     MaxDurationConstraint,
     MaxNumberConstraint,
-    MeasuredRequestTimings,
-    ScheduledRequestInfo,
-    SchedulerMessagingPydanticRegistry,
     SchedulerState,
     SynchronousStrategy,
     ThroughputStrategy,
     WorkerProcessGroup,
 )
 from guidellm.scheduler.worker_group import WorkerGroupState
+from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.utils import InterProcessMessaging
 from tests.unit.testing_utils import async_timeout
 
 
-class MockRequestTimings(MeasuredRequestTimings):
+class MockRequestTimings(RequestTimings):
     """Mock timing implementation for testing."""
 
     timings_type: Literal["mock"] = Field(default="mock")
@@ -98,26 +96,12 @@ class TestWorkerProcessGroup:
     """Test suite for WorkerProcessGroup class."""
 
     def setup_method(self):
-        self._original_messaging_registry = (
-            SchedulerMessagingPydanticRegistry.registry.copy()
-            if SchedulerMessagingPydanticRegistry.registry
-            else {}
-        )
-        self._original_timings_registry = (
-            MeasuredRequestTimings.registry.copy()
-            if MeasuredRequestTimings.registry
-            else {}
-        )
-        MeasuredRequestTimings.register_decorator(MockRequestTimings, "mock")
-        SchedulerMessagingPydanticRegistry.register_decorator(
-            MockRequestTimings, "mock"
-        )
+        # Registry functionality no longer exists in current implementation
+        pass
 
     def teardown_method(self):
-        SchedulerMessagingPydanticRegistry.registry = self._original_messaging_registry
-        MeasuredRequestTimings.registry = self._original_timings_registry
-        MeasuredRequestTimings.model_rebuild(force=True)
-        ScheduledRequestInfo.model_rebuild(force=True)
+        # Registry functionality no longer exists in current implementation
+        pass
 
     @pytest.fixture(
         params=[
@@ -125,24 +109,28 @@ class TestWorkerProcessGroup:
                 "requests": None,
                 "cycle_requests": ["request1", "request2", "request3"],
                 "strategy": SynchronousStrategy(),
+                "startup_duration": 0.1,
                 "constraints": {"max_num": MaxNumberConstraint(max_num=10)},
             },
             {
                 "requests": None,
                 "cycle_requests": ["req_a", "req_b"],
                 "strategy": ConcurrentStrategy(streams=2),
+                "startup_duration": 0.1,
                 "constraints": {"max_num": MaxNumberConstraint(max_num=5)},
             },
             {
                 "requests": ["req_x", "req_y", "req_z"],
                 "cycle_requests": None,
                 "strategy": ThroughputStrategy(max_concurrency=5),
+                "startup_duration": 0.1,
                 "constraints": {},
             },
             {
                 "requests": None,
                 "cycle_requests": ["req_8", "req_9", "req_10"],
                 "strategy": AsyncConstantStrategy(rate=20),
+                "startup_duration": 0.1,
                 "constraints": {"max_duration": MaxDurationConstraint(max_duration=1)},
             },
         ],
@@ -327,7 +315,7 @@ class TestWorkerProcessGroup:
 
             # Validate returned request info and response
             assert request_info is not None
-            assert isinstance(request_info, ScheduledRequestInfo)
+            assert isinstance(request_info, RequestInfo)
             assert request_info.request_id is not None
             assert request_info.status is not None
             if request_info.request_id not in requests_tracker:

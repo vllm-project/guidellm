@@ -11,10 +11,10 @@ from unittest.mock import Mock, patch
 import pytest
 
 from guidellm.backends.backend import Backend, BackendType
-from guidellm.scheduler import BackendInterface, ScheduledRequestInfo
-from guidellm.schemas.response import (
+from guidellm.scheduler import BackendInterface
+from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestTimings,
+    RequestTimings,
 )
 from guidellm.utils import RegistryMixin
 from tests.unit.testing_utils import async_timeout
@@ -41,6 +41,7 @@ class TestBackend:
         constructor_args = request.param
 
         class TestBackend(Backend):
+            @property
             def info(self) -> dict[str, Any]:
                 return {"type": self.type_}
 
@@ -100,6 +101,7 @@ class TestBackend:
         """Test Backend with invalid field values."""
 
         class TestBackend(Backend):
+            @property
             def info(self) -> dict[str, Any]:
                 return {}
 
@@ -154,7 +156,7 @@ class TestBackend:
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=GenerationRequestTimings(),
+            request_timings=RequestTimings(),
         )
 
         # Test resolve method
