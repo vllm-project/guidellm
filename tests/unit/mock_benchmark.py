@@ -1,15 +1,14 @@
 """Mock benchmark objects for unit testing."""
 
-from guidellm.backends import GenerationRequestTimings
 from guidellm.benchmark import (
     BenchmarkSchedulerStats,
     GenerativeBenchmark,
     GenerativeMetrics,
-    GenerativeRequestStats,
 )
 from guidellm.benchmark.profile import SynchronousProfile
 from guidellm.benchmark.schemas import BenchmarkerDict, SchedulerDict
-from guidellm.scheduler import ScheduledRequestInfo, SchedulerState, SynchronousStrategy
+from guidellm.scheduler import SchedulerState, SynchronousStrategy
+from guidellm.schemas import GenerativeRequestStats, RequestInfo, RequestTimings
 from guidellm.utils import (
     DistributionSummary,
     Percentiles,
@@ -131,8 +130,8 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
         requests=StatusBreakdown(
             successful=[
                 GenerativeRequestStats(
-                    scheduler_info=ScheduledRequestInfo(
-                        request_timings=GenerationRequestTimings(
+                    scheduler_info=RequestInfo(
+                        request_timings=RequestTimings(
                             request_start=1,
                             request_end=6,
                         )

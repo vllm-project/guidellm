@@ -1,5 +1,5 @@
 """
-Unit tests for GenerationRequest, GenerationResponse, GenerationRequestTimings.
+Unit tests for GenerationRequest, GenerationResponse, RequestTimings.
 """
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from guidellm.scheduler import MeasuredRequestTimings
-from guidellm.schemas.response import (
+from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
+    RequestTimings,
 )
+from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils import StandardBaseModel
 
 
@@ -23,17 +23,18 @@ class TestGenerationRequest:
 
     @pytest.fixture(
         params=[
-            {"content": "test content"},
             {
-                "content": ["message1", "message2"],
+                "request_type": "text_completions",
+                "arguments": GenerationRequestArguments(),
+            },
+            {
                 "request_type": "chat_completions",
-                "params": {"temperature": 0.7},
+                "arguments": GenerationRequestArguments(body={"temperature": 0.7}),
             },
             {
                 "request_id": "custom-id",
-                "content": {"role": "user", "content": "test"},
-                "stats": {"prompt_tokens": 50},
-                "constraints": {"output_tokens": 100},
+                "request_type": "text_completions",
+                "arguments": GenerationRequestArguments(body={"prompt": "test"}),
             },
         ]
     )
@@ -55,10 +56,9 @@ class TestGenerationRequest:
         expected_fields = [
             "request_id",
             "request_type",
-            "content",
-            "params",
-            "stats",
-            "constraints",
+            "arguments",
+            "input_metrics",
+            "output_metrics",
         ]
         for field in expected_fields:
             assert field in fields
@@ -68,7 +68,7 @@ class TestGenerationRequest:
         """Test GenerationRequest initialization."""
         instance, constructor_args = valid_instances
         assert isinstance(instance, GenerationRequest)
-        assert instance.content == constructor_args["content"]
+        assert instance.arguments == constructor_args["arguments"]
 
         # Check defaults
         expected_request_type = constructor_args.get("request_type", "text_completions")
@@ -84,21 +84,25 @@ class TestGenerationRequest:
     @pytest.mark.sanity
     def test_invalid_initialization_values(self):
         """Test GenerationRequest with invalid field values."""
-        # Invalid request_type
+        # Invalid request_type (not a string)
         with pytest.raises(ValidationError):
-            GenerationRequest(content="test", request_type="invalid_type")
+            GenerationRequest(request_type=123, arguments=GenerationRequestArguments())
 
     @pytest.mark.sanity
     def test_invalid_initialization_missing(self):
         """Test GenerationRequest initialization without required field."""
         with pytest.raises(ValidationError):
-            GenerationRequest()  # Missing required 'content' field
+            GenerationRequest()  # Missing required 'request_type' field
 
     @pytest.mark.smoke
     def test_auto_id_generation(self):
         """Test that request_id is auto-generated if not provided."""
-        request1 = GenerationRequest(content="test1")
-        request2 = GenerationRequest(content="test2")
+        request1 = GenerationRequest(
+            request_type="text_completions", arguments=GenerationRequestArguments()
+        )
+        request2 = GenerationRequest(
+            request_type="text_completions", arguments=GenerationRequestArguments()
+        )
 
         assert request1.request_id != request2.request_id
         assert len(request1.request_id) > 0
@@ -110,19 +114,28 @@ class TestGenerationRequest:
 
     @pytest.mark.regression
     def test_content_types(self):
-        """Test GenerationRequest with different content types."""
-        # String content
-        request1 = GenerationRequest(content="string content")
-        assert request1.content == "string content"
+        """Test GenerationRequest with different argument types."""
+        # Basic arguments
+        request1 = GenerationRequest(
+            request_type="text_completions", arguments=GenerationRequestArguments()
+        )
+        assert isinstance(request1.arguments, GenerationRequestArguments)
 
-        # List content
-        request2 = GenerationRequest(content=["item1", "item2"])
-        assert request2.content == ["item1", "item2"]
+        # Arguments with body
+        request2 = GenerationRequest(
+            request_type="chat_completions",
+            arguments=GenerationRequestArguments(body={"prompt": "test"}),
+        )
+        assert request2.arguments.body == {"prompt": "test"}
 
-        # Dict content
-        dict_content = {"role": "user", "content": "test"}
-        request3 = GenerationRequest(content=dict_content)
-        assert request3.content == dict_content
+        # Arguments with headers
+        request3 = GenerationRequest(
+            request_type="text_completions",
+            arguments=GenerationRequestArguments(
+                headers={"Authorization": "Bearer token"}
+            ),
+        )
+        assert request3.arguments.headers == {"Authorization": "Bearer token"}
 
     @pytest.mark.sanity
     def test_marshalling(self, valid_instances):
@@ -130,11 +143,11 @@ class TestGenerationRequest:
         instance, constructor_args = valid_instances
         data_dict = instance.model_dump()
         assert isinstance(data_dict, dict)
-        assert data_dict["content"] == constructor_args["content"]
+        assert "arguments" in data_dict
 
         # Test reconstruction
         reconstructed = GenerationRequest.model_validate(data_dict)
-        assert reconstructed.content == instance.content
+        assert reconstructed.arguments == instance.arguments
         assert reconstructed.request_type == instance.request_type
         assert reconstructed.request_id == instance.request_id
 
@@ -146,18 +159,12 @@ class TestGenerationResponse:
         params=[
             {
                 "request_id": "test-123",
-                "request_args": {"model": "gpt-3.5-turbo"},
+                "request_args": "model=gpt-3.5-turbo",
             },
             {
                 "request_id": "test-456",
-                "request_args": {"model": "gpt-4"},
-                "value": "Generated text",
-                "delta": "new text",
-                "iterations": 5,
-                "request_prompt_tokens": 50,
-                "request_output_tokens": 100,
-                "response_prompt_tokens": 55,
-                "response_output_tokens": 95,
+                "request_args": "model=gpt-4",
+                "text": "Generated text",
             },
         ]
     )
@@ -373,8 +380,8 @@ class TestGenerationResponse:
         assert reconstructed.iterations == instance.iterations
 
 
-class TestGenerationRequestTimings:
-    """Test cases for GenerationRequestTimings model."""
+class TestRequestTimings:
+    """Test cases for RequestTimings model."""
 
     @pytest.fixture(
         params=[
@@ -388,20 +395,20 @@ class TestGenerationRequestTimings:
         ]
     )
     def valid_instances(self, request):
-        """Fixture providing valid GenerationRequestTimings instances."""
+        """Fixture providing valid RequestTimings instances."""
         constructor_args = request.param
-        instance = GenerationRequestTimings(**constructor_args)
+        instance = RequestTimings(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
     def test_class_signatures(self):
-        """Test GenerationRequestTimings inheritance and type relationships."""
-        assert issubclass(GenerationRequestTimings, MeasuredRequestTimings)
-        assert hasattr(GenerationRequestTimings, "model_dump")
-        assert hasattr(GenerationRequestTimings, "model_validate")
+        """Test RequestTimings inheritance and type relationships."""
+        assert issubclass(RequestTimings, RequestTimings)
+        assert hasattr(RequestTimings, "model_dump")
+        assert hasattr(RequestTimings, "model_validate")
 
-        # Check inherited fields from MeasuredRequestTimings
-        fields = GenerationRequestTimings.model_fields
+        # Check inherited fields from RequestTimings
+        fields = RequestTimings.model_fields
         expected_inherited_fields = ["request_start", "request_end"]
         for field in expected_inherited_fields:
             assert field in fields
@@ -413,10 +420,10 @@ class TestGenerationRequestTimings:
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
-        """Test GenerationRequestTimings initialization."""
+        """Test RequestTimings initialization."""
         instance, constructor_args = valid_instances
-        assert isinstance(instance, GenerationRequestTimings)
-        assert isinstance(instance, MeasuredRequestTimings)
+        assert isinstance(instance, RequestTimings)
+        assert isinstance(instance, RequestTimings)
 
         # Check field values
         expected_first = constructor_args.get("first_iteration")
@@ -426,40 +433,40 @@ class TestGenerationRequestTimings:
 
     @pytest.mark.sanity
     def test_invalid_initialization_values(self):
-        """Test GenerationRequestTimings with invalid field values."""
+        """Test RequestTimings with invalid field values."""
         # Invalid timestamp type
         with pytest.raises(ValidationError):
-            GenerationRequestTimings(first_iteration="not_float")
+            RequestTimings(first_iteration="not_float")
 
         with pytest.raises(ValidationError):
-            GenerationRequestTimings(last_iteration="not_float")
+            RequestTimings(last_iteration="not_float")
 
     @pytest.mark.smoke
     def test_optional_fields(self):
         """Test that all timing fields are optional."""
         # Should be able to create with no fields
-        timings1 = GenerationRequestTimings()
+        timings1 = RequestTimings()
         assert timings1.first_iteration is None
         assert timings1.last_iteration is None
 
         # Should be able to create with only one field
-        timings2 = GenerationRequestTimings(first_iteration=123.0)
+        timings2 = RequestTimings(first_iteration=123.0)
         assert timings2.first_iteration == 123.0
         assert timings2.last_iteration is None
 
-        timings3 = GenerationRequestTimings(last_iteration=456.0)
+        timings3 = RequestTimings(last_iteration=456.0)
         assert timings3.first_iteration is None
         assert timings3.last_iteration == 456.0
 
     @pytest.mark.sanity
     def test_marshalling(self, valid_instances):
-        """Test GenerationRequestTimings serialization and deserialization."""
+        """Test RequestTimings serialization and deserialization."""
         instance, constructor_args = valid_instances
         data_dict = instance.model_dump()
         assert isinstance(data_dict, dict)
 
         # Test reconstruction
-        reconstructed = GenerationRequestTimings.model_validate(data_dict)
+        reconstructed = RequestTimings.model_validate(data_dict)
         assert reconstructed.first_iteration == instance.first_iteration
         assert reconstructed.last_iteration == instance.last_iteration
         assert reconstructed.request_start == instance.request_start

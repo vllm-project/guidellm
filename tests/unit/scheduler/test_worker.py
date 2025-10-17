@@ -15,16 +15,10 @@ import pytest_asyncio
 
 from guidellm.scheduler import (
     BackendInterface,
-    ConstantRateRequestTimings,
-    LastCompletionRequestTimings,
-    MeasuredRequestTimings,
-    NoDelayRequestTimings,
-    PoissonRateRequestTimings,
-    ScheduledRequestInfo,
-    ScheduledRequestTimings,
-    SchedulerMessagingPydanticRegistry,
+    SynchronousStrategy,
     WorkerProcess,
 )
+from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.utils import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
 
@@ -43,7 +37,7 @@ class TimingsBounds:
     actual_tolerance: float = 10e-4
 
 
-class MockRequestTimings(MeasuredRequestTimings):
+class MockRequestTimings(RequestTimings):
     """Mock timing implementation for testing."""
 
 
@@ -142,22 +136,20 @@ class TestWorkerProcess:
             **constructor_args["messaging"], poll_interval=0.01
         )
 
+        await main_messaging.start(pydantic_models=[])
         try:
             instance = WorkerProcess(
+                worker_index=0,
                 messaging=main_messaging.create_worker_copy(0),
                 backend=MockBackend(),
-                request_timings=LastCompletionRequestTimings(),
+                strategy=SynchronousStrategy(),
+                fut_scheduling_time_limit=10.0,
                 **constructor_args["worker"],
                 startup_barrier=Barrier(2),
                 requests_generated_event=Event(),
                 constraint_reached_event=Event(),
                 shutdown_event=Event(),
                 error_event=Event(),
-            )
-            await main_messaging.start(
-                pydantic_models=list(
-                    SchedulerMessagingPydanticRegistry.registry.values()
-                )
             )
             yield instance, main_messaging, constructor_args
         finally:
@@ -246,7 +238,7 @@ class TestWorkerProcess:
         assert instance.backend is not None
         assert isinstance(instance.backend, MockBackend)
         assert instance.request_timings is not None
-        assert isinstance(instance.request_timings, LastCompletionRequestTimings)
+        assert isinstance(instance.request_timings, RequestTimings)
         assert not instance.startup_completed
 
     @pytest.mark.sanity
@@ -259,7 +251,7 @@ class TestWorkerProcess:
 
         # Create a complete set of valid parameters
         backend = MockBackend()
-        request_timings = LastCompletionRequestTimings()
+        request_timings = RequestTimings()
         barrier = Barrier(2)
         shutdown_event = Event()
         error_event = Event()
@@ -328,7 +320,7 @@ class TestWorkerProcess:
             requests_tracker = {}
             for index in range(num_requests):
                 request = f"request_{index}"
-                request_info = ScheduledRequestInfo(
+                request_info = RequestInfo(
                     request_id=request,
                     scheduler_start_time=start_time,
                     scheduler_process_id=0,
@@ -412,7 +404,7 @@ class TestWorkerProcess:
             # Send cancel requests
             for index in range(num_canceled):
                 cancel_request = f"cancel_request_{index}"
-                cancel_info = ScheduledRequestInfo(
+                cancel_info = RequestInfo(
                     request_id=request,
                     scheduler_start_time=start_time,
                     scheduler_process_id=0,
@@ -493,21 +485,21 @@ class TestWorkerProcess:
         ("request_timings", "timing_bounds"),
         [
             (
-                LastCompletionRequestTimings(offset=0.1),
+                RequestTimings(offset=0.1),
                 [
                     TimingsBounds(lower=0.1, prev_request="greater_equal")
                     for _ in range(STANDARD_NUM_REQUESTS)
                 ],
             ),
             (
-                NoDelayRequestTimings(offset=0.05),
+                RequestTimings(offset=0.05),
                 [
                     TimingsBounds(lower=0.05, upper=0.05, actual_tolerance=1.0)
                     for _ in range(STANDARD_NUM_REQUESTS)
                 ],
             ),
             (
-                ConstantRateRequestTimings(rate=100, offset=0.2),
+                RequestTimings(rate=100, offset=0.2),
                 [
                     TimingsBounds(
                         exact=0.2 + ind * 0.01,
@@ -519,7 +511,7 @@ class TestWorkerProcess:
                 ],
             ),
             (
-                PoissonRateRequestTimings(rate=200, offset=0.01),
+                RequestTimings(rate=200, offset=0.01),
                 [
                     TimingsBounds(lower=0.01, prev_request="greater")
                     for ind in range(STANDARD_NUM_REQUESTS)
@@ -536,7 +528,7 @@ class TestWorkerProcess:
     async def test_run_with_timings(  # noqa: C901, PLR0912
         self,
         valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
-        request_timings: ScheduledRequestTimings,
+        request_timings: RequestTimings,
         timing_bounds: list[TimingsBounds],
     ):
         instance, main_messaging, constructor_args = valid_instances
@@ -567,7 +559,7 @@ class TestWorkerProcess:
                 await main_messaging.put(
                     (
                         request,
-                        ScheduledRequestInfo(scheduler_start_time=start_time),
+                        RequestInfo(scheduler_start_time=start_time),
                     ),
                     timeout=2.0,
                 )
