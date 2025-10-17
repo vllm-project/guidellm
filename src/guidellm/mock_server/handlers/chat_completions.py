@@ -136,7 +136,7 @@ class ChatCompletionsHandler:
 
         # Token counts
         prompt_text = self.tokenizer.apply_chat_template(req.messages)
-        prompt_tokens = len(self.tokenizer(prompt_text))
+        prompt_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
         max_tokens = req.max_completion_tokens or req.max_tokens or math.inf
         completion_tokens_count = min(
             sample_number(self.config.output_tokens, self.config.output_tokens_std),
@@ -197,7 +197,7 @@ class ChatCompletionsHandler:
 
             # Token counts
             prompt_text = self.tokenizer.apply_chat_template(req.messages)
-            prompt_tokens = len(self.tokenizer(prompt_text))
+            prompt_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
             max_tokens = req.max_completion_tokens or req.max_tokens or math.inf
             completion_tokens_count = int(
                 min(
