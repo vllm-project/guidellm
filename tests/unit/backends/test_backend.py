@@ -11,11 +11,11 @@ from unittest.mock import Mock, patch
 import pytest
 
 from guidellm.backends.backend import Backend, BackendType
-from guidellm.scheduler import BackendInterface
 from guidellm.schemas import (
     GenerationRequest,
-    RequestTimings,
+    RequestInfo,
 )
+from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils import RegistryMixin
 from tests.unit.testing_utils import async_timeout
 
@@ -69,7 +69,11 @@ class TestBackend:
     def test_class_signatures(self):
         """Test Backend inheritance and type relationships."""
         assert issubclass(Backend, RegistryMixin)
-        assert isinstance(Backend, BackendInterface)
+        # Check that Backend implements BackendInterface methods
+        assert hasattr(Backend, "resolve")
+        assert hasattr(Backend, "process_startup")
+        assert hasattr(Backend, "process_shutdown")
+        assert hasattr(Backend, "validate")
         assert hasattr(Backend, "create")
         assert hasattr(Backend, "register")
         assert hasattr(Backend, "get_registered_object")
@@ -149,15 +153,10 @@ class TestBackend:
         instance, _ = valid_instances
 
         # Test that Backend uses the correct generic types
-        request = GenerationRequest(content="test")
-        request_info = ScheduledRequestInfo(
-            request_id="test-id",
-            status="pending",
-            scheduler_node_id=1,
-            scheduler_process_id=1,
-            scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+        request = GenerationRequest(
+            request_type="text_completions", arguments=GenerationRequestArguments()
         )
+        request_info = RequestInfo(request_id="test-id")
 
         # Test resolve method
         async for response, info in instance.resolve(request, request_info):
