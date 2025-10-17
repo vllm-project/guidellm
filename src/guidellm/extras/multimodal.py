@@ -230,7 +230,7 @@ def encode_video(
     else:
         raise ValueError(f"Unsupported video type: {type(video)} for {video}")
 
-    video_base64 = base64.b64encode(video).decode("utf-8")
+    video_base64 = base64.b64encode(video_bytes).decode("utf-8")
 
     return {
         "type": "video_base64",
@@ -266,8 +266,9 @@ def encode_audio(
         "audio_samples",
         "audio_seconds",
         "audio_bytes",
+        "file_name",
     ],
-    str | int | float | None,
+    str | int | float | bytes | None,
 ]:
     """Decode audio (if necessary) and re-encode to specified format."""
     samples = _decode_audio(audio, sample_rate=sample_rate, max_duration=max_duration)
@@ -338,10 +339,10 @@ def _decode_audio(  # noqa: C901, PLR0912
 
     samples: AudioSamples
 
+    data: torch.Tensor | bytes
     # HF datasets return AudioDecoder for audio column
     if isinstance(audio, AudioDecoder):
         samples = audio.get_samples_played_in_range(stop_seconds=max_duration)
-
     elif isinstance(audio, torch.Tensor):
         # If float stream assume decoded audio
         if torch.is_floating_point(audio):
