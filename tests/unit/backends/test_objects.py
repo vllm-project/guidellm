@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
+    RequestInfo,
     RequestTimings,
 )
 from guidellm.schemas.request import GenerationRequestArguments
@@ -186,23 +187,15 @@ class TestGenerationResponse:
         expected_fields = [
             "request_id",
             "request_args",
-            "value",
-            "delta",
-            "iterations",
-            "request_prompt_tokens",
-            "request_output_tokens",
-            "response_prompt_tokens",
-            "response_output_tokens",
+            "text",
+            "input_metrics",
+            "output_metrics",
         ]
         for field in expected_fields:
             assert field in fields
 
-        # Check properties exist
-        assert hasattr(GenerationResponse, "prompt_tokens")
-        assert hasattr(GenerationResponse, "output_tokens")
-        assert hasattr(GenerationResponse, "total_tokens")
-        assert hasattr(GenerationResponse, "preferred_prompt_tokens")
-        assert hasattr(GenerationResponse, "preferred_output_tokens")
+        # Check methods exist
+        assert hasattr(GenerationResponse, "compile_stats")
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -213,12 +206,12 @@ class TestGenerationResponse:
         assert instance.request_args == constructor_args["request_args"]
 
         # Check defaults for optional fields
-        if "value" not in constructor_args:
-            assert instance.value is None
-        if "delta" not in constructor_args:
-            assert instance.delta is None
-        if "iterations" not in constructor_args:
-            assert instance.iterations == 0
+        if "text" not in constructor_args:
+            assert instance.text is None
+
+        # Check default metrics
+        assert hasattr(instance, "input_metrics")
+        assert hasattr(instance, "output_metrics")
 
     @pytest.mark.sanity
     def test_invalid_initialization_values(self):
@@ -237,131 +230,27 @@ class TestGenerationResponse:
             GenerationResponse(request_id="test")  # Missing request_args
 
     @pytest.mark.smoke
-    def test_prompt_tokens_property(self):
-        """Test prompt_tokens property logic."""
-        # When both are available, prefers response_prompt_tokens
-        response1 = GenerationResponse(
-            request_id="test",
-            request_args={},
-            request_prompt_tokens=50,
-            response_prompt_tokens=55,
-        )
-        assert response1.prompt_tokens == 55
+    def test_compile_stats_method(self):
+        """Test compile_stats method functionality."""
+        from guidellm.schemas.request import GenerationRequestArguments
 
-        # When only request_prompt_tokens is available
-        response2 = GenerationResponse(
-            request_id="test", request_args={}, request_prompt_tokens=50
-        )
-        assert response2.prompt_tokens == 50
-
-        # When only response_prompt_tokens is available
-        response3 = GenerationResponse(
-            request_id="test", request_args={}, response_prompt_tokens=55
-        )
-        assert response3.prompt_tokens == 55
-
-        # When neither is available
-        response4 = GenerationResponse(request_id="test", request_args={})
-        assert response4.prompt_tokens is None
-
-    @pytest.mark.smoke
-    def test_output_tokens_property(self):
-        """Test output_tokens property logic."""
-        # When both are available, prefers response_output_tokens
-        response1 = GenerationResponse(
-            request_id="test",
-            request_args={},
-            request_output_tokens=100,
-            response_output_tokens=95,
-        )
-        assert response1.output_tokens == 95
-
-        # When only request_output_tokens is available
-        response2 = GenerationResponse(
-            request_id="test", request_args={}, request_output_tokens=100
-        )
-        assert response2.output_tokens == 100
-
-        # When only response_output_tokens is available
-        response3 = GenerationResponse(
-            request_id="test", request_args={}, response_output_tokens=95
-        )
-        assert response3.output_tokens == 95
-
-        # When neither is available
-        response4 = GenerationResponse(request_id="test", request_args={})
-        assert response4.output_tokens is None
-
-    @pytest.mark.smoke
-    def test_total_tokens_property(self):
-        """Test total_tokens property calculation."""
-        # When both prompt and output tokens are available
-        response1 = GenerationResponse(
-            request_id="test",
-            request_args={},
-            response_prompt_tokens=50,
-            response_output_tokens=100,
-        )
-        assert response1.total_tokens == 150
-
-        # When one is missing
-        response2 = GenerationResponse(
-            request_id="test", request_args={}, response_prompt_tokens=50
-        )
-        assert response2.total_tokens is None
-
-        # When both are missing
-        response3 = GenerationResponse(request_id="test", request_args={})
-        assert response3.total_tokens is None
-
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        ("preferred_source", "expected_prompt", "expected_output"),
-        [
-            ("request", 50, 100),
-            ("response", 55, 95),
-        ],
-    )
-    def test_preferred_token_methods(
-        self, preferred_source, expected_prompt, expected_output
-    ):
-        """Test preferred_*_tokens methods."""
         response = GenerationResponse(
-            request_id="test",
-            request_args={},
-            request_prompt_tokens=50,
-            request_output_tokens=100,
-            response_prompt_tokens=55,
-            response_output_tokens=95,
+            request_id="test-123", request_args="test_args", text="Generated response"
         )
 
-        assert response.preferred_prompt_tokens(preferred_source) == expected_prompt
-        assert response.preferred_output_tokens(preferred_source) == expected_output
-
-    @pytest.mark.regression
-    def test_preferred_tokens_fallback(self):
-        """Test preferred_*_tokens methods with fallback logic."""
-        # Only response tokens available
-        response1 = GenerationResponse(
-            request_id="test",
-            request_args={},
-            response_prompt_tokens=55,
-            response_output_tokens=95,
+        request = GenerationRequest(
+            request_id="test-123",
+            request_type="text_completions",
+            arguments=GenerationRequestArguments(),
         )
 
-        assert response1.preferred_prompt_tokens("request") == 55  # Falls back
-        assert response1.preferred_output_tokens("request") == 95  # Falls back
+        request_info = RequestInfo(request_id="test-123")
 
-        # Only request tokens available
-        response2 = GenerationResponse(
-            request_id="test",
-            request_args={},
-            request_prompt_tokens=50,
-            request_output_tokens=100,
-        )
-
-        assert response2.preferred_prompt_tokens("response") == 50  # Falls back
-        assert response2.preferred_output_tokens("response") == 100  # Falls back
+        # Test that compile_stats works
+        stats = response.compile_stats(request, request_info)
+        assert stats is not None
+        assert hasattr(stats, "request_id")
+        assert stats.request_id == "test-123"
 
     @pytest.mark.sanity
     def test_marshalling(self, valid_instances):
@@ -376,8 +265,8 @@ class TestGenerationResponse:
         reconstructed = GenerationResponse.model_validate(data_dict)
         assert reconstructed.request_id == instance.request_id
         assert reconstructed.request_args == instance.request_args
-        assert reconstructed.value == instance.value
-        assert reconstructed.iterations == instance.iterations
+        if hasattr(instance, "text"):
+            assert reconstructed.text == instance.text
 
 
 class TestRequestTimings:
