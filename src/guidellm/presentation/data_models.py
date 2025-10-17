@@ -1,25 +1,25 @@
 import random
 from collections import defaultdict
 from math import ceil
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, computed_field
 
 if TYPE_CHECKING:
-    from guidellm.benchmark.benchmark import GenerativeBenchmark
+    from guidellm.benchmark import GenerativeBenchmark
 
-from guidellm.objects.statistics import DistributionSummary
+from guidellm.utils import DistributionSummary
 
 
 class Bucket(BaseModel):
-    value: Union[float, int]
+    value: float | int
     count: int
 
     @staticmethod
     def from_data(
-        data: Union[list[float], list[int]],
-        bucket_width: Optional[float] = None,
-        n_buckets: Optional[int] = None,
+        data: list[float] | list[int],
+        bucket_width: float | None = None,
+        n_buckets: int | None = None,
     ) -> tuple[list["Bucket"], float]:
         if not data:
             return [], 1.0
@@ -35,7 +35,7 @@ class Bucket(BaseModel):
         else:
             n_buckets = ceil(range_v / bucket_width)
 
-        bucket_counts: defaultdict[Union[float, int], int] = defaultdict(int)
+        bucket_counts: defaultdict[float | int, int] = defaultdict(int)
         for val in data:
             idx = int((val - min_v) // bucket_width)
             if idx >= n_buckets:
@@ -67,12 +67,12 @@ class RunInfo(BaseModel):
 
     @classmethod
     def from_benchmarks(cls, benchmarks: list["GenerativeBenchmark"]):
-        model = benchmarks[0].worker.backend_model or "N/A"
+        model = benchmarks[0].benchmarker.backend.get("model", "N/A")
         timestamp = max(
             bm.run_stats.start_time for bm in benchmarks if bm.start_time is not None
         )
         return cls(
-            model=Model(name=model, size=0),
+            model=Model(name=model or "", size=0),
             task="N/A",
             timestamp=timestamp,
             dataset=Dataset(name="N/A"),
@@ -80,7 +80,7 @@ class RunInfo(BaseModel):
 
 
 class Distribution(BaseModel):
-    statistics: Optional[DistributionSummary] = None
+    statistics: DistributionSummary | None = None
     buckets: list[Bucket]
     bucket_width: float
 
@@ -108,8 +108,8 @@ class WorkloadDetails(BaseModel):
 
     @classmethod
     def from_benchmarks(cls, benchmarks: list["GenerativeBenchmark"]):
-        target = benchmarks[0].worker.backend_target
-        rate_type = benchmarks[0].args.profile.type_
+        target = benchmarks[0].benchmarker.backend.get("target", "N/A")
+        rate_type = benchmarks[0].scheduler.strategy.type_
         successful_requests = [
             req for bm in benchmarks for req in bm.requests.successful
         ]
@@ -117,21 +117,25 @@ class WorkloadDetails(BaseModel):
             range(len(successful_requests)), min(5, len(successful_requests))
         )
         sample_prompts = [
-            successful_requests[i].prompt.replace("\n", " ").replace('"', "'")
+            req.request_args.replace("\n", " ").replace('"', "'")
+            if (req := successful_requests[i]).request_args
+            else ""
             for i in sample_indices
         ]
         sample_outputs = [
-            successful_requests[i].output.replace("\n", " ").replace('"', "'")
+            req.output.replace("\n", " ").replace('"', "'")
+            if (req := successful_requests[i]).output
+            else ""
             for i in sample_indices
         ]
 
         prompt_tokens = [
-            float(req.prompt_tokens)
+            float(req.prompt_tokens) if req.prompt_tokens is not None else -1
             for bm in benchmarks
             for req in bm.requests.successful
         ]
         output_tokens = [
-            float(req.output_tokens)
+            float(req.output_tokens) if req.output_tokens is not None else -1
             for bm in benchmarks
             for req in bm.requests.successful
         ]
@@ -152,13 +156,13 @@ class WorkloadDetails(BaseModel):
             statistics=output_token_stats, buckets=output_token_buckets, bucket_width=1
         )
 
-        min_start_time = benchmarks[0].run_stats.start_time
+        min_start_time = benchmarks[0].start_time
 
         all_req_times = [
-            req.start_time - min_start_time
+            req.info.timings.request_start - min_start_time
             for bm in benchmarks
             for req in bm.requests.successful
-            if req.start_time is not None
+            if req.info.timings.request_start is not None
         ]
         number_of_buckets = len(benchmarks)
         request_over_time_buckets, bucket_width = Bucket.from_data(
@@ -190,7 +194,7 @@ class TabularDistributionSummary(DistributionSummary):
     """
 
     @computed_field
-    def percentile_rows(self) -> list[dict[str, Union[str, float]]]:
+    def percentile_rows(self) -> list[dict[str, str | float]]:
         rows = [
             {"percentile": name, "value": value}
             for name, value in self.percentiles.model_dump().items()

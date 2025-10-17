@@ -8,7 +8,7 @@ Before installing GuideLLM, ensure you have the following prerequisites:
 
 - **Operating System:** Linux or MacOS
 
-- **Python Version:** 3.9 – 3.13
+- **Python Version:** 3.10 – 3.13
 
 - **Pip Version:** Ensure you have the latest version of pip installed. You can upgrade pip using the following command:
 

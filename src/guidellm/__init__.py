@@ -7,6 +7,8 @@ import contextlib
 import logging
 import os
 
+from datasets import config
+
 with (
     open(os.devnull, "w") as devnull,  # noqa: PTH123
     contextlib.redirect_stderr(devnull),
@@ -19,8 +21,10 @@ with (
     os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Silence warnings for tokenizers
     hf_logging.set_verbosity_error()
     logging.getLogger("transformers").setLevel(logging.ERROR)
+    config.USE_AUDIO_DECODE = False
 
-from .config import (
+from .logger import configure_logger, logger
+from .settings import (
     DatasetSettings,
     Environment,
     LoggingSettings,
@@ -30,7 +34,6 @@ from .config import (
     reload_settings,
     settings,
 )
-from .logger import configure_logger, logger
 
 __all__ = [
     "DatasetSettings",

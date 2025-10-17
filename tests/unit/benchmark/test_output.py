@@ -10,7 +10,10 @@ from pydantic import ValidationError
 from guidellm.benchmark import (
     GenerativeBenchmarksReport,
 )
-from guidellm.benchmark.output import GenerativeBenchmarksConsole
+from guidellm.benchmark.output import (
+    GenerativeBenchmarkerConsole,
+    GenerativeBenchmarkerCSV,
+)
 from tests.unit.mock_benchmark import mock_generative_benchmark
 
 
@@ -37,8 +40,8 @@ def test_generative_benchmark_marshalling():
     deserialized = GenerativeBenchmarksReport.model_validate(serialized)
     deserialized_benchmark = deserialized.benchmarks[0]
 
-    for field in mock_benchmark.model_fields:
-        assert getattr(mock_benchmark, field) == getattr(deserialized_benchmark, field)
+    # model_dump as workaround for duplicate fields for computed fields.
+    assert mock_benchmark.model_dump() == deserialized_benchmark.model_dump()
 
 
 def test_file_json():
@@ -55,8 +58,8 @@ def test_file_json():
     loaded_report = GenerativeBenchmarksReport.load_file(mock_path)
     loaded_benchmark = loaded_report.benchmarks[0]
 
-    for field in mock_benchmark.model_fields:
-        assert getattr(mock_benchmark, field) == getattr(loaded_benchmark, field)
+    # model_dump as workaround for duplicate fields for computed fields.
+    assert mock_benchmark.model_dump() == loaded_benchmark.model_dump()
 
     mock_path.unlink()
 
@@ -75,134 +78,101 @@ def test_file_yaml():
     loaded_report = GenerativeBenchmarksReport.load_file(mock_path)
     loaded_benchmark = loaded_report.benchmarks[0]
 
-    for field in mock_benchmark.model_fields:
-        assert getattr(mock_benchmark, field) == getattr(loaded_benchmark, field)
+    # model_dump as workaround for duplicate fields for computed fields.
+    assert mock_benchmark.model_dump() == loaded_benchmark.model_dump()
 
     mock_path.unlink()
 
 
-def test_file_csv():
+@pytest.mark.asyncio
+async def test_file_csv():
     mock_benchmark = mock_generative_benchmark()
     report = GenerativeBenchmarksReport(benchmarks=[mock_benchmark])
 
     mock_path = Path("mock_report.csv")
-    report.save_csv(mock_path)
+    csv_benchmarker = GenerativeBenchmarkerCSV(output_path=mock_path)
+    await csv_benchmarker.finalize(report)
 
-    with mock_path.open("r") as file:
+    with mock_path.open("r") as file:  # noqa: ASYNC230  # This is a test.
         reader = csv.reader(file)
         headers = next(reader)
         rows = list(reader)
 
     assert "Type" in headers
+    assert "Profile" in headers
     assert len(rows) == 1
 
     mock_path.unlink()
 
 
 def test_console_benchmarks_profile_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
     assert (
-        console.benchmarks_profile_str == "type=synchronous, strategies=['synchronous']"
+        console._get_profile_str(mock_benchmark)
+        == "type=synchronous, strategies=['synchronous']"
     )
-
-
-def test_console_benchmarks_args_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
-    mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
-    assert console.benchmarks_args_str == (
-        "max_number=None, max_duration=10.0, warmup_number=None, "
-        "warmup_duration=None, cooldown_number=None, cooldown_duration=None"
-    )
-
-
-def test_console_benchmarks_worker_desc_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
-    mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
-    assert console.benchmarks_worker_desc_str == str(mock_benchmark.worker)
-
-
-def test_console_benchmarks_request_loader_desc_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
-    mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
-    assert console.benchmarks_request_loader_desc_str == str(
-        mock_benchmark.request_loader
-    )
-
-
-def test_console_benchmarks_extras_str():
-    console = GenerativeBenchmarksConsole(enabled=True)
-    mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
-    assert console.benchmarks_extras_str == "None"
 
 
 def test_console_print_section_header():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     with patch.object(console.console, "print") as mock_print:
-        console.print_section_header("Test Header")
+        console._print_section_header("Test Header")
         mock_print.assert_called_once()
 
 
 def test_console_print_labeled_line():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     with patch.object(console.console, "print") as mock_print:
-        console.print_labeled_line("Label", "Value")
+        console._print_labeled_line("Label", "Value")
         mock_print.assert_called_once()
 
 
 def test_console_print_line():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     with patch.object(console.console, "print") as mock_print:
-        console.print_line("Test Line")
+        console._print_line("Test Line")
         mock_print.assert_called_once()
 
 
 def test_console_print_table():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     headers = ["Header1", "Header2"]
     rows = [["Row1Col1", "Row1Col2"], ["Row2Col1", "Row2Col2"]]
     with (
-        patch.object(console, "print_section_header") as mock_header,
-        patch.object(console, "print_table_divider") as mock_divider,
-        patch.object(console, "print_table_row") as mock_row,
+        patch.object(console, "_print_section_header") as mock_header,
+        patch.object(console, "_print_table_divider") as mock_divider,
+        patch.object(console, "_print_table_row") as mock_row,
     ):
-        console.print_table(headers, rows, "Test Table")
+        console._print_table(headers, rows, "Test Table")
         mock_header.assert_called_once()
         mock_divider.assert_called()
         mock_row.assert_called()
 
 
 def test_console_print_benchmarks_metadata():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
     with (
-        patch.object(console, "print_section_header") as mock_header,
-        patch.object(console, "print_labeled_line") as mock_labeled,
+        patch.object(console, "_print_section_header") as mock_header,
+        patch.object(console, "_print_labeled_line") as mock_labeled,
     ):
-        console.print_benchmarks_metadata()
+        console._print_benchmarks_metadata([mock_benchmark])
         mock_header.assert_called_once()
         mock_labeled.assert_called()
 
 
 def test_console_print_benchmarks_info():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
-    with patch.object(console, "print_table") as mock_table:
-        console.print_benchmarks_info()
+    with patch.object(console, "_print_table") as mock_table:
+        console._print_benchmarks_info([mock_benchmark])
         mock_table.assert_called_once()
 
 
 def test_console_print_benchmarks_stats():
-    console = GenerativeBenchmarksConsole(enabled=True)
+    console = GenerativeBenchmarkerConsole()
     mock_benchmark = mock_generative_benchmark()
-    console.benchmarks = [mock_benchmark]
-    with patch.object(console, "print_table") as mock_table:
-        console.print_benchmarks_stats()
+    with patch.object(console, "_print_table") as mock_table:
+        console._print_benchmarks_stats([mock_benchmark])
         mock_table.assert_called_once()
