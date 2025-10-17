@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABCMeta
 from typing import Any
 
 from guidellm.data.preprocessors.preprocessor import (
@@ -7,7 +8,7 @@ from guidellm.data.preprocessors.preprocessor import (
     PreprocessorRegistry,
 )
 from guidellm.data.schemas import GenerativeDatasetColumnType
-from guidellm.data.utils import encode_audio, encode_image, encode_video, text_stats
+from guidellm.data.utils import text_stats
 from guidellm.schemas import GenerationRequest, GenerationRequestArguments, UsageMetrics
 
 __all__ = [
@@ -18,8 +19,28 @@ __all__ = [
 ]
 
 
+class RequestFormatter(DatasetPreprocessor, metaclass=ABCMeta):
+    @staticmethod
+    def encode_audio(*args, **kwargs):
+        from guidellm.extras.multimodal import encode_audio
+
+        return encode_audio(*args, **kwargs)
+
+    @staticmethod
+    def encode_image(*args, **kwargs):
+        from guidellm.extras.multimodal import encode_image
+
+        return encode_image(*args, **kwargs)
+
+    @staticmethod
+    def encode_video(*args, **kwargs):
+        from guidellm.extras.multimodal import encode_video
+
+        return encode_video(*args, **kwargs)
+
+
 @PreprocessorRegistry.register("text_completions")
-class GenerativeTextCompletionsRequestFormatter(DatasetPreprocessor):
+class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
     def __init__(
         self,
         model: str,
@@ -92,7 +113,7 @@ class GenerativeTextCompletionsRequestFormatter(DatasetPreprocessor):
 
 
 @PreprocessorRegistry.register("chat_completions")
-class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
+class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
     def __init__(
         self,
         model: str,
@@ -120,7 +141,7 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
             encode_kwargs.get("audio", {}) if encode_kwargs else {}
         )
 
-    def __call__(
+    def __call__(  # noqa: C901, PLR0912, PLR0915
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
         arguments = GenerationRequestArguments(body={})
@@ -200,7 +221,7 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
             if not image:
                 continue
 
-            image_dict = encode_image(image, **self.encode_image_kwargs)
+            image_dict = self.encode_image(image, **self.encode_image_kwargs)
             if (image_pixels := image_dict.get("image_pixels")) is not None:
                 input_metrics.image_pixels = (
                     input_metrics.image_pixels or 0
@@ -223,7 +244,7 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
             if not video:
                 continue
 
-            video_dict = encode_video(video, **self.encode_video_kwargs)
+            video_dict = self.encode_video(video, **self.encode_video_kwargs)
             if (video_frames := video_dict.get("video_frames")) is not None:
                 input_metrics.video_frames = (
                     input_metrics.video_frames or 0
@@ -250,7 +271,9 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
             if not audio:
                 continue
 
-            audio_dict = encode_audio(audio, b64encode=True, **self.encode_audio_kwargs)
+            audio_dict = self.encode_audio(
+                audio, b64encode=True, **self.encode_audio_kwargs
+            )
             if (audio_samples := audio_dict.get("audio_samples")) is not None:
                 input_metrics.audio_samples = (
                     input_metrics.audio_samples or 0
@@ -288,7 +311,7 @@ class GenerativeChatCompletionsRequestFormatter(DatasetPreprocessor):
 
 
 @PreprocessorRegistry.register("audio_transcriptions")
-class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
+class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
     def __init__(
         self,
         model: str,
@@ -345,7 +368,7 @@ class GenerativeAudioTranscriptionRequestFormatter(DatasetPreprocessor):
                 f"one audio column, but got {len(audio_columns)}."
             )
 
-        audio_dict = encode_audio(
+        audio_dict = self.encode_audio(
             audio_columns[0], b64encode=False, **self.encode_audio_kwargs
         )
         input_metrics.audio_samples = audio_dict.get("audio_samples")

@@ -62,26 +62,37 @@ dependencies = [
     "httpx[http2]<1.0.0",
     "loguru",
     "msgpack",
-    "numpy<2.0.0",
-    "pillow",
+    "numpy>=2.0.0",
     "protobuf",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.0.0",
-    "pydub",
     "pyyaml>=6.0.0",
     "rich",
     "sanic",
     "transformers",
     "uvloop>=0.18",
-    "librosa>=0.11.0",
     "torch",
 ]
 
 [project.optional-dependencies]
+# Meta Extras
+all = ["guidellm[perf,openai,multimodal]"]
+recommended = ["guidellm[perf,openai]"]
+# Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
-recommended = ["guidellm[perf,openai]"]
+multimodal = [
+    "datasets[audio,vision]>=4.1.0",
+    "pillow",
+    # Torchcodec needs specific torch version
+    "torch==2.9.*",
+    "torchcodec==0.8",
+]
+# Dev Tooling
 dev = [
+    # Install all optional dependencies
+    "guidellm[all]",
+
     # build
     "build>=1.0.0",
     "setuptools>=61.0",
