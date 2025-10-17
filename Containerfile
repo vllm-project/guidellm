@@ -31,7 +31,7 @@ COPY / /src
 
 # Install guidellm and locked dependencies
 RUN pdm use -p /src -f /opt/app-root \
-    && pdm install -p /src --check --prod --no-editable
+    && pdm install -p /src -G all --check --prod --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
