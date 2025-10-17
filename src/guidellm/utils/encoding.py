@@ -32,7 +32,7 @@ try:
 
     HAS_MSGSPEC = True
 except ImportError:
-    MsgspecDecoder = MsgspecEncoder = None
+    MsgspecDecoder = MsgspecEncoder = None  # type: ignore[misc, assignment] # HAS_MSGSPEC will be checked at runtime
     HAS_MSGSPEC = False
 
 

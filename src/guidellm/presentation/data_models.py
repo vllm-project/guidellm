@@ -117,13 +117,13 @@ class WorkloadDetails(BaseModel):
             range(len(successful_requests)), min(5, len(successful_requests))
         )
         sample_prompts = [
-            successful_requests[i].request_args.replace("\n", " ").replace('"', "'")
-            if successful_requests[i].request_args is not None
-            else ""
+            req.request_args.replace("\n", " ").replace('"', "'")
+            if (req := successful_requests[i]).request_args else ""
             for i in sample_indices
         ]
         sample_outputs = [
-            req.output.replace("\n", " ").replace('"', "'") if (req := successful_requests[i]).output else ""
+            req.output.replace("\n", " ").replace('"', "'")
+            if (req := successful_requests[i]).output else ""
             for i in sample_indices
         ]
 

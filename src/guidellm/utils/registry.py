@@ -65,7 +65,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
     :cvar registry_populated: Track whether auto-discovery has completed
     """
 
-    registry: ClassVar[dict[str, RegistryObjT] | None] = None
+    registry: ClassVar[dict[str, RegistryObjT] | None] = None  # type: ignore[misc]
     registry_auto_discovery: ClassVar[bool] = False
     registry_populated: ClassVar[bool] = False
 

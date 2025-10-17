@@ -283,40 +283,12 @@ class DistributionSummary(StandardBaseModel):
             )
 
         # First convert to timing events based on type
-        events: list[tuple[float, float]] = []
-
-        if distribution_type == "concurrency":
-            # For concurrency, each request adds to concurrency at start
-            # and subtracts at end
-            for (start, end), weight in zip(requests, weights, strict=False):
-                events.append((start, weight))
-                events.append((end, -1 * weight))
-        elif distribution_type == "rate":
-            # For rate, each request is added at the end time only
-            global_start = min(start for start, _ in requests) if requests else 0.0
-            events.append((global_start, 0.0))
-            for (_, end), weight in zip(requests, weights, strict=False):
-                events.append((end, weight))
-        else:
-            raise ValueError(
-                f"Invalid distribution_type '{distribution_type}'. "
-                "Must be 'concurrency' or 'rate'."
-            )
+        events = DistributionSummary._convert_to_timing_events(
+            requests, distribution_type, weights
+        )
 
         # Combine any events within epsilon of each other for stability
-        sorted_events = sorted(events, key=lambda event: event[0])
-        flattened_events: list[tuple[float, float]] = (
-            [sorted_events.pop(0)] if sorted_events else []
-        )
-        last_time = flattened_events[0][0] if flattened_events else 0.0
-
-        for time, val in sorted_events:
-            if abs(time - last_time) <= epsilon:
-                last_val = flattened_events[-1][1]
-                flattened_events[-1] = (last_time, last_val + val)
-            else:
-                last_time = time
-                flattened_events.append((time, val))
+        flattened_events = DistributionSummary._combine_events(events, epsilon)
 
         # Convert events to value distribution function
         distribution: dict[float, float] = defaultdict(float)
@@ -356,6 +328,53 @@ class DistributionSummary(StandardBaseModel):
             distribution=sorted(distribution.items()),
             include_cdf=include_cdf,
         )
+
+    @staticmethod
+    def _convert_to_timing_events(
+        requests: list[tuple[float, float]],
+        distribution_type: Literal["concurrency", "rate"],
+        weights: list[float],
+    ) -> list[tuple[float, float]]:
+        events: list[tuple[float, float]] = []
+
+        if distribution_type == "concurrency":
+            # For concurrency, each request adds to concurrency at start
+            # and subtracts at end
+            for (start, end), weight in zip(requests, weights, strict=False):
+                events.append((start, weight))
+                events.append((end, -1 * weight))
+        elif distribution_type == "rate":
+            # For rate, each request is added at the end time only
+            global_start = min(start for start, _ in requests) if requests else 0.0
+            events.append((global_start, 0.0))
+            for (_, end), weight in zip(requests, weights, strict=False):
+                events.append((end, weight))
+        else:
+            raise ValueError(
+                f"Invalid distribution_type '{distribution_type}'. "
+                "Must be 'concurrency' or 'rate'."
+            )
+        return events
+
+    @staticmethod
+    def _combine_events(
+        events: list[tuple[float, float]],
+        epsilon: float,
+    ) -> list[tuple[float, float]]:
+        sorted_events = sorted(events, key=lambda event: event[0])
+        flattened_events: list[tuple[float, float]] = (
+            [sorted_events.pop(0)] if sorted_events else []
+        )
+        last_time = flattened_events[0][0] if flattened_events else 0.0
+
+        for time, val in sorted_events:
+            if abs(time - last_time) <= epsilon:
+                last_val = flattened_events[-1][1]
+                flattened_events[-1] = (last_time, last_val + val)
+            else:
+                last_time = time
+                flattened_events.append((time, val))
+        return flattened_events
 
     @staticmethod
     def from_iterable_request_times(
