@@ -5,6 +5,6 @@ export const initialState: MetricsState = {
   currentRequestRate: 0,
   timePerRequest: { valuesByRps: {} },
   ttft: { valuesByRps: {} },
-  tpot: { valuesByRps: {} },
+  itl: { valuesByRps: {} },
   throughput: { valuesByRps: {} },
 };

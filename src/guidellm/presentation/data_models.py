@@ -118,12 +118,14 @@ class WorkloadDetails(BaseModel):
         )
         sample_prompts = [
             req.request_args.replace("\n", " ").replace('"', "'")
-            if (req := successful_requests[i]).request_args else ""
+            if (req := successful_requests[i]).request_args
+            else ""
             for i in sample_indices
         ]
         sample_outputs = [
             req.output.replace("\n", " ").replace('"', "'")
-            if (req := successful_requests[i]).output else ""
+            if (req := successful_requests[i]).output
+            else ""
             for i in sample_indices
         ]
 
@@ -210,7 +212,7 @@ class TabularDistributionSummary(DistributionSummary):
 
 class BenchmarkDatum(BaseModel):
     requests_per_second: float
-    tpot: TabularDistributionSummary
+    itl: TabularDistributionSummary
     ttft: TabularDistributionSummary
     throughput: TabularDistributionSummary
     time_per_request: TabularDistributionSummary
@@ -219,7 +221,7 @@ class BenchmarkDatum(BaseModel):
     def from_benchmark(cls, bm: "GenerativeBenchmark"):
         return cls(
             requests_per_second=bm.metrics.requests_per_second.successful.mean,
-            tpot=TabularDistributionSummary.from_distribution_summary(
+            itl=TabularDistributionSummary.from_distribution_summary(
                 bm.metrics.inter_token_latency_ms.successful
             ),
             ttft=TabularDistributionSummary.from_distribution_summary(

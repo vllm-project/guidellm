@@ -32,8 +32,8 @@ class Environment(str, Enum):
 
 
 ENV_REPORT_MAPPING = {
-    Environment.PROD: "https://blog.vllm.ai/guidellm/ui/latest/index.html",
-    Environment.STAGING: "https://blog.vllm.ai/guidellm/ui/release/latest/index.html",
+    Environment.PROD: "https://blog.vllm.ai/guidellm/ui/v0.3.0/index.html",
+    Environment.STAGING: "https://blog.vllm.ai/guidellm/ui/release/v0.3.0/index.html",
     Environment.DEV: "https://blog.vllm.ai/guidellm/ui/dev/index.html",
     Environment.LOCAL: "http://localhost:3000/index.html",
 }
@@ -89,6 +89,10 @@ class OpenAISettings(BaseModel):
     base_url: str = "http://localhost:8000"
     max_output_tokens: int = 16384
     verify: bool = True
+    max_output_key: dict[Literal["text_completions", "chat_completions"], str] = {
+        "text_completions": "max_tokens",
+        "chat_completions": "max_completion_tokens",
+    }
 
 
 class ReportGenerationSettings(BaseModel):
