@@ -6,7 +6,7 @@ environments = [
     "python_version ~= \"3.12\"",
     "python_full_version >= \"3.10.0\" and python_version < \"3.12\"",
 ]
-extras = ["all", "dev", "multimodal", "openai", "perf", "recommended"]
+extras = ["all", "audio", "dev", "openai", "perf", "recommended", "vision"]
 dependency-groups = ["default"]
 default-groups = ["default"]
 created-by = "pdm"
@@ -39,7 +39,7 @@ wheels = [
     {name = "torch-2.9.0+cpu-cp312-cp312-win_arm64.whl",url = "https://download.pytorch.org/whl/cpu/torch-2.9.0%2Bcpu-cp312-cp312-win_arm64.whl",hashes = {sha256 = "eb13ff1c34e338d722e76a4fd83b8d282782505bd1b99af4b3c32da66eba6eb4"}},
     {name = "torch-2.9.0-cp312-none-macosx_11_0_arm64.whl",url = "https://download.pytorch.org/whl/cpu/torch-2.9.0-cp312-none-macosx_11_0_arm64.whl",hashes = {sha256 = "4de0ed8cbc457a506dbca40376e206a29efee10756a00f1f3404bf67ad737d04"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -64,7 +64,7 @@ wheels = [
     {name = "torchcodec-0.8.0-cp312-cp312-manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/f6/fd/eec92c82545038a90ffd24e3626bb3a85f7d51577b04819c1c753d380a9b/torchcodec-0.8.0-cp312-cp312-manylinux_2_28_x86_64.whl",hashes = {sha256 = "2ec2e874dfb6fbf9bbeb792bea56317529636e78db175f56aad1e4efd6e12502"}},
     {name = "torchcodec-0.8.0-cp312-cp312-win_amd64.whl",url = "https://files.pythonhosted.org/packages/fe/09/ce7436151a3825f27c00263d722b0cf093609921da6cf24b0fa8133cc415/torchcodec-0.8.0-cp312-cp312-win_amd64.whl",hashes = {sha256 = "318da9af9179d156be0a84296e909d51e4cd758598eaaea08c828790c80bf977"}},
 ]
-marker = "\"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -168,6 +168,57 @@ dependencies = [
 ]
 
 [[packages]]
+name = "setuptools-git-versioning"
+version = "2.1.0"
+requires-python = ">=3.7"
+sdist = {name = "setuptools_git_versioning-2.1.0.tar.gz", url = "https://files.pythonhosted.org/packages/f0/72/507b0b459b1fdbf5705aecbc5330c32d62dd41560718d2720bb6d94607f5/setuptools_git_versioning-2.1.0.tar.gz", hashes = {sha256 = "6aef5b8bb1cfb953b6b343d27cbfc561d96cf2a2ee23c2e0dd3591042a059921"}}
+wheels = [
+    {name = "setuptools_git_versioning-2.1.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/c0/ba/daf16c2d1965bf6237fb696639e3e93645ac6801f7dcaf9ec694a74e9326/setuptools_git_versioning-2.1.0-py3-none-any.whl",hashes = {sha256 = "09a15cbb9a00884e91a3591a4c9ec1ff93c24b1b4a40de39a44815196beb7ebf"}},
+]
+marker = "\"dev\" in extras"
+
+[packages.tool.pdm]
+dependencies = [
+    "packaging",
+    "setuptools",
+    "tomli>=2.0.1; python_version < \"3.11\"",
+]
+
+[[packages]]
+name = "build"
+version = "1.3.0"
+requires-python = ">=3.9"
+sdist = {name = "build-1.3.0.tar.gz", url = "https://files.pythonhosted.org/packages/25/1c/23e33405a7c9eac261dff640926b8b5adaed6a6eb3e1767d441ed611d0c0/build-1.3.0.tar.gz", hashes = {sha256 = "698edd0ea270bde950f53aed21f3a0135672206f3911e0176261a31e0e07b397"}}
+wheels = [
+    {name = "build-1.3.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/cb/8c/2b30c12155ad8de0cf641d76a8b396a16d2c36bc6d50b621a62b7c4567c1/build-1.3.0-py3-none-any.whl",hashes = {sha256 = "7145f0b5061ba90a1500d60bd1b13ca0a8a4cebdd0cc16ed8adf1c0e739f43b4"}},
+]
+marker = "\"dev\" in extras"
+
+[packages.tool.pdm]
+dependencies = [
+    "packaging>=19.1",
+    "pyproject-hooks",
+    "colorama; os_name == \"nt\"",
+    "importlib-metadata>=4.6; python_full_version < \"3.10.2\"",
+    "tomli>=1.1.0; python_version < \"3.11\"",
+]
+
+[[packages]]
+name = "culsans"
+version = "0.9.0"
+requires-python = ">=3.8"
+sdist = {name = "culsans-0.9.0.tar.gz", url = "https://files.pythonhosted.org/packages/90/5d/12e7e16b0caafaa8cca0728dd817204afd1274ddb35531b029b1c5cf7b2a/culsans-0.9.0.tar.gz", hashes = {sha256 = "942dd3c3c77f20e9ac3383d9a5ef8b7b24c0dac1a593bdb20d46c8a38720a5f3"}}
+wheels = [
+    {name = "culsans-0.9.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/6f/b4/1e3cccb48f09e89e0cfc06925182cbcd36abf80b8eda2489430b41c7eaff/culsans-0.9.0-py3-none-any.whl",hashes = {sha256 = "d3537b65bbb341c2ac72e7d152deb8ab893b2a00452d2a68702a1a1a41619d6f"}},
+]
+marker = "\"default\" in dependency_groups"
+
+[packages.tool.pdm]
+dependencies = [
+    "aiologic>=0.13.0",
+]
+
+[[packages]]
 name = "datasets"
 version = "4.2.0"
 requires-python = ">=3.9.0"
@@ -175,7 +226,7 @@ sdist = {name = "datasets-4.2.0.tar.gz", url = "https://files.pythonhosted.org/p
 wheels = [
     {name = "datasets-4.2.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/91/9e/0bbbd09b116fd8ee2d3617e28e6598551d2f0f24d3a2ce99cc87ec85aeb0/datasets-4.2.0-py3-none-any.whl",hashes = {sha256 = "fdc43aaf4a73b31f64f80f72f195ab413a1141ed15555d675b2fd17926f8b026"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -257,7 +308,7 @@ wheels = [
     {name = "numpy-2.3.3-cp312-cp312-win_amd64.whl",url = "https://files.pythonhosted.org/packages/32/ee/de999f2625b80d043d6d2d628c07d0d5555a677a3cf78fdf868d409b8766/numpy-2.3.3-cp312-cp312-win_amd64.whl",hashes = {sha256 = "497d7cad08e7092dba36e3d296fe4c97708c93daf26643a1ae4b03f6294d30eb"}},
     {name = "numpy-2.3.3-cp312-cp312-win_arm64.whl",url = "https://files.pythonhosted.org/packages/49/6e/b479032f8a43559c383acb20816644f5f91c88f633d9271ee84f3b3a996c/numpy-2.3.3-cp312-cp312-win_arm64.whl",hashes = {sha256 = "ca0309a18d4dfea6fc6262a66d06c26cfe4640c3926ceec90e57791a82b6eee5"}},
 ]
-marker = "\"default\" in dependency_groups and python_version ~= \"3.12\" or \"all\" in extras and python_version ~= \"3.12\" or \"dev\" in extras and python_version ~= \"3.12\" or \"multimodal\" in extras and python_version ~= \"3.12\""
+marker = "\"default\" in dependency_groups and python_version ~= \"3.12\" or \"all\" in extras and python_version ~= \"3.12\" or \"audio\" in extras and python_version ~= \"3.12\" or \"dev\" in extras and python_version ~= \"3.12\" or \"vision\" in extras and python_version ~= \"3.12\""
 
 [packages.tool.pdm]
 dependencies = []
@@ -325,61 +376,10 @@ wheels = [
     {name = "pyyaml-6.0.3-cp310-cp310-win32.whl",url = "https://files.pythonhosted.org/packages/a3/00/531e92e88c00f4333ce359e50c19b8d1de9fe8d581b1534e35ccfbc5f393/pyyaml-6.0.3-cp310-cp310-win32.whl",hashes = {sha256 = "28c8d926f98f432f88adc23edf2e6d4921ac26fb084b028c733d01868d19007e"}},
     {name = "pyyaml-6.0.3-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/2a/fa/926c003379b19fca39dd4634818b00dec6c62d87faf628d1394e137354d4/pyyaml-6.0.3-cp310-cp310-win_amd64.whl",hashes = {sha256 = "bdb2c67c6c1390b63c6ff89f210c8fd09d9a1217a465701eac7316313c915e4c"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
-
-[[packages]]
-name = "setuptools-git-versioning"
-version = "2.1.0"
-requires-python = ">=3.7"
-sdist = {name = "setuptools_git_versioning-2.1.0.tar.gz", url = "https://files.pythonhosted.org/packages/f0/72/507b0b459b1fdbf5705aecbc5330c32d62dd41560718d2720bb6d94607f5/setuptools_git_versioning-2.1.0.tar.gz", hashes = {sha256 = "6aef5b8bb1cfb953b6b343d27cbfc561d96cf2a2ee23c2e0dd3591042a059921"}}
-wheels = [
-    {name = "setuptools_git_versioning-2.1.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/c0/ba/daf16c2d1965bf6237fb696639e3e93645ac6801f7dcaf9ec694a74e9326/setuptools_git_versioning-2.1.0-py3-none-any.whl",hashes = {sha256 = "09a15cbb9a00884e91a3591a4c9ec1ff93c24b1b4a40de39a44815196beb7ebf"}},
-]
-marker = "\"dev\" in extras"
-
-[packages.tool.pdm]
-dependencies = [
-    "packaging",
-    "setuptools",
-    "tomli>=2.0.1; python_version < \"3.11\"",
-]
-
-[[packages]]
-name = "build"
-version = "1.3.0"
-requires-python = ">=3.9"
-sdist = {name = "build-1.3.0.tar.gz", url = "https://files.pythonhosted.org/packages/25/1c/23e33405a7c9eac261dff640926b8b5adaed6a6eb3e1767d441ed611d0c0/build-1.3.0.tar.gz", hashes = {sha256 = "698edd0ea270bde950f53aed21f3a0135672206f3911e0176261a31e0e07b397"}}
-wheels = [
-    {name = "build-1.3.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/cb/8c/2b30c12155ad8de0cf641d76a8b396a16d2c36bc6d50b621a62b7c4567c1/build-1.3.0-py3-none-any.whl",hashes = {sha256 = "7145f0b5061ba90a1500d60bd1b13ca0a8a4cebdd0cc16ed8adf1c0e739f43b4"}},
-]
-marker = "\"dev\" in extras"
-
-[packages.tool.pdm]
-dependencies = [
-    "packaging>=19.1",
-    "pyproject-hooks",
-    "colorama; os_name == \"nt\"",
-    "importlib-metadata>=4.6; python_full_version < \"3.10.2\"",
-    "tomli>=1.1.0; python_version < \"3.11\"",
-]
-
-[[packages]]
-name = "culsans"
-version = "0.9.0"
-requires-python = ">=3.8"
-sdist = {name = "culsans-0.9.0.tar.gz", url = "https://files.pythonhosted.org/packages/90/5d/12e7e16b0caafaa8cca0728dd817204afd1274ddb35531b029b1c5cf7b2a/culsans-0.9.0.tar.gz", hashes = {sha256 = "942dd3c3c77f20e9ac3383d9a5ef8b7b24c0dac1a593bdb20d46c8a38720a5f3"}}
-wheels = [
-    {name = "culsans-0.9.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/6f/b4/1e3cccb48f09e89e0cfc06925182cbcd36abf80b8eda2489430b41c7eaff/culsans-0.9.0-py3-none-any.whl",hashes = {sha256 = "d3537b65bbb341c2ac72e7d152deb8ab893b2a00452d2a68702a1a1a41619d6f"}},
-]
-marker = "\"default\" in dependency_groups"
-
-[packages.tool.pdm]
-dependencies = [
-    "aiologic>=0.13.0",
-]
 
 [[packages]]
 name = "ftfy"
@@ -531,112 +531,6 @@ dependencies = [
     "mypy-extensions>=1.0.0",
     "tomli>=1.1.0; python_version < \"3.11\"",
 ]
-
-[[packages]]
-name = "pillow"
-version = "11.3.0"
-requires-python = ">=3.9"
-sdist = {name = "pillow-11.3.0.tar.gz", url = "https://files.pythonhosted.org/packages/f3/0d/d0d6dea55cd152ce3d6767bb38a8fc10e33796ba4ba210cbab9354b6d238/pillow-11.3.0.tar.gz", hashes = {sha256 = "3828ee7586cd0b2091b6209e5ad53e20d0649bbe87164a459d0676e035e8f523"}}
-wheels = [
-    {name = "pillow-11.3.0-cp314-cp314-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/73/f4/04905af42837292ed86cb1b1dabe03dce1edc008ef14c473c5c7e1443c5d/pillow-11.3.0-cp314-cp314-macosx_10_13_x86_64.whl",hashes = {sha256 = "d9da3df5f9ea2a89b81bb6087177fb1f4d1c7146d583a3fe5c672c0d94e55e12"}},
-    {name = "pillow-11.3.0-cp314-cp314-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/41/b0/33d79e377a336247df6348a54e6d2a2b85d644ca202555e3faa0cf811ecc/pillow-11.3.0-cp314-cp314-macosx_11_0_arm64.whl",hashes = {sha256 = "0b275ff9b04df7b640c59ec5a3cb113eefd3795a8df80bac69646ef699c6981a"}},
-    {name = "pillow-11.3.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/49/2d/ed8bc0ab219ae8768f529597d9509d184fe8a6c4741a6864fea334d25f3f/pillow-11.3.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "0743841cabd3dba6a83f38a92672cccbd69af56e3e91777b0ee7f4dba4385632"}},
-    {name = "pillow-11.3.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/b5/3d/b932bb4225c80b58dfadaca9d42d08d0b7064d2d1791b6a237f87f661834/pillow-11.3.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "2465a69cf967b8b49ee1b96d76718cd98c4e925414ead59fdf75cf0fd07df673"}},
-    {name = "pillow-11.3.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/09/b5/0487044b7c096f1b48f0d7ad416472c02e0e4bf6919541b111efd3cae690/pillow-11.3.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "41742638139424703b4d01665b807c6468e23e699e8e90cffefe291c5832b027"}},
-    {name = "pillow-11.3.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/a8/2d/524f9318f6cbfcc79fbc004801ea6b607ec3f843977652fdee4857a7568b/pillow-11.3.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "93efb0b4de7e340d99057415c749175e24c8864302369e05914682ba642e5d77"}},
-    {name = "pillow-11.3.0-cp314-cp314-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/6f/d2/a9a4f280c6aefedce1e8f615baaa5474e0701d86dd6f1dede66726462bbd/pillow-11.3.0-cp314-cp314-musllinux_1_2_aarch64.whl",hashes = {sha256 = "7966e38dcd0fa11ca390aed7c6f20454443581d758242023cf36fcb319b1a874"}},
-    {name = "pillow-11.3.0-cp314-cp314-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/fe/54/86b0cd9dbb683a9d5e960b66c7379e821a19be4ac5810e2e5a715c09a0c0/pillow-11.3.0-cp314-cp314-musllinux_1_2_x86_64.whl",hashes = {sha256 = "98a9afa7b9007c67ed84c57c9e0ad86a6000da96eaa638e4f8abe5b65ff83f0a"}},
-    {name = "pillow-11.3.0-cp314-cp314-win32.whl",url = "https://files.pythonhosted.org/packages/e7/95/88efcaf384c3588e24259c4203b909cbe3e3c2d887af9e938c2022c9dd48/pillow-11.3.0-cp314-cp314-win32.whl",hashes = {sha256 = "02a723e6bf909e7cea0dac1b0e0310be9d7650cd66222a5f1c571455c0a45214"}},
-    {name = "pillow-11.3.0-cp314-cp314-win_amd64.whl",url = "https://files.pythonhosted.org/packages/2e/cc/934e5820850ec5eb107e7b1a72dd278140731c669f396110ebc326f2a503/pillow-11.3.0-cp314-cp314-win_amd64.whl",hashes = {sha256 = "a418486160228f64dd9e9efcd132679b7a02a5f22c982c78b6fc7dab3fefb635"}},
-    {name = "pillow-11.3.0-cp314-cp314-win_arm64.whl",url = "https://files.pythonhosted.org/packages/d6/e9/9c0a616a71da2a5d163aa37405e8aced9a906d574b4a214bede134e731bc/pillow-11.3.0-cp314-cp314-win_arm64.whl",hashes = {sha256 = "155658efb5e044669c08896c0c44231c5e9abcaadbc5cd3648df2f7c0b96b9a6"}},
-    {name = "pillow-11.3.0-cp314-cp314t-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/1a/33/c88376898aff369658b225262cd4f2659b13e8178e7534df9e6e1fa289f6/pillow-11.3.0-cp314-cp314t-macosx_10_13_x86_64.whl",hashes = {sha256 = "59a03cdf019efbfeeed910bf79c7c93255c3d54bc45898ac2a4140071b02b4ae"}},
-    {name = "pillow-11.3.0-cp314-cp314t-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/1f/70/d376247fb36f1844b42910911c83a02d5544ebd2a8bad9efcc0f707ea774/pillow-11.3.0-cp314-cp314t-macosx_11_0_arm64.whl",hashes = {sha256 = "f8a5827f84d973d8636e9dc5764af4f0cf2318d26744b3d902931701b0d46653"}},
-    {name = "pillow-11.3.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/eb/1c/537e930496149fbac69efd2fc4329035bbe2e5475b4165439e3be9cb183b/pillow-11.3.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "ee92f2fd10f4adc4b43d07ec5e779932b4eb3dbfbc34790ada5a6669bc095aa6"}},
-    {name = "pillow-11.3.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/bd/57/80f53264954dcefeebcf9dae6e3eb1daea1b488f0be8b8fef12f79a3eb10/pillow-11.3.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "c96d333dcf42d01f47b37e0979b6bd73ec91eae18614864622d9b87bbd5bbf36"}},
-    {name = "pillow-11.3.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/70/ff/4727d3b71a8578b4587d9c276e90efad2d6fe0335fd76742a6da08132e8c/pillow-11.3.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "4c96f993ab8c98460cd0c001447bff6194403e8b1d7e149ade5f00594918128b"}},
-    {name = "pillow-11.3.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/05/ae/716592277934f85d3be51d7256f3636672d7b1abfafdc42cf3f8cbd4b4c8/pillow-11.3.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "41342b64afeba938edb034d122b2dda5db2139b9a4af999729ba8818e0056477"}},
-    {name = "pillow-11.3.0-cp314-cp314t-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/e7/bb/7fe6cddcc8827b01b1a9766f5fdeb7418680744f9082035bdbabecf1d57f/pillow-11.3.0-cp314-cp314t-musllinux_1_2_aarch64.whl",hashes = {sha256 = "068d9c39a2d1b358eb9f245ce7ab1b5c3246c7c8c7d9ba58cfa5b43146c06e50"}},
-    {name = "pillow-11.3.0-cp314-cp314t-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/8b/f5/06bfaa444c8e80f1a8e4bff98da9c83b37b5be3b1deaa43d27a0db37ef84/pillow-11.3.0-cp314-cp314t-musllinux_1_2_x86_64.whl",hashes = {sha256 = "a1bc6ba083b145187f648b667e05a2534ecc4b9f2784c2cbe3089e44868f2b9b"}},
-    {name = "pillow-11.3.0-cp314-cp314t-win32.whl",url = "https://files.pythonhosted.org/packages/f0/77/bc6f92a3e8e6e46c0ca78abfffec0037845800ea38c73483760362804c41/pillow-11.3.0-cp314-cp314t-win32.whl",hashes = {sha256 = "118ca10c0d60b06d006be10a501fd6bbdfef559251ed31b794668ed569c87e12"}},
-    {name = "pillow-11.3.0-cp314-cp314t-win_amd64.whl",url = "https://files.pythonhosted.org/packages/4a/82/3a721f7d69dca802befb8af08b7c79ebcab461007ce1c18bd91a5d5896f9/pillow-11.3.0-cp314-cp314t-win_amd64.whl",hashes = {sha256 = "8924748b688aa210d79883357d102cd64690e56b923a186f35a82cbc10f997db"}},
-    {name = "pillow-11.3.0-cp314-cp314t-win_arm64.whl",url = "https://files.pythonhosted.org/packages/89/c7/5572fa4a3f45740eaab6ae86fcdf7195b55beac1371ac8c619d880cfe948/pillow-11.3.0-cp314-cp314t-win_arm64.whl",hashes = {sha256 = "79ea0d14d3ebad43ec77ad5272e6ff9bba5b679ef73375ea760261207fa8e0aa"}},
-    {name = "pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",url = "https://files.pythonhosted.org/packages/1e/93/0952f2ed8db3a5a4c7a11f91965d6184ebc8cd7cbb7941a260d5f018cd2d/pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",hashes = {sha256 = "1c627742b539bba4309df89171356fcb3cc5a9178355b2727d1b74a6cf155fbd"}},
-    {name = "pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",url = "https://files.pythonhosted.org/packages/4b/e8/100c3d114b1a0bf4042f27e0f87d2f25e857e838034e98ca98fe7b8c0a9c/pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",hashes = {sha256 = "30b7c02f3899d10f13d7a48163c8969e4e653f8b43416d23d13d1bbfdc93b9f8"}},
-    {name = "pillow-11.3.0-cp313-cp313-ios_13_0_x86_64_iphonesimulator.whl",url = "https://files.pythonhosted.org/packages/aa/86/3f758a28a6e381758545f7cdb4942e1cb79abd271bea932998fc0db93cb6/pillow-11.3.0-cp313-cp313-ios_13_0_x86_64_iphonesimulator.whl",hashes = {sha256 = "7859a4cc7c9295f5838015d8cc0a9c215b77e43d07a25e460f35cf516df8626f"}},
-    {name = "pillow-11.3.0-cp313-cp313-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/01/f4/91d5b3ffa718df2f53b0dc109877993e511f4fd055d7e9508682e8aba092/pillow-11.3.0-cp313-cp313-macosx_10_13_x86_64.whl",hashes = {sha256 = "ec1ee50470b0d050984394423d96325b744d55c701a439d2bd66089bff963d3c"}},
-    {name = "pillow-11.3.0-cp313-cp313-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/f9/0e/37d7d3eca6c879fbd9dba21268427dffda1ab00d4eb05b32923d4fbe3b12/pillow-11.3.0-cp313-cp313-macosx_11_0_arm64.whl",hashes = {sha256 = "7db51d222548ccfd274e4572fdbf3e810a5e66b00608862f947b163e613b67dd"}},
-    {name = "pillow-11.3.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/ff/b0/3426e5c7f6565e752d81221af9d3676fdbb4f352317ceafd42899aaf5d8a/pillow-11.3.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "2d6fcc902a24ac74495df63faad1884282239265c6839a0a6416d33faedfae7e"}},
-    {name = "pillow-11.3.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/fc/c1/c6c423134229f2a221ee53f838d4be9d82bab86f7e2f8e75e47b6bf6cd77/pillow-11.3.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "f0f5d8f4a08090c6d6d578351a2b91acf519a54986c055af27e7a93feae6d3f1"}},
-    {name = "pillow-11.3.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/ba/c9/09e6746630fe6372c67c648ff9deae52a2bc20897d51fa293571977ceb5d/pillow-11.3.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "c37d8ba9411d6003bba9e518db0db0c58a680ab9fe5179f040b0463644bc9805"}},
-    {name = "pillow-11.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/d5/1c/a2a29649c0b1983d3ef57ee87a66487fdeb45132df66ab30dd37f7dbe162/pillow-11.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "13f87d581e71d9189ab21fe0efb5a23e9f28552d5be6979e84001d3b8505abe8"}},
-    {name = "pillow-11.3.0-cp313-cp313-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/36/de/d5cc31cc4b055b6c6fd990e3e7f0f8aaf36229a2698501bcb0cdf67c7146/pillow-11.3.0-cp313-cp313-musllinux_1_2_aarch64.whl",hashes = {sha256 = "023f6d2d11784a465f09fd09a34b150ea4672e85fb3d05931d89f373ab14abb2"}},
-    {name = "pillow-11.3.0-cp313-cp313-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/d5/ea/502d938cbaeec836ac28a9b730193716f0114c41325db428e6b280513f09/pillow-11.3.0-cp313-cp313-musllinux_1_2_x86_64.whl",hashes = {sha256 = "45dfc51ac5975b938e9809451c51734124e73b04d0f0ac621649821a63852e7b"}},
-    {name = "pillow-11.3.0-cp313-cp313-win32.whl",url = "https://files.pythonhosted.org/packages/45/9c/9c5e2a73f125f6cbc59cc7087c8f2d649a7ae453f83bd0362ff7c9e2aee2/pillow-11.3.0-cp313-cp313-win32.whl",hashes = {sha256 = "a4d336baed65d50d37b88ca5b60c0fa9d81e3a87d4a7930d3880d1624d5b31f3"}},
-    {name = "pillow-11.3.0-cp313-cp313-win_amd64.whl",url = "https://files.pythonhosted.org/packages/23/85/397c73524e0cd212067e0c969aa245b01d50183439550d24d9f55781b776/pillow-11.3.0-cp313-cp313-win_amd64.whl",hashes = {sha256 = "0bce5c4fd0921f99d2e858dc4d4d64193407e1b99478bc5cacecba2311abde51"}},
-    {name = "pillow-11.3.0-cp313-cp313-win_arm64.whl",url = "https://files.pythonhosted.org/packages/17/d2/622f4547f69cd173955194b78e4d19ca4935a1b0f03a302d655c9f6aae65/pillow-11.3.0-cp313-cp313-win_arm64.whl",hashes = {sha256 = "1904e1264881f682f02b7f8167935cce37bc97db457f8e7849dc3a6a52b99580"}},
-    {name = "pillow-11.3.0-cp313-cp313t-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/dd/80/a8a2ac21dda2e82480852978416cfacd439a4b490a501a288ecf4fe2532d/pillow-11.3.0-cp313-cp313t-macosx_10_13_x86_64.whl",hashes = {sha256 = "4c834a3921375c48ee6b9624061076bc0a32a60b5532b322cc0ea64e639dd50e"}},
-    {name = "pillow-11.3.0-cp313-cp313t-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/44/d6/b79754ca790f315918732e18f82a8146d33bcd7f4494380457ea89eb883d/pillow-11.3.0-cp313-cp313t-macosx_11_0_arm64.whl",hashes = {sha256 = "5e05688ccef30ea69b9317a9ead994b93975104a677a36a8ed8106be9260aa6d"}},
-    {name = "pillow-11.3.0-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/49/20/716b8717d331150cb00f7fdd78169c01e8e0c219732a78b0e59b6bdb2fd6/pillow-11.3.0-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "1019b04af07fc0163e2810167918cb5add8d74674b6267616021ab558dc98ced"}},
-    {name = "pillow-11.3.0-cp313-cp313t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/74/cf/a9f3a2514a65bb071075063a96f0a5cf949c2f2fce683c15ccc83b1c1cab/pillow-11.3.0-cp313-cp313t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "f944255db153ebb2b19c51fe85dd99ef0ce494123f21b9db4877ffdfc5590c7c"}},
-    {name = "pillow-11.3.0-cp313-cp313t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/98/3c/da78805cbdbee9cb43efe8261dd7cc0b4b93f2ac79b676c03159e9db2187/pillow-11.3.0-cp313-cp313t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "1f85acb69adf2aaee8b7da124efebbdb959a104db34d3a2cb0f3793dbae422a8"}},
-    {name = "pillow-11.3.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/6c/fa/ce044b91faecf30e635321351bba32bab5a7e034c60187fe9698191aef4f/pillow-11.3.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "05f6ecbeff5005399bb48d198f098a9b4b6bdf27b8487c7f38ca16eeb070cd59"}},
-    {name = "pillow-11.3.0-cp313-cp313t-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/7b/51/90f9291406d09bf93686434f9183aba27b831c10c87746ff49f127ee80cb/pillow-11.3.0-cp313-cp313t-musllinux_1_2_aarch64.whl",hashes = {sha256 = "a7bc6e6fd0395bc052f16b1a8670859964dbd7003bd0af2ff08342eb6e442cfe"}},
-    {name = "pillow-11.3.0-cp313-cp313t-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/cd/5a/6fec59b1dfb619234f7636d4157d11fb4e196caeee220232a8d2ec48488d/pillow-11.3.0-cp313-cp313t-musllinux_1_2_x86_64.whl",hashes = {sha256 = "83e1b0161c9d148125083a35c1c5a89db5b7054834fd4387499e06552035236c"}},
-    {name = "pillow-11.3.0-cp313-cp313t-win32.whl",url = "https://files.pythonhosted.org/packages/49/6b/00187a044f98255225f172de653941e61da37104a9ea60e4f6887717e2b5/pillow-11.3.0-cp313-cp313t-win32.whl",hashes = {sha256 = "2a3117c06b8fb646639dce83694f2f9eac405472713fcb1ae887469c0d4f6788"}},
-    {name = "pillow-11.3.0-cp313-cp313t-win_amd64.whl",url = "https://files.pythonhosted.org/packages/e8/5c/6caaba7e261c0d75bab23be79f1d06b5ad2a2ae49f028ccec801b0e853d6/pillow-11.3.0-cp313-cp313t-win_amd64.whl",hashes = {sha256 = "857844335c95bea93fb39e0fa2726b4d9d758850b34075a7e3ff4f4fa3aa3b31"}},
-    {name = "pillow-11.3.0-cp313-cp313t-win_arm64.whl",url = "https://files.pythonhosted.org/packages/f3/7e/b623008460c09a0cb38263c93b828c666493caee2eb34ff67f778b87e58c/pillow-11.3.0-cp313-cp313t-win_arm64.whl",hashes = {sha256 = "8797edc41f3e8536ae4b10897ee2f637235c94f27404cac7297f7b607dd0716e"}},
-    {name = "pillow-11.3.0-cp312-cp312-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/40/fe/1bc9b3ee13f68487a99ac9529968035cca2f0a51ec36892060edcc51d06a/pillow-11.3.0-cp312-cp312-macosx_10_13_x86_64.whl",hashes = {sha256 = "fdae223722da47b024b867c1ea0be64e0df702c5e0a60e27daad39bf960dd1e4"}},
-    {name = "pillow-11.3.0-cp312-cp312-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/2c/32/7e2ac19b5713657384cec55f89065fb306b06af008cfd87e572035b27119/pillow-11.3.0-cp312-cp312-macosx_11_0_arm64.whl",hashes = {sha256 = "921bd305b10e82b4d1f5e802b6850677f965d8394203d182f078873851dada69"}},
-    {name = "pillow-11.3.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/8e/1e/b9e12bbe6e4c2220effebc09ea0923a07a6da1e1f1bfbc8d7d29a01ce32b/pillow-11.3.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "eb76541cba2f958032d79d143b98a3a6b3ea87f0959bbe256c0b5e416599fd5d"}},
-    {name = "pillow-11.3.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/8d/33/e9200d2bd7ba00dc3ddb78df1198a6e80d7669cce6c2bdbeb2530a74ec58/pillow-11.3.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "67172f2944ebba3d4a7b54f2e95c786a3a50c21b88456329314caaa28cda70f6"}},
-    {name = "pillow-11.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/41/f1/6f2427a26fc683e00d985bc391bdd76d8dd4e92fac33d841127eb8fb2313/pillow-11.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "97f07ed9f56a3b9b5f49d3661dc9607484e85c67e27f3e8be2c7d28ca032fec7"}},
-    {name = "pillow-11.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/e4/c9/06dd4a38974e24f932ff5f98ea3c546ce3f8c995d3f0985f8e5ba48bba19/pillow-11.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "676b2815362456b5b3216b4fd5bd89d362100dc6f4945154ff172e206a22c024"}},
-    {name = "pillow-11.3.0-cp312-cp312-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/40/e7/848f69fb79843b3d91241bad658e9c14f39a32f71a301bcd1d139416d1be/pillow-11.3.0-cp312-cp312-musllinux_1_2_aarch64.whl",hashes = {sha256 = "3e184b2f26ff146363dd07bde8b711833d7b0202e27d13540bfe2e35a323a809"}},
-    {name = "pillow-11.3.0-cp312-cp312-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/0b/1a/7cff92e695a2a29ac1958c2a0fe4c0b2393b60aac13b04a4fe2735cad52d/pillow-11.3.0-cp312-cp312-musllinux_1_2_x86_64.whl",hashes = {sha256 = "6be31e3fc9a621e071bc17bb7de63b85cbe0bfae91bb0363c893cbe67247780d"}},
-    {name = "pillow-11.3.0-cp312-cp312-win32.whl",url = "https://files.pythonhosted.org/packages/26/7d/73699ad77895f69edff76b0f332acc3d497f22f5d75e5360f78cbcaff248/pillow-11.3.0-cp312-cp312-win32.whl",hashes = {sha256 = "7b161756381f0918e05e7cb8a371fff367e807770f8fe92ecb20d905d0e1c149"}},
-    {name = "pillow-11.3.0-cp312-cp312-win_amd64.whl",url = "https://files.pythonhosted.org/packages/8c/ce/e7dfc873bdd9828f3b6e5c2bbb74e47a98ec23cc5c74fc4e54462f0d9204/pillow-11.3.0-cp312-cp312-win_amd64.whl",hashes = {sha256 = "a6444696fce635783440b7f7a9fc24b3ad10a9ea3f0ab66c5905be1c19ccf17d"}},
-    {name = "pillow-11.3.0-cp312-cp312-win_arm64.whl",url = "https://files.pythonhosted.org/packages/16/8f/b13447d1bf0b1f7467ce7d86f6e6edf66c0ad7cf44cf5c87a37f9bed9936/pillow-11.3.0-cp312-cp312-win_arm64.whl",hashes = {sha256 = "2aceea54f957dd4448264f9bf40875da0415c83eb85f55069d89c0ed436e3542"}},
-    {name = "pillow-11.3.0-cp311-cp311-macosx_10_10_x86_64.whl",url = "https://files.pythonhosted.org/packages/db/26/77f8ed17ca4ffd60e1dcd220a6ec6d71210ba398cfa33a13a1cd614c5613/pillow-11.3.0-cp311-cp311-macosx_10_10_x86_64.whl",hashes = {sha256 = "1cd110edf822773368b396281a2293aeb91c90a2db00d78ea43e7e861631b722"}},
-    {name = "pillow-11.3.0-cp311-cp311-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/cb/39/ee475903197ce709322a17a866892efb560f57900d9af2e55f86db51b0a5/pillow-11.3.0-cp311-cp311-macosx_11_0_arm64.whl",hashes = {sha256 = "9c412fddd1b77a75aa904615ebaa6001f169b26fd467b4be93aded278266b288"}},
-    {name = "pillow-11.3.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/d5/90/442068a160fd179938ba55ec8c97050a612426fae5ec0a764e345839f76d/pillow-11.3.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "7d1aa4de119a0ecac0a34a9c8bde33f34022e2e8f99104e47a3ca392fd60e37d"}},
-    {name = "pillow-11.3.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/13/92/dcdd147ab02daf405387f0218dcf792dc6dd5b14d2573d40b4caeef01059/pillow-11.3.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "91da1d88226663594e3f6b4b8c3c8d85bd504117d043740a8e0ec449087cc494"}},
-    {name = "pillow-11.3.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/6e/db/839d6ba7fd38b51af641aa904e2960e7a5644d60ec754c046b7d2aee00e5/pillow-11.3.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "643f189248837533073c405ec2f0bb250ba54598cf80e8c1e043381a60632f58"}},
-    {name = "pillow-11.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/f2/2f/d7675ecae6c43e9f12aa8d58b6012683b20b6edfbdac7abcb4e6af7a3784/pillow-11.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "106064daa23a745510dabce1d84f29137a37224831d88eb4ce94bb187b1d7e5f"}},
-    {name = "pillow-11.3.0-cp311-cp311-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/45/ad/931694675ede172e15b2ff03c8144a0ddaea1d87adb72bb07655eaffb654/pillow-11.3.0-cp311-cp311-musllinux_1_2_aarch64.whl",hashes = {sha256 = "cd8ff254faf15591e724dc7c4ddb6bf4793efcbe13802a4ae3e863cd300b493e"}},
-    {name = "pillow-11.3.0-cp311-cp311-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/3a/04/ba8f2b11fc80d2dd462d7abec16351b45ec99cbbaea4387648a44190351a/pillow-11.3.0-cp311-cp311-musllinux_1_2_x86_64.whl",hashes = {sha256 = "932c754c2d51ad2b2271fd01c3d121daaa35e27efae2a616f77bf164bc0b3e94"}},
-    {name = "pillow-11.3.0-cp311-cp311-win32.whl",url = "https://files.pythonhosted.org/packages/48/59/8cd06d7f3944cc7d892e8533c56b0acb68399f640786313275faec1e3b6f/pillow-11.3.0-cp311-cp311-win32.whl",hashes = {sha256 = "b4b8f3efc8d530a1544e5962bd6b403d5f7fe8b9e08227c6b255f98ad82b4ba0"}},
-    {name = "pillow-11.3.0-cp311-cp311-win_amd64.whl",url = "https://files.pythonhosted.org/packages/f1/cc/29c0f5d64ab8eae20f3232da8f8571660aa0ab4b8f1331da5c2f5f9a938e/pillow-11.3.0-cp311-cp311-win_amd64.whl",hashes = {sha256 = "1a992e86b0dd7aeb1f053cd506508c0999d710a8f07b4c791c63843fc6a807ac"}},
-    {name = "pillow-11.3.0-cp311-cp311-win_arm64.whl",url = "https://files.pythonhosted.org/packages/c6/df/90bd886fabd544c25addd63e5ca6932c86f2b701d5da6c7839387a076b4a/pillow-11.3.0-cp311-cp311-win_arm64.whl",hashes = {sha256 = "30807c931ff7c095620fe04448e2c2fc673fcbb1ffe2a7da3fb39613489b1ddd"}},
-    {name = "pillow-11.3.0-pp311-pypy311_pp73-macosx_10_15_x86_64.whl",url = "https://files.pythonhosted.org/packages/9e/e3/6fa84033758276fb31da12e5fb66ad747ae83b93c67af17f8c6ff4cc8f34/pillow-11.3.0-pp311-pypy311_pp73-macosx_10_15_x86_64.whl",hashes = {sha256 = "7c8ec7a017ad1bd562f93dbd8505763e688d388cde6e4a010ae1486916e713e6"}},
-    {name = "pillow-11.3.0-pp311-pypy311_pp73-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/5b/ee/e8d2e1ab4892970b561e1ba96cbd59c0d28cf66737fc44abb2aec3795a4e/pillow-11.3.0-pp311-pypy311_pp73-macosx_11_0_arm64.whl",hashes = {sha256 = "9ab6ae226de48019caa8074894544af5b53a117ccb9d3b3dcb2871464c829438"}},
-    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/f2/6d/17f80f4e1f0761f02160fc433abd4109fa1548dcfdca46cfdadaf9efa565/pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "fe27fb049cdcca11f11a7bfda64043c37b30e6b91f10cb5bab275806c32f6ab3"}},
-    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/de/5f/c22340acd61cef960130585bbe2120e2fd8434c214802f07e8c03596b17e/pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "465b9e8844e3c3519a983d58b80be3f668e2a7a5db97f2784e7079fbc9f9822c"}},
-    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/31/5e/03966aedfbfcbb4d5f8aa042452d3361f325b963ebbadddac05b122e47dd/pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "5418b53c0d59b3824d05e029669efa023bbef0f3e92e75ec8428f3799487f361"}},
-    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/cc/2d/e082982aacc927fc2cab48e1e731bdb1643a1406acace8bed0900a61464e/pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "504b6f59505f08ae014f724b6207ff6222662aab5cc9542577fb084ed0676ac7"}},
-    {name = "pillow-11.3.0-pp311-pypy311_pp73-win_amd64.whl",url = "https://files.pythonhosted.org/packages/34/e7/ae39f538fd6844e982063c3a5e4598b8ced43b9633baa3a85ef33af8c05c/pillow-11.3.0-pp311-pypy311_pp73-win_amd64.whl",hashes = {sha256 = "c84d689db21a1c397d001aa08241044aa2069e7587b398c8cc63020390b1c1b8"}},
-    {name = "pillow-11.3.0-cp310-cp310-macosx_10_10_x86_64.whl",url = "https://files.pythonhosted.org/packages/4c/5d/45a3553a253ac8763f3561371432a90bdbe6000fbdcf1397ffe502aa206c/pillow-11.3.0-cp310-cp310-macosx_10_10_x86_64.whl",hashes = {sha256 = "1b9c17fd4ace828b3003dfd1e30bff24863e0eb59b535e8f80194d9cc7ecf860"}},
-    {name = "pillow-11.3.0-cp310-cp310-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/7c/c8/67c12ab069ef586a25a4a79ced553586748fad100c77c0ce59bb4983ac98/pillow-11.3.0-cp310-cp310-macosx_11_0_arm64.whl",hashes = {sha256 = "65dc69160114cdd0ca0f35cb434633c75e8e7fad4cf855177a05bf38678f73ad"}},
-    {name = "pillow-11.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/2f/bd/6741ebd56263390b382ae4c5de02979af7f8bd9807346d068700dd6d5cf9/pillow-11.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "7107195ddc914f656c7fc8e4a5e1c25f32e9236ea3ea860f257b0436011fddd0"}},
-    {name = "pillow-11.3.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/ca/0b/c412a9e27e1e6a829e6ab6c2dca52dd563efbedf4c9c6aa453d9a9b77359/pillow-11.3.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "cc3e831b563b3114baac7ec2ee86819eb03caa1a2cef0b481a5675b59c4fe23b"}},
-    {name = "pillow-11.3.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/59/9d/9b7076aaf30f5dd17e5e5589b2d2f5a5d7e30ff67a171eb686e4eecc2adf/pillow-11.3.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "f1f182ebd2303acf8c380a54f615ec883322593320a9b00438eb842c1f37ae50"}},
-    {name = "pillow-11.3.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/f0/16/1a6bf01fb622fb9cf5c91683823f073f053005c849b1f52ed613afcf8dae/pillow-11.3.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "4445fa62e15936a028672fd48c4c11a66d641d2c05726c7ec1f8ba6a572036ae"}},
-    {name = "pillow-11.3.0-cp310-cp310-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/7b/e6/6ff7077077eb47fde78739e7d570bdcd7c10495666b6afcd23ab56b19a43/pillow-11.3.0-cp310-cp310-musllinux_1_2_aarch64.whl",hashes = {sha256 = "71f511f6b3b91dd543282477be45a033e4845a40278fa8dcdbfdb07109bf18f9"}},
-    {name = "pillow-11.3.0-cp310-cp310-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/c3/3a/b13f36832ea6d279a697231658199e0a03cd87ef12048016bdcc84131601/pillow-11.3.0-cp310-cp310-musllinux_1_2_x86_64.whl",hashes = {sha256 = "040a5b691b0713e1f6cbe222e0f4f74cd233421e105850ae3b3c0ceda520f42e"}},
-    {name = "pillow-11.3.0-cp310-cp310-win32.whl",url = "https://files.pythonhosted.org/packages/6c/e4/61b2e1a7528740efbc70b3d581f33937e38e98ef3d50b05007267a55bcb2/pillow-11.3.0-cp310-cp310-win32.whl",hashes = {sha256 = "89bd777bc6624fe4115e9fac3352c79ed60f3bb18651420635f26e643e3dd1f6"}},
-    {name = "pillow-11.3.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/a9/d3/60c781c83a785d6afbd6a326ed4d759d141de43aa7365725cbcd65ce5e54/pillow-11.3.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "19d2ff547c75b8e3ff46f4d9ef969a06c30ab2d4263a9e287733aa8b2429ce8f"}},
-    {name = "pillow-11.3.0-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/9f/28/4f4a0203165eefb3763939c6789ba31013a2e90adffb456610f30f613850/pillow-11.3.0-cp310-cp310-win_arm64.whl",hashes = {sha256 = "819931d25e57b513242859ce1876c58c59dc31587847bf74cfe06b2e0cb22d2f"}},
-    {name = "pillow-11.3.0-pp310-pypy310_pp73-macosx_10_15_x86_64.whl",url = "https://files.pythonhosted.org/packages/6f/8b/209bd6b62ce8367f47e68a218bffac88888fdf2c9fcf1ecadc6c3ec1ebc7/pillow-11.3.0-pp310-pypy310_pp73-macosx_10_15_x86_64.whl",hashes = {sha256 = "3cee80663f29e3843b68199b9d6f4f54bd1d4a6b59bdd91bceefc51238bcb967"}},
-    {name = "pillow-11.3.0-pp310-pypy310_pp73-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/2e/e6/231a0b76070c2cfd9e260a7a5b504fb72da0a95279410fa7afd99d9751d6/pillow-11.3.0-pp310-pypy310_pp73-macosx_11_0_arm64.whl",hashes = {sha256 = "b5f56c3f344f2ccaf0dd875d3e180f631dc60a51b314295a3e681fe8cf851fbe"}},
-    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/13/f4/10cf94fda33cb12765f2397fc285fa6d8eb9c29de7f3185165b702fc7386/pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "e67d793d180c9df62f1f40aee3accca4829d3794c95098887edc18af4b8b780c"}},
-    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/72/c9/583821097dc691880c92892e8e2d41fe0a5a3d6021f4963371d2f6d57250/pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "d000f46e2917c705e9fb93a3606ee4a819d1e3aa7a9b442f6444f07e77cf5e25"}},
-    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/3b/8e/5c9d410f9217b12320efc7c413e72693f48468979a013ad17fd690397b9a/pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "527b37216b6ac3a12d7838dc3bd75208ec57c1c6d11ef01902266a5a0c14fc27"}},
-    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/62/bb/78347dbe13219991877ffb3a91bf09da8317fbfcd4b5f9140aeae020ad71/pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "be5463ac478b623b9dd3937afd7fb7ab3d79dd290a28e2b6df292dc75063eb8a"}},
-    {name = "pillow-11.3.0-pp310-pypy310_pp73-win_amd64.whl",url = "https://files.pythonhosted.org/packages/d9/28/1000353d5e61498aaeaaf7f1e4b49ddb05f2c6575f9d4f9f914a3538b6e1/pillow-11.3.0-pp310-pypy310_pp73-win_amd64.whl",hashes = {sha256 = "8dc70ca24c110503e16918a658b869019126ecfe03109b754c402daff12b3d9f"}},
-]
-marker = "\"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
-
-[packages.tool.pdm]
-dependencies = []
 
 [[packages]]
 name = "pre-commit"
@@ -892,7 +786,7 @@ sdist = {name = "setuptools-80.9.0.tar.gz", url = "https://files.pythonhosted.or
 wheels = [
     {name = "setuptools-80.9.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/a3/dc/17031897dae0efacfea57dfd3a82fdd2a2aeb58e0ff71b77b87e44edc772/setuptools-80.9.0-py3-none-any.whl",hashes = {sha256 = "062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1012,6 +906,112 @@ wheels = [
     {name = "uvloop-0.21.0-cp310-cp310-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/26/dd/c7179618e46092a77e036650c1f056041a028a35c4d76945089fcfc38af8/uvloop-0.21.0-cp310-cp310-musllinux_1_2_x86_64.whl",hashes = {sha256 = "67dd654b8ca23aed0a8e99010b4c34aca62f4b7fce88f39d452ed7622c94845c"}},
 ]
 marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"perf\" in extras or \"recommended\" in extras"
+
+[packages.tool.pdm]
+dependencies = []
+
+[[packages]]
+name = "pillow"
+version = "11.3.0"
+requires-python = ">=3.9"
+sdist = {name = "pillow-11.3.0.tar.gz", url = "https://files.pythonhosted.org/packages/f3/0d/d0d6dea55cd152ce3d6767bb38a8fc10e33796ba4ba210cbab9354b6d238/pillow-11.3.0.tar.gz", hashes = {sha256 = "3828ee7586cd0b2091b6209e5ad53e20d0649bbe87164a459d0676e035e8f523"}}
+wheels = [
+    {name = "pillow-11.3.0-cp314-cp314-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/73/f4/04905af42837292ed86cb1b1dabe03dce1edc008ef14c473c5c7e1443c5d/pillow-11.3.0-cp314-cp314-macosx_10_13_x86_64.whl",hashes = {sha256 = "d9da3df5f9ea2a89b81bb6087177fb1f4d1c7146d583a3fe5c672c0d94e55e12"}},
+    {name = "pillow-11.3.0-cp314-cp314-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/41/b0/33d79e377a336247df6348a54e6d2a2b85d644ca202555e3faa0cf811ecc/pillow-11.3.0-cp314-cp314-macosx_11_0_arm64.whl",hashes = {sha256 = "0b275ff9b04df7b640c59ec5a3cb113eefd3795a8df80bac69646ef699c6981a"}},
+    {name = "pillow-11.3.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/49/2d/ed8bc0ab219ae8768f529597d9509d184fe8a6c4741a6864fea334d25f3f/pillow-11.3.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "0743841cabd3dba6a83f38a92672cccbd69af56e3e91777b0ee7f4dba4385632"}},
+    {name = "pillow-11.3.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/b5/3d/b932bb4225c80b58dfadaca9d42d08d0b7064d2d1791b6a237f87f661834/pillow-11.3.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "2465a69cf967b8b49ee1b96d76718cd98c4e925414ead59fdf75cf0fd07df673"}},
+    {name = "pillow-11.3.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/09/b5/0487044b7c096f1b48f0d7ad416472c02e0e4bf6919541b111efd3cae690/pillow-11.3.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "41742638139424703b4d01665b807c6468e23e699e8e90cffefe291c5832b027"}},
+    {name = "pillow-11.3.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/a8/2d/524f9318f6cbfcc79fbc004801ea6b607ec3f843977652fdee4857a7568b/pillow-11.3.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "93efb0b4de7e340d99057415c749175e24c8864302369e05914682ba642e5d77"}},
+    {name = "pillow-11.3.0-cp314-cp314-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/6f/d2/a9a4f280c6aefedce1e8f615baaa5474e0701d86dd6f1dede66726462bbd/pillow-11.3.0-cp314-cp314-musllinux_1_2_aarch64.whl",hashes = {sha256 = "7966e38dcd0fa11ca390aed7c6f20454443581d758242023cf36fcb319b1a874"}},
+    {name = "pillow-11.3.0-cp314-cp314-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/fe/54/86b0cd9dbb683a9d5e960b66c7379e821a19be4ac5810e2e5a715c09a0c0/pillow-11.3.0-cp314-cp314-musllinux_1_2_x86_64.whl",hashes = {sha256 = "98a9afa7b9007c67ed84c57c9e0ad86a6000da96eaa638e4f8abe5b65ff83f0a"}},
+    {name = "pillow-11.3.0-cp314-cp314-win32.whl",url = "https://files.pythonhosted.org/packages/e7/95/88efcaf384c3588e24259c4203b909cbe3e3c2d887af9e938c2022c9dd48/pillow-11.3.0-cp314-cp314-win32.whl",hashes = {sha256 = "02a723e6bf909e7cea0dac1b0e0310be9d7650cd66222a5f1c571455c0a45214"}},
+    {name = "pillow-11.3.0-cp314-cp314-win_amd64.whl",url = "https://files.pythonhosted.org/packages/2e/cc/934e5820850ec5eb107e7b1a72dd278140731c669f396110ebc326f2a503/pillow-11.3.0-cp314-cp314-win_amd64.whl",hashes = {sha256 = "a418486160228f64dd9e9efcd132679b7a02a5f22c982c78b6fc7dab3fefb635"}},
+    {name = "pillow-11.3.0-cp314-cp314-win_arm64.whl",url = "https://files.pythonhosted.org/packages/d6/e9/9c0a616a71da2a5d163aa37405e8aced9a906d574b4a214bede134e731bc/pillow-11.3.0-cp314-cp314-win_arm64.whl",hashes = {sha256 = "155658efb5e044669c08896c0c44231c5e9abcaadbc5cd3648df2f7c0b96b9a6"}},
+    {name = "pillow-11.3.0-cp314-cp314t-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/1a/33/c88376898aff369658b225262cd4f2659b13e8178e7534df9e6e1fa289f6/pillow-11.3.0-cp314-cp314t-macosx_10_13_x86_64.whl",hashes = {sha256 = "59a03cdf019efbfeeed910bf79c7c93255c3d54bc45898ac2a4140071b02b4ae"}},
+    {name = "pillow-11.3.0-cp314-cp314t-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/1f/70/d376247fb36f1844b42910911c83a02d5544ebd2a8bad9efcc0f707ea774/pillow-11.3.0-cp314-cp314t-macosx_11_0_arm64.whl",hashes = {sha256 = "f8a5827f84d973d8636e9dc5764af4f0cf2318d26744b3d902931701b0d46653"}},
+    {name = "pillow-11.3.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/eb/1c/537e930496149fbac69efd2fc4329035bbe2e5475b4165439e3be9cb183b/pillow-11.3.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "ee92f2fd10f4adc4b43d07ec5e779932b4eb3dbfbc34790ada5a6669bc095aa6"}},
+    {name = "pillow-11.3.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/bd/57/80f53264954dcefeebcf9dae6e3eb1daea1b488f0be8b8fef12f79a3eb10/pillow-11.3.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "c96d333dcf42d01f47b37e0979b6bd73ec91eae18614864622d9b87bbd5bbf36"}},
+    {name = "pillow-11.3.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/70/ff/4727d3b71a8578b4587d9c276e90efad2d6fe0335fd76742a6da08132e8c/pillow-11.3.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "4c96f993ab8c98460cd0c001447bff6194403e8b1d7e149ade5f00594918128b"}},
+    {name = "pillow-11.3.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/05/ae/716592277934f85d3be51d7256f3636672d7b1abfafdc42cf3f8cbd4b4c8/pillow-11.3.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "41342b64afeba938edb034d122b2dda5db2139b9a4af999729ba8818e0056477"}},
+    {name = "pillow-11.3.0-cp314-cp314t-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/e7/bb/7fe6cddcc8827b01b1a9766f5fdeb7418680744f9082035bdbabecf1d57f/pillow-11.3.0-cp314-cp314t-musllinux_1_2_aarch64.whl",hashes = {sha256 = "068d9c39a2d1b358eb9f245ce7ab1b5c3246c7c8c7d9ba58cfa5b43146c06e50"}},
+    {name = "pillow-11.3.0-cp314-cp314t-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/8b/f5/06bfaa444c8e80f1a8e4bff98da9c83b37b5be3b1deaa43d27a0db37ef84/pillow-11.3.0-cp314-cp314t-musllinux_1_2_x86_64.whl",hashes = {sha256 = "a1bc6ba083b145187f648b667e05a2534ecc4b9f2784c2cbe3089e44868f2b9b"}},
+    {name = "pillow-11.3.0-cp314-cp314t-win32.whl",url = "https://files.pythonhosted.org/packages/f0/77/bc6f92a3e8e6e46c0ca78abfffec0037845800ea38c73483760362804c41/pillow-11.3.0-cp314-cp314t-win32.whl",hashes = {sha256 = "118ca10c0d60b06d006be10a501fd6bbdfef559251ed31b794668ed569c87e12"}},
+    {name = "pillow-11.3.0-cp314-cp314t-win_amd64.whl",url = "https://files.pythonhosted.org/packages/4a/82/3a721f7d69dca802befb8af08b7c79ebcab461007ce1c18bd91a5d5896f9/pillow-11.3.0-cp314-cp314t-win_amd64.whl",hashes = {sha256 = "8924748b688aa210d79883357d102cd64690e56b923a186f35a82cbc10f997db"}},
+    {name = "pillow-11.3.0-cp314-cp314t-win_arm64.whl",url = "https://files.pythonhosted.org/packages/89/c7/5572fa4a3f45740eaab6ae86fcdf7195b55beac1371ac8c619d880cfe948/pillow-11.3.0-cp314-cp314t-win_arm64.whl",hashes = {sha256 = "79ea0d14d3ebad43ec77ad5272e6ff9bba5b679ef73375ea760261207fa8e0aa"}},
+    {name = "pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",url = "https://files.pythonhosted.org/packages/1e/93/0952f2ed8db3a5a4c7a11f91965d6184ebc8cd7cbb7941a260d5f018cd2d/pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",hashes = {sha256 = "1c627742b539bba4309df89171356fcb3cc5a9178355b2727d1b74a6cf155fbd"}},
+    {name = "pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",url = "https://files.pythonhosted.org/packages/4b/e8/100c3d114b1a0bf4042f27e0f87d2f25e857e838034e98ca98fe7b8c0a9c/pillow-11.3.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",hashes = {sha256 = "30b7c02f3899d10f13d7a48163c8969e4e653f8b43416d23d13d1bbfdc93b9f8"}},
+    {name = "pillow-11.3.0-cp313-cp313-ios_13_0_x86_64_iphonesimulator.whl",url = "https://files.pythonhosted.org/packages/aa/86/3f758a28a6e381758545f7cdb4942e1cb79abd271bea932998fc0db93cb6/pillow-11.3.0-cp313-cp313-ios_13_0_x86_64_iphonesimulator.whl",hashes = {sha256 = "7859a4cc7c9295f5838015d8cc0a9c215b77e43d07a25e460f35cf516df8626f"}},
+    {name = "pillow-11.3.0-cp313-cp313-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/01/f4/91d5b3ffa718df2f53b0dc109877993e511f4fd055d7e9508682e8aba092/pillow-11.3.0-cp313-cp313-macosx_10_13_x86_64.whl",hashes = {sha256 = "ec1ee50470b0d050984394423d96325b744d55c701a439d2bd66089bff963d3c"}},
+    {name = "pillow-11.3.0-cp313-cp313-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/f9/0e/37d7d3eca6c879fbd9dba21268427dffda1ab00d4eb05b32923d4fbe3b12/pillow-11.3.0-cp313-cp313-macosx_11_0_arm64.whl",hashes = {sha256 = "7db51d222548ccfd274e4572fdbf3e810a5e66b00608862f947b163e613b67dd"}},
+    {name = "pillow-11.3.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/ff/b0/3426e5c7f6565e752d81221af9d3676fdbb4f352317ceafd42899aaf5d8a/pillow-11.3.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "2d6fcc902a24ac74495df63faad1884282239265c6839a0a6416d33faedfae7e"}},
+    {name = "pillow-11.3.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/fc/c1/c6c423134229f2a221ee53f838d4be9d82bab86f7e2f8e75e47b6bf6cd77/pillow-11.3.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "f0f5d8f4a08090c6d6d578351a2b91acf519a54986c055af27e7a93feae6d3f1"}},
+    {name = "pillow-11.3.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/ba/c9/09e6746630fe6372c67c648ff9deae52a2bc20897d51fa293571977ceb5d/pillow-11.3.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "c37d8ba9411d6003bba9e518db0db0c58a680ab9fe5179f040b0463644bc9805"}},
+    {name = "pillow-11.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/d5/1c/a2a29649c0b1983d3ef57ee87a66487fdeb45132df66ab30dd37f7dbe162/pillow-11.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "13f87d581e71d9189ab21fe0efb5a23e9f28552d5be6979e84001d3b8505abe8"}},
+    {name = "pillow-11.3.0-cp313-cp313-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/36/de/d5cc31cc4b055b6c6fd990e3e7f0f8aaf36229a2698501bcb0cdf67c7146/pillow-11.3.0-cp313-cp313-musllinux_1_2_aarch64.whl",hashes = {sha256 = "023f6d2d11784a465f09fd09a34b150ea4672e85fb3d05931d89f373ab14abb2"}},
+    {name = "pillow-11.3.0-cp313-cp313-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/d5/ea/502d938cbaeec836ac28a9b730193716f0114c41325db428e6b280513f09/pillow-11.3.0-cp313-cp313-musllinux_1_2_x86_64.whl",hashes = {sha256 = "45dfc51ac5975b938e9809451c51734124e73b04d0f0ac621649821a63852e7b"}},
+    {name = "pillow-11.3.0-cp313-cp313-win32.whl",url = "https://files.pythonhosted.org/packages/45/9c/9c5e2a73f125f6cbc59cc7087c8f2d649a7ae453f83bd0362ff7c9e2aee2/pillow-11.3.0-cp313-cp313-win32.whl",hashes = {sha256 = "a4d336baed65d50d37b88ca5b60c0fa9d81e3a87d4a7930d3880d1624d5b31f3"}},
+    {name = "pillow-11.3.0-cp313-cp313-win_amd64.whl",url = "https://files.pythonhosted.org/packages/23/85/397c73524e0cd212067e0c969aa245b01d50183439550d24d9f55781b776/pillow-11.3.0-cp313-cp313-win_amd64.whl",hashes = {sha256 = "0bce5c4fd0921f99d2e858dc4d4d64193407e1b99478bc5cacecba2311abde51"}},
+    {name = "pillow-11.3.0-cp313-cp313-win_arm64.whl",url = "https://files.pythonhosted.org/packages/17/d2/622f4547f69cd173955194b78e4d19ca4935a1b0f03a302d655c9f6aae65/pillow-11.3.0-cp313-cp313-win_arm64.whl",hashes = {sha256 = "1904e1264881f682f02b7f8167935cce37bc97db457f8e7849dc3a6a52b99580"}},
+    {name = "pillow-11.3.0-cp313-cp313t-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/dd/80/a8a2ac21dda2e82480852978416cfacd439a4b490a501a288ecf4fe2532d/pillow-11.3.0-cp313-cp313t-macosx_10_13_x86_64.whl",hashes = {sha256 = "4c834a3921375c48ee6b9624061076bc0a32a60b5532b322cc0ea64e639dd50e"}},
+    {name = "pillow-11.3.0-cp313-cp313t-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/44/d6/b79754ca790f315918732e18f82a8146d33bcd7f4494380457ea89eb883d/pillow-11.3.0-cp313-cp313t-macosx_11_0_arm64.whl",hashes = {sha256 = "5e05688ccef30ea69b9317a9ead994b93975104a677a36a8ed8106be9260aa6d"}},
+    {name = "pillow-11.3.0-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/49/20/716b8717d331150cb00f7fdd78169c01e8e0c219732a78b0e59b6bdb2fd6/pillow-11.3.0-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "1019b04af07fc0163e2810167918cb5add8d74674b6267616021ab558dc98ced"}},
+    {name = "pillow-11.3.0-cp313-cp313t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/74/cf/a9f3a2514a65bb071075063a96f0a5cf949c2f2fce683c15ccc83b1c1cab/pillow-11.3.0-cp313-cp313t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "f944255db153ebb2b19c51fe85dd99ef0ce494123f21b9db4877ffdfc5590c7c"}},
+    {name = "pillow-11.3.0-cp313-cp313t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/98/3c/da78805cbdbee9cb43efe8261dd7cc0b4b93f2ac79b676c03159e9db2187/pillow-11.3.0-cp313-cp313t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "1f85acb69adf2aaee8b7da124efebbdb959a104db34d3a2cb0f3793dbae422a8"}},
+    {name = "pillow-11.3.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/6c/fa/ce044b91faecf30e635321351bba32bab5a7e034c60187fe9698191aef4f/pillow-11.3.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "05f6ecbeff5005399bb48d198f098a9b4b6bdf27b8487c7f38ca16eeb070cd59"}},
+    {name = "pillow-11.3.0-cp313-cp313t-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/7b/51/90f9291406d09bf93686434f9183aba27b831c10c87746ff49f127ee80cb/pillow-11.3.0-cp313-cp313t-musllinux_1_2_aarch64.whl",hashes = {sha256 = "a7bc6e6fd0395bc052f16b1a8670859964dbd7003bd0af2ff08342eb6e442cfe"}},
+    {name = "pillow-11.3.0-cp313-cp313t-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/cd/5a/6fec59b1dfb619234f7636d4157d11fb4e196caeee220232a8d2ec48488d/pillow-11.3.0-cp313-cp313t-musllinux_1_2_x86_64.whl",hashes = {sha256 = "83e1b0161c9d148125083a35c1c5a89db5b7054834fd4387499e06552035236c"}},
+    {name = "pillow-11.3.0-cp313-cp313t-win32.whl",url = "https://files.pythonhosted.org/packages/49/6b/00187a044f98255225f172de653941e61da37104a9ea60e4f6887717e2b5/pillow-11.3.0-cp313-cp313t-win32.whl",hashes = {sha256 = "2a3117c06b8fb646639dce83694f2f9eac405472713fcb1ae887469c0d4f6788"}},
+    {name = "pillow-11.3.0-cp313-cp313t-win_amd64.whl",url = "https://files.pythonhosted.org/packages/e8/5c/6caaba7e261c0d75bab23be79f1d06b5ad2a2ae49f028ccec801b0e853d6/pillow-11.3.0-cp313-cp313t-win_amd64.whl",hashes = {sha256 = "857844335c95bea93fb39e0fa2726b4d9d758850b34075a7e3ff4f4fa3aa3b31"}},
+    {name = "pillow-11.3.0-cp313-cp313t-win_arm64.whl",url = "https://files.pythonhosted.org/packages/f3/7e/b623008460c09a0cb38263c93b828c666493caee2eb34ff67f778b87e58c/pillow-11.3.0-cp313-cp313t-win_arm64.whl",hashes = {sha256 = "8797edc41f3e8536ae4b10897ee2f637235c94f27404cac7297f7b607dd0716e"}},
+    {name = "pillow-11.3.0-cp312-cp312-macosx_10_13_x86_64.whl",url = "https://files.pythonhosted.org/packages/40/fe/1bc9b3ee13f68487a99ac9529968035cca2f0a51ec36892060edcc51d06a/pillow-11.3.0-cp312-cp312-macosx_10_13_x86_64.whl",hashes = {sha256 = "fdae223722da47b024b867c1ea0be64e0df702c5e0a60e27daad39bf960dd1e4"}},
+    {name = "pillow-11.3.0-cp312-cp312-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/2c/32/7e2ac19b5713657384cec55f89065fb306b06af008cfd87e572035b27119/pillow-11.3.0-cp312-cp312-macosx_11_0_arm64.whl",hashes = {sha256 = "921bd305b10e82b4d1f5e802b6850677f965d8394203d182f078873851dada69"}},
+    {name = "pillow-11.3.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/8e/1e/b9e12bbe6e4c2220effebc09ea0923a07a6da1e1f1bfbc8d7d29a01ce32b/pillow-11.3.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "eb76541cba2f958032d79d143b98a3a6b3ea87f0959bbe256c0b5e416599fd5d"}},
+    {name = "pillow-11.3.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/8d/33/e9200d2bd7ba00dc3ddb78df1198a6e80d7669cce6c2bdbeb2530a74ec58/pillow-11.3.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "67172f2944ebba3d4a7b54f2e95c786a3a50c21b88456329314caaa28cda70f6"}},
+    {name = "pillow-11.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/41/f1/6f2427a26fc683e00d985bc391bdd76d8dd4e92fac33d841127eb8fb2313/pillow-11.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "97f07ed9f56a3b9b5f49d3661dc9607484e85c67e27f3e8be2c7d28ca032fec7"}},
+    {name = "pillow-11.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/e4/c9/06dd4a38974e24f932ff5f98ea3c546ce3f8c995d3f0985f8e5ba48bba19/pillow-11.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "676b2815362456b5b3216b4fd5bd89d362100dc6f4945154ff172e206a22c024"}},
+    {name = "pillow-11.3.0-cp312-cp312-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/40/e7/848f69fb79843b3d91241bad658e9c14f39a32f71a301bcd1d139416d1be/pillow-11.3.0-cp312-cp312-musllinux_1_2_aarch64.whl",hashes = {sha256 = "3e184b2f26ff146363dd07bde8b711833d7b0202e27d13540bfe2e35a323a809"}},
+    {name = "pillow-11.3.0-cp312-cp312-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/0b/1a/7cff92e695a2a29ac1958c2a0fe4c0b2393b60aac13b04a4fe2735cad52d/pillow-11.3.0-cp312-cp312-musllinux_1_2_x86_64.whl",hashes = {sha256 = "6be31e3fc9a621e071bc17bb7de63b85cbe0bfae91bb0363c893cbe67247780d"}},
+    {name = "pillow-11.3.0-cp312-cp312-win32.whl",url = "https://files.pythonhosted.org/packages/26/7d/73699ad77895f69edff76b0f332acc3d497f22f5d75e5360f78cbcaff248/pillow-11.3.0-cp312-cp312-win32.whl",hashes = {sha256 = "7b161756381f0918e05e7cb8a371fff367e807770f8fe92ecb20d905d0e1c149"}},
+    {name = "pillow-11.3.0-cp312-cp312-win_amd64.whl",url = "https://files.pythonhosted.org/packages/8c/ce/e7dfc873bdd9828f3b6e5c2bbb74e47a98ec23cc5c74fc4e54462f0d9204/pillow-11.3.0-cp312-cp312-win_amd64.whl",hashes = {sha256 = "a6444696fce635783440b7f7a9fc24b3ad10a9ea3f0ab66c5905be1c19ccf17d"}},
+    {name = "pillow-11.3.0-cp312-cp312-win_arm64.whl",url = "https://files.pythonhosted.org/packages/16/8f/b13447d1bf0b1f7467ce7d86f6e6edf66c0ad7cf44cf5c87a37f9bed9936/pillow-11.3.0-cp312-cp312-win_arm64.whl",hashes = {sha256 = "2aceea54f957dd4448264f9bf40875da0415c83eb85f55069d89c0ed436e3542"}},
+    {name = "pillow-11.3.0-cp311-cp311-macosx_10_10_x86_64.whl",url = "https://files.pythonhosted.org/packages/db/26/77f8ed17ca4ffd60e1dcd220a6ec6d71210ba398cfa33a13a1cd614c5613/pillow-11.3.0-cp311-cp311-macosx_10_10_x86_64.whl",hashes = {sha256 = "1cd110edf822773368b396281a2293aeb91c90a2db00d78ea43e7e861631b722"}},
+    {name = "pillow-11.3.0-cp311-cp311-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/cb/39/ee475903197ce709322a17a866892efb560f57900d9af2e55f86db51b0a5/pillow-11.3.0-cp311-cp311-macosx_11_0_arm64.whl",hashes = {sha256 = "9c412fddd1b77a75aa904615ebaa6001f169b26fd467b4be93aded278266b288"}},
+    {name = "pillow-11.3.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/d5/90/442068a160fd179938ba55ec8c97050a612426fae5ec0a764e345839f76d/pillow-11.3.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "7d1aa4de119a0ecac0a34a9c8bde33f34022e2e8f99104e47a3ca392fd60e37d"}},
+    {name = "pillow-11.3.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/13/92/dcdd147ab02daf405387f0218dcf792dc6dd5b14d2573d40b4caeef01059/pillow-11.3.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "91da1d88226663594e3f6b4b8c3c8d85bd504117d043740a8e0ec449087cc494"}},
+    {name = "pillow-11.3.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/6e/db/839d6ba7fd38b51af641aa904e2960e7a5644d60ec754c046b7d2aee00e5/pillow-11.3.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "643f189248837533073c405ec2f0bb250ba54598cf80e8c1e043381a60632f58"}},
+    {name = "pillow-11.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/f2/2f/d7675ecae6c43e9f12aa8d58b6012683b20b6edfbdac7abcb4e6af7a3784/pillow-11.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "106064daa23a745510dabce1d84f29137a37224831d88eb4ce94bb187b1d7e5f"}},
+    {name = "pillow-11.3.0-cp311-cp311-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/45/ad/931694675ede172e15b2ff03c8144a0ddaea1d87adb72bb07655eaffb654/pillow-11.3.0-cp311-cp311-musllinux_1_2_aarch64.whl",hashes = {sha256 = "cd8ff254faf15591e724dc7c4ddb6bf4793efcbe13802a4ae3e863cd300b493e"}},
+    {name = "pillow-11.3.0-cp311-cp311-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/3a/04/ba8f2b11fc80d2dd462d7abec16351b45ec99cbbaea4387648a44190351a/pillow-11.3.0-cp311-cp311-musllinux_1_2_x86_64.whl",hashes = {sha256 = "932c754c2d51ad2b2271fd01c3d121daaa35e27efae2a616f77bf164bc0b3e94"}},
+    {name = "pillow-11.3.0-cp311-cp311-win32.whl",url = "https://files.pythonhosted.org/packages/48/59/8cd06d7f3944cc7d892e8533c56b0acb68399f640786313275faec1e3b6f/pillow-11.3.0-cp311-cp311-win32.whl",hashes = {sha256 = "b4b8f3efc8d530a1544e5962bd6b403d5f7fe8b9e08227c6b255f98ad82b4ba0"}},
+    {name = "pillow-11.3.0-cp311-cp311-win_amd64.whl",url = "https://files.pythonhosted.org/packages/f1/cc/29c0f5d64ab8eae20f3232da8f8571660aa0ab4b8f1331da5c2f5f9a938e/pillow-11.3.0-cp311-cp311-win_amd64.whl",hashes = {sha256 = "1a992e86b0dd7aeb1f053cd506508c0999d710a8f07b4c791c63843fc6a807ac"}},
+    {name = "pillow-11.3.0-cp311-cp311-win_arm64.whl",url = "https://files.pythonhosted.org/packages/c6/df/90bd886fabd544c25addd63e5ca6932c86f2b701d5da6c7839387a076b4a/pillow-11.3.0-cp311-cp311-win_arm64.whl",hashes = {sha256 = "30807c931ff7c095620fe04448e2c2fc673fcbb1ffe2a7da3fb39613489b1ddd"}},
+    {name = "pillow-11.3.0-pp311-pypy311_pp73-macosx_10_15_x86_64.whl",url = "https://files.pythonhosted.org/packages/9e/e3/6fa84033758276fb31da12e5fb66ad747ae83b93c67af17f8c6ff4cc8f34/pillow-11.3.0-pp311-pypy311_pp73-macosx_10_15_x86_64.whl",hashes = {sha256 = "7c8ec7a017ad1bd562f93dbd8505763e688d388cde6e4a010ae1486916e713e6"}},
+    {name = "pillow-11.3.0-pp311-pypy311_pp73-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/5b/ee/e8d2e1ab4892970b561e1ba96cbd59c0d28cf66737fc44abb2aec3795a4e/pillow-11.3.0-pp311-pypy311_pp73-macosx_11_0_arm64.whl",hashes = {sha256 = "9ab6ae226de48019caa8074894544af5b53a117ccb9d3b3dcb2871464c829438"}},
+    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/f2/6d/17f80f4e1f0761f02160fc433abd4109fa1548dcfdca46cfdadaf9efa565/pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "fe27fb049cdcca11f11a7bfda64043c37b30e6b91f10cb5bab275806c32f6ab3"}},
+    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/de/5f/c22340acd61cef960130585bbe2120e2fd8434c214802f07e8c03596b17e/pillow-11.3.0-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "465b9e8844e3c3519a983d58b80be3f668e2a7a5db97f2784e7079fbc9f9822c"}},
+    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/31/5e/03966aedfbfcbb4d5f8aa042452d3361f325b963ebbadddac05b122e47dd/pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "5418b53c0d59b3824d05e029669efa023bbef0f3e92e75ec8428f3799487f361"}},
+    {name = "pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/cc/2d/e082982aacc927fc2cab48e1e731bdb1643a1406acace8bed0900a61464e/pillow-11.3.0-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "504b6f59505f08ae014f724b6207ff6222662aab5cc9542577fb084ed0676ac7"}},
+    {name = "pillow-11.3.0-pp311-pypy311_pp73-win_amd64.whl",url = "https://files.pythonhosted.org/packages/34/e7/ae39f538fd6844e982063c3a5e4598b8ced43b9633baa3a85ef33af8c05c/pillow-11.3.0-pp311-pypy311_pp73-win_amd64.whl",hashes = {sha256 = "c84d689db21a1c397d001aa08241044aa2069e7587b398c8cc63020390b1c1b8"}},
+    {name = "pillow-11.3.0-cp310-cp310-macosx_10_10_x86_64.whl",url = "https://files.pythonhosted.org/packages/4c/5d/45a3553a253ac8763f3561371432a90bdbe6000fbdcf1397ffe502aa206c/pillow-11.3.0-cp310-cp310-macosx_10_10_x86_64.whl",hashes = {sha256 = "1b9c17fd4ace828b3003dfd1e30bff24863e0eb59b535e8f80194d9cc7ecf860"}},
+    {name = "pillow-11.3.0-cp310-cp310-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/7c/c8/67c12ab069ef586a25a4a79ced553586748fad100c77c0ce59bb4983ac98/pillow-11.3.0-cp310-cp310-macosx_11_0_arm64.whl",hashes = {sha256 = "65dc69160114cdd0ca0f35cb434633c75e8e7fad4cf855177a05bf38678f73ad"}},
+    {name = "pillow-11.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/2f/bd/6741ebd56263390b382ae4c5de02979af7f8bd9807346d068700dd6d5cf9/pillow-11.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "7107195ddc914f656c7fc8e4a5e1c25f32e9236ea3ea860f257b0436011fddd0"}},
+    {name = "pillow-11.3.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/ca/0b/c412a9e27e1e6a829e6ab6c2dca52dd563efbedf4c9c6aa453d9a9b77359/pillow-11.3.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "cc3e831b563b3114baac7ec2ee86819eb03caa1a2cef0b481a5675b59c4fe23b"}},
+    {name = "pillow-11.3.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/59/9d/9b7076aaf30f5dd17e5e5589b2d2f5a5d7e30ff67a171eb686e4eecc2adf/pillow-11.3.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "f1f182ebd2303acf8c380a54f615ec883322593320a9b00438eb842c1f37ae50"}},
+    {name = "pillow-11.3.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/f0/16/1a6bf01fb622fb9cf5c91683823f073f053005c849b1f52ed613afcf8dae/pillow-11.3.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "4445fa62e15936a028672fd48c4c11a66d641d2c05726c7ec1f8ba6a572036ae"}},
+    {name = "pillow-11.3.0-cp310-cp310-musllinux_1_2_aarch64.whl",url = "https://files.pythonhosted.org/packages/7b/e6/6ff7077077eb47fde78739e7d570bdcd7c10495666b6afcd23ab56b19a43/pillow-11.3.0-cp310-cp310-musllinux_1_2_aarch64.whl",hashes = {sha256 = "71f511f6b3b91dd543282477be45a033e4845a40278fa8dcdbfdb07109bf18f9"}},
+    {name = "pillow-11.3.0-cp310-cp310-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/c3/3a/b13f36832ea6d279a697231658199e0a03cd87ef12048016bdcc84131601/pillow-11.3.0-cp310-cp310-musllinux_1_2_x86_64.whl",hashes = {sha256 = "040a5b691b0713e1f6cbe222e0f4f74cd233421e105850ae3b3c0ceda520f42e"}},
+    {name = "pillow-11.3.0-cp310-cp310-win32.whl",url = "https://files.pythonhosted.org/packages/6c/e4/61b2e1a7528740efbc70b3d581f33937e38e98ef3d50b05007267a55bcb2/pillow-11.3.0-cp310-cp310-win32.whl",hashes = {sha256 = "89bd777bc6624fe4115e9fac3352c79ed60f3bb18651420635f26e643e3dd1f6"}},
+    {name = "pillow-11.3.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/a9/d3/60c781c83a785d6afbd6a326ed4d759d141de43aa7365725cbcd65ce5e54/pillow-11.3.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "19d2ff547c75b8e3ff46f4d9ef969a06c30ab2d4263a9e287733aa8b2429ce8f"}},
+    {name = "pillow-11.3.0-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/9f/28/4f4a0203165eefb3763939c6789ba31013a2e90adffb456610f30f613850/pillow-11.3.0-cp310-cp310-win_arm64.whl",hashes = {sha256 = "819931d25e57b513242859ce1876c58c59dc31587847bf74cfe06b2e0cb22d2f"}},
+    {name = "pillow-11.3.0-pp310-pypy310_pp73-macosx_10_15_x86_64.whl",url = "https://files.pythonhosted.org/packages/6f/8b/209bd6b62ce8367f47e68a218bffac88888fdf2c9fcf1ecadc6c3ec1ebc7/pillow-11.3.0-pp310-pypy310_pp73-macosx_10_15_x86_64.whl",hashes = {sha256 = "3cee80663f29e3843b68199b9d6f4f54bd1d4a6b59bdd91bceefc51238bcb967"}},
+    {name = "pillow-11.3.0-pp310-pypy310_pp73-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/2e/e6/231a0b76070c2cfd9e260a7a5b504fb72da0a95279410fa7afd99d9751d6/pillow-11.3.0-pp310-pypy310_pp73-macosx_11_0_arm64.whl",hashes = {sha256 = "b5f56c3f344f2ccaf0dd875d3e180f631dc60a51b314295a3e681fe8cf851fbe"}},
+    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",url = "https://files.pythonhosted.org/packages/13/f4/10cf94fda33cb12765f2397fc285fa6d8eb9c29de7f3185165b702fc7386/pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",hashes = {sha256 = "e67d793d180c9df62f1f40aee3accca4829d3794c95098887edc18af4b8b780c"}},
+    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",url = "https://files.pythonhosted.org/packages/72/c9/583821097dc691880c92892e8e2d41fe0a5a3d6021f4963371d2f6d57250/pillow-11.3.0-pp310-pypy310_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",hashes = {sha256 = "d000f46e2917c705e9fb93a3606ee4a819d1e3aa7a9b442f6444f07e77cf5e25"}},
+    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",url = "https://files.pythonhosted.org/packages/3b/8e/5c9d410f9217b12320efc7c413e72693f48468979a013ad17fd690397b9a/pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",hashes = {sha256 = "527b37216b6ac3a12d7838dc3bd75208ec57c1c6d11ef01902266a5a0c14fc27"}},
+    {name = "pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/62/bb/78347dbe13219991877ffb3a91bf09da8317fbfcd4b5f9140aeae020ad71/pillow-11.3.0-pp310-pypy310_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",hashes = {sha256 = "be5463ac478b623b9dd3937afd7fb7ab3d79dd290a28e2b6df292dc75063eb8a"}},
+    {name = "pillow-11.3.0-pp310-pypy310_pp73-win_amd64.whl",url = "https://files.pythonhosted.org/packages/d9/28/1000353d5e61498aaeaaf7f1e4b49ddb05f2c6575f9d4f9f914a3538b6e1/pillow-11.3.0-pp310-pypy310_pp73-win_amd64.whl",hashes = {sha256 = "8dc70ca24c110503e16918a658b869019126ecfe03109b754c402daff12b3d9f"}},
+]
+marker = "\"all\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1351,7 +1351,7 @@ sdist = {name = "httpx-0.28.1.tar.gz", url = "https://files.pythonhosted.org/pac
 wheels = [
     {name = "httpx-0.28.1-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl",hashes = {sha256 = "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -1369,7 +1369,7 @@ sdist = {name = "httpcore-1.0.9.tar.gz", url = "https://files.pythonhosted.org/p
 wheels = [
     {name = "httpcore-1.0.9-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl",hashes = {sha256 = "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -1494,7 +1494,7 @@ sdist = {name = "packaging-25.0.tar.gz", url = "https://files.pythonhosted.org/p
 wheels = [
     {name = "packaging-25.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl",hashes = {sha256 = "29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1507,7 +1507,7 @@ sdist = {name = "typing_extensions-4.15.0.tar.gz", url = "https://files.pythonho
 wheels = [
     {name = "typing_extensions-4.15.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl",hashes = {sha256 = "f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1520,7 +1520,7 @@ sdist = {name = "huggingface_hub-0.35.3.tar.gz", url = "https://files.pythonhost
 wheels = [
     {name = "huggingface_hub-0.35.3-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/31/a0/651f93d154cb72323358bf2bbae3e642bdb5d2f1bfc874d096f7cb159fa0/huggingface_hub-0.35.3-py3-none-any.whl",hashes = {sha256 = "0e3a01829c19d86d03793e4577816fe3bdfc1602ac62c7fb220d593d351224ba"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -1542,7 +1542,7 @@ sdist = {name = "colorama-0.4.6.tar.gz", url = "https://files.pythonhosted.org/p
 wheels = [
     {name = "colorama-0.4.6-py2.py3-none-any.whl",url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl",hashes = {sha256 = "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1596,7 +1596,7 @@ sdist = {name = "requests-2.32.5.tar.gz", url = "https://files.pythonhosted.org/
 wheels = [
     {name = "requests-2.32.5-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/1e/db/4254e3eabe8020b458f1a747140d32277ec7a271daf1d235b70dc0b4e6e3/requests-2.32.5-py3-none-any.whl",hashes = {sha256 = "2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras or \"openai\" in extras or \"recommended\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"openai\" in extras or \"recommended\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -1614,7 +1614,7 @@ sdist = {name = "urllib3-2.5.0.tar.gz", url = "https://files.pythonhosted.org/pa
 wheels = [
     {name = "urllib3-2.5.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/a7/c2/fe1e52489ae3122415c51f387e221dd0773709bad6c6cdaa599e8a2c5185/urllib3-2.5.0-py3-none-any.whl",hashes = {sha256 = "e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras or \"openai\" in extras or \"recommended\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"openai\" in extras or \"recommended\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1627,7 +1627,7 @@ sdist = {name = "tqdm-4.67.1.tar.gz", url = "https://files.pythonhosted.org/pack
 wheels = [
     {name = "tqdm-4.67.1-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl",hashes = {sha256 = "26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -1735,7 +1735,7 @@ wheels = [
     {name = "charset_normalizer-3.4.4-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/eb/66/e396e8a408843337d7315bab30dbf106c38966f1819f123257f5520f8a96/charset_normalizer-3.4.4-cp310-cp310-win_amd64.whl",hashes = {sha256 = "a61900df84c667873b292c3de315a786dd8dac506704dea57bc957bd31e22c7d"}},
     {name = "charset_normalizer-3.4.4-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/b5/58/01b4f815bf0312704c267f2ccb6e5d42bcc7752340cd487bc9f8c3710597/charset_normalizer-3.4.4-cp310-cp310-win_arm64.whl",hashes = {sha256 = "cead0978fc57397645f12578bfd2d5ea9138ea0fac82b2f63f7f7c6877986a69"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras or \"openai\" in extras or \"recommended\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"openai\" in extras or \"recommended\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1748,7 +1748,7 @@ sdist = {name = "dill-0.4.0.tar.gz", url = "https://files.pythonhosted.org/packa
 wheels = [
     {name = "dill-0.4.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/50/3d/9373ad9c56321fdab5b41197068e1d8c25883b3fea29dd361f9b55116869/dill-0.4.0-py3-none-any.whl",hashes = {sha256 = "44f54bf6412c2c8464c14e8243eb163690a9800dbe2c367330883b19c7561049"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1774,7 +1774,7 @@ sdist = {name = "filelock-3.20.0.tar.gz", url = "https://files.pythonhosted.org/
 wheels = [
     {name = "filelock-3.20.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/76/91/7216b27286936c16f5b4d0c530087e4a54eead683e6b0b73dd0c64844af6/filelock-3.20.0-py3-none-any.whl",hashes = {sha256 = "339b4732ffda5cd79b13f4e2711a31b0365ce445d95d243bb996273d072546a2"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras or \"openai\" in extras or \"recommended\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"openai\" in extras or \"recommended\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1787,7 +1787,7 @@ sdist = {name = "fsspec-2025.9.0.tar.gz", url = "https://files.pythonhosted.org/
 wheels = [
     {name = "fsspec-2025.9.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/47/71/70db47e4f6ce3e5c37a607355f80da8860a33226be640226ac52cb05ef2e/fsspec-2025.9.0-py3-none-any.whl",hashes = {sha256 = "530dc2a2af60a414a832059574df4a6e10cce927f6f4a78209390fe38955cfb7"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -1901,7 +1901,7 @@ wheels = [
     {name = "aiohttp-3.13.0-cp310-cp310-win32.whl",url = "https://files.pythonhosted.org/packages/23/ba/47fd065510a8bfab5d5f6e1d97c0de672447c0a941c5021298bd7210afc3/aiohttp-3.13.0-cp310-cp310-win32.whl",hashes = {sha256 = "3b64f22fbb6dcd5663de5ef2d847a5638646ef99112503e6f7704bdecb0d1c4d"}},
     {name = "aiohttp-3.13.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/c4/38/f5385cb79afa1f31bcaa3625a9e8d849b782edaeac09f894f46439e006a1/aiohttp-3.13.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "f8d877aa60d80715b2afc565f0f1aea66565824c229a2d065b31670e09fed6d7"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -2049,7 +2049,7 @@ wheels = [
     {name = "multidict-6.7.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/00/35/f6a637ea2c75f0d3b7c7d41b1189189acff0d9deeb8b8f35536bb30f5e33/multidict-6.7.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "b15b3afff74f707b9275d5ba6a91ae8f6429c3ffb29bbfd216b0b375a56f13d7"}},
     {name = "multidict-6.7.0-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/e7/b8/f7bf8329b39893d02d9d95cf610c75885d12fc0f402b1c894e1c8e01c916/multidict-6.7.0-cp310-cp310-win_arm64.whl",hashes = {sha256 = "4b73189894398d59131a66ff157837b1fafea9974be486d036bb3d32331fdbf0"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -2086,7 +2086,7 @@ wheels = [
     {name = "hf_xet-1.1.10-cp37-abi3-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/2c/3d/ab7109e607ed321afaa690f557a9ada6d6d164ec852fd6bf9979665dc3d6/hf_xet-1.1.10-cp37-abi3-musllinux_1_2_x86_64.whl",hashes = {sha256 = "f900481cf6e362a6c549c61ff77468bd59d6dd082f3170a36acfef2eb6a6793f"}},
     {name = "hf_xet-1.1.10-cp37-abi3-win_amd64.whl",url = "https://files.pythonhosted.org/packages/ee/0e/471f0a21db36e71a2f1752767ad77e92d8cde24e974e03d662931b1305ec/hf_xet-1.1.10-cp37-abi3-win_amd64.whl",hashes = {sha256 = "5f54b19cc347c13235ae7ee98b330c26dd65ef1df47e5316ffb1e87713ca7045"}},
 ]
-marker = "\"default\" in dependency_groups and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\") or \"all\" in extras and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\") or \"dev\" in extras and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\") or \"multimodal\" in extras and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\")"
+marker = "\"default\" in dependency_groups and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\") or \"all\" in extras and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\") or \"audio\" in extras and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\") or \"dev\" in extras and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\") or \"vision\" in extras and (platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"arm64\" or platform_machine == \"aarch64\")"
 
 [packages.tool.pdm]
 dependencies = []
@@ -2125,7 +2125,7 @@ sdist = {name = "idna-3.11.tar.gz", url = "https://files.pythonhosted.org/packag
 wheels = [
     {name = "idna-3.11-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/0e/61/66938bbb5fc52dbdf84594873d5b51fb1f7c7794e9c0f5bd885f30bc507b/idna-3.11-py3-none-any.whl",hashes = {sha256 = "771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras or \"openai\" in extras or \"recommended\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"openai\" in extras or \"recommended\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -2463,7 +2463,7 @@ wheels = [
     {name = "yarl-1.22.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/62/46/94c76196642dbeae634c7a61ba3da88cd77bed875bf6e4a8bed037505aa6/yarl-1.22.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "cb95a9b1adaa48e41815a55ae740cfda005758104049a640a398120bf02515ca"}},
     {name = "yarl-1.22.0-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/af/af/7df4f179d3b1a6dcb9a4bd2ffbc67642746fcafdb62580e66876ce83fff4/yarl-1.22.0-cp310-cp310-win_arm64.whl",hashes = {sha256 = "b85b982afde6df99ecc996990d4ad7ccbdbb70e2a4ba4de0aecde5922ba98a0b"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -2585,7 +2585,7 @@ wheels = [
     {name = "propcache-0.4.1-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/a6/67/354aac4e0603a15f76439caf0427781bcd6797f370377f75a642133bc954/propcache-0.4.1-cp310-cp310-win_amd64.whl",hashes = {sha256 = "1cdb7988c4e5ac7f6d175a28a9aa0c94cb6f2ebe52756a3c0cda98d2809a9e37"}},
     {name = "propcache-0.4.1-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/e0/e1/74e55b9fd1a4c209ff1a9a824bf6c8b3d1fc5a1ac3eabe23462637466785/propcache-0.4.1-cp310-cp310-win_arm64.whl",hashes = {sha256 = "d82ad62b19645419fe79dd63b3f9253e15b30e955c0170e5cebc350c1844e581"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -2611,7 +2611,7 @@ sdist = {name = "aiohappyeyeballs-2.6.1.tar.gz", url = "https://files.pythonhost
 wheels = [
     {name = "aiohappyeyeballs-2.6.1-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/0f/15/5bf3b99495fb160b63f95972b81750f18f7f4e02ad051373b669d17d44f2/aiohappyeyeballs-2.6.1-py3-none-any.whl",hashes = {sha256 = "f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -2639,7 +2639,7 @@ sdist = {name = "aiosignal-1.4.0.tar.gz", url = "https://files.pythonhosted.org/
 wheels = [
     {name = "aiosignal-1.4.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/fb/76/641ae371508676492379f16e2fa48f4e2c11741bd63c48be4b12a6b09cba/aiosignal-1.4.0-py3-none-any.whl",hashes = {sha256 = "053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -2767,7 +2767,7 @@ wheels = [
     {name = "frozenlist-1.8.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/66/aa/3f04523fb189a00e147e60c5b2205126118f216b0aa908035c45336e27e4/frozenlist-1.8.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "667c3777ca571e5dbeb76f331562ff98b957431df140b54c85fd4d52eea8d8f6"}},
     {name = "frozenlist-1.8.0-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/39/75/1135feecdd7c336938bd55b4dc3b0dfc46d85b9be12ef2628574b28de776/frozenlist-1.8.0-cp310-cp310-win_arm64.whl",hashes = {sha256 = "80f85f0a7cc86e7a54c46d99c9e1318ff01f4687c172ede30fd52d19d1da1c8e"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -2795,7 +2795,7 @@ sdist = {name = "attrs-25.4.0.tar.gz", url = "https://files.pythonhosted.org/pac
 wheels = [
     {name = "attrs-25.4.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl",hashes = {sha256 = "adcf7e2a1fb3b36ac48d97835bb6d8ade15b8dcce26aba8bf1d14847b57a3373"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -2836,7 +2836,7 @@ sdist = {name = "certifi-2025.10.5.tar.gz", url = "https://files.pythonhosted.or
 wheels = [
     {name = "certifi-2025.10.5-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/e4/37/af0d2ef3967ac0d6113837b44a4f0bfe1328c2b9763bd5b1744520e5cfed/certifi-2025.10.5-py3-none-any.whl",hashes = {sha256 = "0f212c2744a9bb6de0c56639a6f68afe01ecd92d91f14ae897c4fe7bbeeef0de"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras or \"openai\" in extras or \"recommended\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"openai\" in extras or \"recommended\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -2953,7 +2953,7 @@ sdist = {name = "h11-0.16.0.tar.gz", url = "https://files.pythonhosted.org/packa
 wheels = [
     {name = "h11-0.16.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl",hashes = {sha256 = "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -3052,7 +3052,7 @@ sdist = {name = "jinja2-3.1.6.tar.gz", url = "https://files.pythonhosted.org/pac
 wheels = [
     {name = "jinja2-3.1.6-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl",hashes = {sha256 = "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -3271,7 +3271,7 @@ wheels = [
     {name = "markupsafe-3.0.3-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/d6/25/55dc3ab959917602c96985cb1253efaa4ff42f71194bddeb61eb7278b8be/markupsafe-3.0.3-cp310-cp310-win_amd64.whl",hashes = {sha256 = "c4ffb7ebf07cfe8931028e3e4c85f0357459a3f9f9490886198848f4fa002ec8"}},
     {name = "markupsafe-3.0.3-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/d0/9e/0a02226640c255d1da0b8d12e24ac2aa6734da68bff14c05dd53b94a0fc3/markupsafe-3.0.3-cp310-cp310-win_arm64.whl",hashes = {sha256 = "e2103a929dfa2fcaf9bb4e7c091983a49c9ac3b19c9061b6d5427dd7d14d81a1"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -3317,7 +3317,7 @@ wheels = [
     {name = "multiprocess-0.70.16-pp310-pypy310_pp73-manylinux_2_28_x86_64.whl",url = "https://files.pythonhosted.org/packages/0f/ab/1e6e8009e380e22254ff539ebe117861e5bdb3bff1fc977920972237c6c7/multiprocess-0.70.16-pp310-pypy310_pp73-manylinux_2_28_x86_64.whl",hashes = {sha256 = "d951bed82c8f73929ac82c61f01a7b5ce8f3e5ef40f5b52553b4f547ce2b08ec"}},
     {name = "multiprocess-0.70.16-py310-none-any.whl",url = "https://files.pythonhosted.org/packages/bc/f7/7ec7fddc92e50714ea3745631f79bd9c96424cb2702632521028e57d3a36/multiprocess-0.70.16-py310-none-any.whl",hashes = {sha256 = "c4a9944c67bd49f823687463660a2d6daae94c289adff97e0f9d696ba6371d02"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -3345,7 +3345,7 @@ sdist = {name = "networkx-3.5.tar.gz", url = "https://files.pythonhosted.org/pac
 wheels = [
     {name = "networkx-3.5-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/eb/8d/776adee7bbf76365fdd7f2552710282c79a4ead5d2a46408c9043a2b70ba/networkx-3.5-py3-none-any.whl",hashes = {sha256 = "0030d386a9a06dee3565298b4a734b68589749a544acbb6c412dc9e2489ec6ec"}},
 ]
-marker = "\"default\" in dependency_groups and python_version ~= \"3.12\" or \"all\" in extras and python_version ~= \"3.12\" or \"dev\" in extras and python_version ~= \"3.12\" or \"multimodal\" in extras and python_version ~= \"3.12\""
+marker = "\"default\" in dependency_groups and python_version ~= \"3.12\" or \"all\" in extras and python_version ~= \"3.12\" or \"audio\" in extras and python_version ~= \"3.12\" or \"dev\" in extras and python_version ~= \"3.12\""
 
 [packages.tool.pdm]
 dependencies = []
@@ -3405,7 +3405,7 @@ wheels = [
     {name = "pyarrow-21.0.0-cp310-cp310-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/a6/3e/99473332ac40278f196e105ce30b79ab8affab12f6194802f2593d6b0be2/pyarrow-21.0.0-cp310-cp310-musllinux_1_2_x86_64.whl",hashes = {sha256 = "9b0b14b49ac10654332a805aedfc0147fb3469cbf8ea951b3d040dab12372594"}},
     {name = "pyarrow-21.0.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/7b/f5/c372ef60593d713e8bfbb7e0c743501605f0ad00719146dc075faf11172b/pyarrow-21.0.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "9d9f8bcb4c3be7738add259738abdeddc363de1b80e3310e04067aa1ca596634"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -3563,7 +3563,7 @@ sdist = {name = "sympy-1.14.0.tar.gz", url = "https://files.pythonhosted.org/pac
 wheels = [
     {name = "sympy-1.14.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl",hashes = {sha256 = "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -3577,7 +3577,7 @@ sdist = {name = "mpmath-1.3.0.tar.gz", url = "https://files.pythonhosted.org/pac
 wheels = [
     {name = "mpmath-1.3.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl",hashes = {sha256 = "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -3850,7 +3850,7 @@ sdist = {name = "anyio-4.11.0.tar.gz", url = "https://files.pythonhosted.org/pac
 wheels = [
     {name = "anyio-4.11.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/15/b3/9b1a8074496371342ec1e796a96f99c82c945a339cd81a8e73de28b4cf9e/anyio-4.11.0-py3-none-any.whl",hashes = {sha256 = "0287e96f4d26d4149305414d4e3bc32f0dcd0862365a4bddea19d7a1ec38c4fc"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -3868,7 +3868,7 @@ sdist = {name = "sniffio-1.3.1.tar.gz", url = "https://files.pythonhosted.org/pa
 wheels = [
     {name = "sniffio-1.3.1-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl",hashes = {sha256 = "2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -3955,7 +3955,7 @@ wheels = [
     {name = "pandas-2.3.3-cp310-cp310-musllinux_1_2_x86_64.whl",url = "https://files.pythonhosted.org/packages/10/ae/89b3283800ab58f7af2952704078555fa60c807fff764395bb57ea0b0dbd/pandas-2.3.3-cp310-cp310-musllinux_1_2_x86_64.whl",hashes = {sha256 = "28083c648d9a99a5dd035ec125d42439c6c1c525098c58af0fc38dd1a7a1b3d4"}},
     {name = "pandas-2.3.3-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/85/72/530900610650f54a35a19476eca5104f38555afccda1aa11a92ee14cb21d/pandas-2.3.3-cp310-cp310-win_amd64.whl",hashes = {sha256 = "503cf027cf9940d2ceaa1a93cfb5f8c8c7e6e90720a2850378f0b3f3b1e06826"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -3975,7 +3975,7 @@ sdist = {name = "python-dateutil-2.9.0.post0.tar.gz", url = "https://files.pytho
 wheels = [
     {name = "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",hashes = {sha256 = "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = [
@@ -3989,7 +3989,7 @@ sdist = {name = "pytz-2025.2.tar.gz", url = "https://files.pythonhosted.org/pack
 wheels = [
     {name = "pytz-2025.2-py2.py3-none-any.whl",url = "https://files.pythonhosted.org/packages/81/c4/34e93fe5f5429d7570ec1fa436f1986fb1f00c3e0f43a589fe2bbcd22c3f/pytz-2025.2-py2.py3-none-any.whl",hashes = {sha256 = "5ddf76296dd8c44c26eb8f4b6f35488f3ccbf6fbbd7adee0b7262d43f0ec2f00"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -4002,7 +4002,7 @@ sdist = {name = "six-1.17.0.tar.gz", url = "https://files.pythonhosted.org/packa
 wheels = [
     {name = "six-1.17.0-py2.py3-none-any.whl",url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",hashes = {sha256 = "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -4015,7 +4015,7 @@ sdist = {name = "tzdata-2025.2.tar.gz", url = "https://files.pythonhosted.org/pa
 wheels = [
     {name = "tzdata-2025.2-py2.py3-none-any.whl",url = "https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl",hashes = {sha256 = "1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -4286,7 +4286,7 @@ wheels = [
     {name = "xxhash-3.6.0-cp310-cp310-win_amd64.whl",url = "https://files.pythonhosted.org/packages/bb/cc/53f87e8b5871a6eb2ff7e89c48c66093bda2be52315a8161ddc54ea550c4/xxhash-3.6.0-cp310-cp310-win_amd64.whl",hashes = {sha256 = "e82da5670f2d0d98950317f82a0e4a0197150ff19a6df2ba40399c2a3b9ae5fb"}},
     {name = "xxhash-3.6.0-cp310-cp310-win_arm64.whl",url = "https://files.pythonhosted.org/packages/9f/00/60f9ea3bb697667a14314d7269956f58bf56bb73864f8f8d52a3c2535e9a/xxhash-3.6.0-cp310-cp310-win_arm64.whl",hashes = {sha256 = "4a082ffff8c6ac07707fb6b671caf7c6e020c75226c561830b73d862060f281d"}},
 ]
-marker = "\"default\" in dependency_groups or \"all\" in extras or \"dev\" in extras or \"multimodal\" in extras"
+marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras or \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -4322,7 +4322,7 @@ wheels = [
     {name = "numpy-2.2.6-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",url = "https://files.pythonhosted.org/packages/af/30/feba75f143bdc868a1cc3f44ccfa6c4b9ec522b36458e738cd00f67b573f/numpy-2.2.6-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",hashes = {sha256 = "ce47521a4754c8f4593837384bd3424880629f718d87c5d44f8ed763edd63543"}},
     {name = "numpy-2.2.6-pp310-pypy310_pp73-win_amd64.whl",url = "https://files.pythonhosted.org/packages/37/48/ac2a9584402fb6c0cd5b5d1a91dcf176b15760130dd386bbafdbfe3640bf/numpy-2.2.6-pp310-pypy310_pp73-win_amd64.whl",hashes = {sha256 = "d042d24c90c41b54fd506da306759e06e568864df8ec17ccc17e9e884634fd00"}},
 ]
-marker = "python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"default\" in dependency_groups or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"all\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"dev\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"multimodal\" in extras"
+marker = "python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"default\" in dependency_groups or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"all\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"audio\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"dev\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"vision\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -4401,7 +4401,7 @@ sdist = {name = "async_timeout-5.0.1.tar.gz", url = "https://files.pythonhosted.
 wheels = [
     {name = "async_timeout-5.0.1-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl",hashes = {sha256 = "39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"}},
 ]
-marker = "\"default\" in dependency_groups and python_full_version ~= \"3.10.0\" or \"all\" in extras and python_full_version ~= \"3.10.0\" or \"dev\" in extras and python_full_version ~= \"3.10.0\" or \"multimodal\" in extras and python_full_version ~= \"3.10.0\""
+marker = "\"default\" in dependency_groups and python_full_version ~= \"3.10.0\" or \"all\" in extras and python_full_version ~= \"3.10.0\" or \"audio\" in extras and python_full_version ~= \"3.10.0\" or \"dev\" in extras and python_full_version ~= \"3.10.0\" or \"vision\" in extras and python_full_version ~= \"3.10.0\""
 
 [packages.tool.pdm]
 dependencies = []
@@ -4414,7 +4414,7 @@ sdist = {name = "exceptiongroup-1.3.0.tar.gz", url = "https://files.pythonhosted
 wheels = [
     {name = "exceptiongroup-1.3.0-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/36/f4/c6e662dade71f56cd2f3735141b265c3c79293c109549c1e6933b0651ffc/exceptiongroup-1.3.0-py3-none-any.whl",hashes = {sha256 = "4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10"}},
 ]
-marker = "\"default\" in dependency_groups and python_full_version ~= \"3.10.0\" or \"all\" in extras and python_full_version ~= \"3.10.0\" or \"dev\" in extras and python_full_version ~= \"3.10.0\" or \"multimodal\" in extras and python_full_version ~= \"3.10.0\""
+marker = "\"default\" in dependency_groups and python_full_version ~= \"3.10.0\" or \"all\" in extras and python_full_version ~= \"3.10.0\" or \"audio\" in extras and python_full_version ~= \"3.10.0\" or \"dev\" in extras and python_full_version ~= \"3.10.0\" or \"vision\" in extras and python_full_version ~= \"3.10.0\""
 
 [packages.tool.pdm]
 dependencies = [
@@ -4445,7 +4445,7 @@ sdist = {name = "networkx-3.4.2.tar.gz", url = "https://files.pythonhosted.org/p
 wheels = [
     {name = "networkx-3.4.2-py3-none-any.whl",url = "https://files.pythonhosted.org/packages/b9/54/dd730b32ea14ea797530a4479b2ed46a6fb250f682a9cfb997e968bf0261/networkx-3.4.2-py3-none-any.whl",hashes = {sha256 = "df5d4365b724cf81b8c6a7312509d0c22386097011ad1abe274afd5e9d3bbc5f"}},
 ]
-marker = "python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"default\" in dependency_groups or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"all\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"dev\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"multimodal\" in extras"
+marker = "python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"default\" in dependency_groups or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"all\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"audio\" in extras or python_full_version >= \"3.10.0\" and python_version < \"3.12\" and \"dev\" in extras"
 
 [packages.tool.pdm]
 dependencies = []
@@ -4464,7 +4464,7 @@ marker = "python_full_version >= \"3.10.0\" and python_full_version < \"3.10.2\"
 dependencies = []
 
 [tool.pdm]
-hashes = {sha256 = "ef37fbd12acf242b3c4a4726995f99e234a785db8f38c2a37851a2948023ea96"}
+hashes = {sha256 = "a61aad0c4563f9e4a33622000214136c2a7aa01d28a2e89e220a415039e7e3eb"}
 strategy = ["inherit_metadata", "static_urls"]
 
 [[tool.pdm.targets]]
