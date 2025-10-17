@@ -39,9 +39,9 @@ FROM $BASE_IMAGE
 # Switch to root for installing packages
 USER root
 
-# Install some helpful utilities
+# Install some helpful utilities and deps
 RUN dnf install -y --setopt=install_weak_deps=False \
-        vi tar rsync \
+        vi tar rsync ffmpeg-free \
     && dnf clean all
 
 # Switch back to unpriv user
