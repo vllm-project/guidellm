@@ -22,19 +22,19 @@ __all__ = [
 class RequestFormatter(DatasetPreprocessor, metaclass=ABCMeta):
     @staticmethod
     def encode_audio(*args, **kwargs):
-        from guidellm.extras.multimodal import encode_audio
+        from guidellm.extras.audio import encode_audio
 
         return encode_audio(*args, **kwargs)
 
     @staticmethod
     def encode_image(*args, **kwargs):
-        from guidellm.extras.multimodal import encode_image
+        from guidellm.extras.vision import encode_image
 
         return encode_image(*args, **kwargs)
 
     @staticmethod
     def encode_video(*args, **kwargs):
-        from guidellm.extras.multimodal import encode_video
+        from guidellm.extras.vision import encode_video
 
         return encode_video(*args, **kwargs)
 
