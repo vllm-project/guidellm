@@ -146,7 +146,7 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         if cls.registry is None or key not in cls.registry:
             raise ValueError(f"Unknown constraint initializer key: {key}")
 
-        initializer_class = cls.registry[key]
+        initializer_class = cls.get_registered_object(key)
 
         return (
             initializer_class(*args, **kwargs)  # type: ignore[operator]

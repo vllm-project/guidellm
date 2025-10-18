@@ -287,7 +287,7 @@ class PydanticClassRegistryMixin(
 
     @classmethod
     def register_decorator(
-        cls, clazz: RegisterClassT, name: str | list[str] | None = None
+        cls, clazz: RegisterClassT, name: str | list[str] | None = None, priority: int = 1,
     ) -> RegisterClassT:
         """
         Register a Pydantic model class with type validation and schema reload.
@@ -298,6 +298,7 @@ class PydanticClassRegistryMixin(
 
         :param clazz: Pydantic model class to register in the polymorphic hierarchy
         :param name: Registry identifier for the class. Uses class name if None
+        :param priority: The priority bucket to register the class in.
         :return: The registered class unchanged for decorator chaining
         :raises TypeError: If clazz is not a Pydantic BaseModel subclass
         """
@@ -307,7 +308,7 @@ class PydanticClassRegistryMixin(
                 "Pydantic BaseModel"
             )
 
-        super().register_decorator(clazz, name=name)
+        super().register_decorator(clazz, name=name, priority=priority)
         cls.reload_schema()
 
         return cast("RegisterClassT", clazz)
@@ -332,7 +333,7 @@ class PydanticClassRegistryMixin(
                 return cls.__pydantic_generate_base_schema__(handler)
 
             choices = {
-                name: handler(model_class) for name, model_class in cls.registry.items()
+                name: handler(model_class) for name, model_class in cls.get_registered_entries()
             }
 
             return core_schema.tagged_union_schema(
@@ -408,4 +409,4 @@ class PydanticClassRegistryMixin(
                 "registering classes with ClassRegistryMixin.register()."
             )
 
-        return tuple(cls.registry.values())
+        return tuple(cls.get_registered_objects())

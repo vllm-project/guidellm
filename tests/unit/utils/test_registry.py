@@ -11,7 +11,7 @@ from unittest import mock
 import pytest
 
 from guidellm.utils import RegistryMixin
-from guidellm.utils.registry import RegisterT, RegistryObjT
+from guidellm.utils.registry import RegisterT, RegistryObjT, RegistryEntry
 
 
 def test_registry_obj_type():
@@ -106,10 +106,10 @@ class TestRegistryMixin:
         if isinstance(expected_key, list):
             for key in expected_key:
                 assert key in registry_class.registry
-                assert registry_class.registry[key] is TestClass
+                assert registry_class.registry[key].object is TestClass
         else:
             assert expected_key in registry_class.registry
-            assert registry_class.registry[expected_key] is TestClass
+            assert registry_class.registry[expected_key].object is TestClass
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -154,10 +154,10 @@ class TestRegistryMixin:
         if isinstance(expected_key, list):
             for key in expected_key:
                 assert key in registry_class.registry
-                assert registry_class.registry[key] is TestClass
+                assert registry_class.registry[key].object is TestClass
         else:
             assert expected_key in registry_class.registry
-            assert registry_class.registry[expected_key] is TestClass
+            assert registry_class.registry[expected_key].object is TestClass
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -350,7 +350,7 @@ class TestRegistryMixin:
         with mock.patch.object(
             TestAutoRegistry, "auto_populate_registry"
         ) as mock_populate:
-            TestAutoRegistry.registry = {"class1": "obj1", "class2": "obj2"}
+            TestAutoRegistry.registry = {"class1": RegistryEntry("obj1", 1), "class2": RegistryEntry("obj2", 1)}
             objects = TestAutoRegistry.registered_objects()
             mock_populate.assert_called_once()
             assert objects == ("obj1", "obj2")
@@ -414,9 +414,10 @@ class TestRegistryMixin:
         class TestClass:
             pass
 
-        registry_class.register_decorator(TestClass, name="")
+        registry_class.register_decorator(TestClass, name="", priority=2)
         assert "" in registry_class.registry
-        assert registry_class.registry[""] is TestClass
+        assert registry_class.registry[""].object is TestClass
+        assert registry_class.registry[""].priority == 2
 
     @pytest.mark.sanity
     def test_register_decorator_none_in_list(self, valid_instances):

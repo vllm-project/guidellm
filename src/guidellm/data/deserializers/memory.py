@@ -25,7 +25,7 @@ __all__ = [
 ]
 
 
-@DatasetDeserializerFactory.register("in_memory_dict")
+@DatasetDeserializerFactory.register("in_memory_dict", 2)
 class InMemoryDictDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
@@ -127,7 +127,7 @@ class InMemoryItemListDatasetDeserializer(DatasetDeserializer):
         return Dataset.from_dict({column_name: data}, **data_kwargs)
 
 
-@DatasetDeserializerFactory.register("in_memory_json_str")
+@DatasetDeserializerFactory.register("in_memory_json_str", 2)
 class InMemoryJsonStrDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,

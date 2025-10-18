@@ -25,6 +25,7 @@ from guidellm.utils.pydantic_utils import (
     SuccessfulT,
     TotalT,
 )
+from guidellm.utils.registry import RegistryEntry
 
 
 @pytest.mark.smoke
@@ -608,7 +609,7 @@ class TestPydanticClassRegistryMixin:
 
         assert TestBaseModel.registry is not None  # type: ignore[misc]
         assert "TestSubModel" in TestBaseModel.registry  # type: ignore[misc]
-        assert TestBaseModel.registry["TestSubModel"] is TestSubModel  # type: ignore[misc]
+        assert TestBaseModel.registry["TestSubModel"].object is TestSubModel  # type: ignore[misc]
 
     @pytest.mark.sanity
     def test_register_decorator_with_name(self):
@@ -631,7 +632,7 @@ class TestPydanticClassRegistryMixin:
 
         assert TestBaseModel.registry is not None  # type: ignore[misc]
         assert "custom_name" in TestBaseModel.registry  # type: ignore[misc]
-        assert TestBaseModel.registry["custom_name"] is TestSubModel  # type: ignore[misc]
+        assert TestBaseModel.registry["custom_name"].object is TestSubModel  # type: ignore[misc]
 
     @pytest.mark.sanity
     def test_register_decorator_invalid_type(self):
@@ -732,7 +733,7 @@ class TestPydanticClassRegistryMixin:
             TestBaseModel, "auto_populate_registry"
         ) as mock_auto_populate:
             # Mock the registry to simulate registered classes
-            TestBaseModel.registry = {"test_class": type("TestClass", (), {})}
+            TestBaseModel.registry = {"test_class": RegistryEntry(type("TestClass", (), {}), priority=1)}
             mock_auto_populate.return_value = False
 
             registered = TestBaseModel.registered_classes()
@@ -995,8 +996,7 @@ class TestPydanticClassRegistryMixin:
         assert DocumentedModel.__qualname__.endswith("DocumentedModel")
 
         # Verify that the class is still properly integrated with the registry system
-        all_registered = TestBaseModel.registered_classes()
-        assert DocumentedModel in all_registered
+        assert TestBaseModel.is_registered("documented_model")
 
         # Test that the registered class is the same as the original
         assert registered_class is DocumentedModel
