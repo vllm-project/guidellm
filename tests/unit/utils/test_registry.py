@@ -5,6 +5,7 @@ Unit tests for the registry module.
 from __future__ import annotations
 
 import inspect
+from collections import defaultdict
 from typing import TypeVar
 from unittest import mock
 
@@ -594,3 +595,143 @@ class TestRegistryMixin:
         # Check that the class name is preserved
         assert registered_class.__name__ == "DocumentedClass"
         assert registered_class.__qualname__.endswith("DocumentedClass")
+
+
+# Tests for the registry
+
+class MockRegistry(
+    RegistryMixin["type[MockRegistry]"],
+):
+    pass
+
+
+# --- Test Data ---
+# Define dummy objects as module-level constants
+OBJ_A = "Service A"
+OBJ_B = "Service B"
+OBJ_C = "Service C"
+OBJ_D = "Service D"
+
+
+# --- Pytest Fixture ---
+
+@pytest.fixture
+def clean_registry(request):
+    """
+    A fixture to ensure the registry is empty before each test.
+    This replaces the setUp() and tearDown() methods.
+    """
+    MockRegistry.registry = {}
+    yield  # This is where the test function will run
+    MockRegistry.registry = {}  # Teardown: clear after the test
+
+
+# --- Pytest Test Functions ---
+# We use the 'clean_registry' fixture by passing it as an argument.
+# Pytest will automatically run the fixture code around each test.
+
+def test_empty_registry(clean_registry):
+    """
+    Tests that an empty registry returns an empty list.
+    ### WRITTEN BY AI ###
+    """
+    assert MockRegistry.get_priority_grouped_objects() == []
+
+
+def test_single_item(clean_registry):
+    """
+    Tests that a registry with one item works correctly.
+    ### WRITTEN BY AI ###
+    """
+    MockRegistry.registry = {
+        "a": RegistryEntry(OBJ_A, 10)
+    }
+    expected = [(10, [OBJ_A])]
+    assert MockRegistry.get_priority_grouped_objects() == expected
+
+
+def test_multiple_items_unique_priorities(clean_registry):
+    """
+    Tests that items with different priorities are sorted correctly.
+    ### WRITTEN BY AI ###
+    """
+    MockRegistry.registry = {
+        "a": RegistryEntry(OBJ_A, 10),
+        "b": RegistryEntry(OBJ_B, 1),
+        "c": RegistryEntry(OBJ_C, 5)
+    }
+    expected = [
+        (1, [OBJ_B]),
+        (5, [OBJ_C]),
+        (10, [OBJ_A])
+    ]
+    assert MockRegistry.get_priority_grouped_objects() == expected
+
+
+def test_multiple_items_same_priority(clean_registry):
+    """
+    Tests that items with the same priority are grouped together.
+    ### WRITTEN BY AI ###
+    """
+    MockRegistry.registry = {
+        "a": RegistryEntry(OBJ_A, 5),
+        "b": RegistryEntry(OBJ_B, 5),
+        "c": RegistryEntry(OBJ_C, 5)
+    }
+
+    result = MockRegistry.get_priority_grouped_objects()
+
+    # We expect only one group
+    assert len(result) == 1
+
+    # Check the priority of that group
+    assert result[0][0] == 5
+
+    # Check the items in the group.
+    # Use sorted() for an order-independent comparison,
+    # which is the pytest equivalent of assertCountEqual.
+    assert sorted(result[0][1]) == sorted([OBJ_A, OBJ_B, OBJ_C])
+
+
+def test_mixed_priorities(clean_registry):
+    """
+    Tests a typical scenario with a mix of unique and shared priorities.
+    ### WRITTEN BY AI ###
+    """
+    MockRegistry.registry = {
+        "a": RegistryEntry(OBJ_A, 10),
+        "b": RegistryEntry(OBJ_B, 1),
+        "c": RegistryEntry(OBJ_C, 10),
+        "d": RegistryEntry(OBJ_D, 5)
+    }
+
+    result = MockRegistry.get_priority_grouped_objects()
+
+    # Check the overall structure and sorted priorities
+    assert len(result) == 3
+    assert result[0] == (1, [OBJ_B])
+    assert result[1] == (5, [OBJ_D])
+
+    # Check the last group's priority and items separately
+    assert result[2][0] == 10
+    assert sorted(result[2][1]) == sorted([OBJ_A, OBJ_C])
+
+
+def test_zero_and_negative_priorities(clean_registry):
+    """
+    Tests that sorting works correctly with zero and negative integers.
+    ### WRITTEN BY AI ###
+    """
+    MockRegistry.registry = {
+        "a": RegistryEntry(OBJ_A, 10),
+        "b": RegistryEntry(OBJ_B, 0),
+        "c": RegistryEntry(OBJ_C, -5),
+        "d": RegistryEntry(OBJ_D, 1)
+    }
+    expected = [
+        (-5, [OBJ_C]),
+        (0, [OBJ_B]),
+        (1, [OBJ_D]),
+        (10, [OBJ_A])
+    ]
+    assert MockRegistry.get_priority_grouped_objects() == expected
