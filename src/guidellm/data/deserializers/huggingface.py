@@ -28,7 +28,7 @@ from guidellm.data.deserializers.deserializer import (
 __all__ = ["HuggingFaceDatasetDeserializer"]
 
 
-@DatasetDeserializerFactory.register("huggingface")
+@DatasetDeserializerFactory.register("huggingface", 3)
 class HuggingFaceDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,

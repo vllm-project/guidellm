@@ -10,8 +10,10 @@ plugin architectures.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable
-from typing import ClassVar, Generic, TypeVar, cast
+from dataclasses import dataclass
+from typing import ClassVar, Generic, TypeVar, cast, Iterator
 
 from guidellm.utils.auto_importer import AutoImporterMixin
 
@@ -24,6 +26,12 @@ RegisterT = TypeVar(
     "RegisterT", bound=type
 )  # Must be bound to type to ensure __name__ is available.
 """Generic type variable for the args and return values within the registry."""
+
+
+@dataclass
+class RegistryEntry:
+    object: RegistryObjT
+    priority: int
 
 
 class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
@@ -65,32 +73,39 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
     :cvar registry_populated: Track whether auto-discovery has completed
     """
 
-    registry: ClassVar[dict[str, RegistryObjT] | None] = None  # type: ignore[misc]
+    registry: ClassVar[dict[str, RegistryEntry] | None] = None
     registry_auto_discovery: ClassVar[bool] = False
     registry_populated: ClassVar[bool] = False
 
     @classmethod
     def register(
-        cls, name: str | list[str] | None = None
+        cls,
+        name: str | list[str] | None = None,
+        priority: int = 1,
     ) -> Callable[[RegisterT], RegisterT]:
         """
         Decorator for registering objects with the registry.
 
         :param name: Optional name(s) to register the object under.
             If None, uses the object's __name__ attribute
+        :param priority: Order at which to use the objects.
+            Lower values are used first. Default 1.
         :return: Decorator function that registers the decorated object
         :raises ValueError: If name is not a string, list of strings, or None
         """
 
         def _decorator(obj: RegisterT) -> RegisterT:
-            cls.register_decorator(obj, name=name)
+            cls.register_decorator(obj, name=name, priority=priority)
             return obj
 
         return _decorator
 
     @classmethod
     def register_decorator(
-        cls, obj: RegisterT, name: str | list[str] | None = None
+        cls,
+        obj: RegisterT,
+        name: str | list[str] | None = None,
+        priority: int = 1,
     ) -> RegisterT:
         """
         Register an object directly with the registry.
@@ -98,6 +113,8 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
         :param obj: The object to register
         :param name: Optional name(s) to register the object under.
             If None, uses the object's __name__ attribute
+        :param priority: Order at which to use the objects.
+            Lower values are used first. Default 1
         :return: The registered object
         :raises ValueError: If the object is already registered or name is invalid
         """
@@ -129,7 +146,7 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
                     "registered."
                 )
 
-            cls.registry[register_name] = cast("RegistryObjT", obj)
+            cls.registry[register_name] = cast("RegistryObjT", RegistryEntry(object=obj, priority=priority))
 
         return obj
 
@@ -179,7 +196,11 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
                 "registering objects with RegistryMixin.register()."
             )
 
-        return tuple(cls.registry.values())
+        values: RegistryObjT = []
+        for name, entry in cls.registry.items():
+            values.append(entry.object)
+
+        return tuple(values)
 
     @classmethod
     def is_registered(cls, name: str) -> bool:
@@ -210,11 +231,38 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
             return None
 
         if name in cls.registry:
-            return cls.registry[name]
+            return cls.registry[name].object
 
         name_casefold = name.lower()
         for k, v in cls.registry.items():
             if name_casefold == k.lower():
-                return v
+                return v.object
 
         return None  # Not found
+
+    @classmethod
+    def get_priority_grouped_objects(cls) -> list[tuple[int, list[RegistryObjT]]]:
+        """
+        Groups registered items by priority, sorted from lowest to highest.
+        """
+        # Use a defaultdict to automatically create a new list for each new priority
+        groups: defaultdict[int, list[RegistryObjT]] = defaultdict(list)
+
+        for entry in cls.registry.values():
+            groups[entry.priority].append(entry.object)
+
+        # Return a sorted list of (priority, [list_of_instances]) tuples
+        # .items() gives (key, value) pairs. sorted() sorts them by the key (priority).
+        return sorted(groups.items())
+
+    @classmethod
+    def get_registered_names(cls) -> list[str]:
+        return list(cls.registry.keys())
+
+    @classmethod
+    def get_registered_entries(cls) -> Iterator[tuple[str, RegistryObjT]]:
+        return ((k, v.object) for k, v in (cls.registry or {}).items())
+
+    @classmethod
+    def get_registered_objects(cls) -> Iterator[tuple[str, RegistryObjT]]:
+        return (v.object for v in (cls.registry or {}).values())

@@ -50,31 +50,23 @@ class DatasetDeserializerFactory(
         dataset = None
 
         if type_ is None:
-            for name, deserializer in cls.registry.items():
-                if name == "huggingface":
-                    # Save Hugging Face til the end since it is a catch-all.
-                    continue
-
-                deserializer_fn: DatasetDeserializer = (
-                    deserializer() if isinstance(deserializer, type) else deserializer
-                )
-
-                with contextlib.suppress(DataNotSupportedError):
-                    dataset = deserializer_fn(
-                        data=data,
-                        processor_factory=processor_factory,
-                        random_seed=random_seed,
-                        **data_kwargs,
+            for priority, objects in cls.get_priority_grouped_objects() :
+                print("Deserializing priorities:", priority)
+                for deserializer in objects:
+                    print("Deserializing deserializer:", deserializer.__name__)
+                    deserializer_fn: DatasetDeserializer = (
+                        deserializer() if isinstance(deserializer, type) else deserializer
                     )
 
-            if dataset is None:
-                deserializer_fn = cls.get_registered_object("huggingface")()
-                dataset = deserializer_fn(
-                    data=data,
-                    processor_factory=processor_factory,
-                    random_seed=random_seed,
-                    **data_kwargs,
-                )
+                    with contextlib.suppress(DataNotSupportedError):
+                        dataset = deserializer_fn(
+                            data=data,
+                            processor_factory=processor_factory,
+                            random_seed=random_seed,
+                            **data_kwargs,
+                        )
+                if dataset is not None:
+                    break
         elif deserializer := cls.get_registered_object(type_) is not None:
             deserializer_fn: DatasetDeserializer = (
                 deserializer() if isinstance(deserializer, type) else deserializer
