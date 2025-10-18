@@ -12,10 +12,10 @@ from guidellm.scheduler import (
     NonDistributedEnvironment,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerState,
     SynchronousStrategy,
 )
+from guidellm.schemas import RequestInfo
 from guidellm.utils import InfoMixin
 
 
@@ -268,7 +268,7 @@ class TestNonDistributedEnvironment:
         """Test update_run_iteration no-op behavior."""
         instance, constructor_args = valid_instances
 
-        mock_request_info = ScheduledRequestInfo(
+        mock_request_info = RequestInfo(
             request_id="test-123",
             status="completed",
             scheduler_node_id=0,

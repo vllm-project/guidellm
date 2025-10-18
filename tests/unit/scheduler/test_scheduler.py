@@ -13,11 +13,11 @@ from guidellm.scheduler import (
     BackendInterface,
     MaxNumberConstraint,
     NonDistributedEnvironment,
-    ScheduledRequestInfo,
     Scheduler,
     SchedulerState,
     SynchronousStrategy,
 )
+from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 from tests.unit.testing_utils import async_timeout
 
@@ -169,7 +169,7 @@ class TestScheduler:
 
         assert len(results) > 0
         assert all(isinstance(r[1], MockRequest) for r in results)
-        assert all(isinstance(r[2], ScheduledRequestInfo) for r in results)
+        assert all(isinstance(r[2], RequestInfo) for r in results)
         assert all(isinstance(r[3], SchedulerState) for r in results)
 
     @pytest.mark.smoke
