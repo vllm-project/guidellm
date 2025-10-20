@@ -7,7 +7,7 @@ from random import Random
 from typing import Any
 
 import yaml
-from datasets import Features, IterableDataset, Value
+from datasets import Features, IterableDataset, List, Value
 from faker import Faker
 from pydantic import ConfigDict, Field, model_validator
 from transformers import PreTrainedTokenizerBase
@@ -92,6 +92,26 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
         gt=0,
         default=None,
     )
+    turns: int = Field(
+        description="The number of turns in the conversation.",
+        gt=0,
+        default=1,
+    )
+    turns_stdev: int | None = Field(
+        description="The standard deviation of the number of turns.",
+        gt=0,
+        default=None,
+    )
+    turns_min: int | None = Field(
+        description="The minimum number of turns in the conversation.",
+        gt=0,
+        default=None,
+    )
+    turns_max: int | None = Field(
+        description="The maximum number of turns in the conversation.",
+        gt=0,
+        default=None,
+    )
     source: str = Field(
         description="The source of the text data to be used for generation.",
         default="data:prideandprejudice.txt.gz",
@@ -152,24 +172,43 @@ class SyntheticTextGenerator:
                 random_seed=self.random_seed + 1,  # ensure diff dist from prompts
             )
         )
+        turns_sampler = iter(
+            IntegerRangeSampler(
+                average=self.config.turns,
+                variance=self.config.turns_stdev,
+                min_value=self.config.turns_min,
+                max_value=self.config.turns_max,
+                random_seed=self.random_seed + 5,  # ensure diff dist
+            )
+        )
 
         # Create a shared prefix if specified
         rand = Random(self.random_seed + 3)
         prefix_iter = self._create_prefix_iter(faker, rand)
 
         while True:
-            prompt_tokens_count = next(prompt_tokens_sampler)
-            output_tokens_count = next(output_tokens_sampler)
+            prompt_tokens_counts = []
+            output_tokens_counts = []
+            prompts = []
+
+            # Iterate over each turn
+            turns = next(turns_sampler)
+            for _ in range(turns):
+                prompt_tokens_counts.append(next(prompt_tokens_sampler))
+                output_tokens_counts.append(next(output_tokens_sampler))
+                prompts.append(
+                    self._create_prompt(
+                        prompt_tokens_counts[-1], faker, f"{samples_generated} "
+                    )
+                )
+                samples_generated += 1
 
             yield {
                 "prefix": next(prefix_iter),
-                "prompt": self._create_prompt(
-                    prompt_tokens_count, faker, f"{samples_generated} "
-                ),
-                "prompt_tokens_count": prompt_tokens_count,
-                "output_tokens_count": output_tokens_count,
+                "prompt": prompts,
+                "prompt_tokens_count": prompt_tokens_counts,
+                "output_tokens_count": output_tokens_counts,
             }
-            samples_generated += 1
 
     def _create_prompt(
         self, prompt_tokens_count: int, faker: Faker, unique: str = ""
@@ -257,9 +296,9 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             features=Features(
                 {
                     "prefix": Value("string"),
-                    "prompt": Value("string"),
-                    "prompt_tokens_count": Value("int32"),
-                    "output_tokens_count": Value("int32"),
+                    "prompt": List(Value("string")),
+                    "prompt_tokens_count": List(Value("int32")),
+                    "output_tokens_count": List(Value("int32")),
                 }
             ),
         )
