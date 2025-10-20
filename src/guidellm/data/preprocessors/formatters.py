@@ -60,6 +60,29 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
 
     def __call__(
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
+    ) -> GenerationRequest | list[GenerationRequest]:
+        text_col = columns.get("text_column", [])
+        if any(isinstance(col, list) for col in text_col):
+            if len(text_col) > 1:
+                raise ValueError(
+                    "Multi-turn currently not supported with dataset concatenation."
+                )
+            turns = [{} for _ in range(len(text_col[0]))]
+            for col_type, col_values in columns.items():
+                if isinstance(col_values[0], list):
+                    for turn_idx, turn_value in zip(
+                        range(len(turns)), col_values[0], strict=False
+                    ):
+                        turns[turn_idx][col_type] = [turn_value]
+                else:
+                    for turn_idx in range(len(turns)):
+                        turns[turn_idx][col_type] = [col_values[0]]
+            return [self._apply(turn_columns) for turn_columns in turns]
+        else:
+            return self._apply(columns)
+
+    def _apply(
+        self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
         arguments: GenerationRequestArguments = GenerationRequestArguments(body={})
         input_metrics = UsageMetrics()
@@ -141,7 +164,30 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
             encode_kwargs.get("audio", {}) if encode_kwargs else {}
         )
 
-    def __call__(  # noqa: C901, PLR0912, PLR0915
+    def __call__(
+        self, columns: dict[GenerativeDatasetColumnType, list[Any]]
+    ) -> GenerationRequest | list[GenerationRequest]:
+        text_col = columns.get("text_column", [])
+        if any(isinstance(col, list) for col in text_col):
+            if len(text_col) > 1:
+                raise ValueError(
+                    "Multi-turn currently not supported with dataset concatenation."
+                )
+            turns = [{} for _ in range(len(text_col[0]))]
+            for col_type, col_values in columns.items():
+                if isinstance(col_values[0], list):
+                    for turn_idx, turn_value in zip(
+                        range(len(turns)), col_values[0], strict=False
+                    ):
+                        turns[turn_idx][col_type] = [turn_value]
+                else:
+                    for turn_idx in range(len(turns)):
+                        turns[turn_idx][col_type] = [col_values[0]]
+            return [self._apply(turn_columns) for turn_columns in turns]
+        else:
+            return self._apply(columns)
+
+    def _apply(  # noqa: C901, PLR0912, PLR0915
         self, columns: dict[GenerativeDatasetColumnType, list[Any]]
     ) -> GenerationRequest:
         arguments = GenerationRequestArguments(body={})
