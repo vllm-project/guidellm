@@ -148,7 +148,6 @@ class TestBackendInterface:
                 yield f"Response to: {request}", request_info
 
         backend = ConcreteBackend()
-        assert isinstance(backend, BackendInterface)
         assert isinstance(backend, ConcreteBackend)
         assert backend.processes_limit == 4
         assert backend.requests_limit == 100
@@ -396,8 +395,7 @@ class TestRequestInfo:
         "scheduler_node_id",
         "scheduler_process_id",
         "scheduler_start_time",
-        "scheduler_timings",
-        "request_timings",
+        "timings",
     ]
 
     @pytest.fixture(
@@ -418,16 +416,13 @@ class TestRequestInfo:
                 "scheduler_node_id": 2,
                 "scheduler_process_id": 1,
                 "scheduler_start_time": 2000.0,
-                "scheduler_timings": {
+                "timings": {
                     "targeted_start": 1900.0,
                     "queued": 1950.0,
                     "dequeued": 2000.0,
                     "resolve_start": 2050.0,
                     "resolve_end": 2100.0,
                     "finalized": 2150.0,
-                },
-                "request_timings": {
-                    "timings_type": "test_request_timings",
                     "request_start": 2060.0,
                     "request_end": 2110.0,
                 },
@@ -475,14 +470,8 @@ class TestRequestInfo:
         constructor_args = request.param.copy()
 
         # Handle nested objects
-        if "scheduler_timings" in constructor_args:
-            constructor_args["scheduler_timings"] = RequestTimings(
-                **constructor_args["scheduler_timings"]
-            )
-        if "request_timings" in constructor_args:
-            constructor_args["request_timings"] = RequestTimings.model_validate(
-                constructor_args["request_timings"]
-            )
+        if "timings" in constructor_args:
+            constructor_args["timings"] = RequestTimings(**constructor_args["timings"])
 
         instance = RequestInfo(**constructor_args)
         return instance, constructor_args
@@ -515,12 +504,11 @@ class TestRequestInfo:
 
         # Validate that the instance attributes match the constructor args
         for field, expected_value in constructor_args.items():
-            if field in ["scheduler_timings", "request_timings"]:
+            if field == "timings":
                 actual_value = getattr(instance, field)
                 if expected_value is None:
-                    assert actual_value is None or (
-                        field == "scheduler_timings"
-                        and isinstance(actual_value, RequestTimings)
+                    assert actual_value is None or isinstance(
+                        actual_value, RequestTimings
                     )
                 else:
                     assert isinstance(actual_value, type(expected_value))
@@ -573,7 +561,7 @@ class TestRequestInfo:
             original_value = getattr(instance, field)
             reconstructed_value = getattr(reconstructed, field)
 
-            if field in ["scheduler_timings", "request_timings"]:
+            if field == "timings":
                 if original_value is not None and reconstructed_value is not None:
                     assert (
                         original_value.model_dump() == reconstructed_value.model_dump()
@@ -581,11 +569,11 @@ class TestRequestInfo:
                 else:
                     assert original_value is None or isinstance(
                         original_value,
-                        RequestTimings | RequestTimings,
+                        RequestTimings,
                     )
                     assert reconstructed_value is None or isinstance(
                         reconstructed_value,
-                        RequestTimings | RequestTimings,
+                        RequestTimings,
                     )
             else:
                 assert original_value == reconstructed_value
@@ -593,28 +581,25 @@ class TestRequestInfo:
     @pytest.mark.smoke
     def test_started_at_property(self):
         """Test the started_at property logic."""
-        # Test with request_timings.request_start (should take precedence)
+        # Test with timings.request_start (should take precedence)
         instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestTimings(resolve_start=2000.0),
-            request_timings=RequestTimings.model_validate(
-                {"timings_type": "test_request_timings", "request_start": 2100.0}
-            ),
+            timings=RequestTimings(resolve_start=2000.0, request_start=2100.0),
         )
         assert instance.started_at == 2100.0
 
-        # Test with only scheduler_timings.resolve_start
+        # Test with only timings.resolve_start
         instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestTimings(resolve_start=2000.0),
+            timings=RequestTimings(resolve_start=2000.0),
         )
         assert instance.started_at == 2000.0
 
@@ -631,28 +616,25 @@ class TestRequestInfo:
     @pytest.mark.smoke
     def test_completed_at_property(self):
         """Test the completed_at property logic."""
-        # Test with request_timings.request_end (should take precedence)
+        # Test with timings.request_end (should take precedence)
         instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestTimings(resolve_end=2000.0),
-            request_timings=RequestTimings.model_validate(
-                {"timings_type": "test_request_timings", "request_end": 2100.0}
-            ),
+            timings=RequestTimings(resolve_end=2000.0, request_end=2100.0),
         )
         assert instance.completed_at == 2100.0
 
-        # Test with only scheduler_timings.resolve_end
+        # Test with only timings.resolve_end
         instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestTimings(resolve_end=2000.0),
+            timings=RequestTimings(resolve_end=2000.0),
         )
         assert instance.completed_at == 2000.0
 
