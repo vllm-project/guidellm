@@ -33,7 +33,7 @@ from pydantic import ValidationError
 try:
     import uvloop
 except ImportError:
-    uvloop = None
+    uvloop = None # type: ignore[assignment] # Optional dependency
 
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
@@ -124,7 +124,7 @@ def benchmark():
             dir_okay=False,
             path_type=Path,
         ),
-        click.Choice(get_builtin_scenarios().keys()),
+        click.Choice(tuple(get_builtin_scenarios().keys())),
     ),
     default=None,
     help=(
