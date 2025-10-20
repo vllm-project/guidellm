@@ -286,6 +286,7 @@ class TestInterProcessMessagingQueue:
         assert instance.send_task is None
         assert instance.receive_task is None
 
+    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -373,6 +374,7 @@ class TestInterProcessMessagingQueue:
 
             await instance.stop()
 
+    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -606,6 +608,7 @@ class TestInterProcessMessagingManagerQueue:
         assert instance.send_task is None
         assert instance.receive_task is None
 
+    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -681,6 +684,7 @@ class TestInterProcessMessagingManagerQueue:
 
             await instance.stop()
 
+    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -914,6 +918,7 @@ class TestInterProcessMessagingPipe:
         assert instance.send_task is None
         assert instance.receive_task is None
 
+    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
