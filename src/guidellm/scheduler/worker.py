@@ -399,6 +399,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     request_info.error = "Request was cancelled"
                     request_info.scheduler_timings.resolve_end = time.time()
                     self._send_update("cancelled", response, request, request_info)
+                # Clear conversation on premature exit
+                conversation = []
 
         return history, conversation, aug
 
