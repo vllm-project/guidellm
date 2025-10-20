@@ -51,9 +51,7 @@ class DatasetDeserializerFactory(
 
         if type_ is None:
             for priority, objects in cls.get_priority_grouped_objects() :
-                print("Deserializing priorities:", priority)
                 for deserializer in objects:
-                    print("Deserializing deserializer:", deserializer.__name__)
                     deserializer_fn: DatasetDeserializer = (
                         deserializer() if isinstance(deserializer, type) else deserializer
                     )
