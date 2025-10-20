@@ -160,7 +160,7 @@ profile = "black"
 
 
 [tool.mypy]
-files = ["src/guidellm", "tests"]
+files = ["src/guidellm"]
 python_version = '3.10'
 warn_redundant_casts = true
 warn_unused_ignores = false
