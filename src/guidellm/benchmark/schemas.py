@@ -12,6 +12,7 @@ domain-specific metrics for text, image, video, and audio generation tasks.
 
 from __future__ import annotations
 
+import inspect
 import json
 import random
 import time
@@ -1140,7 +1141,8 @@ class GenerativeMetrics(StandardBaseDict):
             else None
         )
         request_duration = (
-            request_end_time - request_start_time if request_end_time else None
+            (request_end_time - request_start_time)
+            if request_end_time and request_start_time else None
         )
 
         # Always track concurrency
@@ -1791,7 +1793,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         return cls.model_validate(constructor_kwargs)
 
     @classmethod
-    def get_default(cls: BenchmarkGenerativeTextArgs, field: str) -> Any:
+    def get_default(cls: type[BenchmarkGenerativeTextArgs], field: str) -> Any:
         """
         Get default value for a model field.
 
@@ -1805,10 +1807,17 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             )
 
         field_info = BenchmarkGenerativeTextArgs.model_fields[field]
-        if field_info.default_factory is not None:
-            return field_info.default_factory()
+        factory = field_info.default_factory
 
-        return field_info.default
+        if factory is None:
+            return field_info.default
+
+        if len(inspect.signature(factory).parameters) == 0:
+            return factory()  # type: ignore[call-arg] # Confirmed correct at runtime by code above
+        else:
+            return factory({})  # type: ignore[call-arg] # Confirmed correct at runtime by code above
+
+
 
     model_config = ConfigDict(
         extra="ignore",
