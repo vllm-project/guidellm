@@ -50,31 +50,32 @@ class DatasetDeserializerFactory(
         dataset = None
 
         if type_ is None:
+            errors = []
+            # Note: There is no priority order for the deserializers, so all deserializers
+            #  must be mutually exclusive to ensure deterministic behavior.
             for name, deserializer in cls.registry.items():
-                if name == "huggingface":
-                    # Save Hugging Face til the end since it is a catch-all.
-                    continue
-
                 deserializer_fn: DatasetDeserializer = (
                     deserializer() if isinstance(deserializer, type) else deserializer
                 )
 
-                with contextlib.suppress(DataNotSupportedError):
-                    dataset = deserializer_fn(
-                        data=data,
-                        processor_factory=processor_factory,
-                        random_seed=random_seed,
-                        **data_kwargs,
-                    )
+                try:
+                    with contextlib.suppress(DataNotSupportedError):
+                        dataset = deserializer_fn(
+                            data=data,
+                            processor_factory=processor_factory,
+                            random_seed=random_seed,
+                            **data_kwargs,
+                        )
+                except Exception as e:
+                    errors.append(e)
 
-            if dataset is None:
-                deserializer_fn = cls.get_registered_object("huggingface")()
-                dataset = deserializer_fn(
-                    data=data,
-                    processor_factory=processor_factory,
-                    random_seed=random_seed,
-                    **data_kwargs,
-                )
+                if dataset is not None:
+                    break # Found one that works. Continuing could overwrite it.
+
+            if dataset is None and len(errors) > 0:
+                raise DataNotSupportedError(f"data deserialization failed; {len(errors)} errors occurred while "
+                                            f"attempting to deserialize data {data}: {errors}")
+
         elif deserializer := cls.get_registered_object(type_) is not None:
             deserializer_fn: DatasetDeserializer = (
                 deserializer() if isinstance(deserializer, type) else deserializer
