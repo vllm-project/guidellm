@@ -376,7 +376,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             self._send_update("completed", response, request, request_info)
 
             # Record Turn
-            history.append((request, response))
+            history = [(request, response)]
 
             response = request = request_info = None
         except asyncio.CancelledError:
