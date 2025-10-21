@@ -1840,6 +1840,18 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     rate: float | list[float] | None = Field(
         default=None, description="Request rate(s) for rate-based scheduling"
     )
+    start_rate: float | None = Field(
+        default=None,
+        description="Initial rate for incremental profile in requests per second",
+    )
+    increment_factor: float | None = Field(
+        default=None,
+        description="Factor by which to increase rate over time for incremental profile",
+    )
+    rate_limit: int | None = Field(
+        default=None,
+        description="Maximum rate cap for incremental profile",
+    )
     # Backend configuration
     backend: BackendType | Backend = Field(
         default="openai_http", description="Backend type or instance for execution"
