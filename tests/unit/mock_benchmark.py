@@ -1,15 +1,27 @@
 """Mock benchmark objects for unit testing."""
 
-from guidellm.backends import GenerationRequestTimings
 from guidellm.benchmark import (
     BenchmarkSchedulerStats,
     GenerativeBenchmark,
     GenerativeMetrics,
-    GenerativeRequestStats,
 )
 from guidellm.benchmark.profile import SynchronousProfile
-from guidellm.benchmark.schemas import BenchmarkerDict, SchedulerDict
-from guidellm.scheduler import ScheduledRequestInfo, SchedulerState, SynchronousStrategy
+from guidellm.benchmark.schemas import (
+    BenchmarkerDict,
+    GenerativeAudioMetricsSummary,
+    GenerativeImageMetricsSummary,
+    GenerativeMetricsSummary,
+    GenerativeTextMetricsSummary,
+    GenerativeVideoMetricsSummary,
+    SchedulerDict,
+)
+from guidellm.scheduler import SchedulerState, SynchronousStrategy
+from guidellm.schemas import (
+    GenerativeRequestStats,
+    RequestInfo,
+    RequestTimings,
+    UsageMetrics,
+)
 from guidellm.utils import (
     DistributionSummary,
     Percentiles,
@@ -65,6 +77,21 @@ def _create_status_dist() -> StatusDistributionSummary:
     )
 
 
+def _create_metrics_summary() -> GenerativeMetricsSummary:
+    """Create mock generative metrics summary for testing."""
+    return GenerativeMetricsSummary(
+        input=_create_status_dist(),
+        input_per_second=_create_status_dist(),
+        input_concurrency=_create_status_dist(),
+        output=_create_status_dist(),
+        output_per_second=_create_status_dist(),
+        output_concurrency=_create_status_dist(),
+        total=_create_status_dist(),
+        total_per_second=_create_status_dist(),
+        total_concurrency=_create_status_dist(),
+    )
+
+
 def mock_generative_benchmark() -> GenerativeBenchmark:
     """Create a minimal mock GenerativeBenchmark for testing purposes."""
     return GenerativeBenchmark(
@@ -113,14 +140,40 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
             requests_per_second=_create_status_dist(),
             request_concurrency=_create_status_dist(),
             request_latency=_create_status_dist(),
+            request_streaming_iterations_count=_create_status_dist(),
             prompt_token_count=_create_status_dist(),
             output_token_count=_create_status_dist(),
             total_token_count=_create_status_dist(),
             time_to_first_token_ms=_create_status_dist(),
             time_per_output_token_ms=_create_status_dist(),
             inter_token_latency_ms=_create_status_dist(),
+            output_tokens_wo_first_per_iteration=_create_status_dist(),
+            output_tokens_per_iteration=_create_status_dist(),
             output_tokens_per_second=_create_status_dist(),
             tokens_per_second=_create_status_dist(),
+            text=GenerativeTextMetricsSummary(
+                tokens=_create_metrics_summary(),
+                characters=_create_metrics_summary(),
+                words=_create_metrics_summary(),
+            ),
+            image=GenerativeImageMetricsSummary(
+                tokens=_create_metrics_summary(),
+                images=_create_metrics_summary(),
+                pixels=_create_metrics_summary(),
+                bytes=_create_metrics_summary(),
+            ),
+            video=GenerativeVideoMetricsSummary(
+                tokens=_create_metrics_summary(),
+                frames=_create_metrics_summary(),
+                seconds=_create_metrics_summary(),
+                bytes=_create_metrics_summary(),
+            ),
+            audio=GenerativeAudioMetricsSummary(
+                tokens=_create_metrics_summary(),
+                samples=_create_metrics_summary(),
+                seconds=_create_metrics_summary(),
+                bytes=_create_metrics_summary(),
+            ),
         ),
         request_totals=StatusBreakdown(
             successful=1,
@@ -131,8 +184,8 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
         requests=StatusBreakdown(
             successful=[
                 GenerativeRequestStats(
-                    scheduler_info=ScheduledRequestInfo(
-                        request_timings=GenerationRequestTimings(
+                    scheduler_info=RequestInfo(
+                        request_timings=RequestTimings(
                             request_start=1,
                             request_end=6,
                         )
@@ -140,11 +193,19 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
                     request_id="a",
                     request_type="text_completions",
                     prompt="p",
-                    request_args={},
+                    request_args="{}",
                     output="o",
                     iterations=1,
                     prompt_tokens=1,
                     output_tokens=2,
+                    info=RequestInfo(
+                        request_timings=RequestTimings(
+                            request_start=1,
+                            request_end=6,
+                        )
+                    ),
+                    input_metrics=UsageMetrics(),
+                    output_metrics=UsageMetrics(),
                 )
             ],
             incomplete=[],

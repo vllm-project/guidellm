@@ -4,7 +4,7 @@ import inspect
 import typing
 from collections.abc import AsyncIterator
 from types import UnionType
-from typing import Any, Literal, Optional, TypeVar, Union
+from typing import Any, Optional, TypeVar, Union
 
 import pytest
 from pydantic import ValidationError
@@ -13,24 +13,15 @@ from typing_extensions import TypeAliasType
 from guidellm.scheduler import (
     BackendInterface,
     BackendT,
-    MeasuredRequestTimings,
     MultiTurnRequestT,
-    RequestSchedulerTimings,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerState,
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
 )
+from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.utils import StandardBaseModel
-
-
-@MeasuredRequestTimings.register("test_request_timings")
-class ConcreteMeasuredRequestTimings(MeasuredRequestTimings):
-    """Concrete test implementation of MeasuredRequestTimings for testing."""
-
-    timings_type: Literal["test_request_timings"] = "test_request_timings"
 
 
 def test_request_t():
@@ -151,13 +142,12 @@ class TestBackendInterface:
             async def resolve(
                 self,
                 request: str,
-                request_info: ScheduledRequestInfo,
+                request_info: RequestInfo,
                 history: list[tuple[str, str]] | None = None,
-            ) -> AsyncIterator[tuple[str, ScheduledRequestInfo]]:
+            ) -> AsyncIterator[tuple[str, RequestInfo]]:
                 yield f"Response to: {request}", request_info
 
         backend = ConcreteBackend()
-        assert isinstance(backend, BackendInterface)
         assert isinstance(backend, ConcreteBackend)
         assert backend.processes_limit == 4
         assert backend.requests_limit == 100
@@ -199,9 +189,9 @@ class TestBackendInterface:
             async def resolve(
                 self,
                 request: dict,
-                request_info: ScheduledRequestInfo,
+                request_info: RequestInfo,
                 history: list[tuple[dict, dict]] | None = None,
-            ) -> AsyncIterator[tuple[dict, ScheduledRequestInfo]]:
+            ) -> AsyncIterator[tuple[dict, RequestInfo]]:
                 response = {"result": request.get("input", ""), "status": "success"}
                 yield response, request_info
 
@@ -216,7 +206,7 @@ class TestBackendInterface:
         assert backend.shutdown_called
 
         request = {"input": "test_request"}
-        request_info = ScheduledRequestInfo(
+        request_info = RequestInfo(
             request_id="test-123",
             status="queued",
             scheduler_node_id=0,
@@ -264,8 +254,8 @@ class TestBackendInterface:
         assert history_param.default is None
 
 
-class TestRequestSchedulerTimings:
-    """Test the RequestSchedulerTimings model class."""
+class TestRequestTimings:
+    """Test the RequestTimings model class."""
 
     CHECK_KEYS = [
         "targeted_start",
@@ -323,20 +313,20 @@ class TestRequestSchedulerTimings:
         ],
     )
     def valid_instances(self, request):
-        """Creates various valid configurations of RequestSchedulerTimings."""
+        """Creates various valid configurations of RequestTimings."""
         constructor_args = request.param
-        instance = RequestSchedulerTimings(**constructor_args)
+        instance = RequestTimings(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
     def test_class_signatures(self):
-        """Test RequestSchedulerTimings inheritance and type relationships."""
-        assert issubclass(RequestSchedulerTimings, StandardBaseModel)
-        assert hasattr(RequestSchedulerTimings, "model_dump")
-        assert hasattr(RequestSchedulerTimings, "model_validate")
+        """Test RequestTimings inheritance and type relationships."""
+        assert issubclass(RequestTimings, StandardBaseModel)
+        assert hasattr(RequestTimings, "model_dump")
+        assert hasattr(RequestTimings, "model_validate")
 
         # Check all expected fields are defined
-        fields = RequestSchedulerTimings.model_fields
+        fields = RequestTimings.model_fields
         for key in self.CHECK_KEYS:
             assert key in fields
             field_info = fields[key]
@@ -347,7 +337,7 @@ class TestRequestSchedulerTimings:
     def test_initialization(self, valid_instances):
         """Test initialization with valid configurations."""
         instance, constructor_args = valid_instances
-        assert isinstance(instance, RequestSchedulerTimings)
+        assert isinstance(instance, RequestTimings)
         for key in self.CHECK_KEYS:
             assert hasattr(instance, key)
 
@@ -372,7 +362,7 @@ class TestRequestSchedulerTimings:
         """Test invalid initialization scenarios."""
         kwargs = {field: value}
         with pytest.raises(ValidationError):
-            RequestSchedulerTimings(**kwargs)
+            RequestTimings(**kwargs)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -385,8 +375,8 @@ class TestRequestSchedulerTimings:
         assert all(key in data for key in self.CHECK_KEYS)
 
         # Test model_validate
-        reconstructed = RequestSchedulerTimings.model_validate(data)
-        assert isinstance(reconstructed, RequestSchedulerTimings)
+        reconstructed = RequestTimings.model_validate(data)
+        assert isinstance(reconstructed, RequestTimings)
 
         # Validate that all fields match between original and reconstructed instances
         for field in self.CHECK_KEYS:
@@ -397,121 +387,7 @@ class TestRequestSchedulerTimings:
             assert getattr(reconstructed, field) == expected_value
 
 
-class TestRequestTimings:
-    """Test the MeasuredRequestTimings model class."""
-
-    CHECK_KEYS = [
-        "request_start",
-        "request_end",
-    ]
-
-    @pytest.fixture(
-        params=[
-            {"timings_type": "test_request_timings"},
-            {
-                "timings_type": "test_request_timings",
-                "request_start": None,
-                "request_end": None,
-            },
-            {
-                "timings_type": "test_request_timings",
-                "request_start": 1000.0,
-                "request_end": 1100.0,
-            },
-            {
-                "timings_type": "test_request_timings",
-                "request_start": 1000.0,
-            },
-            {
-                "timings_type": "test_request_timings",
-                "request_start": 0.0,
-                "request_end": 0.0,
-            },
-        ],
-        ids=[
-            "default_empty",
-            "all_none_explicit",
-            "complete_sequence",
-            "partial_data",
-            "zero_timestamps",
-        ],
-    )
-    def valid_instances(self, request):
-        """Creates various valid configurations of MeasuredRequestTimings."""
-        constructor_args = request.param
-        instance = MeasuredRequestTimings.model_validate(constructor_args)
-        return instance, constructor_args
-
-    @pytest.mark.smoke
-    def test_class_signatures(self):
-        """Test MeasuredRequestTimings inheritance and type relationships."""
-        assert hasattr(MeasuredRequestTimings, "model_dump")
-        assert hasattr(MeasuredRequestTimings, "model_validate")
-
-        # Check all expected fields are defined
-        fields = MeasuredRequestTimings.model_fields
-        for key in self.CHECK_KEYS:
-            assert key in fields
-            field_info = fields[key]
-            assert field_info.annotation in (Union[float, None], Optional[float])  # noqa: UP007
-            assert field_info.default is None
-
-    @pytest.mark.smoke
-    def test_initialization(self):
-        """Base class initialization should fail."""
-        with pytest.raises(TypeError):
-            MeasuredRequestTimings()
-
-    @pytest.mark.smoke
-    def test_validation(self, valid_instances):
-        """Test initialization with valid configurations."""
-        instance, constructor_args = valid_instances
-        assert isinstance(instance, MeasuredRequestTimings)
-        for key in self.CHECK_KEYS:
-            assert hasattr(instance, key)
-
-        # Validate that the instance attributes match the constructor args
-        for field, expected_value in constructor_args.items():
-            assert getattr(instance, field) == expected_value
-
-    @pytest.mark.sanity
-    @pytest.mark.parametrize(
-        ("field", "value"),
-        [
-            ("request_start", "invalid_string"),
-            ("request_end", [1, 2, 3]),
-        ],
-    )
-    def test_invalid_initialization(self, field, value):
-        """Test invalid initialization scenarios."""
-        kwargs = {"timings_type": "test_request_timings", field: value}
-        with pytest.raises(ValidationError):
-            MeasuredRequestTimings.model_validate(kwargs)
-
-    @pytest.mark.smoke
-    def test_marshalling(self, valid_instances):
-        """Test marshalling to/from pydantic dict formats."""
-        instance, constructor_args = valid_instances
-
-        # Test model_dump
-        data = instance.model_dump()
-        assert isinstance(data, dict)
-        assert all(key in data for key in self.CHECK_KEYS)
-
-        # Test model_validate
-        reconstructed = MeasuredRequestTimings.model_validate(data)
-        assert isinstance(reconstructed, MeasuredRequestTimings)
-
-        # Validate that all fields match between original and reconstructed instances
-        for field in self.CHECK_KEYS:
-            assert getattr(reconstructed, field) == getattr(instance, field)
-
-        # Validate that the reconstructed instance matches original constructor args
-        for field, expected_value in constructor_args.items():
-            assert getattr(reconstructed, field) == expected_value
-
-
-class TestScheduledRequestInfo:
+class TestRequestInfo:
     CHECK_KEYS = [
         "request_id",
         "status",
@@ -519,8 +395,7 @@ class TestScheduledRequestInfo:
         "scheduler_node_id",
         "scheduler_process_id",
         "scheduler_start_time",
-        "scheduler_timings",
-        "request_timings",
+        "timings",
     ]
 
     @pytest.fixture(
@@ -541,16 +416,13 @@ class TestScheduledRequestInfo:
                 "scheduler_node_id": 2,
                 "scheduler_process_id": 1,
                 "scheduler_start_time": 2000.0,
-                "scheduler_timings": {
+                "timings": {
                     "targeted_start": 1900.0,
                     "queued": 1950.0,
                     "dequeued": 2000.0,
                     "resolve_start": 2050.0,
                     "resolve_end": 2100.0,
                     "finalized": 2150.0,
-                },
-                "request_timings": {
-                    "timings_type": "test_request_timings",
                     "request_start": 2060.0,
                     "request_end": 2110.0,
                 },
@@ -589,42 +461,36 @@ class TestScheduledRequestInfo:
         ],
     )
     def valid_instances(self, request):
-        """Creates various valid configurations of ScheduledRequestInfo.
+        """Creates various valid configurations of RequestInfo.
 
         Returns:
             tuple: (instance, constructor_args) where instance is the constructed
-                   ScheduledRequestInfo and constructor_args are the kwargs used.
+                   RequestInfo and constructor_args are the kwargs used.
         """
         constructor_args = request.param.copy()
 
         # Handle nested objects
-        if "scheduler_timings" in constructor_args:
-            constructor_args["scheduler_timings"] = RequestSchedulerTimings(
-                **constructor_args["scheduler_timings"]
-            )
-        if "request_timings" in constructor_args:
-            constructor_args["request_timings"] = MeasuredRequestTimings.model_validate(
-                constructor_args["request_timings"]
-            )
+        if "timings" in constructor_args:
+            constructor_args["timings"] = RequestTimings(**constructor_args["timings"])
 
-        instance = ScheduledRequestInfo(**constructor_args)
+        instance = RequestInfo(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
     def test_class_signatures(self):
-        """Test ScheduledRequestInfo inheritance and type relationships."""
-        assert issubclass(ScheduledRequestInfo, StandardBaseModel)
-        assert hasattr(ScheduledRequestInfo, "model_dump")
-        assert hasattr(ScheduledRequestInfo, "model_validate")
+        """Test RequestInfo inheritance and type relationships."""
+        assert issubclass(RequestInfo, StandardBaseModel)
+        assert hasattr(RequestInfo, "model_dump")
+        assert hasattr(RequestInfo, "model_validate")
 
         # Check computed properties
-        assert hasattr(ScheduledRequestInfo, "started_at")
-        assert hasattr(ScheduledRequestInfo, "completed_at")
-        assert isinstance(ScheduledRequestInfo.started_at, property)
-        assert isinstance(ScheduledRequestInfo.completed_at, property)
+        assert hasattr(RequestInfo, "started_at")
+        assert hasattr(RequestInfo, "completed_at")
+        assert isinstance(RequestInfo.started_at, property)
+        assert isinstance(RequestInfo.completed_at, property)
 
         # Check required fields
-        fields = ScheduledRequestInfo.model_fields
+        fields = RequestInfo.model_fields
         for key in self.CHECK_KEYS:
             assert key in fields
 
@@ -632,18 +498,17 @@ class TestScheduledRequestInfo:
     def test_initialization(self, valid_instances):
         """Test initialization with valid configurations."""
         instance, constructor_args = valid_instances
-        assert isinstance(instance, ScheduledRequestInfo)
+        assert isinstance(instance, RequestInfo)
         for key in self.CHECK_KEYS:
             assert hasattr(instance, key)
 
         # Validate that the instance attributes match the constructor args
         for field, expected_value in constructor_args.items():
-            if field in ["scheduler_timings", "request_timings"]:
+            if field == "timings":
                 actual_value = getattr(instance, field)
                 if expected_value is None:
-                    assert actual_value is None or (
-                        field == "scheduler_timings"
-                        and isinstance(actual_value, RequestSchedulerTimings)
+                    assert actual_value is None or isinstance(
+                        actual_value, RequestTimings
                     )
                 else:
                     assert isinstance(actual_value, type(expected_value))
@@ -675,7 +540,7 @@ class TestScheduledRequestInfo:
         }
         base_kwargs[field] = value
         with pytest.raises(ValidationError):
-            ScheduledRequestInfo(**base_kwargs)
+            RequestInfo(**base_kwargs)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -688,15 +553,15 @@ class TestScheduledRequestInfo:
         assert all(key in data for key in self.CHECK_KEYS)
 
         # Test model_validate
-        reconstructed = ScheduledRequestInfo.model_validate(data)
-        assert isinstance(reconstructed, ScheduledRequestInfo)
+        reconstructed = RequestInfo.model_validate(data)
+        assert isinstance(reconstructed, RequestInfo)
 
         # Validate that all fields match between original and reconstructed instances
         for field in self.CHECK_KEYS:
             original_value = getattr(instance, field)
             reconstructed_value = getattr(reconstructed, field)
 
-            if field in ["scheduler_timings", "request_timings"]:
+            if field == "timings":
                 if original_value is not None and reconstructed_value is not None:
                     assert (
                         original_value.model_dump() == reconstructed_value.model_dump()
@@ -704,11 +569,11 @@ class TestScheduledRequestInfo:
                 else:
                     assert original_value is None or isinstance(
                         original_value,
-                        RequestSchedulerTimings | MeasuredRequestTimings,
+                        RequestTimings,
                     )
                     assert reconstructed_value is None or isinstance(
                         reconstructed_value,
-                        RequestSchedulerTimings | MeasuredRequestTimings,
+                        RequestTimings,
                     )
             else:
                 assert original_value == reconstructed_value
@@ -716,33 +581,30 @@ class TestScheduledRequestInfo:
     @pytest.mark.smoke
     def test_started_at_property(self):
         """Test the started_at property logic."""
-        # Test with request_timings.request_start (should take precedence)
-        instance = ScheduledRequestInfo(
+        # Test with timings.request_start (should take precedence)
+        instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestSchedulerTimings(resolve_start=2000.0),
-            request_timings=MeasuredRequestTimings.model_validate(
-                {"timings_type": "test_request_timings", "request_start": 2100.0}
-            ),
+            timings=RequestTimings(resolve_start=2000.0, request_start=2100.0),
         )
         assert instance.started_at == 2100.0
 
-        # Test with only scheduler_timings.resolve_start
-        instance = ScheduledRequestInfo(
+        # Test with only timings.resolve_start
+        instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestSchedulerTimings(resolve_start=2000.0),
+            timings=RequestTimings(resolve_start=2000.0),
         )
         assert instance.started_at == 2000.0
 
         # Test with no timing info
-        instance = ScheduledRequestInfo(
+        instance = RequestInfo(
             request_id="test-req",
             status="queued",
             scheduler_node_id=1,
@@ -754,33 +616,30 @@ class TestScheduledRequestInfo:
     @pytest.mark.smoke
     def test_completed_at_property(self):
         """Test the completed_at property logic."""
-        # Test with request_timings.request_end (should take precedence)
-        instance = ScheduledRequestInfo(
+        # Test with timings.request_end (should take precedence)
+        instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestSchedulerTimings(resolve_end=2000.0),
-            request_timings=MeasuredRequestTimings.model_validate(
-                {"timings_type": "test_request_timings", "request_end": 2100.0}
-            ),
+            timings=RequestTimings(resolve_end=2000.0, request_end=2100.0),
         )
         assert instance.completed_at == 2100.0
 
-        # Test with only scheduler_timings.resolve_end
-        instance = ScheduledRequestInfo(
+        # Test with only timings.resolve_end
+        instance = RequestInfo(
             request_id="test-req",
             status="completed",
             scheduler_node_id=1,
             scheduler_process_id=0,
             scheduler_start_time=1000.0,
-            scheduler_timings=RequestSchedulerTimings(resolve_end=2000.0),
+            timings=RequestTimings(resolve_end=2000.0),
         )
         assert instance.completed_at == 2000.0
 
         # Test with no timing info
-        instance = ScheduledRequestInfo(
+        instance = RequestInfo(
             request_id="test-req",
             status="queued",
             scheduler_node_id=1,
