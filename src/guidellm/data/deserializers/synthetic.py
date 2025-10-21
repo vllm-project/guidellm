@@ -183,7 +183,7 @@ class SyntheticTextGenerator:
 
         while len(prompt_token_ids) < prompt_tokens_count:
             attempts += 1
-            num_chars = math.ceil(
+            num_chars = int(
                 prompt_tokens_count * avg_chars_per_token * margin_of_safety * attempts
             )
             text = unique + faker.text(max_nb_chars=num_chars)

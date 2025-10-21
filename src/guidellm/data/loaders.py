@@ -16,7 +16,6 @@ from guidellm.logger import logger
 
 __all__ = ["DataLoader", "DatasetsIterator"]
 
-from guidellm.schemas import GenerationRequest
 
 
 class DatasetsIterator(TorchIterableDataset):
@@ -100,11 +99,10 @@ class DatasetsIterator(TorchIterableDataset):
                         continue
 
                     for preprocessor in self.preprocessors:
-                        processed_row = preprocessor(row)
-                        if isinstance(processed_row, GenerationRequest):
-                            yield processed_row
-                        else:
-                            row = processed_row
+                        # This can assign a GenerationRequest, which would then be
+                        # passed into the preprocessor, which is a type violation.
+                        # This should be fixed at some point.
+                        row = preprocessor(row)  # type: ignore[assignment]
                     yield row
                 except Exception as err:  # noqa: BLE001 # Exception logged
                     logger.error(f"Skipping data row due to error: {err}")

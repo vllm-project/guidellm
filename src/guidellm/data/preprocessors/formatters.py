@@ -7,7 +7,6 @@ from guidellm.data.preprocessors.preprocessor import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
-from guidellm.data.utils import text_stats
 from guidellm.schemas import GenerationRequest, GenerationRequestArguments, UsageMetrics
 
 __all__ = [
@@ -102,10 +101,10 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
         text = "".join(txt for txt in columns.get("text_column", []) if txt)
         if prefix or text:
-            arguments.body["prompt"] = prefix + text
-            stats = text_stats(arguments.body["prompt"])
-            input_metrics.text_characters = stats.get("num_chars")
-            input_metrics.text_words = stats.get("num_words")
+            prompt = prefix + text
+            arguments.body["prompt"] = prompt
+            input_metrics.text_characters = len(prompt)
+            input_metrics.text_words = len(prompt.split())
 
         return GenerationRequest(
             request_type="text_completions",
@@ -198,13 +197,12 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
             if not prefix:
                 continue
 
-            stats = text_stats(prefix)
-            if (num_chars := stats.get("num_chars")) is not None:
-                input_metrics.text_characters = (
-                    input_metrics.text_characters or 0
-                ) + num_chars
-            if (num_words := stats.get("num_words")) is not None:
-                input_metrics.text_words = (input_metrics.text_words or 0) + num_words
+            input_metrics.text_characters = (
+                input_metrics.text_characters or 0
+            ) + len(prefix)
+
+            input_metrics.text_words = (input_metrics.text_words or 0) + \
+                                       len(prefix.split())
 
             arguments.body["messages"].append({"role": "system", "content": prefix})
 
@@ -212,13 +210,12 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
             if not text:
                 continue
 
-            stats = text_stats(text)
-            if (num_chars := stats.get("num_chars")) is not None:
-                input_metrics.text_characters = (
-                    input_metrics.text_characters or 0
-                ) + num_chars
-            if (num_words := stats.get("num_words")) is not None:
-                input_metrics.text_words = (input_metrics.text_words or 0) + num_words
+            input_metrics.text_characters = (
+                input_metrics.text_characters or 0
+            ) + len(text)
+            input_metrics.text_words = (
+               input_metrics.text_words or 0
+            ) + len(text.split())
 
             arguments.body["messages"].append(
                 {"role": "user", "content": [{"type": "text", "text": text}]}
@@ -395,10 +392,10 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
         text = "".join(txt for txt in columns.get("text_column", []) if txt)
         if prefix or text:
-            arguments.body["prompt"] = prefix + text
-            stats = text_stats(arguments.body["prompt"])
-            input_metrics.text_characters = stats.get("num_chars")
-            input_metrics.text_words = stats.get("num_words")
+            prompt = prefix + text
+            arguments.body["prompt"] = prompt
+            input_metrics.text_characters = len(prompt)
+            input_metrics.text_words = len(prompt.split())
 
         return GenerationRequest(
             request_type="audio_transcriptions",
