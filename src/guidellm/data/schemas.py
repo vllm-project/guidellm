@@ -10,4 +10,5 @@ GenerativeDatasetColumnType = Literal[
     "image_column",
     "video_column",
     "audio_column",
+    "items"  # special case
 ]

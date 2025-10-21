@@ -36,7 +36,7 @@ class HuggingFaceDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset | IterableDataset | DatasetDict | IterableDatasetDict:
         _ = (processor_factory, random_seed)
 
         if isinstance(

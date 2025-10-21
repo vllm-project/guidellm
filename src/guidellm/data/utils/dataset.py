@@ -73,7 +73,7 @@ def resolve_dataset_split(
     dataset: Dataset | IterableDataset | DatasetDict | IterableDatasetDict,
     split: str | None = None,
 ) -> Dataset | IterableDataset:
-    if split is not None and isinstance(dataset, (DatasetDict, IterableDatasetDict)):
+    if split is not None and isinstance(dataset, DatasetDict | IterableDatasetDict):
         if split in dataset:
             return dataset[split]
 
@@ -83,7 +83,7 @@ def resolve_dataset_split(
             f"Requested split '{split}' but dataset has no splits: {dataset}."
         )
 
-    if isinstance(dataset, (Dataset, IterableDataset)):
+    if isinstance(dataset, Dataset | IterableDataset):
         return dataset
 
     for _, default_splits in DEFAULT_SPLITS.items():
