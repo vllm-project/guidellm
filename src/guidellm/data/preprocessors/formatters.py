@@ -104,7 +104,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         if prefix or text:
             arguments.body["prompt"] = prefix + text
             stats = text_stats(arguments.body["prompt"])
-            input_metrics.text_characters = stats.get("num_chars")  # type: ignore[assignment] #
+            input_metrics.text_characters = stats.get("num_chars")
             input_metrics.text_words = stats.get("num_words")
 
         return GenerationRequest(
