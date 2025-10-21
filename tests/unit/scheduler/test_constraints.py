@@ -17,12 +17,12 @@ from guidellm.scheduler import (
     MaxGlobalErrorRateConstraint,
     MaxNumberConstraint,
     PydanticConstraintInitializer,
-    ScheduledRequestInfo,
     SchedulerState,
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
+from guidellm.schemas import RequestInfo
 from guidellm.utils import InfoMixin, StandardBaseModel
 
 
@@ -59,7 +59,7 @@ class TestConstraint:
             def __call__(
                 self,
                 state: SchedulerState,
-                request: ScheduledRequestInfo,
+                request: RequestInfo,
             ) -> SchedulerUpdateAction:
                 return SchedulerUpdateAction()
 
@@ -83,7 +83,7 @@ class TestConstraint:
             def __call__(
                 self,
                 state: SchedulerState,
-                request: ScheduledRequestInfo,
+                request: RequestInfo,
             ) -> SchedulerUpdateAction:
                 return SchedulerUpdateAction()
 
@@ -124,7 +124,7 @@ class TestConstraintInitializer:
                     def __call__(
                         self,
                         state: SchedulerState,
-                        request: ScheduledRequestInfo,
+                        request: RequestInfo,
                     ) -> SchedulerUpdateAction:
                         return SchedulerUpdateAction()
 
@@ -146,7 +146,7 @@ class TestConstraintInitializer:
                     def __call__(
                         self,
                         state: SchedulerState,
-                        request: ScheduledRequestInfo,
+                        request: RequestInfo,
                     ) -> SchedulerUpdateAction:
                         return SchedulerUpdateAction()
 
@@ -287,7 +287,7 @@ class TestUnserializableConstraintInitializer:
         """Test that calling constraint raises RuntimeError."""
         instance, _ = valid_instances
         state = SchedulerState(node_id=0, num_processes=1, start_time=0.0)
-        request = ScheduledRequestInfo(
+        request = RequestInfo(
             request_id="test_request",
             status="pending",
             scheduler_node_id=0,
@@ -370,7 +370,7 @@ class TestMaxNumberConstraint:
                 processed_requests=num_requests,
                 errored_requests=0,
             )
-            request_info = ScheduledRequestInfo(
+            request_info = RequestInfo(
                 request_id="test", status="completed", created_at=start_time
             )
 
@@ -540,7 +540,7 @@ class TestMaxDurationConstraint:
                 created_requests=step + 1,
                 processed_requests=step,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{step}",
                 status="completed",
                 scheduler_node_id=0,
@@ -744,7 +744,7 @@ class TestMaxErrorsConstraint:
                 processed_requests=processed_requests,
                 errored_requests=num_errors,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{num_errors}",
                 status="completed",
                 scheduler_node_id=0,
@@ -947,7 +947,7 @@ class TestMaxErrorRateConstraint:
                 created_requests=request_num + 1,
                 processed_requests=request_num + 1,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{request_num}",
                 status=status,
                 scheduler_node_id=0,
@@ -1173,7 +1173,7 @@ class TestMaxGlobalErrorRateConstraint:
                 processed_requests=processed_requests,
                 errored_requests=total_errors,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{request_num}",
                 status=status,
                 scheduler_node_id=0,
@@ -1393,7 +1393,7 @@ class TestConstraintsInitializerFactory:
             created_requests=5,
             processed_requests=5,
         )
-        request = ScheduledRequestInfo(
+        request = RequestInfo(
             request_id="test-request",
             status="completed",
             scheduler_node_id=0,
