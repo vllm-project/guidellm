@@ -99,25 +99,23 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:
-        prefix_count: Any | None = None
-        prefix_tokens: Any | None = None
         if self.__pydantic_extra__ is not None:
             prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
             prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
 
-            if (prefix_count is not None or prefix_tokens is not None
-                and self.prefix_buckets):
-                raise ValueError(
-                    "prefix_buckets is mutually exclusive"
-                    " with prefix_count and prefix_tokens"
-                )
+            if prefix_count is not None or prefix_tokens is not None:
+                if self.prefix_buckets:
+                    raise ValueError(
+                        "prefix_buckets is mutually exclusive"
+                        " with prefix_count and prefix_tokens"
+                    )
 
-        self.prefix_buckets = [
-            SyntheticTextPrefixBucketConfig(
-                prefix_count=prefix_count or 1,
-                prefix_tokens=prefix_tokens or 0,
-            )
-        ]
+                self.prefix_buckets = [
+                    SyntheticTextPrefixBucketConfig(
+                        prefix_count=prefix_count or 1,
+                        prefix_tokens=prefix_tokens or 0,
+                    )
+                ]
 
         return self
 
