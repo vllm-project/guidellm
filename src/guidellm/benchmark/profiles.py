@@ -29,6 +29,7 @@ from pydantic import (
 from guidellm import settings
 from guidellm.scheduler import (
     AsyncConstantStrategy,
+    AsyncIncrementalStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,
     Constraint,
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AsyncProfile",
     "ConcurrentProfile",
+    "IncrementalProfile",
     "Profile",
     "ProfileType",
     "SweepProfile",
@@ -54,7 +56,7 @@ __all__ = [
 ]
 
 ProfileType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "async", "sweep"],
+    Literal["synchronous", "concurrent", "throughput", "async", "sweep", "incremental"],
     "Profile type identifiers for polymorphic deserialization",
 ]
 
@@ -712,3 +714,120 @@ class SweepProfile(Profile):
             )
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
+
+
+@Profile.register("incremental")
+class IncrementalProfile(ThroughputProfile):
+    """
+    Incremental rate execution profile with incremental load over time.
+
+    Schedules requests starting at a base rate and incrementally increasing
+    the rate by a factor over time until reaching an optional rate limit.
+    """
+
+    type_: Literal["incremental"] = "incremental"  # type: ignore[assignment]
+    start_rate: PositiveFloat = Field(
+        description="Initial rate at which to schedule requests in requests per second",
+    )
+    increment_factor: PositiveFloat = Field(
+        description="Factor by which to increase the rate over time",
+    )
+    rate_limit: PositiveInt | None = Field(
+        default=None,
+        description="Maximum rate cap after which load remains constant",
+    )
+    initial_burst: bool = Field(
+        default=True,
+        description=(
+            "Whether to send initial burst of math.floor(start_rate) requests "
+            "to reach target rate"
+        ),
+    )
+
+    @classmethod
+    def resolve_args(
+        cls,
+        rate_type: str,
+        rate: list[float] | None,
+        random_seed: int,
+        start_rate: float | None = None,
+        increment_factor: float | None = None,
+        rate_limit: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """
+        Resolve arguments for incremental profile construction.
+
+        :param rate_type: Profile type identifier
+        :param rate: Rate parameter (must be None for incremental)
+        :param random_seed: Random seed (ignored)
+        :param start_rate: Initial rate in requests per second
+        :param increment_factor: Rate increase factor over time
+        :param rate_limit: Optional maximum rate cap
+        :param kwargs: Additional arguments passed through unchanged
+        :return: Resolved arguments dictionary
+        :raises ValueError: If rate is not None or required params missing
+        """
+        _ = random_seed  # unused
+        if rate_type != "incremental":
+            raise ValueError("Rate type must be 'incremental' for incremental profile")
+
+        if rate is not None:
+            raise ValueError(
+                "rate does not apply to incremental profile, it must be set to None "
+                "or not set at all. Use start_rate and increment_factor instead."
+            )
+
+        if start_rate is None:
+            raise ValueError("start_rate is required for incremental profile")
+
+        if increment_factor is None:
+            raise ValueError("increment_factor is required for incremental profile")
+
+        if start_rate <= 0:
+            raise ValueError("start_rate must be a positive number")
+
+        if increment_factor <= 0:
+            raise ValueError("increment_factor must be a positive number")
+
+        if rate_limit is not None and rate_limit <= 0:
+            raise ValueError("rate_limit must be a positive integer")
+
+        kwargs["start_rate"] = start_rate
+        kwargs["increment_factor"] = increment_factor
+        if rate_limit is not None:
+            kwargs["rate_limit"] = rate_limit
+
+        return kwargs
+
+    @property
+    def strategy_types(self) -> list[StrategyType]:
+        """
+        :return: Single incremental strategy type
+        """
+        return [self.type_]
+
+    def next_strategy(
+        self,
+        prev_strategy: SchedulingStrategy | None,
+        prev_benchmark: Benchmark | None,
+    ) -> AsyncIncrementalStrategy | None:
+        """
+        Generate incremental strategy or None if already completed.
+
+        :param prev_strategy: Previously completed strategy (unused)
+        :param prev_benchmark: Benchmark results from previous execution (unused)
+        :return: AsyncIncrementalStrategy for first execution, None afterward
+        """
+        _ = (prev_strategy, prev_benchmark)  # unused
+        if len(self.completed_strategies) >= 1:
+            return None
+
+        return AsyncIncrementalStrategy(
+            start_rate=self.start_rate,
+            increment_factor=self.increment_factor,
+            rate_limit=self.rate_limit,
+            initial_burst=self.initial_burst,
+            max_concurrency=self.max_concurrency,
+            startup_duration=self.startup_duration,
+        )

@@ -16,6 +16,7 @@ throughput (maximum load), constant-rate (steady intervals), and Poisson-distrib
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 from abc import abstractmethod
 from multiprocessing import Lock, Value
@@ -28,6 +29,7 @@ from guidellm.utils import InfoMixin
 
 __all__ = [
     "AsyncConstantStrategy",
+    "AsyncIncrementalStrategy",
     "AsyncPoissonStrategy",
     "ConcurrentStrategy",
     "SchedulingStrategy",
@@ -39,7 +41,9 @@ __all__ = [
 
 
 StrategyType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "constant", "poisson"],
+    Literal[
+        "synchronous", "concurrent", "throughput", "constant", "poisson", "incremental"
+    ],
     "Valid strategy type identifiers for scheduling request patterns",
 ]
 
@@ -627,3 +631,114 @@ class AsyncPoissonStrategy(SchedulingStrategy):
         :param request_info: Completed request metadata (unused)
         """
         _ = request_info  # request_info unused for async poisson strategy
+
+
+@SchedulingStrategy.register("incremental")
+class AsyncIncrementalStrategy(ThroughputStrategy):
+    """
+    Incremental rate scheduling with gradual load increase over time.
+
+    Schedules requests starting at a base rate and incrementally increasing
+    the rate by a factor over time until reaching an optional rate limit.
+    Supports initial burst mode to quickly reach the target starting rate.
+    Useful for finding system saturation points or progressive load testing.
+    """
+
+    type_: Literal["incremental"] = "incremental"  # type: ignore[assignment]
+    start_rate: float = Field(
+        description="Initial rate at which to schedule requests in requests/second",
+        gt=0,
+    )
+    increment_factor: float = Field(
+        description="Factor by which to increase the rate over time",
+        gt=0,
+    )
+    rate_limit: int | None = Field(
+        default=None,
+        description="Maximum rate cap after which load remains constant",
+        gt=0,
+    )
+    initial_burst: bool = Field(
+        default=True,
+        description=(
+            "Whether to send initial burst of math.floor(start_rate) requests "
+            "to reach target rate"
+        ),
+    )
+
+    _process_offset: float | None = PrivateAttr(None)
+    _burst_sent: bool = PrivateAttr(False)
+
+    def __str__(self) -> str:
+        """
+        :return: String identifier with start rate and increment factor
+        """
+        return f"incremental@{self.start_rate:.2f}+{self.increment_factor:.2f}"
+
+    def init_processes_timings(
+        self,
+        worker_count: int,
+        max_concurrency: int,
+        startup_duration: float,
+    ):
+        """
+        Initialize incremental-specific timing state.
+
+        :param worker_count: Number of worker processes to coordinate
+        :param max_concurrency: Maximum number of concurrent requests allowed
+        :param startup_duration: Duration in seconds for request startup ramping
+        """
+        super().init_processes_timings(worker_count, max_concurrency, startup_duration)
+        with self._processes_lock:
+            self._process_offset = None
+
+    async def next_request_time(self, offset: int) -> float:
+        """
+        Calculate next request time with incremental rate increase.
+
+        Implements gradual rate increase: rate = start_rate + (increment_factor * elapsed_time)
+        Optionally sends initial burst and caps at rate_limit.
+
+        :param offset: Unused for incremental strategy
+        :return: Next request time based on incremental rate calculation
+        """
+        _ = offset  # offset unused for incremental strategy
+        start_time = await self.get_processes_start_time()
+
+        # Handle initial burst if enabled
+        if self.initial_burst and not self._burst_sent:
+            self._burst_sent = True
+            burst_count = math.floor(self.start_rate)
+            for _ in range(burst_count):
+                pass
+            if self._process_offset is None:
+                self._process_offset = start_time
+
+        if self._process_offset is None:
+            self._process_offset = start_time
+
+        current_time = time.time()
+        if current_time <= start_time:
+            return start_time
+
+        # Calculate current rate based on elapsed time
+        elapsed_time = current_time - start_time
+        next_rate = self.start_rate + (self.increment_factor * elapsed_time)
+
+        # Cap at rate limit if specified
+        if self.rate_limit and next_rate >= self.rate_limit:
+            increment = 1.0 / self.rate_limit
+        else:
+            increment = 1.0 / next_rate
+
+        self._process_offset += increment
+
+        return self._process_offset
+
+    def request_completed(self, request_info: RequestInfo):
+        """
+        Handle request completion (no-op for incremental strategy).
+
+        :param request_info: Completed request metadata (unused)
+        """
+        _ = request_info  # request_info unused for async incremental strategy
