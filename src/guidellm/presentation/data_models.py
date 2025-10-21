@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, computed_field
 
-from guidellm.scheduler.strategy import SchedulingStrategy
+from guidellm.scheduler import SchedulingStrategy
 
 if TYPE_CHECKING:
     from guidellm.benchmark import GenerativeBenchmark
@@ -239,7 +239,7 @@ class BenchmarkDatum(BaseModel):
     def from_benchmark(cls, bm: "GenerativeBenchmark"):
         rps = bm.metrics.requests_per_second.successful.mean
         return cls(
-            strategy_display_str=cls.get_strategy_display_str(bm.args.strategy),
+            strategy_display_str=cls.get_strategy_display_str(bm.scheduler.strategy),
             requests_per_second=rps,
             itl=TabularDistributionSummary.from_distribution_summary(
                 bm.metrics.inter_token_latency_ms.successful
