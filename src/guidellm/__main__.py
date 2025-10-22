@@ -156,8 +156,9 @@ def benchmark():
 )
 @click.option(
     "--rate",
-    type=float,
-    multiple=True,
+    type=str,
+    callback=cli_tools.parse_list_floats,
+    multiple=False,
     default=BenchmarkGenerativeTextArgs.get_default("rate"),
     help=(
         "Benchmark rate(s) to test. Meaning depends on profile: "
@@ -383,7 +384,7 @@ def run(**kwargs):
         kwargs.get("data_args"), default=[], simplify_single=False
     )
     kwargs["rate"] = cli_tools.format_list_arg(
-        kwargs.get("rate"), default=None, simplify_single=True
+        kwargs.get("rate"), default=None, simplify_single=False
     )
 
     disable_console_outputs = kwargs.pop("disable_console_outputs", False)
