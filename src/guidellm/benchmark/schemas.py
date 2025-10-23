@@ -1674,6 +1674,7 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
         environment: Environment,
         strategy: SchedulingStrategy,
         constraints: dict[str, dict[str, Any]],
+        data: list[Any],
     ) -> GenerativeBenchmark:
         """
         Compile final generative benchmark from accumulated state.
@@ -1702,7 +1703,7 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
             ),
             benchmarker=BenchmarkerDict(
                 profile=profile,
-                requests=InfoMixin.extract_from_obj(requests),
+                requests={"data": data},
                 backend=backend.info,
                 environment=environment.info,
             ),
