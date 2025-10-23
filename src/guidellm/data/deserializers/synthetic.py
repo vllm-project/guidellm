@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 from datasets import Features, IterableDataset, Value
 from faker import Faker
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -242,6 +242,10 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
         if (config := self._load_config_str(data)) is not None:
             return self(config, processor_factory, random_seed, **data_kwargs)
 
+        # Try to parse dict-like data directly
+        if (config := self._load_config_dict(data)) is not None:
+            return self(config, processor_factory, random_seed, **data_kwargs)
+
         if not isinstance(data, SyntheticTextDatasetConfig):
             raise DataNotSupportedError(
                 "Unsupported data for SyntheticTextDatasetDeserializer, "
@@ -265,6 +269,15 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
                 }
             ),
         )
+
+    def _load_config_dict(self, data: Any) -> SyntheticTextDatasetConfig | None:
+        if not isinstance(data, dict | list):
+            return None
+
+        try:
+            return SyntheticTextDatasetConfig.model_validate(data)
+        except ValidationError:
+            return None
 
     def _load_config_file(self, data: Any) -> SyntheticTextDatasetConfig | None:
         if (not isinstance(data, str) and not isinstance(data, Path)) or (
