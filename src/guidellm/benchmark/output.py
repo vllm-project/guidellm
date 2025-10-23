@@ -649,6 +649,8 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         status_dist_summary: StatusDistributionSummary = getattr(
             benchmark.metrics, metric
         )
+        if not hasattr(status_dist_summary, status):
+            return [], []
         dist_summary: DistributionSummary = getattr(status_dist_summary, status)
 
         headers = [
@@ -688,7 +690,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         values: list[str] = [
             benchmark.benchmarker.profile.model_dump_json(),
             json.dumps(benchmark.benchmarker.backend),
-            json.dumps(benchmark.benchmarker.requests["attributes"]["data"]),
+            json.dumps(benchmark.benchmarker.requests["data"]),
         ]
 
         if len(headers) != len(values):
