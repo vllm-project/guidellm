@@ -103,8 +103,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         if prefix or text:
             prompt = prefix + text
             arguments.body["prompt"] = prompt
-            input_metrics.text_characters = len(prompt)
-            input_metrics.text_words = len(prompt.split())
+            input_metrics.add_text_metrics(prompt)
 
         return GenerationRequest(
             request_type="text_completions",
@@ -197,25 +196,14 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
             if not prefix:
                 continue
 
-            input_metrics.text_characters = (
-                input_metrics.text_characters or 0
-            ) + len(prefix)
-
-            input_metrics.text_words = (input_metrics.text_words or 0) + \
-                                       len(prefix.split())
-
+            input_metrics.add_text_metrics(prefix)
             arguments.body["messages"].append({"role": "system", "content": prefix})
 
         for text in columns.get("text_column", []):
             if not text:
                 continue
 
-            input_metrics.text_characters = (
-                input_metrics.text_characters or 0
-            ) + len(text)
-            input_metrics.text_words = (
-               input_metrics.text_words or 0
-            ) + len(text.split())
+            input_metrics.add_text_metrics(text)
 
             arguments.body["messages"].append(
                 {"role": "user", "content": [{"type": "text", "text": text}]}
@@ -394,8 +382,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         if prefix or text:
             prompt = prefix + text
             arguments.body["prompt"] = prompt
-            input_metrics.text_characters = len(prompt)
-            input_metrics.text_words = len(prompt.split())
+            input_metrics.add_text_metrics(prompt)
 
         return GenerationRequest(
             request_type="audio_transcriptions",

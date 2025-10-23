@@ -169,6 +169,16 @@ class UsageMetrics(StandardBaseDict):
             self.video_tokens or 0
         ) + (self.audio_tokens or 0) or None
 
+    def add_text_metrics(self, text):
+        """
+        Adds the metrics from the given text to the fields
+        `text_characters` and `text_words`.
+
+        :param text: Text to add metrics from
+        """
+        self.text_characters = (self.text_characters or 0) + len(text)
+        self.text_words = (self.text_words or 0) + len(text.split())
+
 
 class GenerationRequest(StandardBaseModel):
     """
