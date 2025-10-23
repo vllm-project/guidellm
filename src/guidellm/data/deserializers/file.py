@@ -34,11 +34,11 @@ class TextFileDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() not in {".txt", ".text"}
@@ -62,10 +62,10 @@ class CSVFileDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() != ".csv"
@@ -86,10 +86,10 @@ class JSONFileDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() not in {".json", ".jsonl"}
@@ -110,10 +110,10 @@ class ParquetFileDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() != ".parquet"
@@ -134,10 +134,10 @@ class ArrowFileDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() != ".arrow"
@@ -158,10 +158,10 @@ class HDF5FileDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() not in {".hdf5", ".h5"}
@@ -185,7 +185,7 @@ class DBFileDatasetDeserializer(DatasetDeserializer):
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() != ".db"
@@ -209,7 +209,7 @@ class TarFileDatasetDeserializer(DatasetDeserializer):
     ) -> dict[str, list]:
         _ = (processor_factory, random_seed)
         if (
-            not isinstance(data, (str, Path))
+            not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
             or not path.is_file()
             or path.suffix.lower() != ".tar"

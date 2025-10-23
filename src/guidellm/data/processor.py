@@ -23,8 +23,9 @@ class ProcessorFactory:
         if isinstance(self.processor, PreTrainedTokenizerBase):
             return self.processor
         else:
-            self.processor = AutoTokenizer.from_pretrained(
+            from_pretrained = AutoTokenizer.from_pretrained(
                 self.processor,
                 **(self.processor_args or {}),
             )
-            return self.processor
+            self.processor = from_pretrained
+            return from_pretrained
