@@ -99,21 +99,23 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:
-        prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
-        prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
-        if prefix_count is not None or prefix_tokens is not None:
-            if self.prefix_buckets:
-                raise ValueError(
-                    "prefix_buckets is mutually exclusive"
-                    " with prefix_count and prefix_tokens"
-                )
+        if self.__pydantic_extra__ is not None:
+            prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+            prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
 
-            self.prefix_buckets = [
-                SyntheticTextPrefixBucketConfig(
-                    prefix_count=prefix_count or 1,
-                    prefix_tokens=prefix_tokens or 0,
-                )
-            ]
+            if prefix_count is not None or prefix_tokens is not None:
+                if self.prefix_buckets:
+                    raise ValueError(
+                        "prefix_buckets is mutually exclusive"
+                        " with prefix_count and prefix_tokens"
+                    )
+
+                self.prefix_buckets = [
+                    SyntheticTextPrefixBucketConfig(
+                        prefix_count=prefix_count or 1,
+                        prefix_tokens=prefix_tokens or 0,
+                    )
+                ]
 
         return self
 
@@ -174,14 +176,14 @@ class SyntheticTextGenerator:
     def _create_prompt(
         self, prompt_tokens_count: int, faker: Faker, unique: str = ""
     ) -> str:
-        prompt_token_ids = []
+        prompt_token_ids: list[int] = []
         avg_chars_per_token = 5
         margin_of_safety = 1.5
         attempts = 0
 
         while len(prompt_token_ids) < prompt_tokens_count:
             attempts += 1
-            num_chars = (
+            num_chars = int(
                 prompt_tokens_count * avg_chars_per_token * margin_of_safety * attempts
             )
             text = unique + faker.text(max_nb_chars=num_chars)
