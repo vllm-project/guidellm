@@ -84,7 +84,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
     async def update_run_iteration(
         self,
         response: ResponseT | None,
-        request: RequestT,
+        request: RequestT | MultiTurnRequestT[RequestT],
         request_info: RequestInfo,
         state: SchedulerState,
     ):
@@ -201,7 +201,7 @@ class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
     async def update_run_iteration(
         self,
         response: ResponseT | None,
-        request: RequestT,
+        request: RequestT | MultiTurnRequestT[RequestT],
         request_info: RequestInfo,
         state: SchedulerState,
     ):
