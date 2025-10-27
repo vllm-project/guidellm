@@ -53,7 +53,6 @@ from guidellm.schemas import (
     GenerationResponse,
     GenerativeRequestStats,
     RequestInfo,
-    UsageMetrics,
 )
 from guidellm.utils import (
     InfoMixin,
@@ -477,6 +476,7 @@ class Benchmark(ABC):
 
 
 BenchmarkT = TypeVar("BenchmarkT", bound=Benchmark)
+"Generic type variable for Benchmark subclasses"
 
 
 class BenchmarkSchedulerStats(StandardBaseDict):
@@ -666,6 +666,12 @@ class BenchmarkSchedulerStats(StandardBaseDict):
         )
 
 
+TimedMetricTypeAlias = (
+    tuple[float, float, int | float | None, int | float | None] | None
+)
+"Timed metric tuple containing start_time, end_time, input_value, and output_value"
+
+
 class GenerativeMetricsSummary(StandardBaseDict):
     """
     Statistical summaries for input, output, and total metrics.
@@ -674,108 +680,207 @@ class GenerativeMetricsSummary(StandardBaseDict):
     requests for absolute values, per-second rates, and concurrency levels.
     """
 
-    input: StatusDistributionSummary = Field(
+    input: StatusDistributionSummary | None = Field(
         description="Distribution of input metric values"
     )
-    input_per_second: StatusDistributionSummary = Field(
+    input_per_second: StatusDistributionSummary | None = Field(
         description="Distribution of input metric rates per second"
     )
-    input_concurrency: StatusDistributionSummary = Field(
+    input_concurrency: StatusDistributionSummary | None = Field(
         description="Distribution of concurrent input metric values"
     )
 
-    output: StatusDistributionSummary = Field(
+    output: StatusDistributionSummary | None = Field(
         description="Distribution of output metric values"
     )
-    output_per_second: StatusDistributionSummary = Field(
+    output_per_second: StatusDistributionSummary | None = Field(
         description="Distribution of output metric rates per second"
     )
-    output_concurrency: StatusDistributionSummary = Field(
+    output_concurrency: StatusDistributionSummary | None = Field(
         description="Distribution of concurrent output metric values"
     )
 
-    total: StatusDistributionSummary = Field(
+    total: StatusDistributionSummary | None = Field(
         description="Distribution of total metric values (input + output)"
     )
-    total_per_second: StatusDistributionSummary = Field(
+    total_per_second: StatusDistributionSummary | None = Field(
         description="Distribution of total metric rates per second"
     )
-    total_concurrency: StatusDistributionSummary = Field(
+    total_concurrency: StatusDistributionSummary | None = Field(
         description="Distribution of concurrent total metric values"
     )
 
     @classmethod
     def compile(
         cls,
-        request_types: list[Literal["successful", "incomplete", "error"]],
-        request_times: list[tuple[float, float]],
-        input_values: list[int | float],
-        output_values: list[int | float],
+        successful: list[TimedMetricTypeAlias],
+        incomplete: list[TimedMetricTypeAlias],
+        errored: list[TimedMetricTypeAlias],
     ) -> GenerativeMetricsSummary:
-        """
-        Compile generative metrics summary from request data.
+        start_time_index = 0
+        end_time_index = 1
+        inp_value_index = 2
+        out_value_index = 3
 
-        :param request_types: Status types for each request
-        :param request_times: Start and end times for each request
-        :param input_values: Input metric values for each request
-        :param output_values: Output metric values for each request
-        :return: Compiled generative metrics summary
-        """
-        total_values = [
-            input_val + output_val
-            for input_val, output_val in zip(input_values, output_values, strict=False)
-        ]
+        inp_val_dist = StatusDistributionSummary.from_values_function(
+            function=(
+                lambda metric: metric[inp_value_index] or 0.0 if metric else None
+            ),
+            successful=successful,
+            incomplete=incomplete,
+            errored=errored,
+        )
+        inp_rate_dist = (
+            StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=(
+                    lambda metric: (
+                        metric[end_time_index],
+                        metric[inp_value_index] or 0.0,
+                    )
+                    if metric
+                    else None
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+        )
+        inp_conc_dist = (
+            StatusDistributionSummary.concurrency_distribution_from_timings_function(
+                function=(
+                    lambda metric: (
+                        metric[start_time_index],
+                        metric[end_time_index],
+                        metric[inp_value_index] or 0.0,
+                    )
+                    if metric
+                    else None
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+        )
+        out_val_dist = StatusDistributionSummary.from_values_function(
+            function=lambda metric: metric[out_value_index] or 0.0 if metric else None,
+            successful=successful,
+            incomplete=incomplete,
+            errored=errored,
+        )
+        out_rate_dist = (
+            StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=(
+                    lambda metric: (
+                        metric[end_time_index],
+                        metric[out_value_index] or 0.0,
+                    )
+                    if metric
+                    else None
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+        )
+        out_conc_dist = (
+            StatusDistributionSummary.concurrency_distribution_from_timings_function(
+                function=(
+                    lambda metric: (
+                        metric[start_time_index],
+                        metric[end_time_index],
+                        metric[out_value_index] or 0.0,
+                    )
+                    if metric
+                    else None
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+        )
+        total_val_dist = StatusDistributionSummary.from_values_function(
+            function=(
+                lambda metric: (
+                    (metric[inp_value_index] or 0.0) + (metric[out_value_index] or 0.0)
+                )
+                if metric
+                else None
+            ),
+            successful=successful,
+            incomplete=incomplete,
+            errored=errored,
+        )
+        total_rate_dist = (
+            StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=(
+                    lambda metric: (
+                        (
+                            metric[end_time_index],
+                            (metric[inp_value_index] or 0.0)
+                            + (metric[out_value_index] or 0.0),
+                        )
+                        if metric
+                        else None
+                    )
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+        )
+        total_conc_dist = (
+            StatusDistributionSummary.concurrency_distribution_from_timings_function(
+                function=lambda metric_tuple: (
+                    (
+                        metric_tuple[start_time_index],
+                        metric_tuple[end_time_index],
+                        (metric_tuple[inp_value_index] or 0.0)
+                        + (metric_tuple[out_value_index] or 0.0),
+                    )
+                    if metric_tuple
+                    else None
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+        )
 
         return GenerativeMetricsSummary(
-            input=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=input_values,
-            ),
-            input_per_second=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="rate",
-                weights=input_values,
-            ),
-            input_concurrency=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="concurrency",
-                weights=input_values,
-            ),
-            output=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=output_values,
-            ),
-            output_per_second=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="rate",
-                weights=output_values,
-            ),
-            output_concurrency=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="concurrency",
-                weights=output_values,
-            ),
-            total=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=total_values,
-            ),
-            total_per_second=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="rate",
-                weights=total_values,
-            ),
-            total_concurrency=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="concurrency",
-                weights=total_values,
-            ),
+            input=inp_val_dist if inp_val_dist.count > 0 else None,
+            input_per_second=inp_rate_dist if inp_rate_dist.count > 0 else None,
+            input_concurrency=inp_conc_dist if inp_conc_dist.count > 0 else None,
+            output=out_val_dist if out_val_dist.count > 0 else None,
+            output_per_second=out_rate_dist if out_rate_dist.count > 0 else None,
+            output_concurrency=out_conc_dist if out_conc_dist.count > 0 else None,
+            total=total_val_dist if total_val_dist.count > 0 else None,
+            total_per_second=total_rate_dist if total_rate_dist.count > 0 else None,
+            total_concurrency=total_conc_dist if total_conc_dist.count > 0 else None,
         )
+
+    @classmethod
+    def extract_property_metrics_for_summary(
+        cls,
+        stats_list: list[GenerativeRequestStats],
+        property_name: Literal["text_tokens", "text_words", "text_characters"],
+    ) -> list[TimedMetricTypeAlias]:
+        return [
+            (
+                stats.request_start_time,
+                stats.request_end_time,
+                getattr(stats.input_metrics, property_name),
+                getattr(stats.output_metrics, property_name),
+            )
+            for stats in stats_list
+            if (
+                stats.request_start_time
+                and stats.request_end_time
+                and (
+                    getattr(stats.input_metrics, property_name) is not None
+                    or getattr(stats.output_metrics, property_name) is not None
+                )
+            )
+        ]
 
 
 class GenerativeTextMetricsSummary(StandardBaseDict):
@@ -786,56 +891,69 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
     total usage for text generation workloads.
     """
 
-    tokens: GenerativeMetricsSummary = Field(
+    tokens: GenerativeMetricsSummary | None = Field(
         description="Token count metrics and distributions"
     )
-    words: GenerativeMetricsSummary = Field(
+    words: GenerativeMetricsSummary | None = Field(
         description="Word count metrics and distributions"
     )
-    characters: GenerativeMetricsSummary = Field(
+    characters: GenerativeMetricsSummary | None = Field(
         description="Character count metrics and distributions"
     )
 
     @classmethod
     def compile(
         cls,
-        request_types: list[Literal["successful", "incomplete", "error"]],
-        request_times: list[tuple[float, float]],
-        input_metrics: list[UsageMetrics],
-        output_metrics: list[UsageMetrics],
+        successful: list[GenerativeRequestStats],
+        incomplete: list[GenerativeRequestStats],
+        errored: list[GenerativeRequestStats],
     ) -> GenerativeTextMetricsSummary:
         """
-        Compile text metrics summary from request usage data.
+        Compile text metrics summary from request statistics.
 
-        :param request_types: Status types for each request
-        :param request_times: Start and end times for each request
-        :param input_metrics: Input usage metrics for each request
-        :param output_metrics: Output usage metrics for each request
+        :param successful: Successfully completed request statistics
+        :param incomplete: Incomplete/cancelled request statistics
+        :param errored: Failed request statistics
         :return: Compiled text metrics summary
         """
+        tokens = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "text_tokens"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "text_tokens"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "text_tokens"
+            ),
+        )
+        words = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "text_words"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "text_words"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "text_words"
+            ),
+        )
+        characters = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "text_characters"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "text_characters"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "text_characters"
+            ),
+        )
+
         return GenerativeTextMetricsSummary(
-            tokens=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.text_tokens or 0 for metrics in input_metrics],
-                output_values=[metrics.text_tokens or 0 for metrics in output_metrics],
-            ),
-            words=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.text_words or 0 for metrics in input_metrics],
-                output_values=[metrics.text_words or 0 for metrics in output_metrics],
-            ),
-            characters=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[
-                    metrics.text_characters or 0 for metrics in input_metrics
-                ],
-                output_values=[
-                    metrics.text_characters or 0 for metrics in output_metrics
-                ],
-            ),
+            tokens=tokens if tokens.input or tokens.output else None,
+            words=words if words.input or words.output else None,
+            characters=characters if characters.input or characters.output else None,
         )
 
 
@@ -847,61 +965,84 @@ class GenerativeImageMetricsSummary(StandardBaseDict):
     and total usage for image generation workloads.
     """
 
-    tokens: GenerativeMetricsSummary = Field(
+    tokens: GenerativeMetricsSummary | None = Field(
         description="Image token count metrics and distributions"
     )
-    images: GenerativeMetricsSummary = Field(
+    images: GenerativeMetricsSummary | None = Field(
         description="Image count metrics and distributions"
     )
-    pixels: GenerativeMetricsSummary = Field(
+    pixels: GenerativeMetricsSummary | None = Field(
         description="Pixel count metrics and distributions"
     )
-    bytes: GenerativeMetricsSummary = Field(
+    bytes: GenerativeMetricsSummary | None = Field(
         description="Byte size metrics and distributions"
     )
 
     @classmethod
     def compile(
         cls,
-        request_types: list[Literal["successful", "incomplete", "error"]],
-        request_times: list[tuple[float, float]],
-        input_metrics: list[UsageMetrics],
-        output_metrics: list[UsageMetrics],
+        successful: list[GenerativeRequestStats],
+        incomplete: list[GenerativeRequestStats],
+        errored: list[GenerativeRequestStats],
     ) -> GenerativeImageMetricsSummary:
         """
-        Compile image metrics summary from request usage data.
+        Compile image metrics summary from request statistics.
 
-        :param request_types: Status types for each request
-        :param request_times: Start and end times for each request
-        :param input_metrics: Input usage metrics for each request
-        :param output_metrics: Output usage metrics for each request
+        :param successful: Successfully completed request statistics
+        :param incomplete: Incomplete/cancelled request statistics
+        :param errored: Failed request statistics
         :return: Compiled image metrics summary
         """
+        tokens = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "image_tokens"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "image_tokens"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "image_tokens"
+            ),
+        )
+        images = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "image_count"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "image_count"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "image_count"
+            ),
+        )
+        pixels = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "image_pixels"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "image_pixels"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "image_pixels"
+            ),
+        )
+        image_bytes = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "image_bytes"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "image_bytes"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "image_bytes"
+            ),
+        )
+
         return GenerativeImageMetricsSummary(
-            tokens=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.image_tokens or 0 for metrics in input_metrics],
-                output_values=[metrics.image_tokens or 0 for metrics in output_metrics],
-            ),
-            images=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.image_count or 0 for metrics in input_metrics],
-                output_values=[metrics.image_count or 0 for metrics in output_metrics],
-            ),
-            pixels=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.image_pixels or 0 for metrics in input_metrics],
-                output_values=[metrics.image_pixels or 0 for metrics in output_metrics],
-            ),
-            bytes=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.image_bytes or 0 for metrics in input_metrics],
-                output_values=[metrics.image_bytes or 0 for metrics in output_metrics],
-            ),
+            tokens=tokens if tokens.input or tokens.output else None,
+            images=images if images.input or images.output else None,
+            pixels=pixels if pixels.input or pixels.output else None,
+            bytes=image_bytes if image_bytes.input or image_bytes.output else None,
         )
 
 
@@ -913,63 +1054,84 @@ class GenerativeVideoMetricsSummary(StandardBaseDict):
     output, and total usage for video generation workloads.
     """
 
-    tokens: GenerativeMetricsSummary = Field(
+    tokens: GenerativeMetricsSummary | None = Field(
         description="Video token count metrics and distributions"
     )
-    frames: GenerativeMetricsSummary = Field(
+    frames: GenerativeMetricsSummary | None = Field(
         description="Frame count metrics and distributions"
     )
-    seconds: GenerativeMetricsSummary = Field(
+    seconds: GenerativeMetricsSummary | None = Field(
         description="Duration metrics in seconds and distributions"
     )
-    bytes: GenerativeMetricsSummary = Field(
+    bytes: GenerativeMetricsSummary | None = Field(
         description="Byte size metrics and distributions"
     )
 
     @classmethod
     def compile(
         cls,
-        request_types: list[Literal["successful", "incomplete", "error"]],
-        request_times: list[tuple[float, float]],
-        input_metrics: list[UsageMetrics],
-        output_metrics: list[UsageMetrics],
+        successful: list[GenerativeRequestStats],
+        incomplete: list[GenerativeRequestStats],
+        errored: list[GenerativeRequestStats],
     ) -> GenerativeVideoMetricsSummary:
         """
-        Compile video metrics summary from request usage data.
+        Compile video metrics summary from request statistics.
 
-        :param request_types: Status types for each request
-        :param request_times: Start and end times for each request
-        :param input_metrics: Input usage metrics for each request
-        :param output_metrics: Output usage metrics for each request
+        :param successful: Successfully completed request statistics
+        :param incomplete: Incomplete/cancelled request statistics
+        :param errored: Failed request statistics
         :return: Compiled video metrics summary
         """
+        tokens = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "video_tokens"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "video_tokens"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "video_tokens"
+            ),
+        )
+        frames = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "video_frames"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "video_frames"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "video_frames"
+            ),
+        )
+        seconds = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "video_seconds"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "video_seconds"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "video_seconds"
+            ),
+        )
+        video_bytes = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "video_bytes"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "video_bytes"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "video_bytes"
+            ),
+        )
+
         return GenerativeVideoMetricsSummary(
-            tokens=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.video_tokens or 0 for metrics in input_metrics],
-                output_values=[metrics.video_tokens or 0 for metrics in output_metrics],
-            ),
-            frames=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.video_frames or 0 for metrics in input_metrics],
-                output_values=[metrics.video_frames or 0 for metrics in output_metrics],
-            ),
-            seconds=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.video_seconds or 0 for metrics in input_metrics],
-                output_values=[
-                    metrics.video_seconds or 0 for metrics in output_metrics
-                ],
-            ),
-            bytes=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.video_bytes or 0 for metrics in input_metrics],
-                output_values=[metrics.video_bytes or 0 for metrics in output_metrics],
-            ),
+            tokens=tokens if tokens.input or tokens.output else None,
+            frames=frames if frames.input or frames.output else None,
+            seconds=seconds if seconds.input or seconds.output else None,
+            bytes=video_bytes if video_bytes.input or video_bytes.output else None,
         )
 
 
@@ -981,65 +1143,84 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
     output, and total usage for audio generation workloads.
     """
 
-    tokens: GenerativeMetricsSummary = Field(
+    tokens: GenerativeMetricsSummary | None = Field(
         description="Audio token count metrics and distributions"
     )
-    samples: GenerativeMetricsSummary = Field(
+    samples: GenerativeMetricsSummary | None = Field(
         description="Sample count metrics and distributions"
     )
-    seconds: GenerativeMetricsSummary = Field(
+    seconds: GenerativeMetricsSummary | None = Field(
         description="Duration metrics in seconds and distributions"
     )
-    bytes: GenerativeMetricsSummary = Field(
+    bytes: GenerativeMetricsSummary | None = Field(
         description="Byte size metrics and distributions"
     )
 
     @classmethod
     def compile(
         cls,
-        request_types: list[Literal["successful", "incomplete", "error"]],
-        request_times: list[tuple[float, float]],
-        input_metrics: list[UsageMetrics],
-        output_metrics: list[UsageMetrics],
+        successful: list[GenerativeRequestStats],
+        incomplete: list[GenerativeRequestStats],
+        errored: list[GenerativeRequestStats],
     ) -> GenerativeAudioMetricsSummary:
         """
-        Compile audio metrics summary from request usage data.
+        Compile audio metrics summary from request statistics.
 
-        :param request_types: Status types for each request
-        :param request_times: Start and end times for each request
-        :param input_metrics: Input usage metrics for each request
-        :param output_metrics: Output usage metrics for each request
+        :param successful: Successfully completed request statistics
+        :param incomplete: Incomplete/cancelled request statistics
+        :param errored: Failed request statistics
         :return: Compiled audio metrics summary
         """
+        tokens = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "audio_tokens"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "audio_tokens"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "audio_tokens"
+            ),
+        )
+        samples = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "audio_samples"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "audio_samples"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "audio_samples"
+            ),
+        )
+        seconds = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "audio_seconds"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "audio_seconds"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "audio_seconds"
+            ),
+        )
+        audio_bytes = GenerativeMetricsSummary.compile(
+            successful=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                successful, "audio_bytes"
+            ),
+            incomplete=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                incomplete, "audio_bytes"
+            ),
+            errored=GenerativeMetricsSummary.extract_property_metrics_for_summary(
+                errored, "audio_bytes"
+            ),
+        )
+
         return GenerativeAudioMetricsSummary(
-            tokens=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.audio_tokens or 0 for metrics in input_metrics],
-                output_values=[metrics.audio_tokens or 0 for metrics in output_metrics],
-            ),
-            samples=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.audio_samples or 0 for metrics in input_metrics],
-                output_values=[
-                    metrics.audio_samples or 0 for metrics in output_metrics
-                ],
-            ),
-            seconds=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.audio_seconds or 0 for metrics in input_metrics],
-                output_values=[
-                    metrics.audio_seconds or 0 for metrics in output_metrics
-                ],
-            ),
-            bytes=GenerativeMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_values=[metrics.audio_bytes or 0 for metrics in input_metrics],
-                output_values=[metrics.audio_bytes or 0 for metrics in output_metrics],
-            ),
+            tokens=tokens if tokens.input or tokens.output else None,
+            samples=samples if samples.input or samples.output else None,
+            seconds=seconds if seconds.input or seconds.output else None,
+            bytes=audio_bytes if audio_bytes.input or audio_bytes.output else None,
         )
 
 
@@ -1079,20 +1260,23 @@ class GenerativeMetrics(StandardBaseDict):
     inter_token_latency_ms: StatusDistributionSummary = Field(
         description="Distribution of inter-token latencies in milliseconds"
     )
-    output_tokens_wo_first_per_iteration: StatusDistributionSummary = Field(
-        description=(
-            "Distribution of output tokens (without first) generated per "
-            "streaming iteration"
-        )
+    prompt_tokens_per_second: StatusDistributionSummary = Field(
+        description="Distribution of prompt token processing rates"
     )
     output_tokens_per_second: StatusDistributionSummary = Field(
         description="Distribution of output token generation rates"
     )
+    tokens_per_second: StatusDistributionSummary = Field(
+        description="Distribution of total token throughput including prompt and output"
+    )
     output_tokens_per_iteration: StatusDistributionSummary = Field(
         description="Distribution of output tokens generated per streaming iteration"
     )
-    tokens_per_second: StatusDistributionSummary = Field(
-        description="Distribution of total token throughput including prompt and output"
+    iter_tokens_per_iteration: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of output tokens (without first) generated per "
+            "streaming iteration"
+        )
     )
 
     # Domain specific stats
@@ -1216,35 +1400,35 @@ class GenerativeMetrics(StandardBaseDict):
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_request_streaming_iterations",
-                value=request_info.timings.iterations or 0,
+                value=request_info.timings.request_iterations or 0,
             )
 
             # Token iteration stats
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="output_tokens_iterations",
+                key="output_tokens_per_iteration",
                 value=output_tokens,
-                count=request_info.timings.iterations or 1,
+                count=request_info.timings.token_iterations or 1,
             )
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
-                key="output_tokens_wo_first_iterations",
+                key="iter_tokens_per_iteration",
                 value=output_tokens - 1 if output_tokens > 1 else 0,
-                count=request_info.timings.iterations or 1,
+                count=request_info.timings.token_iterations or 1,
             )
 
             # Token metrics stats
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_time_to_first_token",
-                value=request_info.timings.first_iteration,
+                value=request_info.timings.first_token_iteration,
                 start_val=request_start_time,
             )
             state.add_avg_metric(
                 group=EstimatedBenchmarkState.benchmark_metrics_group,
                 key=f"{prefix}_inter_token_latency",
-                value=request_info.timings.last_iteration,
-                start_val=request_info.timings.first_iteration,
+                value=request_info.timings.last_token_iteration,
+                start_val=request_info.timings.first_token_iteration,
                 count=(output_tokens or 1) - 1,
             )
             state.add_avg_metric(
@@ -1321,129 +1505,146 @@ class GenerativeMetrics(StandardBaseDict):
     @classmethod
     def compile(
         cls,
-        completed: list[GenerativeRequestStats],
+        successful: list[GenerativeRequestStats],
         errored: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeMetrics:
         """
         Compile final generative metrics from request statistics.
 
-        :param completed: Successfully completed request statistics
+        :param successful: Successfully completed request statistics
         :param errored: Failed request statistics
         :param incomplete: Incomplete/cancelled request statistics
+        :param start_time: Optional benchmark start time for rate calculations
+        :param end_time: Optional benchmark end time for rate calculations
         :return: Compiled generative metrics with full distributions
         """
-        requests = completed + errored + incomplete
-        request_types = cast(
-            "list[Literal['successful', 'error', 'incomplete']]",
-            ["successful"] * len(completed)
-            + ["error"] * len(errored)
-            + ["incomplete"] * len(incomplete),
-        )
-        request_times = [
-            (
-                req.info.timings.request_start or req.info.timings.resolve_start or 0,
-                req.info.timings.request_end or req.info.timings.resolve_end or 0,
-            )
-            for req in requests
-        ]
-        input_metrics = [req.input_metrics for req in requests]
-        output_metrics = [req.output_metrics for req in requests]
-
         return GenerativeMetrics(
             # Request stats
-            requests_per_second=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="rate",
+            requests_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=lambda req: req.request_end_time,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
-            request_concurrency=StatusDistributionSummary.from_request_times(
-                request_types=request_types,
-                requests=request_times,
-                distribution_type="concurrency",
+            request_concurrency=StatusDistributionSummary.concurrency_distribution_from_timings_function(
+                function=(
+                    lambda req: (req.request_start_time, req.request_end_time)
+                    if req.request_start_time is not None
+                    and req.request_end_time is not None
+                    else None
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
-            request_latency=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[req.request_latency or 0.0 for req in requests],
+            request_latency=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.request_latency or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
-            request_streaming_iterations_count=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[float(req.info.timings.iterations or 0) for req in requests],
+            request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.info.timings.request_iterations or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
             # General token stats
-            prompt_token_count=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[float(req.input_tokens or 0) for req in requests],
+            prompt_token_count=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.prompt_tokens or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
-            output_token_count=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[float(req.output_tokens or 0) for req in requests],
+            output_token_count=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.output_tokens or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
-            total_token_count=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[float(req.total_tokens or 0) for req in requests],
+            total_token_count=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.total_tokens or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
-            time_to_first_token_ms=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[req.time_to_first_token_ms or 0.0 for req in requests],
+            time_to_first_token_ms=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.time_to_first_token_ms or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
-            time_per_output_token_ms=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[req.time_per_output_token_ms or 0.0 for req in requests],
-                weights=[req.output_tokens or 0.0 for req in requests],
+            time_per_output_token_ms=StatusDistributionSummary.from_values_function(
+                function=lambda req: (
+                    req.time_per_output_token_ms or 0.0,
+                    req.output_tokens or 0.0,
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
-            inter_token_latency_ms=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[req.inter_token_latency_ms or 0.0 for req in requests],
-                weights=[
-                    max(0.0, (req.output_tokens or 1.0) - 1.0) for req in requests
+            inter_token_latency_ms=StatusDistributionSummary.from_values_function(
+                function=lambda req: (
+                    req.inter_token_latency_ms or 0.0,
+                    (req.output_tokens or 1.0) - 1.0,
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            prompt_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=lambda req: req.prompt_tokens_timings,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=lambda req: req.output_tokens_timings,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=lambda req: req.total_tokens_timings,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            output_tokens_per_iteration=StatusDistributionSummary.from_values_function(
+                function=lambda req: [
+                    tokens for (_timing, tokens) in req.output_tokens_timings
                 ],
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
-            output_tokens_wo_first_per_iteration=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[
-                    max(0.0, (req.output_metrics.total_tokens or 1.0) - 1.0)
-                    for req in requests
+            iter_tokens_per_iteration=StatusDistributionSummary.from_values_function(
+                function=lambda req: [
+                    tokens for (_timing, tokens) in req.iter_tokens_timings
                 ],
-                weights=[req.info.timings.iterations or 1 for req in requests],
-            ),
-            output_tokens_per_second=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[req.output_tokens_per_second or 0.0 for req in requests],
-            ),
-            output_tokens_per_iteration=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[req.output_tokens_per_iteration or 0.0 for req in requests],
-                weights=[req.info.timings.iterations or 1 for req in requests],
-            ),
-            tokens_per_second=StatusDistributionSummary.from_values(
-                value_types=request_types,
-                values=[req.tokens_per_second or 0.0 for req in requests],
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
             ),
             # Domain-specific stats
             text=GenerativeTextMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_metrics=input_metrics,
-                output_metrics=output_metrics,
+                successful=successful, incomplete=incomplete, errored=errored
             ),
             image=GenerativeImageMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_metrics=input_metrics,
-                output_metrics=output_metrics,
+                successful=successful, incomplete=incomplete, errored=errored
             ),
             video=GenerativeVideoMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_metrics=input_metrics,
-                output_metrics=output_metrics,
+                successful=successful, incomplete=incomplete, errored=errored
             ),
             audio=GenerativeAudioMetricsSummary.compile(
-                request_types=request_types,
-                request_times=request_times,
-                input_metrics=input_metrics,
-                output_metrics=output_metrics,
+                successful=successful, incomplete=incomplete, errored=errored
             ),
         )
 
@@ -1512,6 +1713,11 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
     def get_run_metrics_sample(
         self,
     ) -> dict[Literal["start_time", "end_time", "duration"], float]:
+        """
+        Get timing metrics for the benchmark run.
+
+        :return: Dictionary with start_time, end_time, and duration in seconds
+        """
         return {
             "start_time": self.start_time,
             "end_time": self.end_time,
@@ -1529,6 +1735,11 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
         ],
         float,
     ]:
+        """
+        Get key request-level performance metrics.
+
+        :return: Dictionary with request count, latency, throughput, and concurrency
+        """
         return {
             "request_count": self.request_totals.successful,
             "request_latency": self.metrics.request_latency.successful.mean,
@@ -1542,7 +1753,7 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
         """
         Benchmark execution duration in seconds.
 
-        :return: Time elapsed from first request start to last request completion.
+        :return: Time elapsed from start to completion
         """
         return self.end_time - self.start_time
 
@@ -1726,7 +1937,7 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
             start_time=scheduler_state.start_time or -1.0,
             end_time=scheduler_state.end_time or -1.0,
             metrics=GenerativeMetrics.compile(
-                completed=estimated_state.get("requests_completed", []),
+                successful=estimated_state.get("requests_completed", []),
                 errored=estimated_state.get("requests_errored", []),
                 incomplete=estimated_state.get("requests_incomplete", []),
             ),
@@ -1810,11 +2021,11 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     @classmethod
     def get_default(cls: type[BenchmarkGenerativeTextArgs], field: str) -> Any:
         """
-        Get default value for a model field.
+        Get default value for model field.
 
-        :param field: Name of the field to retrieve default for
-        :return: Default value for the specified field
-        :raises ValueError: If field is not found in model
+        :param field: Field name to retrieve default value for
+        :return: Default value for the field
+        :raises ValueError: If field does not exist
         """
         if field not in BenchmarkGenerativeTextArgs.model_fields:
             raise ValueError(
@@ -1980,12 +2191,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     @model_serializer
     def serialize_model(self):
         """
-        Custom serialization logic for benchmark args.
+        Convert model to serializable dictionary format.
 
-        Converts complex types to serializable formats including Profile to type
-        string, Backend to type string, and Path objects to strings.
-
-        :return: Dictionary representation suitable for JSON/YAML serialization
+        :return: Dictionary representation for JSON/YAML serialization
         """
         return {
             # target - serialize as is
@@ -2063,12 +2271,12 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         path: str | Path, type_: Literal["json", "yaml"] | None = None
     ) -> GenerativeBenchmarksReport:
         """
-        Load a report from a file.
+        Load report from file.
 
-        :param path: The path to load the report from.
-        :param type_: File type override, auto-detected from extension if None.
-        :return: The loaded report.
-        :raises ValueError: If file type is unsupported.
+        :param path: Path to report file or directory containing DEFAULT_FILE
+        :param type_: File type override, auto-detected from extension if None
+        :return: Loaded report instance
+        :raises ValueError: If file type is unsupported
         """
         path = Path(path) if not isinstance(path, Path) else path
 
@@ -2089,10 +2297,10 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         return GenerativeBenchmarksReport.model_validate(model_dict)
 
     args: BenchmarkGenerativeTextArgs = Field(
-        description="The benchmark arguments used for all benchmarks in the report."
+        description="Benchmark arguments used for all benchmarks in the report"
     )
     benchmarks: list[GenerativeBenchmark] = Field(
-        description="The list of completed benchmarks contained within the report.",
+        description="List of completed benchmarks in the report",
         default_factory=list,
     )
 
@@ -2100,12 +2308,12 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         self, path: str | Path | None, type_: Literal["json", "yaml"] | None = None
     ) -> Path:
         """
-        Save the report to a file.
+        Save report to file.
 
-        :param path: The path to save the report to.
-        :param type_: File type override, auto-detected from extension if None.
-        :return: The path to the saved report.
-        :raises ValueError: If file type is unsupported.
+        :param path: Path to save report file, defaults to current directory
+        :param type_: File type override, auto-detected from extension if None
+        :return: Path to saved report file
+        :raises ValueError: If file type is unsupported
         """
         if path is None:
             path = Path.cwd()
