@@ -69,7 +69,7 @@ class Scheduler(
     ) -> AsyncIterator[
         tuple[
             ResponseT | None,
-            RequestT,
+            RequestT | MultiTurnRequestT[RequestT],
             RequestInfo,
             SchedulerState,
         ]

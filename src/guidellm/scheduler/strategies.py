@@ -70,8 +70,8 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         description="Number of worker processes to use for this strategy",
         ge=0,
     )
-    max_concurrency: int = Field(
-        default=0,
+    max_concurrency: int | None = Field(
+        default=None,
         description="Maximum number of concurrent requests to allow",
         ge=0,
     )
@@ -122,8 +122,8 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         self.startup_duration = startup_duration
 
         self._processes_request_index = Value("i", 0)
-        self._processes_lock = Lock()
         self._processes_start_time = Value("d", -1.0)
+        self._processes_lock = Lock()
 
     def init_processes_start(self, start_time: float):
         """
@@ -136,6 +136,10 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
             raise RuntimeError(
                 "SchedulingStrategy init_processes_start called before "
                 "init_processes_timings"
+            )
+        if self._processes_start_time is None:
+            raise RuntimeError(
+                "_processes_lock is not None but _processes_start_time is None"
             )
 
         with self._processes_lock:
@@ -152,6 +156,10 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
             raise RuntimeError(
                 "SchedulingStrategy get_processes_start_time called before "
                 "init_processes_timings"
+            )
+        if self._processes_start_time is None:
+            raise RuntimeError(
+                "_processes_lock is not None but _processes_start_time is None"
             )
 
         while self._cached_processes_start_time is None:
@@ -174,6 +182,10 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
             raise RuntimeError(
                 "SchedulingStrategy next_request_index called before "
                 "init_processes_timings"
+            )
+        if self._processes_request_index is None:
+            raise RuntimeError(
+                "_processes_lock is not None but _processes_request_index is None"
             )
 
         with self._processes_lock:
@@ -369,7 +381,8 @@ class ThroughputStrategy(SchedulingStrategy):
         start_time = await self.get_processes_start_time()
 
         if (
-            self.startup_duration > 0
+            self.max_concurrency is not None
+            and self.startup_duration > 0
             and (time.time() - start_time) < self.startup_duration
             and (current_index := self.next_request_index()) <= self.max_concurrency
         ):
@@ -477,6 +490,8 @@ class AsyncPoissonStrategy(ThroughputStrategy):
         :param startup_duration: Duration in seconds for request startup ramping
         """
         super().init_processes_timings(worker_count, max_concurrency, startup_duration)
+        if self._processes_lock is None:
+            raise RuntimeError("_processes_lock is None in init_processes_timings")
         with self._processes_lock:
             self._offset = Value("d", -1.0)
 
@@ -487,6 +502,12 @@ class AsyncPoissonStrategy(ThroughputStrategy):
         :param start_time: Unix timestamp when request processing should begin
         """
         ThroughputStrategy.init_processes_start(self, start_time)
+
+        if self._processes_lock is None:
+            raise RuntimeError("_processes_lock is None in init_processes_start")
+        if self._offset is None:
+            raise RuntimeError("_offset is None in init_processes_start; was "
+                               "init_processes_timings not called?")
         with self._processes_lock:
             self._offset.value = start_time
 
@@ -505,6 +526,12 @@ class AsyncPoissonStrategy(ThroughputStrategy):
 
         next_delay = self._random.expovariate(self.rate)
 
+        if self._processes_lock is None:
+            raise RuntimeError("_processes_lock is None in next_request_time; was "
+                               "init_processes_timings not called?")
+        if self._offset is None:
+            raise RuntimeError("_offset is None in next_request_time; was "
+                               "init_processes_timings not called?")
         with self._processes_lock:
             self._offset.value += next_delay
 
