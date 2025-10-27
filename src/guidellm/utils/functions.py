@@ -136,14 +136,14 @@ def safe_format_timestamp(
 
 
 def safe_format_number(
-    number: int | float | None, default: str = "--", precision: int = 1
+    number: int | float | None, precision: int = 1, default: str = "--"
 ) -> str:
     """
     Safely format a number with specified precision and default handling.
 
     :param number: Number to format, or None
-    :param default: Value to return if number is None
     :param precision: Number of decimal places for formatting floats
+    :param default: Value to return if number is None
     :return: Formatted number string or default value
     """
     if number is None:
