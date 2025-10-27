@@ -378,7 +378,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Process the request with the backend
             request_info.timings.resolve_start = time.time()
             self._send_update("in_progress", response, request, request_info)
-            async for resp, info in await self.backend.resolve(request, request_info, None):
+            async for resp, info in await self.backend.resolve(
+                request, request_info, None
+            ):
                 response = resp
                 request_info = info
 

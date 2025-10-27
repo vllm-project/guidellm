@@ -232,7 +232,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                     worker_index=rank,
                     max_buffer_send_size=None,
                     max_buffer_receive_size=per_proc_max_buffer_size,
-                ),
+                ),  # The non-group worker lacks the SchedulerState type. Type err.
                 backend=self.backend,
                 strategy=self.strategy,
                 async_limit=async_limit,
@@ -533,7 +533,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._locked_update(
                 info=None,
                 add_constraints={
-                    "requests_exhausted": RequestsExhaustedConstraint(
+                    "requests_exhausted": RequestsExhaustedConstraint(  # type: ignore[dict-item]
                         num_requests=count
                     )
                 },

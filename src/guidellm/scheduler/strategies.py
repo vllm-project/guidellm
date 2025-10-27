@@ -138,7 +138,9 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
                 "init_processes_timings"
             )
         if self._processes_start_time is None:
-            raise RuntimeError("_processes_lock is not None but _processes_start_time is None")
+            raise RuntimeError(
+                "_processes_lock is not None but _processes_start_time is None"
+            )
 
         with self._processes_lock:
             self._processes_start_time.value = start_time
@@ -156,7 +158,9 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
                 "init_processes_timings"
             )
         if self._processes_start_time is None:
-            raise RuntimeError("_processes_lock is not None but _processes_start_time is None")
+            raise RuntimeError(
+                "_processes_lock is not None but _processes_start_time is None"
+            )
 
         while self._cached_processes_start_time is None:
             with self._processes_lock:
@@ -180,7 +184,9 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
                 "init_processes_timings"
             )
         if self._processes_request_index is None:
-            raise RuntimeError("_processes_lock is not None but _processes_request_index is None")
+            raise RuntimeError(
+                "_processes_lock is not None but _processes_request_index is None"
+            )
 
         with self._processes_lock:
             self._processes_request_index.value += 1
