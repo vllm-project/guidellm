@@ -2,25 +2,16 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 from abc import ABC, abstractmethod
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich.padding import Padding
-from rich.text import Text
-from tabulate import tabulate
 
-from guidellm.benchmark.profile import (
-    AsyncProfile,
-    ConcurrentProfile,
-    SweepProfile,
-    ThroughputProfile,
-)
 from guidellm.benchmark.schemas import (
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
@@ -28,9 +19,7 @@ from guidellm.benchmark.schemas import (
 )
 from guidellm.presentation import UIDataBuilder
 from guidellm.presentation.injector import create_report
-from guidellm.settings import settings
 from guidellm.utils import (
-    Colors,
     Console,
     DistributionSummary,
     RegistryMixin,
@@ -39,7 +28,6 @@ from guidellm.utils import (
     recursive_key_update,
     safe_format_number,
     safe_format_timestamp,
-    split_text_list_by_length,
 )
 
 __all__ = [
@@ -160,10 +148,83 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
         return report.save_file(self.output_path)
 
 
+@dataclass
+class ConsoleTableColumn:
+    group: str | None = None
+    name: str | None = None
+    units: str | None = None
+    type_: Literal["number", "text", "timestamp"] = "number"
+    precision: int = 1
+    values: list = field(default_factory=list)
+
+
+class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
+    def add_value(
+        self,
+        value: str | float | int,
+        group: str | None = None,
+        name: str | None = None,
+        units: str | None = None,
+        type_: Literal["number", "text", "timestamp"] = "number",
+        precision: int = 1,
+    ):
+        key = f"{group}_{name}_{units}"
+
+        if key not in self:
+            self[key] = ConsoleTableColumn(
+                group=group, name=name, units=units, type_=type_, precision=precision
+            )
+
+        self[key].values.append(value)
+
+    def add_stats(
+        self,
+        stats: StatusDistributionSummary,
+        status: Literal["successful", "incomplete", "errored", "total"] = "successful",
+        group: str | None = None,
+        name: str | None = None,
+        precision: int = 1,
+    ):
+        key = f"{group}_{name}"
+
+        if f"{key}_median" not in self:
+            self[f"{key}_mean"] = ConsoleTableColumn(
+                group=group, name=name, units="Mean", precision=precision
+            )
+            self[f"{key}_stddev"] = ConsoleTableColumn(
+                group=group, name=name, units="Std", precision=precision
+            )
+
+        status_stats: DistributionSummary = getattr(stats, status) if stats else None
+        self[f"{key}_mean"].values.append(status_stats.mean if status_stats else None)
+        self[f"{key}_stddev"].values.append(
+            status_stats.std_dev if status_stats else None
+        )
+
+    def get_table_data(self) -> tuple[list[list[str]], list[list[str]]]:
+        headers: list[list[str]] = []
+        values: list[list[str]] = []
+
+        for column in self.values():
+            headers.append([column.group or "", column.name or "", column.units or ""])
+            values.append(
+                [
+                    (
+                        str(value)
+                        if column.type_ == "text"
+                        else safe_format_timestamp(value)
+                        if column.type_ == "timestamp"
+                        else safe_format_number(value, precision=column.precision)
+                    )
+                    for value in column.values
+                ]
+            )
+
+        return headers, values
+
+
 @GenerativeBenchmarkerOutput.register("console")
 class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
-    """Console output formatter for benchmark results with rich formatting."""
-
     @classmethod
     def validated_kwargs(cls, *_args, **_kwargs) -> dict[str, Any]:
         return {}
@@ -177,407 +238,706 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         :param report: The completed benchmark report.
         :return:
         """
-        self.console.print("\n\n")
-        self._print_report_benchmarks_info(report)
+        self._print_run_summary_table(report)
+        self._print_text_table(report)
+        self._print_image_table(report)
+        self._print_video_table(report)
+        self._print_audio_table(report)
+        self._print_request_counts_table(report)
+        self._print_request_latency_table(report)
+        self._print_server_throughput_table(report)
 
         return "printed to console"
 
-    def _print_report_benchmarks_info(self, report: GenerativeBenchmarksReport):
-        benchmark_key = "\nBenchmark"
-        start_key = "\nStart"
-        end_key = "\nEnd"
-        timings_key = "Duration, Warmup, Cooldown\nsec, sec, sec"
-        requests_key = "Requests\nCompl, Incomp, Err"
-        input_tokens_key = "Input Tokens\nCompl, Incomp, Err"
-        output_tokens_key = "Output Tokens\nCompl, Incomp, Err"
-
-        columns = defaultdict(list)
+    def _print_run_summary_table(self, report: GenerativeBenchmarksReport):
+        columns = ConsoleTableColumnsCollection()
 
         for benchmark in report.benchmarks:
-            columns[benchmark_key].append(str(benchmark.scheduler.strategy))
-            columns[start_key].append(safe_format_timestamp(benchmark.start_time))
-            columns[end_key].append(safe_format_timestamp(benchmark.end_time))
-            columns[timings_key].append(
-                f"{safe_format_number(benchmark.duration)}, "
-                f"{safe_format_number(report.args.warmup)}, "
-                f"{safe_format_number(report.args.cooldown)}"
+            columns.add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
             )
-            columns[requests_key].append(
-                f"{safe_format_number(benchmark.request_totals.successful)}, "
-                f"{safe_format_number(benchmark.request_totals.incomplete)}, "
-                f"{safe_format_number(benchmark.request_totals.errored)}"
+            columns.add_value(
+                benchmark.start_time, group="Timings", name="Start", type_="timestamp"
             )
-            columns[input_tokens_key].append(
-                f"{safe_format_number(benchmark.metrics.prompt_token_count.successful.total_sum)}, "
-                f"{safe_format_number(benchmark.metrics.prompt_token_count.incomplete.total_sum)}, "
-                f"{safe_format_number(benchmark.metrics.prompt_token_count.errored.total_sum)}"
+            columns.add_value(
+                benchmark.end_time, group="Timings", name="End", type_="timestamp"
             )
-            columns[output_tokens_key].append(
-                f"{safe_format_number(benchmark.metrics.output_token_count.successful.total_sum)}, "
-                f"{safe_format_number(benchmark.metrics.output_token_count.incomplete.total_sum)}, "
-                f"{safe_format_number(benchmark.metrics.output_token_count.errored.total_sum)}"
+            columns.add_value(
+                benchmark.duration, group="Timings", name="Dur", units="Sec"
+            )
+            columns.add_value(
+                report.args.warmup, group="Timings", name="Warm", units="Sec"
+            )
+            columns.add_value(
+                report.args.cooldown, group="Timings", name="Cool", units="Sec"
+            )
+            columns.add_value(
+                benchmark.metrics.prompt_token_count.successful.total_sum,
+                group="Input Tokens",
+                name="Comp",
+                units="Tot",
+            )
+            columns.add_value(
+                benchmark.metrics.prompt_token_count.incomplete.total_sum,
+                group="Input Tokens",
+                name="Inc",
+                units="Tot",
+            )
+            columns.add_value(
+                benchmark.metrics.prompt_token_count.errored.total_sum,
+                group="Input Tokens",
+                name="Err",
+                units="Tot",
+            )
+            columns.add_value(
+                benchmark.metrics.output_token_count.successful.total_sum,
+                group="Output Tokens",
+                name="Comp",
+                units="Tot",
+            )
+            columns.add_value(
+                benchmark.metrics.output_token_count.incomplete.total_sum,
+                group="Output Tokens",
+                name="Inc",
+                units="Tot",
+            )
+            columns.add_value(
+                benchmark.metrics.output_token_count.errored.total_sum,
+                group="Output Tokens",
+                name="Err",
+                units="Tot",
             )
 
-        self.console.print_update("Benchmarks Info", None, "info")
-        self.console.print(
-            Padding(
-                tabulate(
-                    columns,
-                    headers="keys",
-                    tablefmt="pipe",
-                    numalign="center",
-                    stralign="center",
-                    rowalign="center",
-                ),
-                (0, 0, 0, 2),
-            )
+        headers, values = columns.get_table_data()
+        self.console.print("\n")
+        self.console.print_table(headers, values, title="Run Summary Info")
+
+    def _print_text_table(self, report: GenerativeBenchmarksReport):
+        columns: dict[str, ConsoleTableColumnsCollection] = defaultdict(
+            ConsoleTableColumnsCollection
         )
 
-    def _print_benchmarks_metadata(self, benchmarks: list[GenerativeBenchmark]):
-        start_time = benchmarks[0].run_stats.start_time
-        end_time = benchmarks[-1].run_stats.end_time
-        duration = end_time - start_time
-
-        self._print_section_header("Benchmarks Metadata")
-        self._print_labeled_line("Run id", str(benchmarks[0].run_id))
-        self._print_labeled_line("Duration", f"{duration:.1f} seconds")
-        self._print_labeled_line("Profile", self._get_profile_str(benchmarks[0]))
-
-    def _print_benchmarks_info(self, benchmarks: list[GenerativeBenchmark]):
-        sections = {
-            "Metadata": (0, 3),
-            "Requests Made": (4, 6),
-            "Prompt Tok/Req": (7, 9),
-            "Output Tok/Req": (10, 12),
-            "Prompt Tok Total": (13, 15),
-            "Output Tok Total": (16, 18),
-        }
-        headers = [
-            "Benchmark",
-            "Start Time",
-            "End Time",
-            "Duration (s)",
-            "Comp",
-            "Inc",
-            "Err",
-            "Comp",
-            "Inc",
-            "Err",
-            "Comp",
-            "Inc",
-            "Err",
-            "Comp",
-            "Inc",
-            "Err",
-            "Comp",
-            "Inc",
-            "Err",
-        ]
-
-        rows = []
-        for benchmark in benchmarks:
-            rows.append(
-                [
-                    str(benchmark.scheduler.strategy),
-                    safe_format_timestamp(benchmark.start_time),
-                    safe_format_timestamp(benchmark.end_time),
-                    f"{(benchmark.end_time - benchmark.start_time):.1f}",
-                    f"{benchmark.request_totals.successful:.0f}",
-                    f"{benchmark.request_totals.incomplete:.0f}",
-                    f"{benchmark.request_totals.errored:.0f}",
-                    f"{benchmark.metrics.prompt_token_count.successful.mean:.1f}",
-                    f"{benchmark.metrics.prompt_token_count.incomplete.mean:.1f}",
-                    f"{benchmark.metrics.prompt_token_count.errored.mean:.1f}",
-                    f"{benchmark.metrics.output_token_count.successful.mean:.1f}",
-                    f"{benchmark.metrics.output_token_count.incomplete.mean:.1f}",
-                    f"{benchmark.metrics.output_token_count.errored.mean:.1f}",
-                    f"{benchmark.metrics.prompt_token_count.successful.total_sum:.0f}",
-                    f"{benchmark.metrics.prompt_token_count.incomplete.total_sum:.0f}",
-                    f"{benchmark.metrics.prompt_token_count.errored.total_sum:.0f}",
-                    f"{benchmark.metrics.output_token_count.successful.total_sum:.0f}",
-                    f"{benchmark.metrics.output_token_count.incomplete.total_sum:.0f}",
-                    f"{benchmark.metrics.output_token_count.errored.total_sum:.0f}",
-                ]
+        for benchmark in report.benchmarks:
+            columns["labels"].add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
             )
 
-        self._print_table(headers, rows, "Benchmarks Info", sections)
-
-    def _print_benchmarks_stats(self, benchmarks: list[GenerativeBenchmark]):
-        sections = {
-            "Metadata": (0, 0),
-            "Request Stats": (1, 2),
-            "Out Tok/sec": (3, 3),
-            "Tot Tok/sec": (4, 4),
-            "Req Latency (sec)": (5, 7),
-            "TTFT (ms)": (8, 10),
-            "ITL (ms)": (11, 13),
-            "TPOT (ms)": (14, 16),
-        }
-        headers = [
-            "Benchmark",
-            "Per Second",
-            "Concurrency",
-            "mean",
-            "mean",
-            "mean",
-            "median",
-            "p99",
-            "mean",
-            "median",
-            "p99",
-            "mean",
-            "median",
-            "p99",
-            "mean",
-            "median",
-            "p99",
-        ]
-
-        rows = []
-        for benchmark in benchmarks:
-            rows.append(
-                [
-                    str(benchmark.scheduler.strategy),
-                    f"{benchmark.metrics.requests_per_second.successful.mean:.2f}",
-                    f"{benchmark.metrics.request_concurrency.successful.mean:.2f}",
-                    f"{benchmark.metrics.output_tokens_per_second.successful.mean:.1f}",
-                    f"{benchmark.metrics.tokens_per_second.successful.mean:.1f}",
-                    f"{benchmark.metrics.request_latency.successful.mean:.2f}",
-                    f"{benchmark.metrics.request_latency.successful.median:.2f}",
-                    f"{benchmark.metrics.request_latency.successful.percentiles.p99:.2f}",
-                    f"{benchmark.metrics.time_to_first_token_ms.successful.mean:.1f}",
-                    f"{benchmark.metrics.time_to_first_token_ms.successful.median:.1f}",
-                    f"{benchmark.metrics.time_to_first_token_ms.successful.percentiles.p99:.1f}",
-                    f"{benchmark.metrics.inter_token_latency_ms.successful.mean:.1f}",
-                    f"{benchmark.metrics.inter_token_latency_ms.successful.median:.1f}",
-                    f"{benchmark.metrics.inter_token_latency_ms.successful.percentiles.p99:.1f}",
-                    f"{benchmark.metrics.time_per_output_token_ms.successful.mean:.1f}",
-                    f"{benchmark.metrics.time_per_output_token_ms.successful.median:.1f}",
-                    f"{benchmark.metrics.time_per_output_token_ms.successful.percentiles.p99:.1f}",
-                ]
+            # Add tokens columns
+            tokens = benchmark.metrics.text.tokens
+            columns["tokens.input"].add_stats(
+                tokens.input if tokens else None,
+                group="Input Tokens",
+                name="Per Request",
+            )
+            columns["tokens.input"].add_stats(
+                tokens.input_per_second if tokens else None,
+                group="Input Tokens",
+                name="Per Second",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output if tokens else None,
+                group="Output Tokens",
+                name="Per Request",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output_per_second if tokens else None,
+                group="Output Tokens",
+                name="Per Second",
             )
 
-        self._print_table(headers, rows, "Benchmarks Stats", sections)
+            # Add words columns
+            words = benchmark.metrics.text.words
+            columns["words.input"].add_stats(
+                words.input if words else None,
+                group="Input Words",
+                name="Per Request",
+            )
+            columns["words.input"].add_stats(
+                words.input_per_second if words else None,
+                group="Input Words",
+                name="Per Second",
+            )
+            columns["words.output"].add_stats(
+                words.output if words else None,
+                group="Output Words",
+                name="Per Request",
+            )
+            columns["words.output"].add_stats(
+                words.output_per_second if words else None,
+                group="Output Words",
+                name="Per Second",
+            )
 
-    def _get_profile_str(self, benchmark: GenerativeBenchmark) -> str:
-        profile = benchmark.benchmarker.profile
-        if profile is None:
-            return "None"
+            # Add characters columns
+            characters = benchmark.metrics.text.characters
+            columns["characters.input"].add_stats(
+                characters.input if characters else None,
+                group="Input Characters",
+                name="Per Request",
+            )
+            columns["characters.input"].add_stats(
+                characters.input_per_second if characters else None,
+                group="Input Characters",
+                name="Per Second",
+            )
+            columns["characters.output"].add_stats(
+                characters.output if characters else None,
+                group="Output Characters",
+                name="Per Request",
+            )
+            columns["characters.output"].add_stats(
+                characters.output_per_second if characters else None,
+                group="Output Characters",
+                name="Per Second",
+            )
 
-        profile_args = OrderedDict(
-            {
-                "type": profile.type_,
-                "strategies": getattr(profile, "strategy_types", []),
-            }
+        self._print_inp_out_tables(
+            title="Text Metrics Statistics (Completed Requests)",
+            labels=columns["labels"],
+            groups=[
+                (columns["tokens.input"], columns["tokens.output"]),
+                (columns["words.input"], columns["words.output"]),
+                (columns["characters.input"], columns["characters.output"]),
+            ],
         )
 
-        if isinstance(profile, ConcurrentProfile):
-            profile_args["streams"] = str(profile.streams)
-        elif isinstance(profile, ThroughputProfile):
-            profile_args["max_concurrency"] = str(profile.max_concurrency)
-        elif isinstance(profile, AsyncProfile):
-            profile_args["max_concurrency"] = str(profile.max_concurrency)
-            profile_args["rate"] = str(profile.rate)
-        elif isinstance(profile, SweepProfile):
-            profile_args["sweep_size"] = str(profile.sweep_size)
-
-        return ", ".join(f"{key}={value}" for key, value in profile_args.items())
-
-    def _print_section_header(self, title: str, indent: int = 0, new_lines: int = 2):
-        self._print_line(
-            f"{title}:",
-            f"bold underline {Colors.info}",
-            indent=indent,
-            new_lines=new_lines,
+    def _print_image_table(self, report: GenerativeBenchmarksReport):
+        """Print image-specific metrics table if any image data exists."""
+        columns: dict[str, ConsoleTableColumnsCollection] = defaultdict(
+            ConsoleTableColumnsCollection
         )
 
-    def _print_labeled_line(
-        self, label: str, value: str, indent: int = 4, new_lines: int = 0
-    ):
-        self._print_line(
-            [label + ":", value],
-            ["bold " + Colors.info, "italic"],
-            new_lines=new_lines,
-            indent=indent,
+        for benchmark in report.benchmarks:
+            columns["labels"].add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
+            )
+
+            tokens = benchmark.metrics.image.tokens
+            columns["tokens.input"].add_stats(
+                tokens.input if tokens else None,
+                group="Input Tokens",
+                name="Per Request",
+            )
+            columns["tokens.input"].add_stats(
+                tokens.input_per_second if tokens else None,
+                group="Input Tokens",
+                name="Per Second",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output if tokens else None,
+                group="Output Tokens",
+                name="Per Request",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output_per_second if tokens else None,
+                group="Output Tokens",
+                name="Per Second",
+            )
+
+            images = benchmark.metrics.image.images
+            columns["images.input"].add_stats(
+                images.input if images else None,
+                group="Input Images",
+                name="Per Request",
+            )
+            columns["images.input"].add_stats(
+                images.input_per_second if images else None,
+                group="Input Images",
+                name="Per Second",
+            )
+            columns["images.output"].add_stats(
+                images.output if images else None,
+                group="Output Images",
+                name="Per Request",
+            )
+            columns["images.output"].add_stats(
+                images.output_per_second if images else None,
+                group="Output Images",
+                name="Per Second",
+            )
+
+            pixels = benchmark.metrics.image.pixels
+            columns["pixels.input"].add_stats(
+                pixels.input if pixels else None,
+                group="Input Pixels",
+                name="Per Request",
+            )
+            columns["pixels.input"].add_stats(
+                pixels.input_per_second if pixels else None,
+                group="Input Pixels",
+                name="Per Second",
+            )
+            columns["pixels.output"].add_stats(
+                pixels.output if pixels else None,
+                group="Output Pixels",
+                name="Per Request",
+            )
+            columns["pixels.output"].add_stats(
+                pixels.output_per_second if pixels else None,
+                group="Output Pixels",
+                name="Per Second",
+            )
+
+            bytes_ = benchmark.metrics.image.bytes
+            columns["bytes.input"].add_stats(
+                bytes_.input if bytes_ else None,
+                group="Input Bytes",
+                name="Per Request",
+            )
+            columns["bytes.input"].add_stats(
+                bytes_.input_per_second if bytes_ else None,
+                group="Input Bytes",
+                name="Per Second",
+            )
+            columns["bytes.output"].add_stats(
+                bytes_.output if bytes_ else None,
+                group="Output Bytes",
+                name="Per Request",
+            )
+            columns["bytes.output"].add_stats(
+                bytes_.output_per_second if bytes_ else None,
+                group="Output Bytes",
+                name="Per Second",
+            )
+
+        self._print_inp_out_tables(
+            title="Image Metrics Statistics (Completed Requests)",
+            labels=columns["labels"],
+            groups=[
+                (columns["tokens.input"], columns["tokens.output"]),
+                (columns["images.input"], columns["images.output"]),
+                (columns["pixels.input"], columns["pixels.output"]),
+                (columns["bytes.input"], columns["bytes.output"]),
+            ],
         )
 
-    def _print_line(
+    def _print_video_table(self, report: GenerativeBenchmarksReport):
+        """Print video-specific metrics table if any video data exists."""
+        columns: dict[str, ConsoleTableColumnsCollection] = defaultdict(
+            ConsoleTableColumnsCollection
+        )
+
+        for benchmark in report.benchmarks:
+            columns["labels"].add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
+            )
+
+            tokens = benchmark.metrics.video.tokens
+            columns["tokens.input"].add_stats(
+                tokens.input if tokens else None,
+                group="Input Tokens",
+                name="Per Request",
+            )
+            columns["tokens.input"].add_stats(
+                tokens.input_per_second if tokens else None,
+                group="Input Tokens",
+                name="Per Second",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output if tokens else None,
+                group="Output Tokens",
+                name="Per Request",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output_per_second if tokens else None,
+                group="Output Tokens",
+                name="Per Second",
+            )
+
+            frames = benchmark.metrics.video.frames
+            columns["frames.input"].add_stats(
+                frames.input if frames else None,
+                group="Input Frames",
+                name="Per Request",
+            )
+            columns["frames.input"].add_stats(
+                frames.input_per_second if frames else None,
+                group="Input Frames",
+                name="Per Second",
+            )
+            columns["frames.output"].add_stats(
+                frames.output if frames else None,
+                group="Output Frames",
+                name="Per Request",
+            )
+            columns["frames.output"].add_stats(
+                frames.output_per_second if frames else None,
+                group="Output Frames",
+                name="Per Second",
+            )
+
+            seconds = benchmark.metrics.video.seconds
+            columns["seconds.input"].add_stats(
+                seconds.input if seconds else None,
+                group="Input Seconds",
+                name="Per Request",
+            )
+            columns["seconds.input"].add_stats(
+                seconds.input_per_second if seconds else None,
+                group="Input Seconds",
+                name="Per Second",
+            )
+            columns["seconds.output"].add_stats(
+                seconds.output if seconds else None,
+                group="Output Seconds",
+                name="Per Request",
+            )
+            columns["seconds.output"].add_stats(
+                seconds.output_per_second if seconds else None,
+                group="Output Seconds",
+                name="Per Second",
+            )
+
+            bytes_ = benchmark.metrics.video.bytes
+            columns["bytes.input"].add_stats(
+                bytes_.input if bytes_ else None,
+                group="Input Bytes",
+                name="Per Request",
+            )
+            columns["bytes.input"].add_stats(
+                bytes_.input_per_second if bytes_ else None,
+                group="Input Bytes",
+                name="Per Second",
+            )
+            columns["bytes.output"].add_stats(
+                bytes_.output if bytes_ else None,
+                group="Output Bytes",
+                name="Per Request",
+            )
+            columns["bytes.output"].add_stats(
+                bytes_.output_per_second if bytes_ else None,
+                group="Output Bytes",
+                name="Per Second",
+            )
+
+        self._print_inp_out_tables(
+            title="Video Metrics Statistics (Completed Requests)",
+            labels=columns["labels"],
+            groups=[
+                (columns["tokens.input"], columns["tokens.output"]),
+                (columns["frames.input"], columns["frames.output"]),
+                (columns["seconds.input"], columns["seconds.output"]),
+                (columns["bytes.input"], columns["bytes.output"]),
+            ],
+        )
+
+    def _print_audio_table(self, report: GenerativeBenchmarksReport):
+        """Print audio-specific metrics table if any audio data exists."""
+        columns: dict[str, ConsoleTableColumnsCollection] = defaultdict(
+            ConsoleTableColumnsCollection
+        )
+
+        for benchmark in report.benchmarks:
+            columns["labels"].add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
+            )
+
+            tokens = benchmark.metrics.audio.tokens
+            columns["tokens.input"].add_stats(
+                tokens.input if tokens else None,
+                group="Input Tokens",
+                name="Per Request",
+            )
+            columns["tokens.input"].add_stats(
+                tokens.input_per_second if tokens else None,
+                group="Input Tokens",
+                name="Per Second",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output if tokens else None,
+                group="Output Tokens",
+                name="Per Request",
+            )
+            columns["tokens.output"].add_stats(
+                tokens.output_per_second if tokens else None,
+                group="Output Tokens",
+                name="Per Second",
+            )
+
+            samples = benchmark.metrics.audio.samples
+            columns["samples.input"].add_stats(
+                samples.input if samples else None,
+                group="Input Samples",
+                name="Per Request",
+            )
+            columns["samples.input"].add_stats(
+                samples.input_per_second if samples else None,
+                group="Input Samples",
+                name="Per Second",
+            )
+            columns["samples.output"].add_stats(
+                samples.output if samples else None,
+                group="Output Samples",
+                name="Per Request",
+            )
+            columns["samples.output"].add_stats(
+                samples.output_per_second if samples else None,
+                group="Output Samples",
+                name="Per Second",
+            )
+
+            seconds = benchmark.metrics.audio.seconds
+            columns["seconds.input"].add_stats(
+                seconds.input if seconds else None,
+                group="Input Seconds",
+                name="Per Request",
+            )
+            columns["seconds.input"].add_stats(
+                seconds.input_per_second if seconds else None,
+                group="Input Seconds",
+                name="Per Second",
+            )
+            columns["seconds.output"].add_stats(
+                seconds.output if seconds else None,
+                group="Output Seconds",
+                name="Per Request",
+            )
+            columns["seconds.output"].add_stats(
+                seconds.output_per_second if seconds else None,
+                group="Output Seconds",
+                name="Per Second",
+            )
+
+            bytes_ = benchmark.metrics.audio.bytes
+            columns["bytes.input"].add_stats(
+                bytes_.input if bytes_ else None,
+                group="Input Bytes",
+                name="Per Request",
+            )
+            columns["bytes.input"].add_stats(
+                bytes_.input_per_second if bytes_ else None,
+                group="Input Bytes",
+                name="Per Second",
+            )
+            columns["bytes.output"].add_stats(
+                bytes_.output if bytes_ else None,
+                group="Output Bytes",
+                name="Per Request",
+            )
+            columns["bytes.output"].add_stats(
+                bytes_.output_per_second if bytes_ else None,
+                group="Output Bytes",
+                name="Per Second",
+            )
+
+        self._print_inp_out_tables(
+            title="Audio Metrics Statistics (Completed Requests)",
+            labels=columns["labels"],
+            groups=[
+                (columns["tokens.input"], columns["tokens.output"]),
+                (columns["samples.input"], columns["samples.output"]),
+                (columns["seconds.input"], columns["seconds.output"]),
+                (columns["bytes.input"], columns["bytes.output"]),
+            ],
+        )
+
+    def _print_request_counts_table(self, report: GenerativeBenchmarksReport):
+        """Print request latency metrics table."""
+        columns = ConsoleTableColumnsCollection()
+
+        for benchmark in report.benchmarks:
+            columns.add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
+            )
+            columns.add_stats(
+                benchmark.metrics.prompt_token_count,
+                group="Input Tok",
+                name="Per Req",
+            )
+            columns.add_stats(
+                benchmark.metrics.output_token_count,
+                group="Output Tok",
+                name="Per Req",
+            )
+            columns.add_stats(
+                benchmark.metrics.total_token_count,
+                group="Total Tok",
+                name="Per Req",
+            )
+            columns.add_stats(
+                benchmark.metrics.request_streaming_iterations_count,
+                group="Stream Iter",
+                name="Per Req",
+            )
+            columns.add_stats(
+                benchmark.metrics.output_tokens_per_iteration,
+                group="Output Tok",
+                name="Per Stream Iter",
+            )
+            columns.add_stats(
+                benchmark.metrics.output_tokens_per_iteration,
+                group="Iter Tok",
+                name="Per Stream Iter",
+            )
+
+        headers, values = columns.get_table_data()
+        self.console.print("\n")
+        self.console.print_table(
+            headers, values, title="Request Token Statistics (Completed Requests)"
+        )
+
+    def _print_request_latency_table(self, report: GenerativeBenchmarksReport):
+        """Print request latency metrics table."""
+        columns = ConsoleTableColumnsCollection()
+
+        for benchmark in report.benchmarks:
+            columns.add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
+            )
+            columns.add_stats(
+                benchmark.metrics.request_latency,
+                group="Request Latency",
+                name="Sec",
+            )
+            columns.add_stats(
+                benchmark.metrics.time_to_first_token_ms,
+                group="TTFT",
+                name="ms",
+            )
+            columns.add_stats(
+                benchmark.metrics.inter_token_latency_ms,
+                group="ITL",
+                name="ms",
+            )
+            columns.add_stats(
+                benchmark.metrics.time_per_output_token_ms,
+                group="TPOT",
+                name="ms",
+            )
+
+        headers, values = columns.get_table_data()
+        self.console.print("\n")
+        self.console.print_table(
+            headers, values, title="Request Latency Statistics (Completed Requests)"
+        )
+
+    def _print_server_throughput_table(self, report: GenerativeBenchmarksReport):
+        """Print server throughput metrics table."""
+        columns = ConsoleTableColumnsCollection()
+
+        for benchmark in report.benchmarks:
+            columns.add_value(
+                benchmark.scheduler.strategy,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
+            )
+            columns.add_stats(
+                benchmark.metrics.requests_per_second,
+                group="Requests",
+                name="Per Sec",
+            )
+            columns.add_stats(
+                benchmark.metrics.request_concurrency,
+                group="Requests",
+                name="Concurrency",
+            )
+            columns.add_stats(
+                benchmark.metrics.prompt_tokens_per_second,
+                group="Input Tokens",
+                name="Per Sec",
+            )
+            columns.add_stats(
+                benchmark.metrics.output_tokens_per_second,
+                group="Output Tokens",
+                name="Per Sec",
+            )
+            columns.add_stats(
+                benchmark.metrics.tokens_per_second,
+                group="Total Tokens",
+                name="Per Sec",
+            )
+
+        headers, values = columns.get_table_data()
+        self.console.print("\n")
+        self.console.print_table(headers, values, title="Server Throughput Statistics")
+
+    def _print_inp_out_tables(
         self,
-        value: str | list[str],
-        style: str | list[str] = "",
-        indent: int = 0,
-        new_lines: int = 0,
-    ):
-        text = Text()
-        for _ in range(new_lines):
-            text.append("\n")
-
-        if not isinstance(value, list):
-            value = [value]
-        if not isinstance(style, list):
-            style = [style for _ in range(len(value))]
-
-        if len(value) != len(style):
-            raise ValueError(
-                f"Value and style length mismatch: {len(value)} vs {len(style)}"
-            )
-
-        for val, sty in zip(value, style, strict=False):
-            text.append(val, style=sty)
-
-        self.console.print(Padding.indent(text, indent))
-
-    def _print_table(
-        self,
-        headers: list[str],
-        rows: list[list[Any]],
         title: str,
-        sections: dict[str, tuple[int, int]] | None = None,
-        max_char_per_col: int = 1024,
-        indent: int = 0,
-        new_lines: int = 2,
+        labels: ConsoleTableColumnsCollection,
+        groups: list[
+            tuple[ConsoleTableColumnsCollection, ConsoleTableColumnsCollection]
+        ],
     ):
-        if rows and any(len(row) != len(headers) for row in rows):
-            raise ValueError(
-                "Headers and rows length mismatch: "
-                f"{len(headers)} vs {len(rows[0]) if rows else 'N/A'}"
+        """
+        Print separate input and output tables for domain-specific metrics.
+
+        :param title: Title for the table group
+        :param labels: Label columns to include in both tables
+        :param groups: List of (input_columns, output_columns) tuples for each
+            metric type
+        """
+        inp_headers, inp_values = [], []
+        out_headers, out_values = [], []
+        inp_has_data = False
+        out_has_data = False
+
+        for inp_columns, out_columns in groups:
+            # Check if columns have any non-None values
+            type_inp_has_data = any(
+                any(v is not None for v in col.values) for col in inp_columns.values()
+            )
+            type_out_has_data = any(
+                any(v is not None for v in col.values) for col in out_columns.values()
             )
 
-        max_chars_per_column = self._calculate_max_chars_per_column(
-            headers, rows, sections, max_char_per_col
-        )
+            if not (type_inp_has_data or type_out_has_data):
+                continue
 
-        self._print_section_header(title, indent=indent, new_lines=new_lines)
-        self._print_table_divider(max_chars_per_column, False, indent)
-        if sections:
-            self._print_table_sections(sections, max_chars_per_column, indent)
-        self._print_table_row(
-            split_text_list_by_length(headers, max_chars_per_column),
-            f"bold {Colors.info}",
-            indent,
-        )
-        self._print_table_divider(max_chars_per_column, True, indent)
-        for row in rows:
-            self._print_table_row(
-                split_text_list_by_length(row, max_chars_per_column),
-                "italic",
-                indent,
+            inp_has_data = inp_has_data or type_inp_has_data
+            out_has_data = out_has_data or type_out_has_data
+
+            inp_type_headers, inp_type_columns = inp_columns.get_table_data()
+            out_type_headers, out_type_columns = out_columns.get_table_data()
+
+            inp_headers.extend(inp_type_headers)
+            inp_values.extend(inp_type_columns)
+            out_headers.extend(out_type_headers)
+            out_values.extend(out_type_columns)
+
+        if not (inp_has_data or out_has_data):
+            return
+
+        labels_headers, labels_values = labels.get_table_data()
+        header_cols_groups = []
+        value_cols_groups = []
+
+        if inp_has_data:
+            header_cols_groups.append(labels_headers + inp_headers)
+            value_cols_groups.append(labels_values + inp_values)
+        if out_has_data:
+            header_cols_groups.append(labels_headers + out_headers)
+            value_cols_groups.append(labels_values + out_values)
+
+        if header_cols_groups and value_cols_groups:
+            self.console.print("\n")
+            self.console.print_tables(
+                header_cols_groups=header_cols_groups,
+                value_cols_groups=value_cols_groups,
+                title=title,
             )
-        self._print_table_divider(max_chars_per_column, False, indent)
-
-    def _calculate_max_chars_per_column(
-        self,
-        headers: list[str],
-        rows: list[list[Any]],
-        sections: dict[str, tuple[int, int]] | None,
-        max_char_per_col: int,
-    ) -> list[int]:
-        """Calculate maximum characters per column for table formatting."""
-        max_chars_per_column = []
-        for ind in range(len(headers)):
-            max_chars_per_column.append(min(len(headers[ind]), max_char_per_col))
-            for row in rows:
-                max_chars_per_column[ind] = max(
-                    max_chars_per_column[ind], len(str(row[ind]))
-                )
-
-        if not sections:
-            return max_chars_per_column
-
-        for section, (start_col, end_col) in sections.items():
-            min_section_len = len(section) + (end_col - start_col)
-            chars_in_columns = sum(
-                max_chars_per_column[start_col : end_col + 1]
-            ) + 2 * (end_col - start_col)
-            if min_section_len > chars_in_columns:
-                add_chars_per_col = math.ceil(
-                    (min_section_len - chars_in_columns) / (end_col - start_col + 1)
-                )
-                for col in range(start_col, end_col + 1):
-                    max_chars_per_column[col] += add_chars_per_col
-
-        return max_chars_per_column
-
-    def _print_table_divider(
-        self, max_chars_per_column: list[int], include_separators: bool, indent: int = 0
-    ):
-        """Print table divider line."""
-        if include_separators:
-            columns = [
-                settings.table_headers_border_char * max_chars
-                + settings.table_column_separator_char
-                + settings.table_headers_border_char
-                for max_chars in max_chars_per_column
-            ]
-        else:
-            columns = [
-                settings.table_border_char * (max_chars + 2)
-                for max_chars in max_chars_per_column
-            ]
-        columns[-1] = columns[-1][:-2]
-        self._print_line(columns, Colors.info, indent)
-
-    def _print_table_sections(
-        self,
-        sections: dict[str, tuple[int, int]],
-        max_chars_per_column: list[int],
-        indent: int = 0,
-    ):
-        section_tuples = [(start, end, name) for name, (start, end) in sections.items()]
-        section_tuples.sort(key=lambda x: x[0])
-
-        if any(start > end for start, end, _ in section_tuples):
-            raise ValueError(f"Invalid section ranges: {section_tuples}")
-
-        if (
-            any(
-                section_tuples[ind][1] + 1 != section_tuples[ind + 1][0]
-                for ind in range(len(section_tuples) - 1)
-            )
-            or section_tuples[0][0] != 0
-            or section_tuples[-1][1] != len(max_chars_per_column) - 1
-        ):
-            raise ValueError(f"Invalid section ranges: {section_tuples}")
-
-        line_values = []
-        line_styles = []
-        for section, (start_col, end_col) in sections.items():
-            section_length = sum(max_chars_per_column[start_col : end_col + 1]) + 2 * (
-                end_col - start_col + 1
-            )
-            num_separators = end_col - start_col
-            line_values.extend(
-                [
-                    section,
-                    " " * (section_length - len(section) - num_separators - 2),
-                    settings.table_column_separator_char * num_separators,
-                    settings.table_column_separator_char + " ",
-                ]
-            )
-            line_styles.extend(["bold " + Colors.info, "", "", Colors.info])
-
-        line_values = line_values[:-1]
-        line_styles = line_styles[:-1]
-        self._print_line(line_values, line_styles, indent)
-
-    def _print_table_row(
-        self, column_lines: list[list[str]], style: str, indent: int = 0
-    ):
-        for row in range(len(column_lines[0])):
-            print_line = []
-            print_styles = []
-            for column in range(len(column_lines)):
-                print_line.extend(
-                    [
-                        column_lines[column][row],
-                        settings.table_column_separator_char,
-                        " ",
-                    ]
-                )
-                print_styles.extend([style, Colors.info, ""])
-            print_line = print_line[:-2]
-            print_styles = print_styles[:-2]
-            self._print_line(print_line, print_styles, indent)
 
 
 @GenerativeBenchmarkerOutput.register("csv")

@@ -282,24 +282,24 @@ class OpenAIHTTPBackend(Backend):
                 async for chunk in stream.aiter_lines():
                     iter_time = time.time()
 
-                    if (
-                        (iterations := response_handler.add_streaming_line(chunk))
-                        is None
-                        or iterations < 0
-                        or end_reached
-                    ):
-                        end_reached = end_reached or iterations is None
+                    if request_info.timings.first_request_iteration is None:
+                        request_info.timings.first_request_iteration = iter_time
+                    request_info.timings.last_request_iteration = iter_time
+                    request_info.timings.request_iterations += 1
+
+                    iterations = response_handler.add_streaming_line(chunk)
+                    if iterations is None or end_reached:
+                        end_reached = True
+                        continue
+                    if iterations <=0:
                         continue
 
-                    if (
-                        request_info.timings.first_iteration is None
-                        or request_info.timings.iterations is None
-                    ):
-                        request_info.timings.first_iteration = iter_time
-                        request_info.timings.iterations = 0
+                    if request_info.timings.first_token_iteration is None:
+                        request_info.timings.first_token_iteration = iter_time
+                        request_info.timings.token_iterations = 0
 
-                    request_info.timings.last_iteration = iter_time
-                    request_info.timings.iterations += iterations
+                    request_info.timings.last_token_iteration = iter_time
+                    request_info.timings.token_iterations += iterations
 
             request_info.timings.request_end = time.time()
             yield response_handler.compile_streaming(request), request_info

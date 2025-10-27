@@ -2,14 +2,17 @@
 Request statistics and metrics for generative AI benchmark analysis.
 
 Provides data structures for capturing and analyzing performance metrics from
-generative AI workloads. Contains request-level statistics including token counts,
-latency measurements, and throughput calculations for text generation benchmarks.
+generative AI workloads. The module contains request-level statistics including
+token counts, latency measurements, and throughput calculations essential for
+evaluating text generation benchmark performance. Computed properties enable
+analysis of time-to-first-token, inter-token latency, and token generation rates.
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
+import numpy as np
 from pydantic import Field, computed_field
 
 from guidellm.schemas.info import RequestInfo
@@ -43,46 +46,62 @@ class GenerativeRequestStats(StandardBaseDict):
     type_: Literal["generative_request_stats"] = "generative_request_stats"
     request_id: str = Field(description="Unique identifier for the request")
     request_type: GenerativeRequestType | str = Field(
-        description="Type of generative request: text or chat completion"
+        description="Type of generative request (text_completion or chat_completion)"
     )
     request_args: str | None = Field(
-        default=None, description="Arguments passed to the backend for this request"
+        default=None, description="Backend arguments used for this request"
     )
     output: str | None = Field(
-        description="Generated text output, if request completed successfully"
+        default=None, description="Generated text output from the request"
     )
     info: RequestInfo = Field(
-        description="Metadata and timing information for the request"
+        description="Request metadata and timing information"
     )
     input_metrics: UsageMetrics = Field(
-        description="Usage statistics for the input prompt"
+        description="Token usage statistics for the input prompt"
     )
     output_metrics: UsageMetrics = Field(
-        description="Usage statistics for the generated output"
+        description="Token usage statistics for the generated output"
     )
 
     # Request stats
+    @computed_field  # type: ignore[misc]
+    @property
+    def request_start_time(self) -> float | None:
+        """
+        :return: Timestamp when the request started, or None if unavailable
+        """
+        return self.info.timings.request_start or self.info.timings.resolve_start
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def request_end_time(self) -> float | None:
+        """
+        :return: Timestamp when the request ended, or None if unavailable
+        """
+        return self.info.timings.request_end or self.info.timings.resolve_end
+
     @computed_field  # type: ignore[misc]
     @property
     def request_latency(self) -> float | None:
         """
         End-to-end request processing latency in seconds.
 
-        :return: Duration from request start to completion, or None if unavailable.
+        :return: Duration from request start to completion, or None if unavailable
         """
-        if not self.info.timings.request_end or not self.info.timings.request_start:
+        if not (start := self.info.timings.request_start) or not (
+            end := self.info.timings.request_end
+        ):
             return None
 
-        return self.info.timings.request_end - self.info.timings.request_start
+        return end - start
 
     # General token stats
     @computed_field  # type: ignore[misc]
     @property
     def prompt_tokens(self) -> int | None:
         """
-        Number of tokens in the input prompt.
-
-        :return: Input prompt token count, or None if unavailable.
+        :return: Number of tokens in the input prompt, or None if unavailable
         """
         return self.input_metrics.text_tokens
 
@@ -90,9 +109,7 @@ class GenerativeRequestStats(StandardBaseDict):
     @property
     def input_tokens(self) -> int | None:
         """
-        Number of tokens in the input prompt.
-
-        :return: Input prompt token count, or None if unavailable.
+        :return: Number of tokens in the input prompt, or None if unavailable
         """
         return self.input_metrics.total_tokens
 
@@ -100,9 +117,7 @@ class GenerativeRequestStats(StandardBaseDict):
     @property
     def output_tokens(self) -> int | None:
         """
-        Number of tokens in the generated output.
-
-        :return: Generated output token count, or None if unavailable.
+        :return: Number of tokens in the generated output, or None if unavailable
         """
         return self.output_metrics.total_tokens
 
@@ -110,9 +125,7 @@ class GenerativeRequestStats(StandardBaseDict):
     @property
     def total_tokens(self) -> int | None:
         """
-        Total token count including prompt and output tokens.
-
-        :return: Sum of prompt and output tokens, or None if either is unavailable.
+        :return: Sum of prompt and output tokens, or None if both unavailable
         """
         input_tokens = self.input_metrics.total_tokens
         output_tokens = self.output_metrics.total_tokens
@@ -126,75 +139,55 @@ class GenerativeRequestStats(StandardBaseDict):
     @property
     def time_to_first_token_ms(self) -> float | None:
         """
-        Time to first token generation in milliseconds.
-
-        :return: Latency from request start to first token, or None if unavailable.
+        :return: Time to first token generation in milliseconds, or None if unavailable
         """
-        if (
-            not self.info.timings.first_iteration
-            or not self.info.timings.request_start
-            or self.info.timings.first_iteration == self.info.timings.last_iteration
+        if not (first_token := self.first_token_iteration) or not (
+            start := self.info.timings.request_start
         ):
             return None
 
-        return 1000 * (
-            self.info.timings.first_iteration - self.info.timings.request_start
-        )
+        return 1000 * (first_token - start)
 
     @computed_field  # type: ignore[misc]
     @property
     def time_per_output_token_ms(self) -> float | None:
         """
-        Average time per output token in milliseconds.
+        Average time per output token in milliseconds including first token.
 
-        Includes time for first token and all subsequent tokens.
-
-        :return: Average milliseconds per output token, or None if unavailable.
+        :return: Average milliseconds per output token, or None if unavailable
         """
         if (
-            not self.info.timings.request_start
-            or not self.info.timings.last_iteration
-            or not self.output_metrics.total_tokens
+            not (start := self.info.timings.request_start)
+            or not (last_token := self.last_token_iteration)
+            or not (output_tokens := self.output_tokens)
         ):
             return None
 
-        return (
-            1000
-            * (self.info.timings.last_iteration - self.info.timings.request_start)
-            / self.output_metrics.total_tokens
-        )
+        return 1000 * (last_token - start) / output_tokens
 
     @computed_field  # type: ignore[misc]
     @property
     def inter_token_latency_ms(self) -> float | None:
         """
-        Average inter-token latency in milliseconds.
+        Average inter-token latency in milliseconds excluding first token.
 
-        Measures time between token generations, excluding first token.
-
-        :return: Average milliseconds between tokens, or None if unavailable.
+        :return: Average milliseconds between token generations, or None if unavailable
         """
         if (
-            not self.info.timings.first_iteration
-            or not self.info.timings.last_iteration
-            or not self.output_metrics.total_tokens
-            or self.output_metrics.total_tokens <= 1
+            not (first_token := self.first_token_iteration)
+            or not (last_token := self.last_token_iteration)
+            or not (output_tokens := self.output_tokens)
+            or output_tokens <= 1
         ):
             return None
 
-        return (
-            1000
-            * (self.info.timings.last_iteration - self.info.timings.first_iteration)
-            / (self.output_metrics.total_tokens - 1)
-        )
+        return 1000 * (last_token - first_token) / (output_tokens - 1)
 
     @computed_field  # type: ignore[misc]
     @property
     def tokens_per_second(self) -> float | None:
         """
-        Overall token throughput including prompt and output tokens.
-
-        :return: Total tokens per second, or None if unavailable.
+        :return: Total tokens per second throughput, or None if unavailable
         """
         if not (latency := self.request_latency) or self.total_tokens is None:
             return None
@@ -205,9 +198,7 @@ class GenerativeRequestStats(StandardBaseDict):
     @property
     def output_tokens_per_second(self) -> float | None:
         """
-        Output token generation throughput.
-
-        :return: Output tokens per second, or None if unavailable.
+        :return: Output token generation throughput, or None if unavailable
         """
         if not (latency := self.request_latency) or self.output_tokens is None:
             return None
@@ -216,13 +207,128 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
-    def output_tokens_per_iteration(self) -> float | None:
+    def iter_tokens_per_iteration(self) -> float | None:
         """
-        Average output tokens generated per iteration.
-
-        :return: Output tokens per iteration, or None if unavailable.
+        :return: Average tokens per iteration excluding first token, or None if
+            unavailable
         """
-        if self.output_tokens is None or not self.info.timings.iterations:
+        if (
+            self.output_tokens is None
+            or self.output_tokens <= 1
+            or self.token_iterations <= 1
+        ):
             return None
 
-        return self.output_tokens / self.info.timings.iterations
+        return (self.output_tokens - 1.0) / (
+            self.token_iterations - 1.0
+        )  # subtract 1 for first token from the prompt, assume first iter is 1 token
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def output_tokens_per_iteration(self) -> float | None:
+        """
+        :return: Average output tokens per iteration, or None if unavailable
+        """
+        if self.output_tokens is None or self.token_iterations < 1:
+            return None
+
+        return self.output_tokens / self.token_iterations
+
+    @property
+    def first_token_iteration(self) -> float | None:
+        """
+        :return: Timestamp of first token generation, or None if unavailable
+        """
+        return self.info.timings.first_token_iteration
+
+    @property
+    def last_token_iteration(self) -> float | None:
+        """
+        :return: Timestamp of last token generation, or None if unavailable
+        """
+        return self.info.timings.last_token_iteration
+
+    @property
+    def token_iterations(self) -> int:
+        """
+        :return: Total number of token generation iterations
+        """
+        return self.info.timings.token_iterations
+
+    @property
+    def prompt_tokens_timings(self) -> tuple[float, float] | None:
+        """
+        :return: Tuple of (timestamp, token_count) for prompt processing, or None
+            if unavailable
+        """
+        if self.request_end_time is None:
+            # no end time, can't compute
+            return None
+
+        return [
+            (
+                self.first_token_iteration or self.request_end_time,
+                self.prompt_tokens or 0.0,
+            )
+        ]
+
+    @property
+    def output_tokens_timings(self) -> list[tuple[float, float]]:
+        """
+        :return: List of (timestamp, token_count) tuples for output token generations
+        """
+        if self.request_end_time is None:
+            # no end time, can't compute
+            return []
+
+        if (
+            self.first_token_iteration is None
+            or self.last_token_iteration is None
+            or self.token_iterations <= 1
+        ):
+            # No iteration data, return single timing at end with all tokens
+            return [
+                (
+                    self.last_token_iteration or self.request_end_time,
+                    self.output_tokens or 0.0,
+                )
+            ]
+
+        # Return first token timing as 1 token plus per-iteration timings
+        return [
+            (self.first_token_iteration, 1.0 * bool(self.output_tokens))
+        ] + self.iter_tokens_timings
+
+    @property
+    def iter_tokens_timings(self) -> list[tuple[float, float]]:
+        """
+        :return: List of (timestamp, token_count) tuples for iterations excluding
+            first token
+        """
+        if (
+            self.first_token_iteration is None
+            or self.last_token_iteration is None
+            or (tok_per_iter := self.iter_tokens_per_iteration) is None
+            or self.token_iterations <= 1
+        ):
+            return []
+
+        # evenly space the iterations since we don't have per-iteration timings
+        # / we don't know the individual token counts per iteration
+        iter_times = np.linspace(
+            self.first_token_iteration,
+            self.last_token_iteration,
+            num=self.token_iterations,
+        )[1:]  # skip first iteration
+
+        return [(iter_time, tok_per_iter) for iter_time in iter_times]
+
+    @property
+    def total_tokens_timings(self) -> list[tuple[float, float]]:
+        """
+        :return: List of (timestamp, token_count) tuples for all token generations
+        """
+        prompt_timings = self.prompt_tokens_timings
+        output_timings = self.output_tokens_timings
+
+        return (prompt_timings or []) + output_timings

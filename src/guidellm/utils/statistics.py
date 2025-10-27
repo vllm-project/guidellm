@@ -1,179 +1,222 @@
 """
-Statistical analysis utilities for distribution calculations and running metrics.
+Statistical distribution analysis and summary calculations for benchmark metrics.
 
-Provides comprehensive statistical computation tools for analyzing numerical
-distributions, percentiles, and streaming data. Includes specialized support for
-request timing analysis, concurrency measurement, and rate calculations. Integrates
-with Pydantic for serializable statistical models and supports both weighted and
-unweighted distributions with cumulative distribution function (CDF) generation.
+Provides comprehensive statistical analysis tools including percentile calculations,
+summary statistics, and status-based distributions. Supports value distributions,
+time-based rate and concurrency distributions with weighted sampling, and probability
+density functions for analyzing benchmark performance metrics and request patterns
+across different status categories (successful, incomplete, errored).
 """
 
 from __future__ import annotations
 
 import math
-import time as timer
-from collections import defaultdict
-from typing import Any, Literal
+from collections.abc import Callable
+from typing import TypeVar
 
 import numpy as np
-from pydantic import Field, computed_field
+from pydantic import Field
 
 from guidellm.utils.pydantic_utils import StandardBaseModel, StatusBreakdown
 
 __all__ = [
     "DistributionSummary",
+    "FunctionObjT",
     "Percentiles",
-    "RunningStats",
     "StatusDistributionSummary",
-    "TimeRunningStats",
 ]
+
+FunctionObjT = TypeVar("FunctionObjT")
 
 
 class Percentiles(StandardBaseModel):
     """
-    Standard percentiles model for statistical distribution analysis.
+    Standard percentile values for probability distributions.
 
-    Provides complete percentile coverage from 0.1th to 99.9th percentiles for
-    statistical distribution characterization. Used as a component within
-    DistributionSummary to provide detailed distribution shape analysis.
+    Captures key percentile points from 0.1th to 99.9th percentile for comprehensive
+    distribution analysis, enabling assessment of central tendency, spread, and tail
+    behavior in benchmark metrics.
     """
 
-    p001: float = Field(
-        description="The 0.1th percentile of the distribution.",
-    )
-    p01: float = Field(
-        description="The 1st percentile of the distribution.",
-    )
-    p05: float = Field(
-        description="The 5th percentile of the distribution.",
-    )
-    p10: float = Field(
-        description="The 10th percentile of the distribution.",
-    )
-    p25: float = Field(
-        description="The 25th percentile of the distribution.",
-    )
-    p50: float = Field(
-        description="The 50th percentile of the distribution.",
-    )
-    p75: float = Field(
-        description="The 75th percentile of the distribution.",
-    )
-    p90: float = Field(
-        description="The 90th percentile of the distribution.",
-    )
-    p95: float = Field(
-        description="The 95th percentile of the distribution.",
-    )
-    p99: float = Field(
-        description="The 99th percentile of the distribution.",
-    )
-    p999: float = Field(
-        description="The 99.9th percentile of the distribution.",
-    )
+    p001: float = Field(description="0.1th percentile value")
+    p01: float = Field(description="1st percentile value")
+    p05: float = Field(description="5th percentile value")
+    p10: float = Field(description="10th percentile value")
+    p25: float = Field(description="25th percentile value")
+    p50: float = Field(description="50th percentile (median) value")
+    p75: float = Field(description="75th percentile value")
+    p90: float = Field(description="90th percentile value")
+    p95: float = Field(description="95th percentile value")
+    p99: float = Field(description="99th percentile value")
+    p999: float = Field(description="99.9th percentile value")
+
+    @classmethod
+    def from_pdf(
+        cls, pdf: np.ndarray, epsilon: float = 1e-6, validate: bool = True
+    ) -> Percentiles:
+        """
+        Create percentiles from a probability density function.
+
+        :param pdf: 2D array (N, 2) with values in column 0 and probabilities in
+            column 1
+        :param epsilon: Tolerance for probability sum validation
+        :param validate: Whether to validate probabilities sum to 1 and are
+            non-negative
+        :return: Percentiles object with computed values
+        :raises ValueError: If PDF shape is invalid, probabilities are negative,
+            or probabilities don't sum to 1
+        """
+        expected_shape = (None, 2)
+
+        if len(pdf.shape) != len(expected_shape) or pdf.shape[1] != expected_shape[1]:
+            raise ValueError(
+                "PDF must be a 2D array of shape (N, 2) where first column is values "
+                f"and second column is probabilities. Got {pdf.shape} instead."
+            )
+
+        percentile_probs = {
+            "p001": 0.001,
+            "p01": 0.01,
+            "p05": 0.05,
+            "p10": 0.1,
+            "p25": 0.25,
+            "p50": 0.5,
+            "p75": 0.75,
+            "p90": 0.9,
+            "p95": 0.95,
+            "p99": 0.99,
+            "p999": 0.999,
+        }
+
+        if pdf.shape[0] == 0:
+            return Percentiles(**dict.fromkeys(percentile_probs.keys(), 0.0))
+
+        probabilities = pdf[:, 1]
+
+        if validate:
+            if np.any(probabilities < 0):
+                raise ValueError("Probabilities must be non-negative.")
+
+            prob_sum = np.sum(probabilities)
+            if abs(prob_sum - 1.0) > epsilon:
+                raise ValueError(f"Probabilities must sum to 1, got {prob_sum}.")
+
+        cdf_probs = np.cumsum(probabilities)
+
+        return Percentiles(
+            **{
+                key: pdf[np.searchsorted(cdf_probs, value, side="left"), 0].item()
+                for key, value in percentile_probs.items()
+            }
+        )
 
 
 class DistributionSummary(StandardBaseModel):
     """
-    Comprehensive statistical summary for numerical value distributions.
+    Comprehensive statistical summary of a probability distribution.
 
-    Calculates and stores complete statistical metrics including central tendency,
-    dispersion, extremes, and percentiles for any numerical distribution. Supports
-    both weighted and unweighted data with optional cumulative distribution function
-    generation. Primary statistical analysis tool for request timing, performance
-    metrics, and benchmark result characterization.
-
-    Example:
-    ::
-        # Create from simple values
-        summary = DistributionSummary.from_values([1.0, 2.0, 3.0, 4.0, 5.0])
-        print(f"Mean: {summary.mean}, P95: {summary.percentiles.p95}")
-
-        # Create from request timings for concurrency analysis
-        requests = [(0.0, 1.0), (0.5, 2.0), (1.0, 2.5)]
-        concurrency = DistributionSummary.from_request_times(
-            requests, "concurrency"
-        )
+    Captures central tendency (mean, median, mode), spread (variance, std_dev),
+    extrema (min, max), and percentile information with optional probability density
+    function. Supports creation from raw values, PDFs, or time-based event data for
+    rate and concurrency analysis in benchmark metrics.
     """
 
-    mean: float = Field(
-        description="The mean/average of the distribution.",
-    )
-    median: float = Field(
-        description="The median of the distribution.",
-    )
-    mode: float = Field(
-        description="The mode of the distribution.",
-    )
-    variance: float = Field(
-        description="The variance of the distribution.",
-    )
-    std_dev: float = Field(
-        description="The standard deviation of the distribution.",
-    )
-    min: float = Field(
-        description="The minimum value of the distribution.",
-    )
-    max: float = Field(
-        description="The maximum value of the distribution.",
-    )
-    count: int = Field(
-        description="The number of values in the distribution.",
-    )
-    total_sum: float = Field(
-        description="The total sum of the values in the distribution.",
-    )
-    percentiles: Percentiles = Field(
-        description="The percentiles of the distribution.",
-    )
-    cumulative_distribution_function: list[tuple[float, float]] | None = Field(
-        description="The cumulative distribution function (CDF) of the distribution.",
+    mean: float = Field(description="Mean/average value")
+    median: float = Field(description="Median (50th percentile) value")
+    mode: float = Field(description="Mode (most probable) value")
+    variance: float = Field(description="Variance of the distribution")
+    std_dev: float = Field(description="Standard deviation")
+    min: float = Field(description="Minimum value")
+    max: float = Field(description="Maximum value")
+    count: int = Field(description="Number of observations")
+    total_sum: float = Field(description="Sum of all values")
+    percentiles: Percentiles = Field(description="Standard percentile values")
+    pdf: list[tuple[float, float]] | None = Field(
+        description="Probability density function as (value, probability) pairs",
         default=None,
     )
 
-    @staticmethod
-    def from_distribution_function(
-        distribution: list[tuple[float, float]],
-        include_cdf: bool = False,
+    @classmethod
+    def from_pdf(
+        cls,
+        pdf: np.ndarray,
+        count: int | None = None,
+        include_pdf: bool | int = False,
+        epsilon: float = 1e-6,
+        validate: bool = True,
     ) -> DistributionSummary:
         """
-        Create statistical summary from weighted distribution or probability function.
+        Create distribution summary from a probability density function.
 
-        Converts weighted numerical values or probability distribution function (PDF)
-        into comprehensive statistical summary. Normalizes weights to probabilities
-        and calculates all statistical metrics including percentiles.
-
-        :param distribution: List of (value, weight) or (value, probability) tuples
-            representing the distribution
-        :param include_cdf: Whether to include cumulative distribution function
-            in the output
-        :return: DistributionSummary instance with calculated statistical metrics
+        :param pdf: 2D array (N, 2) with values in column 0 and probabilities in
+            column 1
+        :param count: Number of original observations; defaults to PDF length
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :param validate: Whether to validate probabilities sum to 1 and are non-negative
+        :return: Complete distribution summary with statistics
+        :raises ValueError: If PDF shape is invalid or probabilities are invalid
         """
-        values, weights = zip(*distribution, strict=True) if distribution else ([], [])
-        values = np.array(values)  # type: ignore[assignment]
-        weights = np.array(weights)  # type: ignore[assignment]
+        expected_shape = (None, 2)
 
-        # create the PDF
-        probabilities = weights / np.sum(weights)  # type: ignore[operator]
-        pdf = np.column_stack((values, probabilities))
-        pdf = pdf[np.argsort(pdf[:, 0])]
-        values = pdf[:, 0]  # type: ignore[assignment]
+        if len(pdf.shape) != len(expected_shape) or pdf.shape[1] != expected_shape[1]:
+            raise ValueError(
+                "PDF must be a 2D array of shape (N, 2) where first column is values "
+                f"and second column is probabilities. Got {pdf.shape} instead."
+            )
+
+        if pdf.shape[0] == 0:
+            return DistributionSummary(
+                mean=0.0,
+                median=0.0,
+                mode=0.0,
+                variance=0.0,
+                std_dev=0.0,
+                min=0.0,
+                max=0.0,
+                count=0 if count is None else count,
+                total_sum=0.0,
+                percentiles=Percentiles.from_pdf(pdf, epsilon=epsilon),
+                pdf=None if include_pdf is False else [],
+            )
+
+        # Calculate stats
+        values = pdf[:, 0]
         probabilities = pdf[:, 1]
 
-        # calculate the CDF
-        cumulative_probabilities = np.cumsum(probabilities)
-        cdf = np.column_stack((values, cumulative_probabilities))
+        if validate:
+            # Fail if probabilities don't sum to 1 or are negative
+            if np.any(probabilities < 0):
+                raise ValueError("Probabilities must be non-negative.")
 
-        # calculate statistics
-        mean = np.sum(values * probabilities).item()  # type: ignore[attr-defined]
-        median = cdf[np.argmax(cdf[:, 1] >= 0.5), 0].item() if len(cdf) > 0 else 0  # noqa: PLR2004
-        mode = values[np.argmax(probabilities)].item() if len(values) > 0 else 0  # type: ignore[call-overload]
-        variance = np.sum((values - mean) ** 2 * probabilities).item()  # type: ignore[attr-defined]
+            prob_sum = np.sum(probabilities)
+            if not np.isclose(prob_sum, 1.0, atol=epsilon):
+                raise ValueError(f"Probabilities must sum to 1.0 (sum={prob_sum}).")
+
+            # Fail if values are not sorted
+            if not np.all(values[:-1] <= values[1:]):
+                raise ValueError("Values in PDF must be sorted in ascending order.")
+
+        percentiles = Percentiles.from_pdf(pdf, epsilon=epsilon, validate=False)
+        median = percentiles.p50
+        mean = np.sum(values * probabilities).item()
+        mode = values[np.argmax(probabilities)].item()
+        variance = np.sum((values - mean) ** 2 * probabilities).item()
         std_dev = math.sqrt(variance)
-        minimum = values[0].item() if len(values) > 0 else 0
-        maximum = values[-1].item() if len(values) > 0 else 0
-        count = len(values)
-        total_sum = np.sum(values).item()  # type: ignore[attr-defined]
+        minimum = values[0].item()
+        maximum = values[-1].item()
+
+        if count is None:
+            count = len(pdf)
+
+        total_sum = mean * count
+
+        if include_pdf is False:
+            sampled_pdf = None
+        elif include_pdf is True:
+            sampled_pdf = pdf.tolist()
+        else:
+            sampled_pdf = []
 
         return DistributionSummary(
             mean=mean,
@@ -185,291 +228,411 @@ class DistributionSummary(StandardBaseModel):
             max=maximum,
             count=count,
             total_sum=total_sum,
-            percentiles=(
-                Percentiles(
-                    p001=cdf[np.argmax(cdf[:, 1] >= 0.001), 0].item(),  # noqa: PLR2004
-                    p01=cdf[np.argmax(cdf[:, 1] >= 0.01), 0].item(),  # noqa: PLR2004
-                    p05=cdf[np.argmax(cdf[:, 1] >= 0.05), 0].item(),  # noqa: PLR2004
-                    p10=cdf[np.argmax(cdf[:, 1] >= 0.1), 0].item(),  # noqa: PLR2004
-                    p25=cdf[np.argmax(cdf[:, 1] >= 0.25), 0].item(),  # noqa: PLR2004
-                    p50=cdf[np.argmax(cdf[:, 1] >= 0.50), 0].item(),  # noqa: PLR2004
-                    p75=cdf[np.argmax(cdf[:, 1] >= 0.75), 0].item(),  # noqa: PLR2004
-                    p90=cdf[np.argmax(cdf[:, 1] >= 0.9), 0].item(),  # noqa: PLR2004
-                    p95=cdf[np.argmax(cdf[:, 1] >= 0.95), 0].item(),  # noqa: PLR2004
-                    p99=cdf[np.argmax(cdf[:, 1] >= 0.99), 0].item(),  # noqa: PLR2004
-                    p999=cdf[np.argmax(cdf[:, 1] >= 0.999), 0].item(),  # noqa: PLR2004
-                )
-                if len(cdf) > 0
-                else Percentiles(
-                    p001=0,
-                    p01=0,
-                    p05=0,
-                    p10=0,
-                    p25=0,
-                    p50=0,
-                    p75=0,
-                    p90=0,
-                    p95=0,
-                    p99=0,
-                    p999=0,
-                )
-            ),
-            cumulative_distribution_function=cdf.tolist() if include_cdf else None,
+            percentiles=percentiles,
+            pdf=sampled_pdf,
         )
 
-    @staticmethod
+    @classmethod
     def from_values(
-        values: list[float],
-        weights: list[float] | None = None,
-        include_cdf: bool = False,
-    ) -> DistributionSummary:
-        """
-        Create statistical summary from numerical values with optional weights.
-
-        Wrapper around from_distribution_function for simple value lists. If weights
-        are not provided, all values are equally weighted. Enables statistical
-        analysis of any numerical dataset.
-
-        :param values: Numerical values representing the distribution
-        :param weights: Optional weights for each value. If not provided, all values
-            are equally weighted
-        :param include_cdf: Whether to include cumulative distribution function in
-            the output DistributionSummary
-        :return: DistributionSummary instance with calculated statistical metrics
-        :raises ValueError: If values and weights lists have different lengths
-        """
-        if weights is None:
-            weights = [1.0] * len(values)
-
-        if len(values) != len(weights):
-            raise ValueError(
-                "The length of values and weights must be the same.",
-            )
-
-        return DistributionSummary.from_distribution_function(
-            distribution=list(zip(values, weights, strict=True)),
-            include_cdf=include_cdf,
-        )
-
-    @staticmethod
-    def from_request_times(
-        requests: list[tuple[float, float]],
-        distribution_type: Literal["concurrency", "rate"],
-        weights: list[float] | None = None,
-        include_cdf: bool = False,
+        cls,
+        values: list[float | tuple[float, float]] | np.ndarray,
+        count: int | None = None,
+        include_pdf: bool | int = False,
         epsilon: float = 1e-6,
     ) -> DistributionSummary:
         """
-        Create statistical summary from request timing data.
+        Create distribution summary from raw values with optional weights.
 
-        Analyzes request start/end times to calculate concurrency or rate
-        distributions. Converts timing events into statistical metrics for
-        performance analysis and load characterization.
-
-        :param requests: List of (start_time, end_time) tuples for each request
-        :param distribution_type: Type of analysis - "concurrency" for simultaneous
-            requests or "rate" for completion rates
-        :param include_cdf: Whether to include cumulative distribution function
-        :param epsilon: Threshold for merging close timing events
-        :return: DistributionSummary with timing-based statistical metrics
-        :raises ValueError: If distribution_type is not "concurrency" or "rate"
+        :param values: Values or (value, weight) tuples, or numpy array
+        :param count: Number of original observations; defaults to sum of weights
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Distribution summary computed from the values
+        :raises ValueError: If total weight is zero or invalid
         """
-        if not weights:
-            weights = [1.0] * len(requests)
+        np_values = cls._to_weighted_ndarray(values, num_values_per_item=2)
 
-        if len(requests) != len(weights):
-            raise ValueError(
-                "The length of requests and weights must be the same.",
+        if np_values.shape[0] == 0:
+            return DistributionSummary.from_pdf(
+                pdf=np.empty((0, 2)), count=0, include_pdf=include_pdf, epsilon=epsilon
             )
 
-        # First convert to timing events based on type
-        events = DistributionSummary._convert_to_timing_events(
-            requests, distribution_type, weights
+        if count is None:
+            count = round(np.sum(np_values[:, 1]).item())
+
+        # Sort values and weights by values
+        sort_ind = np.argsort(np_values[:, 0])
+        sorted_values = np_values[sort_ind, 0]
+        sorted_weights = np_values[sort_ind, 1]
+
+        # Combine any duplicate values by summing their weights
+        unique_values, inverse_indices = np.unique(sorted_values, return_inverse=True)
+        combined_weights = np.zeros_like(unique_values, dtype=float)
+        np.add.at(combined_weights, inverse_indices, sorted_weights)
+
+        # Remove any values with zero weight
+        nonzero_mask = combined_weights > 0
+        final_values = unique_values[nonzero_mask]
+        final_weights = combined_weights[nonzero_mask]
+
+        # Create PDF by normalizing weights and stacking
+        total_weight = np.sum(final_weights)
+        if total_weight <= epsilon:
+            raise ValueError("Total weight is zero or near zero; cannot normalize.")
+
+        probabilities = final_weights / total_weight
+        pdf = np.column_stack((final_values, probabilities))
+
+        return DistributionSummary.from_pdf(
+            pdf=pdf,
+            count=count,
+            include_pdf=include_pdf,
+            epsilon=epsilon,
+            validate=False,
         )
 
-        # Combine any events within epsilon of each other for stability
-        flattened_events = DistributionSummary._combine_events(events, epsilon)
-
-        # Convert events to value distribution function
-        distribution: dict[float, float] = defaultdict(float)
-
-        if distribution_type == "concurrency":
-            # For concurrency, convert to active concurrency over time
-            active = 0.0
-            for ind in range(len(flattened_events)):
-                time, change = flattened_events[ind]
-                active += change
-                flattened_events[ind] = (time, active)
-
-            # Then convert to distribution by weighting each concurrency
-            # by duration to next event (last event is 0 concurrency)
-            for ind in range(len(flattened_events) - 1):
-                time, value = flattened_events[ind]
-                next_time = flattened_events[ind + 1][0]
-                duration = next_time - time
-                distribution[value] += duration
-        elif distribution_type == "rate":
-            # For rate, convert to distribution by converting each value
-            # to a rate (value/duration) weighted by duration from previous
-            # (first event is 0 rate)
-            for ind in range(1, len(flattened_events)):
-                time, value = flattened_events[ind]
-                prev_time = flattened_events[ind - 1][0]
-                duration = time - prev_time
-                rate = value / duration if duration > 0 else 0.0
-                distribution[rate] += duration
-        else:
-            raise ValueError(
-                f"Invalid distribution_type '{distribution_type}'. "
-                "Must be 'concurrency' or 'rate'."
-            )
-
-        return DistributionSummary.from_distribution_function(
-            distribution=sorted(distribution.items()),
-            include_cdf=include_cdf,
-        )
-
-    @staticmethod
-    def _convert_to_timing_events(
-        requests: list[tuple[float, float]],
-        distribution_type: Literal["concurrency", "rate"],
-        weights: list[float],
-    ) -> list[tuple[float, float]]:
-        events: list[tuple[float, float]] = []
-
-        if distribution_type == "concurrency":
-            # For concurrency, each request adds to concurrency at start
-            # and subtracts at end
-            for (start, end), weight in zip(requests, weights, strict=False):
-                events.append((start, weight))
-                events.append((end, -1 * weight))
-        elif distribution_type == "rate":
-            # For rate, each request is added at the end time only
-            global_start = min(start for start, _ in requests) if requests else 0.0
-            events.append((global_start, 0.0))
-            for (_, end), weight in zip(requests, weights, strict=False):
-                events.append((end, weight))
-        else:
-            raise ValueError(
-                f"Invalid distribution_type '{distribution_type}'. "
-                "Must be 'concurrency' or 'rate'."
-            )
-        return events
-
-    @staticmethod
-    def _combine_events(
-        events: list[tuple[float, float]],
-        epsilon: float,
-    ) -> list[tuple[float, float]]:
-        sorted_events = sorted(events, key=lambda event: event[0])
-        flattened_events: list[tuple[float, float]] = (
-            [sorted_events.pop(0)] if sorted_events else []
-        )
-        last_time = flattened_events[0][0] if flattened_events else 0.0
-
-        for time, val in sorted_events:
-            if abs(time - last_time) <= epsilon:
-                last_val = flattened_events[-1][1]
-                flattened_events[-1] = (last_time, last_val + val)
-            else:
-                last_time = time
-                flattened_events.append((time, val))
-        return flattened_events
-
-    @staticmethod
-    def from_iterable_request_times(
-        requests: list[tuple[float, float]],
-        first_iter_times: list[float],
-        iter_counts: list[int],
-        first_iter_counts: list[int] | None = None,
-        include_cdf: bool = False,
+    @classmethod
+    def rate_distribution_from_timings(
+        cls,
+        event_times: list[float | tuple[float, float]] | np.ndarray,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        threshold: float | None = 1e-4,  # 1/10th of a millisecond
+        include_pdf: bool | int = False,
         epsilon: float = 1e-6,
     ) -> DistributionSummary:
         """
-        Create statistical summary from iterative request timing data.
+        Create rate distribution from event timestamps.
 
-        Analyzes autoregressive or streaming requests with multiple iterations
-        between start and end times. Calculates rate distributions based on
-        iteration timing patterns for LLM token generation analysis.
+        Computes event rates over time intervals weighted by interval duration for
+        analyzing request throughput patterns.
 
-        :param requests: List of (start_time, end_time) tuples for each request
-        :param first_iter_times: Times when first iteration was received for
-            each request
-        :param iter_counts: Total iteration counts for each request from first
-            iteration to end
-        :param first_iter_counts: Iteration counts for first iteration (defaults
-            to 1 for each request)
-        :param include_cdf: Whether to include cumulative distribution function
-        :param epsilon: Threshold for merging close timing events
-        :return: DistributionSummary with iteration rate statistical metrics
-        :raises ValueError: If input lists have mismatched lengths
+        :param event_times: Event timestamps or (timestamp, weight) tuples
+        :param start_time: Analysis window start; filters earlier events
+        :param end_time: Analysis window end; filters later events
+        :param threshold: Time threshold for merging nearby events; 1/10th millisecond
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Distribution summary of event rates over time
         """
+        weighted_times = cls._to_weighted_ndarray(event_times, num_values_per_item=2)
 
-        if first_iter_counts is None:
-            first_iter_counts = [1] * len(requests)
-
-        if (
-            len(requests) != len(first_iter_times)
-            or len(requests) != len(iter_counts)
-            or len(requests) != len(first_iter_counts)
-        ):
-            raise ValueError(
-                "requests, first_iter_times, iter_counts, and first_iter_counts must"
-                "be the same length."
-                f"Given {len(requests)}, {len(first_iter_times)}, {len(iter_counts)}, "
-                f"{len(first_iter_counts)}",
+        if start_time is not None:
+            # Filter out any times before start, insert start time with 0 weight
+            weighted_times = np.insert(
+                weighted_times[weighted_times[:, 0] >= start_time],
+                0,
+                [start_time, 0.0],
+                axis=0,
             )
 
-        # first break up the requests into individual iterable events
-        events = defaultdict(int)
-        global_start = min(start for start, _ in requests) if requests else 0
-        global_end = max(end for _, end in requests) if requests else 0
-        events[global_start] = 0
-        events[global_end] = 0
-
-        for (_, end), first_iter, first_iter_count, total_count in zip(
-            requests, first_iter_times, first_iter_counts, iter_counts, strict=True
-        ):
-            events[first_iter] += first_iter_count
-
-            if total_count > 1:
-                iter_latency = (end - first_iter) / (total_count - 1)
-                for ind in range(1, total_count):
-                    events[first_iter + ind * iter_latency] += 1
-
-        # combine any events that are very close together
-        flattened_events: list[tuple[float, int]] = []
-
-        for time, count in sorted(events.items()):
-            last_time, last_count = (
-                flattened_events[-1] if flattened_events else (None, None)
+        if end_time is not None:
+            # Filter out any times after end, insert end time with 0 weight
+            weighted_times = np.append(
+                weighted_times[weighted_times[:, 0] <= end_time],
+                [[end_time, 0.0]],
+                axis=0,
             )
 
-            if (
-                last_time is not None
-                and last_count is not None
-                and abs(last_time - time) <= epsilon
-            ):
-                flattened_events[-1] = (last_time, last_count + count)
-            else:
-                flattened_events.append((time, count))
+        # Sort by time for merging, merge any times within threshold
+        sort_ind = np.argsort(weighted_times[:, 0])
+        weighted_times = weighted_times[sort_ind]
+        weighted_times = cls._merge_sorted_times_with_weights(weighted_times, threshold)
 
-        # convert to value distribution function
-        distribution: dict[float, float] = defaultdict(float)
+        if len(weighted_times) <= 1:
+            # No data to calculate rates from (need at least two times)
+            return cls.from_values(
+                [],
+                count=len(weighted_times),
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+            )
 
-        for ind in range(len(flattened_events) - 1):
-            start_time, count = flattened_events[ind]
-            end_time, _ = flattened_events[ind + 1]
-            duration = end_time - start_time
-            rate = count / duration
-            distribution[rate] += duration
+        times = weighted_times[:, 0]
+        occurrences = weighted_times[:, 1]
 
-        distribution_list = sorted(distribution.items())
+        # Calculate local duration for each event: ((times[i+1] - times[i-1])) / 2
+        midpoints = (times[1:] + times[:-1]) / 2
+        durations = np.empty_like(times)
+        durations[0] = midpoints[0] - times[0]
+        durations[1:-1] = midpoints[1:] - midpoints[:-1]
+        durations[-1] = np.clip(times[-1] - midpoints[-1], epsilon, None)
 
-        return DistributionSummary.from_distribution_function(
-            distribution=distribution_list,
-            include_cdf=include_cdf,
+        # Calculate rate at each interval: occurences[i] / duration[i]
+        rates = occurrences / durations
+        count = round(np.sum(occurrences).item())
+
+        return cls.from_values(
+            np.column_stack((rates, durations)),
+            count=count,
+            include_pdf=include_pdf,
+            epsilon=epsilon,
         )
+
+    @classmethod
+    def concurrency_distribution_from_timings(
+        cls,
+        event_intervals: (
+            list[tuple[float, float] | tuple[float, float, float]] | np.ndarray
+        ),
+        start_time: float | None = None,
+        end_time: float | None = None,
+        threshold: float | None = 1e-4,  # 1/10th of a millisecond
+        include_pdf: bool | int = False,
+        epsilon: float = 1e-6,
+    ) -> DistributionSummary:
+        """
+        Create concurrency distribution from event time intervals.
+
+        Tracks overlapping events to compute concurrency levels over time for analyzing
+        request processing patterns and resource utilization.
+
+        :param event_intervals: Event (start, end) or (start, end, weight) tuples
+        :param start_time: Analysis window start
+        :param end_time: Analysis window end
+        :param threshold: Time threshold for merging nearby transitions;
+            1/10th millisecond
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Distribution summary of concurrency levels over time
+        """
+        weighted_intervals = cls._to_weighted_ndarray(
+            event_intervals, num_values_per_item=3
+        )
+
+        # If start_time, filter any intervals that end before start_time
+        if start_time is not None:
+            keep_mask = weighted_intervals[:, 1] >= start_time
+            weighted_intervals = weighted_intervals[keep_mask]
+
+        # If end_time, filter any intervals that start after end_time
+        if end_time is not None:
+            keep_mask = weighted_intervals[:, 0] <= end_time
+            weighted_intervals = weighted_intervals[keep_mask]
+
+        count = len(weighted_intervals)
+
+        # Convert to concurrency changes at each time
+        add_occurences = (
+            np.stack(
+                (
+                    weighted_intervals[:, 0],
+                    weighted_intervals[:, 2],
+                ),
+                axis=1,
+            )
+            if len(weighted_intervals) > 0
+            else np.empty((0, 2))
+        )
+        remove_occurences = (
+            np.stack(
+                (
+                    weighted_intervals[:, 1],
+                    -1 * weighted_intervals[:, 2],
+                ),
+                axis=1,
+            )
+            if len(weighted_intervals) > 0
+            else np.empty((0, 2))
+        )
+
+        # Combine add and remove occurences into weighted times
+        weighted_times = np.vstack((add_occurences, remove_occurences))
+
+        # Sort by the times and merge any times within threshold
+        weighted_times = weighted_times[np.argsort(weighted_times[:, 0])]
+        weighted_times = cls._merge_sorted_times_with_weights(weighted_times, threshold)
+
+        # If start_time, ensure included (if any before, add final concurrency at start)
+        if start_time is not None and len(weighted_times) > 0:
+            start_ind = np.searchsorted(weighted_times[:, 0], start_time, side="left")
+            prior_delta = (
+                np.sum(weighted_times[:start_ind, 1]) if start_ind > 0 else 0.0
+            )
+            weighted_times = np.insert(
+                weighted_times[start_ind:], 0, [start_time, prior_delta], axis=0
+            )
+
+        # If end_time, ensure included (if any after, filter out)
+        if end_time is not None and len(weighted_times) > 0:
+            end_ind = np.searchsorted(weighted_times[:, 0], end_time, side="right")
+            weighted_times = np.append(
+                weighted_times[:end_ind], [[end_time, 0.0]], axis=0
+            )
+
+        # Calculate concurrency from cumulative sum of changes over time
+        concurrencies = np.clip(np.cumsum(weighted_times[:, 1]), 0, None)
+
+        if len(concurrencies) <= 1:
+            # No data to calculate concurrency from
+            return cls.from_values(
+                [] if count == 0 else [concurrencies[0].item()],
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+            )
+
+        # Calculate durations equal to times[i+1] - times[i]
+        # The last concurrency level is not used since no following time point
+        durations = np.clip(np.diff(weighted_times[:, 0]), 0, None)
+        values = np.column_stack((concurrencies[:-1], durations))
+
+        return (
+            cls.from_values(
+                values,
+                count=count,
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+            )
+            if np.any(durations > 0)
+            else cls.from_values(
+                [],
+                count=count,
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+            )
+        )
+
+    @classmethod
+    def _to_weighted_ndarray(  # noqa: C901, PLR0912
+        cls,
+        inputs: (
+            list[float | tuple[float, float] | tuple[float, float, float]] | np.ndarray
+        ),
+        num_values_per_item: int,
+    ) -> np.ndarray:
+        if not isinstance(inputs, list | np.ndarray):
+            raise ValueError(
+                "inputs must be a numpy array or a list of floats/tuple[float, float], "
+                f"got {type(inputs)}"
+            )
+
+        if isinstance(inputs, list):
+            # Convert list to structured numpy array with dims (N, num_dimensions)
+            # Fill in missing weights with 1.0
+            return cls._list_to_weighted_ndarray(inputs, num_values_per_item)
+
+        if len(inputs.shape) == 1:
+            # 1D array: reshape to (N, 1) and add weights column
+            inputs = inputs.reshape(-1, 1)
+            weights = np.ones((inputs.shape[0], 1), dtype=float)
+
+            return (
+                np.hstack((inputs, weights))
+                if num_values_per_item == 2
+                else np.hstack((inputs, inputs, weights))
+            )
+
+        if len(inputs.shape) == 2 and inputs.shape[1] == num_values_per_item - 1:  # noqa: PLR2004
+            # Add weights column of 1.0
+            weights = np.ones((inputs.shape[0], 1), dtype=float)
+
+            return np.hstack((inputs, weights))
+
+        if len(inputs.shape) == 2 and inputs.shape[1] == num_values_per_item:  # noqa: PLR2004
+            return inputs
+
+        raise ValueError(
+            "inputs must be a numpy array of shape (N,), "
+            f"(N, {num_values_per_item - 1}), or (N, {num_values_per_item}). "
+            f"Got shape {inputs.shape}."
+        )
+
+    @classmethod
+    def _list_to_weighted_ndarray(
+        cls,
+        inputs: list[float | tuple[float, float] | tuple[float, float, float]],
+        num_values_per_item: int,
+    ) -> np.ndarray:
+        if num_values_per_item not in (2, 3):
+            raise ValueError(
+                "num_values_per_item must be 2 (value, weight) or "
+                "3 (value1, value2, weight)"
+            )
+
+        if not isinstance(inputs, list):
+            raise ValueError(
+                "inputs must be a numpy array or a list of floats/tuple[float, float], "
+                f"got {type(inputs)}"
+            )
+
+        ndarray = np.empty((len(inputs), num_values_per_item), dtype=float)
+        scalar_types: tuple[type, ...] = (int, float, np.integer, np.floating)
+
+        for ind, val in enumerate(inputs):
+            if isinstance(val, scalar_types):
+                ndarray[ind, :] = (
+                    (val, 1.0) if num_values_per_item == 2 else (val, val, 1.0)  # noqa: PLR2004
+                )
+            elif isinstance(val, tuple) and len(val) == num_values_per_item:
+                ndarray[ind, :] = val
+            elif isinstance(val, tuple) and len(val) == num_values_per_item - 1:
+                ndarray[ind, :] = (
+                    (val[0], 1.0) if num_values_per_item == 2 else (val[0], val[1], 1.0)  # noqa: PLR2004
+                )
+            else:
+                raise ValueError(
+                    "Each item must be a float or a tuple of "
+                    f"{num_values_per_item} or {num_values_per_item - 1} "
+                    "elements."
+                )
+
+        return ndarray
+
+    @classmethod
+    def _merge_sorted_times_with_weights(
+        cls, weighted_times: np.ndarray, threshold: float | None
+    ) -> np.ndarray:
+        # First remove any exact duplicate times and sum their weights
+        unique_times, inverse = np.unique(weighted_times[:, 0], return_inverse=True)
+        unique_weights = np.zeros_like(unique_times, dtype=float)
+        np.add.at(unique_weights, inverse, weighted_times[:, 1])
+        weighted_times = np.column_stack((unique_times, unique_weights))
+
+        if threshold is None or threshold <= 0.0:
+            return weighted_times
+
+        # Loop to merge times within threshold until no more merges possible
+        # (loop due to possible overlapping merge groups)
+        while weighted_times.shape[0] > 1:
+            times = weighted_times[:, 0]
+            weights = weighted_times[:, 1]
+
+            # Find diffs between consecutive times, create mask for within-threshold
+            diffs = np.diff(times)
+            within = diffs <= threshold
+            if not np.any(within):
+                break
+
+            # Start indices are marked by the transition from 0 to 1 in the mask
+            # End indices found by searching for last time within threshold from start
+            starts = np.where(np.diff(np.insert(within.astype(int), 0, 0)) == 1)[0]
+            start_end_times = times[starts] + threshold
+            ends = np.searchsorted(times, start_end_times, side="right") - 1
+
+            # Collapse overlapping or chained merge groups
+            if len(starts) > 1:
+                valid_mask = np.concatenate([[True], starts[1:] > ends[:-1]])
+                starts, ends = starts[valid_mask], ends[valid_mask]
+
+            # Update weights at start indices to sum of merged weights
+            cumsum = np.concatenate(([0.0], np.cumsum(weights)))
+            weighted_times[starts, 1] = cumsum[ends + 1] - cumsum[starts]
+
+            # Calculate vectorized mask for removing merged entries
+            merged_events = np.zeros(len(weighted_times) + 1, dtype=int)
+            np.add.at(merged_events, starts, 1)
+            np.add.at(merged_events, ends + 1, -1)
+            remove_mask = np.cumsum(merged_events[:-1]) > 0
+            remove_mask[starts] = False  # Keep start indices
+
+            # Update weighted_times array with merged weights, remove merged entries
+            weights = weights[~remove_mask]
+            times = times[~remove_mask]
+
+            # Remove entries marked for removal
+            weighted_times = weighted_times[~remove_mask]
+
+        return weighted_times
 
 
 class StatusDistributionSummary(
@@ -481,567 +644,379 @@ class StatusDistributionSummary(
     ]
 ):
     """
-    Status-grouped statistical summary for request processing analysis.
+    Distribution summaries broken down by request status categories.
 
-    Provides comprehensive statistical analysis grouped by request status (total,
-    successful, incomplete, errored). Enables performance analysis across different
-    request outcomes for benchmarking and monitoring applications. Each status
-    category maintains complete DistributionSummary metrics.
-
-    Example:
-    ::
-        status_summary = StatusDistributionSummary.from_values(
-            value_types=["successful", "error", "successful"],
-            values=[1.5, 10.0, 2.1]
-        )
-        print(f"Success mean: {status_summary.successful.mean}")
-        print(f"Error rate: {status_summary.errored.count}")
+    Provides separate statistical analysis for successful, incomplete, and errored
+    requests with total aggregate statistics. Enables status-aware performance analysis
+    and SLO validation across different request outcomes in benchmark results.
     """
 
-    @staticmethod
+    @property
+    def count(self) -> int:
+        """
+        :return: Total count of samples across all status categories
+        """
+        return self.total.count
+
+    @classmethod
     def from_values(
-        value_types: list[Literal["successful", "incomplete", "error"]],
-        values: list[float],
-        weights: list[float] | None = None,
-        include_cdf: bool = False,
+        cls,
+        successful: list[float | tuple[float, float]] | np.ndarray,
+        incomplete: list[float | tuple[float, float]] | np.ndarray,
+        errored: list[float | tuple[float, float]] | np.ndarray,
+        include_pdf: bool | int = False,
+        epsilon: float = 1e-6,
     ) -> StatusDistributionSummary:
         """
-        Create status-grouped statistical summary from values and status types.
+        Create status-broken-down distribution from values by status category.
 
-        Groups numerical values by request status and calculates complete
-        statistical summaries for each category. Enables performance analysis
-        across different request outcomes.
-
-        :param value_types: Status type for each value ("successful", "incomplete",
-            or "error")
-        :param values: Numerical values representing the distribution
-        :param weights: Optional weights for each value (defaults to equal weighting)
-        :param include_cdf: Whether to include cumulative distribution functions
-        :return: StatusDistributionSummary with statistics grouped by status
-        :raises ValueError: If input lists have mismatched lengths or invalid
-            status types
+        :param successful: Values or (value, weight) tuples for successful requests
+        :param incomplete: Values or (value, weight) tuples for incomplete requests
+        :param errored: Values or (value, weight) tuples for errored requests
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Status breakdown of distribution summaries
         """
-        if any(
-            type_ not in {"successful", "incomplete", "error"} for type_ in value_types
-        ):
-            raise ValueError(
-                "value_types must be one of 'successful', 'incomplete', or 'error'. "
-                f"Got {value_types} instead.",
-            )
-
-        if weights is None:
-            weights = [1.0] * len(values)
-
-        if len(value_types) != len(values) or len(value_types) != len(weights):
-            raise ValueError(
-                "The length of value_types, values, and weights must be the same.",
-            )
-
-        _, successful_values, successful_weights = (
-            zip(*successful, strict=True)
-            if (
-                successful := list(
-                    filter(
-                        lambda val: val[0] == "successful",
-                        zip(value_types, values, weights, strict=True),
-                    )
-                )
-            )
-            else ([], [], [])
-        )
-        _, incomplete_values, incomplete_weights = (
-            zip(*incomplete, strict=True)
-            if (
-                incomplete := list(
-                    filter(
-                        lambda val: val[0] == "incomplete",
-                        zip(value_types, values, weights, strict=True),
-                    )
-                )
-            )
-            else ([], [], [])
-        )
-        _, errored_values, errored_weights = (
-            zip(*errored, strict=True)
-            if (
-                errored := list(
-                    filter(
-                        lambda val: val[0] == "error",
-                        zip(value_types, values, weights, strict=True),
-                    )
-                )
-            )
-            else ([], [], [])
+        total, successful_arr, incomplete_arr, errored_arr = cls._combine_status_arrays(
+            successful, incomplete, errored, num_values_per_item=2
         )
 
         return StatusDistributionSummary(
             total=DistributionSummary.from_values(
-                values,
-                weights,
-                include_cdf=include_cdf,
+                total, include_pdf=include_pdf, epsilon=epsilon
             ),
             successful=DistributionSummary.from_values(
-                successful_values,  # type: ignore[arg-type]
-                successful_weights,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+                successful_arr, include_pdf=include_pdf, epsilon=epsilon
             ),
             incomplete=DistributionSummary.from_values(
-                incomplete_values,  # type: ignore[arg-type]
-                incomplete_weights,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+                incomplete_arr, include_pdf=include_pdf, epsilon=epsilon
             ),
             errored=DistributionSummary.from_values(
-                errored_values,  # type: ignore[arg-type]
-                errored_weights,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+                errored_arr, include_pdf=include_pdf, epsilon=epsilon
             ),
         )
 
-    @staticmethod
-    def from_request_times(
-        request_types: list[Literal["successful", "incomplete", "error"]],
-        requests: list[tuple[float, float]],
-        distribution_type: Literal["concurrency", "rate"],
-        weights: list[float] | None = None,
-        include_cdf: bool = False,
+    @classmethod
+    def from_values_function(
+        cls,
+        function: Callable[
+            [FunctionObjT],
+            float | tuple[float, float] | list[float | tuple[float, float]] | None,
+        ],
+        successful: list[FunctionObjT],
+        incomplete: list[FunctionObjT],
+        errored: list[FunctionObjT],
+        include_pdf: bool | int = False,
+        epsilon: float = 1e-6,
+    ) -> DistributionSummary:
+        """
+        Create distribution summary by extracting values from objects via function.
+
+        :param function: Function to extract value(s) from each object
+        :param successful: Successful request objects
+        :param incomplete: Incomplete request objects
+        :param errored: Errored request objects
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Status breakdown of distribution summaries
+        """
+        successful_values = []
+        incomplete_values = []
+        errored_values = []
+
+        def _extract_values(
+            _objs: list[FunctionObjT], _outputs: list[float | tuple[float, float]]
+        ):
+            for _obj in _objs:
+                if (_result := function(_obj)) is None:
+                    continue
+                if isinstance(_result, list):
+                    _outputs.extend(_result)
+                else:
+                    _outputs.append(_result)
+
+        _extract_values(successful, successful_values)
+        _extract_values(incomplete, incomplete_values)
+        _extract_values(errored, errored_values)
+
+        return cls.from_values(
+            successful=successful_values,
+            incomplete=incomplete_values,
+            errored=errored_values,
+            include_pdf=include_pdf,
+            epsilon=epsilon,
+        )
+
+    @classmethod
+    def rate_distribution_from_timings(
+        cls,
+        successful: list[float | tuple[float, float]] | np.ndarray,
+        incomplete: list[float | tuple[float, float]] | np.ndarray,
+        errored: list[float | tuple[float, float]] | np.ndarray,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        threshold: float | None = 1e-4,
+        include_pdf: bool | int = False,
         epsilon: float = 1e-6,
     ) -> StatusDistributionSummary:
         """
-        Create status-grouped statistical summary from request timing data.
+        Create status-broken-down rate distribution from event timestamps.
 
-        Analyzes request timings grouped by status to calculate concurrency or
-        rate distributions for each outcome category. Enables comparative
-        performance analysis across successful, incomplete, and errored requests.
-
-        :param request_types: Status type for each request ("successful",
-            "incomplete", or "error")
-        :param requests: List of (start_time, end_time) tuples for each request
-        :param distribution_type: Analysis type - "concurrency" or "rate"
-        :param include_cdf: Whether to include cumulative distribution functions
-        :param epsilon: Threshold for merging close timing events
-        :return: StatusDistributionSummary with timing statistics by status
-        :raises ValueError: If input lists have mismatched lengths or invalid types
+        :param successful: Timestamps for successful request events
+        :param incomplete: Timestamps for incomplete request events
+        :param errored: Timestamps for errored request events
+        :param start_time: Analysis window start
+        :param end_time: Analysis window end
+        :param threshold: Time threshold for merging nearby events
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Status breakdown of rate distribution summaries
         """
-        if distribution_type not in {"concurrency", "rate"}:
-            raise ValueError(
-                f"Invalid distribution_type '{distribution_type}'. "
-                "Must be 'concurrency' or 'rate'."
-            )
-
-        if any(
-            type_ not in {"successful", "incomplete", "error"}
-            for type_ in request_types
-        ):
-            raise ValueError(
-                "request_types must be one of 'successful', 'incomplete', or 'error'. "
-                f"Got {request_types} instead.",
-            )
-
-        if len(request_types) != len(requests):
-            raise ValueError(
-                "The length of request_types and requests must be the same. "
-                f"Got {len(request_types)} and {len(requests)} instead.",
-            )
-
-        if weights is None:
-            weights = [1.0] * len(requests)
-
-        if len(requests) != len(weights):
-            raise ValueError(
-                "The length of requests and weights must be the same."
-                f"Got {len(requests)} and {len(weights)} instead.",
-            )
-
-        _, successful_requests, successful_weights = (
-            zip(*successful, strict=False)
-            if (
-                successful := list(
-                    filter(
-                        lambda val: val[0] == "successful",
-                        zip(request_types, requests, weights, strict=False),
-                    )
-                )
-            )
-            else ([], [], [])
-        )
-        _, incomplete_requests, incomplete_weights = (
-            zip(*incomplete, strict=False)
-            if (
-                incomplete := list(
-                    filter(
-                        lambda val: val[0] == "incomplete",
-                        zip(request_types, requests, weights, strict=False),
-                    )
-                )
-            )
-            else ([], [], [])
-        )
-        _, errored_requests, errored_weights = (
-            zip(*errored, strict=False)
-            if (
-                errored := list(
-                    filter(
-                        lambda val: val[0] == "error",
-                        zip(request_types, requests, weights, strict=False),
-                    )
-                )
-            )
-            else ([], [], [])
+        total, successful_arr, incomplete_arr, errored_arr = cls._combine_status_arrays(
+            successful, incomplete, errored, num_values_per_item=2
         )
 
         return StatusDistributionSummary(
-            total=DistributionSummary.from_request_times(
-                requests,
-                distribution_type=distribution_type,
-                weights=weights,
-                include_cdf=include_cdf,
+            total=DistributionSummary.rate_distribution_from_timings(
+                total,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
-            successful=DistributionSummary.from_request_times(
-                successful_requests,  # type: ignore[arg-type]
-                distribution_type=distribution_type,
-                weights=successful_weights,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+            successful=DistributionSummary.rate_distribution_from_timings(
+                successful_arr,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
-            incomplete=DistributionSummary.from_request_times(
-                incomplete_requests,  # type: ignore[arg-type]
-                distribution_type=distribution_type,
-                weights=incomplete_weights,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+            incomplete=DistributionSummary.rate_distribution_from_timings(
+                incomplete_arr,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
-            errored=DistributionSummary.from_request_times(
-                errored_requests,  # type: ignore[arg-type]
-                distribution_type=distribution_type,
-                weights=errored_weights,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+            errored=DistributionSummary.rate_distribution_from_timings(
+                errored_arr,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
         )
 
-    @staticmethod
-    def from_iterable_request_times(
-        request_types: list[Literal["successful", "incomplete", "error"]],
-        requests: list[tuple[float, float]],
-        first_iter_times: list[float],
-        iter_counts: list[int] | None = None,
-        first_iter_counts: list[int] | None = None,
-        include_cdf: bool = False,
+    @classmethod
+    def rate_distribution_from_timings_function(
+        cls,
+        function: Callable[
+            [FunctionObjT],
+            float | tuple[float, float] | list[float | tuple[float, float]] | None,
+        ],
+        successful: list[FunctionObjT],
+        incomplete: list[FunctionObjT],
+        errored: list[FunctionObjT],
+        start_time: float | None = None,
+        end_time: float | None = None,
+        threshold: float | None = 1e-4,
+        include_pdf: bool | int = False,
+        epsilon: float = 1e-6,
+    ) -> DistributionSummary:
+        """
+        Create rate distribution by extracting timestamps from objects via function.
+
+        :param function: Function to extract timestamp(s) from each object
+        :param successful: Successful request objects
+        :param incomplete: Incomplete request objects
+        :param errored: Errored request objects
+        :param start_time: Analysis window start
+        :param end_time: Analysis window end
+        :param threshold: Time threshold for merging nearby events
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Status breakdown of rate distribution summaries
+        """
+        successful_values = []
+        incomplete_values = []
+        errored_values = []
+
+        def _extract_values(
+            _objs: list[FunctionObjT], _outputs: list[float | tuple[float, float]]
+        ):
+            for _obj in _objs:
+                if (_result := function(_obj)) is None:
+                    continue
+                if isinstance(_result, list):
+                    _outputs.extend(_result)
+                else:
+                    _outputs.append(_result)
+
+        _extract_values(successful, successful_values)
+        _extract_values(incomplete, incomplete_values)
+        _extract_values(errored, errored_values)
+
+        return cls.rate_distribution_from_timings(
+            successful=successful_values,
+            incomplete=incomplete_values,
+            errored=errored_values,
+            start_time=start_time,
+            end_time=end_time,
+            threshold=threshold,
+            include_pdf=include_pdf,
+            epsilon=epsilon,
+        )
+
+    @classmethod
+    def concurrency_distribution_from_timings(
+        cls,
+        successful: list[tuple[float, float] | tuple[float, float, float]] | np.ndarray,
+        incomplete: list[tuple[float, float] | tuple[float, float, float]] | np.ndarray,
+        errored: list[tuple[float, float] | tuple[float, float, float]] | np.ndarray,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        threshold: float | None = 1e-4,
+        include_pdf: bool | int = False,
         epsilon: float = 1e-6,
     ) -> StatusDistributionSummary:
         """
-        Create status-grouped statistical summary from iterative request timing data.
+        Create status-broken-down concurrency distribution from event intervals.
 
-        Analyzes autoregressive request timings grouped by status to calculate
-        iteration rate distributions for each outcome category. Enables comparative
-        analysis of token generation or streaming response performance across
-        different request statuses.
-
-        :param request_types: Status type for each request ("successful",
-            "incomplete", or "error")
-        :param requests: List of (start_time, end_time) tuples for each request
-        :param first_iter_times: Times when first iteration was received for
-            each request
-        :param iter_counts: Total iteration counts for each request (defaults to 1)
-        :param first_iter_counts: Iteration counts for first iteration (defaults
-            to 1)
-        :param include_cdf: Whether to include cumulative distribution functions
-        :param epsilon: Threshold for merging close timing events
-        :return: StatusDistributionSummary with iteration statistics by status
-        :raises ValueError: If input lists have mismatched lengths or invalid types
+        :param successful: Event intervals for successful requests
+        :param incomplete: Event intervals for incomplete requests
+        :param errored: Event intervals for errored requests
+        :param start_time: Analysis window start
+        :param end_time: Analysis window end
+        :param threshold: Time threshold for merging nearby transitions
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Status breakdown of concurrency distribution summaries
         """
-        if any(
-            type_ not in {"successful", "incomplete", "error"}
-            for type_ in request_types
-        ):
-            raise ValueError(
-                "request_types must be one of 'successful', 'incomplete', or 'error'. "
-                f"Got {request_types} instead.",
-            )
-
-        if iter_counts is None:
-            iter_counts = [1] * len(requests)
-
-        if first_iter_counts is None:
-            first_iter_counts = [1] * len(requests)
-
-        if (
-            len(request_types) != len(requests)
-            or len(requests) != len(first_iter_times)
-            or len(requests) != len(iter_counts)
-            or len(requests) != len(first_iter_counts)
-        ):
-            raise ValueError(
-                "request_types, requests, first_iter_times, iter_counts, and "
-                "first_iter_counts must be the same length."
-                f"Given {len(request_types)}, {len(requests)}, "
-                f"{len(first_iter_times)}, {len(iter_counts)}, "
-                f"{len(first_iter_counts)}",
-            )
-
-        (
-            _,
-            successful_requests,
-            successful_first_iter_times,
-            successful_iter_counts,
-            successful_first_iter_counts,
-        ) = (
-            zip(*successful, strict=True)
-            if (
-                successful := list(
-                    filter(
-                        lambda val: val[0] == "successful",
-                        zip(
-                            request_types,
-                            requests,
-                            first_iter_times,
-                            iter_counts,
-                            first_iter_counts,
-                            strict=True,
-                        ),
-                    )
-                )
-            )
-            else ([], [], [], [], [])
-        )
-        (
-            _,
-            incomplete_requests,
-            incomplete_first_iter_times,
-            incomplete_iter_counts,
-            incomplete_first_iter_counts,
-        ) = (
-            zip(*incomplete, strict=True)
-            if (
-                incomplete := list(
-                    filter(
-                        lambda val: val[0] == "incomplete",
-                        zip(
-                            request_types,
-                            requests,
-                            first_iter_times,
-                            iter_counts,
-                            first_iter_counts,
-                            strict=True,
-                        ),
-                    )
-                )
-            )
-            else ([], [], [], [], [])
-        )
-        (
-            _,
-            errored_requests,
-            errored_first_iter_times,
-            errored_iter_counts,
-            errored_first_iter_counts,
-        ) = (
-            zip(*errored, strict=True)
-            if (
-                errored := list(
-                    filter(
-                        lambda val: val[0] == "error",
-                        zip(
-                            request_types,
-                            requests,
-                            first_iter_times,
-                            iter_counts,
-                            first_iter_counts,
-                            strict=True,
-                        ),
-                    )
-                )
-            )
-            else ([], [], [], [], [])
+        total, successful_arr, incomplete_arr, errored_arr = cls._combine_status_arrays(
+            successful, incomplete, errored, num_values_per_item=3
         )
 
         return StatusDistributionSummary(
-            total=DistributionSummary.from_iterable_request_times(
-                requests,
-                first_iter_times,
-                iter_counts,
-                first_iter_counts,
-                include_cdf=include_cdf,
+            total=DistributionSummary.concurrency_distribution_from_timings(
+                total,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
-            successful=DistributionSummary.from_iterable_request_times(
-                successful_requests,  # type: ignore[arg-type]
-                successful_first_iter_times,  # type: ignore[arg-type]
-                successful_iter_counts,  # type: ignore[arg-type]
-                successful_first_iter_counts,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+            successful=DistributionSummary.concurrency_distribution_from_timings(
+                successful_arr,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
-            incomplete=DistributionSummary.from_iterable_request_times(
-                incomplete_requests,  # type: ignore[arg-type]
-                incomplete_first_iter_times,  # type: ignore[arg-type]
-                incomplete_iter_counts,  # type: ignore[arg-type]
-                incomplete_first_iter_counts,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+            incomplete=DistributionSummary.concurrency_distribution_from_timings(
+                incomplete_arr,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
-            errored=DistributionSummary.from_iterable_request_times(
-                errored_requests,  # type: ignore[arg-type]
-                errored_first_iter_times,  # type: ignore[arg-type]
-                errored_iter_counts,  # type: ignore[arg-type]
-                errored_first_iter_counts,  # type: ignore[arg-type]
-                include_cdf=include_cdf,
+            errored=DistributionSummary.concurrency_distribution_from_timings(
+                errored_arr,
+                start_time=start_time,
+                end_time=end_time,
+                threshold=threshold,
+                include_pdf=include_pdf,
                 epsilon=epsilon,
             ),
         )
 
-
-class RunningStats(StandardBaseModel):
-    """
-    Real-time statistics tracking for streaming numerical data.
-
-    Maintains mean, rate, and cumulative statistics for continuous data streams
-    without storing individual values. Optimized for memory efficiency in
-    long-running monitoring applications. Supports arithmetic operators for
-    convenient value addition and provides computed properties for derived metrics.
-
-    Example:
-    ::
-        stats = RunningStats()
-        stats += 10.5  # Add value using operator
-        stats.update(20.0, count=3)  # Add value with custom count
-        print(f"Mean: {stats.mean}, Rate: {stats.rate}")
-    """
-
-    start_time: float = Field(
-        default_factory=timer.time,
-        description=(
-            "The time the running statistics object was created. "
-            "This is used to calculate the rate of the statistics."
-        ),
-    )
-    count: int = Field(
-        default=0,
-        description="The number of values added to the running statistics.",
-    )
-    total: float = Field(
-        default=0.0,
-        description="The total sum of the values added to the running statistics.",
-    )
-    last: float = Field(
-        default=0.0,
-        description="The last value added to the running statistics.",
-    )
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def mean(self) -> float:
+    @classmethod
+    def concurrency_distribution_from_timings_function(
+        cls,
+        function: Callable[
+            [FunctionObjT],
+            tuple[float, float]
+            | tuple[float, float, float]
+            | list[tuple[float, float] | tuple[float, float, float]]
+            | None,
+        ],
+        successful: list[FunctionObjT],
+        incomplete: list[FunctionObjT],
+        errored: list[FunctionObjT],
+        start_time: float | None = None,
+        end_time: float | None = None,
+        threshold: float | None = 1e-4,
+        include_pdf: bool | int = False,
+        epsilon: float = 1e-6,
+    ) -> DistributionSummary:
         """
-        :return: The mean of the running statistics (total / count).
-            If count is 0, return 0.0.
+        Create concurrency distribution by extracting intervals from objects.
+
+        :param function: Function to extract time interval(s) from each object
+        :param successful: Successful request objects
+        :param incomplete: Incomplete request objects
+        :param errored: Errored request objects
+        :param start_time: Analysis window start
+        :param end_time: Analysis window end
+        :param threshold: Time threshold for merging nearby transitions
+        :param include_pdf: Whether to include PDF; True for full, int for sampled size
+        :param epsilon: Tolerance for probability validation
+        :return: Status breakdown of concurrency distribution summaries
         """
-        if self.count == 0:
-            return 0.0
-        return self.total / self.count
+        successful_values = []
+        incomplete_values = []
+        errored_values = []
 
-    @computed_field  # type: ignore[misc]
-    @property
-    def rate(self) -> float:
-        """
-        :return: The rate of the running statistics
-            (total / (time.time() - start_time)).
-            If count is 0, return 0.0.
-        """
-        if self.count == 0:
-            return 0.0
-        return self.total / (timer.time() - self.start_time)
+        def _extract_values(
+            _objs: list[FunctionObjT],
+            _outputs: list[tuple[float, float] | tuple[float, float, float]],
+        ):
+            for _obj in _objs:
+                if (_result := function(_obj)) is None:
+                    continue
+                if isinstance(_result, list):
+                    _outputs.extend(_result)
+                else:
+                    _outputs.append(_result)
 
-    def __add__(self, value: Any) -> float:
-        """
-        Add value using + operator and return current mean.
+        _extract_values(successful, successful_values)
+        _extract_values(incomplete, incomplete_values)
+        _extract_values(errored, errored_values)
 
-        :param value: Numerical value to add to the running statistics
-        :return: Updated mean after adding the value
-        :raises ValueError: If value is not numeric (int or float)
-        """
-        if not isinstance(value, int | float):
-            raise ValueError(
-                f"Value must be an int or float, got {type(value)} instead.",
-            )
+        return cls.concurrency_distribution_from_timings(
+            successful=successful_values,
+            incomplete=incomplete_values,
+            errored=errored_values,
+            start_time=start_time,
+            end_time=end_time,
+            threshold=threshold,
+            include_pdf=include_pdf,
+            epsilon=epsilon,
+        )
 
-        self.update(value)
-
-        return self.mean
-
-    def __iadd__(self, value: Any) -> RunningStats:
-        """
-        Add value using += operator and return updated instance.
-
-        :param value: Numerical value to add to the running statistics
-        :return: Self reference for method chaining
-        :raises ValueError: If value is not numeric (int or float)
-        """
-        if not isinstance(value, int | float):
-            raise ValueError(
-                f"Value must be an int or float, got {type(value)} instead.",
-            )
-
-        self.update(value)
-
-        return self
-
-    def update(self, value: float, count: int = 1) -> None:
-        """
-        Update running statistics with new value and count.
-
-        :param value: Numerical value to add to the running statistics
-        :param count: Number of occurrences to count for this value (defaults to 1)
-        """
-        self.count += count
-        self.total += value
-        self.last = value
-
-
-class TimeRunningStats(RunningStats):
-    """
-    Specialized running statistics for time-based measurements.
-
-    Extends RunningStats with time-specific computed properties for millisecond
-    conversions. Designed for tracking latency, duration, and timing metrics in
-    performance monitoring applications.
-
-    Example:
-    ::
-        time_stats = TimeRunningStats()
-        time_stats += 0.125  # Add 125ms in seconds
-        print(f"Mean: {time_stats.mean_ms}ms, Total: {time_stats.total_ms}ms")
-    """
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def total_ms(self) -> float:
-        """
-        :return: The total time multiplied by 1000.0 to convert to milliseconds.
-        """
-        return self.total * 1000.0
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def last_ms(self) -> float:
-        """
-        :return: The last time multiplied by 1000.0 to convert to milliseconds.
-        """
-        return self.last * 1000.0
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def mean_ms(self) -> float:
-        """
-        :return: The mean time multiplied by 1000.0 to convert to milliseconds.
-        """
-        return self.mean * 1000.0
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def rate_ms(self) -> float:
-        """
-        :return: The rate of the running statistics multiplied by 1000.0
-            to convert to milliseconds.
-        """
-        return self.rate * 1000.0
+    @classmethod
+    def _combine_status_arrays(
+        cls,
+        successful: list[float] | np.ndarray,
+        incomplete: list[float] | np.ndarray,
+        errored: list[float] | np.ndarray,
+        num_values_per_item: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        successful_array = DistributionSummary._to_weighted_ndarray(  # noqa: SLF001
+            successful, num_values_per_item=num_values_per_item
+        )
+        incomplete_array = DistributionSummary._to_weighted_ndarray(  # noqa: SLF001
+            incomplete, num_values_per_item=num_values_per_item
+        )
+        errored_array = DistributionSummary._to_weighted_ndarray(  # noqa: SLF001
+            errored, num_values_per_item=num_values_per_item
+        )
+        total_array = np.concatenate(
+            (successful_array, incomplete_array, errored_array), axis=0
+        )
+        return total_array, successful_array, incomplete_array, errored_array

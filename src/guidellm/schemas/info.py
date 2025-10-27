@@ -53,17 +53,23 @@ class RequestTimings(StandardBaseDict):
         default=None,
         description="Unix timestamp when the backend began processing the request",
     )
-    first_iteration: float | None = Field(
+    first_request_iteration: float | None = Field(
         default=None,
-        description="Unix timestamp when the first iteration for a streaming began",
     )
-    last_iteration: float | None = Field(
+    first_token_iteration: float | None = Field(
         default=None,
-        description="Unix timestamp when the last iteration for a streaming completed",
     )
-    iterations: int | None = Field(
+    last_token_iteration: float | None = Field(
         default=None,
-        description="Total number of streaming update iterations performed",
+    )
+    last_request_iteration: float | None = Field(
+        default=None,
+    )
+    request_iterations: int = Field(
+        default=0,
+    )
+    token_iterations: int = Field(
+        default=0,
     )
     request_end: float | None = Field(
         default=None,

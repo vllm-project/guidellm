@@ -41,10 +41,9 @@ from .registry import RegistryMixin, RegistryObjT
 from .singleton import SingletonMixin, ThreadSafeSingletonMixin
 from .statistics import (
     DistributionSummary,
+    FunctionObjT,
     Percentiles,
-    RunningStats,
     StatusDistributionSummary,
-    TimeRunningStats,
 )
 from .synchronous import (
     wait_for_sync_barrier,
@@ -76,6 +75,7 @@ __all__ = [
     "Encoder",
     "EncodingTypesAlias",
     "EndlessTextCreator",
+    "FunctionObjT",
     "InfoMixin",
     "IntegerRangeSampler",
     "InterProcessMessaging",
@@ -89,7 +89,6 @@ __all__ = [
     "RegistryMixin",
     "RegistryObjT",
     "ReloadableBaseModel",
-    "RunningStats",
     "SendMessageT",
     "SerializationTypesAlias",
     "Serializer",
@@ -101,7 +100,6 @@ __all__ = [
     "StatusIcons",
     "StatusStyles",
     "ThreadSafeSingletonMixin",
-    "TimeRunningStats",
     "all_defined",
     "camelize_str",
     "check_load_processor",
