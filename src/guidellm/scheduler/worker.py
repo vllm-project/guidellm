@@ -350,39 +350,24 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param target_start: Unix timestamp when request should begin processing
         """
         request: RequestT | MultiTurnRequestT[RequestT] | None = None
-        request_info: RequestInfo | None
+        request_info: RequestInfo | None = None
         response: ResponseT | None = None
 
         try:
             # Pull request from the queue, update state, and send "pending" update
-            request, request_info = await self.messaging.get()
-            dequeued_time = time.time()  # Ensure accurate dequeue timing
-            if request is None or request_info is None:
-                raise RuntimeError("Received invalid request or request info")
-            if isinstance(request, list | tuple):
-                raise NotImplementedError("Multi-turn requests are not yet supported")
+            request, request_info = await self._dequeue_next_request(target_start)
 
-            request_info.timings.dequeued = dequeued_time
-            request_info.scheduler_node_id = self.messaging.worker_index or -1
-            request_info.timings.targeted_start = target_start
-            self._send_update("pending", response, request, request_info)
+            # Schedule the request and send "in_progress" update
+            await self._schedule_request(request, request_info, target_start)
 
-            # Schedule the request
-            current_time = time.time()
-            request_info.timings.scheduled_at = current_time
-            if target_start > current_time:
-                await asyncio.sleep(target_start - current_time)
-                # Adapt delay so that scheduled at reflects the sleep time
-                request_info.timings.scheduled_at = target_start
-
-            # Process the request with the backend
-            request_info.timings.resolve_start = time.time()
-            self._send_update("in_progress", response, request, request_info)
-            async for resp, info in await self.backend.resolve(
+            async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
                 request, request_info, None
             ):
+
                 response = resp
                 request_info = info
+                if request_info is None:
+                    raise RuntimeError("Received invalid request info from backend")
 
             # Complete the request
             request_info.timings.resolve_end = time.time()
@@ -404,6 +389,39 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)
+
+    async def _dequeue_next_request(
+        self, target_start: float
+    ) -> tuple[RequestT, RequestInfo]:
+        request, request_info = await self.messaging.get()
+        dequeued_time = time.time()  # Ensure accurate dequeue timing
+        if request is None or request_info is None:
+            raise RuntimeError("Received invalid request or request info")
+        if isinstance(request, list | tuple):
+            raise NotImplementedError("Multi-turn requests are not yet supported")
+
+        request_info.timings.dequeued = dequeued_time
+        request_info.scheduler_node_id = self.messaging.worker_index or -1
+        request_info.timings.targeted_start = target_start
+        self._send_update("pending", None, request, request_info)
+        return request, request_info
+
+    async def _schedule_request(
+        self,
+        request: RequestT,
+        request_info: RequestInfo,
+        target_start: float
+    ):
+        current_time = time.time()
+        request_info.timings.scheduled_at = current_time
+        if target_start > current_time:
+            await asyncio.sleep(target_start - current_time)
+            # Adapt delay so that scheduled at reflects the sleep time
+            request_info.timings.scheduled_at = target_start
+
+        # Process the request with the backend
+        request_info.timings.resolve_start = time.time()
+        self._send_update("in_progress", None, request, request_info)
 
     def _send_update(
         self,
