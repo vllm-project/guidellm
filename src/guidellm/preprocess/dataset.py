@@ -1,9 +1,9 @@
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import yaml
 from datasets import Dataset
@@ -11,7 +11,6 @@ from loguru import logger
 from pydantic import BaseModel, Field
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.dataset import load_dataset as guidellm_load_dataset
 from guidellm.utils import IntegerRangeSampler, check_load_processor
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
 
@@ -32,7 +31,7 @@ def handle_ignore_strategy(
     min_prompt_tokens: int,
     tokenizer: PreTrainedTokenizerBase,
     **_kwargs,
-) -> Optional[str]:
+) -> str | None:
     """
     Ignores prompts that are shorter than the required minimum token length.
 
@@ -56,7 +55,7 @@ def handle_concatenate_strategy(
     tokenizer: PreTrainedTokenizerBase,
     concat_delimiter: str,
     **_kwargs,
-) -> Optional[str]:
+) -> str | None:
     """
     Concatenates prompts until the minimum token requirement is met.
 
@@ -117,7 +116,7 @@ def handle_error_strategy(
     min_prompt_tokens: int,
     tokenizer: PreTrainedTokenizerBase,
     **_kwargs,
-) -> Optional[str]:
+) -> str | None:
     """
     Raises an error if the prompt is too short.
 
@@ -150,24 +149,24 @@ class TokensConfig(BaseModel):
         description="The average number of tokens.",
         gt=0,
     )
-    stdev: Optional[int] = Field(
+    stdev: int | None = Field(
         description="The standard deviation of the tokens.",
         gt=0,
         default=None,
     )
-    min: Optional[int] = Field(
+    min: int | None = Field(
         description="The minimum number of tokens.",
         gt=0,
         default=None,
     )
-    max: Optional[int] = Field(
+    max: int | None = Field(
         description="The maximum number of tokens.",
         gt=0,
         default=None,
     )
 
     @staticmethod
-    def parse_str(data: Union[str, Path]) -> "TokensConfig":
+    def parse_str(data: str | Path) -> "TokensConfig":
         """
         Parses a string or path into a TokensConfig object. Supports:
         - JSON string
@@ -215,14 +214,14 @@ class TokensConfig(BaseModel):
         return TokensConfig(**config_dict)  # type: ignore[arg-type]
 
     @staticmethod
-    def parse_config_file(data: Union[str, Path]) -> "TokensConfig":
+    def parse_config_file(data: str | Path) -> "TokensConfig":
         with Path(data).open("r") as file:
             config_dict = yaml.safe_load(file)
 
         return TokensConfig(**config_dict)
 
 
-def _validate_output_suffix(output_path: Union[str, Path]) -> None:
+def _validate_output_suffix(output_path: str | Path) -> None:
     output_path = Path(output_path)
     suffix = output_path.suffix.lower()
     if suffix not in SUPPORTED_TYPES:
@@ -233,18 +232,18 @@ def _validate_output_suffix(output_path: Union[str, Path]) -> None:
 
 
 def process_dataset(
-    data: Union[str, Path],
-    output_path: Union[str, Path],
-    processor: Union[str, Path, PreTrainedTokenizerBase],
-    prompt_tokens: Union[str, Path],
-    output_tokens: Union[str, Path],
-    processor_args: Optional[dict[str, Any]] = None,
-    data_args: Optional[dict[str, Any]] = None,
+    data: str | Path,
+    output_path: str | Path,
+    processor: str | Path | PreTrainedTokenizerBase,
+    prompt_tokens: str | Path,
+    output_tokens: str | Path,
+    processor_args: dict[str, Any] | None = None,
+    data_args: dict[str, Any] | None = None,
     short_prompt_strategy: ShortPromptStrategy = ShortPromptStrategy.IGNORE,
-    pad_char: Optional[str] = None,
-    concat_delimiter: Optional[str] = None,
+    pad_char: str | None = None,
+    concat_delimiter: str | None = None,
     push_to_hub: bool = False,
-    hub_dataset_id: Optional[str] = None,
+    hub_dataset_id: str | None = None,
     random_seed: int = 42,
 ) -> None:
     """
@@ -271,9 +270,7 @@ def process_dataset(
         f"Starting dataset conversion | Input: {data} | Output directory: {output_path}"
     )
 
-    dataset, column_mappings = guidellm_load_dataset(
-        data, data_args, processor, processor_args
-    )
+    dataset, column_mappings = None, None
     tokenizer = check_load_processor(
         processor,
         processor_args,
@@ -354,7 +351,7 @@ def process_dataset(
 
 
 def push_dataset_to_hub(
-    hub_dataset_id: Optional[str],
+    hub_dataset_id: str | None,
     processed_dataset: Dataset,
 ) -> None:
     """

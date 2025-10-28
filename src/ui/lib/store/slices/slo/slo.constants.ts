@@ -10,13 +10,13 @@ export const initialState: SloState = {
   current: {
     timePerRequest: 0,
     ttft: 0,
-    tpot: 0,
+    itl: 0,
     throughput: 0,
   },
   tasksDefaults: {
     timePerRequest: 0,
     ttft: 0,
-    tpot: 0,
+    itl: 0,
     throughput: 0,
   },
 };

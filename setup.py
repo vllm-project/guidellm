@@ -1,17 +1,16 @@
 import os
 import re
 from pathlib import Path
-from typing import Optional, Union
 
 from packaging.version import Version
 from setuptools import setup
 from setuptools_git_versioning import count_since, get_branch, get_sha, get_tags
 
-LAST_RELEASE_VERSION = Version("0.0.0")
+LAST_RELEASE_VERSION = Version("0.3.0")
 TAG_VERSION_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+)$")
 
 
-def get_last_version_diff() -> tuple[Version, Optional[str], Optional[int]]:
+def get_last_version_diff() -> tuple[Version, str | None, int | None]:
     """
     Get the last version, last tag, and the number of commits since the last tag.
     If no tags are found, return the last release version and None for the tag/commits.
@@ -38,8 +37,8 @@ def get_last_version_diff() -> tuple[Version, Optional[str], Optional[int]]:
 
 
 def get_next_version(
-    build_type: str, build_iteration: Optional[Union[str, int]]
-) -> tuple[Version, Optional[str], int]:
+    build_type: str, build_iteration: str | int | None
+) -> tuple[Version, str | None, int]:
     """
     Get the next version based on the build type and iteration.
     - build_type == release: take the last version and add a post if build iteration
