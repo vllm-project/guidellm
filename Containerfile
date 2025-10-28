@@ -31,18 +31,27 @@ COPY / /src
 
 # Install guidellm and locked dependencies
 RUN pdm use -p /src -f /opt/app-root \
-    && pdm install -p /src --check --prod --no-editable
+    && pdm install -p /src -G all --check --prod --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
+
+# Switch to root for installing packages
+USER root
+
+# Install some helpful utilities and deps
+RUN dnf install -y --setopt=install_weak_deps=False \
+        vi tar rsync ffmpeg-free \
+    && dnf clean all
+
+# Switch back to unpriv user
+# Root group for k8s
+USER 1001:0
 
 # Add guidellm bin to PATH
 # Argument defaults can be set with GUIDELLM_<ARG>
 ENV HOME="/home/guidellm" \
     GUIDELLM_OUTPUT_PATH="/results/benchmarks.json"
-
-# Make sure root is the primary group
-USER 1001:0
 
 # Create the user home dir
 WORKDIR $HOME

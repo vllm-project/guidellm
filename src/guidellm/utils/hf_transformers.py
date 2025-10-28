@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from transformers import AutoTokenizer, PreTrainedTokenizerBase  # type: ignore[import]
 
@@ -9,15 +9,15 @@ __all__ = [
 
 
 def check_load_processor(
-    processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
-    processor_args: Optional[dict[str, Any]],
+    processor: str | Path | PreTrainedTokenizerBase | None,
+    processor_args: dict[str, Any] | None,
     error_msg: str,
 ) -> PreTrainedTokenizerBase:
     if processor is None:
         raise ValueError(f"Processor/Tokenizer is required for {error_msg}.")
 
     try:
-        if isinstance(processor, (str, Path)):
+        if isinstance(processor, str | Path):
             loaded = AutoTokenizer.from_pretrained(
                 processor,
                 **(processor_args or {}),
