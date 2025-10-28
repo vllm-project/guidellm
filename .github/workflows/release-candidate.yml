@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.9"]
+        python: ["3.10"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -142,7 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.9"]
+        python: ["3.10"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -228,7 +228,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./ui/out
+          publish_dir: .src/ui/out
           destination_dir: ui/release/${TAG}
           keep_files: false
           user_name: ${{ github.actor }}
@@ -295,15 +295,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get version from branch
+        run: |
+          echo "package_version=${GITHUB_REF#refs/heads/release/}" >> $GITHUB_ENV
+      - name: Fail if version is unset
+        if: ${{ env.package_version == '' }}
+        run: |
+          exit 1
       - name: Buildah build
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ github.event.repository.name }}
-          # TODO: Tag version
-          tags: latest
+          build-args: |
+            GUIDELLM_BUILD_TYPE=candidate
+          tags: ${{ env.package_version }}~rc
           containerfiles: |
-            ./deploy/Containerfile
+            ./Containerfile
       - name: Push To ghcr.io
         id: push-to-ghcr
         uses: redhat-actions/push-to-registry@v2

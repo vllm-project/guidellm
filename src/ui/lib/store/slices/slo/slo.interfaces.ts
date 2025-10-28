@@ -6,13 +6,13 @@ export interface SloState {
   current: {
     timePerRequest: number;
     ttft: number;
-    tpot: number;
+    itl: number;
     throughput: number;
   };
   tasksDefaults: {
     timePerRequest: number;
     ttft: number;
-    tpot: number;
+    itl: number;
     throughput: number;
   };
 }
