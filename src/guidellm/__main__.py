@@ -33,7 +33,7 @@ from pydantic import ValidationError
 try:
     import uvloop
 except ImportError:
-    uvloop = None # type: ignore[assignment] # Optional dependency
+    uvloop = None  # type: ignore[assignment] # Optional dependency
 
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
@@ -368,6 +368,16 @@ def benchmark():
     type=float,
     default=BenchmarkGenerativeTextArgs.get_default("max_global_error_rate"),
     help="Maximum global error rate across all benchmarks.",
+)
+@click.option(
+    "--stop-over-saturated",
+    type=bool,
+    default=BenchmarkGenerativeTextArgs.get_default("stop_over_saturated"),
+    help=(
+        "Set this flag to stop the benchmark if the model is over-saturated. "
+        "Defaults to False."
+    ),
+    is_flag=True,
 )
 def run(**kwargs):
     request_type = kwargs.pop("request_type", None)

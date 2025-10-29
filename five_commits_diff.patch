@@ -1,0 +1,1858 @@
+=== Commit 1: 9635748 - feat: over-saturation detection test passes ===
+commit 9635748189b9fea1246d60686e0704e829c78d0c
+Author: Alon Kellner <akellner@redhat.com>
+Date:   Tue Aug 19 06:03:15 2025 +0000
+
+    feat: over-saturation detection test passes
+
+diff --git a/src/guidellm/__main__.py b/src/guidellm/__main__.py
+index 4dd6565..5ffff80 100644
+--- a/src/guidellm/__main__.py
++++ b/src/guidellm/__main__.py
+@@ -265,9 +265,43 @@ def benchmark():
+         "If None, will run until max_seconds or the data is exhausted."
+     ),
+ )
+-@click.option("--max-errors", type=int, default=None, help="")
+-@click.option("--max-error-rate", type=float, default=None, help="")
+-@click.option("--max-global-error-rate", type=float, default=None, help="")
++@click.option(
++    "--max-errors",
++    type=int,
++    default=None,
++    help=(
++        "The maximum number of errors allowed before stopping the benchmark. "
++        "If None, will run until max_requests or the data is exhausted."
++    ),
++)
++@click.option(
++    "--max-error-rate",
++    type=float,
++    default=GenerativeTextScenario.get_default("max_error_rate"),
++    help=(
++        "The maximum error rate allowed before stopping the benchmark. "
++        "Should be a value between 0 and 1. Defaults to None."
++    ),
++)
++@click.option(
++    "--max-global-error-rate",
++    type=float,
++    default=GenerativeTextScenario.get_default("max_global_error_rate"),
++    help=(
++        "The maximum global error rate allowed before stopping the benchmark. "
++        "Should be a value between 0 and 1. Defaults to None."
++    ),
++)
++@click.option(
++    "--stop-over-saturated",
++    type=bool,
++    default=GenerativeTextScenario.get_default("stop_over_saturated"),
++    help=(
++        "Set this flag to stop the benchmark if the model is over-saturated. "
++        "Defaults to False."
++    ),
++    is_flag=True,
++)
+ def run(
+     target,
+     data,
+@@ -301,6 +335,7 @@ def run(
+     max_errors,
+     max_error_rate,
+     max_global_error_rate,
++    stop_over_saturated,
+ ):
+     asyncio.run(
+         benchmark_generative_text(
+@@ -347,6 +382,7 @@ def run(
+             max_errors=max_errors,
+             max_error_rate=max_error_rate,
+             max_global_error_rate=max_global_error_rate,
++            stop_over_saturated=stop_over_saturated,
+         )
+     )
+ 
+diff --git a/src/guidellm/benchmark/aggregator.py b/src/guidellm/benchmark/aggregator.py
+index 28ce8dc..29cf031 100644
+--- a/src/guidellm/benchmark/aggregator.py
++++ b/src/guidellm/benchmark/aggregator.py
+@@ -470,7 +470,7 @@ class SchedulerStatsAggregator(SerializableAggregator[ResponseT, RequestT], Info
+                     key="worker_resolve_time", type_="avg", default=0.0
+                 ),
+                 worker_resolve_end_delay_avg=state.get_metric(
+-                    key="worker_resolve_end_delay", type_="avg"
++                    key="worker_resolve_end_delay", type_="avg", default=0.0
+                 ),
+                 finalized_delay_avg=state.get_metric(
+                     key="finalized_delay", type_="avg", default=0.0
+diff --git a/src/guidellm/benchmark/entrypoints.py b/src/guidellm/benchmark/entrypoints.py
+index 82f92ce..88a643a 100644
+--- a/src/guidellm/benchmark/entrypoints.py
++++ b/src/guidellm/benchmark/entrypoints.py
+@@ -113,6 +113,7 @@ async def benchmark_generative_text(  # noqa: C901
+     max_errors: int | None = None,
+     max_error_rate: float | None = None,
+     max_global_error_rate: float | None = None,
++    stop_over_saturated: bool | None = None,
+     **constraints: dict[str, ConstraintInitializer | Any],
+ ) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
+     console = Console(quiet=not print_updates)
+@@ -196,6 +197,7 @@ async def benchmark_generative_text(  # noqa: C901
+             "max_errors": max_errors,
+             "max_error_rate": max_error_rate,
+             "max_global_error_rate": max_global_error_rate,
++            "stop_over_saturated": stop_over_saturated,
+         }.items():
+             if val is not None:
+                 constraints[key] = val
+diff --git a/src/guidellm/benchmark/progress.py b/src/guidellm/benchmark/progress.py
+index 17bfb60..8733fef 100644
+--- a/src/guidellm/benchmark/progress.py
++++ b/src/guidellm/benchmark/progress.py
+@@ -20,7 +20,6 @@ import asyncio
+ from abc import ABC, abstractmethod
+ from collections.abc import AsyncIterable, AsyncIterator, Iterable
+ from dataclasses import dataclass
+-from datetime import datetime
+ from typing import Any, Generic, Literal
+ 
+ from rich.console import Group
+@@ -46,6 +45,7 @@ from guidellm.scheduler import (
+     StrategyType,
+ )
+ from guidellm.utils import Colors, format_value_display
++from guidellm.utils.general import safe_format_timestamp
+ 
+ __all__ = [
+     "BenchmarkerProgress",
+@@ -624,7 +624,7 @@ class _GenerativeProgressTaskState:
+         if self.start_time < 0.0:
+             return "--:--:--"
+ 
+-        return datetime.fromtimestamp(self.start_time).strftime("%H:%M:%S")
++        return safe_format_timestamp(self.start_time, format_="%H:%M:%S")
+ 
+     @property
+     def formatted_progress_status(self) -> str:
+diff --git a/src/guidellm/benchmark/scenario.py b/src/guidellm/benchmark/scenario.py
+index 15e3cd8..3250a00 100644
+--- a/src/guidellm/benchmark/scenario.py
++++ b/src/guidellm/benchmark/scenario.py
+@@ -100,6 +100,10 @@ class GenerativeTextScenario(Scenario):
+     )
+     max_seconds: PositiveFloat | None = None
+     max_requests: PositiveInt | None = None
++    max_errors: NonNegativeInt | None = None
++    max_error_rate: Annotated[float | None, Field(ge=0, le=1)] = None
++    max_global_error_rate: Annotated[float | None, Field(ge=0, le=1)] = None
++    stop_over_saturated: bool | None = None
+     warmup_percent: Annotated[float | None, Field(gt=0, le=1)] = None
+     cooldown_percent: Annotated[float | None, Field(gt=0, le=1)] = None
+     output_sampling: NonNegativeInt | None = None
+diff --git a/src/guidellm/scheduler/__init__.py b/src/guidellm/scheduler/__init__.py
+index 24d73df..882bac3 100644
+--- a/src/guidellm/scheduler/__init__.py
++++ b/src/guidellm/scheduler/__init__.py
+@@ -1,3 +1,8 @@
++from .advanced_constraints import (
++    OverSaturationConstraint,
++    OverSaturationConstraintInitializer,
++    OverSaturationDetector,
++)
+ from .constraints import (
+     Constraint,
+     ConstraintInitializer,
+@@ -66,6 +71,9 @@ __all__ = [
+     "MultiTurnRequestT",
+     "NoDelayRequestTimings",
+     "NonDistributedEnvironment",
++    "OverSaturationConstraint",
++    "OverSaturationConstraintInitializer",
++    "OverSaturationDetector",
+     "PoissonRateRequestTimings",
+     "PydanticConstraintInitializer",
+     "RequestSchedulerTimings",
+diff --git a/src/guidellm/scheduler/advanced_constraints/__init__.py b/src/guidellm/scheduler/advanced_constraints/__init__.py
+new file mode 100644
+index 0000000..eea680e
+--- /dev/null
++++ b/src/guidellm/scheduler/advanced_constraints/__init__.py
+@@ -0,0 +1,13 @@
++"""This module contains advanced constraints for the scheduler."""
++
++from .over_saturation import (
++    OverSaturationConstraint,
++    OverSaturationConstraintInitializer,
++    OverSaturationDetector,
++)
++
++__all__ = [
++    "OverSaturationConstraint",
++    "OverSaturationConstraintInitializer",
++    "OverSaturationDetector",
++]
+diff --git a/src/guidellm/scheduler/advanced_constraints/over_saturation.py b/src/guidellm/scheduler/advanced_constraints/over_saturation.py
+new file mode 100644
+index 0000000..22229b4
+--- /dev/null
++++ b/src/guidellm/scheduler/advanced_constraints/over_saturation.py
+@@ -0,0 +1,445 @@
++import math
++import time
++from abc import ABC, abstractmethod
++from typing import Any, Literal, Optional, Union
++
++from pydantic import Field
++
++from guidellm.config import settings
++from guidellm.scheduler.constraints import (
++    Constraint,
++    ConstraintsInitializerFactory,
++    PydanticConstraintInitializer,
++)
++from guidellm.scheduler.objects import (
++    ScheduledRequestInfo,
++    SchedulerState,
++    SchedulerUpdateAction,
++)
++
++
++class OverSaturationDetectorBase(ABC):
++    @abstractmethod
++    def add_finished(self, request: dict[str, Any]) -> None:
++        pass
++
++    @abstractmethod
++    def add_started(self, request: dict[str, Any]) -> None:
++        pass
++
++    def update_duration(self, duration: float) -> None:
++        self.duration = duration
++
++    @abstractmethod
++    def check_alert(self) -> bool:
++        pass
++
++    @abstractmethod
++    def reset(self) -> None:
++        pass
++
++
++def approx_t_ppf(p, df):
++    """
++    Approximates the percent point function (PPF) for the t-distribution.
++    This provides a close but not exact value compared to scipy.stats.t.ppf,
++    but is much faster.
++
++    Reference:
++        Milton Abramowitz and Irene A. Stegun (Eds.). (1965).
++        Handbook of Mathematical Functions: with Formulas, Graphs,
++        and Mathematical Tables. Dover Publications.
++
++        An electronic version of this book is available at:
++        https://personal.math.ubc.ca/~cbm/aands/.
++
++    Args:ft
++        p (float): The probability (e.g., 0.975 for a 95% CI).
++        df (float): The degrees of freedom.
++    """
++    dof = df
++    if dof <= 0:
++        return float("nan")
++
++    # 1. Approximate the PPF of the Normal distribution (z-score)
++    # Uses Abramowitz & Stegun formula 26.2.23.
++    c = [2.515517, 0.802853, 0.010328]
++    d = [1.432788, 0.189269, 0.001308]
++
++    numerical_stability_threshold = 0.5
++    if p < numerical_stability_threshold:
++        t = math.sqrt(-2.0 * math.log(p))
++        z = -(
++            t
++            - ((c[2] * t + c[1]) * t + c[0])
++            / (((d[2] * t + d[1]) * t + d[0]) * t + 1.0)
++        )
++    else:
++        t = math.sqrt(-2.0 * math.log(1.0 - p))
++        z = t - ((c[2] * t + c[1]) * t + c[0]) / (
++            ((d[2] * t + d[1]) * t + d[0]) * t + 1.0
++        )
++
++    # 2. Convert the z-score to a t-score
++    # Uses the Cornish-Fisher expansion (first few terms).
++    z2 = z * z
++    z3 = z2 * z
++    z4 = z3 * z
++
++    g1 = (z3 + z) / 4.0
++    g2 = (5.0 * z4 + 16.0 * z3 + 3.0 * z2) / 96.0
++
++    # Adjust z using the degrees of freedom (dof)
++    return z + g1 / dof + g2 / (dof * dof)
++
++
++class SlopeChecker:
++    def __init__(
++        self, moe_threshold: float = 1.0, confidence: float = 0.95, eps: float = 1e-12
++    ) -> None:
++        self.n = 0
++        self.sum_x = 0.0
++        self.sum_y = 0.0
++        self.sum_xy = 0.0
++        self.sum_x2 = 0.0
++        self.sum_y2 = 0.0
++        self.moe_threshold = moe_threshold
++        self.eps = eps
++        self.confidence = confidence
++        self.slope: Optional[float] = None
++        self.margin_of_error: Optional[float] = None
++
++    def add_data_point(self, x_new: float, y_new: float) -> None:
++        """
++        Integrates a new data point into the accumulated statistics.
++        This operation is O(1).
++
++        Args:
++            x_new (float): The new x-coordinate.
++            y_new (float): The new y-coordinate.
++        """
++        self.n += 1
++        self.sum_x += x_new
++        self.sum_y += y_new
++        self.sum_xy += x_new * y_new
++        self.sum_x2 += x_new**2
++        self.sum_y2 += y_new**2
++
++    def remove_data_point(self, x_old: float, y_old: float) -> None:
++        """
++        Remove a data point from the accumulated statistics.
++        This operation is O(1).
++
++        Args:
++            x_old (float): The x-coordinate to remove.
++            y_old (float): The y-coordinate to remove.
++        """
++        self.n -= 1
++        self.sum_x -= x_old
++        self.sum_y -= y_old
++        self.sum_xy -= x_old * y_old
++        self.sum_x2 -= x_old**2
++        self.sum_y2 -= y_old**2
++
++    def check_slope(self, effective_n: float) -> bool:
++        minimal_n_for_slope_estimation = 3
++        if effective_n < minimal_n_for_slope_estimation:
++            return False
++
++        # Calculate sums of squares and cross-products
++        # These formulas are numerically stable for online calculation.
++        centered_sum_xx = self.sum_x2 - (self.sum_x**2) / self.n
++        centered_sum_xy = self.sum_xy - (self.sum_x * self.sum_y) / self.n
++        centered_sum_yy = self.sum_y2 - (self.sum_y**2) / self.n
++
++        # Safeguard against division by zero for SS_xx
++        centered_sum_xx_safe = max(centered_sum_xx, self.eps)
++
++        slope = centered_sum_xy / centered_sum_xx_safe
++
++        # Calculate Residual Sum of Squares (RSS)
++        # This is a direct calculation using the sums of squares.
++        residual_sum_of_squares = centered_sum_yy - (
++            centered_sum_xy**2 / centered_sum_xx_safe
++        )
++
++        # Ensure RSS is non-negative due to potential floating point inaccuracies
++        residual_sum_of_squares = max(residual_sum_of_squares, 0.0)
++
++        # Degrees of freedom for standard error (n - 2 for simple linear regression)
++        dof = effective_n - 2
++
++        residual_variance = residual_sum_of_squares / dof
++        standard_error = (residual_variance / centered_sum_xx_safe) ** 0.5
++
++        # t-critical value
++        alpha = 1 - self.confidence
++        t_crit = approx_t_ppf(1 - alpha / 2, df=dof)
++
++        # Margin Of Error
++        margin_of_error = t_crit * standard_error / max(slope, self.eps)
++
++        self.slope = slope
++        self.margin_of_error = margin_of_error
++        return (slope > 0) and (margin_of_error < self.moe_threshold)
++
++
++class OverSaturationDetector(OverSaturationDetectorBase):
++    def __init__(
++        self,
++        minimum_duration: float = 30.0,
++        minimum_ttft: float = 2.5,
++        maximum_window_seconds: float = 120.0,
++        moe_threshold: float = 2.0,
++        maximum_window_ratio: float = 0.75,
++        minimum_window_size: int = 5,
++        confidence: float = 0.95,
++        eps: float = 1e-12,
++    ) -> None:
++        self.minimum_duration = minimum_duration
++        self.minimum_ttft = minimum_ttft
++        self.maximum_window_seconds = maximum_window_seconds
++        self.maximum_window_ratio = maximum_window_ratio
++        self.minimum_window_size = minimum_window_size
++        self.moe_threshold = moe_threshold
++        self.confidence = confidence
++        self.eps = eps
++        self.reset()
++
++    def add_finished(self, request: dict[str, Any]) -> None:
++        ttft = request["ttft"]
++        duration = request["duration"]
++        if ttft is not None:
++            self.total_finished_ever += 1
++            self.finished_requests.append(request)
++            if ttft > self.minimum_ttft:
++                self.ttft_violations_counter += 1
++            self.ttft_slope_checker.add_data_point(duration, ttft)
++
++    def remove_finished(self, request: dict[str, Any]) -> None:
++        del self.finished_requests[0]
++        ttft = request["ttft"]
++        duration = request["duration"]
++        if ttft > self.minimum_ttft:
++            self.ttft_violations_counter -= 1
++        self.ttft_slope_checker.remove_data_point(duration, ttft)
++
++    def add_started(self, request: dict[str, Any]) -> None:
++        concurrent = request["concurrent_requests"]
++        duration = request["duration"]
++        if concurrent is not None:
++            self.total_started_ever += 1
++            self.started_requests.append(request)
++            self.concurrent_slope_checker.add_data_point(duration, concurrent)
++
++    def remove_started(self, request: dict[str, Any]) -> None:
++        del self.started_requests[0]
++        concurrent = request["concurrent_requests"]
++        duration = request["duration"]
++        self.concurrent_slope_checker.remove_data_point(duration, concurrent)
++
++    def update_duration(self, duration: float) -> None:
++        self.duration = duration
++
++        maximum_finished_window_size = int(
++            self.total_finished_ever * self.maximum_window_ratio
++        )
++        while len(self.finished_requests) > maximum_finished_window_size:
++            self.remove_finished(self.finished_requests[0])
++
++        while (len(self.finished_requests) > 0) and (
++            (
++                time_since_earliest_request := duration
++                - self.finished_requests[0]["duration"]
++            )
++            > self.maximum_window_seconds
++        ):
++            self.remove_finished(self.finished_requests[0])
++
++        maximum_started_window_size = int(
++            self.total_started_ever * self.maximum_window_ratio
++        )
++        while len(self.started_requests) > maximum_started_window_size:
++            self.remove_started(self.started_requests[0])
++
++        while (len(self.started_requests) > 0) and (
++            (
++                time_since_earliest_request := duration  # noqa: F841
++                - self.started_requests[0]["duration"]
++            )
++            > self.maximum_window_seconds
++        ):
++            self.remove_started(self.started_requests[0])
++
++    def check_alert(self) -> bool:
++        # Use duration as the maximum n value since requests from the
++        # same second are highly correlated, this is simple and good enough
++        # given that the MOE has a custom threshold anyway.
++        concurrent_n = min(self.duration, self.concurrent_slope_checker.n)
++        ttft_n = min(self.duration, self.ttft_slope_checker.n)
++
++        if (
++            (self.duration < self.minimum_duration)
++            or (self.ttft_slope_checker.n > self.ttft_violations_counter * 2)
++            or (self.duration < self.minimum_ttft)
++            or (concurrent_n < self.minimum_window_size)
++        ):
++            return False
++
++        is_concurrent_slope_positive = self.concurrent_slope_checker.check_slope(
++            concurrent_n
++        )
++
++        if ttft_n < self.minimum_window_size:
++            return is_concurrent_slope_positive
++
++        is_ttft_slope_positive = self.ttft_slope_checker.check_slope(ttft_n)
++
++        return is_concurrent_slope_positive and is_ttft_slope_positive
++
++    def reset(self) -> None:
++        self.duration = 0.0
++        self.started_requests: list[dict[str, Any]] = []
++        self.finished_requests: list[dict[str, Any]] = []
++        self.ttft_violations_counter = 0
++        self.total_finished_ever = 0
++        self.total_started_ever = 0
++        self.concurrent_slope_checker = SlopeChecker(
++            moe_threshold=self.moe_threshold, confidence=self.confidence, eps=self.eps
++        )
++        self.ttft_slope_checker = SlopeChecker(
++            moe_threshold=self.moe_threshold, confidence=self.confidence, eps=self.eps
++        )
++
++
++class OverSaturationConstraint(Constraint):  # type: ignore[misc]
++    """
++    Constraint that limits execution based on over-saturation detection.
++
++    Stops request queuing when over-saturation is detected (i.e response-rate
++    doesn't keep up with the request-rate).
++    """
++
++    def __init__(
++        self,
++        over_saturation_detector: OverSaturationDetector,
++        stop_over_saturated: bool,
++    ) -> None:
++        self.over_saturation_detector = over_saturation_detector
++        self.stop_over_saturated = stop_over_saturated
++
++    def __call__(
++        self, state: SchedulerState, _request_info: ScheduledRequestInfo
++    ) -> SchedulerUpdateAction:
++        """
++        Evaluate constraint against current scheduler state.
++
++        :param state: Current scheduler state.
++        :param _request_info: Individual request information.
++        :return: Action indicating whether to continue or stop operations.
++        """
++        duration = time.time() - state.start_time
++
++        if _request_info.status == "in_progress":
++            concurrent_requests = state.processing_requests
++            self.over_saturation_detector.add_started(
++                {"concurrent_requests": concurrent_requests, "duration": duration}
++            )
++        elif (
++            _request_info.status == "completed"
++            and _request_info.request_timings
++            and _request_info.request_timings.first_iteration
++        ):
++            ttft = (
++                _request_info.request_timings.first_iteration
++                - _request_info.request_timings.request_start
++            )
++            self.over_saturation_detector.add_finished(
++                {"ttft": ttft, "duration": duration}
++            )
++
++        self.over_saturation_detector.update_duration(duration)
++        is_over_saturated = self.over_saturation_detector.check_alert()
++
++        ttft_slope = self.over_saturation_detector.ttft_slope_checker.slope
++        ttft_slope_moe = (
++            self.over_saturation_detector.ttft_slope_checker.margin_of_error
++        )
++        ttft_n = self.over_saturation_detector.ttft_slope_checker.n
++        ttft_violations = self.over_saturation_detector.ttft_violations_counter
++        concurrent_slope = self.over_saturation_detector.concurrent_slope_checker.slope
++        concurrent_slope_moe = (
++            self.over_saturation_detector.concurrent_slope_checker.margin_of_error
++        )
++        concurrent_n = self.over_saturation_detector.concurrent_slope_checker.n
++
++        should_stop = is_over_saturated and self.stop_over_saturated
++        return SchedulerUpdateAction(
++            request_queuing="stop" if should_stop else "continue",
++            request_processing="stop_all" if should_stop else "continue",
++            metadata={
++                "ttft_slope": ttft_slope,
++                "ttft_slope_moe": ttft_slope_moe,
++                "ttft_n": ttft_n,
++                "ttft_violations": ttft_violations,
++                "concurrent_slope": concurrent_slope,
++                "concurrent_slope_moe": concurrent_slope_moe,
++                "concurrent_n": concurrent_n,
++                "is_over_saturated": is_over_saturated,
++                "started_requests": self.over_saturation_detector.started_requests,
++                "finished_requests": self.over_saturation_detector.finished_requests,
++            },
++        )
++
++
++@ConstraintsInitializerFactory.register(
++    ["stop_over_saturated", "stop_over_sat", "stop_osd"]
++)
++class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
++    """Factory for creating OverSaturationConstraint instances from configuration."""
++
++    type_: Literal["stop_over_saturated"] = "stop_over_saturated"  # type: ignore[assignment]
++    stop_over_saturated: bool = Field(
++        description="Whether to stop the benchmark if the model is over-saturated",
++    )
++    min_seconds: Union[int, float] = Field(
++        default_factory=lambda: settings.constraint_over_saturation_min_seconds,  # type: ignore[attr-defined]
++        ge=0,
++        description="Minimum seconds before checking for over-saturation",
++    )
++    max_window_seconds: Union[int, float] = Field(
++        default_factory=lambda: settings.constraint_over_saturation_max_window_seconds,  # type: ignore[attr-defined]
++        ge=0,
++        description="Maximum over-saturation checking window size in seconds",
++    )
++
++    def create_constraint(self, **_kwargs) -> Constraint:
++        """
++        Create a OverSaturationConstraint instance.
++
++        :param _kwargs: Additional keyword arguments (unused).
++        :return: Configured OverSaturationConstraint instance.
++        """
++        over_saturation_detector = OverSaturationDetector(
++            minimum_duration=self.min_seconds,
++            maximum_window_seconds=self.max_window_seconds,
++        )
++        return OverSaturationConstraint(
++            over_saturation_detector=over_saturation_detector,
++            stop_over_saturated=self.stop_over_saturated,
++        )
++
++    @classmethod
++    def validated_kwargs(cls, stop_over_saturated: bool, **kwargs) -> dict[str, Any]:
++        """
++        Validate and process arguments for OverSaturationConstraint creation.
++
++        :param stop_over_saturated: Whether to stop the benchmark if the model is over-saturated
++        :param kwargs: Supports stop_over_saturated, stop_over_sat, stop_osd
++        :return: Validated dictionary with stop_over_saturated field
++        """
++        aliases = ["stop_over_saturated", "stop_over_sat", "stop_osd"]
++        for alias in aliases:
++            stop_over_saturated = stop_over_saturated or kwargs.get(alias)
++
++        return {"stop_over_saturated": stop_over_saturated}
+diff --git a/src/guidellm/settings.py b/src/guidellm/settings.py
+index d297d47..714994d 100644
+--- a/src/guidellm/settings.py
++++ b/src/guidellm/settings.py
+@@ -148,6 +148,10 @@ class Settings(BaseSettings):
+     constraint_error_window_size: float = 30
+     constraint_error_min_processed: float = 30
+ 
++    # Constraint settings
++    constraint_over_saturation_min_seconds: float = 30.0
++    constraint_over_saturation_max_window_seconds: float = 120.0
++
+     # Data settings
+     dataset: DatasetSettings = DatasetSettings()
+ 
+diff --git a/src/guidellm/utils/general.py b/src/guidellm/utils/general.py
+new file mode 100644
+index 0000000..d093ae8
+--- /dev/null
++++ b/src/guidellm/utils/general.py
+@@ -0,0 +1,98 @@
++from __future__ import annotations
++
++from datetime import datetime
++from typing import Any, Final
++
++__all__ = [
++    "UNSET",
++    "Safe_format_timestamp",
++    "UnsetType",
++    "all_defined",
++    "safe_add",
++    "safe_divide",
++    "safe_getattr",
++    "safe_multiply",
++    "safe_subtract",
++]
++
++
++class UnsetType:
++    __slots__ = ()
++
++    def __repr__(self) -> str:
++        return "UNSET"
++
++
++UNSET: Final = UnsetType()
++
++
++def safe_getattr(obj: Any | None, attr: str, default: Any = None) -> Any:
++    """
++    Safely get an attribute from an object or return a default value.
++
++    :param obj: The object to get the attribute from.
++    :param attr: The name of the attribute to get.
++    :param default: The default value to return if the attribute is not found.
++    :return: The value of the attribute or the default value.
++    """
++    if obj is None:
++        return default
++
++    return getattr(obj, attr, default)
++
++
++def all_defined(*values: Any | None) -> bool:
++    """
++    Check if all values are defined (not None).
++
++    :param values: The values to check.
++    :return: True if all values are defined, False otherwise.
++    """
++    return all(value is not None for value in values)
++
++
++def safe_divide(
++    numerator: int | float | None,
++    denominator: int | float | None,
++    num_default: float = 0.0,
++    den_default: float = 1.0,
++) -> float:
++    numerator = numerator if numerator is not None else num_default
++    denominator = denominator if denominator is not None else den_default
++
++    return numerator / (denominator or 1e-10)
++
++
++def safe_multiply(*values: int | float | None, default: float = 1.0) -> float:
++    result = default
++    for val in values:
++        result *= val if val is not None else 1.0
++    return result
++
++
++def safe_add(*values: int | float | None, default: float = 0.0) -> float:
++    result = default
++    for val in values:
++        result += val if val is not None else 0.0
++    return result
++
++
++def safe_subtract(*values: int | float | None, default: float = 0.0) -> float:
++    result = default
++    for val in values:
++        if val is not None:
++            result -= val
++
++    return result
++
++
++def safe_format_timestamp(
++    timestamp: float | None, format_: str = "%H:%M:%S", default: str = "N/A"
++) -> str:
++    if timestamp is not None and timestamp >= 0 and timestamp <= 2**31:
++        try:
++            return datetime.fromtimestamp(timestamp).strftime(format_)
++        except (ValueError, OverflowError, OSError):
++            return default
++
++    return default
+diff --git a/tests/e2e/test_max_error_benchmark.py b/tests/e2e/test_max_error_benchmark.py
+index 6079b21..73a1524 100644
+--- a/tests/e2e/test_max_error_benchmark.py
++++ b/tests/e2e/test_max_error_benchmark.py
+@@ -20,7 +20,13 @@ def server():
+     Pytest fixture to start and stop the server for the entire module
+     using the TestServer class.
+     """
+-    server = VllmSimServer(port=8000, model="databricks/dolly-v2-12b", mode="echo")
++    server = VllmSimServer(
++        port=8000,
++        model="databricks/dolly-v2-12b",
++        mode="random",
++        time_to_first_token=1,  # 1ms TTFT
++        inter_token_latency=1,  # 1ms ITL
++    )
+     try:
+         server.start()
+         yield server  # Yield the URL for tests to use
+diff --git a/tests/e2e/test_over_saturated_benchmark.py b/tests/e2e/test_over_saturated_benchmark.py
+new file mode 100644
+index 0000000..22c3df0
+--- /dev/null
++++ b/tests/e2e/test_over_saturated_benchmark.py
+@@ -0,0 +1,74 @@
++from pathlib import Path
++
++import pytest
++
++from tests.e2e.utils import (
++    GuidellmClient,
++    assert_constraint_triggered,
++    assert_no_python_exceptions,
++    cleanup_report_file,
++    load_benchmark_report,
++)
++from tests.e2e.vllm_sim_server import VllmSimServer
++
++
++@pytest.fixture(scope="module")
++def server():
++    """
++    Pytest fixture to start and stop the server for the entire module
++    using the TestServer class.
++    """
++    server = VllmSimServer(
++        port=8000,
++        model="databricks/dolly-v2-12b",
++        mode="random",
++        time_to_first_token=10000,
++        inter_token_latency=100,
++        max_num_seqs=1,
++    )
++    try:
++        server.start()
++        yield server  # Yield the URL for tests to use
++    finally:
++        server.stop()  # Teardown: Stop the server after tests are done
++
++
++@pytest.mark.timeout(60)
++def test_over_saturated_benchmark(server: VllmSimServer):
++    """
++    Another example test interacting with the server.
++    """
++    report_path = Path("tests/e2e/over_saturated_benchmarks.json")
++    rate = 100
++
++    # Create and configure the guidellm client
++    client = GuidellmClient(target=server.get_url(), output_path=report_path)
++
++    cleanup_report_file(report_path)
++    # Start the benchmark
++    client.start_benchmark(
++        rate=rate,
++        max_seconds=20,
++        stop_over_saturated=True,
++        extra_env={
++            "GUIDELLM__CONSTRAINT_OVER_SATURATION_MIN_SECONDS": "0",
++            "GOMAXPROCS": "1",
++        },
++    )
++
++    # Wait for the benchmark to complete
++    client.wait_for_completion(timeout=55)
++
++    # Assert no Python exceptions occurred
++    assert_no_python_exceptions(client.stderr)
++
++    # Load and validate the report
++    report = load_benchmark_report(report_path)
++    benchmark = report["benchmarks"][0]
++
++    # Check that the max duration constraint was triggered
++    assert_constraint_triggered(
++        benchmark, "stop_over_saturated", {"is_over_saturated": True}
++    )
++
++    cleanup_report_file(report_path)
+diff --git a/tests/e2e/test_successful_benchmark.py b/tests/e2e/test_successful_benchmark.py
+index 8f0181a..92a2c35 100644
+--- a/tests/e2e/test_successful_benchmark.py
++++ b/tests/e2e/test_successful_benchmark.py
+@@ -24,7 +24,7 @@ def server():
+     server = VllmSimServer(
+         port=8000,
+         model="databricks/dolly-v2-12b",
+-        mode="echo",
++        mode="random",
+         time_to_first_token=1,  # 1ms TTFT
+         inter_token_latency=1,  # 1ms ITL
+     )
+diff --git a/tests/e2e/utils.py b/tests/e2e/utils.py
+index 9357949..841ef84 100644
+--- a/tests/e2e/utils.py
++++ b/tests/e2e/utils.py
+@@ -45,9 +45,11 @@ class GuidellmClient:
+         max_seconds: Optional[int] = None,
+         max_requests: Optional[int] = None,
+         max_error_rate: Optional[float] = None,
++        stop_over_saturated: Optional[bool] = False,
+         data: str = "prompt_tokens=256,output_tokens=128",
+         processor: str = "gpt2",
+         additional_args: str = "",
++        extra_env: dict[str, str] | None = None,
+     ) -> None:
+         """
+         Start a guidellm benchmark command.
+@@ -57,6 +59,7 @@ class GuidellmClient:
+         :param max_seconds: Maximum duration in seconds
+         :param max_requests: Maximum number of requests
+         :param max_error_rate: Maximum error rate before stopping
++        :param stop_over_saturated: Whether to stop the benchmark if the model is over-saturated
+         :param data: Data configuration string
+         :param processor: Processor/tokenizer to use
+         :param additional_args: Additional command line arguments
+@@ -65,7 +68,9 @@ class GuidellmClient:
+ 
+         # Build command components
+         cmd_parts = [
+-            f"GUIDELLM__MAX_CONCURRENCY=10 GUIDELLM__MAX_WORKER_PROCESSES=10 {guidellm_exe} benchmark",
++            *([f"{k}={v}" for k, v in extra_env.items()] if extra_env else []),
++            "HF_HOME=/tmp/huggingface_cache",
++            f"{guidellm_exe} benchmark",
+             f'--target "{self.target}"',
+             f"--rate-type {rate_type}",
+             f"--rate {rate}",
+@@ -80,6 +85,9 @@ class GuidellmClient:
+         if max_error_rate is not None:
+             cmd_parts.append(f"--max-error-rate {max_error_rate}")
+ 
++        if stop_over_saturated:
++            cmd_parts.append("--stop-over-saturated")
++
+         cmd_parts.extend(
+             [
+                 f'--data "{data}"',
+
+
+=== Commit 2: fad3418 - reduced metadata ===
+commit fad3418733038002dd18c7c0064a1760c9dab454
+Author: Alon Kellner <akellner@redhat.com>
+Date:   Mon Aug 25 14:04:23 2025 +0000
+
+    reduced metadata
+
+diff --git a/src/guidellm/scheduler/advanced_constraints/over_saturation.py b/src/guidellm/scheduler/advanced_constraints/over_saturation.py
+index 22229b4..9695414 100644
+--- a/src/guidellm/scheduler/advanced_constraints/over_saturation.py
++++ b/src/guidellm/scheduler/advanced_constraints/over_saturation.py
+@@ -386,8 +386,6 @@ class OverSaturationConstraint(Constraint):  # type: ignore[misc]
+                 "concurrent_slope_moe": concurrent_slope_moe,
+                 "concurrent_n": concurrent_n,
+                 "is_over_saturated": is_over_saturated,
+-                "started_requests": self.over_saturation_detector.started_requests,
+-                "finished_requests": self.over_saturation_detector.finished_requests,
+             },
+         )
+ 
+
+
+=== Commit 3: 08cc7fb - fix: integration ===
+commit 08cc7fbca22645f14249abac2dd4ad24f2cfa3f0
+Author: Alon Kellner <akellner@redhat.com>
+Date:   Fri Sep 12 19:07:38 2025 +0000
+
+    fix: integration
+
+diff --git a/src/guidellm/scheduler/advanced_constraints/over_saturation.py b/src/guidellm/scheduler/advanced_constraints/over_saturation.py
+index 9695414..4035fd1 100644
+--- a/src/guidellm/scheduler/advanced_constraints/over_saturation.py
++++ b/src/guidellm/scheduler/advanced_constraints/over_saturation.py
+@@ -5,7 +5,6 @@ from typing import Any, Literal, Optional, Union
+ 
+ from pydantic import Field
+ 
+-from guidellm.config import settings
+ from guidellm.scheduler.constraints import (
+     Constraint,
+     ConstraintsInitializerFactory,
+@@ -16,6 +15,7 @@ from guidellm.scheduler.objects import (
+     SchedulerState,
+     SchedulerUpdateAction,
+ )
++from guidellm.settings import settings
+ 
+ 
+ class OverSaturationDetectorBase(ABC):
+diff --git a/tests/e2e/test_placeholder.py b/tests/e2e/test_placeholder.py
+deleted file mode 100644
+index 0d35031..0000000
+--- a/tests/e2e/test_placeholder.py
++++ /dev/null
+@@ -1,6 +0,0 @@
+-import pytest
+-
+-
+-@pytest.mark.smoke
+-def test_placeholder():
+-    assert True
+diff --git a/tox.ini b/tox.ini
+index 8405a11..5376d31 100644
+--- a/tox.ini
++++ b/tox.ini
+@@ -35,6 +35,14 @@ commands =
+     python -m pytest tests/e2e {posargs}
+ 
+ 
++[testenv:test-paths]
++description = Run any tests
++deps =
++    .[dev]
++commands =
++    python -m pytest {posargs}
++
++
+ [testenv:quality]
+ description = Run all quality checks
+ deps =
+
+
+=== Commit 4: bab8d1d - feat: faster synthetic generation ===
+commit bab8d1dc0356f64f6179c5d37f0ae44352c623d0
+Author: Alon Kellner <akellner@redhat.com>
+Date:   Mon Sep 15 13:45:53 2025 +0000
+
+    feat: faster synthetic generation
+
+diff --git a/src/guidellm/dataset/synthetic.py b/src/guidellm/dataset/synthetic.py
+index 8c30f0f..345a842 100644
+--- a/src/guidellm/dataset/synthetic.py
++++ b/src/guidellm/dataset/synthetic.py
+@@ -22,6 +22,7 @@ __all__ = [
+     "SyntheticDatasetConfig",
+     "SyntheticDatasetCreator",
+     "SyntheticTextItemsGenerator",
++    "SyntheticTextItemsGenerator2",
+ ]
+ 
+ 
+@@ -219,6 +220,127 @@ class SyntheticTextItemsGenerator(
+         return start_tokens + self.processor.encode(final_text)
+ 
+ 
++class SyntheticTextItemsGenerator2(
++    Iterable[
++        dict[
++            Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
++            Union[str, int],
++        ]
++    ]
++):
++    def __init__(
++        self,
++        config: SyntheticDatasetConfig,
++        processor: PreTrainedTokenizerBase,
++        random_seed: int,
++    ):
++        self.config = config
++        self.processor = processor
++        self.random_seed = random_seed
++        self.text_creator = EndlessTextCreator(
++            data=config.source,
++        )
++        self.initial_prompt_multiplier = 1
++        self.total_generations = 0
++        self.total_retries = 0
++
++    def __iter__(
++        self,
++    ) -> Iterator[
++        dict[
++            Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
++            Union[str, int],
++        ]
++    ]:
++        self.total_retries = 0
++        self.total_generations = 0
++
++        prompt_tokens_sampler = IntegerRangeSampler(
++            average=self.config.prompt_tokens,
++            variance=self.config.prompt_tokens_stdev,
++            min_value=self.config.prompt_tokens_min,
++            max_value=self.config.prompt_tokens_max,
++            random_seed=self.random_seed,
++        )
++        output_tokens_sampler = IntegerRangeSampler(
++            average=self.config.output_tokens,
++            variance=self.config.output_tokens_stdev,
++            min_value=self.config.output_tokens_min,
++            max_value=self.config.output_tokens_max,
++            random_seed=self.random_seed + 1,  # ensure diff dist from prompts
++        )
++        # ensure diff distribution from output tokens
++        rand = random.Random(self.random_seed + 2)  # noqa: S311
++        unique_prefix_iter = cycle(self.processor.get_vocab().values())
++
++        prefix_index = rand.randint(0, len(self.text_creator.words))
++        prefix_tokens, retries = self._create_prompt(
++            self.config.prefix_tokens, prefix_index
++        )
++        self.total_retries += retries
++        self.total_generations += 1
++
++        for _, prompt_tokens, output_tokens in zip(
++            range(self.config.samples),
++            prompt_tokens_sampler,
++            output_tokens_sampler,
++        ):
++            start_index = rand.randint(0, len(self.text_creator.words))
++            prompt_token_ids, retries = self._create_prompt(
++                prompt_tokens, start_index, next(unique_prefix_iter)
++            )
++            self.total_retries += retries
++            self.total_generations += 1
++
++            retry_ratio = self.total_retries / self.total_generations
++            if self.total_retries > 20:
++                if retry_ratio > 0.25:
++                    self.total_retries = 0
++                    self.total_generations = 0
++                    self.initial_prompt_multiplier = self.initial_prompt_multiplier + 1
++                elif retry_ratio < 0.025:
++                    self.total_retries = 0
++                    self.total_generations = 0
++                    self.initial_prompt_multiplier = self.initial_prompt_multiplier - 1
++
++            prompt_text = self.processor.decode(prefix_tokens + prompt_token_ids)
++            yield {
++                "prompt": prompt_text,
++                "prompt_tokens_count": self.config.prefix_tokens + prompt_tokens,
++                "output_tokens_count": output_tokens,
++            }
++
++    def _create_prompt(
++        self, prompt_tokens: int, start_index: int, unique_prefix: Optional[int] = None
++    ) -> tuple[list[int], int]:
++        if prompt_tokens <= 0:
++            return [], 0
++        start_tokens = [unique_prefix] if unique_prefix else []
++
++        initial_word_count = prompt_tokens * self.initial_prompt_multiplier
++
++        test_tokens = []
++        retries = -1
++        while len(test_tokens) + len(start_tokens) < prompt_tokens:
++            retries += 1
++            test_prompt = self.text_creator.create_text(start_index, initial_word_count)
++            test_tokens = self.processor.encode(test_prompt)
++            initial_word_count = initial_word_count + prompt_tokens
++
++        prompt_tokens_ids = test_tokens[: prompt_tokens - len(start_tokens)]
++        candidate_text = self.processor.decode(
++            prompt_tokens_ids, skip_special_tokens=True
++        )
++        left_bound, right_bound = self.text_creator.get_word_bounds(
++            start_index, initial_word_count, len(candidate_text)
++        )
++        if left_bound == len(candidate_text):
++            final_text = test_prompt[:left_bound]
++        else:
++            final_text = test_prompt[:right_bound]
++        return start_tokens + self.processor.encode(final_text), retries
++
++
+ class SyntheticDatasetCreator(DatasetCreator):
+     @classmethod
+     def is_supported(
+@@ -252,6 +374,9 @@ class SyntheticDatasetCreator(DatasetCreator):
+         processor: Optional[Union[str, Path, PreTrainedTokenizerBase]],
+         processor_args: Optional[dict[str, Any]],
+         random_seed: int,
++        generator_class: Optional[
++            type[SyntheticTextItemsGenerator]
++        ] = SyntheticTextItemsGenerator,
+     ) -> Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]:
+         processor = check_load_processor(
+             processor,
+@@ -262,7 +387,7 @@ class SyntheticDatasetCreator(DatasetCreator):
+         )
+ 
+         config = SyntheticDatasetConfig.parse_str(data)
+-        generator = SyntheticTextItemsGenerator(config, processor, random_seed)
++        generator = generator_class(config, processor, random_seed)
+         items = list(generator)
+ 
+         return Dataset.from_list(items, **(data_args or {}))
+diff --git a/src/guidellm/utils/text.py b/src/guidellm/utils/text.py
+index 52abf2a..77d9840 100644
+--- a/src/guidellm/utils/text.py
++++ b/src/guidellm/utils/text.py
+@@ -338,3 +338,29 @@ class EndlessTextCreator:
+             text += add_word
+ 
+         return text
++
++    def get_word_bounds(
++        self, start: int, length: int, char_index: int
++    ) -> tuple[int, int]:
++        """
++        Get the word bounds of the text generated by the specified character index.
++        """
++        left_bound = 0
++        right_bound = 0
++        text = ""
++        for counter in range(length):
++            index = (start + counter) % len(self.words)
++            add_word = self.words[index]
++
++            if counter != 0 and not is_punctuation(add_word):
++                text += " "
++
++            text += add_word
++
++            left_bound = right_bound
++            right_bound = len(text)
++
++            if left_bound <= char_index < right_bound:
++                return left_bound, right_bound
++
++        return left_bound, right_bound
+diff --git a/tests/integration/test_synthetic_performance.py b/tests/integration/test_synthetic_performance.py
+new file mode 100644
+index 0000000..95afdca
+--- /dev/null
++++ b/tests/integration/test_synthetic_performance.py
+@@ -0,0 +1,446 @@
++"""
++Integration performance test for SyntheticTextItemsGenerator vs SyntheticTextItemsGenerator2.
++
++This test compares the performance of two different synthetic text generators
++across different prompt sizes and tokenizers.
++"""
++
++import time
++
++import pytest
++from transformers import AutoTokenizer
++
++from guidellm.dataset.synthetic import (
++    SyntheticDatasetConfig,
++    SyntheticTextItemsGenerator,
++    SyntheticTextItemsGenerator2,
++)
++
++
++class TestSyntheticGeneratorPerformance:
++    """Performance comparison tests for synthetic text item generators."""
++
++    # Test configurations for different prompt sizes
++    PROMPT_SIZES = [
++        ("small", 50),
++        ("medium", 200),
++        ("large", 500),
++        ("huge", 4000),
++    ]
++
++    # Common tokenizers for testing
++    TOKENIZERS = [
++        "gpt2",
++        "distilbert-base-uncased",
++        "microsoft/DialoGPT-small",
++    ]
++
++    # Number of samples for performance testing
++    SAMPLES = 100
++
++    @pytest.fixture(params=TOKENIZERS)
++    def tokenizer(self, request):
++        """Fixture to provide different tokenizers for testing."""
++        return AutoTokenizer.from_pretrained(request.param)
++
++    @pytest.fixture(params=PROMPT_SIZES)
++    def prompt_config(self, request):
++        """Fixture to provide different prompt size configurations."""
++        size_name, prompt_tokens = request.param
++        return size_name, SyntheticDatasetConfig(
++            prompt_tokens=prompt_tokens,
++            output_tokens=100,  # Keep output tokens constant
++            samples=self.SAMPLES,
++            source="data:prideandprejudice.txt.gz",
++        )
++
++    def _measure_generation_time(
++        self,
++        generator_class,
++        config: SyntheticDatasetConfig,
++        tokenizer,
++        random_seed: int = 42,
++    ) -> tuple[float, list[dict]]:
++        """
++        Measure the time taken to generate a dataset using the specified generator.
++
++        Returns:
++            Tuple of (elapsed_time_seconds, generated_items)
++        """
++        generator = generator_class(config, tokenizer, random_seed)
++
++        start_time = time.perf_counter()
++        items = list(generator)
++        end_time = time.perf_counter()
++
++        elapsed_time = end_time - start_time
++        return elapsed_time, items
++
++    def _validate_generated_items(self, items: list[dict], expected_count: int):
++        """Validate that generated items have the correct structure and count."""
++        expected_msg = f"Expected {expected_count} items, got {len(items)}"
++        assert len(items) == expected_count, expected_msg
++
++        for item in items:
++            assert "prompt" in item
++            assert "prompt_tokens_count" in item
++            assert "output_tokens_count" in item
++            assert isinstance(item["prompt"], str)
++            assert isinstance(item["prompt_tokens_count"], int)
++            assert isinstance(item["output_tokens_count"], int)
++            assert len(item["prompt"]) > 0
++
++    @pytest.mark.regression
++    def test_generator_performance_comparison(self, tokenizer, prompt_config):
++        """
++        Compare performance between SyntheticTextItemsGenerator and SyntheticTextItemsGenerator2.
++
++        This test ensures both generators:
++        1. Produce the same number of items
++        2. Generate valid data structures
++        3. Have measurable performance characteristics
++        """
++        size_name, config = prompt_config
++
++        # Test SyntheticTextItemsGenerator (original)
++        time1, items1 = self._measure_generation_time(
++            SyntheticTextItemsGenerator, config, tokenizer
++        )
++
++        # Test SyntheticTextItemsGenerator2 (new implementation)
++        time2, items2 = self._measure_generation_time(
++            SyntheticTextItemsGenerator2, config, tokenizer
++        )
++
++        # Validate both generators produce correct output
++        self._validate_generated_items(items1, config.samples)
++        self._validate_generated_items(items2, config.samples)
++
++        # Calculate performance metrics
++        performance_ratio = time1 / time2 if time2 > 0 else float("inf")
++
++        # Report performance differences
++        if performance_ratio > 1:
++            faster_generator = "SyntheticTextItemsGenerator2"
++            speedup = performance_ratio
++            slower_time, faster_time = time1, time2
++        else:
++            faster_generator = "SyntheticTextItemsGenerator"
++            speedup = 1 / performance_ratio
++            slower_time, faster_time = time2, time1
++
++        print(f"\n=== Performance Results for {size_name} prompts ===")
++        print(f"SyntheticTextItemsGenerator: {time1:.4f}s")
++        print(f"SyntheticTextItemsGenerator2: {time2:.4f}s")
++        print(f"{faster_generator} is {speedup:.2f}x faster")
++        print(f"Time difference: {abs(slower_time - faster_time):.4f}s")
++
++        # Assertions
++        assert time1 > 0, "SyntheticTextItemsGenerator should take measurable time"
++        assert time2 > 0, "SyntheticTextItemsGenerator2 should take measurable time"
++        same_count_msg = "Both generators should produce same number of items"
++        assert len(items1) == len(items2), same_count_msg
++
++        # Performance difference should be significant (at least 5% difference)
++        perf_msg = (
++            f"Expected significant performance difference, "
++            f"got ratio: {performance_ratio:.3f}"
++        )
++        assert abs(performance_ratio - 1.0) > 0.05, perf_msg
++
++    @pytest.mark.sanity
++    def test_generator_consistency(self):
++        """
++        Test that both generators produce exactly consistent results with the same configuration.
++
++        This test ensures that given the same random seed and configuration,
++        both generators produce items with exactly the requested token counts.
++        """
++        config = SyntheticDatasetConfig(
++            prompt_tokens=100,
++            output_tokens=50,
++            samples=10,
++            source="data:prideandprejudice.txt.gz",
++        )
++
++        tokenizer = AutoTokenizer.from_pretrained("gpt2")
++        random_seed = 123
++
++        # Generate items with both generators using the same seed
++        gen1 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
++        items1 = list(gen1)
++
++        gen2 = SyntheticTextItemsGenerator2(config, tokenizer, random_seed)
++        items2 = list(gen2)
++
++        # Both should generate the same number of items
++        assert len(items1) == len(items2) == config.samples
++
++        # Token counts should be within reasonable range for both generators
++        for items, generator_name in [(items1, "Gen1"), (items2, "Gen2")]:
++            prompt_token_counts = [item["prompt_tokens_count"] for item in items]
++            output_token_counts = [item["output_tokens_count"] for item in items]
++
++            # Validate prompt token counts are exactly as requested
++            expected_prompt_tokens = config.prompt_tokens
++            for i, count in enumerate(prompt_token_counts):
++                assert count == expected_prompt_tokens, (
++                    f"{generator_name}: Sample {i} has {count} prompt tokens, "
++                    f"expected exactly {expected_prompt_tokens}"
++                )
++
++            # Validate output token counts match config
++            for count in output_token_counts:
++                count_msg = (
++                    f"{generator_name}: Output token count {count} "
++                    f"doesn't match config {config.output_tokens}"
++                )
++                assert count == config.output_tokens, count_msg
++
++    @pytest.mark.sanity
++    def test_generators_produce_exact_identical_results(self):
++        """
++        Test that both generators produce exactly identical results with precise token counts.
++
++        This test ensures that SyntheticTextItemsGenerator and SyntheticTextItemsGenerator2
++        produce identical outputs with exact token counts when given the same parameters.
++        """
++        config = SyntheticDatasetConfig(
++            prompt_tokens=100,
++            output_tokens=50,
++            samples=1,
++            source="data:prideandprejudice.txt.gz",
++        )
++
++        tokenizer = AutoTokenizer.from_pretrained("gpt2")
++        random_seed = 42
++
++        # Create instances of both generators
++        gen1 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
++        gen2 = SyntheticTextItemsGenerator2(config, tokenizer, random_seed)
++
++        # Test multiple scenarios with different parameters
++        test_scenarios = [
++            s
++            for i in range(0, 100, 10)
++            for s in [
++                {"prompt_tokens": 50, "start_index": 100 + i, "unique_prefix": None},
++                {"prompt_tokens": 100, "start_index": 200 + i, "unique_prefix": 42},
++                {"prompt_tokens": 25, "start_index": 500 + i, "unique_prefix": None},
++                {"prompt_tokens": 75, "start_index": 1000 + i, "unique_prefix": 123},
++            ]
++        ]
++
++        for i, scenario in enumerate(test_scenarios):
++            print(f"\n--- Testing scenario {i + 1}: {scenario} ---")
++
++            # Call _create_prompt directly on both generators
++            prompt1 = gen1._create_prompt(**scenario)
++            prompt2, _ = gen2._create_prompt(**scenario)
++
++            # Convert to text for comparison
++            text1 = tokenizer.decode(prompt1, skip_special_tokens=True)
++            text2 = tokenizer.decode(prompt2, skip_special_tokens=True)
++
++            print(f"Gen1 tokens: {len(prompt1)}, Gen2 tokens: {len(prompt2)}")
++            print(f"Gen1 text preview: {text1[:100]}...")
++            print(f"Gen2 text preview: {text2[:100]}...")
++
++            # Assert exact equivalence between implementations
++            tokens_diff = len(prompt1) - len(prompt2)
++            text_same = text1 == text2
++
++            print(f"Token count difference: {tokens_diff}")
++            print(f"Text identical: {text_same}")
++
++            # Assert identical text output
++            assert text1 == text2, (
++                f"Scenario {i + 1}: Generators produced different text.\n"
++                f"Gen1: '{text1}'\n"
++                f"Gen2: '{text2}'"
++            )
++
++            # Assert identical token sequences
++            assert prompt1 == prompt2, (
++                f"Scenario {i + 1}: Generators produced different token sequences.\n"
++                f"Gen1 ({len(prompt1)} tokens): {prompt1}\n"
++                f"Gen2 ({len(prompt2)} tokens): {prompt2}"
++            )
++
++            # Assertions for valid output characteristics
++            assert len(prompt1) > 0, f"Scenario {i + 1}: Gen1 produced empty prompt"
++            assert len(prompt2) > 0, f"Scenario {i + 1}: Gen2 produced empty prompt"
++            assert isinstance(prompt1, list), (
++                f"Scenario {i + 1}: Gen1 didn't return list"
++            )
++            assert isinstance(prompt2, list), (
++                f"Scenario {i + 1}: Gen2 didn't return list"
++            )
++
++            # Both must produce EXACT token counts - no approximations allowed
++            expected_tokens = scenario["prompt_tokens"]
++            # if scenario["unique_prefix"] is not None:
++            #     expected_tokens += 1  # Account for unique prefix token
++
++            assert len(prompt1) >= expected_tokens, (
++                f"Scenario {i + 1}: Gen1 produced {len(prompt1)} tokens, "
++                f"expected equal or greater than {expected_tokens}"
++            )
++
++            assert len(prompt2) >= expected_tokens, (
++                f"Scenario {i + 1}: Gen2 produced {len(prompt2)} tokens, "
++                f"expected equal or greater than {expected_tokens}"
++            )
++
++            print("✓ Both generators produced exact identical results!")
++
++    @pytest.mark.regression
++    def test_end_to_end_identical_dataset_generation(self):
++        """
++        Test that both generators produce exactly identical full datasets.
++
++        This test ensures that when generating complete datasets, both generators
++        produce identical results for every sample.
++        """
++        config = SyntheticDatasetConfig(
++            prompt_tokens=75,
++            output_tokens=25,
++            samples=5,  # Small number for detailed comparison
++            source="data:prideandprejudice.txt.gz",
++        )
++
++        tokenizer = AutoTokenizer.from_pretrained("gpt2")
++        random_seed = 12345
++
++        # Generate full datasets with both generators
++        gen1 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
++        items1 = list(gen1)
++
++        gen2 = SyntheticTextItemsGenerator2(config, tokenizer, random_seed)
++        items2 = list(gen2)
++
++        # Assert same number of items
++        assert len(items1) == len(items2) == config.samples
++
++        # Assert each item is exactly identical
++        for i, (item1, item2) in enumerate(zip(items1, items2)):
++            # Check structure
++            assert set(item1.keys()) == set(item2.keys()), f"Sample {i}: Different keys"
++
++            # Check exact prompt text match
++            assert item1["prompt"] == item2["prompt"], (
++                f"Sample {i}: Different prompts\n"
++                f"Gen1: '{item1['prompt']}'\n"
++                f"Gen2: '{item2['prompt']}'"
++            )
++
++            # Check exact token counts match
++            assert item1["prompt_tokens_count"] == item2["prompt_tokens_count"], (
++                f"Sample {i}: Different prompt token counts "
++                f"(Gen1: {item1['prompt_tokens_count']}, Gen2: {item2['prompt_tokens_count']})"
++            )
++
++            assert item1["output_tokens_count"] == item2["output_tokens_count"], (
++                f"Sample {i}: Different output token counts "
++                f"(Gen1: {item1['output_tokens_count']}, Gen2: {item2['output_tokens_count']})"
++            )
++
++            # Check exact token counts match configuration
++            assert item1["prompt_tokens_count"] == config.prompt_tokens, (
++                f"Sample {i}: Gen1 prompt tokens {item1['prompt_tokens_count']} != "
++                f"expected {config.prompt_tokens}"
++            )
++
++            assert item2["prompt_tokens_count"] == config.prompt_tokens, (
++                f"Sample {i}: Gen2 prompt tokens {item2['prompt_tokens_count']} != "
++                f"expected {config.prompt_tokens}"
++            )
++
++            print(f"✓ Sample {i}: Identical results confirmed")
++
++        print(
++            f"✓ All {config.samples} samples are exactly identical between generators!"
++        )
++
++    @pytest.mark.smoke
++    def test_performance_benchmark_summary(self):
++        """
++        Generate a comprehensive performance summary across all configurations.
++
++        This test runs all combinations and provides a summary of performance differences.
++        """
++        results = []
++
++        for tokenizer_name in self.TOKENIZERS:
++            tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
++
++            for size_name, prompt_tokens in self.PROMPT_SIZES:
++                config = SyntheticDatasetConfig(
++                    prompt_tokens=prompt_tokens,
++                    output_tokens=100,
++                    samples=20,  # Smaller sample size for benchmark
++                    source="data:prideandprejudice.txt.gz",
++                )
++
++                # Measure both generators
++                time1, _ = self._measure_generation_time(
++                    SyntheticTextItemsGenerator, config, tokenizer
++                )
++                time2, _ = self._measure_generation_time(
++                    SyntheticTextItemsGenerator2, config, tokenizer
++                )
++
++                results.append(
++                    {
++                        "tokenizer": tokenizer_name,
++                        "prompt_size": size_name,
++                        "prompt_tokens": prompt_tokens,
++                        "gen1_time": time1,
++                        "gen2_time": time2,
++                        "ratio": time1 / time2 if time2 > 0 else float("inf"),
++                    }
++                )
++
++        # Calculate overall statistics and report results
++        ratios = [r["ratio"] for r in results if r["ratio"] != float("inf")]
++        if ratios:
++            avg_ratio = sum(ratios) / len(ratios)
++
++            print("\n" + "=" * 80)
++            print("PERFORMANCE BENCHMARK SUMMARY")
++            print("=" * 80)
++            header = (
++                f"{'Tokenizer':<25} {'Size':<8} {'Tokens':<8} "
++                f"{'Gen1':<8} {'Gen2':<8} {'Ratio':<8} {'Faster'}"
++            )
++            print(header)
++            print("-" * 90)
++
++            for result in results:
++                ratio = result["ratio"]
++                faster = "Gen2" if ratio > 1 else "Gen1"
++                speedup = ratio if ratio > 1 else 1 / ratio
++                faster_label = f"{faster} ({speedup:.1f}x)"
++
++                row = (
++                    f"{result['tokenizer']:<25} {result['prompt_size']:<8} "
++                    f"{result['prompt_tokens']:<8} {result['gen1_time']:<8.3f} "
++                    f"{result['gen2_time']:<8.3f} {result['ratio']:<8.2f} {faster_label}"
++                )
++                print(row)
++
++            print("=" * 90)
++            print(f"Average performance ratio (Gen1/Gen2): {avg_ratio:.2f}x")
++
++            if avg_ratio > 1:
++                msg = f"Overall: SyntheticTextItemsGenerator2 is {avg_ratio:.2f}x faster on average"
++                print(msg)
++            else:
++                msg = f"Overall: SyntheticTextItemsGenerator is {1 / avg_ratio:.2f}x faster on average"
++                print(msg)
++
++            print("=" * 80 + "\n")
++
++        # Ensure we have valid results
++        assert len(results) == len(self.TOKENIZERS) * len(self.PROMPT_SIZES)
++        assert all(r["gen1_time"] > 0 and r["gen2_time"] > 0 for r in results)
+diff --git a/tox.ini b/tox.ini
+index 5376d31..2f4de13 100644
+--- a/tox.ini
++++ b/tox.ini
+@@ -40,7 +40,7 @@ description = Run any tests
+ deps =
+     .[dev]
+ commands =
+    python -m pytest {posargs}
+ 
+ 
+ [testenv:quality]
+
+
+=== Commit 5: 97dbd9e - fix: use fast datagen by default ===
+commit 97dbd9e7c6c6f5aededbdc9b249f3327dd5904c2
+Author: Alon Kellner <akellner@redhat.com>
+Date:   Tue Sep 16 07:44:22 2025 +0000
+
+    fix: use fast datagen by default
+
+diff --git a/src/guidellm/dataset/synthetic.py b/src/guidellm/dataset/synthetic.py
+index 345a842..629f714 100644
+--- a/src/guidellm/dataset/synthetic.py
++++ b/src/guidellm/dataset/synthetic.py
+@@ -22,7 +22,7 @@ __all__ = [
+     "SyntheticDatasetConfig",
+     "SyntheticDatasetCreator",
+     "SyntheticTextItemsGenerator",
+-    "SyntheticTextItemsGenerator2",
++    "SyntheticTextItemsGeneratorSlow",
+ ]
+ 
+ 
+@@ -125,7 +125,7 @@ class SyntheticDatasetConfig(BaseModel):
+         return SyntheticDatasetConfig(**config_dict)
+ 
+ 
+-class SyntheticTextItemsGenerator(
++class SyntheticTextItemsGeneratorSlow(
+     Iterable[
+         dict[
+             Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
+@@ -220,7 +220,7 @@ class SyntheticTextItemsGenerator(
+         return start_tokens + self.processor.encode(final_text)
+ 
+ 
+-class SyntheticTextItemsGenerator2(
++class SyntheticTextItemsGenerator(
+     Iterable[
+         dict[
+             Literal["prompt", "prompt_tokens_count", "output_tokens_count"],
+diff --git a/tests/integration/test_synthetic_performance.py b/tests/integration/test_synthetic_performance.py
+index 95afdca..14e7f25 100644
+--- a/tests/integration/test_synthetic_performance.py
++++ b/tests/integration/test_synthetic_performance.py
+@@ -1,5 +1,5 @@
+ """
+-Integration performance test for SyntheticTextItemsGenerator vs SyntheticTextItemsGenerator2.
++Integration performance test for SyntheticTextItemsGeneratorSlow vs SyntheticTextItemsGenerator.
+ 
+ This test compares the performance of two different synthetic text generators
+ across different prompt sizes and tokenizers.
+@@ -13,7 +13,7 @@ from transformers import AutoTokenizer
+ from guidellm.dataset.synthetic import (
+     SyntheticDatasetConfig,
+     SyntheticTextItemsGenerator,
+-    SyntheticTextItemsGenerator2,
++    SyntheticTextItemsGeneratorSlow,
+ )
+ 
+ 
+@@ -93,7 +93,7 @@ class TestSyntheticGeneratorPerformance:
+     @pytest.mark.regression
+     def test_generator_performance_comparison(self, tokenizer, prompt_config):
+         """
+-        Compare performance between SyntheticTextItemsGenerator and SyntheticTextItemsGenerator2.
++        Compare performance between SyntheticTextItemsGeneratorSlow and SyntheticTextItemsGenerator.
+ 
+         This test ensures both generators:
+         1. Produce the same number of items
+@@ -102,14 +102,14 @@ class TestSyntheticGeneratorPerformance:
+         """
+         size_name, config = prompt_config
+ 
+-        # Test SyntheticTextItemsGenerator (original)
++        # Test SyntheticTextItemsGeneratorSlow (original)
+         time1, items1 = self._measure_generation_time(
+-            SyntheticTextItemsGenerator, config, tokenizer
++            SyntheticTextItemsGeneratorSlow, config, tokenizer
+         )
+ 
+-        # Test SyntheticTextItemsGenerator2 (new implementation)
++        # Test SyntheticTextItemsGenerator (new implementation)
+         time2, items2 = self._measure_generation_time(
+-            SyntheticTextItemsGenerator2, config, tokenizer
++            SyntheticTextItemsGenerator, config, tokenizer
+         )
+ 
+         # Validate both generators produce correct output
+@@ -121,23 +121,23 @@ class TestSyntheticGeneratorPerformance:
+ 
+         # Report performance differences
+         if performance_ratio > 1:
+-            faster_generator = "SyntheticTextItemsGenerator2"
++            faster_generator = "SyntheticTextItemsGenerator"
+             speedup = performance_ratio
+             slower_time, faster_time = time1, time2
+         else:
+-            faster_generator = "SyntheticTextItemsGenerator"
++            faster_generator = "SyntheticTextItemsGeneratorSlow"
+             speedup = 1 / performance_ratio
+             slower_time, faster_time = time2, time1
+ 
+         print(f"\n=== Performance Results for {size_name} prompts ===")
+-        print(f"SyntheticTextItemsGenerator: {time1:.4f}s")
+-        print(f"SyntheticTextItemsGenerator2: {time2:.4f}s")
++        print(f"SyntheticTextItemsGeneratorSlow: {time1:.4f}s")
++        print(f"SyntheticTextItemsGenerator: {time2:.4f}s")
+         print(f"{faster_generator} is {speedup:.2f}x faster")
+         print(f"Time difference: {abs(slower_time - faster_time):.4f}s")
+ 
+         # Assertions
+-        assert time1 > 0, "SyntheticTextItemsGenerator should take measurable time"
+-        assert time2 > 0, "SyntheticTextItemsGenerator2 should take measurable time"
++        assert time1 > 0, "SyntheticTextItemsGeneratorSlow should take measurable time"
++        assert time2 > 0, "SyntheticTextItemsGenerator should take measurable time"
+         same_count_msg = "Both generators should produce same number of items"
+         assert len(items1) == len(items2), same_count_msg
+ 
+@@ -167,10 +167,10 @@ class TestSyntheticGeneratorPerformance:
+         random_seed = 123
+ 
+         # Generate items with both generators using the same seed
+-        gen1 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
++        gen1 = SyntheticTextItemsGeneratorSlow(config, tokenizer, random_seed)
+         items1 = list(gen1)
+ 
+-        gen2 = SyntheticTextItemsGenerator2(config, tokenizer, random_seed)
++        gen2 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
+         items2 = list(gen2)
+ 
+         # Both should generate the same number of items
+@@ -202,7 +202,7 @@ class TestSyntheticGeneratorPerformance:
+         """
+         Test that both generators produce exactly identical results with precise token counts.
+ 
+-        This test ensures that SyntheticTextItemsGenerator and SyntheticTextItemsGenerator2
++        This test ensures that SyntheticTextItemsGeneratorSlow and SyntheticTextItemsGenerator
+         produce identical outputs with exact token counts when given the same parameters.
+         """
+         config = SyntheticDatasetConfig(
+@@ -216,8 +216,8 @@ class TestSyntheticGeneratorPerformance:
+         random_seed = 42
+ 
+         # Create instances of both generators
+-        gen1 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
+-        gen2 = SyntheticTextItemsGenerator2(config, tokenizer, random_seed)
++        gen1 = SyntheticTextItemsGeneratorSlow(config, tokenizer, random_seed)
++        gen2 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
+ 
+         # Test multiple scenarios with different parameters
+         test_scenarios = [
+@@ -313,10 +313,10 @@ class TestSyntheticGeneratorPerformance:
+         random_seed = 12345
+ 
+         # Generate full datasets with both generators
+-        gen1 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
++        gen1 = SyntheticTextItemsGeneratorSlow(config, tokenizer, random_seed)
+         items1 = list(gen1)
+ 
+-        gen2 = SyntheticTextItemsGenerator2(config, tokenizer, random_seed)
++        gen2 = SyntheticTextItemsGenerator(config, tokenizer, random_seed)
+         items2 = list(gen2)
+ 
+         # Assert same number of items
+@@ -384,10 +384,10 @@ class TestSyntheticGeneratorPerformance:
+ 
+                 # Measure both generators
+                 time1, _ = self._measure_generation_time(
+-                    SyntheticTextItemsGenerator, config, tokenizer
++                    SyntheticTextItemsGeneratorSlow, config, tokenizer
+                 )
+                 time2, _ = self._measure_generation_time(
+-                    SyntheticTextItemsGenerator2, config, tokenizer
++                    SyntheticTextItemsGenerator, config, tokenizer
+                 )
+ 
+                 results.append(
+@@ -433,10 +433,10 @@ class TestSyntheticGeneratorPerformance:
+             print(f"Average performance ratio (Gen1/Gen2): {avg_ratio:.2f}x")
+ 
+             if avg_ratio > 1:
+-                msg = f"Overall: SyntheticTextItemsGenerator2 is {avg_ratio:.2f}x faster on average"
++                msg = f"Overall: SyntheticTextItemsGenerator is {avg_ratio:.2f}x faster on average"
+                 print(msg)
+             else:
+-                msg = f"Overall: SyntheticTextItemsGenerator is {1 / avg_ratio:.2f}x faster on average"
++                msg = f"Overall: SyntheticTextItemsGeneratorSlow is {1 / avg_ratio:.2f}x faster on average"
+                 print(msg)
+ 
+             print("=" * 80 + "\n")

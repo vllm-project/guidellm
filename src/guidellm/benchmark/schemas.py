@@ -1142,7 +1142,8 @@ class GenerativeMetrics(StandardBaseDict):
         )
         request_duration = (
             (request_end_time - request_start_time)
-            if request_end_time and request_start_time else None
+            if request_end_time and request_start_time
+            else None
         )
 
         # Always track concurrency
@@ -1818,8 +1819,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         else:
             return factory({})  # type: ignore[call-arg] # Confirmed correct at runtime by code above
 
-
-
     model_config = ConfigDict(
         extra="ignore",
         use_enum_values=True,
@@ -1929,6 +1928,10 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     )
     max_global_error_rate: float | None = Field(
         default=None, description="Maximum global error rate (0-1) before stopping"
+    )
+    stop_over_saturated: bool | None = Field(
+        default=None,
+        description="Whether to stop the benchmark if the model is over-saturated",
     )
 
     @model_serializer

@@ -267,6 +267,7 @@ async def resolve_profile(
     max_errors: int | None,
     max_error_rate: float | None,
     max_global_error_rate: float | None,
+    stop_over_saturated: bool | None = None,
     console: Console | None = None,
 ) -> Profile:
     """
@@ -281,6 +282,7 @@ async def resolve_profile(
     :param max_errors: Maximum number of errors before stopping
     :param max_error_rate: Maximum error rate threshold before stopping
     :param max_global_error_rate: Maximum global error rate threshold before stopping
+    :param stop_over_saturated: Whether to stop if over-saturation is detected
     :param console: Console instance for progress reporting, or None
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile
@@ -297,6 +299,7 @@ async def resolve_profile(
         "max_errors": max_errors,
         "max_error_rate": max_error_rate,
         "max_global_error_rate": max_global_error_rate,
+        "stop_over_saturated": stop_over_saturated,
     }.items():
         if val is not None:
             constraints[key] = val
@@ -412,6 +415,7 @@ async def benchmark_generative_text(
         max_errors=args.max_errors,
         max_error_rate=args.max_error_rate,
         max_global_error_rate=args.max_global_error_rate,
+        stop_over_saturated=args.stop_over_saturated,
         console=console,
     )
     output_formats = await resolve_output_formats(
