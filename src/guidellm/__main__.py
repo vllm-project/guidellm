@@ -33,7 +33,7 @@ from pydantic import ValidationError
 try:
     import uvloop
 except ImportError:
-    uvloop = None # type: ignore[assignment] # Optional dependency
+    uvloop = None  # type: ignore[assignment] # Optional dependency
 
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
@@ -116,6 +116,7 @@ def benchmark():
 )
 @click.option(
     "--scenario",
+    "-c",
     type=cli_tools.Union(
         click.Path(
             exists=True,
@@ -392,8 +393,10 @@ def run(**kwargs):
     disable_progress = kwargs.pop("disable_progress", False)
 
     try:
+        # Only set CLI args that differ from click defaults
+        new_kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
         args = BenchmarkGenerativeTextArgs.create(
-            scenario=kwargs.pop("scenario", None), **kwargs
+            scenario=new_kwargs.pop("scenario", None), **new_kwargs
         )
     except ValidationError as err:
         # Translate pydantic valdation error to click argument error
