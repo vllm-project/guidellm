@@ -438,6 +438,8 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         """
         aliases = ["stop_over_saturated", "stop_over_sat", "stop_osd"]
         for alias in aliases:
-            stop_over_saturated = stop_over_saturated or kwargs.get(alias)
+            alias_value = kwargs.get(alias)
+            if alias_value is not None:
+                stop_over_saturated = stop_over_saturated or alias_value
 
         return {"stop_over_saturated": stop_over_saturated}
