@@ -1955,13 +1955,13 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         description="Whether to stop the benchmark if the model is over-saturated",
     )
 
-    @field_validator("data", mode="wrap")
+    @field_validator("data", "data_args", "rate", mode="wrap")
     @classmethod
     def single_to_list(
         cls, value: Any, handler: ValidatorFunctionWrapHandler
     ) -> list[Any]:
         """
-        Ensures 'data' field is always a list.
+        Ensures field is always a list.
 
         :param value: Input value for the 'data' field
         :return: List of data sources
