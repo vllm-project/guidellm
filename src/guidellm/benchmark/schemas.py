@@ -24,8 +24,6 @@ from typing import Any, ClassVar, Literal, TypeVar, cast
 
 import yaml
 from pydantic import (
-    AliasChoices,
-    AliasGenerator,
     ConfigDict,
     Field,
     ValidationError,
@@ -1957,13 +1955,13 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         description="Whether to stop the benchmark if the model is over-saturated",
     )
 
-    @field_validator("data", "data_args", "rate", mode="wrap")
+    @field_validator("data", mode="wrap")
     @classmethod
     def single_to_list(
         cls, value: Any, handler: ValidatorFunctionWrapHandler
     ) -> list[Any]:
         """
-        Ensures field is always a list.
+        Ensures 'data' field is always a list.
 
         :param value: Input value for the 'data' field
         :return: List of data sources
