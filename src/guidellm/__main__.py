@@ -116,6 +116,7 @@ def benchmark():
 )
 @click.option(
     "--scenario",
+    "-c",
     type=cli_tools.Union(
         click.Path(
             exists=True,
