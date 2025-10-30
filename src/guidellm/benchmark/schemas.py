@@ -24,6 +24,8 @@ from typing import Any, ClassVar, Literal, TypeVar, cast
 
 import yaml
 from pydantic import (
+    AliasChoices,
+    AliasGenerator,
     ConfigDict,
     Field,
     ValidationError,
@@ -1832,6 +1834,14 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         use_enum_values=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
+        validate_by_alias=True,
+        validate_by_name=True,
+        alias_generator=AliasGenerator(
+            # Support field names with hyphens
+            validation_alias=lambda field_name: AliasChoices(
+                field_name, field_name.replace("_", "-")
+            ),
+        ),
     )
 
     # Required
@@ -1878,6 +1888,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     data_request_formatter: DatasetPreprocessor | dict[str, str] | str = Field(
         default="chat_completions",
         description="Request formatting preprocessor or template name",
+        validation_alias=AliasChoices("request_type", "request-type"),
     )
     data_collator: Callable | Literal["generative"] | None = Field(
         default="generative", description="Data collator for batch processing"
