@@ -370,6 +370,16 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("max_global_error_rate"),
     help="Maximum global error rate across all benchmarks.",
 )
+@click.option(
+    "--stop-over-saturated",
+    type=bool,
+    default=BenchmarkGenerativeTextArgs.get_default("stop_over_saturated"),
+    help=(
+        "Set this flag to stop the benchmark if the model is over-saturated. "
+        "Defaults to False."
+    ),
+    is_flag=True,
+)
 def run(**kwargs):
     request_type = kwargs.pop("request_type", None)
     request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
