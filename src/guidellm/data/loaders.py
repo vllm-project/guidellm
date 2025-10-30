@@ -17,7 +17,6 @@ from guidellm.logger import logger
 __all__ = ["DataLoader", "DatasetsIterator"]
 
 
-
 class DatasetsIterator(TorchIterableDataset):
     def __init__(
         self,

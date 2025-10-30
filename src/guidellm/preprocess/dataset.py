@@ -238,7 +238,7 @@ def process_dataset(
     prompt_tokens: str | Path,
     output_tokens: str | Path,
     processor_args: dict[str, Any] | None = None,
-    data_args: dict[str, Any] | None = None,
+    data_args: dict[str, Any] | None = None,  # noqa: ARG001
     short_prompt_strategy: ShortPromptStrategy = ShortPromptStrategy.IGNORE,
     pad_char: str | None = None,
     concat_delimiter: str | None = None,
