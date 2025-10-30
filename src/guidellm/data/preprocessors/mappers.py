@@ -167,9 +167,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             dict[GenerativeDatasetColumnType, list[tuple[int, str]]] | None
         )
 
-    def __call__(
-        self, row: dict[str, Any]
-    ) -> dict[str, list[Any]]:
+    def __call__(self, row: dict[str, Any]) -> dict[str, list[Any]]:
         if self.datasets_column_mappings is None:
             raise ValueError("DefaultGenerativeColumnMapper not setup with data.")
 

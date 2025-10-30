@@ -31,6 +31,7 @@ def parse_list_floats(ctx, param, value):  # noqa: ARG001
             f"of floats/ints. Error: {e}"
         ) from e
 
+
 def parse_json(ctx, param, value):  # noqa: ARG001
     if value is None or value == [None]:
         return None
