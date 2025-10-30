@@ -506,8 +506,10 @@ class AsyncPoissonStrategy(ThroughputStrategy):
         if self._processes_lock is None:
             raise RuntimeError("_processes_lock is None in init_processes_start")
         if self._offset is None:
-            raise RuntimeError("_offset is None in init_processes_start; was "
-                               "init_processes_timings not called?")
+            raise RuntimeError(
+                "_offset is None in init_processes_start; was "
+                "init_processes_timings not called?"
+            )
         with self._processes_lock:
             self._offset.value = start_time
 
@@ -527,11 +529,15 @@ class AsyncPoissonStrategy(ThroughputStrategy):
         next_delay = self._random.expovariate(self.rate)
 
         if self._processes_lock is None:
-            raise RuntimeError("_processes_lock is None in next_request_time; was "
-                               "init_processes_timings not called?")
+            raise RuntimeError(
+                "_processes_lock is None in next_request_time; was "
+                "init_processes_timings not called?"
+            )
         if self._offset is None:
-            raise RuntimeError("_offset is None in next_request_time; was "
-                               "init_processes_timings not called?")
+            raise RuntimeError(
+                "_offset is None in next_request_time; was "
+                "init_processes_timings not called?"
+            )
         with self._processes_lock:
             self._offset.value += next_delay
 

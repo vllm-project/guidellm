@@ -56,9 +56,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         self.stream: bool = stream
         self.max_tokens: int | None = max_tokens or max_completion_tokens
 
-    def __call__(
-        self, columns: dict[str, list[Any]]
-    ) -> GenerationRequest:
+    def __call__(self, columns: dict[str, list[Any]]) -> GenerationRequest:
         """
         :param columns: A dict of GenerativeDatasetColumnType to Any
         """
@@ -396,9 +394,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
 class GenerativeAudioTranslationRequestFormatter(
     GenerativeAudioTranscriptionRequestFormatter
 ):
-    def __call__(
-        self, columns: dict[str, list[Any]]
-    ) -> GenerationRequest:
+    def __call__(self, columns: dict[str, list[Any]]) -> GenerationRequest:
         result = super().__call__(columns)
         result.request_type = "audio_translations"
         return result

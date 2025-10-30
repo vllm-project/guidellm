@@ -107,8 +107,10 @@ class DatasetDeserializerFactory(
 
         if len(errors) > 0:
             err_msgs = ""
+
             def sort_key(item):
                 return (isinstance(item[1], DataNotSupportedError), item[0])
+
             for key, err in sorted(errors.items(), key=sort_key):
                 err_msgs += f"\n  - Deserializer '{key}': ({type(err).__name__}) {err}"
             raise ValueError(
@@ -141,4 +143,3 @@ class DatasetDeserializerFactory(
             random_seed=random_seed,
             **data_kwargs,
         )
-
