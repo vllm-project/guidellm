@@ -9,6 +9,7 @@ from .preprocessors import (
     DataDependentPreprocessor,
     DatasetPreprocessor,
     PreprocessorRegistry,
+    RequestFormatter,
 )
 from .processor import ProcessorFactory
 from .schemas import GenerativeDatasetColumnType
@@ -25,4 +26,5 @@ __all__ = [
     "GenerativeRequestCollator",
     "PreprocessorRegistry",
     "ProcessorFactory",
+    "RequestFormatter",
 ]

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABCMeta
 from typing import Any
 
 from guidellm.data.preprocessors.preprocessor import (
@@ -14,10 +13,14 @@ __all__ = [
     "GenerativeAudioTranslationRequestFormatter",
     "GenerativeChatCompletionsRequestFormatter",
     "GenerativeTextCompletionsRequestFormatter",
+    "RequestFormatter",
 ]
 
 
-class RequestFormatter(DatasetPreprocessor, metaclass=ABCMeta):
+class RequestFormatter(DatasetPreprocessor):
+    def __init__(self, model: str, **_kwargs):
+        self.model = model
+
     @staticmethod
     def encode_audio(*args, **kwargs):
         from guidellm.extras.audio import encode_audio

@@ -20,8 +20,8 @@ from typing import Annotated, ClassVar, Literal, TypeVar
 
 from pydantic import Field, PrivateAttr
 
-from guidellm.schemas import RequestInfo
-from guidellm.utils import InfoMixin, PydanticClassRegistryMixin
+from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo
+from guidellm.utils import InfoMixin
 
 __all__ = [
     "AsyncConstantStrategy",

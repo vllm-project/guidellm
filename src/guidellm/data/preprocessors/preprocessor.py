@@ -25,6 +25,6 @@ class DataDependentPreprocessor(DatasetPreprocessor, Protocol):
 
 
 class PreprocessorRegistry(
-    RegistryMixin[DataDependentPreprocessor | type[DataDependentPreprocessor]]
+    RegistryMixin[type[DatasetPreprocessor] | type[DataDependentPreprocessor]]
 ):
     pass

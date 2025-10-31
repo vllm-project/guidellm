@@ -1,11 +1,11 @@
 """
 Benchmark execution orchestration and lifecycle management.
 
-Provides the core benchmarking engine that coordinates request scheduling,
-data aggregation, and result compilation across different execution strategies
-and environments. The Benchmarker acts as the primary workflow coordinator,
-managing the complete benchmark lifecycle from request submission through
-result compilation while supporting thread-safe singleton operations.
+Provides the core benchmarking engine coordinating request scheduling,
+data aggregation, and result compilation across execution strategies
+and environments. The Benchmarker manages the complete benchmark lifecycle
+from request submission through result compilation while supporting
+thread-safe singleton operations for consistent state management.
 """
 
 from __future__ import annotations
@@ -18,19 +18,23 @@ from typing import Any, Generic
 from guidellm.benchmark.profile import Profile
 from guidellm.benchmark.progress import BenchmarkerProgress
 from guidellm.benchmark.schemas import (
-    BenchmarkerArgs,
+    BenchmarkAccumulatorT,
+    BenchmarkConfig,
     BenchmarkT,
-    EstimatedBenchmarkState,
 )
 from guidellm.logger import logger
 from guidellm.scheduler import (
     BackendInterface,
+    Constraint,
     Environment,
+    MultiTurnRequestT,
     RequestT,
     ResponseT,
     Scheduler,
+    SchedulingStrategy,
 )
 from guidellm.utils import ThreadSafeSingletonMixin
+from guidellm.utils.mixins import InfoMixin
 
 __all__ = ["Benchmarker"]
 
@@ -43,46 +47,45 @@ class Benchmarker(
     """
     Abstract benchmark orchestrator for request processing workflows.
 
-    Coordinates execution of benchmarking runs across different scheduling
-    strategies, aggregating metrics and compiling results. Manages the complete
-    benchmark lifecycle from request submission through result compilation while
-    implementing thread-safe singleton pattern to ensure consistent state across
-    concurrent operations.
+    Coordinates benchmarking runs across scheduling strategies, aggregating
+    metrics and compiling results. Manages the complete benchmark lifecycle
+    from request submission through result compilation while implementing a
+    thread-safe singleton pattern for consistent state across concurrent
+    operations.
     """
 
     async def run(
         self,
+        accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
-        requests: Iterable[RequestT | Iterable[RequestT | tuple[RequestT, float]]],
+        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
         backend: BackendInterface[RequestT, ResponseT],
         profile: Profile,
         environment: Environment,
-        data: list[Any],
-        progress: BenchmarkerProgress[BenchmarkT] | None = None,
+        progress: (
+            BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None
+        ) = None,
         sample_requests: int | None = 20,
         warmup: float | None = None,
         cooldown: float | None = None,
         prefer_response_metrics: bool = True,
     ) -> AsyncIterator[BenchmarkT]:
         """
-        Execute benchmark runs across multiple scheduling strategies.
+        Execute benchmark runs across scheduling strategies defined in the profile.
 
-        Orchestrates the complete benchmark workflow by iterating through scheduling
-        strategies from the profile, executing requests through the scheduler,
-        aggregating metrics, and compiling final benchmark results.
-
-        :param benchmark_class: Class for constructing final benchmark objects
-        :param requests: Request datasets for processing across strategies
-        :param backend: Backend interface for request processing
-        :param profile: Benchmark profile defining strategies and constraints
-        :param environment: Execution environment for coordination
-        :param progress: Optional progress tracker for benchmark lifecycle events
-        :param sample_requests: Number of sample requests to use for estimation
-        :param warmup: Optional warmup duration in seconds before benchmarking
-        :param cooldown: Optional cooldown duration in seconds after benchmarking
-        :param prefer_response_metrics: Whether to prefer response-based metrics over
-            request-based metrics
-        :yield: Compiled benchmark results for each strategy execution
+        :param accumulator_class: Class for accumulating metrics during execution
+        :param benchmark_class: Class for constructing final benchmark results
+        :param requests: Request datasets to process across strategies
+        :param backend: Backend interface for executing requests
+        :param profile: Profile defining scheduling strategies and constraints
+        :param environment: Environment for execution coordination
+        :param progress: Optional tracker for benchmark lifecycle events
+        :param sample_requests: Number of requests to sample for estimation
+        :param warmup: Warmup duration in seconds before benchmarking
+        :param cooldown: Cooldown duration in seconds after benchmarking
+        :param prefer_response_metrics: Whether to prefer response metrics over
+            request metrics
+        :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
         with self.thread_lock:
@@ -91,21 +94,38 @@ class Benchmarker(
 
             run_id = str(uuid.uuid4())
             strategies_generator = profile.strategies_generator()
+            strategy: SchedulingStrategy | None
+            constraints: dict[str, Constraint] | None
             strategy, constraints = next(strategies_generator)
 
             while strategy is not None:
                 if progress:
                     await progress.on_benchmark_start(strategy)
 
-                args = BenchmarkerArgs(
+                config = BenchmarkConfig(
                     run_id=run_id,
                     run_index=len(profile.completed_strategies),
+                    strategy=strategy,
+                    constraints=(
+                        {
+                            key: InfoMixin.extract_from_obj(val)
+                            for key, val in constraints.items()
+                        }
+                        if isinstance(constraints, dict)
+                        else {"constraint": InfoMixin.extract_from_obj(constraints)}
+                        if constraints
+                        else {}
+                    ),
                     sample_requests=sample_requests,
                     warmup=warmup,
                     cooldown=cooldown,
                     prefer_response_metrics=prefer_response_metrics,
+                    profile=profile,
+                    requests=InfoMixin.extract_from_obj(requests),
+                    backend=InfoMixin.extract_from_obj(backend),
+                    environment=InfoMixin.extract_from_obj(environment),
                 )
-                estimated_state = EstimatedBenchmarkState()
+                accumulator = accumulator_class(config=config)
                 scheduler_state = None
                 scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
 
@@ -123,9 +143,7 @@ class Benchmarker(
                     **constraints or {},
                 ):
                     try:
-                        benchmark_class.update_estimate(
-                            args,
-                            estimated_state,
+                        accumulator.update_estimate(
                             response,
                             request,
                             request_info,
@@ -133,7 +151,7 @@ class Benchmarker(
                         )
                         if progress:
                             await progress.on_benchmark_update(
-                                estimated_state, scheduler_state
+                                accumulator, scheduler_state
                             )
                     except Exception as err:  # noqa: BLE001
                         logger.error(
@@ -141,17 +159,10 @@ class Benchmarker(
                         )
 
                 benchmark = benchmark_class.compile(
-                    args=args,
-                    estimated_state=estimated_state,
+                    accumulator=accumulator,
                     scheduler_state=scheduler_state,
-                    profile=profile,
-                    requests=requests,
-                    backend=backend,
-                    environment=environment,
-                    strategy=strategy,
-                    constraints=constraints,
-                    data=data,
                 )
+
                 if progress:
                     await progress.on_benchmark_complete(benchmark)
 

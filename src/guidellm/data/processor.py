@@ -1,11 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from transformers import (  # type: ignore[import]
-    AutoTokenizer,
-    PreTrainedTokenizerBase,
-)
+from transformers import AutoTokenizer, PreTrainedTokenizerBase  # type: ignore[import]
 
 __all__ = ["ProcessorFactory"]
 
@@ -13,7 +11,7 @@ __all__ = ["ProcessorFactory"]
 class ProcessorFactory:
     def __init__(
         self,
-        processor: str | PreTrainedTokenizerBase,
+        processor: str | Path | PreTrainedTokenizerBase,
         processor_args: dict[str, Any] | None = None,
     ) -> None:
         self.processor = processor
