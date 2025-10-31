@@ -16,8 +16,8 @@ from typing import Any, Generic, Literal, Protocol, TypeVar
 from pydantic import Field
 from typing_extensions import TypeAliasType, TypedDict
 
-from guidellm.schemas import RequestInfo
-from guidellm.utils import RegistryMixin, StandardBaseModel
+from guidellm.schemas import RequestInfo, StandardBaseModel
+from guidellm.utils import RegistryMixin
 from guidellm.utils.registry import RegistryObjT
 
 __all__ = [

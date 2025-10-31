@@ -24,7 +24,7 @@ from guidellm.scheduler.schemas import (
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker_group import WorkerProcessGroup
 from guidellm.schemas import RequestInfo
-from guidellm.utils.singleton import ThreadSafeSingletonMixin
+from guidellm.utils import ThreadSafeSingletonMixin
 
 __all__ = ["Scheduler"]
 

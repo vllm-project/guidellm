@@ -21,9 +21,9 @@ from guidellm.scheduler.schemas import (
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
 )
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.settings import settings
-from guidellm.utils import InfoMixin, RegistryMixin, StandardBaseModel
+from guidellm.utils import InfoMixin, RegistryMixin
 
 __all__ = [
     "Constraint",

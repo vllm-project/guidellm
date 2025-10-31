@@ -647,11 +647,13 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._processing_request_ids.add(info.request_id)
             self._state.processing_requests = len(self._processing_request_ids)
         elif info.status == "completed":
+            info.timings.finalized = time.time()
             self._processing_request_ids.remove(info.request_id)
             self._state.processing_requests = len(self._processing_request_ids)
             self._state.processed_requests += 1
             self._state.successful_requests += 1
         elif info.status in ("errored", "cancelled"):
+            info.timings.finalized = time.time()
             if info.request_id in self._queued_request_ids:
                 self._queued_request_ids.remove(info.request_id)
                 self._state.queued_requests = len(self._queued_request_ids)

@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from pydantic import Field, computed_field
 
-from guidellm.utils import StandardBaseDict, StandardBaseModel
+from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 
 __all__ = [
     "GenerationRequest",

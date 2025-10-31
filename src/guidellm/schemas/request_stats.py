@@ -15,9 +15,9 @@ from typing import Literal
 import numpy as np
 from pydantic import Field, computed_field
 
+from guidellm.schemas.base import StandardBaseDict
 from guidellm.schemas.info import RequestInfo
 from guidellm.schemas.request import GenerativeRequestType, UsageMetrics
-from guidellm.utils import StandardBaseDict
 
 __all__ = ["GenerativeRequestStats"]
 
@@ -54,9 +54,7 @@ class GenerativeRequestStats(StandardBaseDict):
     output: str | None = Field(
         default=None, description="Generated text output from the request"
     )
-    info: RequestInfo = Field(
-        description="Request metadata and timing information"
-    )
+    info: RequestInfo = Field(description="Request metadata and timing information")
     input_metrics: UsageMetrics = Field(
         description="Token usage statistics for the input prompt"
     )
@@ -75,10 +73,13 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
-    def request_end_time(self) -> float | None:
+    def request_end_time(self) -> float:
         """
         :return: Timestamp when the request ended, or None if unavailable
         """
+        if self.info.timings.request_end is None:
+            raise ValueError("resolve_end timings should be set but is None.")
+
         return self.info.timings.request_end or self.info.timings.resolve_end
 
     @computed_field  # type: ignore[misc]

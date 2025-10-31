@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import Field, computed_field
 
-from guidellm.utils import StandardBaseDict, StandardBaseModel
+from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 
 __all__ = ["RequestInfo", "RequestTimings"]
 
@@ -83,6 +83,25 @@ class RequestTimings(StandardBaseDict):
         default=None,
         description="Unix timestamp when request was processed by the scheduler",
     )
+
+    @property
+    def last_reported(self) -> float | None:
+        """
+        Get the most recent timing measurement available.
+
+        :return: The latest Unix timestamp from the timing fields, or None if none
+        """
+        timing_fields = [
+            self.queued,
+            self.dequeued,
+            self.scheduled_at,
+            self.resolve_start,
+            self.request_start,
+            self.request_end,
+            self.resolve_end,
+        ]
+        valid_timings = [field for field in timing_fields if field is not None]
+        return max(valid_timings) if valid_timings else None
 
 
 class RequestInfo(StandardBaseModel):

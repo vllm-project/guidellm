@@ -17,7 +17,7 @@ from guidellm.utils import (
     StandardBaseModel,
     StatusBreakdown,
 )
-from guidellm.utils.pydantic_utils import (
+from guidellm.schemas.base import (
     BaseModelT,
     ErroredT,
     IncompleteT,

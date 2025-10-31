@@ -11,13 +11,13 @@ across different status categories (successful, incomplete, errored).
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
-from typing import TypeVar
+from collections.abc import Callable, Sequence
+from typing import Literal, TypeVar
 
 import numpy as np
 from pydantic import Field
 
-from guidellm.utils.pydantic_utils import StandardBaseModel, StatusBreakdown
+from guidellm.schemas.base import StandardBaseModel, StatusBreakdown
 
 __all__ = [
     "DistributionSummary",
@@ -235,7 +235,7 @@ class DistributionSummary(StandardBaseModel):
     @classmethod
     def from_values(
         cls,
-        values: list[float | tuple[float, float]] | np.ndarray,
+        values: Sequence[float | tuple[float, float]] | np.ndarray,
         count: int | None = None,
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
@@ -294,7 +294,7 @@ class DistributionSummary(StandardBaseModel):
     @classmethod
     def rate_distribution_from_timings(
         cls,
-        event_times: list[float | tuple[float, float]] | np.ndarray,
+        event_times: Sequence[float | tuple[float, float]] | np.ndarray,
         start_time: float | None = None,
         end_time: float | None = None,
         threshold: float | None = 1e-4,  # 1/10th of a millisecond
@@ -373,7 +373,7 @@ class DistributionSummary(StandardBaseModel):
     def concurrency_distribution_from_timings(
         cls,
         event_intervals: (
-            list[tuple[float, float] | tuple[float, float, float]] | np.ndarray
+            Sequence[tuple[float, float] | tuple[float, float, float]] | np.ndarray
         ),
         start_time: float | None = None,
         end_time: float | None = None,
@@ -496,20 +496,15 @@ class DistributionSummary(StandardBaseModel):
     def _to_weighted_ndarray(  # noqa: C901, PLR0912
         cls,
         inputs: (
-            list[float | tuple[float, float] | tuple[float, float, float]] | np.ndarray
+            Sequence[float | tuple[float, float] | tuple[float, float, float]]
+            | np.ndarray
         ),
         num_values_per_item: int,
     ) -> np.ndarray:
-        if not isinstance(inputs, list | np.ndarray):
-            raise ValueError(
-                "inputs must be a numpy array or a list of floats/tuple[float, float], "
-                f"got {type(inputs)}"
-            )
-
-        if isinstance(inputs, list):
+        if not isinstance(inputs, np.ndarray):
             # Convert list to structured numpy array with dims (N, num_dimensions)
             # Fill in missing weights with 1.0
-            return cls._list_to_weighted_ndarray(inputs, num_values_per_item)
+            return cls._sequence_to_weighted_ndarray(inputs, num_values_per_item)
 
         if len(inputs.shape) == 1:
             # 1D array: reshape to (N, 1) and add weights column
@@ -538,23 +533,11 @@ class DistributionSummary(StandardBaseModel):
         )
 
     @classmethod
-    def _list_to_weighted_ndarray(
+    def _sequence_to_weighted_ndarray(
         cls,
-        inputs: list[float | tuple[float, float] | tuple[float, float, float]],
-        num_values_per_item: int,
+        inputs: Sequence[float | tuple[float, float] | tuple[float, float, float]],
+        num_values_per_item: Literal[2, 3],
     ) -> np.ndarray:
-        if num_values_per_item not in (2, 3):
-            raise ValueError(
-                "num_values_per_item must be 2 (value, weight) or "
-                "3 (value1, value2, weight)"
-            )
-
-        if not isinstance(inputs, list):
-            raise ValueError(
-                "inputs must be a numpy array or a list of floats/tuple[float, float], "
-                f"got {type(inputs)}"
-            )
-
         ndarray = np.empty((len(inputs), num_values_per_item), dtype=float)
         scalar_types: tuple[type, ...] = (int, float, np.integer, np.floating)
 
@@ -658,12 +641,19 @@ class StatusDistributionSummary(
         """
         return self.total.count
 
+    @property
+    def total_sum(self) -> float:
+        """
+        :return: Total sum of values across all status categories
+        """
+        return self.total.total_sum
+
     @classmethod
     def from_values(
         cls,
-        successful: list[float | tuple[float, float]] | np.ndarray,
-        incomplete: list[float | tuple[float, float]] | np.ndarray,
-        errored: list[float | tuple[float, float]] | np.ndarray,
+        successful: Sequence[float | tuple[float, float]] | np.ndarray,
+        incomplete: Sequence[float | tuple[float, float]] | np.ndarray,
+        errored: Sequence[float | tuple[float, float]] | np.ndarray,
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
     ) -> StatusDistributionSummary:
@@ -701,14 +691,14 @@ class StatusDistributionSummary(
         cls,
         function: Callable[
             [FunctionObjT],
-            float | tuple[float, float] | list[float | tuple[float, float]] | None,
+            float | tuple[float, float] | Sequence[float | tuple[float, float]] | None,
         ],
-        successful: list[FunctionObjT],
-        incomplete: list[FunctionObjT],
-        errored: list[FunctionObjT],
+        successful: Sequence[FunctionObjT],
+        incomplete: Sequence[FunctionObjT],
+        errored: Sequence[FunctionObjT],
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
-    ) -> DistributionSummary:
+    ) -> StatusDistributionSummary:
         """
         Create distribution summary by extracting values from objects via function.
 
@@ -720,29 +710,24 @@ class StatusDistributionSummary(
         :param epsilon: Tolerance for probability validation
         :return: Status breakdown of distribution summaries
         """
-        successful_values = []
-        incomplete_values = []
-        errored_values = []
 
         def _extract_values(
-            _objs: list[FunctionObjT], _outputs: list[float | tuple[float, float]]
-        ):
+            _objs: Sequence[FunctionObjT],
+        ) -> Sequence[float | tuple[float, float]]:
+            _outputs = []
             for _obj in _objs:
                 if (_result := function(_obj)) is None:
                     continue
-                if isinstance(_result, list):
+                if isinstance(_result, Sequence) and not isinstance(_result, tuple):
                     _outputs.extend(_result)
                 else:
                     _outputs.append(_result)
-
-        _extract_values(successful, successful_values)
-        _extract_values(incomplete, incomplete_values)
-        _extract_values(errored, errored_values)
+            return _outputs
 
         return cls.from_values(
-            successful=successful_values,
-            incomplete=incomplete_values,
-            errored=errored_values,
+            successful=_extract_values(successful),
+            incomplete=_extract_values(incomplete),
+            errored=_extract_values(errored),
             include_pdf=include_pdf,
             epsilon=epsilon,
         )
@@ -750,9 +735,9 @@ class StatusDistributionSummary(
     @classmethod
     def rate_distribution_from_timings(
         cls,
-        successful: list[float | tuple[float, float]] | np.ndarray,
-        incomplete: list[float | tuple[float, float]] | np.ndarray,
-        errored: list[float | tuple[float, float]] | np.ndarray,
+        successful: Sequence[float | tuple[float, float]] | np.ndarray,
+        incomplete: Sequence[float | tuple[float, float]] | np.ndarray,
+        errored: Sequence[float | tuple[float, float]] | np.ndarray,
         start_time: float | None = None,
         end_time: float | None = None,
         threshold: float | None = 1e-4,
@@ -816,17 +801,17 @@ class StatusDistributionSummary(
         cls,
         function: Callable[
             [FunctionObjT],
-            float | tuple[float, float] | list[float | tuple[float, float]] | None,
+            float | tuple[float, float] | Sequence[float | tuple[float, float]] | None,
         ],
-        successful: list[FunctionObjT],
-        incomplete: list[FunctionObjT],
-        errored: list[FunctionObjT],
+        successful: Sequence[FunctionObjT],
+        incomplete: Sequence[FunctionObjT],
+        errored: Sequence[FunctionObjT],
         start_time: float | None = None,
         end_time: float | None = None,
         threshold: float | None = 1e-4,
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
-    ) -> DistributionSummary:
+    ) -> StatusDistributionSummary:
         """
         Create rate distribution by extracting timestamps from objects via function.
 
@@ -841,29 +826,24 @@ class StatusDistributionSummary(
         :param epsilon: Tolerance for probability validation
         :return: Status breakdown of rate distribution summaries
         """
-        successful_values = []
-        incomplete_values = []
-        errored_values = []
 
         def _extract_values(
-            _objs: list[FunctionObjT], _outputs: list[float | tuple[float, float]]
-        ):
+            _objs: Sequence[FunctionObjT],
+        ) -> Sequence[float | tuple[float, float]]:
+            _outputs = []
             for _obj in _objs:
                 if (_result := function(_obj)) is None:
                     continue
-                if isinstance(_result, list):
+                if isinstance(_result, Sequence) and not isinstance(_result, tuple):
                     _outputs.extend(_result)
                 else:
                     _outputs.append(_result)
-
-        _extract_values(successful, successful_values)
-        _extract_values(incomplete, incomplete_values)
-        _extract_values(errored, errored_values)
+            return _outputs
 
         return cls.rate_distribution_from_timings(
-            successful=successful_values,
-            incomplete=incomplete_values,
-            errored=errored_values,
+            successful=_extract_values(successful),
+            incomplete=_extract_values(incomplete),
+            errored=_extract_values(errored),
             start_time=start_time,
             end_time=end_time,
             threshold=threshold,
@@ -874,9 +854,12 @@ class StatusDistributionSummary(
     @classmethod
     def concurrency_distribution_from_timings(
         cls,
-        successful: list[tuple[float, float] | tuple[float, float, float]] | np.ndarray,
-        incomplete: list[tuple[float, float] | tuple[float, float, float]] | np.ndarray,
-        errored: list[tuple[float, float] | tuple[float, float, float]] | np.ndarray,
+        successful: Sequence[tuple[float, float] | tuple[float, float, float]]
+        | np.ndarray,
+        incomplete: Sequence[tuple[float, float] | tuple[float, float, float]]
+        | np.ndarray,
+        errored: Sequence[tuple[float, float] | tuple[float, float, float]]
+        | np.ndarray,
         start_time: float | None = None,
         end_time: float | None = None,
         threshold: float | None = 1e-4,
@@ -942,18 +925,18 @@ class StatusDistributionSummary(
             [FunctionObjT],
             tuple[float, float]
             | tuple[float, float, float]
-            | list[tuple[float, float] | tuple[float, float, float]]
+            | Sequence[tuple[float, float] | tuple[float, float, float]]
             | None,
         ],
-        successful: list[FunctionObjT],
-        incomplete: list[FunctionObjT],
-        errored: list[FunctionObjT],
+        successful: Sequence[FunctionObjT],
+        incomplete: Sequence[FunctionObjT],
+        errored: Sequence[FunctionObjT],
         start_time: float | None = None,
         end_time: float | None = None,
         threshold: float | None = 1e-4,
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
-    ) -> DistributionSummary:
+    ) -> StatusDistributionSummary:
         """
         Create concurrency distribution by extracting intervals from objects.
 
@@ -968,30 +951,24 @@ class StatusDistributionSummary(
         :param epsilon: Tolerance for probability validation
         :return: Status breakdown of concurrency distribution summaries
         """
-        successful_values = []
-        incomplete_values = []
-        errored_values = []
 
         def _extract_values(
-            _objs: list[FunctionObjT],
-            _outputs: list[tuple[float, float] | tuple[float, float, float]],
-        ):
+            _objs: Sequence[FunctionObjT],
+        ) -> Sequence[tuple[float, float] | tuple[float, float, float]]:
+            _outputs = []
             for _obj in _objs:
                 if (_result := function(_obj)) is None:
                     continue
-                if isinstance(_result, list):
+                if isinstance(_result, Sequence) and not isinstance(_result, tuple):
                     _outputs.extend(_result)
                 else:
                     _outputs.append(_result)
-
-        _extract_values(successful, successful_values)
-        _extract_values(incomplete, incomplete_values)
-        _extract_values(errored, errored_values)
+            return _outputs
 
         return cls.concurrency_distribution_from_timings(
-            successful=successful_values,
-            incomplete=incomplete_values,
-            errored=errored_values,
+            successful=_extract_values(successful),
+            incomplete=_extract_values(incomplete),
+            errored=_extract_values(errored),
             start_time=start_time,
             end_time=end_time,
             threshold=threshold,
@@ -1002,9 +979,9 @@ class StatusDistributionSummary(
     @classmethod
     def _combine_status_arrays(
         cls,
-        successful: list[float] | np.ndarray,
-        incomplete: list[float] | np.ndarray,
-        errored: list[float] | np.ndarray,
+        successful: Sequence[float] | np.ndarray,
+        incomplete: Sequence[float] | np.ndarray,
+        errored: Sequence[float] | np.ndarray,
         num_values_per_item: int,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         successful_array = DistributionSummary._to_weighted_ndarray(  # noqa: SLF001
