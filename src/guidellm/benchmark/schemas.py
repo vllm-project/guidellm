@@ -1798,9 +1798,8 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 scenario_data = scenario_data["args"]
             constructor_kwargs.update(scenario_data)
 
-        for key, value in kwargs.items():
-            if value != cls.get_default(key):
-                constructor_kwargs[key] = value
+        # Apply overrides from kwargs
+        constructor_kwargs.update(kwargs)
 
         return cls.model_validate(constructor_kwargs)
 
