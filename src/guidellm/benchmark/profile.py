@@ -33,11 +33,10 @@ from guidellm.scheduler import (
     ConstraintInitializer,
     ConstraintsInitializerFactory,
     SchedulingStrategy,
-    StrategyType,
     SynchronousStrategy,
     ThroughputStrategy,
 )
-from guidellm.utils import PydanticClassRegistryMixin
+from guidellm.schemas import PydanticClassRegistryMixin
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -56,7 +55,7 @@ ProfileType = Literal["synchronous", "concurrent", "throughput", "async", "sweep
 
 
 class Profile(
-    PydanticClassRegistryMixin["type[Profile]"],
+    PydanticClassRegistryMixin["Profile"],
     ABC,
 ):
     """
@@ -74,6 +73,7 @@ class Profile(
 
     @classmethod
     def __pydantic_schema_base_type__(cls) -> type[Profile]:
+        """Return the base type for polymorphic validation hierarchy."""
         if cls.__name__ == "Profile":
             return cls
 
@@ -97,7 +97,10 @@ class Profile(
         :return: Configured profile instance for the specified type
         :raises ValueError: If rate_type is not registered
         """
-        profile_class: type[Profile] = cls.get_registered_object(rate_type)
+        profile_class = cls.get_registered_object(rate_type)
+        if profile_class is None:
+            raise ValueError(f"Profile type '{rate_type}' is not registered")
+
         resolved_kwargs = profile_class.resolve_args(
             rate_type=rate_type, rate=rate, random_seed=random_seed, **kwargs
         )
@@ -138,7 +141,7 @@ class Profile(
 
     @computed_field  # type: ignore[misc]
     @property
-    def strategy_types(self) -> list[StrategyType]:
+    def strategy_types(self) -> list[str]:
         """
         :return: Strategy types executed or expected to execute in this profile
         """
@@ -147,10 +150,7 @@ class Profile(
     def strategies_generator(
         self,
     ) -> Generator[
-        tuple[
-            SchedulingStrategy | None,
-            dict[str, Any | dict[str, Any] | Constraint] | None,
-        ],
+        tuple[SchedulingStrategy, dict[str, Constraint] | None],
         Benchmark | None,
         None,
     ]:
@@ -196,7 +196,7 @@ class Profile(
         next_strategy: SchedulingStrategy | None,
         prev_strategy: SchedulingStrategy | None,
         prev_benchmark: Benchmark | None,
-    ) -> dict[str, Any | dict[str, Any] | Constraint] | None:
+    ) -> dict[str, Constraint] | None:
         """
         Generate constraints for the next strategy execution.
 
@@ -225,14 +225,16 @@ class Profile(
 
         return {
             key: (
-                val
-                if not isinstance(val, ConstraintInitializer)
-                else ConstraintsInitializerFactory.deserialize(initializer_dict=val)
+                ConstraintsInitializerFactory.deserialize(initializer_dict=val)
+                if isinstance(val, dict)
+                and "type_" in val
+                and not isinstance(val, ConstraintInitializer)
+                else val
             )
             for key, val in value.items()
         }
 
-    @field_serializer
+    @field_serializer("constraints")
     def _constraints_serializer(
         self,
         constraints: dict[str, Any | dict[str, Any] | ConstraintInitializer] | None,
@@ -281,7 +283,7 @@ class SynchronousProfile(Profile):
         return kwargs
 
     @property
-    def strategy_types(self) -> list[StrategyType]:
+    def strategy_types(self) -> list[str]:
         """
         :return: Single synchronous strategy type
         """
@@ -346,7 +348,7 @@ class ConcurrentProfile(Profile):
         return kwargs
 
     @property
-    def strategy_types(self) -> list[StrategyType]:
+    def strategy_types(self) -> list[str]:
         """
         :return: Concurrent strategy types for each configured stream count
         """
@@ -419,7 +421,7 @@ class ThroughputProfile(Profile):
         return kwargs
 
     @property
-    def strategy_types(self) -> list[StrategyType]:
+    def strategy_types(self) -> list[str]:
         """
         :return: Single throughput strategy type
         """
@@ -510,7 +512,7 @@ class AsyncProfile(Profile):
         return kwargs
 
     @property
-    def strategy_types(self) -> list[StrategyType]:
+    def strategy_types(self) -> list[str]:
         """
         :return: Async strategy types for each configured rate
         """
@@ -622,7 +624,7 @@ class SweepProfile(Profile):
         return kwargs
 
     @property
-    def strategy_types(self) -> list[StrategyType]:
+    def strategy_types(self) -> list[str]:
         """
         :return: Strategy types for the complete sweep sequence
         """
@@ -637,8 +639,8 @@ class SweepProfile(Profile):
     ) -> (
         AsyncConstantStrategy
         | AsyncPoissonStrategy
-        | SynchronousProfile
-        | ThroughputProfile
+        | SynchronousStrategy
+        | ThroughputStrategy
         | None
     ):
         """
@@ -656,9 +658,7 @@ class SweepProfile(Profile):
             return SynchronousStrategy()
 
         if prev_strategy.type_ == "synchronous":
-            self.synchronous_rate = prev_benchmark.get_request_metrics_sample()[
-                "request_throughput"
-            ]
+            self.synchronous_rate = prev_benchmark.request_throughput.successful.mean
 
             return ThroughputStrategy(
                 max_concurrency=self.max_concurrency,
@@ -666,9 +666,7 @@ class SweepProfile(Profile):
             )
 
         if prev_strategy.type_ == "throughput":
-            self.throughput_rate = prev_benchmark.get_request_metrics_sample()[
-                "request_throughput"
-            ]
+            self.throughput_rate = prev_benchmark.request_throughput.successful.mean
             if self.synchronous_rate <= 0 and self.throughput_rate <= 0:
                 raise RuntimeError(
                     "Invalid rates in sweep; aborting. "

@@ -116,7 +116,7 @@ def safe_add(
 
 
 def safe_format_timestamp(
-    timestamp: float | None, format_: str = "%H:%M:%S", default: str = "N/A"
+    timestamp: float | int | None, format_: str = "%H:%M:%S", default: str = "N/A"
 ) -> str:
     """
     Safely format a timestamp with error handling and validation.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable, Iterator
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 import torch
 from torch.utils.data import Sampler
@@ -17,8 +17,10 @@ from guidellm.logger import logger
 __all__ = ["DataLoader", "DatasetsIterator"]
 
 
+DataT = TypeVar("DataT")
 
-class DatasetsIterator(TorchIterableDataset):
+
+class DatasetsIterator(TorchIterableDataset[DataT]):
     def __init__(
         self,
         data: list[Any],
@@ -61,7 +63,7 @@ class DatasetsIterator(TorchIterableDataset):
             list(self.generator(data_samples)) if data_samples else None
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[DataT]:
         worker_info = torch.utils.data.get_worker_info()
         worker_modulus = worker_info.num_workers if worker_info is not None else 1
         worker_index = worker_info.id if worker_info is not None else 0
@@ -78,7 +80,7 @@ class DatasetsIterator(TorchIterableDataset):
         max_items: int | None = None,
         modulus: int | None = None,
         offset: int | None = None,
-    ) -> Iterator[Any]:
+    ) -> Iterator[DataT]:
         gen_count = 0
 
         with contextlib.suppress(StopIteration):
@@ -115,7 +117,7 @@ class DatasetsIterator(TorchIterableDataset):
             )
 
 
-class DataLoader(PyTorchDataLoader):
+class DataLoader(PyTorchDataLoader[DataT]):
     def __init__(
         self,
         data: list[Any],
@@ -129,7 +131,7 @@ class DataLoader(PyTorchDataLoader):
         random_seed: int = 42,
         **kwargs: Any,
     ):
-        iterator = DatasetsIterator(
+        iterator: DatasetsIterator[DataT] = DatasetsIterator(
             data=data,
             data_args=data_args,
             data_samples=data_samples,

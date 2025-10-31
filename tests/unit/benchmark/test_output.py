@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from guidellm.benchmark import (
     GenerativeBenchmarksReport,
 )
-from guidellm.benchmark.output import (
+from guidellm.benchmark.outputs.output import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerCSV,
 )

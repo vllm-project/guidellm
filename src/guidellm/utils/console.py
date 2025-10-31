@@ -10,7 +10,7 @@ for clean progress reporting.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
@@ -130,7 +130,7 @@ class ConsoleUpdateStep:
     spinner: str = "dots"
     _status: Status | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> ConsoleUpdateStep:
         if self.console.quiet:
             return self
 
@@ -180,8 +180,7 @@ class ConsoleUpdateStep:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._status:
-            return self._status.__exit__(exc_type, exc_val, exc_tb)
-        return False
+            self._status.__exit__(exc_type, exc_val, exc_tb)
 
 
 class Console(RichConsole):
@@ -207,7 +206,7 @@ class Console(RichConsole):
         title: str,
         details: Any | None = None,
         status: StatusLevel = "info",
-    ) -> None:
+    ):
         """
         Print a status message with icon and optional details.
 
@@ -261,10 +260,10 @@ class Console(RichConsole):
 
     def print_tables(
         self,
-        header_cols_groups: list[list[str | list[str]]],
-        value_cols_groups: list[list[str | list[str]]],
+        header_cols_groups: Sequence[Sequence[str | list[str]]],
+        value_cols_groups: Sequence[Sequence[str | list[str]]],
         title: str | None = None,
-        widths: list[int] | None = None,
+        widths: Sequence[int] | None = None,
     ):
         """
         Print multiple tables with uniform column widths.
@@ -303,10 +302,10 @@ class Console(RichConsole):
 
     def print_table(
         self,
-        header_cols: list[str | list[str]],
-        value_cols: list[str | list[str]],
+        header_cols: Sequence[str | list[str]],
+        value_cols: Sequence[str | list[str]],
         title: str | None = None,
-        widths: list[int] | None = None,
+        widths: Sequence[int] | None = None,
         apply_formatting: bool = True,
         print_bottom_divider: bool = True,
     ):
@@ -324,24 +323,30 @@ class Console(RichConsole):
             self.print_update(title, None, "info")
 
         # Format data
+        values: list[list[str]]
+        headers: list[list[str]]
+        final_widths: list[int]
+
         if apply_formatting:
-            values, widths = self._format_table_columns(value_cols, widths)
-            headers, widths = self._format_table_headers(header_cols, widths)
+            values, final_widths = self._format_table_columns(value_cols, widths)
+            headers, final_widths = self._format_table_headers(
+                header_cols, final_widths
+            )
         else:
-            values = value_cols
-            headers = header_cols
-            widths = widths or []
+            values = [col if isinstance(col, list) else [col] for col in value_cols]
+            headers = [col if isinstance(col, list) else [col] for col in header_cols]
+            final_widths = list(widths) if widths else []
 
         # Print table structure
-        self.print_table_divider(widths, "=")
-        self.print_table_headers(headers, widths)
-        self.print_table_divider(widths, "-")
-        self.print_table_values(values, widths)
+        self.print_table_divider(final_widths, "=")
+        self.print_table_headers(headers, final_widths)
+        self.print_table_divider(final_widths, "-")
+        self.print_table_values(values, final_widths)
 
         if print_bottom_divider:
-            self.print_table_divider(widths, "=")
+            self.print_table_divider(final_widths, "=")
 
-    def print_table_divider(self, widths: list[int], char: str):
+    def print_table_divider(self, widths: Sequence[int], char: str):
         """
         Print a horizontal divider line across table columns.
 
@@ -357,7 +362,7 @@ class Console(RichConsole):
             edge_style="bold",
         )
 
-    def print_table_headers(self, headers: list[list[str]], widths: list[int]):
+    def print_table_headers(self, headers: Sequence[list[str]], widths: Sequence[int]):
         """
         Print header rows with support for column spanning.
 
@@ -369,7 +374,7 @@ class Console(RichConsole):
 
         for row_idx in range(len(headers[0])):
             # Calculate widths for this header row, accounting for merged cells.
-            row_widths = widths.copy()
+            row_widths = list(widths)
             for col_idx in range(len(headers)):
                 if not headers[col_idx][row_idx]:
                     continue
@@ -394,7 +399,7 @@ class Console(RichConsole):
                 edge_style="bold",
             )
 
-    def print_table_values(self, values: list[list[str]], widths: list[int]):
+    def print_table_values(self, values: Sequence[list[str]], widths: Sequence[int]):
         """
         Print all data rows in the table.
 
@@ -415,8 +420,8 @@ class Console(RichConsole):
 
     def print_table_row(
         self,
-        values: list[str],
-        widths: list[int] | None = None,
+        values: Sequence[str],
+        widths: Sequence[int] | None = None,
         spacer: str = " ",
         divider: str = "|",
         cell_style: str = "",
@@ -460,8 +465,8 @@ class Console(RichConsole):
 
     def _format_table_headers(
         self,
-        headers: list[str | list[str]],
-        col_widths: list[int] | None = None,
+        headers: Sequence[str | list[str]],
+        col_widths: Sequence[int] | None = None,
         spacer: str = " ",
         min_padding: int = 1,
     ) -> tuple[list[list[str]], list[int]]:
@@ -473,7 +478,7 @@ class Console(RichConsole):
             return formatted, []
 
         # Merge identical adjacent headers row by row
-        widths = col_widths.copy() if col_widths else header_widths
+        widths = list(col_widths) if col_widths else header_widths
         for row_idx in range(len(formatted[0])):
             last_value = None
             start_col = -1
@@ -525,8 +530,8 @@ class Console(RichConsole):
 
     def _format_table_columns(
         self,
-        columns: list[str | list[str]],
-        col_widths: list[int] | None = None,
+        columns: Sequence[str | list[str]],
+        col_widths: Sequence[int] | None = None,
         spacer: str = " ",
         min_padding: int = 1,
     ) -> tuple[list[list[str]], list[int]]:

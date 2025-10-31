@@ -17,7 +17,8 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.utils import IntegerRangeSampler, StandardBaseModel
+from guidellm.schemas import StandardBaseModel
+from guidellm.utils import IntegerRangeSampler
 
 __all__ = [
     "SyntheticTextDatasetConfig",

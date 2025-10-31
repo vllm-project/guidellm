@@ -102,9 +102,8 @@ class Backend(
         return None
 
     @abstractmethod
-    async def default_model(self) -> str | None:
+    async def default_model(self) -> str:
         """
         :return: The default model name or identifier for generation requests,
-            None if no default model is available
         """
         ...

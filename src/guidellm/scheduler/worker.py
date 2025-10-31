@@ -363,7 +363,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
                 request, request_info, None
             ):
-
                 response = resp
                 request_info = info
                 if request_info is None:
@@ -407,14 +406,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         return request, request_info
 
     async def _schedule_request(
-        self,
-        request: RequestT,
-        request_info: RequestInfo,
-        target_start: float
+        self, request: RequestT, request_info: RequestInfo, target_start: float
     ):
-        current_time = time.time()
-        request_info.timings.scheduled_at = current_time
-        if target_start > current_time:
+        request_info.timings.scheduled_at = request_info.timings.dequeued
+        if target_start > (current_time := time.time()):
             await asyncio.sleep(target_start - current_time)
             # Adapt delay so that scheduled at reflects the sleep time
             request_info.timings.scheduled_at = target_start

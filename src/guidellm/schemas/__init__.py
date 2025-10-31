@@ -9,6 +9,13 @@ from request submission through backend processing to results compilation.
 
 from __future__ import annotations
 
+from .base import (
+    PydanticClassRegistryMixin,
+    ReloadableBaseModel,
+    StandardBaseDict,
+    StandardBaseModel,
+    StatusBreakdown,
+)
 from .info import RequestInfo, RequestTimings
 from .request import (
     GenerationRequest,
@@ -16,16 +23,31 @@ from .request import (
     GenerativeRequestType,
     UsageMetrics,
 )
+from .request_stats import GenerativeRequestStats
 from .response import GenerationResponse
-from .stats import GenerativeRequestStats
+from .statistics import (
+    DistributionSummary,
+    FunctionObjT,
+    Percentiles,
+    StatusDistributionSummary,
+)
 
 __all__ = [
+    "DistributionSummary",
+    "FunctionObjT",
     "GenerationRequest",
     "GenerationRequestArguments",
     "GenerationResponse",
     "GenerativeRequestStats",
     "GenerativeRequestType",
+    "Percentiles",
+    "PydanticClassRegistryMixin",
+    "ReloadableBaseModel",
     "RequestInfo",
     "RequestTimings",
+    "StandardBaseDict",
+    "StandardBaseModel",
+    "StatusBreakdown",
+    "StatusDistributionSummary",
     "UsageMetrics",
 ]
