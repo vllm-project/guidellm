@@ -3,8 +3,33 @@ from typing import Any
 
 import click
 
-__all__ = ["Union", "format_list_arg", "parse_json", "set_if_not_default"]
+__all__ = [
+    "Union",
+    "format_list_arg",
+    "parse_json",
+    "parse_list_floats",
+    "set_if_not_default",
+]
 
+
+def parse_list_floats(ctx, param, value):  # noqa: ARG001
+    """
+    Callback to parse a comma-separated string into a list of floats.
+    """
+    # This callback only runs if the --rate option is provided by the user.
+    # If it's not, 'value' will be None, and Click will use the 'default'.
+    if value is None:
+        return None  # Keep the default
+
+    try:
+        # Split by comma, strip any whitespace, and convert to float
+        return [float(item.strip()) for item in value.split(",")]
+    except ValueError as e:
+        # Raise a Click error if any part isn't a valid float
+        raise click.BadParameter(
+            f"Value '{value}' is not a valid comma-separated list "
+            f"of floats/ints. Error: {e}"
+        ) from e
 
 def parse_json(ctx, param, value):  # noqa: ARG001
     if value is None or value == [None]:

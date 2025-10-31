@@ -1005,9 +1005,7 @@ class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
         return self.model_dump()
 
     def __call__(
-        self,
-        state: SchedulerState,
-        request_info: RequestInfo,  # noqa: ARG002
+        self, state: SchedulerState, _request: RequestInfo
     ) -> SchedulerUpdateAction:
         create_exceeded = state.created_requests >= self.num_requests
         processed_exceeded = state.processed_requests >= self.num_requests

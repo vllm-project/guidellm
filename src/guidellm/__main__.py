@@ -33,7 +33,7 @@ from pydantic import ValidationError
 try:
     import uvloop
 except ImportError:
-    uvloop = None # type: ignore[assignment] # Optional dependency
+    uvloop = None  # type: ignore[assignment] # Optional dependency
 
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
@@ -116,6 +116,7 @@ def benchmark():
 )
 @click.option(
     "--scenario",
+    "-c",
     type=cli_tools.Union(
         click.Path(
             exists=True,
@@ -156,8 +157,9 @@ def benchmark():
 )
 @click.option(
     "--rate",
-    type=float,
-    multiple=True,
+    type=str,
+    callback=cli_tools.parse_list_floats,
+    multiple=False,
     default=BenchmarkGenerativeTextArgs.get_default("rate"),
     help=(
         "Benchmark rate(s) to test. Meaning depends on profile: "
@@ -383,7 +385,7 @@ def run(**kwargs):
         kwargs.get("data_args"), default=[], simplify_single=False
     )
     kwargs["rate"] = cli_tools.format_list_arg(
-        kwargs.get("rate"), default=None, simplify_single=True
+        kwargs.get("rate"), default=None, simplify_single=False
     )
 
     disable_console_outputs = kwargs.pop("disable_console_outputs", False)
@@ -391,8 +393,10 @@ def run(**kwargs):
     disable_progress = kwargs.pop("disable_progress", False)
 
     try:
+        # Only set CLI args that differ from click defaults
+        new_kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
         args = BenchmarkGenerativeTextArgs.create(
-            scenario=kwargs.pop("scenario", None), **kwargs
+            scenario=new_kwargs.pop("scenario", None), **new_kwargs
         )
     except ValidationError as err:
         # Translate pydantic valdation error to click argument error
