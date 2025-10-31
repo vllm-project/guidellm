@@ -24,6 +24,8 @@ from typing import Any, ClassVar, Literal, TypeVar, cast
 
 import yaml
 from pydantic import (
+    AliasChoices,
+    AliasGenerator,
     ConfigDict,
     Field,
     ValidationError,
@@ -1796,9 +1798,8 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 scenario_data = scenario_data["args"]
             constructor_kwargs.update(scenario_data)
 
-        for key, value in kwargs.items():
-            if value != cls.get_default(key):
-                constructor_kwargs[key] = value
+        # Apply overrides from kwargs
+        constructor_kwargs.update(kwargs)
 
         return cls.model_validate(constructor_kwargs)
 
@@ -1832,6 +1833,14 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         use_enum_values=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
+        validate_by_alias=True,
+        validate_by_name=True,
+        alias_generator=AliasGenerator(
+            # Support field names with hyphens
+            validation_alias=lambda field_name: AliasChoices(
+                field_name, field_name.replace("_", "-")
+            ),
+        ),
     )
 
     # Required
@@ -1878,6 +1887,12 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     data_request_formatter: DatasetPreprocessor | dict[str, str] | str = Field(
         default="chat_completions",
         description="Request formatting preprocessor or template name",
+        validation_alias=AliasChoices(
+            "data_request_formatter",
+            "data-request-formatter",
+            "request_type",
+            "request-type",
+        ),
     )
     data_collator: Callable | Literal["generative"] | None = Field(
         default="generative", description="Data collator for batch processing"
