@@ -1887,7 +1887,12 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     data_request_formatter: DatasetPreprocessor | dict[str, str] | str = Field(
         default="chat_completions",
         description="Request formatting preprocessor or template name",
-        validation_alias=AliasChoices("request_type", "request-type"),
+        validation_alias=AliasChoices(
+            "data_request_formatter",
+            "data-request-formatter",
+            "request_type",
+            "request-type",
+        ),
     )
     data_collator: Callable | Literal["generative"] | None = Field(
         default="generative", description="Data collator for batch processing"
