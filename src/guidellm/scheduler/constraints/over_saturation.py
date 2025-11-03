@@ -5,11 +5,9 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from guidellm.scheduler.constraints import (
-    Constraint,
-    ConstraintsInitializerFactory,
-    PydanticConstraintInitializer,
-)
+from .base import PydanticConstraintInitializer
+from .factory import ConstraintsInitializerFactory
+from .protocols import Constraint
 from guidellm.scheduler.schemas import (
     RequestInfo,
     SchedulerState,

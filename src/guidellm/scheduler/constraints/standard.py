@@ -1,388 +1,38 @@
 """
-Constraint system for scheduler behavior control and request processing limits.
+Standard constraint implementations for scheduler behavior control.
 
-Provides flexible constraints for managing scheduler behavior with configurable
-thresholds based on time, error rates, and request counts. Constraints evaluate
-scheduler state and individual requests to determine whether processing should
-continue or stop based on predefined limits. The constraint system enables
-sophisticated benchmark stopping criteria through composable constraint types.
+Provides predefined constraints for limiting benchmark execution based on
+duration, error rates, request counts, and other metrics.
 """
 
 from __future__ import annotations
 
 import time
-from abc import ABC, abstractmethod
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
+from guidellm.schemas import RequestInfo
 from guidellm.scheduler.schemas import (
     SchedulerState,
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
 )
-from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
-from guidellm.utils import InfoMixin, RegistryMixin, StandardBaseModel
+from guidellm.utils import InfoMixin, StandardBaseModel
+
+from .base import PydanticConstraintInitializer
+from .factory import ConstraintsInitializerFactory
+from .protocols import Constraint
 
 __all__ = [
-    "Constraint",
-    "ConstraintInitializer",
-    "ConstraintsInitializerFactory",
     "MaxDurationConstraint",
     "MaxErrorRateConstraint",
     "MaxErrorsConstraint",
     "MaxGlobalErrorRateConstraint",
     "MaxNumberConstraint",
-    "PydanticConstraintInitializer",
     "RequestsExhaustedConstraint",
-    "SerializableConstraintInitializer",
-    "UnserializableConstraintInitializer",
 ]
-
-
-@runtime_checkable
-class Constraint(Protocol):
-    """Protocol for constraint evaluation functions that control scheduler behavior."""
-
-    def __call__(
-        self, state: SchedulerState, request: RequestInfo
-    ) -> SchedulerUpdateAction:
-        """
-        Evaluate constraint against scheduler state and request information.
-
-        :param state: Current scheduler state with metrics and timing information
-        :param request: Individual request information and metadata
-        :return: Action indicating whether to continue or stop scheduler operations
-        """
-
-
-@runtime_checkable
-class ConstraintInitializer(Protocol):
-    """Protocol for constraint initializer factory functions that create constraints."""
-
-    def create_constraint(self, **kwargs) -> Constraint:
-        """
-        Create a constraint instance from configuration parameters.
-
-        :param kwargs: Configuration parameters for constraint creation
-        :return: Configured constraint evaluation function
-        """
-
-
-@runtime_checkable
-class SerializableConstraintInitializer(Protocol):
-    """Protocol for serializable constraint initializers supporting persistence."""
-
-    @classmethod
-    def validated_kwargs(cls, *args, **kwargs) -> dict[str, Any]:
-        """
-        Validate and process arguments for constraint creation.
-
-        :param args: Positional arguments for constraint configuration
-        :param kwargs: Keyword arguments for constraint configuration
-        :return: Validated parameter dictionary for constraint creation
-        """
-
-    @classmethod
-    def model_validate(cls, **kwargs) -> ConstraintInitializer:
-        """
-        Create validated constraint initializer from configuration.
-
-        :param kwargs: Configuration dictionary for initializer creation
-        :return: Validated constraint initializer instance
-        """
-
-    def model_dump(self) -> dict[str, Any]:
-        """
-        Serialize constraint initializer to dictionary format.
-
-        :return: Dictionary representation of constraint initializer
-        """
-
-    def create_constraint(self, **kwargs) -> Constraint:
-        """
-        Create constraint instance from this initializer.
-
-        :param kwargs: Additional configuration parameters
-        :return: Configured constraint evaluation function
-        """
-
-
-class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
-    """
-    Registry factory for creating and managing constraint initializers.
-
-    Provides centralized access to registered constraint types with support for
-    creating constraints from configuration dictionaries, simple values, or
-    pre-configured instances. Handles constraint resolution and type validation
-    for the scheduler constraint system.
-
-    Example:
-    ::
-        from guidellm.scheduler import ConstraintsInitializerFactory
-
-        # Register new constraint type
-        @ConstraintsInitializerFactory.register("new_constraint")
-        class NewConstraint:
-            def create_constraint(self, **kwargs) -> Constraint:
-                return lambda state, request: SchedulerUpdateAction()
-
-        # Create and use constraint
-        constraint = ConstraintsInitializerFactory.create_constraint("new_constraint")
-    """
-
-    @classmethod
-    def create(cls, key: str, *args, **kwargs) -> ConstraintInitializer:
-        """
-        Create a constraint initializer for the specified key.
-
-        :param key: Registered constraint initializer key
-        :param args: Positional arguments for initializer creation
-        :param kwargs: Keyword arguments for initializer creation
-        :return: Configured constraint initializer instance
-        :raises ValueError: If the key is not registered in the factory
-        """
-        if cls.registry is None or key not in cls.registry:
-            raise ValueError(f"Unknown constraint initializer key: {key}")
-
-        initializer_class = cls.registry[key]
-
-        return (
-            initializer_class(*args, **kwargs)  # type: ignore[operator]
-            if not isinstance(initializer_class, type)
-            or not issubclass(initializer_class, SerializableConstraintInitializer)
-            else initializer_class(
-                **initializer_class.validated_kwargs(*args, **kwargs)  # type: ignore[misc]
-            )
-        )
-
-    @classmethod
-    def serialize(cls, initializer: ConstraintInitializer) -> dict[str, Any]:
-        """
-        Serialize constraint initializer to dictionary format.
-
-        :param initializer: Constraint initializer to serialize
-        :return: Dictionary representation or unserializable placeholder
-        """
-        if isinstance(initializer, SerializableConstraintInitializer):
-            return initializer.model_dump()
-        else:
-            unserializable = UnserializableConstraintInitializer(
-                orig_info=InfoMixin.extract_from_obj(initializer)
-            )
-            return unserializable.model_dump()
-
-    @classmethod
-    def deserialize(
-        cls, initializer_dict: dict[str, Any]
-    ) -> SerializableConstraintInitializer | UnserializableConstraintInitializer:
-        """
-        Deserialize constraint initializer from dictionary format.
-
-        :param initializer_dict: Dictionary representation of constraint initializer
-        :return: Reconstructed constraint initializer instance
-        :raises ValueError: If constraint type is unknown or cannot be deserialized
-        """
-        if initializer_dict.get("type_") == "unserializable":
-            return UnserializableConstraintInitializer.model_validate(initializer_dict)
-
-        if (
-            cls.registry is not None
-            and initializer_dict.get("type_")
-            and initializer_dict["type_"] in cls.registry
-        ):
-            initializer_class = cls.registry[initializer_dict["type_"]]
-            if hasattr(initializer_class, "model_validate"):
-                return initializer_class.model_validate(initializer_dict)  # type: ignore[return-value]
-            else:
-                return initializer_class(**initializer_dict)  # type: ignore[return-value,operator]
-
-        raise ValueError(
-            f"Cannot deserialize unknown constraint initializer: "
-            f"{initializer_dict.get('type_', 'unknown')}"
-        )
-
-    @classmethod
-    def create_constraint(cls, key: str, *args, **kwargs) -> Constraint:
-        """
-        Create a constraint instance for the specified key.
-
-        :param key: Registered constraint initializer key
-        :param args: Positional arguments for constraint creation
-        :param kwargs: Keyword arguments for constraint creation
-        :return: Configured constraint function ready for evaluation
-        :raises ValueError: If the key is not registered in the factory
-        """
-        return cls.create(key, *args, **kwargs).create_constraint()
-
-    @classmethod
-    def resolve(
-        cls,
-        initializers: dict[
-            str,
-            Any | dict[str, Any] | Constraint | ConstraintInitializer,
-        ],
-    ) -> dict[str, Constraint]:
-        """
-        Resolve mixed constraint specifications to callable constraints.
-
-        :param initializers: Dictionary mapping constraint keys to specifications
-        :return: Dictionary mapping constraint keys to callable functions
-        :raises ValueError: If any key is not registered in the factory
-        """
-        constraints = {}
-
-        for key, val in initializers.items():
-            if isinstance(val, Constraint):
-                constraints[key] = val
-            elif isinstance(val, ConstraintInitializer):
-                constraints[key] = val.create_constraint()
-            elif isinstance(val, dict):
-                constraints[key] = cls.create_constraint(key, **val)
-            else:
-                constraints[key] = cls.create_constraint(key, val)
-
-        return constraints
-
-    @classmethod
-    def resolve_constraints(
-        cls,
-        constraints: dict[str, Any | dict[str, Any] | Constraint],
-    ) -> dict[str, Constraint]:
-        """
-        Resolve constraints from mixed constraint specifications.
-
-        :param constraints: Dictionary mapping constraint keys to specifications
-        :return: Dictionary mapping constraint keys to callable functions
-        :raises ValueError: If any constraint key is not registered
-        """
-        resolved_constraints = {}
-
-        for key, val in constraints.items():
-            if isinstance(val, Constraint):
-                resolved_constraints[key] = val
-            elif isinstance(val, dict):
-                resolved_constraints[key] = cls.create_constraint(key, **val)
-            else:
-                resolved_constraints[key] = cls.create_constraint(key, val)
-
-        return resolved_constraints
-
-
-class PydanticConstraintInitializer(StandardBaseModel, ABC, InfoMixin):
-    """
-    Abstract base for Pydantic-based constraint initializers.
-
-    Provides standardized serialization, validation, and metadata handling for
-    constraint initializers using Pydantic models. Subclasses implement specific
-    constraint creation logic while inheriting validation and persistence support.
-    """
-
-    type_: str = Field(description="Type identifier for the constraint initializer")
-
-    @property
-    def info(self) -> dict[str, Any]:
-        """
-        Extract serializable information from this constraint initializer.
-
-        :return: Dictionary containing constraint configuration and metadata
-        """
-        return self.model_dump()
-
-    @classmethod
-    @abstractmethod
-    def validated_kwargs(cls, *args, **kwargs) -> dict[str, Any]:
-        """
-        Validate and process arguments for constraint creation.
-
-        Must be implemented by subclasses to handle their specific parameter patterns
-        and validation requirements.
-
-        :param args: Positional arguments passed to the constraint
-        :param kwargs: Keyword arguments passed to the constraint
-        :return: Validated dictionary of parameters for constraint creation
-        :raises NotImplementedError: Must be implemented by subclasses
-        """
-        ...
-
-    @abstractmethod
-    def create_constraint(self, **kwargs) -> Constraint:
-        """
-        Create a constraint instance.
-
-        Must be implemented by subclasses to return their specific constraint type
-        with appropriate configuration and validation.
-
-        :param kwargs: Additional keyword arguments (usually unused)
-        :return: Configured constraint instance
-        :raises NotImplementedError: Must be implemented by subclasses
-        """
-        ...
-
-
-class UnserializableConstraintInitializer(PydanticConstraintInitializer):
-    """
-    Placeholder for constraints that cannot be serialized or executed.
-
-    Represents constraint initializers that failed serialization or contain
-    non-serializable components. Cannot be executed and raises errors when
-    invoked to prevent runtime failures from invalid constraint state.
-    """
-
-    type_: Literal["unserializable"] = "unserializable"  # type: ignore[assignment]
-    orig_info: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Original constraint information before serialization failure",
-    )
-
-    @classmethod
-    def validated_kwargs(
-        cls,
-        orig_info: dict[str, Any] | None = None,
-        **kwargs,  # noqa: ARG003
-    ) -> dict[str, Any]:
-        """
-        Validate arguments for unserializable constraint creation.
-
-        :param orig_info: Original constraint information before serialization failure
-        :param kwargs: Additional arguments (ignored)
-        :return: Validated parameters for unserializable constraint creation
-        """
-        return {"orig_info": orig_info or {}}
-
-    def create_constraint(
-        self,
-        **kwargs,  # noqa: ARG002
-    ) -> Constraint:
-        """
-        Raise error for unserializable constraint creation attempt.
-
-        :param kwargs: Additional keyword arguments (unused)
-        :raises RuntimeError: Always raised since unserializable constraints
-            cannot be executed
-        """
-        raise RuntimeError(
-            "Cannot create constraint from unserializable constraint instance. "
-            "This constraint cannot be serialized and therefore cannot be executed."
-        )
-
-    def __call__(
-        self,
-        state: SchedulerState,  # noqa: ARG002
-        request: RequestInfo,  # noqa: ARG002
-    ) -> SchedulerUpdateAction:
-        """
-        Raise error since unserializable constraints cannot be invoked.
-
-        :param state: Current scheduler state (unused)
-        :param request: Individual request information (unused)
-        :raises RuntimeError: Always raised for unserializable constraints
-        """
-        raise RuntimeError(
-            "Cannot invoke unserializable constraint instance. "
-            "This constraint was not properly serialized and cannot be executed."
-        )
 
 
 @ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
@@ -873,7 +523,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
     """
 
     type_: Literal["max_global_error_rate"] = "max_global_error_rate"  # type: ignore[assignment]
-    max_error_rate: int | float = Field(
+    max_error_rate: int | float | list[int | float] = Field(
         description="Maximum error rate allowed (0.0 to 1.0)"
     )
     min_processed: int | float | None = Field(

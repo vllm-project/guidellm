@@ -20,7 +20,7 @@ from guidellm.scheduler import (
     SchedulerState,
     SchedulerUpdateAction,
 )
-from guidellm.scheduler.advanced_constraints.over_saturation import (
+from guidellm.scheduler.constraints.over_saturation import (
     SlopeChecker,
     approx_t_ppf,
 )

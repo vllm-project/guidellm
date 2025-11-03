@@ -221,7 +221,7 @@ pytest tests/unit/scheduler/test_over_saturation*.py -m smoke -v
 pytest tests/unit/scheduler/test_over_saturation*.py -m sanity -v
 
 # Run with coverage reporting
-pytest tests/unit/scheduler/test_over_saturation*.py --cov=guidellm.scheduler.advanced_constraints.over_saturation
+pytest tests/unit/scheduler/test_over_saturation*.py --cov=guidellm.scheduler.constraints.over_saturation
 ```
 
 ## Conclusion

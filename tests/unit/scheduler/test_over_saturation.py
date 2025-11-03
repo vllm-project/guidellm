@@ -556,7 +556,7 @@ class TestSlopeChecker:
     @pytest.fixture
     def slope_checker(self):
         """Create a SlopeChecker instance for testing."""
-        from guidellm.scheduler.advanced_constraints.over_saturation import (
+        from guidellm.scheduler.constraints.over_saturation import (
             SlopeChecker,
         )
 
