@@ -12,8 +12,7 @@ __all__ = ["DataDependentPreprocessor", "DatasetPreprocessor", "PreprocessorRegi
 
 @runtime_checkable
 class DatasetPreprocessor(Protocol):
-    def __call__(self, item: dict[str, Any]) -> (
-        GenerationRequest | dict[str, Any]): ...
+    def __call__(self, item: dict[str, Any]) -> GenerationRequest | dict[str, Any]: ...
 
 
 @runtime_checkable

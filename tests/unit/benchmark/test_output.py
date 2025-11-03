@@ -91,7 +91,6 @@ def test_file_yaml():
     mock_path.unlink()
 
 
-@pytest.mark.xfail(reason="old and broken", run=False)
 @pytest.mark.asyncio
 async def test_file_csv():
     args = BenchmarkGenerativeTextArgs(target="http://localhost:8000", data=["test"])
