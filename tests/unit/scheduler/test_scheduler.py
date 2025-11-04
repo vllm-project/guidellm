@@ -137,7 +137,6 @@ class TestScheduler:
         assert id(instance1) == id(instance2)
         assert hasattr(instance1, "thread_lock")
 
-    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
@@ -164,6 +163,7 @@ class TestScheduler:
             requests=requests,
             backend=backend,
             strategy=strategy,
+            startup_duration=0.1,
             env=env,
             **constraint_args,
         ):
@@ -174,7 +174,6 @@ class TestScheduler:
         assert all(isinstance(r[2], RequestInfo) for r in results)
         assert all(isinstance(r[3], SchedulerState) for r in results)
 
-    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
@@ -219,7 +218,6 @@ class TestScheduler:
             ):
                 pass
 
-    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
