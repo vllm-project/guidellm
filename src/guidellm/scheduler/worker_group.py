@@ -228,11 +228,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
             worker = WorkerProcess[RequestT, ResponseT](
                 worker_index=rank,
-                messaging=self.messaging.create_worker_copy(
+                messaging=self.messaging.create_worker_copy(  # type: ignore[arg-type]
                     worker_index=rank,
                     max_buffer_send_size=None,
                     max_buffer_receive_size=per_proc_max_buffer_size,
-                ),  # The non-group worker lacks the SchedulerState type. Type err.
+                ),
                 backend=self.backend,
                 strategy=self.strategy,
                 async_limit=async_limit,

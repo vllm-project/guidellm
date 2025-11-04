@@ -94,9 +94,9 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
         precision: int = 1,
     ):
         """
-        Add statistical summary columns (mean and standard deviation) for a metric.
+        Add statistical summary columns (mean and p95) for a metric.
 
-        Creates paired mean/stddev columns automatically and appends values from the
+        Creates paired mean/p95 columns automatically and appends values from the
         specified status category of the distribution summary.
 
         :param stats: Distribution summary containing status-specific statistics
@@ -111,16 +111,16 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
             self[f"{key}_mean"] = ConsoleTableColumn(
                 group=group, name=name, units="Mean", precision=precision
             )
-            self[f"{key}_stddev"] = ConsoleTableColumn(
-                group=group, name=name, units="Std", precision=precision
+            self[f"{key}_p95"] = ConsoleTableColumn(
+                group=group, name=name, units="p95", precision=precision
             )
 
         status_stats: DistributionSummary | None = (
             getattr(stats, status) if stats else None
         )
         self[f"{key}_mean"].values.append(status_stats.mean if status_stats else None)
-        self[f"{key}_stddev"].values.append(
-            status_stats.std_dev if status_stats else None
+        self[f"{key}_p95"].values.append(
+            status_stats.percentiles.p95 if status_stats else None
         )
 
     def get_table_data(self) -> tuple[list[list[str]], list[list[str]]]:

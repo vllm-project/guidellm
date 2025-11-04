@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC
 from collections.abc import AsyncIterator, Iterable
-from typing import Any, Generic
+from typing import Generic
 
 from guidellm.benchmark.profile import Profile
 from guidellm.benchmark.progress import BenchmarkerProgress

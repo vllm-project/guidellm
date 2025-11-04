@@ -309,7 +309,7 @@ async def resolve_request_loader(
 
 async def resolve_profile(
     profile: StrategyType | ProfileType | Profile,
-    rate: float | list[float] | None,
+    rate: list[float] | None,
     random_seed: int,
     constraints: MutableMapping[str, ConstraintInitializer | Any],
     max_seconds: int | float | None,
@@ -355,10 +355,9 @@ async def resolve_profile(
         if val is not None:
             constraints[key] = val
     if not isinstance(profile, Profile):
-        rate_list: list[float] | None = [rate] if isinstance(rate, float) else rate
         profile = Profile.create(
             rate_type=profile,
-            rate=rate_list,
+            rate=rate,
             random_seed=random_seed,
             constraints={**constraints},
         )
