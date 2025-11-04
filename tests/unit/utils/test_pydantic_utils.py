@@ -10,13 +10,6 @@ from unittest import mock
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from guidellm.utils import (
-    PydanticClassRegistryMixin,
-    ReloadableBaseModel,
-    StandardBaseDict,
-    StandardBaseModel,
-    StatusBreakdown,
-)
 from guidellm.schemas.base import (
     BaseModelT,
     ErroredT,
@@ -24,6 +17,13 @@ from guidellm.schemas.base import (
     RegisterClassT,
     SuccessfulT,
     TotalT,
+)
+from guidellm.utils import (
+    PydanticClassRegistryMixin,
+    ReloadableBaseModel,
+    StandardBaseDict,
+    StandardBaseModel,
+    StatusBreakdown,
 )
 
 

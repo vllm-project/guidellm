@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable, Iterator
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 import torch
 from torch.utils.data import Sampler
@@ -105,7 +105,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                         # passed into the preprocessor, which is a type violation.
                         # This should be fixed at some point.
                         row = preprocessor(row)  # type: ignore[assignment]
-                    yield row
+                    yield row  # type: ignore[misc]
                 except Exception as err:  # noqa: BLE001 # Exception logged
                     logger.error(f"Skipping data row due to error: {err}")
                     gen_count -= 1

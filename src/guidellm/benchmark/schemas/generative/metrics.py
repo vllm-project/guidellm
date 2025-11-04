@@ -882,7 +882,7 @@ class GenerativeMetrics(StandardBaseDict):
                 errored=errored,
             ),
             prompt_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
-                function=lambda req: req.prompt_tokens_timings,
+                function=lambda req: req.prompt_tokens_timing,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,

@@ -174,7 +174,7 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
                 config.warmup >= 1.0
                 and scheduler_state.remaining_duration is not None
                 and self.duration is not None
-                and config.warmup >= self.duration
+                and self.duration >= config.warmup
             )
             exceeded_count = (
                 config.warmup >= 1.0
@@ -184,7 +184,7 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
             exceeded_fraction = (
                 config.warmup < 1.0
                 and scheduler_state.remaining_fraction is not None
-                and config.warmup >= 1.0 - scheduler_state.remaining_fraction
+                and 1.0 - scheduler_state.remaining_fraction >= config.warmup
             )
 
             if exceeded_time or exceeded_count or exceeded_fraction:
@@ -198,7 +198,7 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
             exceeded_time = (
                 config.cooldown >= 1.0
                 and scheduler_state.remaining_duration is not None
-                and config.cooldown <= scheduler_state.remaining_duration
+                and scheduler_state.remaining_duration <= config.cooldown
             )
             exceeded_count = (
                 config.cooldown >= 1.0
@@ -208,7 +208,7 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
             exceeded_fraction = (
                 config.cooldown < 1.0
                 and scheduler_state.remaining_fraction is not None
-                and config.cooldown >= scheduler_state.remaining_fraction
+                and scheduler_state.remaining_fraction <= config.cooldown
             )
 
             if exceeded_time or exceeded_count or exceeded_fraction:
@@ -401,7 +401,7 @@ class SchedulerMetricsAccumulator(StandardBaseModel):
             + scheduler_state.cancelled_requests
         )
 
-        # All requests much have queued, dequeued, resolve_end, and finalized timings
+        # All requests must have queued, dequeued, resolve_end, and finalized timings
         timings: RequestTimings = stats.info.timings
         if any(
             timing is None

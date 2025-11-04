@@ -278,7 +278,9 @@ class DistributionSummary(StandardBaseModel):
         # Create PDF by normalizing weights and stacking
         total_weight = np.sum(final_weights)
         if total_weight <= epsilon:
-            raise ValueError("Total weight is zero or near zero; cannot normalize.")
+            # No valid weights to create PDF, overwrite to uniform distribution
+            final_weights = np.ones_like(final_values)
+            total_weight = np.sum(final_weights)
 
         probabilities = final_weights / total_weight
         pdf = np.column_stack((final_values, probabilities))
@@ -493,13 +495,13 @@ class DistributionSummary(StandardBaseModel):
         )
 
     @classmethod
-    def _to_weighted_ndarray(  # noqa: C901, PLR0912
+    def _to_weighted_ndarray(
         cls,
         inputs: (
             Sequence[float | tuple[float, float] | tuple[float, float, float]]
             | np.ndarray
         ),
-        num_values_per_item: int,
+        num_values_per_item: Literal[2, 3],
     ) -> np.ndarray:
         if not isinstance(inputs, np.ndarray):
             # Convert list to structured numpy array with dims (N, num_dimensions)
@@ -513,7 +515,7 @@ class DistributionSummary(StandardBaseModel):
 
             return (
                 np.hstack((inputs, weights))
-                if num_values_per_item == 2
+                if num_values_per_item == 2  # noqa: PLR2004
                 else np.hstack((inputs, inputs, weights))
             )
 
@@ -608,12 +610,10 @@ class DistributionSummary(StandardBaseModel):
             remove_mask = np.cumsum(merged_events[:-1]) > 0
             remove_mask[starts] = False  # Keep start indices
 
-            # Update weighted_times array with merged weights, remove merged entries
+            # Remove merged entries, update weighted_times
             weights = weights[~remove_mask]
             times = times[~remove_mask]
-
-            # Remove entries marked for removal
-            weighted_times = weighted_times[~remove_mask]
+            weighted_times = np.column_stack((times, weights))
 
         return weighted_times
 

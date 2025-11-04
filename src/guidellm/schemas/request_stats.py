@@ -77,7 +77,7 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Timestamp when the request ended, or None if unavailable
         """
-        if self.info.timings.request_end is None:
+        if self.info.timings.resolve_end is None:
             raise ValueError("resolve_end timings should be set but is None.")
 
         return self.info.timings.request_end or self.info.timings.resolve_end
@@ -257,7 +257,7 @@ class GenerativeRequestStats(StandardBaseDict):
         return self.info.timings.token_iterations
 
     @property
-    def prompt_tokens_timings(self) -> tuple[float, float] | None:
+    def prompt_tokens_timing(self) -> tuple[float, float] | None:
         """
         :return: Tuple of (timestamp, token_count) for prompt processing, or None
             if unavailable
@@ -329,7 +329,7 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: List of (timestamp, token_count) tuples for all token generations
         """
-        prompt_timings = self.prompt_tokens_timings
+        prompt_timings = self.prompt_tokens_timing
         output_timings = self.output_tokens_timings
 
         return (prompt_timings or []) + output_timings
