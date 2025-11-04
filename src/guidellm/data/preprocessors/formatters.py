@@ -50,7 +50,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
     ):
-        self.model: str | None = model
+        self.model: str = model
         self.extras = (
             GenerationRequestArguments(**extras)
             if extras and isinstance(extras, dict)
@@ -76,6 +76,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
@@ -161,9 +162,8 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
         # Configure streaming
         if self.stream:
             arguments.stream = True
-            arguments.body.update(
-                {"stream": True, "stream_options": {"include_usage": True}}
-            )
+            arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
@@ -337,6 +337,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(

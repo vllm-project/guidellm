@@ -54,7 +54,7 @@ class OpenAIHTTPBackend(Backend):
     def __init__(
         self,
         target: str,
-        model: str | None = None,
+        model: str = "",
         api_routes: dict[str, str] | None = None,
         response_handlers: dict[str, Any] | None = None,
         timeout: float = 60.0,
@@ -192,7 +192,7 @@ class OpenAIHTTPBackend(Backend):
 
         return [item["id"] for item in response.json()["data"]]
 
-    async def default_model(self) -> str | None:
+    async def default_model(self) -> str:
         """
         Get the default model for this backend.
 
@@ -202,9 +202,9 @@ class OpenAIHTTPBackend(Backend):
             return self.model
 
         models = await self.available_models()
-        return models[0] if models else None
+        return models[0] if models else ""
 
-    async def resolve(
+    async def resolve(  # type: ignore[override]
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
@@ -230,11 +230,9 @@ class OpenAIHTTPBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-        response_handler = self._resolve_response_handler(
-            request_type=request.request_type
-        )
         if (request_path := self.api_routes.get(request.request_type)) is None:
             raise ValueError(f"Unsupported request type '{request.request_type}'")
+
         request_url = f"{self.target}/{request_path}"
         request_files = (
             {
@@ -246,6 +244,9 @@ class OpenAIHTTPBackend(Backend):
         )
         request_json = request.arguments.body if not request_files else None
         request_data = request.arguments.body if request_files else None
+        response_handler = self._resolve_response_handler(
+            request_type=request.request_type
+        )
 
         if not request.arguments.stream:
             request_info.timings.request_start = time.time()
@@ -288,10 +289,8 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.request_iterations += 1
 
                     iterations = response_handler.add_streaming_line(chunk)
-                    if iterations is None or end_reached:
-                        end_reached = True
-                        continue
-                    if iterations <=0:
+                    if iterations is None or iterations <= 0 or end_reached:
+                        end_reached = end_reached or iterations is None
                         continue
 
                     if request_info.timings.first_token_iteration is None:

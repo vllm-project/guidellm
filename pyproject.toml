@@ -130,6 +130,7 @@ dev = [
     "mdformat-gfm~=0.3.6",
 
     # type-checking
+    "pandas-stubs",
     "types-PyYAML~=6.0.1",
     "types-requests~=2.32.0",
     "types-toml",
