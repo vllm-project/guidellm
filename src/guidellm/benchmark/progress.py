@@ -348,9 +348,9 @@ class _GenerativeProgressTaskState:
     request_concurrency: float = 0.0
     requests_per_second: float = 0.0
     request_latency: float = 0.0
-    output_tokens: int = 0
+    output_tokens: float = 0
     output_tokens_rate: float = 0.0
-    prompt_tokens: int = 0
+    prompt_tokens: float = 0
     total_tokens_rate: float = 0.0
     time_to_first_token: float = 0.0
     inter_token_latency: float = 0.0
@@ -588,13 +588,9 @@ class _GenerativeProgressTaskState:
             request_latency=accumulator.completed_metrics.request_latency.mean,
         )
         self._update_token_stats(
-            output_tokens=int(
-                accumulator.completed_metrics.total_tokens.value_sum or 0
-            ),
+            output_tokens=accumulator.completed_metrics.total_tokens.mean,
             output_tokens_rate=accumulator.completed_metrics.output_tokens.rate_per_second,
-            prompt_tokens=int(
-                accumulator.completed_metrics.input_tokens.value_sum or 0
-            ),
+            prompt_tokens=accumulator.completed_metrics.input_tokens.mean,
             total_tokens_rate=accumulator.completed_metrics.total_tokens.rate_per_second,
             time_to_first_token=accumulator.completed_metrics.time_to_first_token_ms.mean,
             inter_token_latency=accumulator.completed_metrics.inter_token_latency_ms.mean,
@@ -621,13 +617,9 @@ class _GenerativeProgressTaskState:
             request_latency=benchmark.metrics.request_latency.successful.mean,
         )
         self._update_token_stats(
-            output_tokens=int(
-                benchmark.metrics.output_token_count.successful.mean or 0
-            ),
+            output_tokens=benchmark.metrics.output_token_count.successful.mean,
             output_tokens_rate=benchmark.metrics.output_tokens_per_second.successful.mean,
-            prompt_tokens=int(
-                benchmark.metrics.prompt_token_count.successful.mean or 0
-            ),
+            prompt_tokens=benchmark.metrics.prompt_token_count.successful.mean,
             total_tokens_rate=benchmark.metrics.tokens_per_second.successful.mean,
             time_to_first_token=(
                 benchmark.metrics.time_to_first_token_ms.successful.mean
@@ -682,9 +674,9 @@ class _GenerativeProgressTaskState:
 
     def _update_token_stats(
         self,
-        output_tokens: int | None = None,
+        output_tokens: float | None = None,
         output_tokens_rate: float | None = None,
-        prompt_tokens: int | None = None,
+        prompt_tokens: float | None = None,
         total_tokens_rate: float | None = None,
         time_to_first_token: float | None = None,
         inter_token_latency: float | None = None,

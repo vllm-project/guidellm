@@ -266,12 +266,10 @@ class GenerativeRequestStats(StandardBaseDict):
             # no end time, can't compute
             return None
 
-        return [
-            (
-                self.first_token_iteration or self.request_end_time,
-                self.prompt_tokens or 0.0,
-            )
-        ]
+        return (
+            self.first_token_iteration or self.request_end_time,
+            self.prompt_tokens or 0.0,
+        )
 
     @property
     def output_tokens_timings(self) -> list[tuple[float, float]]:
@@ -332,4 +330,4 @@ class GenerativeRequestStats(StandardBaseDict):
         prompt_timings = self.prompt_tokens_timing
         output_timings = self.output_tokens_timings
 
-        return (prompt_timings or []) + output_timings
+        return ([prompt_timings] if prompt_timings else []) + output_timings

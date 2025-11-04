@@ -714,7 +714,7 @@ class StatusDistributionSummary(
         def _extract_values(
             _objs: Sequence[FunctionObjT],
         ) -> Sequence[float | tuple[float, float]]:
-            _outputs = []
+            _outputs: list[float | tuple[float, float]] = []
             for _obj in _objs:
                 if (_result := function(_obj)) is None:
                     continue
@@ -830,7 +830,7 @@ class StatusDistributionSummary(
         def _extract_values(
             _objs: Sequence[FunctionObjT],
         ) -> Sequence[float | tuple[float, float]]:
-            _outputs = []
+            _outputs: list[float | tuple[float, float]] = []
             for _obj in _objs:
                 if (_result := function(_obj)) is None:
                     continue
@@ -955,7 +955,7 @@ class StatusDistributionSummary(
         def _extract_values(
             _objs: Sequence[FunctionObjT],
         ) -> Sequence[tuple[float, float] | tuple[float, float, float]]:
-            _outputs = []
+            _outputs: list[tuple[float, float] | tuple[float, float, float]] = []
             for _obj in _objs:
                 if (_result := function(_obj)) is None:
                     continue
@@ -979,10 +979,13 @@ class StatusDistributionSummary(
     @classmethod
     def _combine_status_arrays(
         cls,
-        successful: Sequence[float] | np.ndarray,
-        incomplete: Sequence[float] | np.ndarray,
-        errored: Sequence[float] | np.ndarray,
-        num_values_per_item: int,
+        successful: Sequence[float | tuple[float, float] | tuple[float, float, float]]
+        | np.ndarray,
+        incomplete: Sequence[float | tuple[float, float] | tuple[float, float, float]]
+        | np.ndarray,
+        errored: Sequence[float | tuple[float, float] | tuple[float, float, float]]
+        | np.ndarray,
+        num_values_per_item: Literal[2, 3],
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         successful_array = DistributionSummary._to_weighted_ndarray(  # noqa: SLF001
             successful, num_values_per_item=num_values_per_item
