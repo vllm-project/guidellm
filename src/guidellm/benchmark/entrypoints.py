@@ -248,7 +248,7 @@ async def resolve_request_loader(
         else:
             # Extract request_type from formatter dictionary
             formatter_dict = dict(data_request_formatter)
-            request_type = formatter_dict.pop("request_type", "chat_completions")
+            request_type = formatter_dict.pop("request_type", settings.preferred_route)
             formatter_kwargs = formatter_dict
 
         if (
