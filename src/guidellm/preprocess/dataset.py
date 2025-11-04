@@ -276,8 +276,8 @@ def process_dataset(
         processor_args,
         "dataset conversion.",
     )
-    prompt_column = column_mappings.get("prompt_column")
-    output_column = column_mappings.get(
+    prompt_column = column_mappings.get("prompt_column")  # type: ignore[attr-defined]
+    output_column = column_mappings.get(  # type: ignore[attr-defined]
         "output_tokens_count_column", "output_tokens_count"
     )
 
@@ -304,7 +304,7 @@ def process_dataset(
         )
     )
 
-    dataset_iterator = iter(dataset)
+    dataset_iterator = iter(dataset)  # type: ignore[call-overload]
     processed_prompts = []
     prompt_handler = STRATEGY_HANDLERS[short_prompt_strategy]
 
