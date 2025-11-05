@@ -7,8 +7,6 @@ from guidellm.data.preprocessors.preprocessor import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
-from guidellm.data.schemas import GenerativeDatasetColumnType
-from guidellm.data.utils import text_stats
 from guidellm.schemas import GenerationRequest, GenerationRequestArguments, UsageMetrics
 
 __all__ = [
@@ -58,10 +56,12 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         self.stream: bool = stream
         self.max_tokens: int | None = max_tokens or max_completion_tokens
 
-    def __call__(
-        self, columns: dict[GenerativeDatasetColumnType, list[Any]]
-    ) -> GenerationRequest:
-        arguments: GenerationRequestArguments = GenerationRequestArguments(body={})
+    def __call__(self, columns: dict[str, list[Any]]) -> GenerationRequest:
+        """
+        :param columns: A dict of GenerativeDatasetColumnType to Any
+        """
+        arguments: GenerationRequestArguments = GenerationRequestArguments()
+        arguments.body = {}  # The type checker works better setting this field here
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
@@ -99,10 +99,9 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
         text = "".join(txt for txt in columns.get("text_column", []) if txt)
         if prefix or text:
-            arguments.body["prompt"] = prefix + text
-            stats = text_stats(arguments.body["prompt"])
-            input_metrics.text_characters = stats.get("num_chars")
-            input_metrics.text_words = stats.get("num_words")
+            prompt = prefix + text
+            arguments.body["prompt"] = prompt
+            input_metrics.add_text_metrics(prompt)
 
         return GenerationRequest(
             request_type="text_completions",
@@ -142,9 +141,13 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
         )
 
     def __call__(  # noqa: C901, PLR0912, PLR0915
-        self, columns: dict[GenerativeDatasetColumnType, list[Any]]
+        self, columns: dict[str, list[Any]]
     ) -> GenerationRequest:
-        arguments = GenerationRequestArguments(body={})
+        """
+        :param columns: A dict of GenerativeDatasetColumnType to Any
+        """
+        arguments = GenerationRequestArguments()
+        arguments.body = {}  # The type checker works best with body assigned here
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
@@ -191,27 +194,14 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
             if not prefix:
                 continue
 
-            stats = text_stats(prefix)
-            if (num_chars := stats.get("num_chars")) is not None:
-                input_metrics.text_characters = (
-                    input_metrics.text_characters or 0
-                ) + num_chars
-            if (num_words := stats.get("num_words")) is not None:
-                input_metrics.text_words = (input_metrics.text_words or 0) + num_words
-
+            input_metrics.add_text_metrics(prefix)
             arguments.body["messages"].append({"role": "system", "content": prefix})
 
         for text in columns.get("text_column", []):
             if not text:
                 continue
 
-            stats = text_stats(text)
-            if (num_chars := stats.get("num_chars")) is not None:
-                input_metrics.text_characters = (
-                    input_metrics.text_characters or 0
-                ) + num_chars
-            if (num_words := stats.get("num_words")) is not None:
-                input_metrics.text_words = (input_metrics.text_words or 0) + num_words
+            input_metrics.add_text_metrics(text)
 
             arguments.body["messages"].append(
                 {"role": "user", "content": [{"type": "text", "text": text}]}
@@ -329,9 +319,10 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         self.encode_audio_kwargs = encode_kwargs or {}
 
     def __call__(  # noqa: C901
-        self, columns: dict[GenerativeDatasetColumnType, list[Any]]
+        self, columns: dict[str, list[Any]]
     ) -> GenerationRequest:
-        arguments = GenerationRequestArguments(body={}, files={})
+        arguments = GenerationRequestArguments(files={})
+        arguments.body = {}  # The type checker works best with body assigned here
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
@@ -387,10 +378,9 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
         text = "".join(txt for txt in columns.get("text_column", []) if txt)
         if prefix or text:
-            arguments.body["prompt"] = prefix + text
-            stats = text_stats(arguments.body["prompt"])
-            input_metrics.text_characters = stats.get("num_chars")
-            input_metrics.text_words = stats.get("num_words")
+            prompt = prefix + text
+            arguments.body["prompt"] = prompt
+            input_metrics.add_text_metrics(prompt)
 
         return GenerationRequest(
             request_type="audio_transcriptions",
@@ -404,9 +394,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
 class GenerativeAudioTranslationRequestFormatter(
     GenerativeAudioTranscriptionRequestFormatter
 ):
-    def __call__(
-        self, columns: dict[GenerativeDatasetColumnType, list[Any]]
-    ) -> GenerationRequest:
+    def __call__(self, columns: dict[str, list[Any]]) -> GenerationRequest:
         result = super().__call__(columns)
         result.request_type = "audio_translations"
         return result

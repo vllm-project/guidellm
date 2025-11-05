@@ -33,7 +33,7 @@ class InMemoryDictDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
         if (
@@ -67,7 +67,7 @@ class InMemoryDictListDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
         if (
@@ -81,9 +81,9 @@ class InMemoryDictListDatasetDeserializer(DatasetDeserializer):
                 f"expected list of dicts, got {data}"
             )
 
-        data: list[dict[str, Any]] = cast("list[dict[str, Any]]", data)
-        first_keys = set(data[0].keys())
-        for index, item in enumerate(data):
+        typed_data: list[dict[str, Any]] = cast("list[dict[str, Any]]", data)
+        first_keys = set(typed_data[0].keys())
+        for index, item in enumerate(typed_data):
             if set(item.keys()) != first_keys:
                 raise DataNotSupportedError(
                     f"All dictionaries must have the same keys. "
@@ -92,8 +92,8 @@ class InMemoryDictListDatasetDeserializer(DatasetDeserializer):
                 )
 
         # Convert list of dicts to dict of lists
-        result_dict = {key: [] for key in first_keys}
-        for item in data:
+        result_dict: dict = {key: [] for key in first_keys}
+        for item in typed_data:
             for key, value in item.items():
                 result_dict[key].append(value)
 
@@ -108,7 +108,7 @@ class InMemoryItemListDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
         primitive_types = (str, int, float, bool, type(None))
@@ -135,7 +135,7 @@ class InMemoryJsonStrDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         if (
             isinstance(data, str)
             and (json_str := data.strip())
@@ -145,16 +145,18 @@ class InMemoryJsonStrDatasetDeserializer(DatasetDeserializer):
             )
         ):
             with contextlib.suppress(Exception):
-                parsed = json.loads(data)
+                parsed_data = json.loads(data)
 
-            for deserializer in [
-                InMemoryDictDatasetDeserializer,
-                InMemoryDictListDatasetDeserializer,
-                InMemoryItemListDatasetDeserializer,
-            ]:
+            deserializers = [
+                InMemoryDictDatasetDeserializer(),
+                InMemoryDictListDatasetDeserializer(),
+                InMemoryItemListDatasetDeserializer(),
+            ]
+
+            for deserializer in deserializers:
                 with contextlib.suppress(DataNotSupportedError):
-                    return deserializer()(
-                        parsed, data_kwargs, processor_factory, random_seed
+                    return deserializer(
+                        parsed_data, processor_factory, random_seed, **data_kwargs
                     )
 
         raise DataNotSupportedError(
@@ -171,7 +173,7 @@ class InMemoryCsvDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
         **data_kwargs: dict[str, Any],
-    ) -> dict[str, list]:
+    ) -> Dataset:
         if (
             isinstance(data, str)
             and (csv_str := data.strip())

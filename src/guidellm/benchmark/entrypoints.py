@@ -436,6 +436,7 @@ async def benchmark_generative_text(
         backend=backend,
         profile=profile,
         environment=NonDistributedEnvironment(),
+        data=args.data,
         progress=progress,
         sample_requests=args.sample_requests,
         warmup=args.warmup,

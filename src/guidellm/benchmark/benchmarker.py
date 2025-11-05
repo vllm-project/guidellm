@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC
 from collections.abc import AsyncIterator, Iterable
-from typing import Generic
+from typing import Any, Generic
 
 from guidellm.benchmark.profile import Profile
 from guidellm.benchmark.progress import BenchmarkerProgress
@@ -57,6 +57,7 @@ class Benchmarker(
         backend: BackendInterface[RequestT, ResponseT],
         profile: Profile,
         environment: Environment,
+        data: list[Any],
         progress: BenchmarkerProgress[BenchmarkT] | None = None,
         sample_requests: int | None = 20,
         warmup: float | None = None,
@@ -149,6 +150,7 @@ class Benchmarker(
                     environment=environment,
                     strategy=strategy,
                     constraints=constraints,
+                    data=data,
                 )
                 if progress:
                     await progress.on_benchmark_complete(benchmark)

@@ -10,13 +10,13 @@ from typing import Any
 
 from lorem.text import TextLorem
 
-from guidellm.backend.backend import Backend
-from guidellm.backend.objects import (
+from guidellm.backends import Backend
+from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
+    RequestInfo,
+    RequestTimings,
 )
-from guidellm.scheduler import ScheduledRequestInfo
 
 
 @Backend.register("mock")
@@ -96,9 +96,9 @@ class MockBackend(Backend):
     async def resolve(
         self,
         request: GenerationRequest,
-        request_info: ScheduledRequestInfo,
+        request_info: RequestInfo,
         history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
-    ) -> AsyncIterator[tuple[GenerationResponse, ScheduledRequestInfo]]:
+    ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Process a generation request and yield progressive responses.
 
@@ -133,7 +133,7 @@ class MockBackend(Backend):
         )
 
         # Initialize timings
-        request_info.request_timings = GenerationRequestTimings()
+        request_info.request_timings = RequestTimings()
         request_info.request_timings.request_start = time.time()
 
         # Generate response iteratively

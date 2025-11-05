@@ -84,7 +84,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         startup_duration: float,
-        **constraints: dict[str, Constraint],
+        **constraints: Constraint,
     ):
         """
         Initialize a worker process group for distributed request processing.
@@ -232,7 +232,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                     worker_index=rank,
                     max_buffer_send_size=None,
                     max_buffer_receive_size=per_proc_max_buffer_size,
-                ),
+                ),  # The non-group worker lacks the SchedulerState type. Type err.
                 backend=self.backend,
                 strategy=self.strategy,
                 async_limit=async_limit,
@@ -478,9 +478,9 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             num_processes=len(processes),
             start_time=start_time,
         )
-        self._queued_requests: set[RequestT | MultiTurnRequestT[RequestT]] = set()
-        self._pending_requests: set[RequestT | MultiTurnRequestT[RequestT]] = set()
-        self._processing_requests: set[RequestT | MultiTurnRequestT[RequestT]] = set()
+        self._queued_request_ids: set[str] = set()
+        self._pending_request_ids: set[str] = set()
+        self._processing_request_ids: set[str] = set()
 
     def requests_generator(
         self, requests: Iterable[RequestT | MultiTurnRequestT[RequestT]]
@@ -517,11 +517,13 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 )
                 state_update = self._locked_update(request_info)
                 request_info.timings.queued = time.time()
+                if self.messaging.buffer_receive_queue is None:
+                    raise RuntimeError("buffer receive queue is None")
                 self.messaging.buffer_receive_queue.sync_put(
                     (None, request, request_info, state_update.state)
                 )
 
-                yield (request, request_info)
+                yield request, request_info
 
                 if state_update.stop_queueing:
                     self.stop_send_requests_event.set()
@@ -530,8 +532,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             # Reached the end, inject a RequestsExhaustedConstraint to record
             self._locked_update(
                 info=None,
-                requests_exhausted={
-                    "requests_exhausted": RequestsExhaustedConstraint(
+                add_constraints={
+                    "requests_exhausted": RequestsExhaustedConstraint(  # type: ignore[dict-item]
                         num_requests=count
                     )
                 },
@@ -610,10 +612,10 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
     def _locked_update(
         self,
         info: RequestInfo | None = None,
-        **add_constraints: dict[str, Constraint],
+        add_constraints: dict[str, Constraint] | None = None,
     ) -> _StateUpdate:
         with self._update_lock:
-            if add_constraints:
+            if add_constraints is not None:
                 self.constraints.update(add_constraints)
 
             if info is not None:
@@ -631,34 +633,34 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
     def _update_state_request_counts(self, info: RequestInfo):
         if info.status == "queued":
-            self._queued_requests.add(info.request_id)
-            self._state.queued_requests = len(self._queued_requests)
+            self._queued_request_ids.add(info.request_id)
+            self._state.queued_requests = len(self._queued_request_ids)
             self._state.created_requests += 1
         elif info.status == "pending":
-            self._queued_requests.remove(info.request_id)
-            self._state.queued_requests = len(self._queued_requests)
-            self._pending_requests.add(info.request_id)
-            self._state.pending_requests = len(self._pending_requests)
+            self._queued_request_ids.remove(info.request_id)
+            self._state.queued_requests = len(self._queued_request_ids)
+            self._pending_request_ids.add(info.request_id)
+            self._state.pending_requests = len(self._pending_request_ids)
         elif info.status == "in_progress":
-            self._pending_requests.remove(info.request_id)
-            self._state.pending_requests = len(self._pending_requests)
-            self._processing_requests.add(info.request_id)
-            self._state.processing_requests = len(self._processing_requests)
+            self._pending_request_ids.remove(info.request_id)
+            self._state.pending_requests = len(self._pending_request_ids)
+            self._processing_request_ids.add(info.request_id)
+            self._state.processing_requests = len(self._processing_request_ids)
         elif info.status == "completed":
-            self._processing_requests.remove(info.request_id)
-            self._state.processing_requests = len(self._processing_requests)
+            self._processing_request_ids.remove(info.request_id)
+            self._state.processing_requests = len(self._processing_request_ids)
             self._state.processed_requests += 1
             self._state.successful_requests += 1
         elif info.status in ("errored", "cancelled"):
-            if info.request_id in self._queued_requests:
-                self._queued_requests.remove(info.request_id)
-                self._state.queued_requests = len(self._queued_requests)
-            elif info.request_id in self._pending_requests:
-                self._pending_requests.remove(info.request_id)
-                self._state.pending_requests = len(self._pending_requests)
-            elif info.request_id in self._processing_requests:
-                self._processing_requests.remove(info.request_id)
-                self._state.processing_requests = len(self._processing_requests)
+            if info.request_id in self._queued_request_ids:
+                self._queued_request_ids.remove(info.request_id)
+                self._state.queued_requests = len(self._queued_request_ids)
+            elif info.request_id in self._pending_request_ids:
+                self._pending_request_ids.remove(info.request_id)
+                self._state.pending_requests = len(self._pending_request_ids)
+            elif info.request_id in self._processing_request_ids:
+                self._processing_request_ids.remove(info.request_id)
+                self._state.processing_requests = len(self._processing_request_ids)
 
             self._state.processed_requests += 1
             self._state.errored_requests += 1 if info.status == "errored" else 0

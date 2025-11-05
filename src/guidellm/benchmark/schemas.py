@@ -23,7 +23,17 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar, cast
 
 import yaml
-from pydantic import ConfigDict, Field, computed_field, model_serializer
+from pydantic import (
+    AliasChoices,
+    AliasGenerator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidatorFunctionWrapHandler,
+    computed_field,
+    field_validator,
+    model_serializer,
+)
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 
@@ -1142,7 +1152,8 @@ class GenerativeMetrics(StandardBaseDict):
         )
         request_duration = (
             (request_end_time - request_start_time)
-            if request_end_time and request_start_time else None
+            if request_end_time and request_start_time
+            else None
         )
 
         # Always track concurrency
@@ -1669,11 +1680,12 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
         estimated_state: EstimatedBenchmarkState,
         scheduler_state: SchedulerState,
         profile: Profile,
-        requests: Iterable,
+        requests: Iterable,  # noqa: ARG003
         backend: BackendInterface,
         environment: Environment,
         strategy: SchedulingStrategy,
         constraints: dict[str, dict[str, Any]],
+        data: list[Any],
     ) -> GenerativeBenchmark:
         """
         Compile final generative benchmark from accumulated state.
@@ -1702,7 +1714,7 @@ class GenerativeBenchmark(Benchmark, StandardBaseDict):
             ),
             benchmarker=BenchmarkerDict(
                 profile=profile,
-                requests=InfoMixin.extract_from_obj(requests),
+                requests={"data": data},
                 backend=backend.info,
                 environment=environment.info,
             ),
@@ -1786,9 +1798,8 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 scenario_data = scenario_data["args"]
             constructor_kwargs.update(scenario_data)
 
-        for key, value in kwargs.items():
-            if value != cls.get_default(key):
-                constructor_kwargs[key] = value
+        # Apply overrides from kwargs
+        constructor_kwargs.update(kwargs)
 
         return cls.model_validate(constructor_kwargs)
 
@@ -1817,13 +1828,19 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         else:
             return factory({})  # type: ignore[call-arg] # Confirmed correct at runtime by code above
 
-
-
     model_config = ConfigDict(
         extra="ignore",
         use_enum_values=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
+        validate_by_alias=True,
+        validate_by_name=True,
+        alias_generator=AliasGenerator(
+            # Support field names with hyphens
+            validation_alias=lambda field_name: AliasChoices(
+                field_name, field_name.replace("_", "-")
+            ),
+        ),
     )
 
     # Required
@@ -1837,7 +1854,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     profile: StrategyType | ProfileType | Profile = Field(
         default="sweep", description="Benchmark profile or scheduling strategy type"
     )
-    rate: float | list[float] | None = Field(
+    rate: list[float] | None = Field(
         default=None, description="Request rate(s) for rate-based scheduling"
     )
     # Backend configuration
@@ -1870,6 +1887,12 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     data_request_formatter: DatasetPreprocessor | dict[str, str] | str = Field(
         default="chat_completions",
         description="Request formatting preprocessor or template name",
+        validation_alias=AliasChoices(
+            "data_request_formatter",
+            "data-request-formatter",
+            "request_type",
+            "request-type",
+        ),
     )
     data_collator: Callable | Literal["generative"] | None = Field(
         default="generative", description="Data collator for batch processing"
@@ -1929,6 +1952,26 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     max_global_error_rate: float | None = Field(
         default=None, description="Maximum global error rate (0-1) before stopping"
     )
+
+    @field_validator("data", "data_args", "rate", mode="wrap")
+    @classmethod
+    def single_to_list(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> list[Any]:
+        """
+        Ensures field is always a list.
+
+        :param value: Input value for the 'data' field
+        :return: List of data sources
+        """
+        try:
+            return handler(value)
+        except ValidationError as err:
+            # If validation fails, try wrapping the value in a list
+            if err.errors()[0]["type"] == "list_type":
+                return handler([value])
+            else:
+                raise
 
     @model_serializer
     def serialize_model(self):

@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 from datasets import Features, IterableDataset, Value
 from faker import Faker
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -99,21 +99,23 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:
-        prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
-        prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
-        if prefix_count is not None or prefix_tokens is not None:
-            if self.prefix_buckets:
-                raise ValueError(
-                    "prefix_buckets is mutually exclusive"
-                    " with prefix_count and prefix_tokens"
-                )
+        if self.__pydantic_extra__ is not None:
+            prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+            prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
 
-            self.prefix_buckets = [
-                SyntheticTextPrefixBucketConfig(
-                    prefix_count=prefix_count or 1,
-                    prefix_tokens=prefix_tokens or 0,
-                )
-            ]
+            if prefix_count is not None or prefix_tokens is not None:
+                if self.prefix_buckets:
+                    raise ValueError(
+                        "prefix_buckets is mutually exclusive"
+                        " with prefix_count and prefix_tokens"
+                    )
+
+                self.prefix_buckets = [
+                    SyntheticTextPrefixBucketConfig(
+                        prefix_count=prefix_count or 1,
+                        prefix_tokens=prefix_tokens or 0,
+                    )
+                ]
 
         return self
 
@@ -174,14 +176,14 @@ class SyntheticTextGenerator:
     def _create_prompt(
         self, prompt_tokens_count: int, faker: Faker, unique: str = ""
     ) -> str:
-        prompt_token_ids = []
+        prompt_token_ids: list[int] = []
         avg_chars_per_token = 5
         margin_of_safety = 1.5
         attempts = 0
 
         while len(prompt_token_ids) < prompt_tokens_count:
             attempts += 1
-            num_chars = (
+            num_chars = int(
                 prompt_tokens_count * avg_chars_per_token * margin_of_safety * attempts
             )
             text = unique + faker.text(max_nb_chars=num_chars)
@@ -240,6 +242,10 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
         if (config := self._load_config_str(data)) is not None:
             return self(config, processor_factory, random_seed, **data_kwargs)
 
+        # Try to parse dict-like data directly
+        if (config := self._load_config_dict(data)) is not None:
+            return self(config, processor_factory, random_seed, **data_kwargs)
+
         if not isinstance(data, SyntheticTextDatasetConfig):
             raise DataNotSupportedError(
                 "Unsupported data for SyntheticTextDatasetDeserializer, "
@@ -263,6 +269,15 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
                 }
             ),
         )
+
+    def _load_config_dict(self, data: Any) -> SyntheticTextDatasetConfig | None:
+        if not isinstance(data, dict | list):
+            return None
+
+        try:
+            return SyntheticTextDatasetConfig.model_validate(data)
+        except ValidationError:
+            return None
 
     def _load_config_file(self, data: Any) -> SyntheticTextDatasetConfig | None:
         if (not isinstance(data, str) and not isinstance(data, Path)) or (
