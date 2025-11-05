@@ -72,6 +72,33 @@ class GenerationResponseHandlerFactory(RegistryMixin[type[GenerationResponseHand
     responses from different generation services.
     """
 
+    @classmethod
+    def create(
+        cls,
+        request_type: str,
+        handler_overrides: dict[str, type[GenerationResponseHandler]] | None = None,
+    ) -> GenerationResponseHandler:
+        """
+        Create a response handler class for the given request type.
+
+        :param request_type: The type of generation request (e.g., "text_completions")
+        :param handler_overrides: Optional mapping of request types to handler classes
+            to override the default registry by checking first and then falling back
+            to the registered handlers.
+        :return: The corresponding instantiated GenerationResponseHandler
+        :raises ValueError: When no handler is registered for the request type
+        """
+        if handler_overrides and request_type in handler_overrides:
+            return handler_overrides[request_type]()
+
+        handler_cls = cls.get_registered_object(request_type)
+        if not handler_cls:
+            raise ValueError(
+                f"No response handler registered for type '{request_type}'."
+            )
+
+        return handler_cls()
+
 
 @GenerationResponseHandlerFactory.register("text_completions")
 class TextCompletionsResponseHandler(GenerationResponseHandler):

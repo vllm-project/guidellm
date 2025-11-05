@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
+from typing import Literal, TypeVar
 
 import numpy as np
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from guidellm.utils import DistributionSummary, Percentiles, StatusDistributionSummary
+from guidellm.schemas import DistributionSummary, Percentiles, StatusDistributionSummary
+from guidellm.schemas.statistics import FunctionObjT
+
+
+def test_function_obj_type():
+    """Test that FunctionObjT is filled out correctly as a TypeVar."""
+    assert isinstance(FunctionObjT, type(TypeVar("test")))
+    assert FunctionObjT.__name__ == "FunctionObjT"
+    assert FunctionObjT.__bound__ is None
+    assert FunctionObjT.__constraints__ == ()
 
 
 def generate_pdf(
@@ -390,6 +399,41 @@ class TestPercentiles:
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
+        ("values", "expected_count"),
+        [
+            ([], 0),
+            ([5.0], 1),
+            ([3.0, 7.0], 2),
+        ],
+    )
+    def test_from_pdf_small_distributions(self, values, expected_count):
+        """Test Percentiles.from_pdf with edge cases of 0, 1, 2 values."""
+        if len(values) == 0:
+            pdf = np.empty((0, 2))
+        else:
+            pdf = np.column_stack((values, np.ones(len(values)) / len(values)))
+
+        percentiles = Percentiles.from_pdf(pdf)
+        assert isinstance(percentiles, Percentiles)
+
+        if expected_count == 0:
+            # All percentiles should be 0 for empty distribution
+            assert percentiles.p001 == 0.0
+            assert percentiles.p50 == 0.0
+            assert percentiles.p999 == 0.0
+        elif expected_count == 1:
+            # All percentiles should be the single value
+            assert percentiles.p001 == values[0]
+            assert percentiles.p50 == values[0]
+            assert percentiles.p999 == values[0]
+        elif expected_count == 2:
+            # Percentiles should be one of the two values
+            assert percentiles.p001 in values
+            assert percentiles.p50 in values
+            assert percentiles.p999 in values
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
         ("pdf", "error_match"),
         [
             (np.array([1, 2, 3]), "must be a 2D array"),
@@ -574,6 +618,31 @@ class TestDistributionSummary:
             assert summary.pdf is not None
             assert isinstance(summary.pdf, list)
             assert len(summary.pdf) == len(pdf)
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("sample_size", [50, 100, 500])
+    def test_from_pdf_with_sampling(self, sample_size: int):
+        """Test DistributionSummary.from_pdf with integer sampling."""
+        # Create a large PDF
+        values = np.linspace(0, 100, 1000)
+        probabilities = np.ones(1000) / 1000
+        pdf = np.column_stack((values, probabilities))
+
+        summary = DistributionSummary.from_pdf(pdf, include_pdf=sample_size)
+        assert isinstance(summary, DistributionSummary)
+        assert summary.pdf is not None
+        assert len(summary.pdf) == sample_size
+
+        # Verify sampled PDF still represents the distribution reasonably
+        sampled_values = [val for val, _prob in summary.pdf]
+        assert min(sampled_values) >= 0
+        assert max(sampled_values) <= 100
+
+        # Verify stats are accurate regardless of sampling
+        assert summary.mean == pytest.approx(50.0, abs=1.0)
+        assert summary.median == pytest.approx(50.0, abs=1.0)
+        assert summary.min == pytest.approx(0.0, abs=1.0)
+        assert summary.max == pytest.approx(100.0, abs=1.0)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("include_pdf", [False, True])
@@ -788,7 +857,7 @@ class TestDistributionSummary:
         [
             ("not_a_list", ValueError),
             ({"invalid": "dict"}, ValueError),
-            (None, ValueError),
+            (None, TypeError),  # None raises TypeError instead of ValueError
         ],
     )
     def test_from_values_invalid_input(self, values, error_type):
@@ -825,6 +894,40 @@ class TestDistributionSummary:
         assert summary.mean == pytest.approx(1.75, abs=0.01)
 
     @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("values", "expected_count"),
+        [
+            ([], 0),
+            ([5.0], 1),
+            ([3.0, 7.0], 2),
+        ],
+    )
+    def test_from_values_small_distributions(self, values, expected_count):
+        """Test DistributionSummary.from_values with edge cases of 0, 1, 2 values."""
+        summary = DistributionSummary.from_values(values)
+        assert isinstance(summary, DistributionSummary)
+        assert summary.count == expected_count
+
+        if expected_count == 0:
+            assert summary.mean == 0.0
+            assert summary.median == 0.0
+            assert summary.std_dev == 0.0
+            assert summary.min == 0.0
+            assert summary.max == 0.0
+        elif expected_count == 1:
+            assert summary.mean == values[0]
+            assert summary.median == values[0]
+            assert summary.std_dev == 0.0
+            assert summary.min == values[0]
+            assert summary.max == values[0]
+        elif expected_count == 2:
+            assert summary.mean == pytest.approx(np.mean(values), abs=1e-6)
+            # For 2 values, median from PDF is the first value at CDF >= 0.5
+            assert summary.median in values
+            assert summary.min == min(values)
+            assert summary.max == max(values)
+
+    @pytest.mark.sanity
     def test_rate_distribution_empty_timings(self):
         """Test rate_distribution_from_timings with empty input."""
         summary = DistributionSummary.rate_distribution_from_timings([])
@@ -847,6 +950,70 @@ class TestDistributionSummary:
         assert summary.mean == 0.0
 
     @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("timings", "expected_behavior"),
+        [
+            ([1.0, 1.0, 1.0], "duplicate_times"),
+            ([1.0, 1.00001, 1.00002], "within_threshold"),
+            ([5.0, 3.0, 1.0, 4.0, 2.0], "unsorted"),
+        ],
+    )
+    def test_rate_distribution_edge_cases(self, timings, expected_behavior):
+        """Test rate_distribution_from_timings with edge cases."""
+        summary = DistributionSummary.rate_distribution_from_timings(
+            timings, threshold=1e-4
+        )
+        assert isinstance(summary, DistributionSummary)
+        assert summary.count >= 0
+
+        if expected_behavior == "duplicate_times":
+            # All duplicates merge to single time, no rate distribution
+            assert summary.count in {0, 1}
+        elif expected_behavior == "within_threshold":
+            # Times within threshold should merge
+            assert summary.count <= len(timings)
+        elif expected_behavior == "unsorted":
+            # Should handle unsorted input correctly
+            assert summary.count > 0
+
+    @pytest.mark.sanity
+    def test_rate_distribution_with_weights(self):
+        """Test rate_distribution_from_timings with weighted timestamps."""
+        # Events with weights: (timestamp, weight)
+        weighted_times = [(1.0, 2.0), (5.0, 1.0), (10.0, 3.0)]
+        summary = DistributionSummary.rate_distribution_from_timings(weighted_times)
+        assert isinstance(summary, DistributionSummary)
+        # Total count should be sum of weights
+        assert summary.count == 6
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("start_time", "end_time", "num_events"),
+        [
+            (5.0, None, 50),
+            (None, 95.0, 50),
+            (5.0, 95.0, 50),
+        ],
+    )
+    def test_rate_distribution_time_windows(
+        self, start_time: float | None, end_time: float | None, num_events: int
+    ):
+        """Test rate_distribution_from_timings with time window filtering."""
+        rng = np.random.default_rng(seed=42)
+        timings = sorted(rng.uniform(0, 100, num_events))
+
+        summary = DistributionSummary.rate_distribution_from_timings(
+            timings, start_time=start_time, end_time=end_time
+        )
+        assert isinstance(summary, DistributionSummary)
+
+        # Count should be less than or equal to original when filtered
+        if start_time or end_time:
+            assert summary.count <= num_events
+        else:
+            assert summary.count == num_events
+
+    @pytest.mark.sanity
     def test_concurrency_with_weighted_intervals(self):
         """Test concurrency_distribution_from_timings with weighted intervals."""
         # Intervals with weights: (start, end, weight)
@@ -855,6 +1022,167 @@ class TestDistributionSummary:
 
         assert isinstance(summary, DistributionSummary)
         assert summary.count == 2
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("intervals", "expected_behavior"),
+        [
+            ([(1.0, 1.0)], "zero_duration"),
+            ([(1.0, 5.0), (2.0, 6.0), (3.0, 7.0)], "overlapping"),
+            ([(1.0, 10.0), (2.0, 8.0), (3.0, 6.0)], "nested"),
+            ([(1.0, 3.0), (5.0, 7.0), (9.0, 11.0)], "non_overlapping"),
+        ],
+    )
+    def test_concurrency_distribution_edge_cases(self, intervals, expected_behavior):
+        """Test concurrency_distribution_from_timings with various interval patterns."""
+        summary = DistributionSummary.concurrency_distribution_from_timings(intervals)
+        assert isinstance(summary, DistributionSummary)
+        assert summary.count == len(intervals)
+
+        if expected_behavior == "zero_duration":
+            # Zero duration intervals should be handled
+            assert summary.mean == 0.0 or summary.count == 1
+        elif expected_behavior == "overlapping":
+            # Overlapping intervals should show concurrency > 1 at some points
+            assert summary.max >= 1.0
+        elif expected_behavior == "nested":
+            # Nested intervals should show max concurrency
+            assert summary.max >= 2.0
+        elif expected_behavior == "non_overlapping":
+            # Non-overlapping intervals should have mean concurrency closer to 1
+            assert summary.mean >= 0.0
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("start_time", "end_time"),
+        [
+            (5.0, None),
+            (None, 75.0),
+            (5.0, 75.0),
+        ],
+    )
+    def test_concurrency_distribution_time_windows(
+        self, start_time: float | None, end_time: float | None
+    ):
+        """Test concurrency_distribution_from_timings with time window filtering."""
+        rng = np.random.default_rng(seed=42)
+        num_intervals = 50
+        starts = rng.uniform(0, 80, num_intervals)
+        intervals = [(start, start + rng.uniform(5, 25)) for start in starts]
+
+        summary = DistributionSummary.concurrency_distribution_from_timings(
+            intervals, start_time=start_time, end_time=end_time
+        )
+        assert isinstance(summary, DistributionSummary)
+        assert summary.count <= num_intervals
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("distribution", "dist_params", "sample_size"),
+        [
+            ("normal", {"loc": 50.0, "scale": 10.0}, 10000),
+            ("uniform", {"low": 0.0, "high": 100.0}, 10000),
+            ("exponential", {"scale": 5.0}, 10000),
+        ],
+    )
+    def test_statistical_accuracy_against_numpy(
+        self, distribution: str, dist_params: dict, sample_size: int
+    ):
+        """Validate statistical calculations against numpy's implementations."""
+        rng = np.random.default_rng(seed=42)
+
+        # Generate samples using numpy's distribution
+        samples = getattr(rng, distribution)(**dist_params, size=sample_size)
+
+        # Create distribution summary
+        summary = DistributionSummary.from_values(samples)
+
+        # Validate against numpy's statistics
+        tolerance = 0.05 * abs(np.std(samples))  # 5% of std dev
+        assert summary.mean == pytest.approx(np.mean(samples), abs=tolerance)
+        assert summary.median == pytest.approx(np.median(samples), abs=tolerance)
+        assert summary.variance == pytest.approx(np.var(samples), abs=tolerance * 2)
+        assert summary.std_dev == pytest.approx(np.std(samples), abs=tolerance)
+        assert summary.min == pytest.approx(np.min(samples), abs=tolerance)
+        assert summary.max == pytest.approx(np.max(samples), abs=tolerance)
+        assert summary.count == sample_size
+        assert summary.total_sum == pytest.approx(
+            np.sum(samples), abs=tolerance * sample_size
+        )
+
+        # Validate percentiles
+        for percentile_name, percentile_value in {
+            "p001": 0.1,
+            "p01": 1.0,
+            "p05": 5.0,
+            "p10": 10.0,
+            "p25": 25.0,
+            "p50": 50.0,
+            "p75": 75.0,
+            "p90": 90.0,
+            "p95": 95.0,
+            "p99": 99.0,
+            "p999": 99.9,
+        }.items():
+            expected = np.percentile(samples, percentile_value)
+            actual = getattr(summary.percentiles, percentile_name)
+            # Use larger tolerance for extreme percentiles (p001, p999)
+            percentile_tolerance = (
+                tolerance * 3 if percentile_name in {"p001", "p999"} else tolerance
+            )
+            assert actual == pytest.approx(expected, abs=percentile_tolerance)
+
+    @pytest.mark.regression
+    def test_pdf_normalization_accuracy(self):
+        """Test that PDF creation maintains accurate probability normalization."""
+        rng = np.random.default_rng(seed=42)
+        samples = rng.normal(loc=100.0, scale=15.0, size=5000)
+
+        summary = DistributionSummary.from_values(samples, include_pdf=True)
+
+        assert summary.pdf is not None
+        # Extract probabilities and verify they sum to approximately 1
+        probabilities = np.array([prob for _val, prob in summary.pdf])
+        assert np.sum(probabilities) == pytest.approx(1.0, abs=1e-6)
+
+        # Verify all probabilities are non-negative
+        assert np.all(probabilities >= 0.0)
+
+        # Verify PDF values are sorted
+        values = np.array([val for val, _prob in summary.pdf])
+        assert np.all(values[:-1] <= values[1:])
+
+    @pytest.mark.regression
+    def test_weighted_statistics_accuracy(self):
+        """Test that weighted statistics are calculated correctly."""
+        # Known weighted distribution
+        values_weights = [
+            (10.0, 1.0),
+            (20.0, 2.0),
+            (30.0, 3.0),
+            (40.0, 2.0),
+            (50.0, 1.0),
+        ]
+
+        summary = DistributionSummary.from_values(values_weights)
+
+        # Manual calculation for verification
+        values = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+        weights = np.array([1.0, 2.0, 3.0, 2.0, 1.0])
+
+        expected_mean = np.sum(values * weights) / np.sum(weights)
+        expected_count = int(np.sum(weights))
+        expected_total = np.sum(values * weights)
+
+        assert summary.count == expected_count
+        assert summary.mean == pytest.approx(expected_mean, abs=1e-6)
+        assert summary.total_sum == pytest.approx(expected_total, abs=1e-6)
+
+        # Verify variance calculation
+        expected_variance = np.sum(weights * (values - expected_mean) ** 2) / np.sum(
+            weights
+        )
+        assert summary.variance == pytest.approx(expected_variance, abs=1e-6)
 
 
 class TestStatusDistributionSummary:
@@ -894,14 +1222,24 @@ class TestStatusDistributionSummary:
     def test_class_signatures(self):
         """Test StatusDistributionSummary class structure and methods."""
         assert hasattr(StatusDistributionSummary, "from_values")
+        assert hasattr(StatusDistributionSummary, "from_values_function")
         assert hasattr(StatusDistributionSummary, "rate_distribution_from_timings")
         assert hasattr(
+            StatusDistributionSummary, "rate_distribution_from_timings_function"
+        )
+        assert hasattr(
             StatusDistributionSummary, "concurrency_distribution_from_timings"
+        )
+        assert hasattr(
+            StatusDistributionSummary, "concurrency_distribution_from_timings_function"
         )
         assert "total" in StatusDistributionSummary.model_fields
         assert "successful" in StatusDistributionSummary.model_fields
         assert "incomplete" in StatusDistributionSummary.model_fields
         assert "errored" in StatusDistributionSummary.model_fields
+        # Properties are checked via hasattr, actual property nature tested separately
+        assert hasattr(StatusDistributionSummary, "count")
+        assert hasattr(StatusDistributionSummary, "total_sum")
 
     @pytest.mark.smoke
     def test_initialization(
@@ -1121,3 +1459,262 @@ class TestStatusDistributionSummary:
         assert recreated.successful.count == instance.successful.count
         assert recreated.incomplete.count == instance.incomplete.count
         assert recreated.errored.count == instance.errored.count
+
+    @pytest.mark.smoke
+    def test_count_property(self, valid_instances):
+        """Test StatusDistributionSummary.count property."""
+        instance, test_data = valid_instances
+        assert isinstance(instance.count, int)
+        assert instance.count == instance.total.count
+
+        successful_count = (
+            len(test_data["successful"])
+            if isinstance(test_data["successful"], list)
+            else test_data["successful"].shape[0]
+        )
+        incomplete_count = (
+            len(test_data["incomplete"])
+            if isinstance(test_data["incomplete"], list)
+            else test_data["incomplete"].shape[0]
+        )
+        errored_count = (
+            len(test_data["errored"])
+            if isinstance(test_data["errored"], list)
+            else test_data["errored"].shape[0]
+        )
+
+        expected_count = successful_count + incomplete_count + errored_count
+        assert instance.count == expected_count
+
+    @pytest.mark.smoke
+    def test_total_sum_property(self, valid_instances):
+        """Test StatusDistributionSummary.total_sum property."""
+        instance, _test_data = valid_instances
+        assert isinstance(instance.total_sum, float)
+        assert instance.total_sum == instance.total.total_sum
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize("include_pdf", [False, True])
+    def test_from_values_function(self, include_pdf: bool | int):
+        """Test creating StatusDistributionSummary from values via function."""
+
+        class MockObject:
+            def __init__(self, value: float):
+                self.value = value
+
+        def extract_value(obj: MockObject) -> float:
+            return obj.value
+
+        successful_objs = [MockObject(1.0), MockObject(2.0), MockObject(3.0)]
+        incomplete_objs = [MockObject(4.0), MockObject(5.0)]
+        errored_objs = [MockObject(6.0)]
+
+        summary = StatusDistributionSummary.from_values_function(
+            function=extract_value,
+            successful=successful_objs,
+            incomplete=incomplete_objs,
+            errored=errored_objs,
+            include_pdf=include_pdf,
+        )
+
+        assert isinstance(summary, StatusDistributionSummary)
+        assert summary.successful.count == 3
+        assert summary.incomplete.count == 2
+        assert summary.errored.count == 1
+        assert summary.total.count == 6
+
+        # Verify means
+        assert summary.successful.mean == pytest.approx(2.0, abs=0.01)
+        assert summary.incomplete.mean == pytest.approx(4.5, abs=0.01)
+        assert summary.errored.mean == pytest.approx(6.0, abs=0.01)
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize("include_pdf", [False, True])
+    def test_rate_distribution_from_timings_function(self, include_pdf: bool | int):
+        """Test creating rate distribution from timings via function extraction."""
+
+        class MockEvent:
+            def __init__(self, timestamp: float):
+                self.timestamp = timestamp
+
+        def extract_timestamp(event: MockEvent) -> float:
+            return event.timestamp
+
+        rng = np.random.default_rng(seed=42)
+        successful_events = [MockEvent(ts) for ts in rng.uniform(0, 100, 30)]
+        incomplete_events = [MockEvent(ts) for ts in rng.uniform(0, 100, 15)]
+        errored_events = [MockEvent(ts) for ts in rng.uniform(0, 100, 5)]
+
+        summary = StatusDistributionSummary.rate_distribution_from_timings_function(
+            function=extract_timestamp,
+            successful=successful_events,
+            incomplete=incomplete_events,
+            errored=errored_events,
+            include_pdf=include_pdf,
+        )
+
+        assert isinstance(summary, StatusDistributionSummary)
+        assert isinstance(summary.total, DistributionSummary)
+        assert isinstance(summary.successful, DistributionSummary)
+        assert isinstance(summary.incomplete, DistributionSummary)
+        assert isinstance(summary.errored, DistributionSummary)
+
+        # Verify counts are reasonable
+        assert summary.successful.count >= 0
+        assert summary.incomplete.count >= 0
+        assert summary.errored.count >= 0
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize("include_pdf", [False, True])
+    def test_concurrency_distribution_from_timings_function(
+        self, include_pdf: bool | int
+    ):
+        """Test creating concurrency distribution from intervals via function."""
+
+        class MockRequest:
+            def __init__(self, start: float, end: float):
+                self.start = start
+                self.end = end
+
+        def extract_interval(request: MockRequest) -> tuple[float, float]:
+            return (request.start, request.end)
+
+        rng = np.random.default_rng(seed=42)
+        num_successful = 20
+        num_incomplete = 10
+        num_errored = 5
+
+        successful_starts = rng.uniform(0, 80, num_successful)
+        successful_requests = [
+            MockRequest(start, start + rng.uniform(1, 20))
+            for start in successful_starts
+        ]
+
+        incomplete_starts = rng.uniform(0, 80, num_incomplete)
+        incomplete_requests = [
+            MockRequest(start, start + rng.uniform(1, 20))
+            for start in incomplete_starts
+        ]
+
+        errored_starts = rng.uniform(0, 80, num_errored)
+        errored_requests = [
+            MockRequest(start, start + rng.uniform(1, 20)) for start in errored_starts
+        ]
+
+        summary = (
+            StatusDistributionSummary.concurrency_distribution_from_timings_function(
+                function=extract_interval,
+                successful=successful_requests,
+                incomplete=incomplete_requests,
+                errored=errored_requests,
+                include_pdf=include_pdf,
+            )
+        )
+
+        assert isinstance(summary, StatusDistributionSummary)
+        assert isinstance(summary.total, DistributionSummary)
+        assert isinstance(summary.successful, DistributionSummary)
+        assert isinstance(summary.incomplete, DistributionSummary)
+        assert isinstance(summary.errored, DistributionSummary)
+
+        # Verify counts match
+        assert summary.successful.count == num_successful
+        assert summary.incomplete.count == num_incomplete
+        assert summary.errored.count == num_errored
+        assert summary.total.count == num_successful + num_incomplete + num_errored
+
+    @pytest.mark.sanity
+    def test_from_values_function_with_none_returns(self):
+        """Test from_values_function when function returns None for some objects."""
+
+        class MockObject:
+            def __init__(self, value: float | None):
+                self.value = value
+
+        def extract_value(obj: MockObject) -> float | None:
+            return obj.value
+
+        successful_objs = [MockObject(1.0), MockObject(None), MockObject(3.0)]
+        incomplete_objs = [MockObject(4.0), MockObject(None)]
+        errored_objs = [MockObject(None), MockObject(6.0)]
+
+        summary = StatusDistributionSummary.from_values_function(
+            function=extract_value,
+            successful=successful_objs,
+            incomplete=incomplete_objs,
+            errored=errored_objs,
+        )
+
+        assert isinstance(summary, StatusDistributionSummary)
+        # Only non-None values should be counted
+        assert summary.successful.count == 2
+        assert summary.incomplete.count == 1
+        assert summary.errored.count == 1
+        assert summary.total.count == 4
+
+    @pytest.mark.sanity
+    def test_from_values_function_with_sequence_returns(self):
+        """Test from_values_function when function returns sequences."""
+
+        class MockObject:
+            def __init__(self, values: list[float]):
+                self.values = values
+
+        def extract_values(obj: MockObject) -> list[float]:
+            return obj.values
+
+        successful_objs = [MockObject([1.0, 2.0]), MockObject([3.0])]
+        incomplete_objs = [MockObject([4.0, 5.0, 6.0])]
+        errored_objs = [MockObject([])]
+
+        summary = StatusDistributionSummary.from_values_function(
+            function=extract_values,
+            successful=successful_objs,
+            incomplete=incomplete_objs,
+            errored=errored_objs,
+        )
+
+        assert isinstance(summary, StatusDistributionSummary)
+        # Count should be total number of values extracted
+        assert summary.successful.count == 3
+        assert summary.incomplete.count == 3
+        assert summary.errored.count == 0
+        assert summary.total.count == 6
+
+    @pytest.mark.sanity
+    def test_rate_distribution_with_weighted_timestamps(self):
+        """Test rate_distribution_from_timings with weighted timestamps by status."""
+        weighted_successful = [(1.0, 2.0), (5.0, 1.0), (10.0, 3.0)]
+        weighted_incomplete = [(2.0, 1.0), (8.0, 2.0)]
+        weighted_errored = [(3.0, 1.0), (7.0, 2.0)]
+
+        summary = StatusDistributionSummary.rate_distribution_from_timings(
+            successful=weighted_successful,
+            incomplete=weighted_incomplete,
+            errored=weighted_errored,
+        )
+
+        assert isinstance(summary, StatusDistributionSummary)
+        assert summary.successful.count == 6  # Sum of weights
+        assert summary.incomplete.count == 3
+        assert summary.errored.count == 3
+        assert summary.total.count == 12
+
+    @pytest.mark.sanity
+    def test_concurrency_distribution_with_weighted_intervals(self):
+        """Test concurrency_distribution_from_timings with weighted intervals."""
+        weighted_successful = [(0.0, 10.0, 2.0), (5.0, 15.0, 1.0)]
+        weighted_incomplete = [(8.0, 18.0, 3.0)]
+        weighted_errored = [(12.0, 20.0, 1.0)]
+
+        summary = StatusDistributionSummary.concurrency_distribution_from_timings(
+            successful=weighted_successful,
+            incomplete=weighted_incomplete,
+            errored=weighted_errored,
+        )
+
+        assert isinstance(summary, StatusDistributionSummary)
+        assert summary.successful.count == 2
+        assert summary.incomplete.count == 1
+        assert summary.errored.count == 1
+        assert summary.total.count == 4

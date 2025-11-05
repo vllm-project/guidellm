@@ -73,7 +73,7 @@ class GenerationRequestArguments(StandardBaseDict):
         Merge additional request arguments into the current instance.
 
         Combines method and stream fields by overwriting, while merging collection
-        fields like headers, params, json_body, and files by extending existing values.
+        fields like headers, params, body, and files by extending existing values.
 
         :param additional: Additional arguments to merge with current instance
         :return: Updated instance with merged arguments
@@ -88,9 +88,10 @@ class GenerationRequestArguments(StandardBaseDict):
             if (val := additional_dict.get(overwrite)) is not None:
                 setattr(self, overwrite, val)
 
-        for combine in ("headers", "params", "json_body", "files"):
+        for combine in ("headers", "params", "body", "files"):
             if (val := additional_dict.get(combine)) is not None:
-                setattr(self, combine, {**getattr(self, combine, {}), **val})
+                current = getattr(self, combine, None) or {}
+                setattr(self, combine, {**current, **val})
 
         return self
 

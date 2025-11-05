@@ -69,7 +69,11 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Timestamp when the request started, or None if unavailable
         """
-        return self.info.timings.request_start or self.info.timings.resolve_start
+        return (
+            self.info.timings.request_start
+            if self.info.timings.request_start is not None
+            else self.info.timings.resolve_start
+        )
 
     @computed_field  # type: ignore[misc]
     @property
@@ -80,7 +84,11 @@ class GenerativeRequestStats(StandardBaseDict):
         if self.info.timings.resolve_end is None:
             raise ValueError("resolve_end timings should be set but is None.")
 
-        return self.info.timings.request_end or self.info.timings.resolve_end
+        return (
+            self.info.timings.request_end
+            if self.info.timings.request_end is not None
+            else self.info.timings.resolve_end
+        )
 
     @computed_field  # type: ignore[misc]
     @property
@@ -90,9 +98,9 @@ class GenerativeRequestStats(StandardBaseDict):
 
         :return: Duration from request start to completion, or None if unavailable
         """
-        if not (start := self.info.timings.request_start) or not (
-            end := self.info.timings.request_end
-        ):
+        start = self.info.timings.request_start
+        end = self.info.timings.request_end
+        if start is None or end is None:
             return None
 
         return end - start
@@ -142,9 +150,9 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Time to first token generation in milliseconds, or None if unavailable
         """
-        if not (first_token := self.first_token_iteration) or not (
-            start := self.info.timings.request_start
-        ):
+        first_token = self.first_token_iteration
+        start = self.info.timings.request_start
+        if first_token is None or start is None:
             return None
 
         return 1000 * (first_token - start)
@@ -158,9 +166,10 @@ class GenerativeRequestStats(StandardBaseDict):
         :return: Average milliseconds per output token, or None if unavailable
         """
         if (
-            not (start := self.info.timings.request_start)
-            or not (last_token := self.last_token_iteration)
-            or not (output_tokens := self.output_tokens)
+            (start := self.info.timings.request_start) is None
+            or (last_token := self.last_token_iteration) is None
+            or (output_tokens := self.output_tokens) is None
+            or output_tokens == 0
         ):
             return None
 
@@ -174,10 +183,13 @@ class GenerativeRequestStats(StandardBaseDict):
 
         :return: Average milliseconds between token generations, or None if unavailable
         """
+        first_token = self.first_token_iteration
+        last_token = self.last_token_iteration
+        output_tokens = self.output_tokens
         if (
-            not (first_token := self.first_token_iteration)
-            or not (last_token := self.last_token_iteration)
-            or not (output_tokens := self.output_tokens)
+            first_token is None
+            or last_token is None
+            or output_tokens is None
             or output_tokens <= 1
         ):
             return None
@@ -257,17 +269,17 @@ class GenerativeRequestStats(StandardBaseDict):
         return self.info.timings.token_iterations
 
     @property
-    def prompt_tokens_timing(self) -> tuple[float, float] | None:
+    def prompt_tokens_timing(self) -> tuple[float, float]:
         """
-        :return: Tuple of (timestamp, token_count) for prompt processing, or None
-            if unavailable
+        :return: Tuple of (timestamp, token_count) for prompt processing
+        :raises ValueError: If resolve_end timings are not set
         """
-        if self.request_end_time is None:
-            # no end time, can't compute
-            return None
-
         return (
-            self.first_token_iteration or self.request_end_time,
+            (
+                self.first_token_iteration
+                if self.first_token_iteration is not None
+                else self.request_end_time
+            ),
             self.prompt_tokens or 0.0,
         )
 
@@ -275,11 +287,8 @@ class GenerativeRequestStats(StandardBaseDict):
     def output_tokens_timings(self) -> list[tuple[float, float]]:
         """
         :return: List of (timestamp, token_count) tuples for output token generations
+        :raises ValueError: If resolve_end timings are not set
         """
-        if self.request_end_time is None:
-            # no end time, can't compute
-            return []
-
         if (
             self.first_token_iteration is None
             or self.last_token_iteration is None
@@ -288,7 +297,11 @@ class GenerativeRequestStats(StandardBaseDict):
             # No iteration data, return single timing at end with all tokens
             return [
                 (
-                    self.last_token_iteration or self.request_end_time,
+                    (
+                        self.last_token_iteration
+                        if self.last_token_iteration is not None
+                        else self.request_end_time
+                    ),
                     self.output_tokens or 0.0,
                 )
             ]

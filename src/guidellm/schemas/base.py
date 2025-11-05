@@ -19,11 +19,17 @@ from pydantic_core import CoreSchema, core_schema
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
+    "BaseModelT",
+    "ErroredT",
+    "IncompleteT",
     "PydanticClassRegistryMixin",
+    "RegisterClassT",
     "ReloadableBaseModel",
     "StandardBaseDict",
     "StandardBaseModel",
     "StatusBreakdown",
+    "SuccessfulT",
+    "TotalT",
 ]
 
 

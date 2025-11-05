@@ -20,8 +20,7 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
 )
-from guidellm.schemas import RequestInfo, RequestTimings
-from guidellm.utils import StandardBaseModel
+from guidellm.schemas import RequestInfo, RequestTimings, StandardBaseModel
 
 
 def test_request_t():

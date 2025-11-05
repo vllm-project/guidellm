@@ -210,13 +210,7 @@ class DistributionSummary(StandardBaseModel):
             count = len(pdf)
 
         total_sum = mean * count
-
-        if include_pdf is False:
-            sampled_pdf = None
-        elif include_pdf is True:
-            sampled_pdf = pdf.tolist()
-        else:
-            sampled_pdf = []
+        sampled_pdf = cls._sample_pdf(pdf, include_pdf)
 
         return DistributionSummary(
             mean=mean,
@@ -231,6 +225,28 @@ class DistributionSummary(StandardBaseModel):
             percentiles=percentiles,
             pdf=sampled_pdf,
         )
+
+    @classmethod
+    def _sample_pdf(
+        cls, pdf: np.ndarray, include_pdf: bool | int
+    ) -> list[tuple[float, float]] | None:
+        """
+        Sample PDF based on include_pdf parameter.
+
+        :param pdf: PDF array to sample
+        :param include_pdf: False for None, True for full, int for sampled size
+        :return: Sampled PDF as list of tuples or None
+        """
+        if include_pdf is False:
+            return None
+        if include_pdf is True:
+            return pdf.tolist()
+        if isinstance(include_pdf, int) and include_pdf > 0:
+            if len(pdf) <= include_pdf:
+                return pdf.tolist()
+            sample_indices = np.linspace(0, len(pdf) - 1, include_pdf, dtype=int)
+            return pdf[sample_indices].tolist()
+        return []
 
     @classmethod
     def from_values(

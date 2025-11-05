@@ -10,21 +10,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from guidellm.backends.backend import Backend, BackendType
-from guidellm.schemas import (
-    GenerationRequest,
-    RequestInfo,
-)
-from guidellm.schemas.request import GenerationRequestArguments
+from guidellm.backends import Backend
+from guidellm.schemas import GenerationRequest, GenerationRequestArguments, RequestInfo
 from guidellm.utils import RegistryMixin
 from tests.unit.testing_utils import async_timeout
-
-
-def test_backend_type():
-    """Test that BackendType is defined correctly as a Literal type."""
-    assert BackendType is not None
-    # BackendType should be a literal type containing "openai_http"
-    assert "openai_http" in str(BackendType)
 
 
 class TestBackend:
@@ -33,17 +22,17 @@ class TestBackend:
     @pytest.fixture(
         params=[
             {"type_": "openai_http"},
-            {"type_": "openai_http"},  # Test multiple instances with same type
-        ]
+        ],
+        ids=["openai_http_type"],
     )
     def valid_instances(self, request):
         """Fixture providing valid Backend instances."""
         constructor_args = request.param
 
-        class TestBackend(Backend):
+        class TestBackendImpl(Backend):
             @property
             def info(self) -> dict[str, Any]:
-                return {"type": self.type_}
+                return {"type": self.type_, "test": "backend"}
 
             async def process_startup(self):
                 pass
@@ -59,24 +48,31 @@ class TestBackend:
             ) -> AsyncIterator[tuple[Any, Any]]:
                 yield request, request_info
 
-            async def default_model(self) -> str | None:
+            async def default_model(self) -> str:
                 return "test-model"
 
-        instance = TestBackend(**constructor_args)
+        instance = TestBackendImpl(**constructor_args)
         return instance, constructor_args
 
     @pytest.mark.smoke
     def test_class_signatures(self):
         """Test Backend inheritance and type relationships."""
+        # Test inheritance
         assert issubclass(Backend, RegistryMixin)
+
         # Check that Backend implements BackendInterface methods
         assert hasattr(Backend, "resolve")
         assert hasattr(Backend, "process_startup")
         assert hasattr(Backend, "process_shutdown")
         assert hasattr(Backend, "validate")
+        assert hasattr(Backend, "info")
+
+        # Check registry methods exist
         assert hasattr(Backend, "create")
         assert hasattr(Backend, "register")
         assert hasattr(Backend, "get_registered_object")
+        assert hasattr(Backend, "is_registered")
+        assert hasattr(Backend, "registered_objects")
 
         # Check properties exist
         assert hasattr(Backend, "processes_limit")
@@ -104,7 +100,7 @@ class TestBackend:
     def test_invalid_initialization_values(self, field, value):
         """Test Backend with invalid field values."""
 
-        class TestBackend(Backend):
+        class TestBackendImpl(Backend):
             @property
             def info(self) -> dict[str, Any]:
                 return {}
@@ -121,13 +117,40 @@ class TestBackend:
             async def resolve(self, request, request_info, history=None):
                 yield request, request_info
 
-            async def default_model(self) -> str | None:
+            async def default_model(self) -> str:
                 return "test-model"
 
         data = {field: value}
         # Backend itself doesn't validate types, but we test that it accepts the value
-        backend = TestBackend(**data)
+        backend = TestBackendImpl(**data)
         assert getattr(backend, field) == value
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_missing(self):
+        """Test Backend initialization without required field."""
+
+        class TestBackendImpl(Backend):
+            @property
+            def info(self) -> dict[str, Any]:
+                return {}
+
+            async def process_startup(self):
+                pass
+
+            async def process_shutdown(self):
+                pass
+
+            async def validate(self):
+                pass
+
+            async def resolve(self, request, request_info, history=None):
+                yield request, request_info
+
+            async def default_model(self) -> str:
+                return "test-model"
+
+        with pytest.raises(TypeError):
+            TestBackendImpl()  # type: ignore
 
     @pytest.mark.smoke
     def test_default_properties(self, valid_instances):
@@ -137,35 +160,78 @@ class TestBackend:
         assert instance.requests_limit is None
 
     @pytest.mark.smoke
+    def test_info_property(self, valid_instances):
+        """Test Backend info property."""
+        instance, constructor_args = valid_instances
+        info = instance.info
+        assert isinstance(info, dict)
+        assert info["type"] == constructor_args["type_"]
+        assert "test" in info
+
+    @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(5.0)
-    async def test_default_model_abstract(self):
+    async def test_default_model(self, valid_instances):
         """Test that default_model is abstract and must be implemented."""
-        # Backend itself is abstract and cannot be instantiated
+        instance, _ = valid_instances
+        # Test that it returns a string
+        model = await instance.default_model()
+        assert isinstance(model, str)
+        assert model == "test-model"
+
+        # Test that Backend itself is abstract and cannot be instantiated
         with pytest.raises(TypeError):
             Backend("openai_http")  # type: ignore
 
-    @pytest.mark.regression
+    @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(5.0)
-    async def test_interface_compatibility(self, valid_instances):
-        """Test that Backend is compatible with BackendInterface."""
+    async def test_process_startup(self, valid_instances):
+        """Test Backend.process_startup lifecycle method."""
         instance, _ = valid_instances
+        # Should not raise any exceptions
+        await instance.process_startup()
 
-        # Test that Backend uses the correct generic types
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(5.0)
+    async def test_process_shutdown(self, valid_instances):
+        """Test Backend.process_shutdown lifecycle method."""
+        instance, _ = valid_instances
+        # Should not raise any exceptions
+        await instance.process_shutdown()
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(5.0)
+    async def test_validate(self, valid_instances):
+        """Test Backend.validate lifecycle method."""
+        instance, _ = valid_instances
+        # Should not raise any exceptions
+        await instance.validate()
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(5.0)
+    async def test_resolve(self, valid_instances):
+        """Test Backend.resolve method."""
+        instance, _ = valid_instances
         request = GenerationRequest(
             request_type="text_completions", arguments=GenerationRequestArguments()
         )
         request_info = RequestInfo(request_id="test-id")
 
         # Test resolve method
+        results = []
         async for response, info in instance.resolve(request, request_info):
-            assert response == request
-            assert info == request_info
-            break  # Only test first iteration
+            results.append((response, info))
+
+        assert len(results) == 1
+        assert results[0][0] == request
+        assert results[0][1] == request_info
 
     @pytest.mark.smoke
-    def test_create_method_valid(self):
+    def test_create(self):
         """Test Backend.create class method with valid backend."""
         # Mock a registered backend
         mock_backend_class = Mock()
@@ -182,12 +248,12 @@ class TestBackend:
             assert result == mock_backend_instance
 
     @pytest.mark.sanity
-    def test_create_method_invalid(self):
+    def test_create_invalid(self):
         """Test Backend.create class method with invalid backend type."""
         with pytest.raises(
             ValueError, match="Backend type 'invalid_type' is not registered"
         ):
-            Backend.create("invalid_type")
+            Backend.create("invalid_type")  # type: ignore
 
     @pytest.mark.regression
     def test_docstring_example_pattern(self):
@@ -199,6 +265,7 @@ class TestBackend:
                 super().__init__("mock_backend")  # type: ignore [arg-type]
                 self.api_key = api_key
 
+            @property
             def info(self) -> dict[str, Any]:
                 return {"api_key": "***"}
 
@@ -214,7 +281,7 @@ class TestBackend:
             async def resolve(self, request, request_info, history=None):
                 yield request, request_info
 
-            async def default_model(self) -> str | None:
+            async def default_model(self) -> str:
                 return "my-model"
 
         # Register the backend
@@ -226,10 +293,6 @@ class TestBackend:
         assert backend.api_key == "secret"
         assert backend.type_ == "mock_backend"
 
-
-class TestBackendRegistry:
-    """Test cases for Backend registry functionality."""
-
     @pytest.mark.smoke
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""
@@ -239,14 +302,6 @@ class TestBackendRegistry:
         backend = Backend.create("openai_http", target="http://test")
         assert isinstance(backend, OpenAIHTTPBackend)
         assert backend.type_ == "openai_http"
-
-    @pytest.mark.sanity
-    def test_backend_create_invalid_type(self):
-        """Test Backend.create with invalid type raises appropriate error."""
-        with pytest.raises(
-            ValueError, match="Backend type 'invalid_type' is not registered"
-        ):
-            Backend.create("invalid_type")
 
     @pytest.mark.smoke
     def test_backend_registry_functionality(self):
@@ -265,7 +320,7 @@ class TestBackendRegistry:
         assert backend.model == "gpt-4"
 
     @pytest.mark.smoke
-    def test_backend_is_registered(self):
+    def test_is_registered(self):
         """Test Backend.is_registered method."""
         # Test with a known registered backend
         assert Backend.is_registered("openai_http")
@@ -274,16 +329,17 @@ class TestBackendRegistry:
         assert not Backend.is_registered("unknown_backend")
 
     @pytest.mark.regression
-    def test_backend_registration_decorator(self):
+    def test_registration_decorator(self):
         """Test that backend registration decorator works."""
 
         # Create a test backend class
-        @Backend.register("test_backend")
-        class TestBackend(Backend):
+        @Backend.register("test_decorator_backend")
+        class TestDecoratorBackend(Backend):
             def __init__(self, test_param="default"):
-                super().__init__("test_backend")  # type: ignore
+                super().__init__("test_decorator_backend")  # type: ignore
                 self._test_param = test_param
 
+            @property
             def info(self):
                 return {"test_param": self._test_param}
 
@@ -303,12 +359,12 @@ class TestBackendRegistry:
                 return "test-model"
 
         # Test that it's registered and can be created
-        backend = Backend.create("test_backend", test_param="custom")
-        assert isinstance(backend, TestBackend)
-        assert backend.info() == {"test_param": "custom"}
+        backend = Backend.create("test_decorator_backend", test_param="custom")
+        assert isinstance(backend, TestDecoratorBackend)
+        assert backend.info == {"test_param": "custom"}
 
     @pytest.mark.smoke
-    def test_backend_registered_objects(self):
+    def test_registered_objects(self):
         """Test Backend.registered_objects method returns registered backends."""
         # Should include at least the openai_http backend
         registered = Backend.registered_objects()

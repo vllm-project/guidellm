@@ -10,11 +10,17 @@ from request submission through backend processing to results compilation.
 from __future__ import annotations
 
 from .base import (
+    BaseModelT,
+    ErroredT,
+    IncompleteT,
     PydanticClassRegistryMixin,
+    RegisterClassT,
     ReloadableBaseModel,
     StandardBaseDict,
     StandardBaseModel,
     StatusBreakdown,
+    SuccessfulT,
+    TotalT,
 )
 from .info import RequestInfo, RequestTimings
 from .request import (
@@ -33,15 +39,19 @@ from .statistics import (
 )
 
 __all__ = [
+    "BaseModelT",
     "DistributionSummary",
+    "ErroredT",
     "FunctionObjT",
     "GenerationRequest",
     "GenerationRequestArguments",
     "GenerationResponse",
     "GenerativeRequestStats",
     "GenerativeRequestType",
+    "IncompleteT",
     "Percentiles",
     "PydanticClassRegistryMixin",
+    "RegisterClassT",
     "ReloadableBaseModel",
     "RequestInfo",
     "RequestTimings",
@@ -49,5 +59,7 @@ __all__ = [
     "StandardBaseModel",
     "StatusBreakdown",
     "StatusDistributionSummary",
+    "SuccessfulT",
+    "TotalT",
     "UsageMetrics",
 ]
