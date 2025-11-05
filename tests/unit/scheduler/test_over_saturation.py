@@ -20,6 +20,7 @@ from guidellm.scheduler import (
     SchedulerState,
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
+    SlopeChecker,
 )
 from guidellm.schemas import RequestInfo, RequestTimings
 
@@ -556,10 +557,6 @@ class TestSlopeChecker:
     @pytest.fixture
     def slope_checker(self):
         """Create a SlopeChecker instance for testing."""
-        from guidellm.scheduler.constraints.over_saturation import (
-            SlopeChecker,
-        )
-
         return SlopeChecker(moe_threshold=1.0, confidence=0.95)
 
     @pytest.mark.smoke
