@@ -20,8 +20,8 @@ from guidellm.scheduler import (
     SchedulerState,
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
-    SlopeChecker,
 )
+from guidellm.scheduler.constraints.over_saturation import SlopeChecker
 from guidellm.schemas import RequestInfo, RequestTimings
 
 
