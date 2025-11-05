@@ -77,7 +77,7 @@ def test_cli_backend_args_header_removal(mock_benchmark_func, tmp_path: Path):
     # Assert that benchmark_with_scenario was called with the correct scenario
     mock_benchmark_func.assert_called_once()
     call_args = mock_benchmark_func.call_args[1]
-    scenario = call_args["scenario"]
+    scenario = call_args["args"]
 
     # Verify the backend_args were merged correctly
     backend_args = scenario.backend_kwargs
