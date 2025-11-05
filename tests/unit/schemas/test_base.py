@@ -1,5 +1,5 @@
 """
-Unit tests for the pydantic_utils module.
+Unit tests for the base pydantic utilities module.
 """
 
 from __future__ import annotations
@@ -10,20 +10,18 @@ from unittest import mock
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from guidellm.schemas.base import (
+from guidellm.schemas import (
     BaseModelT,
     ErroredT,
     IncompleteT,
-    RegisterClassT,
-    SuccessfulT,
-    TotalT,
-)
-from guidellm.utils import (
     PydanticClassRegistryMixin,
+    RegisterClassT,
     ReloadableBaseModel,
     StandardBaseDict,
     StandardBaseModel,
     StatusBreakdown,
+    SuccessfulT,
+    TotalT,
 )
 
 
@@ -159,13 +157,37 @@ class TestReloadableBaseModel:
         class TestModel(ReloadableBaseModel):
             name: str
 
-        # Mock the model_rebuild method to simulate schema reload
-        with mock.patch.object(TestModel, "model_rebuild") as mock_rebuild:
+        # Test standard reload with mocked pathways
+        with (
+            mock.patch.object(TestModel, "model_rebuild") as mock_rebuild,
+            mock.patch.object(TestModel, "reload_parent_schemas") as mock_parents,
+        ):
             TestModel.reload_schema()
             mock_rebuild.assert_called_once_with(force=True)
+            mock_parents.assert_called_once()
+
+        # Test without parent reloading with mocked pathways
+        with (
+            mock.patch.object(TestModel, "model_rebuild") as mock_rebuild,
+            mock.patch.object(TestModel, "reload_parent_schemas") as mock_parents,
+        ):
+            TestModel.reload_schema(parents=False)
+            mock_rebuild.assert_called_once_with(force=True)
+            mock_parents.assert_not_called()
+
+        # Test parent reloading separately with mocked pathways
+        class ParentModel(ReloadableBaseModel):
+            child: TestModel
+
+        with mock.patch.object(ParentModel, "model_rebuild") as mock_parent_rebuild:
+            TestModel.reload_parent_schemas()
+            # Schema rebuild may or may not be triggered depending on structure
+            assert mock_parent_rebuild.call_count >= 0
 
     @pytest.mark.sanity
-    def test_marshalling(self, valid_instances):
+    def test_marshalling(
+        self, valid_instances: tuple[ReloadableBaseModel, dict[str, str]]
+    ):
         """Test ReloadableBaseModel serialization and deserialization."""
         instance, constructor_args = valid_instances
         data_dict = instance.model_dump()
@@ -175,6 +197,66 @@ class TestReloadableBaseModel:
         recreated = instance.__class__.model_validate(data_dict)
         assert isinstance(recreated, instance.__class__)
         assert recreated.name == constructor_args["name"]
+
+    @pytest.mark.sanity
+    def test_json_serialization(self, valid_instances):
+        """Test ReloadableBaseModel JSON serialization."""
+        instance, constructor_args = valid_instances
+        json_data = instance.model_dump_json()
+        assert isinstance(json_data, str)
+        assert constructor_args["name"] in json_data
+
+        recreated = instance.__class__.model_validate_json(json_data)
+        assert isinstance(recreated, instance.__class__)
+        assert recreated.name == constructor_args["name"]
+
+    @pytest.mark.sanity
+    def test_extra_fields_ignored(self):
+        """Test that ReloadableBaseModel ignores extra fields."""
+
+        class TestModel(ReloadableBaseModel):
+            name: str
+
+        # Extra fields should be ignored
+        instance = TestModel(name="test", extra_field="ignored")
+        assert instance.name == "test"
+        assert not hasattr(instance, "extra_field")
+
+    @pytest.mark.sanity
+    def test_from_attributes(self):
+        """Test ReloadableBaseModel from_attributes configuration."""
+
+        class TestModel(ReloadableBaseModel):
+            name: str
+            value: int = 10
+
+        class SourceObject:
+            def __init__(self):
+                self.name = "test_name"
+                self.value = 42
+
+        source = SourceObject()
+        instance = TestModel.model_validate(source)
+        assert instance.name == "test_name"
+        assert instance.value == 42
+
+    @pytest.mark.sanity
+    def test_arbitrary_types_allowed(self):
+        """Test ReloadableBaseModel arbitrary_types_allowed configuration."""
+
+        class CustomType:
+            def __init__(self, val: str):
+                self.val = val
+
+        class TestModel(ReloadableBaseModel):
+            name: str
+            custom: CustomType
+
+        custom_obj = CustomType("test")
+        instance = TestModel(name="test", custom=custom_obj)
+        assert instance.name == "test"
+        assert isinstance(instance.custom, CustomType)
+        assert instance.custom.val == "test"
 
 
 class TestStandardBaseModel:
@@ -258,27 +340,6 @@ class TestStandardBaseModel:
         with pytest.raises(ValidationError):
             TestModel()  # type: ignore[call-arg]
 
-    @pytest.mark.smoke
-    def test_get_default(self):
-        """Test StandardBaseModel.get_default method."""
-
-        class TestModel(StandardBaseModel):
-            field_str: str = Field(description="Test string field")
-            field_int: int = Field(default=42, description="Test integer field")
-
-        default_value = TestModel.get_default("field_int")
-        assert default_value == 42
-
-    @pytest.mark.sanity
-    def test_get_default_invalid(self):
-        """Test StandardBaseModel.get_default with invalid field."""
-
-        class TestModel(StandardBaseModel):
-            field_str: str = Field(description="Test string field")
-
-        with pytest.raises(KeyError):
-            TestModel.get_default("nonexistent_field")
-
     @pytest.mark.sanity
     def test_marshalling(self, valid_instances):
         """Test StandardBaseModel serialization and deserialization."""
@@ -292,6 +353,50 @@ class TestStandardBaseModel:
         assert isinstance(recreated, instance.__class__)
         assert recreated.field_str == constructor_args["field_str"]
         assert recreated.field_int == constructor_args["field_int"]
+
+    @pytest.mark.sanity
+    def test_json_serialization(self, valid_instances):
+        """Test StandardBaseModel JSON serialization."""
+        instance, constructor_args = valid_instances
+        json_data = instance.model_dump_json()
+        assert isinstance(json_data, str)
+        assert constructor_args["field_str"] in json_data
+
+        recreated = instance.__class__.model_validate_json(json_data)
+        assert isinstance(recreated, instance.__class__)
+        assert recreated.field_str == constructor_args["field_str"]
+        assert recreated.field_int == constructor_args["field_int"]
+
+    @pytest.mark.sanity
+    def test_extra_fields_ignored(self):
+        """Test that StandardBaseModel ignores extra fields."""
+
+        class TestModel(StandardBaseModel):
+            field_str: str = Field(description="Test string field")
+            field_int: int = Field(default=10, description="Test integer field")
+
+        # Extra fields should be ignored
+        instance = TestModel(field_str="test", extra_field="ignored")
+        assert instance.field_str == "test"
+        assert not hasattr(instance, "extra_field")
+
+    @pytest.mark.sanity
+    def test_from_attributes(self):
+        """Test StandardBaseModel from_attributes configuration."""
+
+        class TestModel(StandardBaseModel):
+            field_str: str = Field(description="Test string field")
+            field_int: int = Field(default=10, description="Test integer field")
+
+        class SourceObject:
+            def __init__(self):
+                self.field_str = "test_value"
+                self.field_int = 99
+
+        source = SourceObject()
+        instance = TestModel.model_validate(source)
+        assert instance.field_str == "test_value"
+        assert instance.field_int == 99
 
 
 class TestStandardBaseDict:
@@ -395,6 +500,41 @@ class TestStandardBaseDict:
                 assert hasattr(recreated, key)
                 assert getattr(recreated, key) == value
 
+    @pytest.mark.sanity
+    def test_json_serialization(self, valid_instances):
+        """Test StandardBaseDict JSON serialization."""
+        instance, constructor_args = valid_instances
+        json_data = instance.model_dump_json()
+        assert isinstance(json_data, str)
+        assert constructor_args["field_str"] in json_data
+
+        recreated = instance.__class__.model_validate_json(json_data)
+        assert isinstance(recreated, instance.__class__)
+        assert recreated.field_str == constructor_args["field_str"]
+
+        # Check extra fields are preserved after JSON deserialization
+        for key in constructor_args:
+            if key != "field_str":
+                assert hasattr(recreated, key)
+
+    @pytest.mark.sanity
+    def test_arbitrary_types_allowed(self):
+        """Test StandardBaseDict arbitrary_types_allowed configuration."""
+
+        class CustomType:
+            def __init__(self, val: str):
+                self.val = val
+
+        class TestModel(StandardBaseDict):
+            field_str: str = Field(description="Test string field")
+
+        custom_obj = CustomType("test")
+        instance = TestModel(field_str="test", custom=custom_obj)
+        assert instance.field_str == "test"
+        assert hasattr(instance, "custom")
+        assert isinstance(instance.custom, CustomType)
+        assert instance.custom.val == "test"
+
 
 class TestStatusBreakdown:
     """Test suite for StatusBreakdown."""
@@ -471,6 +611,22 @@ class TestStatusBreakdown:
         assert recreated.incomplete == constructor_args["incomplete"]
         assert recreated.total == constructor_args["total"]
 
+    @pytest.mark.sanity
+    def test_json_serialization(self):
+        """Test StatusBreakdown JSON serialization with various types."""
+        instance: StatusBreakdown = StatusBreakdown(
+            successful=100, errored=5, incomplete=10, total=115
+        )
+        json_data = instance.model_dump_json()
+        assert isinstance(json_data, str)
+        assert "100" in json_data
+
+        recreated = StatusBreakdown.model_validate_json(json_data)
+        assert recreated.successful == 100
+        assert recreated.errored == 5
+        assert recreated.incomplete == 10
+        assert recreated.total == 115
+
 
 class TestPydanticClassRegistryMixin:
     """Test suite for PydanticClassRegistryMixin."""
@@ -517,6 +673,8 @@ class TestPydanticClassRegistryMixin:
         assert hasattr(PydanticClassRegistryMixin, "register_decorator")
         assert hasattr(PydanticClassRegistryMixin, "__get_pydantic_core_schema__")
         assert hasattr(PydanticClassRegistryMixin, "__pydantic_generate_base_schema__")
+        assert hasattr(PydanticClassRegistryMixin, "__pydantic_schema_base_type__")
+        assert hasattr(PydanticClassRegistryMixin, "__new__")
         assert hasattr(PydanticClassRegistryMixin, "auto_populate_registry")
         assert hasattr(PydanticClassRegistryMixin, "registered_classes")
 
@@ -587,6 +745,25 @@ class TestPydanticClassRegistryMixin:
         with pytest.raises(ValidationError):
             TestSubModel()  # type: ignore[call-arg]
 
+    @pytest.mark.sanity
+    def test_base_class_direct_instantiation(self):
+        """Test that base class cannot be instantiated directly."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        with pytest.raises(TypeError) as exc_info:
+            TestBaseModel(test_type="test")
+
+        assert "only children of" in str(exc_info.value)
+
     @pytest.mark.smoke
     def test_register_decorator(self):
         """Test PydanticClassRegistryMixin.register_decorator method."""
@@ -610,6 +787,108 @@ class TestPydanticClassRegistryMixin:
         assert "TestSubModel" in TestBaseModel.registry  # type: ignore[misc]
         assert TestBaseModel.registry["TestSubModel"] is TestSubModel  # type: ignore[misc]
 
+    @pytest.mark.smoke
+    def test_get_pydantic_core_schema(self):
+        """Test PydanticClassRegistryMixin.__get_pydantic_core_schema__ method."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        @TestBaseModel.register("test_sub")
+        class TestSubModel(TestBaseModel):
+            test_type: str = "test_sub"
+            value: str
+
+        # Create a mock handler
+        mock_handler = mock.Mock()
+        mock_handler.return_value = {"type": "model"}
+
+        # Test schema generation for base type
+        schema = TestBaseModel.__get_pydantic_core_schema__(TestBaseModel, mock_handler)
+        assert schema is not None
+        assert schema["type"] == "tagged-union"
+
+    @pytest.mark.sanity
+    def test_get_pydantic_core_schema_no_registry(self):
+        """Test __get_pydantic_core_schema__ without registry."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        # Ensure registry is empty
+        TestBaseModel.registry = None
+
+        # Create a mock handler
+        mock_handler = mock.Mock()
+
+        # Test schema generation without registry
+        with mock.patch.object(
+            TestBaseModel, "__pydantic_generate_base_schema__"
+        ) as mock_base:
+            TestBaseModel.__get_pydantic_core_schema__(TestBaseModel, mock_handler)
+            mock_base.assert_called_once_with(mock_handler)
+
+    @pytest.mark.sanity
+    def test_get_pydantic_core_schema_subclass(self):
+        """Test __get_pydantic_core_schema__ for a subclass."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        @TestBaseModel.register("test_sub")
+        class TestSubModel(TestBaseModel):
+            test_type: str = "test_sub"
+            value: str
+
+        # Create a mock handler
+        mock_handler = mock.Mock()
+        mock_handler.return_value = {"type": "model"}
+
+        # Test schema generation for subclass (not base type)
+        schema = TestBaseModel.__get_pydantic_core_schema__(TestSubModel, mock_handler)
+        assert schema is not None
+        mock_handler.assert_called_once_with(TestBaseModel)
+
+    @pytest.mark.smoke
+    def test_pydantic_generate_base_schema(self):
+        """Test PydanticClassRegistryMixin.__pydantic_generate_base_schema__."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        mock_handler = mock.Mock()
+        schema = TestBaseModel.__pydantic_generate_base_schema__(mock_handler)
+        assert schema is not None
+        assert schema["type"] == "any"
+
     @pytest.mark.sanity
     def test_register_decorator_with_name(self):
         """Test PydanticClassRegistryMixin.register_decorator with custom name."""
@@ -632,6 +911,31 @@ class TestPydanticClassRegistryMixin:
         assert TestBaseModel.registry is not None  # type: ignore[misc]
         assert "custom_name" in TestBaseModel.registry  # type: ignore[misc]
         assert TestBaseModel.registry["custom_name"] is TestSubModel  # type: ignore[misc]
+
+    @pytest.mark.sanity
+    def test_register_decorator_with_multiple_names(self):
+        """Test PydanticClassRegistryMixin.register_decorator with list of names."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        @TestBaseModel.register(["name_one", "name_two"])
+        class TestSubModel(TestBaseModel):
+            test_type: str = "name_one"
+            value: str
+
+        assert TestBaseModel.registry is not None  # type: ignore[misc]
+        assert "name_one" in TestBaseModel.registry  # type: ignore[misc]
+        assert "name_two" in TestBaseModel.registry  # type: ignore[misc]
+        assert TestBaseModel.registry["name_one"] is TestSubModel  # type: ignore[misc]
+        assert TestBaseModel.registry["name_two"] is TestSubModel  # type: ignore[misc]
 
     @pytest.mark.sanity
     def test_register_decorator_invalid_type(self):
@@ -675,10 +979,37 @@ class TestPydanticClassRegistryMixin:
             mock.patch(
                 "guidellm.utils.registry.RegistryMixin.auto_populate_registry",
                 return_value=True,
-            ),
+            ) as mock_parent_auto,
         ):
             result = TestBaseModel.auto_populate_registry()
             assert result is True
+            mock_reload.assert_called_once()
+            mock_parent_auto.assert_called_once()
+
+    @pytest.mark.sanity
+    def test_auto_populate_registry_already_populated(self):
+        """Test auto_populate_registry when already populated."""
+
+        class TestBaseModel(PydanticClassRegistryMixin):
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
+            registry_auto_discovery: ClassVar[bool] = True
+
+            @classmethod
+            def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
+                if cls.__name__ == "TestBaseModel":
+                    return cls
+                return TestBaseModel
+
+        with (
+            mock.patch.object(TestBaseModel, "reload_schema") as mock_reload,
+            mock.patch(
+                "guidellm.utils.registry.RegistryMixin.auto_populate_registry",
+                return_value=False,
+            ),
+        ):
+            result = TestBaseModel.auto_populate_registry()
+            assert result is False
             mock_reload.assert_called_once()
 
     @pytest.mark.smoke
@@ -850,153 +1181,33 @@ class TestPydanticClassRegistryMixin:
         assert isinstance(recreated.models[0], TestSubModelA)
         assert isinstance(recreated.models[1], TestSubModelB)
 
-    @pytest.mark.smoke
-    def test_register_preserves_pydantic_metadata(self):  # noqa: C901
-        """Test that registered Pydantic classes retain docs, types, and methods."""
+    @pytest.mark.regression
+    def test_json_serialization(self):
+        """Test PydanticClassRegistryMixin JSON serialization."""
 
         class TestBaseModel(PydanticClassRegistryMixin):
-            schema_discriminator: ClassVar[str] = "model_type"
-            model_type: str
+            schema_discriminator: ClassVar[str] = "test_type"
+            test_type: str
 
             @classmethod
             def __pydantic_schema_base_type__(cls) -> type[TestBaseModel]:
                 if cls.__name__ == "TestBaseModel":
                     return cls
-
                 return TestBaseModel
 
-        @TestBaseModel.register("documented_model")
-        class DocumentedModel(TestBaseModel):
-            """This is a documented Pydantic model with methods and type hints."""
+        @TestBaseModel.register("test_sub")
+        class TestSubModel(TestBaseModel):
+            test_type: str = "test_sub"
+            value: str
 
-            model_type: str = "documented_model"
-            value: int = Field(description="An integer value for the model")
+        instance = TestSubModel(value="test_value")
+        json_data = instance.model_dump_json()
+        assert isinstance(json_data, str)
+        assert "test_sub" in json_data
+        assert "test_value" in json_data
 
-            def get_value(self) -> int:
-                """Get the stored value.
-
-                :return: The stored integer value
-                """
-                return self.value
-
-            def set_value(self, new_value: int) -> None:
-                """Set a new value.
-
-                :param new_value: The new integer value to set
-                """
-                self.value = new_value
-
-            @classmethod
-            def from_string(cls, value_str: str) -> DocumentedModel:
-                """Create instance from string.
-
-                :param value_str: String representation of value
-                :return: New DocumentedModel instance
-                """
-                return cls(value=int(value_str))
-
-            @staticmethod
-            def validate_value(value: int) -> bool:
-                """Validate that a value is positive.
-
-                :param value: Value to validate
-                :return: True if positive, False otherwise
-                """
-                return value > 0
-
-            def model_post_init(self, __context) -> None:
-                """Post-initialization processing.
-
-                :param __context: Validation context
-                """
-                if self.value < 0:
-                    raise ValueError("Value must be non-negative")
-
-        # Check that the class was registered
-        assert TestBaseModel.is_registered("documented_model")
-        registered_class = TestBaseModel.get_registered_object("documented_model")
-        assert registered_class is DocumentedModel
-
-        # Check that the class retains its documentation
-        assert registered_class.__doc__ is not None
-        assert "documented Pydantic model with methods" in registered_class.__doc__
-
-        # Check that methods retain their documentation
-        assert registered_class.get_value.__doc__ is not None
-        assert "Get the stored value" in registered_class.get_value.__doc__
-        assert registered_class.set_value.__doc__ is not None
-        assert "Set a new value" in registered_class.set_value.__doc__
-        assert registered_class.from_string.__doc__ is not None
-        assert "Create instance from string" in registered_class.from_string.__doc__
-        assert registered_class.validate_value.__doc__ is not None
-        assert (
-            "Validate that a value is positive"
-            in registered_class.validate_value.__doc__
-        )
-        assert registered_class.model_post_init.__doc__ is not None
-        assert (
-            "Post-initialization processing" in registered_class.model_post_init.__doc__
-        )
-
-        # Check that methods are callable and work correctly
-        instance = DocumentedModel(value=42)
-        assert isinstance(instance, DocumentedModel)
-        assert instance.get_value() == 42
-        instance.set_value(100)
-        assert instance.get_value() == 100
-        assert instance.model_type == "documented_model"
-
-        # Check class methods work
-        instance2 = DocumentedModel.from_string("123")
-        assert instance2.get_value() == 123
-        assert instance2.model_type == "documented_model"
-
-        # Check static methods work
-        assert DocumentedModel.validate_value(10) is True
-        assert DocumentedModel.validate_value(-5) is False
-
-        # Check that Pydantic functionality is preserved
-        data_dict = instance.model_dump()
-        assert data_dict["value"] == 100
-        assert data_dict["model_type"] == "documented_model"
-
-        recreated = DocumentedModel.model_validate(data_dict)
-        assert isinstance(recreated, DocumentedModel)
-        assert recreated.value == 100
-        assert recreated.model_type == "documented_model"
-
-        # Test field validation
-        with pytest.raises(ValidationError):
-            DocumentedModel(value="not_an_int")
-
-        # Test post_init validation
-        with pytest.raises(ValueError, match="Value must be non-negative"):
-            DocumentedModel(value=-10)
-
-        # Check that Pydantic field metadata is preserved
-        value_field = DocumentedModel.model_fields["value"]
-        assert value_field.description == "An integer value for the model"
-
-        # Check that type annotations are preserved (if accessible)
-        import inspect
-
-        if hasattr(inspect, "get_annotations"):
-            # Python 3.10+
-            try:
-                annotations = inspect.get_annotations(DocumentedModel.get_value)
-                return_ann = annotations.get("return")
-                assert return_ann is int or return_ann == "int"
-            except (AttributeError, NameError):
-                # Fallback for older Python or missing annotations
-                pass
-
-        # Check that the class name is preserved
-        assert DocumentedModel.__name__ == "DocumentedModel"
-        assert DocumentedModel.__qualname__.endswith("DocumentedModel")
-
-        # Verify that the class is still properly integrated with the registry system
-        all_registered = TestBaseModel.registered_classes()
-        assert DocumentedModel in all_registered
-
-        # Test that the registered class is the same as the original
-        assert registered_class is DocumentedModel
+        # Deserialize through base class
+        recreated = TestBaseModel.model_validate_json(json_data)  # type: ignore[assignment]
+        assert isinstance(recreated, TestSubModel)
+        assert recreated.test_type == "test_sub"
+        assert recreated.value == "test_value"

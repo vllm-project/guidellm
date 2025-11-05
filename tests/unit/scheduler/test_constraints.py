@@ -22,8 +22,8 @@ from guidellm.scheduler import (
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from guidellm.schemas import RequestInfo
-from guidellm.utils import InfoMixin, StandardBaseModel
+from guidellm.schemas import RequestInfo, StandardBaseModel
+from guidellm.utils import InfoMixin
 
 
 class TestConstraint:
