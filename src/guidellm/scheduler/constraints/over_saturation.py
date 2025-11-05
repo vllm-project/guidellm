@@ -5,15 +5,16 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from .base import PydanticConstraintInitializer
-from .factory import ConstraintsInitializerFactory
-from .protocols import Constraint
 from guidellm.scheduler.schemas import (
     RequestInfo,
     SchedulerState,
     SchedulerUpdateAction,
 )
 from guidellm.settings import settings
+
+from .base import PydanticConstraintInitializer
+from .factory import ConstraintsInitializerFactory
+from .protocols import Constraint
 
 
 class OverSaturationDetectorBase(ABC):

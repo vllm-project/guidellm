@@ -12,11 +12,11 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from guidellm.schemas import RequestInfo
 from guidellm.scheduler.schemas import SchedulerState, SchedulerUpdateAction
+from guidellm.schemas import RequestInfo
 from guidellm.utils import InfoMixin, StandardBaseModel
 
-from .protocols import Constraint, ConstraintInitializer
+from .protocols import Constraint
 
 __all__ = [
     "PydanticConstraintInitializer",

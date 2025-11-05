@@ -12,12 +12,12 @@ from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
-from guidellm.schemas import RequestInfo
 from guidellm.scheduler.schemas import (
     SchedulerState,
     SchedulerUpdateAction,
     SchedulerUpdateActionProgress,
 )
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils import InfoMixin, StandardBaseModel
 

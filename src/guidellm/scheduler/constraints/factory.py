@@ -14,7 +14,11 @@ from typing import Any
 from guidellm.utils import InfoMixin, RegistryMixin
 
 from .base import UnserializableConstraintInitializer
-from .protocols import Constraint, ConstraintInitializer, SerializableConstraintInitializer
+from .protocols import (
+    Constraint,
+    ConstraintInitializer,
+    SerializableConstraintInitializer,
+)
 
 __all__ = ["ConstraintsInitializerFactory"]
 

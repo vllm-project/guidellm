@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from guidellm.schemas import RequestInfo
 from guidellm.scheduler.schemas import SchedulerState, SchedulerUpdateAction
+from guidellm.schemas import RequestInfo
 
 __all__ = [
     "Constraint",
