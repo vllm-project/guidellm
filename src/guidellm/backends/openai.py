@@ -18,10 +18,7 @@ from typing import Any
 import httpx
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.response_handlers import (
-    GenerationResponseHandler,
-    GenerationResponseHandlerFactory,
-)
+from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
 from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo
 
 __all__ = ["OpenAIHTTPBackend"]
@@ -244,8 +241,8 @@ class OpenAIHTTPBackend(Backend):
         )
         request_json = request.arguments.body if not request_files else None
         request_data = request.arguments.body if request_files else None
-        response_handler = self._resolve_response_handler(
-            request_type=request.request_type
+        response_handler = GenerationResponseHandlerFactory.create(
+            request.request_type, handler_overrides=self.response_handlers
         )
 
         if not request.arguments.stream:
@@ -335,20 +332,3 @@ class OpenAIHTTPBackend(Backend):
             validate_kwargs["method"] = "GET"
 
         return validate_kwargs
-
-    def _resolve_response_handler(self, request_type: str) -> GenerationResponseHandler:
-        if (
-            self.response_handlers is not None
-            and (handler := self.response_handlers.get(request_type)) is not None
-        ):
-            return handler
-
-        handler_class = GenerationResponseHandlerFactory.get_registered_object(
-            request_type
-        )
-        if handler_class is None:
-            raise ValueError(
-                f"No response handler registered for request type '{request_type}'"
-            )
-
-        return handler_class()
