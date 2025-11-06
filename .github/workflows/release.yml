@@ -21,7 +21,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Build the package
         run: |
           export GUIDELLM_BUILD_TYPE=release
@@ -63,7 +65,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run link checks
         run: tox -e links
 
@@ -79,7 +83,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run unit tests
         run: tox -e test-unit
 
@@ -114,7 +120,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: pip install tox tox-pdm
       - name: Run integration tests
         run: tox -e test-integration
 
@@ -149,7 +155,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: pip install tox tox-pdm
       - name: Run end-to-end tests
         run: tox -e test-e2e
 

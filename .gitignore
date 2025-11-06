@@ -230,3 +230,6 @@ src/ui/next-env.d.ts
 !src/ui/public/manifest.json
 !src/ui/serve.json
 .eslintcache
+
+# e2e tests
+bin/
