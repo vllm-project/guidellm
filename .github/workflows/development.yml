@@ -17,7 +17,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run quality checks
         run: tox -e quality
 
@@ -52,7 +54,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run quality checks
         run: tox -e types
 
@@ -122,7 +126,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run unit tests
         run: tox -e test-unit
 
@@ -157,7 +163,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run integration tests
         run: tox -e test-integration -- -m smoke
 
