@@ -136,7 +136,8 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         :return: Standardized GenerationResponse with extracted text and metrics
         """
         choices, usage = self.extract_choices_and_usage(response)
-        text = choices[0].get("text", "") if choices else ""
+        choice = choices[0] if choices else {}
+        text = choice.get("text", "")
         input_metrics, output_metrics = self.extract_metrics(usage, text)
 
         return GenerationResponse(
@@ -164,8 +165,9 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
+        choice = choices[0] if choices else {}
 
-        if choices and (text := choices[0].get("text")):
+        if choices and (text := choice.get("text")):
             self.streaming_texts.append(text)
             updated = True
 
@@ -295,8 +297,8 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         :return: Standardized GenerationResponse with extracted content and metrics
         """
         choices, usage = self.extract_choices_and_usage(response)
-        choice = choices[0] if choices else {}
-        text = choice.get("content", "")
+        choice: dict[str, dict] = choices[0] if choices else {}
+        text = choice.get("message", {}).get("content", "")
         input_metrics, output_metrics = self.extract_metrics(usage, text)
 
         return GenerationResponse(
@@ -324,8 +326,9 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
+        choice: dict[str, dict] = choices[0] if choices else {}
 
-        if choices and (content := choices[0].get("delta", {}).get("content")):
+        if choices and (content := choice.get("delta", {}).get("content")):
             self.streaming_texts.append(content)
             updated = True
 

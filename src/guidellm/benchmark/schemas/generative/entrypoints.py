@@ -200,7 +200,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default="generative_column_mapper",
         description="Column mapping preprocessor for dataset fields",
     )
-    data_request_formatter: RequestFormatter | dict[str, str] | str = Field(
+    data_request_formatter: RequestFormatter | dict[str, Any] | str = Field(
         default="chat_completions",
         description="Request formatting preprocessor or template name",
         validation_alias=AliasChoices(

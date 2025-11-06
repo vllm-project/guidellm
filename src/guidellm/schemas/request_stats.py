@@ -167,7 +167,10 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         if (
             (start := self.info.timings.request_start) is None
-            or (last_token := self.last_token_iteration) is None
+            or (
+                (last_token := self.last_token_iteration or self.request_end_time)
+                is None
+            )
             or (output_tokens := self.output_tokens) is None
             or output_tokens == 0
         ):
