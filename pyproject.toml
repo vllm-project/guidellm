@@ -55,7 +55,6 @@ keywords = [
 dependencies = [
     "click>=8.0.0,<8.2.0",
     "culsans~=0.9.0",
-    "aiologic~=0.14.0",
     "datasets",
     "eval_type_backport",
     "faker",
