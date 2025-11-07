@@ -371,6 +371,8 @@ def benchmark():
     help="Maximum global error rate across all benchmarks.",
 )
 def run(**kwargs):
+    # Only set CLI args that differ from click defaults
+    kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
     request_type = kwargs.pop("request_type", None)
     request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
     kwargs["data_request_formatter"] = (
@@ -393,10 +395,8 @@ def run(**kwargs):
     disable_progress = kwargs.pop("disable_progress", False)
 
     try:
-        # Only set CLI args that differ from click defaults
-        new_kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
         args = BenchmarkGenerativeTextArgs.create(
-            scenario=new_kwargs.pop("scenario", None), **new_kwargs
+            scenario=kwargs.pop("scenario", None), **kwargs
         )
     except ValidationError as err:
         # Translate pydantic valdation error to click argument error
