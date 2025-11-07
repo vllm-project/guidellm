@@ -1,3 +1,4 @@
+import contextlib
 import json
 from typing import Any
 
@@ -51,7 +52,12 @@ def parse_json(ctx, param, value):  # noqa: ARG001
         return result
 
     if "{" not in value and "}" not in value:
-        # Treat it as a plain string if it doesn't look like JSON.
+        # Treat it as a primitive if it doesn't look like JSON.
+        try:
+            value = int(value)
+        except ValueError:
+            with contextlib.suppress(ValueError):
+                value = float(value)
         return value
 
     try:

@@ -77,32 +77,40 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
     )
 
     @property
-    def status(self) -> Literal["pending", "warmup", "active", "cooldown"]:
+    def status(self) -> Literal["pending", "warmup", "active", "cooldown", "completed"]:
         """
         :return: Current execution phase based on timing thresholds
         """
-        if self.request_start is None:
+        if self.request_start is None or self.current_update is None:
             return "pending"
 
-        if self.measure_start is None:
+        if self.measure_start is None or self.current_update <= self.measure_start:
             return "warmup"
 
-        if self.measure_end is None:
-            return "active"
+        if (
+            self.measure_end is not None
+            and self.measure_end != -1.0
+            and self.current_update >= self.measure_end
+        ):
+            return "cooldown"
 
-        return "cooldown"
+        if (
+            self.request_end is not None
+            and self.current_update > self.request_end + 1.0
+        ):
+            return "completed"
+
+        return "active"
 
     @property
     def duration(self) -> float:
         """
         :return: Elapsed time since measurement or request start in seconds
         """
-        if self.current_update is None:
+        if self.request_start is None or self.current_update is None:
             return 0.0
 
-        start_time = self.measure_start or self.request_start
-
-        return (self.current_update - start_time) if start_time is not None else 0.0
+        return self.current_update - self.request_start
 
     @property
     def elapsed_time_last_update(self) -> float:
@@ -145,7 +153,45 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
         request_end = info.timings.request_end or info.timings.resolve_end
         current_time = info.timings.last_reported
 
-        self.request_start = self.request_start or request_start
+        if self.request_start is None:
+            self.request_start = request_start
+
+        current_duration = (
+            current_time - self.request_start
+            if self.request_start is not None and current_time
+            else 0.0
+        )
+        current_requests = scheduler_state.processed_requests
+
+        if self.measure_start is None and self.request_start is not None:
+            warmup_active, measure_start = config.warmup.compute_transition_time(
+                start_time=self.request_start,
+                request_start=request_start,
+                request_end=request_end,
+                current_requests=current_requests,
+                current_duration=current_duration,
+                remaining_requests=scheduler_state.remaining_requests,  # type: ignore[arg-type]
+                remaining_duration=scheduler_state.remaining_duration,
+                period="start",
+            )
+            self.measure_start = measure_start if warmup_active else self.request_start
+
+        if self.measure_end is None and self.measure_start is not None:
+            cooldown_active, measure_end = config.cooldown.compute_transition_time(
+                start_time=self.measure_start,
+                request_start=request_start,
+                request_end=request_end,
+                current_requests=current_requests,
+                current_duration=current_duration,
+                remaining_requests=scheduler_state.remaining_requests,  # type: ignore[arg-type]
+                remaining_duration=scheduler_state.remaining_duration,
+                period="end",
+            )
+            self.measure_end = (
+                measure_end
+                if cooldown_active
+                else -1.0  # -1 to signify no cooldown and to pull from request_end
+            )
 
         if request_end is not None and (
             self.request_end is None or request_end > self.request_end
@@ -167,52 +213,6 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
                 self.current_request is None or request_end > self.current_request
             ):
                 self.current_request = request_end
-
-        # Update measurement start time based on warmup configuration
-        if config.warmup is not None and self.measure_start is None:
-            exceeded_time = (
-                config.warmup >= 1.0
-                and scheduler_state.remaining_duration is not None
-                and self.duration is not None
-                and self.duration >= config.warmup
-            )
-            exceeded_count = (
-                config.warmup >= 1.0
-                and scheduler_state.remaining_requests is not None
-                and scheduler_state.processed_requests >= config.warmup
-            )
-            exceeded_fraction = (
-                config.warmup < 1.0
-                and scheduler_state.remaining_fraction is not None
-                and 1.0 - scheduler_state.remaining_fraction >= config.warmup
-            )
-
-            if exceeded_time or exceeded_count or exceeded_fraction:
-                self.measure_start = self.current_update
-        elif config.warmup is None and self.measure_start is None:
-            # No warmup configured, start measuring at first request
-            self.measure_start = self.request_start
-
-        # Update measurement end time based on cooldown configuration
-        if config.cooldown is not None and self.measure_end is None:
-            exceeded_time = (
-                config.cooldown >= 1.0
-                and scheduler_state.remaining_duration is not None
-                and scheduler_state.remaining_duration <= config.cooldown
-            )
-            exceeded_count = (
-                config.cooldown >= 1.0
-                and scheduler_state.remaining_requests is not None
-                and scheduler_state.remaining_requests <= config.cooldown
-            )
-            exceeded_fraction = (
-                config.cooldown < 1.0
-                and scheduler_state.remaining_fraction is not None
-                and scheduler_state.remaining_fraction <= config.cooldown
-            )
-
-            if exceeded_time or exceeded_count or exceeded_fraction:
-                self.measure_end = self.current_update
 
 
 class RunningMetricStats(StandardBaseModel):
@@ -810,12 +810,7 @@ class GenerativeBenchmarkAccumulator(
         :param info: Request execution information and timing
         :param scheduler_state: Current scheduler state for phase tracking
         """
-        if info.status == "cancelled" and info.timings.resolve_start is None:
-            # Cancelled requests that never started should be ignored
-            return
-
         self.timings.update_estimate(info, scheduler_state, self.config)
-
         duration = self.timings.duration
         elapsed_time_last_update = self.timings.elapsed_time_last_update
         self.concurrency_metric.update_estimate(
@@ -833,10 +828,12 @@ class GenerativeBenchmarkAccumulator(
         elif info.status == "errored":
             requests_accumulator = self.errored
             metrics_accumulator = self.errored_metrics
-        elif info.status == "cancelled":
+        elif info.status == "cancelled" and info.timings.resolve_start is not None:
             requests_accumulator = self.incomplete
             metrics_accumulator = self.incomplete_metrics
         else:
+            # Not a terminal status or cancelled before starting
+            # Do not include in requests or metrics
             return
 
         stats = requests_accumulator.update_estimate(

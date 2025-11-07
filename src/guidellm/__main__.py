@@ -291,22 +291,45 @@ def benchmark():
     "--warmup",
     "--warmup-percent",  # legacy alias
     "warmup",
-    type=float,
     default=BenchmarkGenerativeTextArgs.get_default("warmup"),
+    callback=cli_tools.parse_json,
     help=(
-        "Warmup specification: if in (0,1) = percent, if >=1 = number of "
-        "requests/seconds (depends on active constraint)."
+        "Warmup specification: int, float, or dict as string "
+        "(json or key=value). "
+        "Controls time or requests before measurement starts. "
+        "Numeric in (0, 1): percent of duration or request count. "
+        "Numeric >=1: duration in seconds or request count. "
+        "Advanced config: see TransientPhaseConfig schema."
     ),
 )
 @click.option(
     "--cooldown",
     "--cooldown-percent",  # legacy alias
     "cooldown",
-    type=float,
     default=BenchmarkGenerativeTextArgs.get_default("cooldown"),
+    callback=cli_tools.parse_json,
     help=(
-        "Cooldown specification: if in (0,1) = percent, if >=1 = number of "
-        "requests/seconds (depends on active constraint)."
+        "Cooldown specification: int, float, or dict as string "
+        "(json or key=value). "
+        "Controls time or requests after measurement ends. "
+        "Numeric in (0, 1): percent of duration or request count. "
+        "Numeric >=1: duration in seconds or request count. "
+        "Advanced config: see TransientPhaseConfig schema."
+    ),
+)
+@click.option(
+    "--rampup",
+    default=BenchmarkGenerativeTextArgs.get_default("rampup"),
+    callback=cli_tools.parse_json,
+    help=(
+        "Rampup specification: int, float, or dict as string "
+        "(json or key=value). "
+        "Controls time to linearly ramp up requests. "
+        "Only for Throughput/Concurrent strategies, "
+        "not Synchronous/Rate-based. "
+        "Numeric in (0, 1): percent of duration. "
+        "Numeric >=1: duration in seconds. "
+        "Advanced config: see TransientPhaseConfig schema."
     ),
 )
 @click.option(

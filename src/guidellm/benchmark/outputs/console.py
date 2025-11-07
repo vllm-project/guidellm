@@ -11,6 +11,7 @@ for terminal display.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
@@ -22,6 +23,9 @@ from guidellm.schemas import DistributionSummary, StatusDistributionSummary
 from guidellm.utils import Console, safe_format_number, safe_format_timestamp
 
 __all__ = ["GenerativeBenchmarkerConsole"]
+
+
+StatTypesAlias = Literal["mean", "median", "p95"]
 
 
 @dataclass
@@ -92,6 +96,7 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
         group: str | None = None,
         name: str | None = None,
         precision: int = 1,
+        types: Sequence[StatTypesAlias] = ("median", "p95"),
     ):
         """
         Add statistical summary columns (mean and p95) for a metric.
@@ -106,22 +111,21 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
         :param precision: Decimal precision for numbers
         """
         key = f"{group}_{name}"
-
-        if f"{key}_mean" not in self:
-            self[f"{key}_mean"] = ConsoleTableColumn(
-                group=group, name=name, units="Mean", precision=precision
-            )
-            self[f"{key}_p95"] = ConsoleTableColumn(
-                group=group, name=name, units="p95", precision=precision
-            )
-
         status_stats: DistributionSummary | None = (
             getattr(stats, status) if stats else None
         )
-        self[f"{key}_mean"].values.append(status_stats.mean if status_stats else None)
-        self[f"{key}_p95"].values.append(
-            status_stats.percentiles.p95 if status_stats else None
-        )
+
+        for stat_type in types:
+            col_key = f"{key}_{stat_type}"
+            col_name, col_value = self._get_stat_type_name_val(stat_type, status_stats)
+            if col_key not in self:
+                self[col_key] = ConsoleTableColumn(
+                    group=group,
+                    name=name,
+                    units=col_name,
+                    precision=precision,
+                )
+            self[col_key].values.append(col_value)
 
     def get_table_data(self) -> tuple[list[list[str]], list[list[str]]]:
         """
@@ -165,6 +169,19 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
             values.append(formatted_values)
 
         return headers, values
+
+    @classmethod
+    def _get_stat_type_name_val(
+        cls, stat_type: StatTypesAlias, stats: DistributionSummary | None
+    ) -> tuple[str, float | None]:
+        if stat_type == "mean":
+            return "Mean", stats.mean if stats else None
+        elif stat_type == "median":
+            return "Mdn", stats.median if stats else None
+        elif stat_type == "p95":
+            return "p95", stats.percentiles.p95 if stats else None
+        else:
+            raise ValueError(f"Unsupported stat type: {stat_type}")
 
 
 @GenerativeBenchmarkerOutput.register("console")
@@ -237,10 +254,10 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 benchmark.duration, group="Timings", name="Dur", units="Sec"
             )
             columns.add_value(
-                report.args.warmup, group="Timings", name="Warm", units="Sec"
+                benchmark.warmup_duration, group="Timings", name="Warm", units="Sec"
             )
             columns.add_value(
-                report.args.cooldown, group="Timings", name="Cool", units="Sec"
+                benchmark.cooldown_duration, group="Timings", name="Cool", units="Sec"
             )
 
             for token_metrics, group in [
@@ -453,26 +470,31 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 benchmark.metrics.requests_per_second,
                 group="Requests",
                 name="Per Sec",
+                types=("median", "mean"),
             )
             columns.add_stats(
                 benchmark.metrics.request_concurrency,
                 group="Requests",
                 name="Concurrency",
+                types=("median", "mean"),
             )
             columns.add_stats(
                 benchmark.metrics.prompt_tokens_per_second,
                 group="Input Tokens",
                 name="Per Sec",
+                types=("median", "mean"),
             )
             columns.add_stats(
                 benchmark.metrics.output_tokens_per_second,
                 group="Output Tokens",
                 name="Per Sec",
+                types=("median", "mean"),
             )
             columns.add_stats(
                 benchmark.metrics.tokens_per_second,
                 group="Total Tokens",
                 name="Per Sec",
+                types=("median", "mean"),
             )
 
         headers, values = columns.get_table_data()
@@ -502,11 +524,43 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
             for metric_attr, display_name in metric_groups:
                 metric_obj = getattr(modality_metrics, metric_attr, None)
-                self._add_input_output_stats(
-                    columns=columns,
-                    metric_obj=metric_obj,
-                    metric_key=metric_attr,
-                    display_name=display_name,
+                input_stats: StatusDistributionSummary | None = (
+                    getattr(metric_obj, "input", None) if metric_obj else None
+                )
+                columns[f"{metric_attr}.input"].add_stats(
+                    input_stats,
+                    group=f"Input {display_name}",
+                    name="Per Request",
+                )
+                input_per_second_stats: StatusDistributionSummary | None = (
+                    getattr(metric_obj, "input_per_second", None)
+                    if metric_obj
+                    else None
+                )
+                columns[f"{metric_attr}.input"].add_stats(
+                    input_per_second_stats,
+                    group=f"Input {display_name}",
+                    name="Per Second",
+                    types=("median", "mean"),
+                )
+                output_stats: StatusDistributionSummary | None = (
+                    getattr(metric_obj, "output", None) if metric_obj else None
+                )
+                columns[f"{metric_attr}.output"].add_stats(
+                    output_stats,
+                    group=f"Output {display_name}",
+                    name="Per Request",
+                )
+                output_per_second_stats: StatusDistributionSummary | None = (
+                    getattr(metric_obj, "output_per_second", None)
+                    if metric_obj
+                    else None
+                )
+                columns[f"{metric_attr}.output"].add_stats(
+                    output_per_second_stats,
+                    group=f"Output {display_name}",
+                    name="Per Second",
+                    types=("median", "mean"),
                 )
 
         self._print_inp_out_tables(
@@ -577,44 +631,3 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 value_cols_groups=value_cols_groups,
                 title=title,
             )
-
-    def _add_input_output_stats(
-        self,
-        columns: dict[str, ConsoleTableColumnsCollection],
-        metric_obj: Any,
-        metric_key: str,
-        display_name: str,
-    ):
-        input_stats: StatusDistributionSummary | None = (
-            getattr(metric_obj, "input", None) if metric_obj else None
-        )
-        input_per_second_stats: StatusDistributionSummary | None = (
-            getattr(metric_obj, "input_per_second", None) if metric_obj else None
-        )
-        output_stats: StatusDistributionSummary | None = (
-            getattr(metric_obj, "output", None) if metric_obj else None
-        )
-        output_per_second_stats: StatusDistributionSummary | None = (
-            getattr(metric_obj, "output_per_second", None) if metric_obj else None
-        )
-
-        columns[f"{metric_key}.input"].add_stats(
-            input_stats,
-            group=f"Input {display_name}",
-            name="Per Request",
-        )
-        columns[f"{metric_key}.input"].add_stats(
-            input_per_second_stats,
-            group=f"Input {display_name}",
-            name="Per Second",
-        )
-        columns[f"{metric_key}.output"].add_stats(
-            output_stats,
-            group=f"Output {display_name}",
-            name="Per Request",
-        )
-        columns[f"{metric_key}.output"].add_stats(
-            output_per_second_stats,
-            group=f"Output {display_name}",
-            name="Per Second",
-        )

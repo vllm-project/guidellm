@@ -109,7 +109,6 @@ class TestScheduler:
             "requests",
             "backend",
             "strategy",
-            "startup_duration",
             "env",
             "constraints",
         ]
@@ -163,7 +162,6 @@ class TestScheduler:
             requests=requests,
             backend=backend,
             strategy=strategy,
-            startup_duration=0.1,
             env=env,
             **constraint_args,
         ):
@@ -190,7 +188,6 @@ class TestScheduler:
             requests=requests,
             backend=backend,
             strategy=strategy,
-            startup_duration=0.1,
             env=env,
             max_number=MaxNumberConstraint(max_num=10),
         ):
@@ -235,7 +232,6 @@ class TestScheduler:
             requests=requests,
             backend=backend,
             strategy=strategy,
-            startup_duration=0.1,
             env=env,
             max_number=MaxNumberConstraint(max_num=5),
             max_duration=5.0,  # Should be converted to constraint

@@ -1,11 +1,11 @@
 """
 Benchmark execution orchestration and lifecycle management.
 
-Provides the core benchmarking engine coordinating request scheduling,
-data aggregation, and result compilation across execution strategies
-and environments. The Benchmarker manages the complete benchmark lifecycle
-from request submission through result compilation while supporting
-thread-safe singleton operations for consistent state management.
+Provides the core benchmarking engine that coordinates request scheduling,
+data aggregation, and result compilation across execution strategies and
+environments. The Benchmarker manages the complete benchmark lifecycle from
+request submission through result compilation while implementing thread-safe
+singleton operations for consistent state management across concurrent workflows.
 """
 
 from __future__ import annotations
@@ -15,13 +15,14 @@ from abc import ABC
 from collections.abc import AsyncIterator, Iterable
 from typing import Generic
 
-from guidellm.benchmark.profile import Profile
+from guidellm.benchmark.profiles import Profile
 from guidellm.benchmark.progress import BenchmarkerProgress
 from guidellm.benchmark.schemas import (
     BenchmarkAccumulatorT,
     BenchmarkConfig,
     BenchmarkT,
 )
+from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.logger import logger
 from guidellm.scheduler import (
     BackendInterface,
@@ -45,13 +46,12 @@ class Benchmarker(
     ThreadSafeSingletonMixin,
 ):
     """
-    Abstract benchmark orchestrator for request processing workflows.
+    Orchestrates benchmark execution across scheduling strategies.
 
-    Coordinates benchmarking runs across scheduling strategies, aggregating
-    metrics and compiling results. Manages the complete benchmark lifecycle
-    from request submission through result compilation while implementing a
-    thread-safe singleton pattern for consistent state across concurrent
-    operations.
+    Coordinates benchmarking runs by managing request scheduling, metric aggregation,
+    and result compilation. Implements a thread-safe singleton pattern to ensure
+    consistent state management across concurrent operations while supporting multiple
+    scheduling strategies and execution environments.
     """
 
     async def run(
@@ -62,16 +62,16 @@ class Benchmarker(
         backend: BackendInterface[RequestT, ResponseT],
         profile: Profile,
         environment: Environment,
+        warmup: TransientPhaseConfig,
+        cooldown: TransientPhaseConfig,
+        sample_requests: int | None = 20,
+        prefer_response_metrics: bool = True,
         progress: (
             BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None
         ) = None,
-        sample_requests: int | None = 20,
-        warmup: float | None = None,
-        cooldown: float | None = None,
-        prefer_response_metrics: bool = True,
     ) -> AsyncIterator[BenchmarkT]:
         """
-        Execute benchmark runs across scheduling strategies defined in the profile.
+        Execute benchmark runs across scheduling strategies in the profile.
 
         :param accumulator_class: Class for accumulating metrics during execution
         :param benchmark_class: Class for constructing final benchmark results
@@ -79,12 +79,13 @@ class Benchmarker(
         :param backend: Backend interface for executing requests
         :param profile: Profile defining scheduling strategies and constraints
         :param environment: Environment for execution coordination
-        :param progress: Optional tracker for benchmark lifecycle events
-        :param sample_requests: Number of requests to sample for estimation
-        :param warmup: Warmup duration in seconds before benchmarking
-        :param cooldown: Cooldown duration in seconds after benchmarking
+        :param warmup: Warmup phase configuration before benchmarking
+        :param cooldown: Cooldown phase configuration after benchmarking
+        :param sample_requests: Number of requests to sample for estimation,
+            defaults to 20
         :param prefer_response_metrics: Whether to prefer response metrics over
-            request metrics
+            request metrics, defaults to True
+        :param progress: Optional tracker for benchmark lifecycle events
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
@@ -138,7 +139,6 @@ class Benchmarker(
                     requests=requests,
                     backend=backend,
                     strategy=strategy,
-                    startup_duration=warmup if warmup and warmup >= 1 else 0.0,
                     env=environment,
                     **constraints or {},
                 ):

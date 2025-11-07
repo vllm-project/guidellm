@@ -137,8 +137,9 @@ class SchedulerMetrics(StandardBaseDict):
             measure_start_time=accumulator.timings.measure_start or -1.0,
             measure_end_time=(
                 accumulator.timings.measure_end
-                or accumulator.timings.request_end
-                or -1.0
+                if accumulator.timings.measure_end is not None
+                and accumulator.timings.measure_end != -1.0
+                else accumulator.timings.request_end or -1.0
             ),  # if no cooldown, measure_end isn't set, use request_end
             request_end_time=accumulator.timings.request_end or -1.0,
             end_time=scheduler_state.end_time or -1.0,
@@ -784,10 +785,14 @@ class GenerativeMetrics(StandardBaseDict):
         :return: Compiled generative metrics with all distributions and summaries
         :raises ValueError: If measure_start and measure_end/request_end are not set
         """
-        if (start_time := accumulator.timings.measure_start) is None or (
-            end_time := accumulator.timings.measure_end
-            or accumulator.timings.request_end
-        ) is None:
+        start_time = accumulator.timings.measure_start
+        end_time = (
+            accumulator.timings.measure_end
+            if accumulator.timings.measure_end != -1.0
+            else accumulator.timings.request_end
+        )
+
+        if start_time is None or end_time is None:
             raise ValueError(
                 "Cannot compile GenerativeMetrics: "
                 "measure_start and measure_end/request_end must be set"

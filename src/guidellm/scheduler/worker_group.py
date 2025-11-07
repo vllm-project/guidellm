@@ -83,7 +83,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
-        startup_duration: float,
         **constraints: Constraint,
     ):
         """
@@ -92,13 +91,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :param requests: Finite iterable of requests to process sequentially
         :param backend: Backend interface for processing requests
         :param strategy: Scheduling strategy for request timing and distribution
-        :param startup_duration: Duration in seconds for request startup ramping
         :param constraints: Named constraints for controlling execution behavior
         """
-        self.requests = requests
+        self.requests = iter(requests)
         self.backend = backend
         self.strategy = strategy
-        self.startup_duration = startup_duration
         self.constraints = constraints
 
         # Multiprocessing contexts and primitives, created in create_processes
@@ -216,9 +213,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         # Initialize worker processes
         self.processes = []
         self.strategy.init_processes_timings(
-            worker_count=num_processes,
-            max_concurrency=max_conc,
-            startup_duration=self.startup_duration,
+            worker_count=num_processes, max_concurrency=max_conc
         )
         for rank in range(num_processes):
             # Distribute any remainder across the first N ranks
@@ -500,7 +495,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         try:
             count = 0
-            for request in iter(requests):
+            for request in requests:
                 count += 1
 
                 if hasattr(request, "request_id"):

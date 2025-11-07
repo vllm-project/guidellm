@@ -303,7 +303,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             while True:
                 await async_semaphore.acquire()
                 request_time = await self.strategy.next_request_time(
-                    offset=self.worker_index
+                    worker_index=self.worker_index
                 )
 
                 if (

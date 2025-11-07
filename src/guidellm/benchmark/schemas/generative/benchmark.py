@@ -93,6 +93,28 @@ class GenerativeBenchmark(Benchmark[GenerativeBenchmarkAccumulator]):
         """
         return self.end_time - self.start_time
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def warmup_duration(self) -> float:
+        """
+        :return: Warmup phase duration in seconds
+        """
+        return (
+            self.scheduler_metrics.measure_start_time
+            - self.scheduler_metrics.request_start_time
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def cooldown_duration(self) -> float:
+        """
+        :return: Cooldown phase duration in seconds
+        """
+        return (
+            self.scheduler_metrics.request_end_time
+            - self.scheduler_metrics.measure_end_time
+        )
+
     @property
     def request_latency(self) -> StatusDistributionSummary:
         """

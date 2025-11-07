@@ -31,8 +31,9 @@ from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.backends import Backend, BackendType
-from guidellm.benchmark.profile import Profile, ProfileType
+from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
+from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import DatasetPreprocessor, RequestFormatter
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
@@ -217,7 +218,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default=None, description="Data sampler for request ordering"
     )
     data_num_workers: int | None = Field(
-        default=None, description="Number of workers for data loading"
+        default=1, description="Number of workers for data loading"
     )
     dataloader_kwargs: dict[str, Any] | None = Field(
         default=None, description="Additional dataloader configuration arguments"
@@ -236,13 +237,26 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default=10,
         description="Number of requests to sample for detailed metrics (None for all)",
     )
-    warmup: float | None = Field(
+    warmup: int | float | dict | TransientPhaseConfig | None = Field(
         default=None,
-        description="Warmup period in seconds, requests, or fraction (0-1)",
+        description=(
+            "Warmup phase config: time or requests before measurement starts "
+            "(overlapping requests count toward measurement)"
+        ),
     )
-    cooldown: float | None = Field(
+    cooldown: int | float | dict | TransientPhaseConfig | None = Field(
         default=None,
-        description="Cooldown period in seconds, requests, or fraction (0-1)",
+        description=(
+            "Cooldown phase config: time or requests after measurement ends "
+            "(overlapping requests count toward measurement)"
+        ),
+    )
+    rampup: int | float | dict | TransientPhaseConfig | None = Field(
+        default=None,
+        description=(
+            "Ramp-up phase config: time to gradually increase load "
+            "(Throughput/Concurrent strategies only, not Synchronous/Rate)"
+        ),
     )
     prefer_response_metrics: bool = Field(
         default=True,

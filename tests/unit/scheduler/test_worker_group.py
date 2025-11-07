@@ -208,7 +208,9 @@ class TestWorkerProcessGroup:
 
         # Core attributes
         assert isinstance(instance.backend, MockBackend)
-        assert instance.requests == constructor_args["requests"]
+        # requests is now an iterator, not a list
+        assert hasattr(instance.requests, "__iter__")
+        assert hasattr(instance.requests, "__next__")
         assert isinstance(instance.strategy, type(constructor_args["strategy"]))
         assert isinstance(instance.constraints, dict)
 
@@ -233,9 +235,8 @@ class TestWorkerProcessGroup:
         ("requests", "expected_error"),
         [
             (None, TypeError),
-            ([], TypeError),
         ],
-        ids=["no_requests", "empty_requests"],
+        ids=["no_requests"],
     )
     def test_invalid_initialization_values(self, requests, expected_error):
         """Test WorkerProcessGroup with invalid initialization values."""

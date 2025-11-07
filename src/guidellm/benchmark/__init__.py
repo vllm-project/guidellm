@@ -18,7 +18,7 @@ from .outputs import (
     GenerativeBenchmarkerHTML,
     GenerativeBenchmarkerOutput,
 )
-from .profile import (
+from .profiles import (
     AsyncProfile,
     ConcurrentProfile,
     Profile,
