@@ -280,10 +280,10 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 safe_format_timestamp(timestamp, TIMESTAMP_FORMAT),
             )
 
-        duration_fields: list[tuple[str, float]] = [
+        duration_fields: list[tuple[str, float | str]] = [
             ("Duration", benchmark.duration),
-            ("Warmup", benchmark.config.warmup or 0.0),
-            ("Cooldown", benchmark.config.cooldown or 0.0),
+            ("Warmup", benchmark.warmup_duration),
+            ("Cooldown", benchmark.cooldown_duration),
         ]
         for field_name, duration_value in duration_fields:
             self._add_field(

@@ -504,7 +504,10 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import GenerationResponseHandler
+        from guidellm.backends.response_handlers import (
+            GenerationResponseHandler,
+            GenerationResponseHandlerFactory,
+        )
 
         mock_handler = Mock(spec=GenerationResponseHandler)
         mock_response = GenerationResponse(
@@ -514,7 +517,7 @@ class TestOpenAIHTTPBackend:
 
         with (
             patch.object(
-                backend, "_resolve_response_handler", return_value=mock_handler
+                GenerationResponseHandlerFactory, "create", return_value=mock_handler
             ),
             patch.object(backend._async_client, "request") as mock_request,
         ):
@@ -560,7 +563,10 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import GenerationResponseHandler
+        from guidellm.backends.response_handlers import (
+            GenerationResponseHandler,
+            GenerationResponseHandlerFactory,
+        )
 
         mock_handler = Mock(spec=GenerationResponseHandler)
         mock_response = GenerationResponse(
@@ -570,7 +576,7 @@ class TestOpenAIHTTPBackend:
 
         with (
             patch.object(
-                backend, "_resolve_response_handler", return_value=mock_handler
+                GenerationResponseHandlerFactory, "create", return_value=mock_handler
             ),
             patch.object(backend._async_client, "request") as mock_request,
         ):
@@ -614,7 +620,10 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import GenerationResponseHandler
+        from guidellm.backends.response_handlers import (
+            GenerationResponseHandler,
+            GenerationResponseHandlerFactory,
+        )
 
         mock_handler = Mock(spec=GenerationResponseHandler)
         mock_response = GenerationResponse(
@@ -624,7 +633,7 @@ class TestOpenAIHTTPBackend:
 
         with (
             patch.object(
-                backend, "_resolve_response_handler", return_value=mock_handler
+                GenerationResponseHandlerFactory, "create", return_value=mock_handler
             ),
             patch.object(backend._async_client, "request") as mock_request,
         ):
@@ -669,7 +678,10 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import GenerationResponseHandler
+        from guidellm.backends.response_handlers import (
+            GenerationResponseHandler,
+            GenerationResponseHandlerFactory,
+        )
 
         mock_handler = Mock(spec=GenerationResponseHandler)
         mock_handler.add_streaming_line.return_value = 1
@@ -697,7 +709,7 @@ class TestOpenAIHTTPBackend:
 
         with (
             patch.object(
-                backend, "_resolve_response_handler", return_value=mock_handler
+                GenerationResponseHandlerFactory, "create", return_value=mock_handler
             ),
             patch.object(backend._async_client, "stream", return_value=mock_stream),
             pytest.raises(asyncio.CancelledError),

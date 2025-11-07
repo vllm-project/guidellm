@@ -376,7 +376,7 @@ class TestChatCompletionsResponseHandler:
         [
             (
                 {
-                    "choices": [{"content": "Hello, world!"}],
+                    "choices": [{"message": {"content": "Hello, world!"}}],
                     "usage": {"prompt_tokens": 5, "completion_tokens": 3},
                 },
                 "Hello, world!",
@@ -385,7 +385,7 @@ class TestChatCompletionsResponseHandler:
             ),
             (
                 {
-                    "choices": [{"content": "Test response"}],
+                    "choices": [{"message": {"content": "Test response"}}],
                     "usage": {
                         "prompt_tokens": 10,
                         "completion_tokens": 5,
@@ -396,7 +396,7 @@ class TestChatCompletionsResponseHandler:
                 5,
             ),
             (
-                {"choices": [{"content": ""}], "usage": {}},
+                {"choices": [{"message": {"content": ""}}], "usage": {}},
                 "",
                 None,
                 None,

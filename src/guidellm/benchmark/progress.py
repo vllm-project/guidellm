@@ -29,7 +29,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from guidellm.benchmark.profile import Profile
+from guidellm.benchmark.profiles import Profile
 from guidellm.benchmark.schemas import (
     BenchmarkAccumulatorT,
     BenchmarkT,
@@ -632,7 +632,7 @@ class _GenerativeProgressTaskState:
 
     @staticmethod
     def _map_status(
-        status: Literal["pending", "warmup", "active", "cooldown"],
+        status: Literal["pending", "warmup", "active", "cooldown", "completed"],
     ) -> Literal["pending", "warmup", "active", "cooldown", "completed"]:
         """Map accumulator status to internal progress status representation."""
         return status

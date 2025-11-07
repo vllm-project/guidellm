@@ -1,17 +1,19 @@
 """
-Profile configurations for orchestrating multi-strategy benchmark execution.
+Orchestrate multi-strategy benchmark execution through configurable profiles.
 
-Provides configurable abstractions for coordinating sequential execution of
-scheduling strategies during benchmarking workflows. Profiles automatically
-generate strategies based on configuration parameters, manage runtime
-constraints, and track completion state across the execution sequence.
+Provides abstractions for coordinating sequential execution of scheduling strategies
+during benchmarking workflows. Profiles automatically generate strategies based on
+configuration parameters, manage runtime constraints, and track completion state
+across execution sequences. Each profile type implements a specific execution pattern
+(synchronous, concurrent, throughput-focused, rate-based async, or adaptive sweep)
+that determines how benchmark requests are scheduled and executed.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
 
 import numpy as np
 from pydantic import (
@@ -51,7 +53,10 @@ __all__ = [
     "ThroughputProfile",
 ]
 
-ProfileType = Literal["synchronous", "concurrent", "throughput", "async", "sweep"]
+ProfileType = Annotated[
+    Literal["synchronous", "concurrent", "throughput", "async", "sweep"],
+    "Profile type identifiers for polymorphic deserialization",
+]
 
 
 class Profile(
@@ -59,21 +64,25 @@ class Profile(
     ABC,
 ):
     """
-    Abstract base for coordinating multi-strategy benchmark execution.
+    Coordinate multi-strategy benchmark execution with automatic strategy generation.
 
     Manages sequential execution of scheduling strategies with automatic strategy
     generation, constraint management, and completion tracking. Subclasses define
     specific execution patterns like synchronous, concurrent, throughput-focused,
     rate-based async, or adaptive sweep profiles.
 
-    :cvar schema_discriminator: Field name used for polymorphic deserialization
+    :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
     schema_discriminator: ClassVar[str] = "type_"
 
     @classmethod
     def __pydantic_schema_base_type__(cls) -> type[Profile]:
-        """Return the base type for polymorphic validation hierarchy."""
+        """
+        Return base type for polymorphic validation hierarchy.
+
+        :return: Base Profile class for schema validation
+        """
         if cls.__name__ == "Profile":
             return cls
 
@@ -88,7 +97,7 @@ class Profile(
         **kwargs: Any,
     ) -> Profile:
         """
-        Factory method to create a profile instance based on type.
+        Create profile instances based on type identifier.
 
         :param rate_type: Profile type identifier to instantiate
         :param rate: Rate configuration for the profile strategy
@@ -132,18 +141,24 @@ class Profile(
     )
     completed_strategies: list[SchedulingStrategy] = Field(
         default_factory=list,
-        description="Strategies that have completed execution in this profile",
+        description="Strategies that completed execution in this profile",
     )
     constraints: dict[str, Any | dict[str, Any] | ConstraintInitializer] | None = Field(
         default=None,
         description="Runtime constraints applied to strategy execution",
+    )
+    rampup_duration: NonNegativeFloat = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds to ramp up the targeted scheduling rate, if applicable"
+        ),
     )
 
     @computed_field  # type: ignore[misc]
     @property
     def strategy_types(self) -> list[str]:
         """
-        :return: Strategy types executed or expected to execute in this profile
+        :return: Strategy types executed or to be executed in this profile
         """
         return [strat.type_ for strat in self.completed_strategies]
 
@@ -183,7 +198,7 @@ class Profile(
         prev_benchmark: Benchmark | None,
     ) -> SchedulingStrategy | None:
         """
-        Generate the next strategy in the profile execution sequence.
+        Generate next strategy in the profile execution sequence.
 
         :param prev_strategy: Previously completed strategy instance
         :param prev_benchmark: Benchmark results from previous strategy execution
@@ -198,7 +213,7 @@ class Profile(
         prev_benchmark: Benchmark | None,
     ) -> dict[str, Constraint] | None:
         """
-        Generate constraints for the next strategy execution.
+        Generate constraints for next strategy execution.
 
         :param next_strategy: Strategy to be executed next
         :param prev_strategy: Previously completed strategy instance
@@ -254,7 +269,12 @@ class Profile(
 
 @Profile.register("synchronous")
 class SynchronousProfile(Profile):
-    """Single synchronous strategy execution profile."""
+    """
+    Execute single synchronous strategy for baseline performance metrics.
+
+    Executes requests sequentially with one request at a time, establishing
+    baseline performance metrics without concurrent execution overhead.
+    """
 
     type_: Literal["synchronous"] = "synchronous"  # type: ignore[assignment]
 
@@ -295,7 +315,7 @@ class SynchronousProfile(Profile):
         prev_benchmark: Benchmark | None,
     ) -> SynchronousStrategy | None:
         """
-        Generate synchronous strategy or None if already completed.
+        Generate synchronous strategy for first execution only.
 
         :param prev_strategy: Previously completed strategy (unused)
         :param prev_benchmark: Benchmark results from previous execution (unused)
@@ -310,18 +330,16 @@ class SynchronousProfile(Profile):
 
 @Profile.register("concurrent")
 class ConcurrentProfile(Profile):
-    """Fixed-concurrency strategy execution profile with configurable stream counts."""
+    """
+    Execute strategies with fixed concurrency levels for performance testing.
+
+    Executes requests with a fixed number of concurrent streams, useful for
+    testing system performance under specific concurrency levels.
+    """
 
     type_: Literal["concurrent"] = "concurrent"  # type: ignore[assignment]
     streams: list[PositiveInt] = Field(
         description="Concurrent stream counts for request scheduling",
-    )
-    startup_duration: NonNegativeFloat = Field(
-        default=0.0,
-        description=(
-            "Duration in seconds for distributing startup requests "
-            "before completion-based timing"
-        ),
     )
 
     @classmethod
@@ -360,7 +378,7 @@ class ConcurrentProfile(Profile):
         prev_benchmark: Benchmark | None,
     ) -> ConcurrentStrategy | None:
         """
-        Generate concurrent strategy for the next stream count.
+        Generate concurrent strategy for next stream count.
 
         :param prev_strategy: Previously completed strategy (unused)
         :param prev_benchmark: Benchmark results from previous execution (unused)
@@ -373,27 +391,23 @@ class ConcurrentProfile(Profile):
 
         return ConcurrentStrategy(
             streams=self.streams[len(self.completed_strategies)],
-            startup_duration=self.startup_duration,
+            rampup_duration=self.rampup_duration,
         )
 
 
 @Profile.register("throughput")
 class ThroughputProfile(Profile):
     """
-    Maximum throughput strategy execution profile with optional concurrency limits.
+    Maximize system throughput with optional concurrency constraints.
+
+    Maximizes system throughput by maintaining maximum concurrent requests,
+    optionally constrained by a concurrency limit.
     """
 
     type_: Literal["throughput"] = "throughput"  # type: ignore[assignment]
     max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum concurrent requests to schedule",
-    )
-    startup_duration: NonNegativeFloat = Field(
-        default=0.0,
-        description=(
-            "Duration in seconds for distributing startup requests "
-            "before full throughput scheduling"
-        ),
     )
 
     @classmethod
@@ -433,7 +447,7 @@ class ThroughputProfile(Profile):
         prev_benchmark: Benchmark | None,
     ) -> ThroughputStrategy | None:
         """
-        Generate throughput strategy or None if already completed.
+        Generate throughput strategy for first execution only.
 
         :param prev_strategy: Previously completed strategy (unused)
         :param prev_benchmark: Benchmark results from previous execution (unused)
@@ -444,28 +458,25 @@ class ThroughputProfile(Profile):
             return None
 
         return ThroughputStrategy(
-            max_concurrency=self.max_concurrency,
-            startup_duration=self.startup_duration,
+            max_concurrency=self.max_concurrency, rampup_duration=self.rampup_duration
         )
 
 
 @Profile.register(["async", "constant", "poisson"])
 class AsyncProfile(Profile):
-    """Rate-based asynchronous strategy execution profile with configurable patterns."""
+    """
+    Schedule requests at specified rates using constant or Poisson patterns.
+
+    Schedules requests at specified rates using either constant interval or
+    Poisson distribution patterns for realistic load simulation.
+    """
 
     type_: Literal["async", "constant", "poisson"] = "async"  # type: ignore[assignment]
     strategy_type: Literal["constant", "poisson"] = Field(
-        description="Asynchronous strategy pattern type to use",
+        description="Asynchronous strategy pattern type",
     )
     rate: list[PositiveFloat] = Field(
-        description="Request scheduling rate in requests per second",
-    )
-    startup_duration: NonNegativeFloat = Field(
-        default=0.0,
-        description=(
-            "Duration in seconds for distributing startup requests "
-            "to converge quickly to desired rate"
-        ),
+        description="Request scheduling rates in requests per second",
     )
     max_concurrency: PositiveInt | None = Field(
         default=None,
@@ -525,7 +536,7 @@ class AsyncProfile(Profile):
         prev_benchmark: Benchmark | None,
     ) -> AsyncConstantStrategy | AsyncPoissonStrategy | None:
         """
-        Generate async strategy for the next configured rate.
+        Generate async strategy for next configured rate.
 
         :param prev_strategy: Previously completed strategy (unused)
         :param prev_benchmark: Benchmark results from previous execution (unused)
@@ -542,14 +553,11 @@ class AsyncProfile(Profile):
 
         if self.strategy_type == "constant":
             return AsyncConstantStrategy(
-                rate=current_rate,
-                startup_duration=self.startup_duration,
-                max_concurrency=self.max_concurrency,
+                rate=current_rate, max_concurrency=self.max_concurrency
             )
         elif self.strategy_type == "poisson":
             return AsyncPoissonStrategy(
                 rate=current_rate,
-                startup_duration=self.startup_duration,
                 max_concurrency=self.max_concurrency,
                 random_seed=self.random_seed,
             )
@@ -559,7 +567,13 @@ class AsyncProfile(Profile):
 
 @Profile.register("sweep")
 class SweepProfile(Profile):
-    """Adaptive multi-strategy sweep execution profile with rate discovery."""
+    """
+    Discover optimal rate range through adaptive multi-strategy execution.
+
+    Automatically discovers optimal rate range by executing synchronous and
+    throughput strategies first, then interpolating rates for async strategies
+    to comprehensively sweep the performance space.
+    """
 
     type_: Literal["sweep"] = "sweep"  # type: ignore[assignment]
     sweep_size: int = Field(
@@ -567,13 +581,6 @@ class SweepProfile(Profile):
         ge=2,
     )
     strategy_type: Literal["constant", "poisson"] = "constant"
-    startup_duration: NonNegativeFloat = Field(
-        default=0.0,
-        description=(
-            "Duration in seconds for distributing startup requests "
-            "to converge quickly to desired rate"
-        ),
-    )
     max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum concurrent requests to schedule",
@@ -644,7 +651,7 @@ class SweepProfile(Profile):
         | None
     ):
         """
-        Generate the next strategy in the adaptive sweep sequence.
+        Generate next strategy in adaptive sweep sequence.
 
         Executes synchronous and throughput strategies first to measure baseline
         rates, then generates interpolated rates for async strategies.
@@ -662,7 +669,7 @@ class SweepProfile(Profile):
 
             return ThroughputStrategy(
                 max_concurrency=self.max_concurrency,
-                startup_duration=self.startup_duration,
+                rampup_duration=self.rampup_duration,
             )
 
         if prev_strategy.type_ == "throughput":
@@ -693,13 +700,11 @@ class SweepProfile(Profile):
         if self.strategy_type == "constant":
             return AsyncConstantStrategy(
                 rate=self.measured_rates[next_rate_index],
-                startup_duration=self.startup_duration,
                 max_concurrency=self.max_concurrency,
             )
         elif self.strategy_type == "poisson":
             return AsyncPoissonStrategy(
                 rate=self.measured_rates[next_rate_index],
-                startup_duration=self.startup_duration,
                 max_concurrency=self.max_concurrency,
                 random_seed=self.random_seed,
             )
