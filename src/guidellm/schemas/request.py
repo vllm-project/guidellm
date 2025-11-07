@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 
-from pydantic import Field, computed_field
+from pydantic import Field
 
 from guidellm.utils import StandardBaseDict, StandardBaseModel
 
@@ -157,7 +157,7 @@ class UsageMetrics(StandardBaseDict):
         default=None, description="Number of audio bytes processed/generated."
     )
 
-    @computed_field  # type: ignore[misc]
+    # @computed_field  # type: ignore[misc]
     @property
     def total_tokens(self) -> int | None:
         """
