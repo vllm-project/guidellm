@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Generic, Literal
 
 from rich.console import Group
@@ -42,7 +41,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmark,
 )
 from guidellm.scheduler import SchedulerState, SchedulingStrategy, StrategyType
-from guidellm.utils import Colors, format_value_display
+from guidellm.utils import Colors, format_value_display, safe_format_timestamp
 
 __all__ = ["BenchmarkerProgress", "GenerativeConsoleBenchmarkerProgress"]
 
@@ -383,7 +382,7 @@ class _GenerativeProgressTaskState:
         if self.start_time < 0.0:
             return "--:--:--"
 
-        return datetime.fromtimestamp(self.start_time).strftime("%H:%M:%S")
+        return safe_format_timestamp(self.start_time, format_="%H:%M:%S")
 
     @property
     def formatted_progress_status(self) -> str:
