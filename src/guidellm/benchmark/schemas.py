@@ -1977,26 +1977,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             else:
                 raise
 
-    @field_validator("data", "data_args", "rate", mode="wrap")
-    @classmethod
-    def single_to_list(
-        cls, value: Any, handler: ValidatorFunctionWrapHandler
-    ) -> list[Any]:
-        """
-        Ensures field is always a list.
-
-        :param value: Input value for the 'data' field
-        :return: List of data sources
-        """
-        try:
-            return handler(value)
-        except ValidationError as err:
-            # If validation fails, try wrapping the value in a list
-            if err.errors()[0]["type"] == "list_type":
-                return handler([value])
-            else:
-                raise
-
     @model_serializer
     def serialize_model(self):
         """
