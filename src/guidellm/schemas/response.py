@@ -41,6 +41,10 @@ class GenerationResponse(StandardBaseModel):
     request_id: str = Field(
         description="Unique identifier matching the original GenerationRequest."
     )
+    response_id: str | None = Field(
+        default=None,
+        description="Unique identifier matching the original vLLM Response ID."
+    )
     request_args: str | None = Field(
         description="Arguments passed to the backend for request processing."
     )

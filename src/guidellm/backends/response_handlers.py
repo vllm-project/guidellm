@@ -145,6 +145,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
+            response_id=response.get("id"), # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
