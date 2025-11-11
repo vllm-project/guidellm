@@ -1884,7 +1884,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default="generative_column_mapper",
         description="Column mapping preprocessor for dataset fields",
     )
-    data_request_formatter: DatasetPreprocessor | dict[str, str] | str = Field(
+    data_request_formatter: DatasetPreprocessor | str = Field(
         default="chat_completions",
         description="Request formatting preprocessor or template name",
         validation_alias=AliasChoices(
@@ -1893,6 +1893,10 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             "request_type",
             "request-type",
         ),
+    )
+    data_request_formatter_kwargs: dict[str, str] | None = Field(
+        default=None,
+        description="Request formatting preprocessor arguments",
     )
     data_collator: Callable | Literal["generative"] | None = Field(
         default="generative", description="Data collator for batch processing"

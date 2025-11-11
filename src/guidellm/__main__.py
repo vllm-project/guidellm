@@ -192,6 +192,7 @@ def benchmark():
 )
 # Data configuration
 @click.option(
+    "--data-request-formatter",
     "--request-type",
     default=BenchmarkGenerativeTextArgs.get_default("data_request_formatter"),
     type=click.Choice(list(get_literal_vals(GenerativeRequestType))),
@@ -201,8 +202,8 @@ def benchmark():
     ),
 )
 @click.option(
-    "--request-formatter-kwargs",
-    default=None,
+    "--data-request-formatter-kwargs",
+    default=BenchmarkGenerativeTextArgs.get_default("data_request_formatter_kwargs"),
     callback=cli_tools.parse_json,
     help="JSON string of arguments to pass to the request formatter.",
 )
@@ -373,13 +374,6 @@ def benchmark():
 def run(**kwargs):
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
-    request_type = kwargs.pop("request_type", None)
-    request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
-    kwargs["data_request_formatter"] = (
-        request_type
-        if not request_formatter_kwargs
-        else {"request_type": request_type, **request_formatter_kwargs}
-    )
     kwargs["data"] = cli_tools.format_list_arg(
         kwargs.get("data"), default=[], simplify_single=False
     )
