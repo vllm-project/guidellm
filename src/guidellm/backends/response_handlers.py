@@ -137,7 +137,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
 
-        if text := choices[0].get("text"):
+        if text := choices[0].get("text") if choices else None:
             self.streaming_texts.append(text)
             updated = True
 
@@ -180,7 +180,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         line = line[len("data:") :].strip()
 
-        return json.loads(line)
+        return json.loads(line) if line else {}
 
     def extract_choices_and_usage(
         self, response: dict
@@ -393,7 +393,7 @@ class AudioResponseHandler:
         if not line or not (line := line.strip()) or not line.startswith("{"):
             return 0
 
-        data: dict[str, Any] = json.loads(line)
+        data: dict[str, Any] = json.loads(line) if line else {}
         text: str
         usage: dict[str, int | dict[str, int]]
         updated = False
