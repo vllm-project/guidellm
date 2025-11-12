@@ -395,6 +395,8 @@ def run(**kwargs):
             if not request_formatter_kwargs
             else {"request_type": request_type, **request_formatter_kwargs}
         )
+    elif request_formatter_kwargs is not None:
+        kwargs["data_request_formatter"] = request_formatter_kwargs
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
