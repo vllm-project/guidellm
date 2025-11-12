@@ -32,9 +32,9 @@ from .schemas import (
     RequestT,
     ResponseT,
     SchedulerMessagingPydanticRegistry,
+    SchedulerProgress,
     SchedulerState,
     SchedulerUpdateAction,
-    SchedulerUpdateActionProgress,
 )
 from .strategies import (
     AsyncConstantStrategy,
@@ -71,9 +71,9 @@ __all__ = [
     "ResponseT",
     "Scheduler",
     "SchedulerMessagingPydanticRegistry",
+    "SchedulerProgress",
     "SchedulerState",
     "SchedulerUpdateAction",
-    "SchedulerUpdateActionProgress",
     "SchedulingStrategy",
     "SerializableConstraintInitializer",
     "StrategyT",

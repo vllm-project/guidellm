@@ -120,127 +120,112 @@ class TransientPhaseConfig(StandardBaseModel):
     )
 
     def compute_limits(
-        self, max_requests: int | None, max_seconds: float | None
+        self,
+        max_requests: int | float | None,
+        max_seconds: float | None,
+        enforce_preference: bool = True,
     ) -> tuple[float | None, int | None]:
         """
         Calculate phase boundaries from benchmark constraints.
 
         :param max_requests: Total request budget for benchmark execution
         :param max_seconds: Total duration budget for benchmark execution
+        :param enforce_preference: Whether to enforce preferred mode when both
+            duration and request constraints are available
         :return: Tuple of (phase duration in seconds, phase request count)
         """
         duration: float | None = None
         requests: int | None = None
 
-        if self.mode in ["duration", "prefer_duration", "both"]:
-            if self.percent is not None and max_seconds is not None:
+        if self.mode != "requests" and max_seconds is not None:
+            if self.percent is not None:
                 duration = self.percent * max_seconds
             elif self.value is not None:
                 duration = float(self.value)
 
-        if self.mode in ["requests", "prefer_requests", "both"]:
-            if self.percent is not None and max_requests is not None:
+        if self.mode != "duration" and max_requests is not None:
+            if self.percent is not None:
                 requests = int(self.percent * max_requests)
             elif self.value is not None:
                 requests = int(self.value)
 
+        if enforce_preference:
+            if self.mode == "prefer_duration" and duration is not None:
+                requests = None
+            elif self.mode == "prefer_requests" and requests is not None:
+                duration = None
+
         return duration, requests
 
     def compute_transition_time(
-        self,
-        start_time: float,
-        request_start: float | None,
-        request_end: float | None,
-        current_requests: int,
-        current_duration: float,
-        remaining_requests: int | None,
-        remaining_duration: float | None,
-        period: Literal["start", "end"],
+        self, info: RequestInfo, state: SchedulerState, period: Literal["start", "end"]
     ) -> tuple[bool, float | None]:
         """
         Determine transition timestamp for entering or exiting phase.
 
-        :param start_time: Benchmark start timestamp in seconds since epoch
-        :param request_start: Current request start timestamp
-        :param request_end: Current request end timestamp
-        :param current_requests: Requests completed at transition point
-        :param current_duration: Elapsed duration at transition point
-        :param remaining_requests: Requests remaining in benchmark budget
-        :param remaining_duration: Duration remaining in benchmark budget
-        :param period: Phase period ('start' for warmup, 'end' for cooldown)
+        :param info: RequestInfo for current request to calculate against
+        :param state: SchedulerState with current progress metrics and scheduler info
+        :param period: Phase period, either "start" for warmup or "end" for cooldown
         :return: Tuple of (phase active flag, transition timestamp if applicable)
         """
-        max_duration = (
-            current_duration + remaining_duration
-            if remaining_duration is not None
-            else None
+        phase_duration, phase_requests = self.compute_limits(
+            max_requests=state.progress.total_requests,
+            max_seconds=state.progress.total_duration,
         )
-        max_requests = (
-            current_requests + remaining_requests
-            if remaining_requests is not None
-            else None
-        )
-        target_duration, target_requests = self.compute_limits(
-            max_requests=max_requests, max_seconds=max_duration
-        )
-
-        if target_duration is None and target_requests is None:
-            return False, None
-
         duration_transition_time: float | None = None
         request_transition_time: float | None = None
-        phase_active: bool = False
 
-        if (
-            target_duration is not None
-            and max_duration is not None
-            and remaining_duration is not None
-        ):
-            duration_transition_time = (
-                start_time + target_duration
-                if period == "start"
-                else start_time + max_duration - target_duration
-            )
-            phase_active = True
-        if (
-            target_requests is not None
-            and max_requests is not None
-            and remaining_requests is not None
-        ):
-            request_transition_time = (
-                request_start
-                if period == "start" and current_requests > target_requests
-                else request_end
-                if period == "end" and remaining_requests < target_requests + 1
-                else -1.0
-            )
-            phase_active = True
-
-        transition_time: float | None = None
-
-        match self.mode:
-            case "duration":
-                transition_time = duration_transition_time
-            case "requests":
-                transition_time = request_transition_time
-            case "prefer_duration":
-                transition_time = duration_transition_time or request_transition_time
-            case "prefer_requests":
-                transition_time = request_transition_time or duration_transition_time
-            case "both":
-                transition_time = (
-                    -1.0
-                    if request_transition_time == -1.0
-                    else request_transition_time
-                    if duration_transition_time is None
-                    else duration_transition_time
-                    if request_transition_time is None
-                    else min(duration_transition_time, request_transition_time)
-                    if period == "start"
-                    else max(duration_transition_time, request_transition_time)
+        if period == "start":
+            if phase_duration is not None:
+                duration_transition_time = state.start_time + phase_duration
+            if phase_requests is not None:
+                request_transition_time = (
+                    info.started_at
+                    if info.started_at is not None
+                    and state.processed_requests > phase_requests
+                    else -1.0
+                )
+        elif period == "end":
+            if phase_duration is not None:
+                duration_transition_time = (
+                    state.start_time + state.progress.total_duration - phase_duration
+                    if state.progress.total_duration is not None
+                    else -1.0
+                )
+            if phase_requests is not None:
+                request_transition_time = (
+                    info.completed_at
+                    if info.completed_at is not None
+                    and state.progress.remaining_requests is not None
+                    and state.progress.remaining_requests < phase_requests + 1
+                    else -1.0
                 )
 
-        return phase_active, transition_time if transition_time != -1.0 else None
+        transition_active: bool = False
+        transition_time: float | None = None
+
+        if request_transition_time == -1.0 or duration_transition_time == -1.0:
+            # Transition defined but not yet reached, not enough info yet
+            transition_active = True
+            request_transition_time = None
+        elif (
+            request_transition_time is not None and duration_transition_time is not None
+        ):
+            # Both limits defined; need to satisfy both (min for end, max for start)
+            transition_active = True
+            transition_time = (
+                min(request_transition_time, duration_transition_time)
+                if period == "end"
+                else max(request_transition_time, duration_transition_time)
+            )
+        elif (
+            request_transition_time is not None or duration_transition_time is not None
+        ):
+            # One limit defined; satisfy t hat one
+            transition_active = True
+            transition_time = request_transition_time or duration_transition_time
+
+        return transition_active, transition_time
 
 
 class BenchmarkConfig(StandardBaseDict):

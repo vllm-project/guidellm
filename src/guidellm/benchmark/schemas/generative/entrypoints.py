@@ -22,10 +22,11 @@ from pydantic import (
     AliasGenerator,
     ConfigDict,
     Field,
+    NonNegativeFloat,
     ValidationError,
     ValidatorFunctionWrapHandler,
+    field_serializer,
     field_validator,
-    model_serializer,
 )
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
@@ -225,12 +226,16 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     )
     random_seed: int = Field(default=42, description="Random seed for reproducibility")
     # Output configuration
-    output_path: str | Path | None = Field(
-        default_factory=Path.cwd, description="Directory path for output files"
+    outputs: list[str] | tuple[str] = Field(
+        default_factory=lambda: ["json", "csv", "html"],
+        description=(
+            "The aliases of the output types to create with their default filenames "
+            "the file names and extensions of the output types to create"
+        ),
     )
-    output_formats: list[str] | dict[str, str | dict[str, Any]] | None = Field(
-        default_factory=lambda: ["console", "json", "csv"],
-        description="Output format names or configuration mappings",
+    output_dir: str | Path = Field(
+        default_factory=Path.cwd,
+        description="The directory path to save file output types in",
     )
     # Benchmarker configuration
     sample_requests: int | None = Field(
@@ -251,11 +256,11 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             "(overlapping requests count toward measurement)"
         ),
     )
-    rampup: int | float | dict | TransientPhaseConfig | None = Field(
-        default=None,
+    rampup: NonNegativeFloat = Field(
+        default=0.0,
         description=(
-            "Ramp-up phase config: time to gradually increase load "
-            "(Throughput/Concurrent strategies only, not Synchronous/Rate)"
+            "The time, in seconds, to ramp up the request rate over. "
+            "Only applicable for Throughput/Concurrent strategies"
         ),
     )
     prefer_response_metrics: bool = Field(
@@ -299,77 +304,70 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             else:
                 raise
 
-    @model_serializer
-    def serialize_model(self) -> dict[str, Any]:
-        """
-        Convert model to serializable dictionary format.
+    @field_serializer("backend")
+    def serialize_backend(self, backend: BackendType | Backend) -> str:
+        """Serialize backend to type string."""
+        return backend.type_ if isinstance(backend, Backend) else backend
 
-        Transforms complex types (Backend, Profile, Path, etc.) to JSON-compatible
-        primitives while preserving configuration semantics for storage and
-        reproduction.
+    @field_serializer("data")
+    def serialize_data(self, data: list[Any]) -> list[str | None]:
+        """Serialize data items to strings."""
+        return [
+            item if isinstance(item, str | type(None)) else str(item) for item in data
+        ]
 
-        :return: Dictionary representation for JSON/YAML serialization
-        """
-        return {
-            # target - serialize as is
-            "target": self.target,
-            "data": [
-                item if isinstance(item, str | type(None)) else str(item)
-                for item in self.data
-            ],  # data - for each item in the list, if not a str or None, save str(item)
-            "profile": (
-                self.profile.type_
-                if isinstance(self.profile, Profile)
-                else self.profile
-            ),  # profile - if instance of Profile, then save as profile.type_
-            "rate": self.rate,
-            "backend": (
-                self.backend.type_
-                if isinstance(self.backend, Backend)
-                else self.backend
-            ),  # backend - if instance of Backend, then save as backend.type_
-            "backend_kwargs": self.backend_kwargs,
-            "model": self.model,
-            "processor": (
-                self.processor
-                if isinstance(self.processor, str)
-                else str(self.processor)
-                if self.processor is not None
-                else None
-            ),  # processor - if not str, then save as str(processor)
-            "processor_args": self.processor_args,
-            "data_args": self.data_args,
-            "data_samples": self.data_samples,
-            "data_column_mapper": (
-                self.data_column_mapper
-                if isinstance(self.data_column_mapper, dict | str)
-                else {}
-            ),  # data_column_mapper - if not dict or str, then save as an empty dict
-            "data_request_formatter": (
-                self.data_request_formatter
-                if isinstance(self.data_request_formatter, dict | str)
-                else {}
-            ),  # data_request_formatter - if not dict or str, then save as empty dict
-            "data_collator": (
-                self.data_collator if isinstance(self.data_collator, str) else None
-            ),  # data_collator - if not str, then save as None
-            "data_sampler": (
-                self.data_sampler if isinstance(self.data_sampler, str) else None
-            ),  # data_sampler - if not str, then save as None
-            "data_num_workers": self.data_num_workers,
-            "dataloader_kwargs": self.dataloader_kwargs,
-            "random_seed": self.random_seed,
-            "output_path": (
-                str(self.output_path) if self.output_path is not None else None
-            ),  # output_path - if not None, then ensure it's a str
-            "output_formats": self.output_formats,
-            "sample_requests": self.sample_requests,
-            "warmup": self.warmup,
-            "cooldown": self.cooldown,
-            "prefer_response_metrics": self.prefer_response_metrics,
-            "max_seconds": self.max_seconds,
-            "max_requests": self.max_requests,
-            "max_errors": self.max_errors,
-            "max_error_rate": self.max_error_rate,
-            "max_global_error_rate": self.max_global_error_rate,
-        }
+    @field_serializer("data_collator")
+    def serialize_data_collator(
+        self, data_collator: Callable | Literal["generative"] | None
+    ) -> str | None:
+        """Serialize data_collator to string or None."""
+        return data_collator if isinstance(data_collator, str) else None
+
+    @field_serializer("data_column_mapper")
+    def serialize_data_column_mapper(
+        self,
+        data_column_mapper: (
+            DatasetPreprocessor
+            | dict[str, str | list[str]]
+            | Literal["generative_column_mapper"]
+        ),
+    ) -> dict | str:
+        """Serialize data_column_mapper to dict or string."""
+        return data_column_mapper if isinstance(data_column_mapper, dict | str) else {}
+
+    @field_serializer("data_request_formatter")
+    def serialize_data_request_formatter(
+        self, data_request_formatter: RequestFormatter | dict[str, Any] | str
+    ) -> dict | str:
+        """Serialize data_request_formatter to dict or string."""
+        return (
+            data_request_formatter
+            if isinstance(data_request_formatter, dict | str)
+            else {}
+        )
+
+    @field_serializer("data_sampler")
+    def serialize_data_sampler(
+        self, data_sampler: Sampler[int] | Literal["shuffle"] | None
+    ) -> str | None:
+        """Serialize data_sampler to string or None."""
+        return data_sampler if isinstance(data_sampler, str) else None
+
+    @field_serializer("output_dir")
+    def serialize_output_dir(self, output_dir: str | Path) -> str | None:
+        """Serialize output_dir to string."""
+        return str(output_dir) if output_dir is not None else None
+
+    @field_serializer("processor")
+    def serialize_processor(
+        self, processor: str | Path | PreTrainedTokenizerBase | None
+    ) -> str | None:
+        """Serialize processor to string."""
+        if processor is None:
+            return None
+        return processor if isinstance(processor, str) else str(processor)
+
+    @field_serializer("profile")
+    def serialize_profile(self, profile: StrategyType | ProfileType | Profile) -> str:
+        """Serialize profile to type string."""
+        return profile.type_ if isinstance(profile, Profile) else profile

@@ -76,12 +76,12 @@ class GenerativeBenchmarkerOutput(
     @classmethod
     def resolve(
         cls,
-        output_formats: (
-            Sequence[str]
-            | Mapping[str, Any | dict[str, Any] | GenerativeBenchmarkerOutput]
+        outputs: (
+            Sequence[str | GenerativeBenchmarkerOutput]
+            | Mapping[str, str | dict[str, Any] | GenerativeBenchmarkerOutput]
             | None
         ),
-        output_path: str | Path | None,
+        output_dir: str | Path | None,
     ) -> dict[str, GenerativeBenchmarkerOutput]:
         """
         Resolve output format specifications into formatter instances.
@@ -98,28 +98,45 @@ class GenerativeBenchmarkerOutput(
         :raises TypeError: If format specification type is invalid
         :raises ValueError: If format resolution or validation fails
         """
-        resolved: dict[str, GenerativeBenchmarkerOutput] = {}
+        if not outputs:
+            return {}
 
-        if not output_formats:
-            return resolved
+        keys: Sequence[str]
+        values: Sequence[dict[str, Any] | GenerativeBenchmarkerOutput]
+        if isinstance(outputs, Mapping):
+            keys = list(outputs.keys())
+            values = list(outputs.values())  # type: ignore[arg-type]
+        else:
+            keys = []
+            values = []
 
-        if isinstance(output_formats, list | tuple):
-            # convert to dict for uniform processing
-            formats_list = output_formats
-            output_formats = {}
-            for output_format in formats_list:
-                # Check for registered type, if not, then assume it's a file path
-                if cls.is_registered(output_format):
-                    output_formats[output_format] = {}
+            for out in outputs:
+                if isinstance(out, str) and "." in out:
+                    # File name, extract extension as type
+                    ext = Path(out).suffix[1:].lower()
+                    keys.append(ext)
+                    values.append({"output_path": Path(output_dir or Path.cwd()) / out})
+                elif isinstance(out, str):
+                    # Assume registered type
+                    keys.append(out)
+                    values.append({})
+                elif isinstance(out, GenerativeBenchmarkerOutput):
+                    # Use class name as key
+                    keys.append(out.__class__.__name__)
+                    values.append(out)
                 else:
-                    path = Path(output_format)
-                    format_type = path.suffix[1:].lower()
-                    output_formats[format_type] = {"output_path": path}
+                    raise TypeError(
+                        "output_formats must be a sequence of strings or "
+                        "GenerativeBenchmarkerOutput instances, or a mapping."
+                    )
 
-        for key, val in output_formats.items():  # type: ignore[union-attr]
+        resolved: dict[str, GenerativeBenchmarkerOutput] = {}
+        for key, val in zip(keys, values, strict=True):
             if isinstance(val, GenerativeBenchmarkerOutput):
+                # Already resolved
                 resolved[key] = val
             else:
+                # Resolve from registry
                 output_class = cls.get_registered_object(key)
                 if output_class is None:
                     available_formats = (
@@ -129,15 +146,9 @@ class GenerativeBenchmarkerOutput(
                         f"Output format '{key}' is not registered. "
                         f"Available formats: {available_formats}"
                     )
-
-                kwargs: dict[str, Any] = {"output_path": output_path}
-
-                if isinstance(val, dict):
-                    kwargs.update(val)
-                    kwargs = output_class.validated_kwargs(**kwargs)
-                else:
-                    kwargs = output_class.validated_kwargs(val, **kwargs)
-
+                kwargs = output_class.validated_kwargs(
+                    **{"output_path": output_dir, **val}  # type: ignore[dict-item]
+                )
                 resolved[key] = output_class(**kwargs)
 
         return resolved

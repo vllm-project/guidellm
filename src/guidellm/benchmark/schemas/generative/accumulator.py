@@ -77,7 +77,7 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
     )
 
     @property
-    def status(self) -> Literal["pending", "warmup", "active", "cooldown", "completed"]:
+    def status(self) -> Literal["pending", "warmup", "active", "cooldown"]:
         """
         :return: Current execution phase based on timing thresholds
         """
@@ -87,18 +87,8 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
         if self.measure_start is None or self.current_update <= self.measure_start:
             return "warmup"
 
-        if (
-            self.measure_end is not None
-            and self.measure_end != -1.0
-            and self.current_update >= self.measure_end
-        ):
+        if self.measure_end is not None and self.current_update >= self.measure_end:
             return "cooldown"
-
-        if (
-            self.request_end is not None
-            and self.current_update > self.request_end + 1.0
-        ):
-            return "completed"
 
         return "active"
 
@@ -132,6 +122,34 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
 
         return self.current_request - self.last_request
 
+    @property
+    def finalized_request_start(self) -> float:
+        """
+        :return: Finalized timestamp from the current state for when requests started
+        """
+        return self.request_start or -1.0
+
+    @property
+    def finalized_measure_start(self) -> float:
+        """
+        :return: Finalized timestamp from the current state for when measurement started
+        """
+        return self.measure_start or self.finalized_request_start
+
+    @property
+    def finalized_measure_end(self) -> float:
+        """
+        :return: Finalized timestamp from the current state for when measurement ended
+        """
+        return self.measure_end or self.finalized_request_end
+
+    @property
+    def finalized_request_end(self) -> float:
+        """
+        :return: Finalized timestamp from the current state for when requests ended
+        """
+        return self.request_end or self.current_request or -1.0
+
     def update_estimate(
         self,
         info: RequestInfo,
@@ -149,70 +167,49 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
         :param scheduler_state: Current scheduler state with progress metrics
         :param config: Benchmark configuration with warmup/cooldown settings
         """
-        request_start = info.timings.request_start or info.timings.resolve_start
-        request_end = info.timings.request_end or info.timings.resolve_end
-        current_time = info.timings.last_reported
-
-        if self.request_start is None:
-            self.request_start = request_start
-
-        current_duration = (
-            current_time - self.request_start
-            if self.request_start is not None and current_time
-            else 0.0
-        )
-        current_requests = scheduler_state.processed_requests
-
-        if self.measure_start is None and self.request_start is not None:
-            warmup_active, measure_start = config.warmup.compute_transition_time(
-                start_time=self.request_start,
-                request_start=request_start,
-                request_end=request_end,
-                current_requests=current_requests,
-                current_duration=current_duration,
-                remaining_requests=scheduler_state.remaining_requests,  # type: ignore[arg-type]
-                remaining_duration=scheduler_state.remaining_duration,
-                period="start",
-            )
-            self.measure_start = measure_start if warmup_active else self.request_start
-
-        if self.measure_end is None and self.measure_start is not None:
-            cooldown_active, measure_end = config.cooldown.compute_transition_time(
-                start_time=self.measure_start,
-                request_start=request_start,
-                request_end=request_end,
-                current_requests=current_requests,
-                current_duration=current_duration,
-                remaining_requests=scheduler_state.remaining_requests,  # type: ignore[arg-type]
-                remaining_duration=scheduler_state.remaining_duration,
-                period="end",
-            )
-            self.measure_end = (
-                measure_end
-                if cooldown_active
-                else -1.0  # -1 to signify no cooldown and to pull from request_end
-            )
-
-        if request_end is not None and (
-            self.request_end is None or request_end > self.request_end
-        ):
-            # Always update request end to the max seen so far
-            self.request_end = request_end
-
-        # Update last and current update times
+        # First update non terminal timestamps
+        self.request_start = scheduler_state.start_time
         self.last_update = self.current_update
-        if current_time is not None and (
-            self.current_update is None or current_time > self.current_update
-        ):
-            self.current_update = current_time
+        if (current_time := info.timings.last_reported) is not None:
+            self.current_update = (
+                current_time
+                if self.current_update is None
+                else max(self.current_update, current_time)
+            )
 
-        # Update last and current request times, if applicable
+        # Next update measurement period timestamps, if available and possible
+        warmup_active, measure_start = config.warmup.compute_transition_time(
+            info=info, state=scheduler_state, period="start"
+        )
+        if not warmup_active:
+            # No warmup, set measure_start to first request start
+            self.measure_start = self.request_start
+        elif measure_start is not None:
+            self.measure_start = measure_start
+        cooldown_active, measure_end = config.cooldown.compute_transition_time(
+            info=info, state=scheduler_state, period="end"
+        )
+        if cooldown_active and measure_end is not None:
+            self.measure_end = measure_end
+
+        # Update last request terminal timestamps, if request is terminal
         if info.status in {"completed", "errored", "cancelled"}:
             self.last_request = self.current_request
-            if request_end is not None and (
-                self.current_request is None or request_end > self.current_request
+            if info.completed_at is not None and (
+                self.current_request is None or info.completed_at > self.current_request
             ):
-                self.current_request = request_end
+                self.current_request = info.completed_at
+
+        # Finally, update request stop timestamps, if at that stage and available
+        if scheduler_state.end_processing_time is not None and self.request_end is None:
+            self.request_end = (
+                scheduler_state.progress.stop_time
+                or self.current_request
+                or scheduler_state.end_processing_time
+            )
+            if self.measure_end is None:
+                # No cooldown triggered, set measure_end to request_end
+                self.measure_end = self.request_end
 
 
 class RunningMetricStats(StandardBaseModel):

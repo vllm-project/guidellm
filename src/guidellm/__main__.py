@@ -143,9 +143,8 @@ def benchmark():
 )
 @click.option(
     "--rate",
-    type=str,
     callback=cli_tools.parse_list_floats,
-    multiple=False,
+    multiple=True,
     default=BenchmarkGenerativeTextArgs.get_default("rate"),
     help=(
         "Benchmark rate(s) to test. Meaning depends on profile: "
@@ -255,36 +254,46 @@ def benchmark():
 )
 # Output configuration
 @click.option(
-    "--output-path",
-    type=click.Path(),
-    default=BenchmarkGenerativeTextArgs.get_default("output_path"),
+    "--output-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=BenchmarkGenerativeTextArgs.get_default("output_dir"),
+    help="The directory path to save file output types in",
+)
+@click.option(
+    "--outputs",
+    callback=cli_tools.parse_list,
+    multiple=True,
+    default=BenchmarkGenerativeTextArgs.get_default("outputs"),
     help=(
-        "Path to save output files. Can be a directory or file. "
-        "If a file, saves that format; mismatched formats save to parent directory."
+        "The filename.ext for each of the outputs to create or the "
+        "alises (json, csv, html) for the output files to create with "
+        "their default file names (benchmark.[EXT])"
     ),
 )
 @click.option(
-    "--output-formats",
-    multiple=True,
-    type=str,
-    default=BenchmarkGenerativeTextArgs.get_default("output_formats"),
-    help="Output formats for results (e.g., console, json, html, csv).",
+    "--output-path",
+    type=click.Path(),
+    default=None,
+    help=(
+        "Legacy parameter for the output path to save the output result to. "
+        "Resolves to fill in output-dir and outputs based on input path."
+    ),
 )
 @click.option(
-    "--disable-console-outputs",
+    "--disable-console",
+    "--disable-console-outputs",  # legacy alias
+    "disable_console",
     is_flag=True,
-    help="Disable console output.",
-)
-# Updates configuration
-@click.option(
-    "--disable-progress",
-    is_flag=True,
-    help="Disable progress updates to the console.",
+    help=(
+        "Disable all outputs to the console (updates, interactive progress, results)."
+    ),
 )
 @click.option(
-    "--display-scheduler-stats",
+    "--disable-console-interactive",
+    "--disable-progress",  # legacy alias
+    "disable_console_interactive",
     is_flag=True,
-    help="Display scheduler process statistics.",
+    help="Disable interactive console progress updates.",
 )
 # Aggregators configuration
 @click.option(
@@ -319,17 +328,11 @@ def benchmark():
 )
 @click.option(
     "--rampup",
+    type=float,
     default=BenchmarkGenerativeTextArgs.get_default("rampup"),
-    callback=cli_tools.parse_json,
     help=(
-        "Rampup specification: int, float, or dict as string "
-        "(json or key=value). "
-        "Controls time to linearly ramp up requests. "
-        "Only for Throughput/Concurrent strategies, "
-        "not Synchronous/Rate-based. "
-        "Numeric in (0, 1): percent of duration. "
-        "Numeric >=1: duration in seconds. "
-        "Advanced config: see TransientPhaseConfig schema."
+        "The time, in seconds, to ramp up the request rate over. "
+        "Only applicable for Throughput/Concurrent strategies"
     ),
 )
 @click.option(
@@ -380,6 +383,7 @@ def benchmark():
     help="Maximum global error rate across all benchmarks.",
 )
 def run(**kwargs):
+    # Handle remapping for request params
     request_type = kwargs.pop("request_type", None)
     request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
     kwargs["data_request_formatter"] = (
@@ -387,19 +391,21 @@ def run(**kwargs):
         if not request_formatter_kwargs
         else {"request_type": request_type, **request_formatter_kwargs}
     )
-    kwargs["data"] = cli_tools.format_list_arg(
-        kwargs.get("data"), default=[], simplify_single=False
-    )
-    kwargs["data_args"] = cli_tools.format_list_arg(
-        kwargs.get("data_args"), default=[], simplify_single=False
-    )
-    kwargs["rate"] = cli_tools.format_list_arg(
-        kwargs.get("rate"), default=None, simplify_single=False
-    )
 
-    disable_console_outputs = kwargs.pop("disable_console_outputs", False)
-    display_scheduler_stats = kwargs.pop("display_scheduler_stats", False)
-    disable_progress = kwargs.pop("disable_progress", False)
+    # Handle output path remapping
+    if (output_path := kwargs.pop("output_path", None)) is not None:
+        path = Path(output_path)
+        if path.is_dir():
+            kwargs["output_dir"] = path
+        else:
+            kwargs["output_dir"] = path.parent
+            kwargs["outputs"] = (path.suffix.lstrip(".").lower(),)
+
+    # Handle console options
+    disable_console = kwargs.pop("disable_console", False)
+    disable_console_interactive = (
+        kwargs.pop("disable_console_interactive", False) or disable_console
+    )
 
     try:
         # Only set CLI args that differ from click defaults
@@ -421,13 +427,11 @@ def run(**kwargs):
         benchmark_generative_text(
             args=args,
             progress=(
-                GenerativeConsoleBenchmarkerProgress(
-                    display_scheduler_stats=display_scheduler_stats
-                )
-                if not disable_progress
+                GenerativeConsoleBenchmarkerProgress()
+                if not disable_console_interactive
                 else None
             ),
-            console=Console() if not disable_console_outputs else None,
+            console=Console() if not disable_console else None,
         )
     )
 

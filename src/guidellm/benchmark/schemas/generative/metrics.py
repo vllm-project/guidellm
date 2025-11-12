@@ -133,15 +133,10 @@ class SchedulerMetrics(StandardBaseDict):
         return SchedulerMetrics(
             # Overall timings for the scheduler
             start_time=scheduler_state.start_time,
-            request_start_time=accumulator.timings.request_start or -1.0,
-            measure_start_time=accumulator.timings.measure_start or -1.0,
-            measure_end_time=(
-                accumulator.timings.measure_end
-                if accumulator.timings.measure_end is not None
-                and accumulator.timings.measure_end != -1.0
-                else accumulator.timings.request_end or -1.0
-            ),  # if no cooldown, measure_end isn't set, use request_end
-            request_end_time=accumulator.timings.request_end or -1.0,
+            request_start_time=accumulator.timings.finalized_request_start,
+            measure_start_time=accumulator.timings.finalized_measure_start,
+            measure_end_time=accumulator.timings.finalized_measure_end,
+            request_end_time=accumulator.timings.finalized_request_end,
             end_time=scheduler_state.end_time or -1.0,
             # Request details tracked by the scheduler
             requests_made=accumulator.scheduler_metrics.requests_made,
@@ -785,17 +780,13 @@ class GenerativeMetrics(StandardBaseDict):
         :return: Compiled generative metrics with all distributions and summaries
         :raises ValueError: If measure_start and measure_end/request_end are not set
         """
-        start_time = accumulator.timings.measure_start
-        end_time = (
-            accumulator.timings.measure_end
-            if accumulator.timings.measure_end != -1.0
-            else accumulator.timings.request_end
-        )
+        start_time = accumulator.timings.finalized_measure_start
+        end_time = accumulator.timings.finalized_measure_end
 
-        if start_time is None or end_time is None:
+        if start_time == -1.0 or end_time == -1.0:
             raise ValueError(
                 "Cannot compile GenerativeMetrics: "
-                "measure_start and measure_end/request_end must be set"
+                "No measurement start or end times available."
             )
 
         successful = accumulator.completed.get_within_range(start_time, end_time)

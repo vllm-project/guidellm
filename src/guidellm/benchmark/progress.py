@@ -571,8 +571,8 @@ class _GenerativeProgressTaskState:
         scheduler_state: SchedulerState,
     ):
         self.progress = (
-            (1.0 - scheduler_state.remaining_fraction)
-            if scheduler_state.remaining_fraction is not None
+            (1.0 - scheduler_state.progress.remaining_fraction)
+            if scheduler_state.progress.remaining_fraction is not None
             else 0.0
         )
         self._update_processing_states(
