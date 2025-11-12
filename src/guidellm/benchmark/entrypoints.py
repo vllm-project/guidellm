@@ -21,7 +21,10 @@ from typing_extensions import TypeAliasType
 
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.benchmarker import Benchmarker
-from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
+from guidellm.benchmark.outputs import (
+    GenerativeBenchmarkerConsole,
+    GenerativeBenchmarkerOutput,
+)
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 from guidellm.benchmark.schemas import (
@@ -313,7 +316,7 @@ async def resolve_profile(
     profile: StrategyType | ProfileType | Profile,
     rate: list[float] | None,
     random_seed: int,
-    rampup: TransientPhaseConfig,
+    rampup: float,
     constraints: MutableMapping[str, ConstraintInitializer | Any],
     max_seconds: int | float | None,
     max_requests: int | None,
@@ -332,7 +335,8 @@ async def resolve_profile(
     :param profile: Profile type identifier or pre-configured Profile instance
     :param rate: Request rate(s) for the benchmark execution
     :param random_seed: Seed for reproducible random operations
-    :param rampup: Ramp-up phase configuration for the benchmark execution
+    :param warmup: Warm-up phase configuration for the benchmark execution
+        (used for ramp-up duration calculation)
     :param constraints: Dictionary of constraint initializers for benchmark limits
     :param max_seconds: Maximum duration in seconds for the benchmark
     :param max_requests: Maximum number of requests to process
@@ -358,16 +362,13 @@ async def resolve_profile(
     }.items():
         if val is not None:
             constraints[key] = val
-    rampup_duration, _ = rampup.compute_limits(
-        max_requests=max_requests, max_seconds=max_seconds
-    )
 
     if not isinstance(profile, Profile):
         profile = Profile.create(
             rate_type=profile,
             rate=rate,
             random_seed=random_seed,
-            rampup_duration=rampup_duration or 0.0,
+            rampup_duration=rampup,
             constraints={**constraints},
         )
     elif constraints:
@@ -375,7 +376,7 @@ async def resolve_profile(
             "Constraints must be empty when providing a Profile instance. "
             f"Provided constraints: {constraints} ; provided profile: {profile}"
         )
-    elif rampup_duration is not None:
+    elif rampup > 0.0:
         raise ValueError(
             "Ramp-up duration must not be set when providing a Profile instance. "
             f"Provided rampup: {rampup} ; provided profile: {profile}"
@@ -392,15 +393,15 @@ async def resolve_profile(
 
 
 async def resolve_output_formats(
-    output_formats: OutputFormatT,
-    output_path: str | Path | None,
+    outputs: list[str] | tuple[str],
+    output_dir: str | Path | None,
     console: Console | None = None,
 ) -> dict[str, GenerativeBenchmarkerOutput]:
     """
     Resolve output format specifications into configured output handler instances.
 
-    :param output_formats: Specification of desired output formats
-    :param output_path: Base path for output file generation, or None for default
+    :param outputs: Specification of desired output files/types
+    :param output_dir: Base path for output file generation, or None for default
     :param console: Console instance for progress reporting, or None
     :return: Dictionary mapping format names to configured output handler instances
     """
@@ -409,7 +410,7 @@ async def resolve_output_formats(
     )
 
     resolved = GenerativeBenchmarkerOutput.resolve(
-        output_formats=output_formats, output_path=output_path
+        outputs=outputs, output_dir=output_dir
     )
 
     if console_step:
@@ -473,8 +474,6 @@ async def benchmark_generative_text(
         **(args.dataloader_kwargs or {}),
     )
 
-    rampup = TransientPhaseConfig.create_from_value(args.rampup)
-    rampup.mode = "duration"
     warmup = TransientPhaseConfig.create_from_value(args.warmup)
     cooldown = TransientPhaseConfig.create_from_value(args.cooldown)
     if console:
@@ -482,9 +481,9 @@ async def benchmark_generative_text(
             title="Resolved transient phase configurations",
             details="\n".join(
                 [
-                    f"Rampup: {rampup}",
                     f"Warmup: {warmup}",
                     f"Cooldown: {cooldown}",
+                    f"Rampup (Throughput/Concurrent): {args.rampup}",
                 ]
             ),
             status="success",
@@ -494,7 +493,7 @@ async def benchmark_generative_text(
         profile=args.profile,
         rate=args.rate,
         random_seed=args.random_seed,
-        rampup=rampup,
+        rampup=args.rampup,
         constraints=constraints,
         max_seconds=args.max_seconds,
         max_requests=args.max_requests,
@@ -504,9 +503,7 @@ async def benchmark_generative_text(
         console=console,
     )
     output_formats = await resolve_output_formats(
-        output_formats=args.output_formats,
-        output_path=args.output_path,
-        console=console,
+        outputs=args.outputs, output_dir=args.output_dir, console=console
     )
 
     report = GenerativeBenchmarksReport(args=args)
@@ -541,6 +538,7 @@ async def benchmark_generative_text(
         output_format_results[key] = output_result
 
     if console:
+        await GenerativeBenchmarkerConsole(console=console).finalize(report)
         console.print("\n\n")
         console.print_update(
             title=(
@@ -581,7 +579,9 @@ async def reimport_benchmarks_report(
         )
 
     resolved_output_formats = await resolve_output_formats(
-        output_formats, output_path, console=console
+        output_formats,  # type: ignore[arg-type]
+        output_path,
+        console=console,
     )
     output_format_results = {}
     for key, output in resolved_output_formats.items():

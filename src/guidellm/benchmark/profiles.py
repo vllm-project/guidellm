@@ -687,24 +687,26 @@ class SweepProfile(Profile):
                 )
             )[1:]  # don't rerun synchronous
 
-        if len(self.completed_strategies) >= self.sweep_size:
+        next_index = (
+            len(self.completed_strategies) - 1 - 1
+        )  # subtract synchronous and throughput
+        next_rate = (
+            self.measured_rates[next_index]
+            if next_index < len(self.measured_rates)
+            else None
+        )
+
+        if next_rate is None or next_rate <= 0:
+            # Stop if we don't have another valid rate to run
             return None
 
-        next_rate_index = len(
-            [
-                strat
-                for strat in self.completed_strategies
-                if strat.type_ == self.strategy_type
-            ]
-        )
         if self.strategy_type == "constant":
             return AsyncConstantStrategy(
-                rate=self.measured_rates[next_rate_index],
-                max_concurrency=self.max_concurrency,
+                rate=next_rate, max_concurrency=self.max_concurrency
             )
         elif self.strategy_type == "poisson":
             return AsyncPoissonStrategy(
-                rate=self.measured_rates[next_rate_index],
+                rate=next_rate,
                 max_concurrency=self.max_concurrency,
                 random_seed=self.random_seed,
             )

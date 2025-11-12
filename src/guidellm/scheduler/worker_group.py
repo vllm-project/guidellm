@@ -688,16 +688,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             ):
                 stop_processing_actions[key] = action
 
-            for progress_key in (
-                "remaining_fraction",
-                "remaining_requests",
-                "remaining_duration",
-            ):
-                if (new_val := action.progress.get(progress_key)) is not None and (
-                    getattr(self._state, progress_key) is None
-                    or new_val < getattr(self._state, progress_key)
-                ):
-                    setattr(self._state, progress_key, new_val)
+            self._state.progress.combine(action.progress)
 
         if stop_queuing_actions:
             self._state.end_queuing_constraints = stop_queuing_actions
@@ -706,3 +697,5 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         if stop_processing_actions:
             self._state.end_processing_constraints = stop_processing_actions
             self._state.end_processing_time = time.time()
+            if self._state.progress.stop_time is None:
+                self._state.progress.stop_time = self._state.end_processing_time

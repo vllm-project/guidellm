@@ -127,7 +127,6 @@ async def test_scheduler_run_integration(
         requests=[MockRequest(payload=f"req_{ind}") for ind in range(num_requests)],
         backend=MockBackend(),
         strategy=strategy,
-        startup_duration=0.1,
         env=env,
         **constraints,
     ):
