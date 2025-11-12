@@ -13,6 +13,7 @@ from transformers import PreTrainedTokenizerBase
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
 from guidellm.logger import logger
+from guidellm.utils import InfoMixin
 
 __all__ = ["DataLoader", "DatasetsIterator"]
 
@@ -117,7 +118,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
             )
 
 
-class DataLoader(PyTorchDataLoader[DataT]):
+class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
     def __init__(
         self,
         data: list[Any],
@@ -139,6 +140,18 @@ class DataLoader(PyTorchDataLoader[DataT]):
             preprocessors=preprocessors,
             random_seed=random_seed,
         )
+        self._info: dict[str, Any] = {
+            "data": str(data),
+            "data_args": str(data_args),
+            "data_samples": data_samples,
+            "preprocessors": [
+                preprocessor.__class__.__name__ for preprocessor in preprocessors
+            ],
+            "collator": collator.__class__.__name__,
+            "sampler": str(sampler),
+            "num_workers": num_workers,
+            "random_seed": random_seed,
+        }
 
         super().__init__(
             dataset=iterator,
@@ -149,3 +162,7 @@ class DataLoader(PyTorchDataLoader[DataT]):
             num_workers=num_workers or 0,
             **kwargs,
         )
+
+    @property
+    def info(self) -> dict[str, Any]:
+        return self._info

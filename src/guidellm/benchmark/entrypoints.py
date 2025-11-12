@@ -303,7 +303,7 @@ async def resolve_request_loader(
             title=(
                 f"Request loader initialized with "
                 f"{data_samples if data_samples > 0 else 'inf'} "
-                f"unique requests from {data}"
+                "unique requests"
             ),
             details=InfoMixin.extract_from_obj(request_loader),
             status_level="success",
