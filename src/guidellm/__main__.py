@@ -389,11 +389,12 @@ def run(**kwargs):
     # Handle remapping for request params
     request_type = kwargs.pop("request_type", None)
     request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
-    kwargs["data_request_formatter"] = (
-        request_type
-        if not request_formatter_kwargs
-        else {"request_type": request_type, **request_formatter_kwargs}
-    )
+    if request_type is not None:
+        kwargs["data_request_formatter"] = (
+            request_type
+            if not request_formatter_kwargs
+            else {"request_type": request_type, **request_formatter_kwargs}
+        )
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
