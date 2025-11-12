@@ -284,16 +284,13 @@ def assert_constraint_triggered(
     :param expected_metadata: Dictionary of expected metadata fields and values
     :raises AssertionError: If constraint was not triggered or metadata is incorrect
     """
-    assert "scheduler" in benchmark, "Benchmark missing 'scheduler' field"
-    scheduler = benchmark["scheduler"]
+    assert "scheduler_state" in benchmark, "Benchmark missing 'scheduler_state' field"
+    scheduler_state = benchmark["scheduler_state"]
 
-    assert "state" in scheduler, "Scheduler missing 'state' field"
-    state = scheduler["state"]
-
-    assert "end_processing_constraints" in state, (
-        "State missing 'end_processing_constraints' field"
+    assert "end_processing_constraints" in scheduler_state, (
+        "Scheduler state missing 'end_processing_constraints' field"
     )
-    constraints = state["end_processing_constraints"]
+    constraints = scheduler_state["end_processing_constraints"]
 
     assert constraint_name in constraints, (
         f"Constraint '{constraint_name}' was not triggered"
