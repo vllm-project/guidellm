@@ -4,7 +4,6 @@ weight: -8
 
 # Start a Server
 
-# **Start a Server**
 
 Before running GuideLLM benchmarks, you need an OpenAI-compatible server to test against. This guide will help you set up a server quickly.
 
