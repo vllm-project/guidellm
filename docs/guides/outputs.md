@@ -1,4 +1,4 @@
-# Supported Output Types for GuideLLM
+# Output Types
 
 GuideLLM provides flexible options for outputting benchmark results, catering to both console-based summaries and file-based detailed reports. This document outlines the supported output types, their configurations, and how to utilize them effectively.
 
@@ -106,4 +106,4 @@ for benchmark in benchmarks:
     print(benchmark.id_)
 ```
 
-For more details on the `GenerativeBenchmarksReport` class and its methods, refer to the [source code](https://github.com/vllm-project/guidellm/blob/main/src/guidellm/benchmark/output.py).
+For more details on the `GenerativeBenchmarksReport` class and its methods, refer to the [source code](https://github.com/neuralmagic/guidellm/blob/main/src/guidellm/benchmark/output.py).

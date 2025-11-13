@@ -1,4 +1,4 @@
-# Dataset Configurations
+# Datasets
 
 GuideLLM supports various dataset configurations to enable benchmarking and evaluation of large language models (LLMs). This document provides a comprehensive guide to configuring datasets for different use cases, along with detailed examples and rationale for choosing specific pathways.
 
@@ -39,13 +39,6 @@ GuideLLM supports several types of datasets, each with its own advantages and us
 
 Synthetic datasets allow you to generate data on the fly with customizable parameters. This is useful for controlled experiments, stress testing, and simulating specific scenarios. For example, you might want to evaluate how a model handles long prompts or generates outputs with specific characteristics.
 
-For different use cases, here are the recommended dataset profiles to pass as arguments in GuideLLM:
-
-- **Chat**: `--data "prompt_tokens=512,output_tokens=256"`
-- **RAG**: `--data "prompt_tokens=4096,output_tokens=512"`
-- **Summarization**: `--data "prompt_tokens=1024,output_tokens=256"`
-- **Code Generation**: `--data "prompt_tokens=512,output_tokens=512"`
-
 #### Example Commands
 
 ```bash
@@ -76,7 +69,6 @@ guidellm benchmark \
 - `output_tokens_stdev`: Standard deviation for output tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
 - `output_tokens_min`: Minimum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the minimum is 1.
 - `output_tokens_max`: Maximum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the maximum is 5 times the standard deviation.
-- `prefix_tokens`: Number of tokens to share as a prefix across all prompts. Is additive to the prompt tokens distribution so each request is `prefix_tokens + prompt_tokens_sample()`. If unset, defaults to 0.
 - `samples`: Number of samples to generate (default: 1000). More samples will increase the time taken to generate the dataset before benchmarking, but will also decrease the likelihood of caching requests.
 - `source`: Source text for generation (default: `data:prideandprejudice.txt.gz`). This can be any text file, URL containing a text file, or a compressed text file. The text is used to sample from at a word and punctuation granularity and then combined into a single string of the desired lengths.
 
