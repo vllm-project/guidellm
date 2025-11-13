@@ -48,6 +48,9 @@ class GenerativeRequestStats(StandardBaseDict):
     request_type: GenerativeRequestType | str = Field(
         description="Type of generative request (text_completion or chat_completion)"
     )
+    response_id: str | None = Field(
+        default=None, description="vLLM-assigned unique request ID"
+    )
     request_args: str | None = Field(
         default=None, description="Backend arguments used for this request"
     )
