@@ -175,29 +175,46 @@ class TransientPhaseConfig(StandardBaseModel):
         duration_transition_time: float | None = None
         request_transition_time: float | None = None
 
+        # Calculate transition times for the phase based on phase limits and period
+        # Potential phases: start (warmup) -> active -> end (cooldown)
+        #   Warmup transition times: (start, start + duration)
+        #   Active transition times: (start + duration, end - duration)
+        #   Cooldown transition times: (end - duration, end)
         if period == "start":
             if phase_duration is not None:
+                # Duration was set and caculating for "warmup" / start phase
+                # Phase is active for [start, start + duration]
                 duration_transition_time = state.start_time + phase_duration
             if phase_requests is not None:
+                # Requests was set and calculating for "warmup" / start phase
+                # Phase is active for requests [0, phase_requests]
+                # Grab start time of the next request as transition time
+                # (all requests up to and including phase_requests are in warmup)
                 request_transition_time = (
                     info.started_at
                     if info.started_at is not None
-                    and state.processed_requests > phase_requests
+                    and state.processed_requests == phase_requests + 1
                     else -1.0
                 )
         elif period == "end":
             if phase_duration is not None:
+                # Duration was set and calculating for "cooldown" / end phase
+                # Phase is active for [end - duration, end]
                 duration_transition_time = (
                     state.start_time + state.progress.total_duration - phase_duration
                     if state.progress.total_duration is not None
                     else -1.0
                 )
             if phase_requests is not None:
+                # Requests was set and calculating for "cooldown" / end phase
+                # Phase is active for requests [total - phase_requests, total]
+                # Grab completion time of the request right before cooldown starts
+                # (all requests from that point onward are in cooldown)
                 request_transition_time = (
                     info.completed_at
                     if info.completed_at is not None
                     and state.progress.remaining_requests is not None
-                    and state.progress.remaining_requests < phase_requests + 1
+                    and state.progress.remaining_requests == phase_requests + 1
                     else -1.0
                 )
 
@@ -205,7 +222,7 @@ class TransientPhaseConfig(StandardBaseModel):
         transition_time: float | None = None
 
         if request_transition_time == -1.0 or duration_transition_time == -1.0:
-            # Transition defined but not yet reached, not enough info yet
+            # Transition defined but not yet reached or passed
             transition_active = True
             request_transition_time = None
         elif (
@@ -221,7 +238,7 @@ class TransientPhaseConfig(StandardBaseModel):
         elif (
             request_transition_time is not None or duration_transition_time is not None
         ):
-            # One limit defined; satisfy t hat one
+            # One limit defined; satisfy that one
             transition_active = True
             transition_time = request_transition_time or duration_transition_time
 
