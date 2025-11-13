@@ -1,4 +1,4 @@
-# GuideLLM Architecture
+# Architecture
 
 GuideLLM is designed to evaluate and optimize large language model (LLM) deployments by simulating real-world inference workloads. The architecture is modular, enabling flexibility and scalability. Below is an overview of the core components and their interactions.
 

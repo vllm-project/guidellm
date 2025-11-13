@@ -1,4 +1,4 @@
-# Service Level Objectives (SLOs) and Service Level Agreements (SLAs)
+# Service Level Objectives
 
 Service Level Objectives (SLOs) and Service Level Agreements (SLAs) are critical for ensuring the quality and reliability of large language model (LLM) deployments. They define measurable performance and reliability targets that a system must meet to satisfy user expectations and business requirements. Below, we outline the key concepts, tradeoffs, and examples of SLOs/SLAs for various LLM use cases.
 

@@ -1,4 +1,4 @@
-# Metrics Documentation
+# Metrics
 
 GuideLLM provides a comprehensive set of metrics to evaluate and optimize the performance of large language model (LLM) deployments. These metrics are designed to help users understand the behavior of their models under various conditions, identify bottlenecks, and make informed decisions about scaling and resource allocation. Below, we outline the key metrics measured by GuideLLM, their definitions, use cases, and how they can be interpreted.
 
