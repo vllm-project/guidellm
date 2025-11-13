@@ -12,7 +12,7 @@ Before installing GuideLLM, ensure you have the following prerequisites:
 
 - **Operating System:** Linux or MacOS
 
-- **Python Version:** 3.9 – 3.13
+- **Python Version:** 3.10 – 3.13
 
 - **Pip Version:** Ensure you have the latest version of pip installed. You can upgrade pip using the following command:
 
@@ -27,10 +27,10 @@ Before installing GuideLLM, ensure you have the following prerequisites:
 The simplest way to install GuideLLM is via pip from the Python Package Index (PyPI):
 
 ```bash
-pip install guidellm
+pip install guidellm[recommended]
 ```
 
-This will install the latest stable release of GuideLLM.
+This will install the latest stable release of GuideLLM with recommended dependencies.
 
 ### 2. Install a Specific Version from PyPI
 
@@ -45,7 +45,7 @@ pip install guidellm==0.2.0
 To install the latest development version of GuideLLM from the main branch, use the following command:
 
 ```bash
-pip install git+https://github.com/neuralmagic/guidellm.git
+pip install git+https://github.com/vllm-project/guidellm.git
 ```
 
 This will clone the repository and install GuideLLM directly from the main branch.
@@ -55,7 +55,7 @@ This will clone the repository and install GuideLLM directly from the main branc
 If you want to install GuideLLM from a specific branch (e.g., `feature-branch`), use the following command:
 
 ```bash
-pip install git+https://github.com/neuralmagic/guidellm.git@feature-branch
+pip install git+https://github.com/vllm-project/guidellm.git@feature-branch
 ```
 
 Replace `feature-branch` with the name of the branch you want to install.
@@ -88,4 +88,4 @@ This should display the installed version of GuideLLM.
 
 ## Troubleshooting
 
-If you encounter any issues during installation, ensure that your Python and pip versions meet the prerequisites. For further assistance, please refer to the [GitHub Issues](https://github.com/neuralmagic/guidellm/issues) page or consult the [Documentation](https://github.com/neuralmagic/guidellm/tree/main/docs).
+If you encounter any issues during installation, ensure that your Python and pip versions meet the prerequisites. For further assistance, please refer to the [GitHub Issues](https://github.com/vllm-project/guidellm/issues) page or consult the [Documentation](https://github.com/vllm-project/guidellm/tree/main/docs).

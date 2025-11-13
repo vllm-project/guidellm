@@ -22,7 +22,7 @@ The following arguments can be used to configure datasets and their processing:
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --rate-type "throughput" \
+    --profile "throughput" \
     --max-requests 1000 \
     --data "path/to/dataset|dataset_id" \
     --data-args '{"prompt_column": "prompt", "split": "train"}' \
@@ -44,7 +44,7 @@ Synthetic datasets allow you to generate data on the fly with customizable param
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --rate-type "throughput" \
+    --profile "throughput" \
     --max-requests 1000 \
     --data "prompt_tokens=256,output_tokens=128"
 ```
@@ -54,7 +54,7 @@ Or using a JSON string:
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --rate-type "throughput" \
+    --profile "throughput" \
     --max-requests 1000 \
     --data '{"prompt_tokens": 256, "output_tokens": 128}'
 ```
@@ -85,7 +85,7 @@ GuideLLM supports datasets from the Hugging Face Hub or local directories that f
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --rate-type "throughput" \
+    --profile "throughput" \
     --max-requests 1000 \
     --data "garage-bAInd/Open-Platypus"
 ```
@@ -95,7 +95,7 @@ Or using a local dataset:
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --rate-type "throughput" \
+    --profile "throughput" \
     --max-requests 1000 \
     --data "path/to/dataset"
 ```
@@ -147,7 +147,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --rate-type "throughput" \
+    --profile "throughput" \
     --max-requests 1000 \
     --data "path/to/dataset.ext" \
     --data-args '{"prompt_column": "prompt", "split": "train"}'

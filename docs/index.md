@@ -8,17 +8,18 @@
 </p>
 
 <h3 align="center">
-Scale Efficiently: Evaluate and Optimize Your LLM Deployments for Real-World Inference
+SLO-Aware Benchmarking and Evaluation Platform for Optimizing Real-World LLM Inference
 </h3>
 
-**GuideLLM** is a platform for evaluating and optimizing the deployment of large language models (LLMs). By simulating real-world inference workloads, GuideLLM enables users to assess the performance, resource requirements, and cost implications of deploying LLMs on various hardware configurations. This approach ensures efficient, scalable, and cost-effective LLM inference serving while maintaining high service quality.
+**GuideLLM** is a platform for evaluating how language models perform under real workloads and configurations. It simulates end-to-end interactions with OpenAI-compatible and vLLM-native servers, generates workload patterns that reflect production usage, and produces detailed reports that help teams understand system behavior, resource needs, and operational limits. GuideLLM supports real and synthetic datasets, multimodal inputs, and flexible execution profiles, giving engineering and ML teams a consistent framework for assessing model behavior, tuning deployments, and planning capacity as their systems evolve.
 
 ## Key Features
 
-- **Performance Evaluation:** Analyze LLM inference under different load scenarios to ensure your system meets your service level objectives (SLOs).
-- **Resource Optimization:** Determine the most suitable hardware configurations for running your models effectively.
-- **Cost Estimation:** Understand the financial impact of different deployment strategies and make informed decisions to minimize costs.
-- **Scalability Testing:** Simulate scaling to handle large numbers of concurrent users without performance degradation.
+- **Captures complete latency and token-level statistics for SLO-driven evaluation:** Including full distributions for TTFT, ITL, and end-to-end behavior.
+- **Generates realistic, configurable traffic patterns:** Across synchronous, concurrent, and rate-based modes, including reproducible sweeps to identify safe operating ranges.
+- **Supports both real and synthetic multimodal datasets:** Enabling controlled experiments and production-style evaluations in one framework with support for text, image, audio, and video inputs.
+- **Produces standardized, exportable reports:** For dashboards, analysis, and regression tracking, ensuring consistency across teams and workflows.
+- **Delivers high-throughput, extensible benchmarking:** With multiprocessing, threading, async execution, and a flexible CLI/API for customization or quickstarts.
 
 ## Key Sections
 

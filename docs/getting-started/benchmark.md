@@ -27,7 +27,7 @@ This command:
 - Connects to your vLLM server running at `http://localhost:8000`
 - Uses synthetic data with 256 prompt tokens and 128 output tokens per request
 - Automatically determines the available model on the server
-- Runs a "sweep" benchmark (default) to find optimal performance points
+- Runs a "sweep" profile (default) to find optimal performance points
 
 During the benchmark, you'll see a progress display similar to this:
 
@@ -44,14 +44,15 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 | `--target`      | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`             |
 | `--model`       | Model name to benchmark (optional)             | `--model "Meta-Llama-3.1-8B-Instruct"`         |
 | `--data`        | Data configuration for benchmarking            | `--data "prompt_tokens=256,output_tokens=128"` |
-| `--rate-type`   | Type of benchmark to run                       | `--rate-type sweep`                            |
+| `--profile`     | Type of benchmark profile to run               | `--profile sweep`                              |
 | `--rate`        | Request rate or number of benchmarks for sweep | `--rate 10`                                    |
 | `--max-seconds` | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
-| `--output-path` | Output file path and format                    | `--output-path results.json`                   |
+| `--output-dir`  | Directory path to save output files            | `--output-dir results/`                        |
+| `--outputs`     | Output formats to generate                     | `--outputs json csv html`                      |
 
-### Benchmark Types (`--rate-type`)
+### Benchmark Profiles (`--profile`)
 
-GuideLLM supports several benchmark types:
+GuideLLM supports several benchmark profiles and strategies:
 
 - `synchronous`: Runs requests one at a time (sequential)
 - `throughput`: Tests maximum throughput by running requests in parallel
@@ -82,12 +83,12 @@ While synthetic data is convenient for quick tests, you can benchmark with real-
 guidellm benchmark \
   --target "http://localhost:8000" \
   --data "/path/to/your/dataset.json" \
-  --rate-type constant \
+  --profile constant \
   --rate 5
 ```
 
 You can also use datasets from HuggingFace or customize synthetic data generation with additional parameters such as standard deviation, minimum, and maximum values.
 
-By default, complete results are saved to `benchmarks.json` in your current directory. Use the `--output-path` parameter to specify a different location or format.
+By default, complete results are saved to `benchmarks.json`, `benchmarks.csv`, and `benchmarks.html` in your current directory. Use the `--output-dir` parameter to specify a different location and `--outputs` to control which formats are generated.
 
 Learn more about dataset options in the [Datasets documentation](../guides/datasets.md).

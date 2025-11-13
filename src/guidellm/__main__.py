@@ -11,7 +11,7 @@ through CLI options and environment variables.
 Example:
 ::
     # Run a benchmark against a model
-    guidellm benchmark run --target http://localhost:8000 --data dataset.json \\
+    guidellm benchmark --target http://localhost:8000 --data dataset.json \\
         --profile sweep
 
     # Preprocess a dataset
