@@ -7,7 +7,7 @@ For all of the output formats, `--output-extras` can be used to include addition
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --rate-type sweep \
+  --profile sweep \
   --max-seconds 30 \
   --data "prompt_tokens=256,output_tokens=128" \
   --output-extras '{"tag": "my_tag", "metadata": {"key": "value"}}'
@@ -31,7 +31,7 @@ To disable the progress outputs to the console, use the `disable-progress` flag 
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --rate-type sweep \
+  --profile sweep \
   --max-seconds 30 \
   --data "prompt_tokens=256,output_tokens=128" \
   --disable-progress
@@ -42,26 +42,11 @@ To disable console output, use the `--disable-console-outputs` flag when running
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --rate-type sweep \
+  --profile sweep \
   --max-seconds 30 \
   --data "prompt_tokens=256,output_tokens=128" \
   --disable-console-outputs
 ```
-
-### Enabling Extra Information
-
-GuideLLM includes the option to display extra information during the benchmark runs to monitor the overheads and performance of the system. This can be enabled by using the `--display-scheduler-stats` flag when running the `guidellm benchmark` command. For example:
-
-```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --rate-type sweep \
-  --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128" \
-  --display-scheduler-stats
-```
-
-The above command will display an additional row for each benchmark within the progress output, showing the scheduler overheads and other relevant information.
 
 ## File-Based Outputs
 
@@ -70,29 +55,32 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 ### Supported File Formats
 
 1. **JSON**: Contains all benchmark results, including full statistics and request data. This format is ideal for reloading into Python for in-depth analysis.
-2. **YAML**: Similar to JSON, YAML files include all benchmark results and are human-readable.
-3. **CSV**: Provides a summary of the benchmark data, focusing on key metrics and statistics. Note that CSV does not include detailed request-level data.
+2. **CSV**: Provides a summary of the benchmark data, focusing on key metrics and statistics. Note that CSV does not include detailed request-level data.
+3. **HTML**: Interactive HTML report with tables and visualizations of benchmark results.
+4. **Console**: Terminal output displayed during execution (can be disabled).
 
 ### Configuring File Outputs
 
-- **Output Path**: Use the `--output-path` argument to specify the file path or directory for saving the results. If a directory is provided, the results will be saved as `benchmarks.json` by default. The file type is determined by the file extension (e.g., `.json`, `.yaml`, `.csv`).
-- **Sampling**: To limit the size of the output files, you can configure sampling options for the dataset using the `--output-sampling` argument.
+- **Output Directory**: Use the `--output-dir` argument to specify the directory for saving the results. By default, files are saved in the current directory.
+- **Output Formats**: Use the `--outputs` argument to specify which formats to generate. By default, JSON, CSV, and HTML are generated.
+- **Sampling**: To limit the size of the output files and number of detailed request samples included, you can configure sampling options using the `--sample-requests` argument.
 
-Example command to save results in YAML format:
+Example command to save results in specific formats:
 
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --rate-type sweep \
+  --profile sweep \
   --max-seconds 30 \
   --data "prompt_tokens=256,output_tokens=128" \
-  --output-path "results/benchmarks.csv" \
-  --output-sampling 20
+  --output-dir "results/" \
+  --outputs json csv \
+  --sample-requests 20
 ```
 
 ### Reloading Results
 
-JSON and YAML files can be reloaded into Python for further analysis using the `GenerativeBenchmarksReport` class. Below is a sample code snippet for reloading results:
+JSON files can be reloaded into Python for further analysis using the `GenerativeBenchmarksReport` class. Below is a sample code snippet for reloading results:
 
 ```python
 from guidellm.benchmark import GenerativeBenchmarksReport
@@ -106,4 +94,4 @@ for benchmark in benchmarks:
     print(benchmark.id_)
 ```
 
-For more details on the `GenerativeBenchmarksReport` class and its methods, refer to the [source code](https://github.com/neuralmagic/guidellm/blob/main/src/guidellm/benchmark/output.py).
+For more details on the `GenerativeBenchmarksReport` class and its methods, refer to the [source code](https://github.com/vllm-project/guidellm/blob/main/src/guidellm/benchmark/schemas/generative/reports.py).

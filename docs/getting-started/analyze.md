@@ -64,20 +64,31 @@ The p99 (99th percentile) values are particularly important for SLO analysis, as
 
 ## Analyzing the Results File
 
-For deeper analysis, GuideLLM saves detailed results to a file (default: `benchmarks.json`). This file contains all metrics with more comprehensive statistics and individual request data.
+For deeper analysis, GuideLLM saves detailed results to multiple files by default in your current directory:
+
+- `benchmarks.json`: Complete benchmark data in JSON format
+- `benchmarks.csv`: Summary of key metrics in CSV format
+- `benchmarks.html`: Interactive HTML report with visualizations
 
 ### File Formats
 
-GuideLLM supports multiple output formats:
+GuideLLM supports multiple output formats that can be customized:
 
-- **JSON**: Complete benchmark data in JSON format (default)
-- **YAML**: Complete benchmark data in human-readable YAML format
-- **CSV**: Summary of key metrics in CSV format
+- **JSON**: Complete benchmark data in JSON format with full request samples
+- **CSV**: Summary of key metrics in CSV format suitable for spreadsheets
+- **HTML**: Interactive HTML report with tables and visualizations
+- **Console**: Terminal output displayed during execution
 
-To specify the format, use the `--output-path` argument with the appropriate extension:
+To specify which formats to generate, use the `--outputs` argument:
 
 ```bash
-guidellm benchmark --target "http://localhost:8000" --output-path results.yaml
+guidellm benchmark --target "http://localhost:8000" --outputs json csv
+```
+
+To change the output directory, use the `--output-dir` argument:
+
+```bash
+guidellm benchmark --target "http://localhost:8000" --output-dir results/
 ```
 
 ### Programmatic Analysis
@@ -130,8 +141,8 @@ When analyzing your results, focus on these key indicators:
 Run benchmarks with different models or hardware configurations, then compare:
 
 ```bash
-guidellm benchmark --target "http://server1:8000" --output-path model1.json
-guidellm benchmark --target "http://server2:8000" --output-path model2.json
+guidellm benchmark --target "http://server1:8000" --output-dir model1/
+guidellm benchmark --target "http://server2:8000" --output-dir model2/
 ```
 
 ### Cost Optimization
