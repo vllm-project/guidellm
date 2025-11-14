@@ -13,9 +13,9 @@ from datasets import IterableDataset
 
 from guidellm.data.deserializers.deserializer import DataNotSupportedError
 from guidellm.data.deserializers.synthetic import (
+    SyntheticTextDataset,
     SyntheticTextDatasetConfig,
     SyntheticTextDatasetDeserializer,
-    SyntheticTextGenerator,
     SyntheticTextPrefixBucketConfig,
 )
 
@@ -264,9 +264,7 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
 
         assert generator.config == simple_config
         assert generator.processor == mock_tokenizer
@@ -278,9 +276,7 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
 
         items = []
         for i, item in enumerate(generator):
@@ -310,9 +306,7 @@ class TestSyntheticTextGenerator:
         """
         from faker import Faker
 
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
         faker = Faker()
         faker.seed_instance(42)
 
@@ -332,7 +326,7 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        generator = SyntheticTextGenerator(
+        generator = SyntheticTextDataset(
             config_with_prefix, mock_tokenizer, random_seed=42
         )
 
@@ -353,12 +347,8 @@ class TestSyntheticTextGenerator:
         ### WRITTEN BY AI ###
         """
         # Create two generators with same seed
-        generator1 = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
-        generator2 = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator1 = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
+        generator2 = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
 
         items1 = []
         items2 = []

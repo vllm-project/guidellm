@@ -22,9 +22,9 @@ from .memory import (
     InMemoryJsonStrDatasetDeserializer,
 )
 from .synthetic import (
+    SyntheticTextDataset,
     SyntheticTextDatasetConfig,
     SyntheticTextDatasetDeserializer,
-    SyntheticTextGenerator,
     SyntheticTextPrefixBucketConfig,
 )
 
@@ -44,9 +44,9 @@ __all__ = [
     "InMemoryJsonStrDatasetDeserializer",
     "JSONFileDatasetDeserializer",
     "ParquetFileDatasetDeserializer",
+    "SyntheticTextDataset",
     "SyntheticTextDatasetConfig",
     "SyntheticTextDatasetDeserializer",
-    "SyntheticTextGenerator",
     "SyntheticTextPrefixBucketConfig",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
