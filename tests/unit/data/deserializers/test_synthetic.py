@@ -310,14 +310,17 @@ class TestSyntheticTextGenerator:
         faker = Faker()
         faker.seed_instance(42)
 
+        # Access the _create_prompt method through the examples iterable
+        ex_iterable = generator._ex_iterable
+
         # Test normal case
-        result = generator._create_prompt(5, faker, "unique_prefix ")
+        result = ex_iterable._create_prompt(5, faker, "unique_prefix ")
         assert isinstance(result, str)
         # The result should be the decoded tokens (token_0 token_1 etc.) due to our mock
         assert "token_" in result
 
         # Test zero tokens
-        result = generator._create_prompt(0, faker)
+        result = ex_iterable._create_prompt(0, faker)
         assert result == ""
 
     @pytest.mark.regression
