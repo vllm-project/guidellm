@@ -55,14 +55,15 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 ### Supported File Formats
 
 1. **JSON**: Contains all benchmark results, including full statistics and request data. This format is ideal for reloading into Python for in-depth analysis.
-2. **CSV**: Provides a summary of the benchmark data, focusing on key metrics and statistics. Note that CSV does not include detailed request-level data.
-3. **HTML**: Interactive HTML report with tables and visualizations of benchmark results.
-4. **Console**: Terminal output displayed during execution (can be disabled).
+2. **YAML**: Contains all benchmark results, including full statistics and request data, in YAML format which is human-readable and easy to work with in various tools.
+3. **CSV**: Provides a summary of the benchmark data, focusing on key metrics and statistics. Note that CSV does not include detailed request-level data.
+4. **HTML**: Interactive HTML report with tables and visualizations of benchmark results.
+5. **Console**: Terminal output displayed during execution (can be disabled).
 
 ### Configuring File Outputs
 
 - **Output Directory**: Use the `--output-dir` argument to specify the directory for saving the results. By default, files are saved in the current directory.
-- **Output Formats**: Use the `--outputs` argument to specify which formats to generate. By default, JSON, CSV, and HTML are generated.
+- **Output Formats**: Use the `--outputs` argument to specify which formats or exact file names (with supported file extensions, e.g. `benchmarks.json`) to generate. By default, JSON, CSV, and HTML are generated.
 - **Sampling**: To limit the size of the output files and number of detailed request samples included, you can configure sampling options using the `--sample-requests` argument.
 
 Example command to save results in specific formats:

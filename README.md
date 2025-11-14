@@ -22,7 +22,7 @@ SLO-aware Benchmarking and Evaluation Platform for Optimizing Real-World LLM Inf
 
 **GuideLLM** is a platform for evaluating how language models perform under real workloads and configurations. It simulates end-to-end interactions with OpenAI-compatible and vLLM-native servers, generates workload patterns that reflect production usage, and produces detailed reports that help teams understand system behavior, resource needs, and operational limits. GuideLLM supports real and synthetic datasets, multimodal inputs, and flexible execution profiles, giving engineering and ML teams a consistent framework for assessing model behavior, tuning deployments, and planning capacity as their systems evolve.
 
-## Why GuideLLM?
+### Why GuideLLM?
 
 GuideLLM gives teams a clear picture of performance, efficiency, and reliability when deploying LLMs in production-like environments.
 
@@ -144,6 +144,8 @@ The console provides a lightweight summary with high-level statistics for each b
 
 This file is the authoritative record of the entire benchmark session. It includes configuration, metadata, per-benchmark statistics, and sample request entries with individual request timings. Use it for debugging, deeper analysis, or loading into Python with `GenerativeBenchmarksReport`.
 
+Alternatively, a yaml version of this file can be generated for easier human readability with the same content as `benchmarks.json` using the `--outputs yaml` argument.
+
 **benchmarks.csv**
 
 This file provides a compact tabular view of each benchmark with the fields most commonly used for reporting—throughput, latency percentiles, token counts, and rate information. It opens cleanly in spreadsheets and BI tools and is well-suited for comparisons across runs.
@@ -158,7 +160,7 @@ GuideLLM supports a wide range of LLM benchmarking workflows. The examples below
 
 ### Load Patterns
 
-Different applications require different traffic shapes. This example demonstrates rate-based load testing using a constant profile at 10 requests per second, running for 20 seconds with synthetic data of 128 prompt tokens and 256 output tokens.
+Simmulating different applications requires different traffic shapes. This example demonstrates rate-based load testing using a constant profile at 10 requests per second, running for 20 seconds with synthetic data of 128 prompt tokens and 256 output tokens.
 
 ```bash
 guidellm benchmark \
@@ -191,6 +193,7 @@ guidellm benchmark \
 - `--data`: Data source specification - accepts HuggingFace dataset IDs (prefix with `hf:`), local file paths (`.json`, `.csv`, `.jsonl`, `.txt`), or synthetic data configs (JSON object or `key=value` pairs like `prompt_tokens=256,output_tokens=128`)
 - `--data-args`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `prompt_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
 - `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
+- `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths
 
 ### Request Types and API Targets
 
@@ -205,8 +208,7 @@ guidellm benchmark \
 
 **Key parameters:**
 
-- `--request-type`: Specifies the API endpoint format - options include `chat_completions` (chat API format), `completions` (text completion format), and other OpenAI-compatible request types
-- `--processor`: Tokenizer or processor name for token counting - if not provided, automatically loads from the model; accepts HuggingFace model IDs or local paths
+- `--request-type`: Specifies the API endpoint format - options include `chat_completions` (chat API format), `completions` (text completion format), `audio_transcription` (audio transcription), and `audio_translation` (audio translation).
 
 ### Using Scenarios
 
@@ -236,7 +238,7 @@ guidellm benchmark \
 
 **Key parameters:**
 
-- `--warmup`: Warm-up specification - values between 0 and 1 represent a percentage of total requests/time, values ≥1 represent absolute request or time counts (interpretation depends on active constraint)
+- `--warmup`: Warm-up specification - values between 0 and 1 represent a percentage of total requests/time, values ≥1 represent absolute request or time units.
 - `--cooldown`: Cool-down specification - same format as warmup, excludes final portion of benchmark from analysis to avoid shutdown effects
 - `--max-seconds`: Maximum duration in seconds for each benchmark before automatic termination
 - `--max-requests`: Maximum number of requests per benchmark before automatic termination

@@ -75,6 +75,7 @@ For deeper analysis, GuideLLM saves detailed results to multiple files by defaul
 GuideLLM supports multiple output formats that can be customized:
 
 - **JSON**: Complete benchmark data in JSON format with full request samples
+- **YAML**: Complete benchmark data in YAML format with full request samples
 - **CSV**: Summary of key metrics in CSV format suitable for spreadsheets
 - **HTML**: Interactive HTML report with tables and visualizations
 - **Console**: Terminal output displayed during execution
@@ -83,6 +84,12 @@ To specify which formats to generate, use the `--outputs` argument:
 
 ```bash
 guidellm benchmark --target "http://localhost:8000" --outputs json csv
+```
+
+The `--outputs` argument additionally accepts full file names to further customize/differentiate outputs:
+
+```bash
+guidellm benchmark --target "http://localhost:8000" --outputs results/benchmarks.json results/summary.csv
 ```
 
 To change the output directory, use the `--output-dir` argument:
