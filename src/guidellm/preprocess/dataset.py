@@ -11,6 +11,12 @@ from loguru import logger
 from pydantic import BaseModel, Field
 from transformers import PreTrainedTokenizerBase
 
+from guidellm.data.deserializers import (
+    DatasetDeserializerFactory,
+    SyntheticTextDatasetConfig,
+    SyntheticTextDatasetDeserializer,
+)
+from guidellm.data.preprocessors import GenerativeColumnMapper
 from guidellm.utils import IntegerRangeSampler, check_load_processor
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
 
@@ -100,7 +106,6 @@ def handle_pad_strategy(
     :param pad_multiplier: Multiplier for padding character length.
     :return: Padded prompt string.
     """
-
     tokens = tokenizer.encode(current_prompt)
     pad_count = 1
     prompt = current_prompt
@@ -231,17 +236,47 @@ def _validate_output_suffix(output_path: str | Path) -> None:
         )
 
 
+def parse_synthetic_config(
+    config_input: str | Path,
+) -> SyntheticTextDatasetConfig:
+    """
+    Parse SyntheticTextDatasetConfig from string or file path.
+
+    Reuses SyntheticTextDatasetDeserializer's parsing logic to support:
+    - JSON strings
+    - Key=value pairs
+    - File paths (.json, .yaml, .yml, .config)
+
+    :param config_input: String or path to config.
+    :return: Parsed SyntheticTextDatasetConfig instance.
+    :raises ValueError: If the format is not recognized or parsing fails.
+    """
+    deserializer = SyntheticTextDatasetDeserializer()
+    config = deserializer.load_config(config_input)
+
+    if config is not None:
+        return config
+
+    raise ValueError(
+        f"Could not parse config from input: {config_input}. "
+        "Expected JSON string, key=value pairs, or file path "
+        "(.json, .yaml, .yml, .config)"
+    )
+
+
 def process_dataset(
     data: str | Path,
     output_path: str | Path,
     processor: str | Path | PreTrainedTokenizerBase,
-    prompt_tokens: str | Path,
-    output_tokens: str | Path,
+    config: str | Path,
     processor_args: dict[str, Any] | None = None,
-    data_args: dict[str, Any] | None = None,  # noqa: ARG001
+    data_args: dict[str, Any] | None = None,
+    data_column_mapper: dict[str, str] | None = None,
     short_prompt_strategy: ShortPromptStrategy = ShortPromptStrategy.IGNORE,
     pad_char: str | None = None,
     concat_delimiter: str | None = None,
+    prefix_tokens: int | None = None,
+    include_prefix_in_token_count: bool = False,
     push_to_hub: bool = False,
     hub_dataset_id: str | None = None,
     random_seed: int = 42,
@@ -252,89 +287,350 @@ def process_dataset(
     :param data: Path or identifier for dataset input.
     :param output_path: File path to save the processed dataset.
     :param processor: Tokenizer object or its config.
-    :param prompt_tokens: Prompt token config string or file.
-    :param output_tokens: Output token config string or file.
+    :param config: SyntheticTextDatasetConfig string or file path.
     :param processor_args: Optional processor arguments.
     :param data_args: Optional data loading arguments.
+    :param data_column_mapper: Optional column mapping dictionary.
     :param short_prompt_strategy: Strategy for handling short prompts.
     :param pad_char: Character used when padding short prompts.
     :param concat_delimiter: Delimiter for concatenation strategy.
+    :param prefix_tokens: Optional single prefix token count (alt. to prefix_buckets).
+    :param include_prefix_in_token_count:
+        Whether to include prefix in prompt token count, simplifying the token counts.
     :param push_to_hub: Whether to push to Hugging Face Hub.
     :param hub_dataset_id: Dataset ID on Hugging Face Hub.
     :param random_seed: Seed for random sampling.
-    :raises ValueError: If output path is invalid or pushing conditions unmet.
+    :raises ValueError: If the output path is invalid or pushing conditions unmet.
     """
-
     _validate_output_suffix(output_path)
     logger.info(
-        f"Starting dataset conversion | Input: {data} | Output directory: {output_path}"
+        f"Starting dataset conversion | Input: {data} | Output: {output_path}"
     )
 
-    dataset, column_mappings = None, None
+    # Parse config
+    config_obj = parse_synthetic_config(config)
+
+    # Load tokenizer
     tokenizer = check_load_processor(
         processor,
         processor_args,
         "dataset conversion.",
     )
-    prompt_column = column_mappings.get("prompt_column")  # type: ignore[attr-defined]
-    output_column = column_mappings.get(  # type: ignore[attr-defined]
-        "output_tokens_count_column", "output_tokens_count"
+
+    # Load dataset
+    dataset = DatasetDeserializerFactory.deserialize(
+        data=data,
+        processor_factory=lambda: tokenizer,
+        random_seed=random_seed,
+        **(data_args or {}),
     )
 
-    prompt_tokens_cfg = TokensConfig.parse_str(prompt_tokens)
-    output_tokens_cfg = TokensConfig.parse_str(output_tokens)
+    # Setup column mapper
+    column_mapper = GenerativeColumnMapper(column_mappings=data_column_mapper)
+    column_mapper.setup_data(
+        datasets=[dataset],
+        data_args=[data_args or {}],
+    )
 
+    # Extract column names from mapper
+    prompt_column, prefix_column, output_column = _extract_column_names(column_mapper)
+
+    # Create token samplers
+    prompt_token_sampler, output_token_sampler, prefix_token_sampler = (
+        _create_token_samplers(
+            config_obj,
+            prefix_tokens,
+            include_prefix_in_token_count,
+            random_seed,
+        )
+    )
+
+    # Process dataset
+    dataset_iterator = iter(dataset)
+    processed_prompts = []
+    prompt_handler = STRATEGY_HANDLERS[short_prompt_strategy]
+
+    for row in dataset_iterator:
+        processed_row = _process_single_row(
+            row=row,
+            prompt_column=prompt_column,
+            prefix_column=prefix_column,
+            prompt_token_sampler=prompt_token_sampler,
+            output_token_sampler=output_token_sampler,
+            prefix_token_sampler=prefix_token_sampler,
+            tokenizer=tokenizer,
+            prompt_handler=prompt_handler,
+            dataset_iterator=dataset_iterator,
+            include_prefix_in_token_count=include_prefix_in_token_count,
+            pad_char=pad_char,
+            concat_delimiter=concat_delimiter,
+            output_column=output_column,
+        )
+        if processed_row is not None:
+            processed_prompts.append(processed_row)
+
+        # Finalize
+    _finalize_processed_dataset(
+        processed_prompts,
+        output_path,
+        push_to_hub,
+        hub_dataset_id,
+    )
+
+
+def _extract_column_names(
+    column_mapper: GenerativeColumnMapper,
+) -> tuple[str, str | None, str]:
+    """
+    Extract column names for prompt, prefix, and output from column mapper.
+
+    :param column_mapper: Initialized column mapper.
+    :return: Tuple of (prompt_column, prefix_column, output_column).
+    :raises ValueError: If column mapper is not properly initialized.
+    """
+    if column_mapper.datasets_column_mappings is None:
+        raise ValueError("Column mapper not properly initialized")
+
+    text_mappings = column_mapper.datasets_column_mappings.get("text_column", [])
+    if not text_mappings:
+        raise ValueError("Could not find text column in dataset")
+    prompt_column = text_mappings[0][1]
+
+    prefix_mappings = column_mapper.datasets_column_mappings.get("prefix_column", [])
+    prefix_column = prefix_mappings[0][1] if prefix_mappings else None
+
+    output_mappings = column_mapper.datasets_column_mappings.get(
+        "output_tokens_count_column", []
+    )
+    output_column = (
+        output_mappings[0][1] if output_mappings else "output_tokens_count"
+    )
+
+    return prompt_column, prefix_column, output_column
+
+
+def _create_token_samplers(
+    config_obj: SyntheticTextDatasetConfig,
+    prefix_tokens: int | None,
+    include_prefix_in_token_count: bool,
+    random_seed: int,
+) -> tuple[Iterator[int], Iterator[int], Iterator[int] | None]:
+    """
+    Create token samplers for prompt, output, and prefix tokens.
+
+    :param config_obj: Configuration object with token settings.
+    :param prefix_tokens: Optional single prefix token count.
+    :param include_prefix_in_token_count: Whether prefix is included in prompt count.
+    :param random_seed: Seed for random sampling.
+    :return: Tuple of (prompt_sampler, output_sampler, prefix_sampler).
+    """
     prompt_token_sampler = iter(
         IntegerRangeSampler(
-            average=prompt_tokens_cfg.average,
-            variance=prompt_tokens_cfg.stdev,
-            min_value=prompt_tokens_cfg.min,
-            max_value=prompt_tokens_cfg.max,
+            average=config_obj.prompt_tokens,
+            variance=config_obj.prompt_tokens_stdev,
+            min_value=config_obj.prompt_tokens_min,
+            max_value=config_obj.prompt_tokens_max,
             random_seed=random_seed,
         )
     )
 
     output_token_sampler = iter(
         IntegerRangeSampler(
-            average=output_tokens_cfg.average,
-            variance=output_tokens_cfg.stdev,
-            min_value=output_tokens_cfg.min,
-            max_value=output_tokens_cfg.max,
+            average=config_obj.output_tokens,
+            variance=config_obj.output_tokens_stdev,
+            min_value=config_obj.output_tokens_min,
+            max_value=config_obj.output_tokens_max,
             random_seed=random_seed,
         )
     )
 
-    dataset_iterator = iter(dataset)  # type: ignore[call-overload]
-    processed_prompts = []
-    prompt_handler = STRATEGY_HANDLERS[short_prompt_strategy]
+    prefix_token_sampler = _create_prefix_token_sampler(
+        config_obj.prefix_buckets,
+        prefix_tokens,
+        include_prefix_in_token_count,
+        random_seed,
+    )
 
-    for prompt_row in dataset_iterator:
-        prompt_text = prompt_row[prompt_column]
-        target_prompt_len = next(prompt_token_sampler)
+    return prompt_token_sampler, output_token_sampler, prefix_token_sampler
 
-        prompt_text = prompt_handler(
-            current_prompt=prompt_text,
-            min_prompt_tokens=target_prompt_len,
-            dataset_iterator=dataset_iterator,
-            prompt_column=prompt_column,
-            tokenizer=tokenizer,
-            pad_char=pad_char,
-            concat_delimiter=concat_delimiter,
+
+def _create_prefix_token_sampler(
+    prefix_buckets: list | None,
+    prefix_tokens: int | None,
+    include_prefix_in_token_count: bool,
+    random_seed: int,
+) -> Iterator[int] | None:
+    """
+    Create prefix token sampler if needed.
+
+    :param prefix_buckets: List of prefix buckets from config.
+    :param prefix_tokens: Optional single prefix token count.
+    :param include_prefix_in_token_count: Whether prefix is included in prompt count.
+    :param random_seed: Seed for random sampling.
+    :return: Prefix token sampler iterator or None.
+    """
+    if include_prefix_in_token_count or (not prefix_buckets and prefix_tokens is None):
+        return None
+
+    if prefix_tokens is not None:
+        return iter(
+            IntegerRangeSampler(
+                average=prefix_tokens,
+                variance=None,
+                min_value=prefix_tokens,
+                max_value=prefix_tokens,
+                random_seed=random_seed,
+            )
         )
-        if prompt_text is None:
-            continue
 
+    # Use prefix buckets with weighted sampling
+    from random import Random
+    rand = Random(random_seed)
+    bucket_choices = []
+    for bucket in prefix_buckets:
+        bucket_choices.extend([bucket.prefix_tokens] * bucket.bucket_weight)
+
+    def prefix_sampler():
+        while True:
+            yield rand.choice(bucket_choices)
+
+    return prefix_sampler()
+
+
+def _process_dataset_row(
+    row: dict[str, Any],
+    prompt_column: str,
+    prefix_column: str | None,
+    output_column: str,
+    target_output_len: int,
+    prompt_text: str,
+    prefix_text: str | None,
+    tokens: list[int],
+) -> dict[str, Any]:
+    """
+    Create a processed row from the processed prompt/prefix data.
+
+    :param row: Original dataset row.
+    :param prompt_column: Name of prompt column.
+    :param prefix_column: Name of prefix column or None.
+    :param output_column: Name of output tokens count column.
+    :param target_prompt_len: Target prompt token length.
+    :param target_output_len: Target output token length.
+    :param prompt_text: Processed prompt text.
+    :param prefix_text: Processed prefix text or None.
+    :param tokens: Tokenized prompt.
+    :return: Processed row dictionary.
+    """
+    processed_row = row.copy()
+    processed_row[prompt_column] = prompt_text
+    if prefix_column and prefix_text:
+        processed_row[prefix_column] = prefix_text
+    processed_row["prompt_tokens_count"] = len(tokens)
+    processed_row[output_column] = target_output_len
+    return processed_row
+
+
+def _process_single_row(
+    row: dict[str, Any],
+    prompt_column: str,
+    prefix_column: str | None,
+    prompt_token_sampler: Iterator[int],
+    output_token_sampler: Iterator[int],
+    prefix_token_sampler: Iterator[int] | None,
+    tokenizer: PreTrainedTokenizerBase,
+    prompt_handler: Callable,
+    dataset_iterator: Iterator[dict[str, Any]],
+    include_prefix_in_token_count: bool,
+    pad_char: str | None,
+    concat_delimiter: str | None,
+    output_column: str,
+) -> dict[str, Any] | None:
+    """
+    Process a single row from the dataset.
+
+    :return: Processed row dictionary or None if row should be skipped.
+    """
+    # Extract prompt and prefix
+    prompt_text = row.get(prompt_column, "")
+    prefix_text = row.get(prefix_column) if prefix_column else None
+
+    # Sample target prompt token count
+    target_prompt_len = next(prompt_token_sampler)
+    count_adjustment = 0
+
+    # Handle prefix
+    if prefix_text:
+        if prefix_token_sampler:
+            target_prefix_len = next(prefix_token_sampler)
+            prefix_tokens_list = tokenizer.encode(prefix_text)
+            if len(prefix_tokens_list) > target_prefix_len:
+                prefix_text = tokenizer.decode(
+                    prefix_tokens_list[:target_prefix_len]
+                )
+        if include_prefix_in_token_count:
+            count_adjustment = len(tokenizer.encode(prefix_text))
+
+    if target_prompt_len == 0:
+        logger.warning("zero prompt size requested; skipping row")
+        return None
+    elif count_adjustment > 0:
+        adjusted_prompt_len = target_prompt_len - count_adjustment
+        if adjusted_prompt_len <= 0:
+            logger.warning("The prefix exceeds target output length with "
+                           "--include-prefix-in-token-count enabled; Using prompt size"
+                            "of 1; skipping row")
+            return None
+        target_prompt_len = adjusted_prompt_len
+
+    # Handle short prompts
+    prompt_text = prompt_handler(
+        current_prompt=prompt_text,
+        min_prompt_tokens=target_prompt_len,
+        dataset_iterator=dataset_iterator,
+        prompt_column=prompt_column,
+        tokenizer=tokenizer,
+        pad_char=pad_char,
+        concat_delimiter=concat_delimiter,
+    )
+    if prompt_text is None:
+        return None
+
+    # Trim long prompts
+    tokens = tokenizer.encode(prompt_text)
+    if len(tokens) > target_prompt_len:
+        prompt_text = tokenizer.decode(tokens[:target_prompt_len])
         tokens = tokenizer.encode(prompt_text)
-        if len(tokens) > target_prompt_len:
-            prompt_text = tokenizer.decode(tokens[:target_prompt_len])
 
-        processed_prompt = prompt_row.copy()
-        processed_prompt[prompt_column] = prompt_text
-        processed_prompt["prompt_tokens_count"] = target_prompt_len
-        processed_prompt[output_column] = next(output_token_sampler)
+    # Sample output token count
+    target_output_len = next(output_token_sampler)
 
-        processed_prompts.append(processed_prompt)
+    # Create processed row
+    return _process_dataset_row(
+        row=row,
+        prompt_column=prompt_column,
+        prefix_column=prefix_column,
+        output_column=output_column,
+        target_output_len=target_output_len,
+        prompt_text=prompt_text,
+        prefix_text=prefix_text,
+        tokens=tokens,
+    )
 
+
+def _finalize_processed_dataset(
+    processed_prompts: list[dict[str, Any]],
+    output_path: str | Path,
+    push_to_hub: bool,
+    hub_dataset_id: str | None,
+) -> None:
+    """
+    Finalize the processed dataset by saving and optionally pushing to hub.
+
+    :param processed_prompts: List of processed row dictionaries.
+    :param output_path: Path to save the dataset.
+    :param push_to_hub: Whether to push to Hugging Face Hub.
+    :param hub_dataset_id: Dataset ID on Hugging Face Hub.
+    """
     if not processed_prompts:
         logger.error("No prompts remained after processing")
         return

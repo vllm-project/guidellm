@@ -235,12 +235,8 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
         random_seed: int,
         **data_kwargs: dict[str, Any],
     ) -> IterableDataset:
-        # Config file pathways, deserialize and call self again
-        if (config := self._load_config_file(data)) is not None:
-            return self(config, processor_factory, random_seed, **data_kwargs)
-
-        # Config str pathways, deserialize and call self again
-        if (config := self._load_config_str(data)) is not None:
+        # Config file and string pathways; deserialize and call self again
+        if (config := self.load_config(data)) is not None:
             return self(config, processor_factory, random_seed, **data_kwargs)
 
         # Try to parse dict-like data directly
@@ -271,7 +267,23 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             ),
         )
 
-    def _load_config_dict(self, data: Any) -> SyntheticTextDatasetConfig | None:
+    def load_config(self, config: Any) -> SyntheticTextDatasetConfig | None:
+        # Try file path first
+        if (loaded_config := self._load_config_file(config)) is not None:
+            return loaded_config
+
+        # Try dict parsing next
+        if (loaded_config := self._load_config_dict(config)) is not None:
+            return loaded_config
+
+        # Try string parsing
+        if (loaded_config := self._load_config_str(config)) is not None:
+            return loaded_config
+
+        return None
+
+    @staticmethod
+    def _load_config_dict(data: Any) -> SyntheticTextDatasetConfig | None:
         if not isinstance(data, dict | list):
             return None
 
@@ -280,7 +292,8 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
         except ValidationError:
             return None
 
-    def _load_config_file(self, data: Any) -> SyntheticTextDatasetConfig | None:
+    @staticmethod
+    def _load_config_file(data: Any) -> SyntheticTextDatasetConfig | None:
         if (not isinstance(data, str) and not isinstance(data, Path)) or (
             not Path(data).is_file()
         ):
@@ -320,7 +333,8 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             raise DataNotSupportedError(err_message) from error
         raise DataNotSupportedError(err_message)
 
-    def _load_config_str(self, data: str) -> SyntheticTextDatasetConfig | None:
+    @staticmethod
+    def _load_config_str(data: str) -> SyntheticTextDatasetConfig | None:
         if not isinstance(data, str):
             return None
 
