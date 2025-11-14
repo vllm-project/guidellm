@@ -19,7 +19,8 @@ To run a benchmark against your local vLLM server with default settings:
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data "prompt_tokens=256,output_tokens=128"
+  --data "prompt_tokens=256,output_tokens=128" \
+  --max-seconds 60
 ```
 
 This command:
@@ -63,7 +64,7 @@ GuideLLM supports several benchmark profiles and strategies:
 
 ### Data Options
 
-For synthetic data, you can customize:
+For synthetic data, some key options include, among others:
 
 - `prompt_tokens`: Average number of tokens for prompts
 - `output_tokens`: Average number of tokens for outputs
@@ -72,7 +73,7 @@ For synthetic data, you can customize:
 For a complete list of options, run:
 
 ```bash
-guidellm benchmark --help
+guidellm benchmark run --help
 ```
 
 ## Working with Real Data
