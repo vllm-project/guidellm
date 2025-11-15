@@ -124,6 +124,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         """
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
+        self.streaming_response_id: str | None = None
 
     def compile_non_streaming(
         self, request: GenerationRequest, response: dict
@@ -163,6 +164,9 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         """
         if not (data := self.extract_line_data(line)):
             return None if data is None else 0
+        
+        if "id" in data and self.streaming_response_id is None:
+            self.streaming_response_id = data["id"]
 
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
@@ -192,6 +196,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
+            response_id=self.streaming_response_id, # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
