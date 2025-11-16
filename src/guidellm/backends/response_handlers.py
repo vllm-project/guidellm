@@ -146,7 +146,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            response_id=response.get("id"), # use vLLM ID if available
+            response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
@@ -196,7 +196,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            response_id=self.streaming_response_id, # use vLLM ID if available
+            response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
@@ -312,7 +312,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            response_id=response.get("id"), # use vLLM ID if available
+            response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
@@ -362,7 +362,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            response_id=self.streaming_response_id, # use vLLM ID if available
+            response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
@@ -398,7 +398,6 @@ class AudioResponseHandler:
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
 
-
     def compile_non_streaming(
         self, request: GenerationRequest, response: dict
     ) -> GenerationResponse:
@@ -421,7 +420,7 @@ class AudioResponseHandler:
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            response_id=response.get("id"), # use vLLM ID if available
+            response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
