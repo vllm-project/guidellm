@@ -15,7 +15,10 @@ from pydantic import Field
 from guidellm.scheduler.schemas import SchedulerState, SchedulerUpdateAction
 from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.utils import InfoMixin
-from .protocols import Constraint, ConstraintInitializer, SerializableConstraintInitializer
+
+from .protocols import (
+    Constraint,
+)
 
 __all__ = [
     "PydanticConstraintInitializer",
@@ -130,4 +133,3 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
             "Cannot invoke unserializable constraint instance. "
             "This constraint was not properly serialized and cannot be executed."
         )
-

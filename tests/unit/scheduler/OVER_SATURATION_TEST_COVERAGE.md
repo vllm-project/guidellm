@@ -142,7 +142,7 @@ This document outlines the comprehensive unit test coverage for the over-saturat
 - **Focus**: Basic initialization, core algorithms, critical paths
 
 ### Sanity Tests (`@pytest.mark.sanity`)
-- **Count**: 21 tests  
+- **Count**: 21 tests
 - **Purpose**: Comprehensive validation of feature behavior
 - **Runtime**: 1-3 minutes total
 - **Focus**: Realistic scenarios, robustness, edge cases
@@ -156,7 +156,7 @@ This document outlines the comprehensive unit test coverage for the over-saturat
 - ✅ **Threshold detection**: TTFT violations and concurrent request tracking
 - ✅ **Statistical significance**: Margin of error and confidence testing
 
-### Integration Coverage  
+### Integration Coverage
 - ✅ **Detector ↔ Constraint**: Proper data flow and decision making
 - ✅ **Constraint ↔ Scheduler**: State integration and action generation
 - ✅ **Factory ↔ Initializer**: Proper constraint creation and configuration
@@ -164,14 +164,14 @@ This document outlines the comprehensive unit test coverage for the over-saturat
 
 ### Robustness Coverage
 - ✅ **Empty data**: No crashes or false positives
-- ✅ **Malformed data**: Proper validation and error handling  
+- ✅ **Malformed data**: Proper validation and error handling
 - ✅ **Extreme values**: Numerical stability maintained
 - ✅ **Memory management**: Bounded growth under stress
 - ✅ **Performance**: Efficiency maintained at scale
 
 ### Scenario Coverage
 - ✅ **Gradual degradation**: Detected correctly
-- ✅ **Sudden spikes**: Detected correctly  
+- ✅ **Sudden spikes**: Detected correctly
 - ✅ **Stable performance**: No false positives
 - ✅ **Recovery patterns**: Proper handling
 - ✅ **Variable workloads**: Robust detection
