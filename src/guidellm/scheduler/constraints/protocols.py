@@ -85,4 +85,3 @@ class SerializableConstraintInitializer(Protocol):
         :param kwargs: Additional configuration parameters
         :return: Configured constraint evaluation function
         """
-

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from guidellm.utils import InfoMixin, RegistryMixin
+
 from .base import UnserializableConstraintInitializer
 from .protocols import (
     Constraint,
@@ -180,4 +181,3 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
                 resolved_constraints[key] = cls.create_constraint(key, val)
 
         return resolved_constraints
-

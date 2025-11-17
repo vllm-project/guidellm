@@ -154,9 +154,7 @@ class TestOverSaturationDetector:
     @pytest.mark.sanity
     def test_check_alert_requires_minimum_window_size(self):
         """Test that check_alert requires minimum window size."""
-        detector = OverSaturationDetector(
-            minimum_duration=0.0, minimum_window_size=10
-        )
+        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=10)
 
         # Add few requests
         for i in range(5):
@@ -291,15 +289,11 @@ class TestOverSaturationConstraint:
         # Simulate over-saturation by creating positive slopes
         # Add many started requests with increasing concurrent count
         for i in range(20):
-            detector.add_started(
-                {"concurrent_requests": i * 2, "duration": float(i)}
-            )
+            detector.add_started({"concurrent_requests": i * 2, "duration": float(i)})
 
         # Add finished requests with increasing TTFT
         for i in range(20):
-            detector.add_finished(
-                {"ttft": 1.0 + i * 0.1, "duration": float(i) + 10.0}
-            )
+            detector.add_finished({"ttft": 1.0 + i * 0.1, "duration": float(i) + 10.0})
 
         detector.update_duration(30.0)
         detector.check_alert()  # Prime the slope checkers
@@ -363,7 +357,11 @@ class TestOverSaturationConstraintInitializer:
         params=[
             {"stop_over_saturated": True},
             {"stop_over_saturated": False},
-            {"stop_over_saturated": True, "min_seconds": 10.0, "max_window_seconds": 60.0},
+            {
+                "stop_over_saturated": True,
+                "min_seconds": 10.0,
+                "max_window_seconds": 60.0,
+            },
         ]
     )
     def valid_instances(self, request):
@@ -619,4 +617,3 @@ class TestSlopeChecker:
         slope_checker.add_data_point(3.0, 6.0)
         result = slope_checker.check_slope(3.0)
         # Might be True or False depending on confidence intervals
-

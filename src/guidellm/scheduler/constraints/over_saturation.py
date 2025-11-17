@@ -14,9 +14,13 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from guidellm.scheduler.schemas import SchedulerState, SchedulerUpdateAction
+from guidellm.scheduler.schemas import (
+    SchedulerState,
+    SchedulerUpdateAction,
+)
 from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
+
 from .base import PydanticConstraintInitializer
 from .factory import ConstraintsInitializerFactory
 from .protocols import Constraint
@@ -362,10 +366,10 @@ class OverSaturationConstraint:  # type: ignore[misc]
         elif (
             request_info.status == "completed"
             and request_info.timings
-            and request_info.timings.first_iteration
+            and request_info.timings.first_token_iteration
         ):
             ttft = (
-                request_info.timings.first_iteration
+                request_info.timings.first_token_iteration
                 - request_info.timings.request_start
             )
             self.over_saturation_detector.add_finished(
@@ -436,13 +440,13 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
             minimum_duration=self.min_seconds,
             maximum_window_seconds=self.max_window_seconds,
         )
-        return OverSaturationConstraint(
+        return OverSaturationConstraint(  # type: ignore[return-value]
             over_saturation_detector=over_saturation_detector,
             stop_over_saturated=self.stop_over_saturated,
         )
 
     @classmethod
-    def validated_kwargs(cls, stop_over_saturated: bool, **kwargs) -> dict[str, Any]:
+    def validated_kwargs(cls, stop_over_saturated: bool | None = None, **kwargs) -> dict[str, Any]:
         """
         Validate and process arguments for OverSaturationConstraint creation.
 
@@ -451,8 +455,10 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         :return: Validated dictionary with stop_over_saturated field
         """
         aliases = ["stop_over_saturated", "stop_over_sat", "stop_osd"]
+        result = stop_over_saturated if stop_over_saturated is not None else False
         for alias in aliases:
-            stop_over_saturated = stop_over_saturated or kwargs.get(alias)
+            alias_value = kwargs.get(alias)
+            if alias_value is not None:
+                result = bool(alias_value) or result
 
-        return {"stop_over_saturated": stop_over_saturated}
-
+        return {"stop_over_saturated": result}
