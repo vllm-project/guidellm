@@ -283,6 +283,10 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     max_global_error_rate: float | None = Field(
         default=None, description="Maximum global error rate (0-1) before stopping"
     )
+    stop_over_saturated: bool = Field(
+        default=False,
+        description="Whether to stop the benchmark if over-saturation is detected",
+    )
 
     @field_validator("data", "data_args", "rate", mode="wrap")
     @classmethod
