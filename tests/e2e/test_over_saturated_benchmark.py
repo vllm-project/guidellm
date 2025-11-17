@@ -33,7 +33,6 @@ def server():
         server.stop()  # Teardown: Stop the server after tests are done
 
 
-@pytest.mark.skip(reason="Skipping future feature test")
 @pytest.mark.timeout(60)
 def test_over_saturated_benchmark(server: VllmSimServer):
     """
