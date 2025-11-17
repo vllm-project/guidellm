@@ -30,7 +30,7 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 
-from guidellm.preprocess import process_dataset, ShortPromptStrategy
+from guidellm.data import process_dataset, ShortPromptStrategy
 
 try:
     import uvloop
