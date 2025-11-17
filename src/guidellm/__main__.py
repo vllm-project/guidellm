@@ -384,6 +384,16 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("max_global_error_rate"),
     help="Maximum global error rate across all benchmarks.",
 )
+@click.option(
+    "--stop-over-saturated",
+    type=bool,
+    default=BenchmarkGenerativeTextArgs.get_default("stop_over_saturated"),
+    help=(
+        "Set this flag to stop the benchmark if the model is over-saturated. "
+        "Defaults to False."
+    ),
+    is_flag=True,
+)
 def run(**kwargs):
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)

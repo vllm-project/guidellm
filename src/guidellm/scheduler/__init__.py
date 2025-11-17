@@ -10,6 +10,11 @@ transitions, and handles multi-turn request sequences with customizable timing
 strategies and resource constraints.
 """
 
+from .advanced_constraints import (
+    OverSaturationConstraint,
+    OverSaturationConstraintInitializer,
+    OverSaturationDetector,
+)
 from .constraints import (
     Constraint,
     ConstraintInitializer,
@@ -66,6 +71,9 @@ __all__ = [
     "MaxNumberConstraint",
     "MultiTurnRequestT",
     "NonDistributedEnvironment",
+    "OverSaturationConstraint",
+    "OverSaturationConstraintInitializer",
+    "OverSaturationDetector",
     "PydanticConstraintInitializer",
     "RequestT",
     "ResponseT",
