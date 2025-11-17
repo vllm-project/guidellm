@@ -252,7 +252,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./src/ui/out
-          destination_dir: ui/pr/${{ steps.build.outputs.pr_number }}
+          destination_dir: ui/pr/${{ GITHUB_REF }}/${{ TAG }}
           keep_files: false
           user_name: ${{ github.actor }}
           user_email: ${{ github.actor }}@users.noreply.github.com
