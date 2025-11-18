@@ -236,9 +236,9 @@ jobs:
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
 
           # Set asset prefix and base path with PR number
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/pr/${{ github.ref_name }}
+          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/pr/${PR_NUMBER}
           USE_MOCK_DATA=true
-          BASE_PATH=/ui/pr/${{ github.ref_name }}
+          BASE_PATH=/ui/pr/${PR_NUMBER}
           GIT_SHA=${{ github.sha }}
           export ASSET_PREFIX=${ASSET_PREFIX}
           export BASE_PATH=${BASE_PATH}
@@ -252,7 +252,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./src/ui/out
-          destination_dir: ui/pr/${{ steps.build.outputs.pr_number }}
+          destination_dir: ui/pr/${{ github.ref_name }}
           keep_files: false
           user_name: ${{ github.actor }}
           user_email: ${{ github.actor }}@users.noreply.github.com
