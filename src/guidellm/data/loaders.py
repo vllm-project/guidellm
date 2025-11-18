@@ -119,6 +119,8 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                         # This should be fixed at some point.
                         row = preprocessor(row)  # type: ignore[assignment]
                     yield row  # type: ignore[misc]
+                except StopIteration:
+                    raise  # Stop iteration when any dataset is exhausted
                 except Exception as err:  # noqa: BLE001 # Exception logged
                     logger.error(f"Skipping data row due to error: {err}")
                     gen_count -= 1
