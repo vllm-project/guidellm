@@ -221,8 +221,8 @@ jobs:
           export $(grep -v '^#' .env.production | xargs)
 
           # Set asset prefix and base path with git tag
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/${TAG}
-          BASE_PATH=/ui/${TAG}
+          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/${{ github.ref_name }}
+          BASE_PATH=/ui/${{ github.ref_name }}
           GIT_SHA=${{ github.sha }}
           export ASSET_PREFIX=${ASSET_PREFIX}
           export BASE_PATH=${BASE_PATH}
