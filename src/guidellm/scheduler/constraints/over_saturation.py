@@ -367,6 +367,7 @@ class OverSaturationConstraint:  # type: ignore[misc]
             request_info.status == "completed"
             and request_info.timings
             and request_info.timings.first_token_iteration
+            and request_info.timings.request_start
         ):
             ttft = (
                 request_info.timings.first_token_iteration
@@ -446,7 +447,9 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         )
 
     @classmethod
-    def validated_kwargs(cls, stop_over_saturated: bool | None = None, **kwargs) -> dict[str, Any]:
+    def validated_kwargs(
+        cls, stop_over_saturated: bool | None = None, **kwargs
+    ) -> dict[str, Any]:
         """
         Validate and process arguments for OverSaturationConstraint creation.
 
