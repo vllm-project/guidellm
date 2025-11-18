@@ -5,6 +5,18 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
+  tests:
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    uses: ./.github/workflows/testing.yml
+    with:
+      python: ${{ matrix.python }}
+      args: -m "smoke or sanity"
+
+  ui-tests:
+    uses: ./.github/workflows/testing-ui.yml
+
   quality-checks:
     runs-on: ubuntu-latest
     strategy:
@@ -114,82 +126,8 @@ jobs:
       - name: Run pre-commit checks
         run: npx husky run pre-commit
 
-  unit-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run unit tests
-        run: tox -e test-unit
-
-  ui-unit-tests:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run unit tests
-        run: npm run test:unit
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run integration tests
-        run: tox -e test-integration -- -m smoke
-
-  ui-integration-tests:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run integration tests
-        run: npm run test:integration
-
   ui-pr-preview:
-    needs: [ui-quality-checks, ui-precommit-checks, ui-unit-tests, ui-integration-tests]
+    needs: [ui-quality-checks, ui-precommit-checks, ui-tests]
     permissions:
       contents: write
       pull-requests: write
