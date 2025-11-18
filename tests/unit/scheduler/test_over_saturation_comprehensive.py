@@ -17,7 +17,7 @@ from guidellm.scheduler import (
     SchedulerState,
     SchedulerUpdateAction,
 )
-from guidellm.scheduler.advanced_constraints.over_saturation import (
+from guidellm.scheduler.constraints.over_saturation import (
     SlopeChecker,
     approx_t_ppf,
 )
@@ -411,7 +411,8 @@ class TestOverSaturationConstraintIntegration:
             "ttft_slope",
             "ttft_n",
             "ttft_violations",  # Correct field name
-            # Note: total_started_ever, total_finished_ever, window sizes not in metadata
+            # Note: total_started_ever, total_finished_ever,
+            # window sizes not in metadata
         ]
 
         for field in required_fields:
@@ -840,5 +841,6 @@ class TestOverSaturationEdgeCasesAndRegression:
             detector.add_finished({"ttft": ttft, "duration": float(i)})
 
         assert detector.ttft_violations_counter == expected_violations, (
-            f"Expected {expected_violations} violations, got {detector.ttft_violations_counter}"
+            f"Expected {expected_violations} violations, "
+            f"got {detector.ttft_violations_counter}"
         )

@@ -208,7 +208,7 @@ class TestOverSaturationConstraint:
 
     @pytest.mark.smoke
     def test_initialization_valid(self, valid_instances):
-        """Test that OverSaturationConstraint can be initialized with valid parameters."""
+        """Test OverSaturationConstraint initialization with valid parameters."""
         constraint, constructor_args = valid_instances
 
         assert constraint.stop_over_saturated == constructor_args["stop_over_saturated"]
@@ -365,7 +365,7 @@ class TestOverSaturationConstraintInitializer:
         ]
     )
     def valid_instances(self, request):
-        """Create OverSaturationConstraintInitializer instances with valid parameters."""
+        """Create OverSaturationConstraintInitializer with valid parameters."""
         constructor_args = request.param
         instance = OverSaturationConstraintInitializer(**constructor_args)
         return instance, constructor_args
@@ -553,7 +553,7 @@ class TestSlopeChecker:
     @pytest.fixture
     def slope_checker(self):
         """Create a SlopeChecker instance for testing."""
-        from guidellm.scheduler.advanced_constraints.over_saturation import (
+        from guidellm.scheduler.constraints.over_saturation import (
             SlopeChecker,
         )
 
