@@ -574,7 +574,8 @@ def preprocess():
     "--include-prefix-in-token-count",
     is_flag=True,
     default=False,
-    help="Include prefix tokens in prompt token count calculation.",
+    help="Include prefix tokens in prompt token count calculation. When enabled, "
+         "prefix trimming is disabled and the prefix is kept as-is.",
 )
 @click.option(
     "--push-to-hub",

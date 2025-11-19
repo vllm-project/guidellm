@@ -1,14 +1,11 @@
-import json
 import os
 from collections.abc import Callable, Iterator
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml
 from datasets import Dataset
 from loguru import logger
-from pydantic import BaseModel, Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers import (
@@ -149,83 +146,6 @@ STRATEGY_HANDLERS: dict[ShortPromptStrategy, Callable] = {
 }
 
 
-class TokensConfig(BaseModel):
-    average: int = Field(
-        description="The average number of tokens.",
-        gt=0,
-    )
-    stdev: int | None = Field(
-        description="The standard deviation of the tokens.",
-        gt=0,
-        default=None,
-    )
-    min: int | None = Field(
-        description="The minimum number of tokens.",
-        gt=0,
-        default=None,
-    )
-    max: int | None = Field(
-        description="The maximum number of tokens.",
-        gt=0,
-        default=None,
-    )
-
-    @staticmethod
-    def parse_str(data: str | Path) -> "TokensConfig":
-        """
-        Parses a string or path into a TokensConfig object. Supports:
-        - JSON string
-        - key=value pairs
-        - file path to .yaml/.config
-
-        :param data: String or path containing configuration.
-        :return: Parsed TokensConfig instance.
-        :raises ValueError: If the format is not recognized.
-        """
-
-        if (
-            isinstance(data, Path)
-            or data.strip().endswith(".config")
-            or data.strip().endswith(".yaml")
-        ):
-            return TokensConfig.parse_config_file(data)
-
-        if data.strip().startswith("{"):
-            return TokensConfig.parse_json(data)
-
-        if data.count("=") > 1:
-            return TokensConfig.parse_key_value_pairs(data)
-
-        raise ValueError(
-            f"Unsupported data format. Expected JSON or key-value pairs, got {data}"
-        )
-
-    @staticmethod
-    def parse_json(data: str) -> "TokensConfig":
-        config_dict = json.loads(data.strip())
-
-        return TokensConfig(**config_dict)
-
-    @staticmethod
-    def parse_key_value_pairs(data: str) -> "TokensConfig":
-        config_dict = {}
-        items = data.strip().split(",")
-        for item in items:
-            key, value = item.split("=")
-            config_dict[key.strip()] = (
-                int(value.strip()) if value.strip().isnumeric() else value.strip()
-            )
-
-        return TokensConfig(**config_dict)  # type: ignore[arg-type]
-
-    @staticmethod
-    def parse_config_file(data: str | Path) -> "TokensConfig":
-        with Path(data).open("r") as file:
-            config_dict = yaml.safe_load(file)
-
-        return TokensConfig(**config_dict)
-
-
 def _validate_output_suffix(output_path: str | Path) -> None:
     output_path = Path(output_path)
     suffix = output_path.suffix.lower()
@@ -297,6 +217,8 @@ def process_dataset(
     :param prefix_tokens: Optional single prefix token count (alt. to prefix_buckets).
     :param include_prefix_in_token_count:
         Whether to include prefix in prompt token count, simplifying the token counts.
+        When True, prefix trimming is disabled and the prefix is kept as-is. The prefix
+        token count is subtracted from the prompt token budget instead.
     :param push_to_hub: Whether to push to Hugging Face Hub.
     :param hub_dataset_id: Dataset ID on Hugging Face Hub.
     :param random_seed: Seed for random sampling.
@@ -326,7 +248,7 @@ def process_dataset(
     )
 
     # Setup column mapper
-    column_mapper = GenerativeColumnMapper(column_mappings=data_column_mapper)
+    column_mapper = GenerativeColumnMapper(column_mappings=data_column_mapper)  # type: ignore[arg-type]
     column_mapper.setup_data(
         datasets=[dataset],
         data_args=[data_args or {}],
@@ -421,8 +343,10 @@ def _create_token_samplers(
     :param config_obj: Configuration object with token settings.
     :param prefix_tokens: Optional single prefix token count.
     :param include_prefix_in_token_count: Whether prefix is included in prompt count.
+        When True, disables prefix trimming (prefix_sampler will be None).
     :param random_seed: Seed for random sampling.
     :return: Tuple of (prompt_sampler, output_sampler, prefix_sampler).
+        prefix_sampler is None when include_prefix_in_token_count is True.
     """
     prompt_token_sampler = iter(
         IntegerRangeSampler(
@@ -466,10 +390,12 @@ def _create_prefix_token_sampler(
     :param prefix_buckets: List of prefix buckets from config.
     :param prefix_tokens: Optional single prefix token count.
     :param include_prefix_in_token_count: Whether prefix is included in prompt count.
+        When True, prefix trimming is disabled and this returns None (no sampler).
     :param random_seed: Seed for random sampling.
-    :return: Prefix token sampler iterator or None.
+    :return: Prefix token sampler iterator or None. Returns None when
+        include_prefix_in_token_count is True, which disables prefix trimming.
     """
-    if include_prefix_in_token_count or (not prefix_buckets and prefix_tokens is None):
+    if include_prefix_in_token_count:
         return None
 
     if prefix_tokens is not None:
@@ -482,6 +408,9 @@ def _create_prefix_token_sampler(
                 random_seed=random_seed,
             )
         )
+
+    if prefix_buckets is None:
+        return None  # No configuration
 
     # Use prefix buckets with weighted sampling
     from random import Random
@@ -548,6 +477,8 @@ def _process_single_row(
     """
     Process a single row from the dataset.
 
+    :param include_prefix_in_token_count: When True, disables prefix trimming and
+        includes prefix tokens in the prompt token count calculation.
     :return: Processed row dictionary or None if row should be skipped.
     """
     # Extract prompt and prefix
@@ -560,6 +491,9 @@ def _process_single_row(
 
     # Handle prefix
     if prefix_text:
+        # Prefix trimming only occurs when include_prefix_in_token_count is False.
+        # When include_prefix_in_token_count is True, prefix_token_sampler is None
+        # and the prefix is kept as-is (no trimming).
         if prefix_token_sampler:
             target_prefix_len = next(prefix_token_sampler)
             prefix_tokens_list = tokenizer.encode(prefix_text)
