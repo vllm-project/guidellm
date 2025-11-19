@@ -12,43 +12,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run quality checks
+        uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run quality checks
-        run: tox -e quality
+          tox-env: quality
 
   type-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run type checks
+        uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run quality checks
-        run: tox -e types
+          tox-env: types
 
   precommit-checks:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ inputs.python }}
       - name: Install dependencies
         run: pip install pre-commit
       - name: Run pre-commit checks

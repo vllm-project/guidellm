@@ -15,31 +15,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run unit tests
+        uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run unit tests
-        run: tox -e test-unit -- ${{ inputs.args }}
+          tox-env: test-unit
+          tox-args: ${{ inputs.args }}
 
   integration-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run integration tests
+        uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run integration tests
-        run: tox -e test-integration -- ${{ inputs.args }}
+          tox-env: test-integration
+          tox-args: ${{ inputs.args }}
 
   e2e-tests:
     runs-on: ubuntu-latest
@@ -77,13 +69,9 @@ jobs:
             exit 1
           fi
         shell: bash
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run end-to-end tests
+        uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run end-to-end tests
-        run: tox -e test-e2e -- ${{ inputs.args }}
+          tox-env: test-e2e
+          tox-args: ${{ inputs.args }}

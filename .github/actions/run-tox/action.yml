@@ -1,0 +1,28 @@
+name: 'Run tox with environment'
+description: 'Runs tox with pdm as the package manager'
+inputs:
+  python-version:
+    type: string
+    required: true
+  tox-env:
+    type: string
+    required: true
+  tox-args:
+    type: string
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install dependencies
+      run: |
+        curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+        pip install tox tox-pdm
+      shell: bash
+    - name: Run tox
+      run: |
+        tox run -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }}
+      shell: bash
