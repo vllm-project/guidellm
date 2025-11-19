@@ -15,7 +15,7 @@ jobs:
       python: ${{ matrix.python }}
 
   ui-tests:
-    uses: ./.github/workflows/testing-ui.yml
+    uses: ./.github/workflows/ui-testing.yml
 
   build-and-publish:
     needs: [tests]
