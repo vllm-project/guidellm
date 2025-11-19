@@ -220,3 +220,42 @@ benchmark_generative_text(data=data, ...)
 - For lists of dictionaries, all items must have the same keys.
 - For lists of items, all elements must be of the same type.
 - A processor/tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the processor/tokenizer must be specified using the `--processor` argument. If not set, the processor/tokenizer will be set to the model passed in or retrieved from the server.
+
+## Preprocessing Datasets
+
+GuideLLM provides a preprocessing command that allows you to process datasets to have specific prompt and output token sizes. This is particularly useful when you need to standardize your dataset for benchmarking or when your dataset has prompts that don't match your target token requirements.
+
+The preprocessing command can:
+- Resize prompts to target token lengths
+- Handle prompts that are shorter or longer than the target length using various strategies
+- Map columns from your dataset to GuideLLM's expected column names
+- Generate output token counts based on your configuration
+- Save the processed dataset in various formats
+
+### Basic Usage
+
+```bash
+guidellm preprocess dataset \
+    <DATA> \
+    <OUTPUT_PATH> \
+    --processor <PROCESSOR> \
+    --config <CONFIG>
+```
+
+Where:
+- `DATA`: Path to the input dataset or Hugging Face dataset ID
+- `OUTPUT_PATH`: Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`)
+- `--processor`: Processor or tokenizer name/path for calculating token counts (required)
+- `--config`: Configuration specifying target token sizes (required)
+
+### Example
+
+```bash
+guidellm preprocess dataset \
+    "path/to/input_dataset.jsonl" \
+    "path/to/processed_dataset.jsonl" \
+    --processor "gpt2" \
+    --config "prompt_tokens=512,output_tokens=256"
+```
+
+For more detailed information about the preprocessing command, including advanced options, column mapping examples, and processor configuration, see the [CLI Reference Guide](./guides/cli.md#guidellm-preprocess-dataset).
