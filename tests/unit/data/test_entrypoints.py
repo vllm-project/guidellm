@@ -1555,3 +1555,78 @@ class TestProcessDatasetConfigValidation:
         assert min(output_counts) >= 45
         assert max(output_counts) <= 55
 
+    @pytest.mark.regression
+    @patch("guidellm.data.entrypoints.save_dataset_to_file")
+    @patch("guidellm.data.entrypoints.DatasetDeserializerFactory")
+    @patch("guidellm.data.entrypoints.check_load_processor")
+    def test_prefix_buckets_trimming(
+        self,
+        mock_check_processor,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        tokenizer_mock,
+        temp_output_path,
+    ):
+        """
+        Test that prefix tokens are trimmed to correct size when using prefix_buckets.
+        ## WRITTEN BY AI ##
+        """
+        # Create dataset with prefix column containing long prefixes
+        dataset_with_long_prefixes = Dataset.from_dict({
+            "prompt": [
+                "This is a long prompt for testing purposes. " * 10,
+                "Another long prompt here for testing. " * 10,
+                "Yet another long prompt for testing. " * 10,
+            ],
+            "system_prompt": [
+                "You are a very helpful assistant. This is a long system prompt that will be trimmed. " * 5,
+                "You are a very helpful assistant. This is a long system prompt that will be trimmed. " * 5,
+                "You are a very helpful assistant. This is a long system prompt that will be trimmed. " * 5,
+            ],
+        })
+        
+        # Config with prefix_buckets: one bucket with 5 tokens, one with 10 tokens
+        config = '{"prompt_tokens": 100, "output_tokens": 50, "prefix_buckets": [{"bucket_weight": 50, "prefix_count": 1, "prefix_tokens": 5}, {"bucket_weight": 50, "prefix_count": 1, "prefix_tokens": 10}]}'
+        
+        # Setup mocks
+        mock_check_processor.return_value = tokenizer_mock
+        mock_deserializer_factory_class.deserialize.return_value = dataset_with_long_prefixes
+
+        # Run process_dataset with prefix_buckets
+        process_dataset(
+            data="test_data",
+            output_path=temp_output_path,
+            processor=tokenizer_mock,
+            config=config,
+            random_seed=42,  # Fixed seed for reproducibility
+        )
+
+        # Extract saved dataset
+        assert mock_save_to_file.called
+        call_args = mock_save_to_file.call_args
+        saved_dataset = call_args[0][0]
+        
+        # Verify dataset was processed
+        assert len(saved_dataset) > 0
+        
+        # Verify that prefixes are trimmed to correct sizes based on prefix_buckets
+        # Prefix tokens should be either 5 or 10 (from the two buckets)
+        valid_prefix_lengths = {5, 10}
+        for row in saved_dataset:
+            assert "system_prompt" in row
+            prefix_text = row["system_prompt"]
+            
+            # Verify prefix token count matches one of the bucket values
+            prefix_tokens = len(tokenizer_mock.encode(prefix_text))
+            assert prefix_tokens in valid_prefix_lengths, \
+                f"Prefix should be trimmed to 5 or 10 tokens (from buckets), got {prefix_tokens} for prefix: {prefix_text[:50]}..."
+            
+            # Verify that the prefix was actually trimmed (original was much longer)
+            # The original prefix was ~300+ characters, so trimmed should be much shorter
+            assert len(prefix_text) < 200, \
+                f"Prefix should have been trimmed, but length is {len(prefix_text)}"
+            
+            # Verify prompt and output token counts are present
+            assert "prompt_tokens_count" in row
+            assert "output_tokens_count" in row
+
