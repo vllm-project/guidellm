@@ -1,0 +1,62 @@
+name: UI Quality Checks
+
+on:
+  workflow_call:
+
+jobs:
+  ui-quality-checks:
+    permissions:
+      contents: "read"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality and typing checks
+        run: npm run lint
+
+  ui-type-checks:
+    permissions:
+      contents: "read"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality and typing checks
+        run: npm run type-check
+
+  ui-precommit-checks:
+    permissions:
+      contents: "read"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run pre-commit checks
+        run: npx husky run pre-commit
