@@ -29,12 +29,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: pdm-project/setup-pdm@v4
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
         run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
           pip install tox tox-pdm
       - name: Build the package
         run: |

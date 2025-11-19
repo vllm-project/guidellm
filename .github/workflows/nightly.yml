@@ -30,11 +30,12 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: pdm-project/setup-pdm@v4
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox tox-pdm
+        run: |
+          pip install tox tox-pdm
       - name: Build the package
         run: |
           export GUIDELLM_BUILD_TYPE=nightly

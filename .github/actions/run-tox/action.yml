@@ -13,13 +13,12 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Setup Python with PDM
+      uses: pdm-project/setup-pdm@v4
       with:
         python-version: ${{ inputs.python-version }}
     - name: Install dependencies
       run: |
-        curl -sSL https://pdm-project.org/install-pdm.py | python3 -
         pip install tox tox-pdm
       shell: bash
     - name: Run tox
