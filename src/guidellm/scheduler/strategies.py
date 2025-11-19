@@ -653,7 +653,7 @@ class AsyncIncrementalStrategy(ThroughputStrategy):
         description="Factor by which to increase the rate over time",
         gt=0,
     )
-    rate_limit: int | None = Field(
+    rate_limit: float | None = Field(
         default=None,
         description="Maximum rate cap after which load remains constant",
         gt=0,

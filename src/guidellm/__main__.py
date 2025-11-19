@@ -149,27 +149,18 @@ def benchmark():
     help=(
         "Benchmark rate(s) to test. Meaning depends on profile: "
         "sweep=number of benchmarks, concurrent=concurrent requests, "
-        "async/constant/poisson=requests per second. "
-        "Not used for incremental profile."
+        "async/constant/poisson=requests per second, "
+        "incremental=start rate in requests per second."
     ),
 )
 @click.option(
-    "--start-rate",
-    type=float,
-    default=BenchmarkGenerativeTextArgs.get_default("start_rate"),
-    help="Initial rate for incremental profile in requests per second.",
-)
-@click.option(
-    "--increment-factor",
-    type=float,
-    default=BenchmarkGenerativeTextArgs.get_default("increment_factor"),
-    help="Factor by which to increase rate over time for incremental profile.",
-)
-@click.option(
-    "--rate-limit",
-    type=int,
-    default=BenchmarkGenerativeTextArgs.get_default("rate_limit"),
-    help="Maximum rate cap for incremental profile.",
+    "--profile-kwargs",
+    callback=cli_tools.parse_json,
+    default=BenchmarkGenerativeTextArgs.get_default("profile_kwargs"),
+    help=(
+        "JSON string of arguments to pass to the profile. "
+        'For incremental: {"increment_factor": 0.5, "rate_limit": 100}.'
+    ),
 )
 # Backend configuration
 @click.option(

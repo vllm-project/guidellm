@@ -732,7 +732,7 @@ class IncrementalProfile(ThroughputProfile):
     increment_factor: PositiveFloat = Field(
         description="Factor by which to increase the rate over time",
     )
-    rate_limit: PositiveInt | None = Field(
+    rate_limit: PositiveFloat | None = Field(
         default=None,
         description="Maximum rate cap after which load remains constant",
     )
@@ -750,48 +750,47 @@ class IncrementalProfile(ThroughputProfile):
         rate_type: str,
         rate: list[float] | None,
         random_seed: int,
-        start_rate: float | None = None,
         increment_factor: float | None = None,
-        rate_limit: int | None = None,
+        rate_limit: float | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
         Resolve arguments for incremental profile construction.
 
         :param rate_type: Profile type identifier
-        :param rate: Rate parameter (must be None for incremental)
+        :param rate: Start rate in requests per second
         :param random_seed: Random seed (ignored)
-        :param start_rate: Initial rate in requests per second
         :param increment_factor: Rate increase factor over time
         :param rate_limit: Optional maximum rate cap
         :param kwargs: Additional arguments passed through unchanged
         :return: Resolved arguments dictionary
-        :raises ValueError: If rate is not None or required params missing
+        :raises ValueError: If required params missing or invalid
         """
         _ = random_seed  # unused
         if rate_type != "incremental":
             raise ValueError("Rate type must be 'incremental' for incremental profile")
 
-        if rate is not None:
+        # For incremental profile, rate is used as start_rate
+        start_rate = rate[0] if isinstance(rate, list) and rate else rate
+        if start_rate is None:
             raise ValueError(
-                "rate does not apply to incremental profile, it must be set to None "
-                "or not set at all. Use start_rate and increment_factor instead."
+                "rate is required for incremental profile (used as start_rate)"
             )
 
-        if start_rate is None:
-            raise ValueError("start_rate is required for incremental profile")
-
         if increment_factor is None:
-            raise ValueError("increment_factor is required for incremental profile")
+            raise ValueError(
+                "increment_factor is required for incremental profile. "
+                "Pass it via --profile-kwargs '{\"increment_factor\": <value>}'"
+            )
 
         if start_rate <= 0:
-            raise ValueError("start_rate must be a positive number")
+            raise ValueError("rate (start_rate) must be a positive number")
 
         if increment_factor <= 0:
             raise ValueError("increment_factor must be a positive number")
 
         if rate_limit is not None and rate_limit <= 0:
-            raise ValueError("rate_limit must be a positive integer")
+            raise ValueError("rate_limit must be a positive number")
 
         kwargs["start_rate"] = start_rate
         kwargs["increment_factor"] = increment_factor
