@@ -1,4 +1,8 @@
-# Installation Guide for GuideLLM
+---
+weight: -10
+---
+
+# Install
 
 GuideLLM can be installed using several methods depending on your requirements. Below are the detailed instructions for each installation pathway.
 
@@ -23,10 +27,10 @@ Before installing GuideLLM, ensure you have the following prerequisites:
 The simplest way to install GuideLLM is via pip from the Python Package Index (PyPI):
 
 ```bash
-pip install guidellm
+pip install guidellm[recommended]
 ```
 
-This will install the latest stable release of GuideLLM.
+This will install the latest stable release of GuideLLM with recommended dependencies.
 
 ### 2. Install a Specific Version from PyPI
 

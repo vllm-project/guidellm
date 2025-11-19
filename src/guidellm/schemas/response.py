@@ -41,6 +41,10 @@ class GenerationResponse(StandardBaseModel):
     request_id: str = Field(
         description="Unique identifier matching the original GenerationRequest."
     )
+    response_id: str | None = Field(
+        default=None,
+        description="Unique identifier matching the original vLLM Response ID.",
+    )
     request_args: str | None = Field(
         description="Arguments passed to the backend for request processing."
     )
@@ -108,6 +112,7 @@ class GenerationResponse(StandardBaseModel):
 
         return GenerativeRequestStats(
             request_id=self.request_id,
+            response_id=self.response_id,
             request_type=request.request_type,
             request_args=str(
                 request.arguments.model_dump() if request.arguments else {}

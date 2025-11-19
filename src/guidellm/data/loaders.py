@@ -63,6 +63,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         self.precache: list[Any] | None = (
             list(self.generator(data_samples)) if data_samples else None
         )
+        self.epoch = 0
 
     def __iter__(self) -> Iterator[DataT]:
         worker_info = torch.utils.data.get_worker_info()
@@ -74,18 +75,29 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                 if (index + worker_index) % worker_modulus == 0:
                     yield item
         else:
-            yield from self.generator(modulus=worker_modulus, offset=worker_index)
+            yield from self.generator(
+                modulus=worker_modulus, offset=worker_index, epoch=self.epoch
+            )
+
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
 
     def generator(
         self,
         max_items: int | None = None,
         modulus: int | None = None,
         offset: int | None = None,
+        epoch: int = 0,
     ) -> Iterator[DataT]:
         gen_count = 0
 
         with contextlib.suppress(StopIteration):
-            dataset_iters = [iter(dataset) for dataset in self.datasets]
+            dataset_iters = []
+            for dataset in self.datasets:
+                if hasattr(dataset, "set_epoch"):
+                    with contextlib.suppress(Exception):
+                        dataset.set_epoch(epoch)
+                dataset_iters.append(iter(dataset))
 
             while max_items is None or gen_count < max_items:
                 try:
@@ -107,6 +119,8 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                         # This should be fixed at some point.
                         row = preprocessor(row)  # type: ignore[assignment]
                     yield row  # type: ignore[misc]
+                except StopIteration:
+                    raise  # Stop iteration when any dataset is exhausted
                 except Exception as err:  # noqa: BLE001 # Exception logged
                     logger.error(f"Skipping data row due to error: {err}")
                     gen_count -= 1
@@ -152,6 +166,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
             "num_workers": num_workers,
             "random_seed": random_seed,
         }
+        self.epoch = 0
 
         super().__init__(
             dataset=iterator,
@@ -162,6 +177,13 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
             num_workers=num_workers or 0,
             **kwargs,
         )
+
+    def __iter__(self):
+        if isinstance(self.dataset, DatasetsIterator):
+            self.dataset.set_epoch(self.epoch)
+        self.epoch += 1
+
+        return super().__iter__()
 
     @property
     def info(self) -> dict[str, Any]:
