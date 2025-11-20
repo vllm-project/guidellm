@@ -98,7 +98,6 @@ def test_over_saturated_benchmark_with_dict_config(server: VllmSimServer):
             "minimum_window_size": 5,
         },
         extra_env={
-            "GUIDELLM__CONSTRAINT_OVER_SATURATION_MIN_SECONDS": "0",
             "GOMAXPROCS": "1",
         },
     )
