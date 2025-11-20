@@ -2044,4 +2044,3 @@ class TestProcessDatasetStrategyHandlerIntegration:
             # Verify handler was called (at least once if there are rows to process)
             if len(sample_dataset) > 0:
                 assert mock_handler.called
-
