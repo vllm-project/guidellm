@@ -390,8 +390,10 @@ def benchmark():
     "--detect-saturation",  # alias
     default=None,
     help=(
-        "Enable over-saturation detection. Can be a flag (bool) or a JSON dict with "
-        'configuration (e.g., \'{"enabled": true, "min_seconds": 30}\'). '
+        "Enable over-saturation detection. "
+        "Use --over-saturation=True for boolean flag, "
+        "or a JSON dict with configuration "
+        '(e.g., \'{"enabled": true, "min_seconds": 30}\'). '
         "Defaults to None (disabled)."
     ),
     type=click.UNPROCESSED,
