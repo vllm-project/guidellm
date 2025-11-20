@@ -70,7 +70,7 @@ class GuidellmClient:
         cmd_parts = [
             *([f"{k}={v}" for k, v in extra_env.items()] if extra_env else []),
             "HF_HOME=/tmp/huggingface_cache",
-            f"{guidellm_exe} benchmark",
+            f"{guidellm_exe} benchmark run",
             f'--target "{self.target}"',
             f"--profile {profile}",
             f"--rate {rate}",

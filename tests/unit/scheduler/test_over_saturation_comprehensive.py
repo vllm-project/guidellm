@@ -502,9 +502,9 @@ class TestOverSaturationConstraintIntegration:
     @pytest.mark.sanity
     def test_constraint_disabled_never_stops(self):
         """Test that disabled constraint never stops regardless of load."""
-        detector = OverSaturationConstraint(minimum_duration=0.0, minimum_window_size=3)
         constraint = OverSaturationConstraint(
-            detector,
+            minimum_duration=0.0,
+            minimum_window_size=3,
             enabled=False,  # Disabled
         )
 
@@ -608,8 +608,8 @@ class TestOverSaturationConstraintInitializerRobustness:
 
         constraint = initializer.create_constraint()
         assert constraint.enabled is True
-        assert constraint.over_saturation_constraint.minimum_duration == 5.0
-        assert constraint.over_saturation_constraint.maximum_window_seconds == 30.0
+        assert constraint.minimum_duration == 5.0
+        assert constraint.maximum_window_seconds == 30.0
 
     @pytest.mark.smoke
     def test_initializer_with_extreme_parameters(self):
@@ -708,7 +708,7 @@ class TestOverSaturationEdgeCasesAndRegression:
     def test_constraint_with_missing_timings_data(self):
         """Test constraint handles missing timings data gracefully."""
         constraint = OverSaturationConstraint(
-            OverSaturationConstraint(minimum_duration=0.0),
+            minimum_duration=0.0,
             enabled=True,
         )
 

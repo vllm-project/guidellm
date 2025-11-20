@@ -362,13 +362,13 @@ class TestOverSaturationConstraintInitializer:
     @pytest.mark.sanity
     def test_initialization_invalid(self):
         """Test that initializer rejects invalid parameters."""
-        # Missing required field
+        # Invalid type for enabled
         with pytest.raises(ValidationError):
-            OverSaturationConstraintInitializer()
+            OverSaturationConstraintInitializer(enabled="invalid")
 
-        # Invalid type
+        # Invalid type for min_seconds
         with pytest.raises(ValidationError):
-            OverSaturationConstraintInitializer(enabled="invalid", type_="invalid")
+            OverSaturationConstraintInitializer(enabled=True, min_seconds="invalid")
 
     @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
