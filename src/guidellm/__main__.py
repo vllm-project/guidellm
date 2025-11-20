@@ -30,7 +30,7 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 
-from guidellm.data import process_dataset, ShortPromptStrategy
+from guidellm.data import ShortPromptStrategy, process_dataset
 
 try:
     import uvloop
@@ -522,7 +522,8 @@ def preprocess():
     help=(
         "SyntheticTextDatasetConfig as JSON string, key=value pairs, "
         "or file path (.json, .yaml, .yml, .config). "
-        "Example: 'prompt_tokens=100,output_tokens=50' or '{\"prompt_tokens\": 100, \"output_tokens\": 50}'"
+        "Example: 'prompt_tokens=100,output_tokens=50'"
+        " or '{\"prompt_tokens\": 100, \"output_tokens\": 50}'"
     ),
 )
 @click.option(

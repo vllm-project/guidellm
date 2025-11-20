@@ -4,7 +4,7 @@ from .deserializers import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from .entrypoints import process_dataset, ShortPromptStrategy
+from .entrypoints import ShortPromptStrategy, process_dataset
 from .loaders import DataLoader, DatasetsIterator
 from .preprocessors import (
     DataDependentPreprocessor,

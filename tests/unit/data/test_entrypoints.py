@@ -2,8 +2,8 @@
 Unit tests for guidellm.data.entrypoints module, specifically process_dataset function.
 """
 
-import os
 import json
+import os
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -32,20 +32,20 @@ from guidellm.data.entrypoints import (
 def tokenizer_mock():
     """Fixture to provide a mocked tokenizer."""
     tokenizer = MagicMock(spec=PreTrainedTokenizerBase)
-    
+
     # Simple tokenizer: each character is a token
     def encode_side_effect(text):
         if not text:
             return []
         # Count tokens as roughly one per character for simplicity
         return list(range(len(text)))
-    
+
     def decode_side_effect(tokens, skip_special_tokens=False):
         if not tokens:
             return ""
         # Simple decode: return a string representation
         return "".join(chr(65 + (t % 26)) for t in tokens[:100])
-    
+
     tokenizer.encode.side_effect = encode_side_effect
     tokenizer.decode.side_effect = decode_side_effect
     return tokenizer
@@ -56,9 +56,15 @@ def sample_dataset_default_columns():
     """Sample dataset with default column names."""
     return Dataset.from_dict({
         "prompt": [
-            "This is a very long prompt that should be sufficient for testing purposes. " * 10,
+            (
+                "This is a very long prompt that should be sufficient for "
+                "testing purposes. "
+            ) * 10,
             "Short.",
-            "Another very long prompt for testing the dataset processing functionality. " * 10,
+            (
+                "Another very long prompt for testing the dataset processing "
+                "functionality. "
+            ) * 10,
         ],
     })
 
@@ -68,9 +74,18 @@ def sample_dataset_custom_columns():
     """Sample dataset with custom column names requiring mapping."""
     return Dataset.from_dict({
         "question": [
-            "What is the meaning of life? This is a longer question that should work for testing. " * 10,
-            "How does this work? Let me explain in detail how this system functions. " * 10,
-            "Tell me about machine learning. Machine learning is a fascinating field. " * 10,
+            (
+                "What is the meaning of life? This is a longer question that "
+                "should work for testing. "
+            ) * 10,
+            (
+                "How does this work? Let me explain in detail how this system "
+                "functions. "
+            ) * 10,
+            (
+                "Tell me about machine learning. Machine learning is a "
+                "fascinating field. "
+            ) * 10,
         ],
     })
 
@@ -80,7 +95,10 @@ def sample_dataset_with_prefix():
     """Sample dataset with prefix column."""
     return Dataset.from_dict({
         "prompt": [
-            "This is a long prompt that should be sufficient for testing purposes. " * 10,
+            (
+                "This is a long prompt that should be sufficient for testing "
+                "purposes. "
+            ) * 10,
             "Another long prompt here that will work for testing. " * 10,
             "Yet another long prompt for testing purposes. " * 10,
         ],
@@ -133,7 +151,9 @@ class TestProcessDatasetShortPromptStrategies:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset
         process_dataset(
@@ -148,7 +168,7 @@ class TestProcessDatasetShortPromptStrategies:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify that short prompts were filtered out
         # The second prompt "Short." is only 6 characters, which is less than 50 tokens
         # So it should be filtered out
@@ -198,7 +218,7 @@ class TestProcessDatasetShortPromptStrategies:
                 "T",  # 1 char = 1 token
             ],
         })
-        
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = short_prompts_dataset
@@ -217,11 +237,12 @@ class TestProcessDatasetShortPromptStrategies:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed
         assert len(saved_dataset) > 0
-        
-        # Verify concatenation occurred: check for delimiter and that prompts meet minimum token count
+
+        # Verify concatenation occurred: check for delimiter and that prompts
+        # meet minimum token count
         concatenated_found = False
         for row in saved_dataset:
             prompt_text = row["prompt"]
@@ -229,20 +250,28 @@ class TestProcessDatasetShortPromptStrategies:
             if "\n" in prompt_text:
                 concatenated_found = True
                 # Verify that multiple single-character prompts are present
-                # The concatenated prompt should contain multiple letters separated by newlines
+                # The concatenated prompt should contain multiple letters
+                # separated by newlines
                 parts = prompt_text.split("\n")
-                assert len(parts) >= 2, \
-                    f"Concatenated prompt should contain multiple parts separated by delimiter, got: {prompt_text[:100]}..."
+                assert len(parts) >= 2, (
+                    f"Concatenated prompt should contain multiple parts "
+                    f"separated by delimiter, got: {prompt_text[:100]}..."
+                )
             # Verify token counts meet minimum requirements
             actual_tokens = len(tokenizer_mock.encode(prompt_text))
-            assert actual_tokens >= 15, \
-                f"Concatenated prompt should have at least 15 tokens, got {actual_tokens}"
+            assert actual_tokens >= 15, (
+                f"Concatenated prompt should have at least 15 tokens, "
+                f"got {actual_tokens}"
+            )
             assert row["prompt_tokens_count"] == actual_tokens
             assert row["prompt_tokens_count"] >= 15
-        
+
         # Verify that at least some concatenation occurred
-        # (Short single-character prompts should have been concatenated with subsequent rows)
-        assert concatenated_found, "Expected to find concatenated prompts with delimiter"
+        # (Short single-character prompts should have been concatenated with
+        # subsequent rows)
+        assert concatenated_found, (
+            "Expected to find concatenated prompts with delimiter"
+        )
 
     @pytest.mark.smoke
     @patch("guidellm.data.entrypoints.save_dataset_to_file")
@@ -264,7 +293,9 @@ class TestProcessDatasetShortPromptStrategies:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset with pad strategy
         process_dataset(
@@ -280,31 +311,34 @@ class TestProcessDatasetShortPromptStrategies:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed
         assert len(saved_dataset) > 0
-        
+
         # Get original prompts for comparison
-        original_prompts = sample_dataset_default_columns["prompt"]
-        
+        sample_dataset_default_columns["prompt"]
+
         # Check that prompts have been padded (they should be longer)
         for row in saved_dataset:
             assert "prompt" in row
             assert len(row["prompt"]) > 0
-            
+
             # Verify that prompts meet minimum token count requirements
             actual_tokens = len(tokenizer_mock.encode(row["prompt"]))
             assert actual_tokens >= 50, \
                 f"Padded prompt should have at least 50 tokens, got {actual_tokens}"
             assert row["prompt_tokens_count"] == actual_tokens
-            
+
             # For the "Short." prompt (index 1), verify it was padded
-            # The original "Short." is only 6 characters, so if it was processed,
-            # it should have been padded to meet the minimum token requirement
+            # The original "Short." is only 6 characters, so if it was
+            # processed, it should have been padded to meet the minimum token
+            # requirement
             if "Short." in row["prompt"] or len(row["prompt"]) > 10:
                 # If this is the short prompt, verify it was padded
-                assert actual_tokens >= 50, \
-                    f"Short prompt should have been padded to at least 50 tokens, got {actual_tokens}"
+                assert actual_tokens >= 50, (
+                    f"Short prompt should have been padded to at least 50 "
+                    f"tokens, got {actual_tokens}"
+                )
 
     @pytest.mark.sanity
     @patch("guidellm.data.entrypoints.DatasetDeserializerFactory")
@@ -324,7 +358,9 @@ class TestProcessDatasetShortPromptStrategies:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset with error strategy - should raise exception
         with pytest.raises(PromptTooShortError):
@@ -360,7 +396,9 @@ class TestProcessDatasetColumnNames:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset without column mapping
         process_dataset(
@@ -374,7 +412,7 @@ class TestProcessDatasetColumnNames:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed correctly
         assert len(saved_dataset) > 0
         for row in saved_dataset:
@@ -402,7 +440,9 @@ class TestProcessDatasetColumnNames:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_custom_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_custom_columns
+        )
 
         # Run process_dataset with column mapping
         process_dataset(
@@ -417,7 +457,7 @@ class TestProcessDatasetColumnNames:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed correctly
         assert len(saved_dataset) > 0
         for row in saved_dataset:
@@ -445,7 +485,9 @@ class TestProcessDatasetColumnNames:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_with_prefix
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_with_prefix
+        )
 
         # Run process_dataset
         process_dataset(
@@ -459,7 +501,7 @@ class TestProcessDatasetColumnNames:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed correctly
         assert len(saved_dataset) > 0
         for row in saved_dataset:
@@ -485,14 +527,15 @@ class TestProcessDatasetColumnNames:
         Test process_dataset works with 'instruction' column (default text_column).
         ## WRITTEN BY AI ##
         """
-        # Create dataset with 'instruction' column (one of the default text_column names)
+        # Create dataset with 'instruction' column (one of the default
+        # text_column names)
         dataset = Dataset.from_dict({
             "instruction": [
                 "Follow these instructions carefully. " * 20,
                 "Complete the task as described. " * 20,
             ],
         })
-        
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = dataset
@@ -509,7 +552,7 @@ class TestProcessDatasetColumnNames:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed correctly
         assert len(saved_dataset) > 0
 
@@ -537,7 +580,9 @@ class TestProcessDatasetConfigFormats:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
         # Run process_dataset with JSON config
         process_dataset(
             data="test_data",
@@ -569,7 +614,9 @@ class TestProcessDatasetConfigFormats:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset with key-value config
         process_dataset(
@@ -603,12 +650,14 @@ class TestProcessDatasetConfigFormats:
         config_file = tmp_path / "config.json"
         config_data = {"prompt_tokens": 50, "output_tokens": 30}
         config_file.write_text(json.dumps(config_data))
-        
+
         output_path = tmp_path / "output.json"
-        
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset with JSON file config
         process_dataset(
@@ -643,12 +692,14 @@ class TestProcessDatasetConfigFormats:
         config_file = tmp_path / "config.yaml"
         config_data = {"prompt_tokens": 50, "output_tokens": 30}
         config_file.write_text(yaml.dump(config_data))
-        
+
         output_path = tmp_path / "output.json"
-        
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset with YAML file config
         process_dataset(
@@ -682,12 +733,14 @@ class TestProcessDatasetConfigFormats:
         config_file = tmp_path / "config.config"
         config_data = {"prompt_tokens": 50, "output_tokens": 30}
         config_file.write_text(yaml.dump(config_data))
-        
+
         output_path = tmp_path / "output.json"
-        
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset with .config file
         process_dataset(
@@ -724,7 +777,9 @@ class TestProcessDatasetIntegration:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset
         process_dataset(
@@ -738,12 +793,12 @@ class TestProcessDatasetIntegration:
         mock_check_processor.assert_called_once()
         mock_deserializer_factory_class.deserialize.assert_called_once()
         assert mock_save_to_file.called
-        
+
         # Verify the saved dataset structure
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
         assert len(saved_dataset) > 0
-        
+
         # Verify each row has required fields
         for row in saved_dataset:
             assert "prompt" in row
@@ -771,9 +826,10 @@ class TestProcessDatasetIntegration:
         """
         # Create dataset with only very short prompts that will be filtered out
         dataset = Dataset.from_dict({
-            "prompt": ["A", "B", "C"],  # Very short prompts (1 char each, less than 50 tokens)
+            # Very short prompts (1 char each, less than 50 tokens)
+            "prompt": ["A", "B", "C"],
         })
-        
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = dataset
@@ -815,7 +871,9 @@ class TestProcessDatasetIntegration:
         """
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_with_prefix
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_with_prefix
+        )
 
         # Run process_dataset with prefix_tokens
         process_dataset(
@@ -830,20 +888,22 @@ class TestProcessDatasetIntegration:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed
         assert len(saved_dataset) > 0
-        
+
         # Verify that prefix lengths are correct (trimmed to 10 tokens)
         for row in saved_dataset:
             assert "system_prompt" in row
             prefix_text = row["system_prompt"]
-            
+
             # Verify prefix is trimmed to exactly 10 tokens
             prefix_tokens = len(tokenizer_mock.encode(prefix_text))
-            assert prefix_tokens == 10, \
-                f"Prefix should be trimmed to 10 tokens, got {prefix_tokens} for prefix: {prefix_text[:50]}..."
-            
+            assert prefix_tokens == 10, (
+                f"Prefix should be trimmed to 10 tokens, got {prefix_tokens} "
+                f"for prefix: {prefix_text[:50]}..."
+            )
+
             # Verify prompt and output token counts are present
             assert "prompt_tokens_count" in row
             assert "output_tokens_count" in row
@@ -865,7 +925,9 @@ class TestProcessDatasetIntegration:
         """Test process_dataset with include_prefix_in_token_count flag."""
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_with_prefix
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_with_prefix
+        )
 
         # Run process_dataset with include_prefix_in_token_count
         process_dataset(
@@ -880,10 +942,10 @@ class TestProcessDatasetIntegration:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed
         assert len(saved_dataset) > 0
-        
+
         # Verify that the token count accounts for the prefix
         # When include_prefix_in_token_count=True, the prefix tokens are subtracted from
         # the target prompt length, so prompt_tokens_count is just the prompt part,
@@ -891,28 +953,33 @@ class TestProcessDatasetIntegration:
         for row in saved_dataset:
             assert "system_prompt" in row
             assert "prompt" in row
-            
+
             prefix_text = row["system_prompt"]
             prompt_text = row["prompt"]
-            
+
             # Calculate token counts
             prefix_tokens = len(tokenizer_mock.encode(prefix_text))
             prompt_tokens = len(tokenizer_mock.encode(prompt_text))
             stored_count = row["prompt_tokens_count"]
-            
+
             # Verify stored count matches actual prompt token count
-            assert stored_count == prompt_tokens, \
-                f"prompt_tokens_count should match actual prompt tokens. " \
+            assert stored_count == prompt_tokens, (
+                f"prompt_tokens_count should match actual prompt tokens. "
                 f"Expected {prompt_tokens}, got {stored_count}"
-            
+            )
+
             # Verify that the prompt was adjusted to account for prefix
-            # The total effective tokens (prefix + prompt) should be close to the target (50)
-            # The prompt should have been reduced by the prefix token count
+            # The total effective tokens (prefix + prompt) should be close to
+            # the target (50). The prompt should have been reduced by the
+            # prefix token count
             total_effective_tokens = prefix_tokens + prompt_tokens
-            # Allow some variance due to sampling, but total should be around target
-            assert 40 <= total_effective_tokens <= 60, \
-                f"Total effective tokens (prefix: {prefix_tokens} + prompt: {prompt_tokens} = {total_effective_tokens}) " \
-                f"should be close to target of 50 when include_prefix_in_token_count=True"
+            # Allow some variance due to sampling, but total should be around
+            # target
+            assert 40 <= total_effective_tokens <= 60, (
+                f"Total effective tokens (prefix: {prefix_tokens} + prompt: "
+                f"{prompt_tokens} = {total_effective_tokens}) should be close "
+                f"to target of 50 when include_prefix_in_token_count=True"
+            )
 
     @pytest.mark.smoke
     @patch("guidellm.data.entrypoints.save_dataset_to_file")
@@ -932,11 +999,18 @@ class TestProcessDatasetIntegration:
         ## WRITTEN BY AI ##
         """
         # Create config with min, max, and stdev
-        config = '{"prompt_tokens": 100, "prompt_tokens_min": 50, "prompt_tokens_max": 150, "prompt_tokens_stdev": 10, "output_tokens": 50, "output_tokens_min": 25, "output_tokens_max": 75, "output_tokens_stdev": 5}'
-        
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_min": 50, '
+            '"prompt_tokens_max": 150, "prompt_tokens_stdev": 10, '
+            '"output_tokens": 50, "output_tokens_min": 25, '
+            '"output_tokens_max": 75, "output_tokens_stdev": 5}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = sample_dataset_default_columns
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_default_columns
+        )
 
         # Run process_dataset
         process_dataset(
@@ -950,7 +1024,7 @@ class TestProcessDatasetIntegration:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed
         assert len(saved_dataset) > 0
 
@@ -959,7 +1033,10 @@ class TestProcessDatasetIntegration:
 def large_dataset_for_validation():
     """Large dataset with many rows for statistical validation."""
     # Create 20 rows with long prompts to ensure they pass filtering
-    prompts = [f"This is a very long prompt number {i} for testing purposes. " * 15 for i in range(20)]
+    prompts = [
+        f"This is a very long prompt number {i} for testing purposes. " * 15
+        for i in range(20)
+    ]
     return Dataset.from_dict({"prompt": prompts})
 
 
@@ -984,11 +1061,16 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with fixed prompt tokens (min=max=100)
-        config = '{"prompt_tokens": 100, "prompt_tokens_min": 100, "prompt_tokens_max": 100, "output_tokens": 50}'
-        
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_min": 100, '
+            '"prompt_tokens_max": 100, "output_tokens": 50}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1002,7 +1084,7 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify all prompts have exactly 100 tokens
         for row in saved_dataset:
             assert row["prompt_tokens_count"] == 100
@@ -1028,11 +1110,16 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with fixed output tokens (min=max=75)
-        config = '{"prompt_tokens": 100, "output_tokens": 75, "output_tokens_min": 75, "output_tokens_max": 75}'
-        
+        config = (
+            '{"prompt_tokens": 100, "output_tokens": 75, '
+            '"output_tokens_min": 75, "output_tokens_max": 75}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1046,7 +1133,7 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify all outputs have exactly 75 tokens
         for row in saved_dataset:
             assert row["output_tokens_count"] == 75
@@ -1069,11 +1156,16 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with prompt min=80, max=120
-        config = '{"prompt_tokens": 100, "prompt_tokens_min": 80, "prompt_tokens_max": 120, "output_tokens": 50}'
-        
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_min": 80, '
+            '"prompt_tokens_max": 120, "output_tokens": 50}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1087,18 +1179,24 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify all prompt token counts are within bounds
         prompt_counts = [row["prompt_tokens_count"] for row in saved_dataset]
         assert len(prompt_counts) > 0
-        assert min(prompt_counts) >= 80, f"Found prompt count {min(prompt_counts)} below min 80"
-        assert max(prompt_counts) <= 120, f"Found prompt count {max(prompt_counts)} above max 120"
-        
+        assert min(prompt_counts) >= 80, (
+            f"Found prompt count {min(prompt_counts)} below min 80"
+        )
+        assert max(prompt_counts) <= 120, (
+            f"Found prompt count {max(prompt_counts)} above max 120"
+        )
+
         # Verify actual tokenized lengths match stored counts
         for row in saved_dataset:
             actual_tokens = len(tokenizer_mock.encode(row["prompt"]))
-            assert actual_tokens == row["prompt_tokens_count"], \
-                f"Stored count {row['prompt_tokens_count']} doesn't match actual {actual_tokens}"
+            assert actual_tokens == row["prompt_tokens_count"], (
+                f"Stored count {row['prompt_tokens_count']} doesn't match "
+                f"actual {actual_tokens}"
+            )
 
     @pytest.mark.sanity
     @patch("guidellm.data.entrypoints.save_dataset_to_file")
@@ -1118,11 +1216,16 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with output min=40, max=60
-        config = '{"prompt_tokens": 100, "output_tokens": 50, "output_tokens_min": 40, "output_tokens_max": 60}'
-        
+        config = (
+            '{"prompt_tokens": 100, "output_tokens": 50, '
+            '"output_tokens_min": 40, "output_tokens_max": 60}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1136,12 +1239,16 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify all output token counts are within bounds
         output_counts = [row["output_tokens_count"] for row in saved_dataset]
         assert len(output_counts) > 0
-        assert min(output_counts) >= 40, f"Found output count {min(output_counts)} below min 40"
-        assert max(output_counts) <= 60, f"Found output count {max(output_counts)} above max 60"
+        assert min(output_counts) >= 40, (
+            f"Found output count {min(output_counts)} below min 40"
+        )
+        assert max(output_counts) <= 60, (
+            f"Found output count {max(output_counts)} above max 60"
+        )
 
     @pytest.mark.regression
     @patch("guidellm.data.entrypoints.save_dataset_to_file")
@@ -1161,11 +1268,17 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with prompt average=100, stdev=10, min=70, max=130
-        config = '{"prompt_tokens": 100, "prompt_tokens_stdev": 10, "prompt_tokens_min": 70, "prompt_tokens_max": 130, "output_tokens": 50}'
-        
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_stdev": 10, '
+            '"prompt_tokens_min": 70, "prompt_tokens_max": 130, '
+            '"output_tokens": 50}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1180,20 +1293,20 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify distribution properties
         prompt_counts = [row["prompt_tokens_count"] for row in saved_dataset]
         assert len(prompt_counts) > 0
-        
+
         # Check bounds
         assert min(prompt_counts) >= 70
         assert max(prompt_counts) <= 130
-        
+
         # Check mean is close to average (within 2 stdev of the mean of means)
         mean_count = sum(prompt_counts) / len(prompt_counts)
         # With enough samples, mean should be close to 100
         assert 90 <= mean_count <= 110, f"Mean {mean_count} not close to expected 100"
-        
+
         # Verify actual tokenized lengths match stored counts
         for row in saved_dataset:
             actual_tokens = len(tokenizer_mock.encode(row["prompt"]))
@@ -1217,11 +1330,17 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with output average=50, stdev=5, min=35, max=65
-        config = '{"prompt_tokens": 100, "output_tokens": 50, "output_tokens_stdev": 5, "output_tokens_min": 35, "output_tokens_max": 65}'
-        
+        config = (
+            '{"prompt_tokens": 100, "output_tokens": 50, '
+            '"output_tokens_stdev": 5, "output_tokens_min": 35, '
+            '"output_tokens_max": 65}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1236,15 +1355,15 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify distribution properties
         output_counts = [row["output_tokens_count"] for row in saved_dataset]
         assert len(output_counts) > 0
-        
+
         # Check bounds
         assert min(output_counts) >= 35
         assert max(output_counts) <= 65
-        
+
         # Check mean is close to average
         mean_count = sum(output_counts) / len(output_counts)
         assert 45 <= mean_count <= 55, f"Mean {mean_count} not close to expected 50"
@@ -1266,11 +1385,16 @@ class TestProcessDatasetConfigValidation:
         Test that stored token counts match actual tokenized lengths.
         ## WRITTEN BY AI ##
         """
-        config = '{"prompt_tokens": 100, "prompt_tokens_min": 80, "prompt_tokens_max": 120, "output_tokens": 50}'
-        
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_min": 80, '
+            '"prompt_tokens_max": 120, "output_tokens": 50}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1284,15 +1408,17 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify stored counts match actual tokenized lengths
         for row in saved_dataset:
             prompt_text = row["prompt"]
             stored_count = row["prompt_tokens_count"]
             actual_count = len(tokenizer_mock.encode(prompt_text))
-            
-            assert actual_count == stored_count, \
-                f"Stored count {stored_count} doesn't match actual tokenized length {actual_count} for prompt: {prompt_text[:50]}..."
+
+            assert actual_count == stored_count, (
+                f"Stored count {stored_count} doesn't match actual tokenized "
+                f"length {actual_count} for prompt: {prompt_text[:50]}..."
+            )
 
     @pytest.mark.sanity
     @patch("guidellm.data.entrypoints.save_dataset_to_file")
@@ -1312,11 +1438,16 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Use a small max to force trimming
-        config = '{"prompt_tokens": 50, "prompt_tokens_min": 50, "prompt_tokens_max": 50, "output_tokens": 30}'
-        
+        config = (
+            '{"prompt_tokens": 50, "prompt_tokens_min": 50, '
+            '"prompt_tokens_max": 50, "output_tokens": 30}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1330,7 +1461,7 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify all prompts are trimmed to exactly 50 tokens
         for row in saved_dataset:
             actual_tokens = len(tokenizer_mock.encode(row["prompt"]))
@@ -1356,10 +1487,13 @@ class TestProcessDatasetConfigValidation:
         # Create dataset with short prompts
         short_prompts = ["Short", "Tiny", "Small prompt"] * 5
         dataset = Dataset.from_dict({"prompt": short_prompts})
-        
+
         # Use a large target to force padding
-        config = '{"prompt_tokens": 100, "prompt_tokens_min": 100, "prompt_tokens_max": 100, "output_tokens": 30}'
-        
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_min": 100, '
+            '"prompt_tokens_max": 100, "output_tokens": 30}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = dataset
@@ -1378,7 +1512,7 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify all prompts are padded to exactly 100 tokens
         pad_char_found = False
         for row in saved_dataset:
@@ -1387,20 +1521,25 @@ class TestProcessDatasetConfigValidation:
             assert actual_tokens == 100, \
                 f"Prompt not padded correctly: expected 100 tokens, got {actual_tokens}"
             assert row["prompt_tokens_count"] == 100
-            
+
             # Verify that pad_char "X" appears in the padded prompts
             # Since original prompts are short ("Short", "Tiny", "Small prompt"),
             # they should all be padded with "X" characters
             if "X" in prompt_text:
                 pad_char_found = True
                 # Verify that X characters appear at the end (where padding would be)
-                # or verify that the prompt contains X characters indicating padding
-                assert prompt_text.count("X") > 0, \
-                    f"Expected pad_char 'X' in padded prompt, but not found: {prompt_text[:100]}..."
-        
+                # or verify that the prompt contains X characters indicating
+                # padding
+                assert prompt_text.count("X") > 0, (
+                    f"Expected pad_char 'X' in padded prompt, but not found: "
+                    f"{prompt_text[:100]}..."
+                )
+
         # Verify that at least some prompts contain the pad character
-        assert pad_char_found, \
-            "Expected to find pad_char 'X' in at least some padded prompts, but none were found"
+        assert pad_char_found, (
+            "Expected to find pad_char 'X' in at least some padded prompts, "
+            "but none were found"
+        )
 
     @pytest.mark.regression
     @patch("guidellm.data.entrypoints.save_dataset_to_file")
@@ -1416,15 +1555,23 @@ class TestProcessDatasetConfigValidation:
         temp_output_path,
     ):
         """
-        Test config with all parameters set (average, min, max, stdev) for both prompt and output.
+        Test config with all parameters set (average, min, max, stdev) for
+        both prompt and output.
         ## WRITTEN BY AI ##
         """
         # Config with all parameters
-        config = '{"prompt_tokens": 100, "prompt_tokens_min": 80, "prompt_tokens_max": 120, "prompt_tokens_stdev": 10, "output_tokens": 50, "output_tokens_min": 40, "output_tokens_max": 60, "output_tokens_stdev": 5}'
-        
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_min": 80, '
+            '"prompt_tokens_max": 120, "prompt_tokens_stdev": 10, '
+            '"output_tokens": 50, "output_tokens_min": 40, '
+            '"output_tokens_max": 60, "output_tokens_stdev": 5}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1439,17 +1586,17 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify prompt constraints
         prompt_counts = [row["prompt_tokens_count"] for row in saved_dataset]
         assert min(prompt_counts) >= 80
         assert max(prompt_counts) <= 120
-        
+
         # Verify output constraints
         output_counts = [row["output_tokens_count"] for row in saved_dataset]
         assert min(output_counts) >= 40
         assert max(output_counts) <= 60
-        
+
         # Verify token count accuracy
         for row in saved_dataset:
             actual_tokens = len(tokenizer_mock.encode(row["prompt"]))
@@ -1472,11 +1619,18 @@ class TestProcessDatasetConfigValidation:
         Test edge cases: very small token counts and min=max=1 token counts.
         ## WRITTEN BY AI ##
         """
-        # Test 1: Very small token counts (use PAD strategy to ensure prompts are processed)
-        config_small = '{"prompt_tokens": 7, "prompt_tokens_min": 5, "prompt_tokens_max": 10, "output_tokens": 5, "output_tokens_min": 3, "output_tokens_max": 8}'
-        
+        # Test 1: Very small token counts (use PAD strategy to ensure prompts
+        # are processed)
+        config_small = (
+            '{"prompt_tokens": 7, "prompt_tokens_min": 5, '
+            '"prompt_tokens_max": 10, "output_tokens": 5, '
+            '"output_tokens_min": 3, "output_tokens_max": 8}'
+        )
+
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         process_dataset(
             data="test_data",
@@ -1490,18 +1644,23 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         prompt_counts = [row["prompt_tokens_count"] for row in saved_dataset]
         output_counts = [row["output_tokens_count"] for row in saved_dataset]
-        
+
         assert min(prompt_counts) >= 5
         assert max(prompt_counts) <= 10
         assert min(output_counts) >= 3
         assert max(output_counts) <= 8
-        
-        # Test 2: min=max=1 (minimum valid value) - use PAD strategy to ensure processing
-        config_min = '{"prompt_tokens": 1, "prompt_tokens_min": 1, "prompt_tokens_max": 1, "output_tokens": 1, "output_tokens_min": 1, "output_tokens_max": 1}'
-        
+
+        # Test 2: min=max=1 (minimum valid value) - use PAD strategy to
+        # ensure processing
+        config_min = (
+            '{"prompt_tokens": 1, "prompt_tokens_min": 1, '
+            '"prompt_tokens_max": 1, "output_tokens": 1, '
+            '"output_tokens_min": 1, "output_tokens_max": 1}'
+        )
+
         mock_save_to_file.reset_mock()
         # Create a dataset with very short prompts for this test
         short_dataset = Dataset.from_dict({"prompt": ["A"] * 5})
@@ -1518,7 +1677,7 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         for row in saved_dataset:
             assert row["prompt_tokens_count"] == 1
             assert row["output_tokens_count"] == 1
@@ -1537,15 +1696,23 @@ class TestProcessDatasetConfigValidation:
         temp_output_path,
     ):
         """
-        Test that when stdev is not specified, values are uniformly distributed within min/max.
+        Test that when stdev is not specified, values are uniformly
+        distributed within min/max.
         ## WRITTEN BY AI ##
         """
-        # Config without stdev (omitted entirely) - should use uniform distribution
-        config = '{"prompt_tokens": 100, "prompt_tokens_min": 90, "prompt_tokens_max": 110, "output_tokens": 50, "output_tokens_min": 45, "output_tokens_max": 55}'
-        
+        # Config without stdev (omitted entirely) - should use uniform
+        # distribution
+        config = (
+            '{"prompt_tokens": 100, "prompt_tokens_min": 90, '
+            '"prompt_tokens_max": 110, "output_tokens": 50, '
+            '"output_tokens_min": 45, "output_tokens_max": 55}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = large_dataset_for_validation
+        mock_deserializer_factory_class.deserialize.return_value = (
+            large_dataset_for_validation
+        )
 
         # Run process_dataset
         process_dataset(
@@ -1560,11 +1727,11 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Without stdev, values should be uniformly distributed within min/max
         prompt_counts = [row["prompt_tokens_count"] for row in saved_dataset]
         output_counts = [row["output_tokens_count"] for row in saved_dataset]
-        
+
         assert min(prompt_counts) >= 90
         assert max(prompt_counts) <= 110
         assert min(output_counts) >= 45
@@ -1594,18 +1761,34 @@ class TestProcessDatasetConfigValidation:
                 "Yet another long prompt for testing. " * 10,
             ],
             "system_prompt": [
-                "You are a very helpful assistant. This is a long system prompt that will be trimmed. " * 5,
-                "You are a very helpful assistant. This is a long system prompt that will be trimmed. " * 5,
-                "You are a very helpful assistant. This is a long system prompt that will be trimmed. " * 5,
+                (
+                    "You are a very helpful assistant. This is a long system "
+                    "prompt that will be trimmed. "
+                ) * 5,
+                (
+                    "You are a very helpful assistant. This is a long system "
+                    "prompt that will be trimmed. "
+                ) * 5,
+                (
+                    "You are a very helpful assistant. This is a long system "
+                    "prompt that will be trimmed. "
+                ) * 5,
             ],
         })
-        
-        # Config with prefix_buckets: one bucket with 5 tokens, one with 10 tokens
-        config = '{"prompt_tokens": 100, "output_tokens": 50, "prefix_buckets": [{"bucket_weight": 50, "prefix_count": 1, "prefix_tokens": 5}, {"bucket_weight": 50, "prefix_count": 1, "prefix_tokens": 10}]}'
-        
+
+        # Config with prefix_buckets: one bucket with 5 tokens, one with 10
+        # tokens
+        config = (
+            '{"prompt_tokens": 100, "output_tokens": 50, "prefix_buckets": '
+            '[{"bucket_weight": 50, "prefix_count": 1, "prefix_tokens": 5}, '
+            '{"bucket_weight": 50, "prefix_count": 1, "prefix_tokens": 10}]}'
+        )
+
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
-        mock_deserializer_factory_class.deserialize.return_value = dataset_with_long_prefixes
+        mock_deserializer_factory_class.deserialize.return_value = (
+            dataset_with_long_prefixes
+        )
 
         # Run process_dataset with prefix_buckets
         process_dataset(
@@ -1620,27 +1803,32 @@ class TestProcessDatasetConfigValidation:
         assert mock_save_to_file.called
         call_args = mock_save_to_file.call_args
         saved_dataset = call_args[0][0]
-        
+
         # Verify dataset was processed
         assert len(saved_dataset) > 0
-        
+
         # Verify that prefixes are trimmed to correct sizes based on prefix_buckets
         # Prefix tokens should be either 5 or 10 (from the two buckets)
         valid_prefix_lengths = {5, 10}
         for row in saved_dataset:
             assert "system_prompt" in row
             prefix_text = row["system_prompt"]
-            
+
             # Verify prefix token count matches one of the bucket values
             prefix_tokens = len(tokenizer_mock.encode(prefix_text))
-            assert prefix_tokens in valid_prefix_lengths, \
-                f"Prefix should be trimmed to 5 or 10 tokens (from buckets), got {prefix_tokens} for prefix: {prefix_text[:50]}..."
-            
-            # Verify that the prefix was actually trimmed (original was much longer)
-            # The original prefix was ~300+ characters, so trimmed should be much shorter
-            assert len(prefix_text) < 200, \
-                f"Prefix should have been trimmed, but length is {len(prefix_text)}"
-            
+            assert prefix_tokens in valid_prefix_lengths, (
+                f"Prefix should be trimmed to 5 or 10 tokens (from buckets), "
+                f"got {prefix_tokens} for prefix: {prefix_text[:50]}..."
+            )
+
+            # Verify that the prefix was actually trimmed (original was much
+            # longer). The original prefix was ~300+ characters, so trimmed
+            # should be much shorter
+            assert len(prefix_text) < 200, (
+                f"Prefix should have been trimmed, but length is "
+                f"{len(prefix_text)}"
+            )
+
             # Verify prompt and output token counts are present
             assert "prompt_tokens_count" in row
             assert "output_tokens_count" in row
@@ -1723,13 +1911,13 @@ class TestProcessDatasetPushToHub:
         sample_dataset = Dataset.from_dict({
             "prompt": ["abc " * 50],  # Long enough
         })
-        
+
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = sample_dataset
 
         output_path = tmp_path / "output.json"
         config = '{"prompt_tokens": 10, "output_tokens": 5}'
-        
+
         process_dataset(
             data="input",
             output_path=output_path,
@@ -1738,7 +1926,7 @@ class TestProcessDatasetPushToHub:
             push_to_hub=True,
             hub_dataset_id="id123",
         )
-        
+
         # Verify push_to_hub was called with the correct arguments
         assert mock_push.called
         call_args = mock_push.call_args
@@ -1764,13 +1952,13 @@ class TestProcessDatasetPushToHub:
         sample_dataset = Dataset.from_dict({
             "prompt": ["abc " * 50],  # Long enough
         })
-        
+
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = sample_dataset
 
         output_path = tmp_path / "output.json"
         config = '{"prompt_tokens": 10, "output_tokens": 5}'
-        
+
         process_dataset(
             data="input",
             output_path=output_path,
@@ -1778,7 +1966,7 @@ class TestProcessDatasetPushToHub:
             config=config,
             push_to_hub=False,
         )
-        
+
         # Verify push_to_hub was not called
         mock_push.assert_not_called()
 
@@ -1833,13 +2021,13 @@ class TestProcessDatasetStrategyHandlerIntegration:
                     "def" * 20,  # Long enough to pass
                 ],
             })
-            
+
             mock_check_processor.return_value = tokenizer_mock
             mock_deserializer_factory_class.deserialize.return_value = sample_dataset
-            
+
             output_path = tmp_path / "output.json"
             config = '{"prompt_tokens": 10, "output_tokens": 5}'
-            
+
             process_dataset(
                 data="input",
                 output_path=output_path,
