@@ -54,15 +54,18 @@ class GuidellmClient:
         """
         Start a guidellm benchmark command.
 
-        :param rate_type: Type of rate control (constant, etc.)
+        :param profile: Type of rate control (constant, etc.)
         :param rate: Request rate
         :param max_seconds: Maximum duration in seconds
         :param max_requests: Maximum number of requests
         :param max_error_rate: Maximum error rate before stopping
         :param over_saturation: Over-saturation detection configuration (bool or dict).
+            When bool is True, passes --over-saturation=True to avoid Click parsing
+            issues.
         :param data: Data configuration string
         :param processor: Processor/tokenizer to use
         :param additional_args: Additional command line arguments
+        :param extra_env: Additional environment variables to set
         """
         guidellm_exe = get_guidellm_executable()
 
@@ -88,7 +91,7 @@ class GuidellmClient:
         if over_saturation is not None:
             if isinstance(over_saturation, bool):
                 if over_saturation:
-                    cmd_parts.append("--over-saturation")
+                    cmd_parts.append("--over-saturation=True")
             elif isinstance(over_saturation, dict):
                 import json
 
