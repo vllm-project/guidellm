@@ -218,6 +218,7 @@ benchmark_generative_text(data=data, ...)
 GuideLLM provides a preprocessing command that allows you to process datasets to have specific prompt and output token sizes. This is particularly useful when you need to standardize your dataset for benchmarking or when your dataset has prompts that don't match your target token requirements.
 
 The preprocessing command can:
+
 - Resize prompts to target token lengths
 - Handle prompts that are shorter or longer than the target length using various strategies
 - Map columns from your dataset to GuideLLM's expected column names
@@ -236,12 +237,12 @@ guidellm preprocess dataset \
 
 ### Required Arguments
 
-| Argument           | Description                                                                                                                                    |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATA`             | Path to the input dataset or Hugging Face dataset ID. Supports all dataset formats documented in the [Dataset Configurations](../datasets.md). |
-| `OUTPUT_PATH`      | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                    |
-| `--processor`      | **Required.** Processor or tokenizer name/path for calculating token counts. Can be a Hugging Face model ID or local path.                    |
-| `--config`         | **Required.** Configuration specifying target token sizes. Can be a JSON string, key=value pairs, or file path (.json, .yaml, .yml, .config).  |
+| Argument      | Description                                                                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATA`        | Path to the input dataset or Hugging Face dataset ID. Supports all dataset formats documented in the [Dataset Configurations](../datasets.md). |
+| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                     |
+| `--processor` | **Required.** Processor or tokenizer name/path for calculating token counts. Can be a Hugging Face model ID or local path.                     |
+| `--config`    | **Required.** Configuration specifying target token sizes. Can be a JSON string, key=value pairs, or file path (.json, .yaml, .yml, .config).  |
 
 ### Example
 
@@ -267,8 +268,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 2. **You have multiple datasets** and need to specify which dataset's columns to use
 3. **Your dataset has system prompts or prefixes** in a separate column
 
-**Column mapping format:**
-The `--data-column-mapper` accepts a JSON string mapping column types to column names:
+**Column mapping format:** The `--data-column-mapper` accepts a JSON string mapping column types to column names:
 
 ```json
 {
@@ -280,6 +280,7 @@ The `--data-column-mapper` accepts a JSON string mapping column types to column 
 ```
 
 **Supported column types:**
+
 - `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `text`)
 - `prefix_column`: System prompt or prefix (defaults: `system_prompt`, `system`, `prefix`)
 - `prompt_tokens_count_column`: Column containing prompt token counts (defaults: `prompt_tokens_count`, `input_tokens_count`)
@@ -299,6 +300,7 @@ user_query,system_message
 ```
 
 You would use:
+
 ```bash
 guidellm preprocess dataset \
     "dataset.csv" \
@@ -320,14 +322,15 @@ If you're working with multiple datasets and need to specify which dataset's col
 
 When prompts are shorter than the target token length, you can specify how to handle them using `--short-prompt-strategy`:
 
-| Strategy      | Description                                                                                    |
-| ------------- | ---------------------------------------------------------------------------------------------- |
-| `ignore`      | Skip prompts that are shorter than the target length (default)                                 |
-| `concatenate` | Concatenate multiple short prompts together until the target length is reached                 |
-| `pad`         | Pad short prompts with a specified character to reach the target length                      |
-| `error`       | Raise an error if a prompt is shorter than the target length                                  |
+| Strategy      | Description                                                                    |
+| ------------- | ------------------------------------------------------------------------------ |
+| `ignore`      | Skip prompts that are shorter than the target length (default)                 |
+| `concatenate` | Concatenate multiple short prompts together until the target length is reached |
+| `pad`         | Pad short prompts with a specified character to reach the target length        |
+| `error`       | Raise an error if a prompt is shorter than the target length                   |
 
 **Example: Concatenating short prompts**
+
 ```bash
 guidellm preprocess dataset \
     "dataset.jsonl" \
@@ -339,6 +342,7 @@ guidellm preprocess dataset \
 ```
 
 **Example: Padding short prompts**
+
 ```bash
 guidellm preprocess dataset \
     "dataset.jsonl" \
@@ -351,18 +355,19 @@ guidellm preprocess dataset \
 
 ### Additional Options
 
-| Option                           | Description                                                                                                                             |
-| -------------------------------- |-----------------------------------------------------------------------------------------------------------------------------------------|
-| `--data-args <JSON>`             | JSON string of arguments to pass to dataset loading. See [Data Arguments Overview](../datasets.md#data-arguments-overview) for details. |
-| `--prefix-tokens <NUMBER>`       | Single prefix token count (alternative to `prefix_tokens` in config).                                                                   |
+| Option                            | Description                                                                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `--data-args <JSON>`              | JSON string of arguments to pass to dataset loading. See [Data Arguments Overview](../datasets.md#data-arguments-overview) for details. |
+| `--prefix-tokens <NUMBER>`        | Single prefix token count (alternative to `prefix_tokens` in config).                                                                   |
 | `--include-prefix-in-token-count` | Include prefix tokens in prompt token count calculation (flag). When enabled, prefix trimming is disabled and the prefix is kept as-is. |
-| `--random-seed <NUMBER>`         | Random seed for reproducible token sampling (default: 42).                                                                              |
-| `--push-to-hub`                  | Push the processed dataset to Hugging Face Hub (flag).                                                                                  |
-| `--hub-dataset-id <ID>`          | Hugging Face Hub dataset ID for upload (required if `--push-to-hub` is set).                                                            |
+| `--random-seed <NUMBER>`          | Random seed for reproducible token sampling (default: 42).                                                                              |
+| `--push-to-hub`                   | Push the processed dataset to Hugging Face Hub (flag).                                                                                  |
+| `--hub-dataset-id <ID>`           | Hugging Face Hub dataset ID for upload (required if `--push-to-hub` is set).                                                            |
 
 ### Complete Examples
 
 **Example 1: Basic preprocessing with custom column names**
+
 ```bash
 guidellm preprocess dataset \
     "my_dataset.csv" \
@@ -373,6 +378,7 @@ guidellm preprocess dataset \
 ```
 
 **Example 2: Preprocessing with distribution and short prompt handling**
+
 ```bash
 guidellm preprocess dataset \
     "dataset.jsonl" \
@@ -385,6 +391,7 @@ guidellm preprocess dataset \
 ```
 
 **Example 3: Preprocessing with processor arguments and prefix tokens**
+
 ```bash
 guidellm preprocess dataset \
     "dataset.jsonl" \
@@ -397,6 +404,7 @@ guidellm preprocess dataset \
 ```
 
 **Example 4: Preprocessing and uploading to Hugging Face Hub**
+
 ```bash
 guidellm preprocess dataset \
     "my_dataset.jsonl" \
