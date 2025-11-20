@@ -21,9 +21,8 @@ from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.settings import settings
 from guidellm.utils import InfoMixin
 
-from .base import PydanticConstraintInitializer
+from .constraint import Constraint, PydanticConstraintInitializer
 from .factory import ConstraintsInitializerFactory
-from .protocols import Constraint
 
 __all__ = [
     "MaxDurationConstraint",
