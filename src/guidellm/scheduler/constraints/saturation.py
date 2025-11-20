@@ -1,15 +1,58 @@
 """
 Over-saturation detection constraint implementation.
 
-Provides constraint for detecting and stopping benchmarks when the model
-becomes over-saturated (response rate doesn't keep up with request rate).
+This module implements the Over-Saturation Detection (OSD) algorithm for detecting
+when a model becomes over-saturated during benchmarking. Over-saturation occurs when
+the response rate doesn't keep up with the request rate, leading to degraded
+performance.
+
+Algorithm Overview:
+-------------------
+The OSD algorithm uses statistical slope detection to identify over-saturation:
+
+1. **Slope Detection**: The algorithm tracks two key metrics over time:
+   - Concurrent requests: Number of requests being processed simultaneously
+   - Time-to-first-token (TTFT): Latency for the first token of each response
+
+2. **Statistical Analysis**: For each metric, the algorithm:
+   - Maintains a sliding window of recent data points
+   - Calculates the linear regression slope using online statistics
+   - Computes the margin of error (MOE) using t-distribution confidence intervals
+   - Detects positive slopes with low MOE, indicating degradation
+
+3. **Detection Criteria**: Over-saturation is detected when:
+   - Both concurrent requests and TTFT show statistically significant positive slopes
+   - The minimum duration threshold has been met
+   - Sufficient data points are available for reliable slope estimation
+
+4. **Window Management**: The algorithm maintains bounded memory by:
+   - Limiting window size by time (maximum_window_seconds)
+   - Limiting window size by ratio of total requests (maximum_window_ratio)
+   - Automatically pruning old data points
+
+5. **Constraint Integration**: When over-saturation is detected, the constraint:
+   - Stops request queuing to prevent further degradation
+   - Stops processing of existing requests (if enabled)
+   - Provides detailed metadata about detection state
+
+Key Parameters:
+---------------
+- minimum_duration: Minimum seconds before checking for over-saturation (default: 30.0)
+- minimum_ttft: Minimum TTFT threshold for violation counting (default: 2.5)
+- maximum_window_seconds: Maximum time window for data retention (default: 120.0)
+- moe_threshold: Margin of error threshold for slope detection (default: 2.0)
+- maximum_window_ratio: Maximum window size as ratio of total requests (default: 0.75)
+- minimum_window_size: Minimum data points required for slope estimation (default: 5)
+- confidence: Statistical confidence level for t-distribution (default: 0.95)
+
+The constraint integrates with the scheduler by evaluating each request update and
+providing scheduler actions (continue/stop) based on the current over-saturation state.
 """
 
 from __future__ import annotations
 
 import math
 import time
-from abc import ABC, abstractmethod
 from typing import Any, Literal
 
 from pydantic import Field
@@ -19,7 +62,6 @@ from guidellm.scheduler.schemas import (
     SchedulerUpdateAction,
 )
 from guidellm.schemas import RequestInfo
-from guidellm.settings import settings
 
 from .base import PydanticConstraintInitializer
 from .factory import ConstraintsInitializerFactory
@@ -28,33 +70,9 @@ from .protocols import Constraint
 __all__ = [
     "OverSaturationConstraint",
     "OverSaturationConstraintInitializer",
-    "OverSaturationDetector",
-    "OverSaturationDetectorBase",
     "SlopeChecker",
     "approx_t_ppf",
 ]
-
-
-# Over-saturation detection classes
-class OverSaturationDetectorBase(ABC):
-    @abstractmethod
-    def add_finished(self, request: dict[str, Any]) -> None:
-        pass
-
-    @abstractmethod
-    def add_started(self, request: dict[str, Any]) -> None:
-        pass
-
-    def update_duration(self, duration: float) -> None:
-        self.duration = duration
-
-    @abstractmethod
-    def check_alert(self) -> bool:
-        pass
-
-    @abstractmethod
-    def reset(self) -> None:
-        pass
 
 
 def approx_t_ppf(p, df):
@@ -112,6 +130,13 @@ def approx_t_ppf(p, df):
 
 
 class SlopeChecker:
+    """
+    Helper class for online slope detection using linear regression.
+
+    Maintains running statistics for efficient O(1) updates and provides
+    statistical slope detection with margin of error calculation.
+    """
+
     def __init__(
         self, moe_threshold: float = 1.0, confidence: float = 0.95, eps: float = 1e-12
     ) -> None:
@@ -160,6 +185,15 @@ class SlopeChecker:
         self.sum_y2 -= y_old**2
 
     def check_slope(self, effective_n: float) -> bool:
+        """
+        Check if there is a statistically significant positive slope.
+
+        Args:
+            effective_n: Effective sample size for slope estimation.
+
+        Returns:
+            True if positive slope detected with low margin of error.
+        """
         minimal_n_for_slope_estimation = 3
         if effective_n < minimal_n_for_slope_estimation:
             return False
@@ -202,7 +236,20 @@ class SlopeChecker:
         return (slope > 0) and (margin_of_error < self.moe_threshold)
 
 
-class OverSaturationDetector(OverSaturationDetectorBase):
+class OverSaturationConstraint:  # type: ignore[misc]
+    """
+    Constraint that detects and stops execution when over-saturation is detected.
+
+    This constraint implements the Over-Saturation Detection (OSD) algorithm to
+    identify when a model becomes over-saturated (response rate doesn't keep up with
+    request rate). When over-saturation is detected, the constraint stops request
+    queuing and optionally stops processing of existing requests.
+
+    The constraint maintains internal state for tracking concurrent requests and
+    time-to-first-token (TTFT) metrics, using statistical slope detection to identify
+    performance degradation patterns.
+    """
+
     def __init__(
         self,
         minimum_duration: float = 30.0,
@@ -213,7 +260,22 @@ class OverSaturationDetector(OverSaturationDetectorBase):
         minimum_window_size: int = 5,
         confidence: float = 0.95,
         eps: float = 1e-12,
-    ) -> None:
+        enabled: bool = True,
+    ) -> None:  # noqa: PLR0913
+        """
+        Initialize the over-saturation constraint.
+
+        Args:
+            minimum_duration: Minimum seconds before checking for over-saturation.
+            minimum_ttft: Minimum TTFT threshold for violation counting.
+            maximum_window_seconds: Maximum time window for data retention.
+            moe_threshold: Margin of error threshold for slope detection.
+            maximum_window_ratio: Maximum window size as ratio of total requests.
+            minimum_window_size: Minimum data points required for slope estimation.
+            confidence: Statistical confidence level for t-distribution.
+            eps: Epsilon for numerical stability.
+            enabled: Whether to actually stop when over-saturation is detected.
+        """
         self.minimum_duration = minimum_duration
         self.minimum_ttft = minimum_ttft
         self.maximum_window_seconds = maximum_window_seconds
@@ -222,9 +284,26 @@ class OverSaturationDetector(OverSaturationDetectorBase):
         self.moe_threshold = moe_threshold
         self.confidence = confidence
         self.eps = eps
+        self.enabled = enabled
         self.reset()
 
-    def add_finished(self, request: dict[str, Any]) -> None:
+    def reset(self) -> None:
+        """Reset all internal state to initial values."""
+        self.duration = 0.0
+        self.started_requests: list[dict[str, Any]] = []
+        self.finished_requests: list[dict[str, Any]] = []
+        self.ttft_violations_counter = 0
+        self.total_finished_ever = 0
+        self.total_started_ever = 0
+        self.concurrent_slope_checker = SlopeChecker(
+            moe_threshold=self.moe_threshold, confidence=self.confidence, eps=self.eps
+        )
+        self.ttft_slope_checker = SlopeChecker(
+            moe_threshold=self.moe_threshold, confidence=self.confidence, eps=self.eps
+        )
+
+    def _add_finished(self, request: dict[str, Any]) -> None:
+        """Add a finished request to tracking."""
         ttft = request["ttft"]
         duration = request["duration"]
         if ttft is not None:
@@ -234,7 +313,8 @@ class OverSaturationDetector(OverSaturationDetectorBase):
                 self.ttft_violations_counter += 1
             self.ttft_slope_checker.add_data_point(duration, ttft)
 
-    def remove_finished(self, request: dict[str, Any]) -> None:
+    def _remove_finished(self, request: dict[str, Any]) -> None:
+        """Remove a finished request from tracking."""
         del self.finished_requests[0]
         ttft = request["ttft"]
         duration = request["duration"]
@@ -242,7 +322,8 @@ class OverSaturationDetector(OverSaturationDetectorBase):
             self.ttft_violations_counter -= 1
         self.ttft_slope_checker.remove_data_point(duration, ttft)
 
-    def add_started(self, request: dict[str, Any]) -> None:
+    def _add_started(self, request: dict[str, Any]) -> None:
+        """Add a started request to tracking."""
         concurrent = request["concurrent_requests"]
         duration = request["duration"]
         if concurrent is not None:
@@ -250,20 +331,22 @@ class OverSaturationDetector(OverSaturationDetectorBase):
             self.started_requests.append(request)
             self.concurrent_slope_checker.add_data_point(duration, concurrent)
 
-    def remove_started(self, request: dict[str, Any]) -> None:
+    def _remove_started(self, request: dict[str, Any]) -> None:
+        """Remove a started request from tracking."""
         del self.started_requests[0]
         concurrent = request["concurrent_requests"]
         duration = request["duration"]
         self.concurrent_slope_checker.remove_data_point(duration, concurrent)
 
-    def update_duration(self, duration: float) -> None:
+    def _update_duration(self, duration: float) -> None:
+        """Update duration and prune old data points."""
         self.duration = duration
 
         maximum_finished_window_size = int(
             self.total_finished_ever * self.maximum_window_ratio
         )
         while len(self.finished_requests) > maximum_finished_window_size:
-            self.remove_finished(self.finished_requests[0])
+            self._remove_finished(self.finished_requests[0])
 
         while (len(self.finished_requests) > 0) and (
             (
@@ -272,13 +355,13 @@ class OverSaturationDetector(OverSaturationDetectorBase):
             )
             > self.maximum_window_seconds
         ):
-            self.remove_finished(self.finished_requests[0])
+            self._remove_finished(self.finished_requests[0])
 
         maximum_started_window_size = int(
             self.total_started_ever * self.maximum_window_ratio
         )
         while len(self.started_requests) > maximum_started_window_size:
-            self.remove_started(self.started_requests[0])
+            self._remove_started(self.started_requests[0])
 
         while (len(self.started_requests) > 0) and (
             (
@@ -287,9 +370,15 @@ class OverSaturationDetector(OverSaturationDetectorBase):
             )
             > self.maximum_window_seconds
         ):
-            self.remove_started(self.started_requests[0])
+            self._remove_started(self.started_requests[0])
 
-    def check_alert(self) -> bool:
+    def _check_alert(self) -> bool:
+        """
+        Check if over-saturation is currently detected.
+
+        Returns:
+            True if over-saturation is detected, False otherwise.
+        """
         # Use duration as the maximum n value since requests from the
         # same second are highly correlated, this is simple and good enough
         # given that the MOE has a custom threshold anyway.
@@ -315,37 +404,6 @@ class OverSaturationDetector(OverSaturationDetectorBase):
 
         return is_concurrent_slope_positive and is_ttft_slope_positive
 
-    def reset(self) -> None:
-        self.duration = 0.0
-        self.started_requests: list[dict[str, Any]] = []
-        self.finished_requests: list[dict[str, Any]] = []
-        self.ttft_violations_counter = 0
-        self.total_finished_ever = 0
-        self.total_started_ever = 0
-        self.concurrent_slope_checker = SlopeChecker(
-            moe_threshold=self.moe_threshold, confidence=self.confidence, eps=self.eps
-        )
-        self.ttft_slope_checker = SlopeChecker(
-            moe_threshold=self.moe_threshold, confidence=self.confidence, eps=self.eps
-        )
-
-
-class OverSaturationConstraint:  # type: ignore[misc]
-    """
-    Constraint that limits execution based on over-saturation detection.
-
-    Stops request queuing when over-saturation is detected (i.e response-rate
-    doesn't keep up with the request-rate).
-    """
-
-    def __init__(
-        self,
-        over_saturation_detector: OverSaturationDetector,
-        stop_over_saturated: bool,
-    ) -> None:
-        self.over_saturation_detector = over_saturation_detector
-        self.stop_over_saturated = stop_over_saturated
-
     def __call__(
         self, state: SchedulerState, request_info: RequestInfo
     ) -> SchedulerUpdateAction:
@@ -360,7 +418,7 @@ class OverSaturationConstraint:  # type: ignore[misc]
 
         if request_info.status == "in_progress":
             concurrent_requests = state.processing_requests
-            self.over_saturation_detector.add_started(
+            self._add_started(
                 {"concurrent_requests": concurrent_requests, "duration": duration}
             )
         elif (
@@ -373,26 +431,20 @@ class OverSaturationConstraint:  # type: ignore[misc]
                 request_info.timings.first_token_iteration
                 - request_info.timings.request_start
             )
-            self.over_saturation_detector.add_finished(
-                {"ttft": ttft, "duration": duration}
-            )
+            self._add_finished({"ttft": ttft, "duration": duration})
 
-        self.over_saturation_detector.update_duration(duration)
-        is_over_saturated = self.over_saturation_detector.check_alert()
+        self._update_duration(duration)
+        is_over_saturated = self._check_alert()
 
-        ttft_slope = self.over_saturation_detector.ttft_slope_checker.slope
-        ttft_slope_moe = (
-            self.over_saturation_detector.ttft_slope_checker.margin_of_error
-        )
-        ttft_n = self.over_saturation_detector.ttft_slope_checker.n
-        ttft_violations = self.over_saturation_detector.ttft_violations_counter
-        concurrent_slope = self.over_saturation_detector.concurrent_slope_checker.slope
-        concurrent_slope_moe = (
-            self.over_saturation_detector.concurrent_slope_checker.margin_of_error
-        )
-        concurrent_n = self.over_saturation_detector.concurrent_slope_checker.n
+        ttft_slope = self.ttft_slope_checker.slope
+        ttft_slope_moe = self.ttft_slope_checker.margin_of_error
+        ttft_n = self.ttft_slope_checker.n
+        ttft_violations = self.ttft_violations_counter
+        concurrent_slope = self.concurrent_slope_checker.slope
+        concurrent_slope_moe = self.concurrent_slope_checker.margin_of_error
+        concurrent_n = self.concurrent_slope_checker.n
 
-        should_stop = is_over_saturated and self.stop_over_saturated
+        should_stop = is_over_saturated and self.enabled
         return SchedulerUpdateAction(
             request_queuing="stop" if should_stop else "continue",
             request_processing="stop_all" if should_stop else "continue",
@@ -410,58 +462,120 @@ class OverSaturationConstraint:  # type: ignore[misc]
 
 
 @ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
-    ["stop_over_saturated", "stop_over_sat", "stop_osd"]
+    ["over_saturation", "detect_saturation"]
 )
 class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
-    """Factory for creating OverSaturationConstraint instances from configuration."""
+    """
+    Factory for creating OverSaturationConstraint instances from configuration.
 
-    type_: Literal["stop_over_saturated"] = "stop_over_saturated"  # type: ignore[assignment]
-    stop_over_saturated: bool = Field(
+    Supports both boolean and dictionary inputs:
+    - bool: Enable/disable with default parameters
+    - dict: Provide configuration parameters (min_seconds, max_window_seconds, etc.)
+    """
+
+    type_: Literal["over_saturation"] = "over_saturation"  # type: ignore[assignment]
+    enabled: bool = Field(
+        default=True,
         description="Whether to stop the benchmark if the model is over-saturated",
     )
     min_seconds: int | float = Field(
-        default_factory=lambda: settings.constraint_over_saturation_min_seconds,
+        default=30.0,
         ge=0,
         description="Minimum seconds before checking for over-saturation",
     )
     max_window_seconds: int | float = Field(
-        default_factory=lambda: settings.constraint_over_saturation_max_window_seconds,
+        default=120.0,
         ge=0,
         description="Maximum over-saturation checking window size in seconds",
+    )
+    moe_threshold: float = Field(
+        default=2.0,
+        ge=0,
+        description="Margin of error threshold for slope detection",
+    )
+    minimum_ttft: float = Field(
+        default=2.5,
+        ge=0,
+        description="Minimum TTFT threshold for violation counting",
+    )
+    maximum_window_ratio: float = Field(
+        default=0.75,
+        ge=0,
+        le=1.0,
+        description="Maximum window size as ratio of total requests",
+    )
+    minimum_window_size: int = Field(
+        default=5,
+        ge=0,
+        description="Minimum data points required for slope estimation",
+    )
+    confidence: float = Field(
+        default=0.95,
+        ge=0,
+        le=1.0,
+        description="Statistical confidence level for t-distribution",
     )
 
     def create_constraint(self, **_kwargs) -> Constraint:
         """
-        Create a OverSaturationConstraint instance.
+        Create an OverSaturationConstraint instance.
 
         :param _kwargs: Additional keyword arguments (unused).
         :return: Configured OverSaturationConstraint instance.
         """
-        over_saturation_detector = OverSaturationDetector(
-            minimum_duration=self.min_seconds,
-            maximum_window_seconds=self.max_window_seconds,
-        )
         return OverSaturationConstraint(  # type: ignore[return-value]
-            over_saturation_detector=over_saturation_detector,
-            stop_over_saturated=self.stop_over_saturated,
+            minimum_duration=self.min_seconds,
+            minimum_ttft=self.minimum_ttft,
+            maximum_window_seconds=self.max_window_seconds,
+            moe_threshold=self.moe_threshold,
+            maximum_window_ratio=self.maximum_window_ratio,
+            minimum_window_size=self.minimum_window_size,
+            confidence=self.confidence,
+            enabled=self.enabled,
         )
 
     @classmethod
     def validated_kwargs(
-        cls, stop_over_saturated: bool | None = None, **kwargs
+        cls, over_saturation: bool | dict[str, Any] | None = None, **kwargs
     ) -> dict[str, Any]:
         """
         Validate and process arguments for OverSaturationConstraint creation.
 
-        :param stop_over_saturated: Whether to stop the benchmark if over-saturated
-        :param kwargs: Supports stop_over_saturated, stop_over_sat, stop_osd
-        :return: Validated dictionary with stop_over_saturated field
+        Supports both bool and dict inputs:
+        - bool: Enable/disable with defaults
+        - dict: Provide configuration parameters
+
+        :param over_saturation: Boolean to enable/disable, or dict with configuration
+        :param kwargs: Additional keyword arguments (supports aliases)
+        :return: Validated dictionary with constraint configuration
         """
-        aliases = ["stop_over_saturated", "stop_over_sat", "stop_osd"]
-        result = stop_over_saturated if stop_over_saturated is not None else False
+        # Check for aliases in kwargs
+        aliases = ["over_saturation", "detect_saturation"]
+        result: bool | dict[str, Any] | None = over_saturation
+
         for alias in aliases:
             alias_value = kwargs.get(alias)
             if alias_value is not None:
-                result = bool(alias_value) or result
+                result = alias_value
+                break
 
-        return {"stop_over_saturated": result}
+        if result is None:
+            return {}
+
+        if isinstance(result, bool):
+            return {"enabled": result}
+        elif isinstance(result, dict):
+            # Extract configuration from dict
+            return {
+                "enabled": result.get("enabled", True),
+                "min_seconds": result.get("min_seconds", 30.0),
+                "max_window_seconds": result.get("max_window_seconds", 120.0),
+                "moe_threshold": result.get("moe_threshold", 2.0),
+                "minimum_ttft": result.get("minimum_ttft", 2.5),
+                "maximum_window_ratio": result.get("maximum_window_ratio", 0.75),
+                "minimum_window_size": result.get("minimum_window_size", 5),
+                "confidence": result.get("confidence", 0.95),
+            }
+        else:
+            # Convert to bool if it's truthy
+            return {"enabled": bool(result)}

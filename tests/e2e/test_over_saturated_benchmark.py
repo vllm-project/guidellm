@@ -49,7 +49,7 @@ def test_over_saturated_benchmark(server: VllmSimServer):
     client.start_benchmark(
         rate=rate,
         max_seconds=20,
-        stop_over_saturated=True,
+        over_saturation=True,
         extra_env={
             "GUIDELLM__CONSTRAINT_OVER_SATURATION_MIN_SECONDS": "0",
             "GOMAXPROCS": "1",
@@ -68,7 +68,7 @@ def test_over_saturated_benchmark(server: VllmSimServer):
 
     # Check that the max duration constraint was triggered
     assert_constraint_triggered(
-        benchmark, "stop_over_saturated", {"is_over_saturated": True}
+        benchmark, "over_saturation", {"is_over_saturated": True}
     )
 
     cleanup_report_file(report_path)

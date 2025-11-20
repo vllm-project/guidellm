@@ -13,15 +13,14 @@ from .base import (
     UnserializableConstraintInitializer,
 )
 from .factory import ConstraintsInitializerFactory
-from .over_saturation import (
-    OverSaturationConstraint,
-    OverSaturationConstraintInitializer,
-    OverSaturationDetector,
-)
 from .protocols import (
     Constraint,
     ConstraintInitializer,
     SerializableConstraintInitializer,
+)
+from .saturation import (
+    OverSaturationConstraint,
+    OverSaturationConstraintInitializer,
 )
 from .standard import (
     MaxDurationConstraint,
@@ -43,7 +42,6 @@ __all__ = [
     "MaxNumberConstraint",
     "OverSaturationConstraint",
     "OverSaturationConstraintInitializer",
-    "OverSaturationDetector",
     "PydanticConstraintInitializer",
     "RequestsExhaustedConstraint",
     "SerializableConstraintInitializer",

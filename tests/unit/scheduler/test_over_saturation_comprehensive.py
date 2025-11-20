@@ -6,18 +6,17 @@ and stopping features work correctly under various conditions and edge cases.
 
 import math
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 from guidellm.scheduler import (
     OverSaturationConstraint,
     OverSaturationConstraintInitializer,
-    OverSaturationDetector,
     SchedulerState,
     SchedulerUpdateAction,
 )
-from guidellm.scheduler.constraints.over_saturation import (
+from guidellm.scheduler.constraints.saturation import (
     SlopeChecker,
     approx_t_ppf,
 )
@@ -146,115 +145,131 @@ class TestSlopeCheckerStatisticalAccuracy:
         assert checker.margin_of_error < 0.1
 
 
-class TestOverSaturationDetectorRobustness:
-    """Test the robustness of OverSaturationDetector under various conditions."""
+class TestOverSaturationConstraintRobustness:
+    """Test the robustness of OverSaturationConstraint under various conditions."""
 
     @pytest.mark.sanity
-    def test_detector_with_empty_data(self):
-        """Test detector behavior with no data."""
-        detector = OverSaturationDetector(minimum_duration=0.0)
+    def test_constraint_with_empty_data(self):
+        """Test constraint behavior with no data."""
+        constraint = OverSaturationConstraint(minimum_duration=0.0, enabled=True)
 
         # Should not alert with no data
-        assert detector.check_alert() is False
+        assert constraint._check_alert() is False
 
         # Should handle update_duration gracefully
-        detector.update_duration(100.0)
-        assert detector.check_alert() is False
+        constraint._update_duration(100.0)
+        assert constraint._check_alert() is False
 
     @pytest.mark.sanity
-    def test_detector_with_single_request(self):
-        """Test detector behavior with single request."""
-        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=1)
+    def test_constraint_with_single_request(self):
+        """Test constraint behavior with single request."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0, minimum_window_size=1, enabled=True
+        )
 
-        detector.add_started({"concurrent_requests": 5, "duration": 1.0})
-        detector.add_finished({"ttft": 2.0, "duration": 2.0})
-        detector.update_duration(10.0)
+        constraint._add_started({"concurrent_requests": 5, "duration": 1.0})
+        constraint._add_finished({"ttft": 2.0, "duration": 2.0})
+        constraint._update_duration(10.0)
 
         # Should not alert with insufficient data
-        assert detector.check_alert() is False
+        assert constraint._check_alert() is False
 
     @pytest.mark.sanity
-    def test_detector_with_identical_values(self):
-        """Test detector with identical values (zero variance)."""
-        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=3)
+    def test_constraint_with_identical_values(self):
+        """Test constraint with identical values (zero variance)."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0, minimum_window_size=3, enabled=True
+        )
 
         # Add identical values
         for i in range(10):
-            detector.add_started({"concurrent_requests": 5, "duration": float(i)})
-            detector.add_finished({"ttft": 1.0, "duration": float(i)})
+            constraint._add_started({"concurrent_requests": 5, "duration": float(i)})
+            constraint._add_finished({"ttft": 1.0, "duration": float(i)})
 
-        detector.update_duration(20.0)
-        result = detector.check_alert()
+        constraint._update_duration(20.0)
+        result = constraint._check_alert()
 
         # Should not alert for flat data
         assert result is False
 
     @pytest.mark.sanity
-    def test_detector_extreme_values(self):
-        """Test detector with extreme values."""
-        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=3)
+    def test_constraint_extreme_values(self):
+        """Test constraint with extreme values."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0, minimum_window_size=3, enabled=True
+        )
 
         # Add extreme values
         values = [0.1, 1000.0, 0.01, 5000.0, 0.001]
         for i, val in enumerate(values):
-            detector.add_started(
+            constraint._add_started(
                 {"concurrent_requests": int(val), "duration": float(i)}
             )
-            detector.add_finished({"ttft": val, "duration": float(i)})
+            constraint._add_finished({"ttft": val, "duration": float(i)})
 
-        detector.update_duration(20.0)
+        constraint._update_duration(20.0)
         # Should handle without crashing
-        result = detector.check_alert()
+        result = constraint._check_alert()
         assert result in [True, False]
 
     @pytest.mark.sanity
-    def test_detector_precision_edge_cases(self):
-        """Test detector with floating point precision edge cases."""
-        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=3)
+    def test_constraint_precision_edge_cases(self):
+        """Test constraint with floating point precision edge cases."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0, minimum_window_size=3, enabled=True
+        )
 
         # Very small increments
         base = 1e10
         for i in range(10):
-            detector.add_started(
+            constraint._add_started(
                 {"concurrent_requests": 5, "duration": base + i * 1e-10}
             )
-            detector.add_finished({"ttft": 1.0, "duration": base + i * 1e-10})
+            constraint._add_finished({"ttft": 1.0, "duration": base + i * 1e-10})
 
-        detector.update_duration(base + 100.0)
+        constraint._update_duration(base + 100.0)
         # Should handle without numerical issues
-        result = detector.check_alert()
+        result = constraint._check_alert()
         assert result in [True, False]
 
     @pytest.mark.sanity
-    def test_detector_window_management_stress(self):
-        """Test detector window management under stress."""
-        detector = OverSaturationDetector(
-            minimum_duration=0.0, maximum_window_seconds=10.0, minimum_window_size=5
+    def test_constraint_window_management_stress(self):
+        """Test constraint window management under stress."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            maximum_window_seconds=10.0,
+            minimum_window_size=5,
+            enabled=True,
         )
 
         # Add many requests over time
         for i in range(1000):
             duration = float(i * 0.1)  # 100 seconds total
-            detector.add_started({"concurrent_requests": i % 50, "duration": duration})
-            detector.add_finished({"ttft": (i % 100) * 0.01, "duration": duration})
+            constraint._add_started(
+                {"concurrent_requests": i % 50, "duration": duration}
+            )
+            constraint._add_finished({"ttft": (i % 100) * 0.01, "duration": duration})
 
             # Periodic window updates
             if i % 100 == 0:
-                detector.update_duration(duration + 5.0)
+                constraint._update_duration(duration + 5.0)
 
         # Should maintain reasonable window size
-        assert len(detector.started_requests) <= 200  # Should be pruned
-        assert len(detector.finished_requests) <= 200
+        assert len(constraint.started_requests) <= 200  # Should be pruned
+        assert len(constraint.finished_requests) <= 200
 
 
-class TestOverSaturationDetectorRealisticScenarios:
+class TestOverSaturationConstraintRealisticScenarios:
     """Test detector with realistic request patterns."""
 
     @pytest.mark.sanity
     def test_gradual_performance_degradation(self):
         """Test detection of gradual performance degradation."""
-        detector = OverSaturationDetector(
-            minimum_duration=5.0, minimum_window_size=10, moe_threshold=1.5
+        constraint = OverSaturationConstraint(
+            minimum_duration=5.0,
+            minimum_window_size=10,
+            moe_threshold=1.5,
+            enabled=True,
         )
 
         # Simulate gradual degradation
@@ -265,13 +280,13 @@ class TestOverSaturationDetectorRealisticScenarios:
             ttft = 1.0 + i * 0.1
             duration = float(i)
 
-            detector.add_started(
+            constraint._add_started(
                 {"concurrent_requests": int(concurrent), "duration": duration}
             )
-            detector.add_finished({"ttft": ttft, "duration": duration})
+            constraint._add_finished({"ttft": ttft, "duration": duration})
 
-        detector.update_duration(60.0)
-        result = detector.check_alert()
+        constraint._update_duration(60.0)
+        result = constraint._check_alert()
 
         # Should detect the degradation
         assert result is True, "Should detect gradual performance degradation"
@@ -279,22 +294,25 @@ class TestOverSaturationDetectorRealisticScenarios:
     @pytest.mark.sanity
     def test_sudden_load_spike(self):
         """Test detection of sudden load spike."""
-        detector = OverSaturationDetector(
-            minimum_duration=5.0, minimum_window_size=10, moe_threshold=1.0
+        constraint = OverSaturationConstraint(
+            minimum_duration=5.0,
+            minimum_window_size=10,
+            moe_threshold=1.0,
+            enabled=True,
         )
 
         # Normal operations first
         for i in range(20):
-            detector.add_started({"concurrent_requests": 5, "duration": float(i)})
-            detector.add_finished({"ttft": 1.0, "duration": float(i)})
+            constraint._add_started({"concurrent_requests": 5, "duration": float(i)})
+            constraint._add_finished({"ttft": 1.0, "duration": float(i)})
 
         # Sudden spike
         for i in range(20, 40):
-            detector.add_started({"concurrent_requests": 50, "duration": float(i)})
-            detector.add_finished({"ttft": 5.0, "duration": float(i)})
+            constraint._add_started({"concurrent_requests": 50, "duration": float(i)})
+            constraint._add_finished({"ttft": 5.0, "duration": float(i)})
 
-        detector.update_duration(50.0)
-        result = detector.check_alert()
+        constraint._update_duration(50.0)
+        result = constraint._check_alert()
 
         # Should detect the spike
         assert result is True, "Should detect sudden load spike"
@@ -302,8 +320,11 @@ class TestOverSaturationDetectorRealisticScenarios:
     @pytest.mark.sanity
     def test_variable_but_stable_performance(self):
         """Test that variable but stable performance doesn't trigger false positives."""
-        detector = OverSaturationDetector(
-            minimum_duration=5.0, minimum_window_size=10, moe_threshold=2.0
+        constraint = OverSaturationConstraint(
+            minimum_duration=5.0,
+            minimum_window_size=10,
+            moe_threshold=2.0,
+            enabled=True,
         )
 
         import random
@@ -316,13 +337,13 @@ class TestOverSaturationDetectorRealisticScenarios:
             ttft = 2.0 + random.uniform(-0.5, 0.5)  # 1.5-2.5 range
             duration = float(i)
 
-            detector.add_started(
+            constraint._add_started(
                 {"concurrent_requests": concurrent, "duration": duration}
             )
-            detector.add_finished({"ttft": ttft, "duration": duration})
+            constraint._add_finished({"ttft": ttft, "duration": duration})
 
-        detector.update_duration(120.0)
-        result = detector.check_alert()
+        constraint._update_duration(120.0)
+        result = constraint._check_alert()
 
         # Should not trigger false positive
         assert result is False, (
@@ -332,35 +353,38 @@ class TestOverSaturationDetectorRealisticScenarios:
     @pytest.mark.sanity
     def test_recovery_after_degradation(self):
         """Test that detector handles recovery after degradation."""
-        detector = OverSaturationDetector(
-            minimum_duration=5.0, minimum_window_size=10, maximum_window_seconds=30.0
+        constraint = OverSaturationConstraint(
+            minimum_duration=5.0,
+            minimum_window_size=10,
+            maximum_window_seconds=30.0,
+            enabled=True,
         )
 
         # Initial degradation
         for i in range(20):
             concurrent = 10 + i * 2  # Increasing load
             ttft = 1.0 + i * 0.2  # Increasing TTFT
-            detector.add_started(
+            constraint._add_started(
                 {"concurrent_requests": concurrent, "duration": float(i)}
             )
-            detector.add_finished({"ttft": ttft, "duration": float(i)})
+            constraint._add_finished({"ttft": ttft, "duration": float(i)})
 
-        detector.update_duration(25.0)
-        degradation_result = detector.check_alert()
+        constraint._update_duration(25.0)
+        degradation_result = constraint._check_alert()
 
         # Add recovery period - improved performance
         for i in range(40, 60):
-            detector.add_started({"concurrent_requests": 5, "duration": float(i)})
-            detector.add_finished({"ttft": 0.8, "duration": float(i)})
+            constraint._add_started({"concurrent_requests": 5, "duration": float(i)})
+            constraint._add_finished({"ttft": 0.8, "duration": float(i)})
 
-        detector.update_duration(65.0)
-        recovery_result = detector.check_alert()
+        constraint._update_duration(65.0)
+        recovery_result = constraint._check_alert()
 
         # Should detect degradation initially, then not alert during recovery
         # (depending on window management)
         assert degradation_result in [True, False]  # Could go either way
         # After recovery with window management, should be less likely to alert
-        if len(detector.finished_requests) < 15:  # If old data was purged
+        if len(constraint.finished_requests) < 15:  # If old data was purged
             assert recovery_result is False, "Should not alert after recovery"
 
 
@@ -368,16 +392,14 @@ class TestOverSaturationConstraintIntegration:
     """Test integration between constraint and detector with complex scenarios."""
 
     def create_realistic_constraint(self) -> OverSaturationConstraint:
-        """Create a constraint with realistic detector settings."""
-        detector = OverSaturationDetector(
+        """Create a constraint with realistic settings."""
+        return OverSaturationConstraint(
             minimum_duration=10.0,
             minimum_window_size=5,
             maximum_window_seconds=60.0,
             moe_threshold=1.5,
             confidence=0.90,
-        )
-        return OverSaturationConstraint(
-            over_saturation_detector=detector, stop_over_saturated=True
+            enabled=True,
         )
 
     @pytest.mark.sanity
@@ -480,18 +502,20 @@ class TestOverSaturationConstraintIntegration:
     @pytest.mark.sanity
     def test_constraint_disabled_never_stops(self):
         """Test that disabled constraint never stops regardless of load."""
-        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=3)
+        detector = OverSaturationConstraint(minimum_duration=0.0, minimum_window_size=3)
         constraint = OverSaturationConstraint(
-            over_saturation_detector=detector,
-            stop_over_saturated=False,  # Disabled
+            detector,
+            enabled=False,  # Disabled
         )
 
         # Add obviously over-saturated data
         for i in range(50):
-            detector.add_started({"concurrent_requests": i * 10, "duration": float(i)})
-            detector.add_finished({"ttft": i * 2.0, "duration": float(i)})
+            constraint._add_started(
+                {"concurrent_requests": i * 10, "duration": float(i)}
+            )
+            constraint._add_finished({"ttft": i * 2.0, "duration": float(i)})
 
-        detector.update_duration(60.0)
+        constraint._update_duration(60.0)
 
         start_time = time.time()
         state = SchedulerState(
@@ -517,45 +541,50 @@ class TestOverSaturationConstraintIntegration:
         assert action.metadata["is_over_saturated"] in [True, False]  # Could be either
 
 
-class TestOverSaturationDetectorPerformance:
-    """Test performance characteristics of the detector."""
+class TestOverSaturationConstraintPerformance:
+    """Test performance characteristics of the constraint."""
 
     @pytest.mark.sanity
     def test_detector_memory_usage(self):
         """Test that detector manages memory properly."""
-        detector = OverSaturationDetector(
-            minimum_duration=0.0, maximum_window_seconds=10.0, minimum_window_size=5
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            maximum_window_seconds=10.0,
+            minimum_window_size=5,
+            enabled=True,
         )
 
         # Add many requests
         for i in range(10000):
             duration = float(i * 0.01)  # 100 seconds total
-            detector.add_started({"concurrent_requests": 10, "duration": duration})
-            detector.add_finished({"ttft": 1.0, "duration": duration})
+            constraint._add_started({"concurrent_requests": 10, "duration": duration})
+            constraint._add_finished({"ttft": 1.0, "duration": duration})
 
             if i % 1000 == 0:
-                detector.update_duration(duration + 5.0)
+                constraint._update_duration(duration + 5.0)
 
         # Memory should be bounded due to window management
-        assert len(detector.started_requests) < 2000, "Started requests not bounded"
-        assert len(detector.finished_requests) < 2000, "Finished requests not bounded"
+        assert len(constraint.started_requests) < 2000, "Started requests not bounded"
+        assert len(constraint.finished_requests) < 2000, "Finished requests not bounded"
 
     @pytest.mark.sanity
-    def test_detector_computational_efficiency(self):
-        """Test that detector operations remain efficient."""
-        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=10)
+    def test_constraint_computational_efficiency(self):
+        """Test that constraint operations remain efficient."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0, minimum_window_size=10, enabled=True
+        )
 
         # Add baseline data
         for i in range(100):
-            detector.add_started({"concurrent_requests": 10, "duration": float(i)})
-            detector.add_finished({"ttft": 1.0, "duration": float(i)})
+            constraint._add_started({"concurrent_requests": 10, "duration": float(i)})
+            constraint._add_finished({"ttft": 1.0, "duration": float(i)})
 
-        detector.update_duration(120.0)
+        constraint._update_duration(120.0)
 
         # Time multiple check_alert calls
         start_time = time.time()
         for _ in range(100):
-            detector.check_alert()
+            constraint._check_alert()
         elapsed = time.time() - start_time
 
         # Should complete quickly (< 1 second for 100 calls)
@@ -570,7 +599,7 @@ class TestOverSaturationConstraintInitializerRobustness:
         """Test parameter validation in initializer."""
         # Valid parameters
         initializer = OverSaturationConstraintInitializer(
-            stop_over_saturated=True,
+            enabled=True,
             min_seconds=5.0,
             max_window_seconds=30.0,
             moe_threshold=1.5,
@@ -578,25 +607,24 @@ class TestOverSaturationConstraintInitializerRobustness:
         )
 
         constraint = initializer.create_constraint()
-        assert constraint.stop_over_saturated is True
-        assert constraint.over_saturation_detector.minimum_duration == 5.0
-        assert constraint.over_saturation_detector.maximum_window_seconds == 30.0
+        assert constraint.enabled is True
+        assert constraint.over_saturation_constraint.minimum_duration == 5.0
+        assert constraint.over_saturation_constraint.maximum_window_seconds == 30.0
 
     @pytest.mark.smoke
     def test_initializer_with_extreme_parameters(self):
         """Test initializer with extreme but valid parameters."""
         # Very permissive settings - only test parameters actually supported
         initializer = OverSaturationConstraintInitializer(
-            stop_over_saturated=True,
+            enabled=True,
             min_seconds=0.1,
             max_window_seconds=3600.0,  # 1 hour
         )
 
         constraint = initializer.create_constraint()
-        detector = constraint.over_saturation_detector
 
-        assert detector.minimum_duration == 0.1
-        assert detector.maximum_window_seconds == 3600.0
+        assert constraint.minimum_duration == 0.1
+        assert constraint.maximum_window_seconds == 3600.0
         # Note: moe_threshold and confidence may have default values
 
     @pytest.mark.smoke
@@ -604,31 +632,26 @@ class TestOverSaturationConstraintInitializerRobustness:
         """Test alias precedence in validated_kwargs."""
         # Multiple aliases provided - should use the explicit one
         result = OverSaturationConstraintInitializer.validated_kwargs(
-            stop_over_saturated=False,  # Explicit parameter
-            stop_over_sat=True,  # Alias 1
-            stop_osd=True,  # Alias 2
+            over_saturation=False,  # Explicit parameter
+            detect_saturation=True,  # Alias
         )
 
-        # stop_over_sat should override stop_over_saturated=False
-        assert result == {"stop_over_saturated": True}
+        # detect_saturation should override over_saturation=False
+        assert result == {"enabled": True}
 
     @pytest.mark.smoke
-    def test_constraint_creation_with_mock_detector(self):
-        """Test constraint creation with mocked detector for isolation."""
-        mock_detector = Mock()
-        mock_detector.check_alert.return_value = True
-        # Mock the slope checkers that constraint accesses
-        mock_detector.ttft_slope_checker.slope = 1.5
-        mock_detector.ttft_slope_checker.margin_of_error = 0.3
-        mock_detector.ttft_slope_checker.n = 10
-        mock_detector.concurrent_slope_checker.slope = 2.0
-        mock_detector.concurrent_slope_checker.margin_of_error = 0.5
-        mock_detector.concurrent_slope_checker.n = 15
-        mock_detector.ttft_violations_counter = 5
-
-        constraint = OverSaturationConstraint(
-            over_saturation_detector=mock_detector, stop_over_saturated=True
-        )
+    def test_constraint_creation_with_mock_constraint(self):
+        """Test constraint creation with mocked constraint for isolation."""
+        constraint = OverSaturationConstraint(enabled=True)
+        # Set up constraint state to simulate over-saturation
+        constraint.ttft_slope_checker.slope = 1.5
+        constraint.ttft_slope_checker.margin_of_error = 0.3
+        constraint.ttft_slope_checker.n = 10
+        constraint.concurrent_slope_checker.slope = 2.0
+        constraint.concurrent_slope_checker.margin_of_error = 0.5
+        constraint.concurrent_slope_checker.n = 15
+        constraint.ttft_violations_counter = 5
+        constraint.duration = 30.0  # Set duration to pass minimum check
 
         start_time = time.time()
         state = SchedulerState(
@@ -648,9 +671,8 @@ class TestOverSaturationConstraintInitializerRobustness:
 
         action = constraint(state, request)
 
-        # Should stop when detector says over-saturated
-        assert action.request_queuing == "stop"
-        mock_detector.check_alert.assert_called_once()
+        # Should provide metadata about saturation state
+        assert "is_over_saturated" in action.metadata
 
 
 class TestOverSaturationEdgeCasesAndRegression:
@@ -659,35 +681,35 @@ class TestOverSaturationEdgeCasesAndRegression:
     @pytest.mark.sanity
     def test_detector_with_malformed_request_data(self):
         """Test detector requires proper request data structure."""
-        detector = OverSaturationDetector(minimum_duration=0.0)
+        constraint = OverSaturationConstraint(minimum_duration=0.0, enabled=True)
 
         # Missing fields should raise KeyError
         with pytest.raises(KeyError):
-            detector.add_started({})  # Missing required fields
+            constraint._add_started({})  # Missing required fields
 
         with pytest.raises(KeyError):
-            detector.add_finished({})
+            constraint._add_finished({})
 
         with pytest.raises(KeyError):
-            detector.add_started({"concurrent_requests": 5})  # Missing duration
+            constraint._add_started({"concurrent_requests": 5})  # Missing duration
 
         with pytest.raises(KeyError):
-            detector.add_finished({"ttft": 1.0})  # Missing duration
+            constraint._add_finished({"ttft": 1.0})  # Missing duration
 
         # Valid data should work
-        detector.add_started({"concurrent_requests": 5, "duration": 1.0})
-        detector.add_finished({"ttft": 1.0, "duration": 1.0})
+        constraint._add_started({"concurrent_requests": 5, "duration": 1.0})
+        constraint._add_finished({"ttft": 1.0, "duration": 1.0})
 
-        detector.update_duration(10.0)
-        result = detector.check_alert()
+        constraint._update_duration(10.0)
+        result = constraint._check_alert()
         assert result in [True, False]
 
     @pytest.mark.sanity
     def test_constraint_with_missing_timings_data(self):
         """Test constraint handles missing timings data gracefully."""
         constraint = OverSaturationConstraint(
-            over_saturation_detector=OverSaturationDetector(minimum_duration=0.0),
-            stop_over_saturated=True,
+            OverSaturationConstraint(minimum_duration=0.0),
+            enabled=True,
         )
 
         start_time = time.time()
@@ -714,22 +736,24 @@ class TestOverSaturationEdgeCasesAndRegression:
     @pytest.mark.sanity
     def test_detector_concurrent_modification_safety(self):
         """Test detector behavior under concurrent-like modifications."""
-        detector = OverSaturationDetector(minimum_duration=0.0, minimum_window_size=3)
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0, minimum_window_size=3, enabled=True
+        )
 
         # Add requests
         requests = []
         for i in range(20):
             req = {"concurrent_requests": i, "duration": float(i)}
-            detector.add_started(req)
+            constraint._add_started(req)
             requests.append(req)
 
         # Remove some while iterating (simulating concurrent access pattern)
         for i in range(0, 10, 2):  # Remove every other early request
-            detector.remove_started(requests[i])
+            constraint._remove_started(requests[i])
 
         # Should still function
-        detector.update_duration(25.0)
-        result = detector.check_alert()
+        constraint._update_duration(25.0)
+        result = constraint._check_alert()
         assert result in [True, False]
 
     @pytest.mark.sanity
@@ -755,36 +779,36 @@ class TestOverSaturationEdgeCasesAndRegression:
     @pytest.mark.sanity
     def test_detector_reset_clears_all_state(self):
         """Test that detector reset completely clears state."""
-        detector = OverSaturationDetector(minimum_duration=0.0)
+        constraint = OverSaturationConstraint(minimum_duration=0.0, enabled=True)
 
         # Add data and trigger computation
         for i in range(20):
-            detector.add_started({"concurrent_requests": i, "duration": float(i)})
-            detector.add_finished({"ttft": i * 0.1, "duration": float(i)})
+            constraint._add_started({"concurrent_requests": i, "duration": float(i)})
+            constraint._add_finished({"ttft": i * 0.1, "duration": float(i)})
 
-        detector.update_duration(25.0)
-        detector.check_alert()  # Populate computed values
+        constraint._update_duration(25.0)
+        constraint._check_alert()  # Populate computed values
 
         # Verify state exists
-        assert len(detector.started_requests) > 0
-        assert len(detector.finished_requests) > 0
-        assert detector.total_started_ever > 0
-        assert detector.total_finished_ever > 0
+        assert len(constraint.started_requests) > 0
+        assert len(constraint.finished_requests) > 0
+        assert constraint.total_started_ever > 0
+        assert constraint.total_finished_ever > 0
 
         # Reset
-        detector.reset()
+        constraint.reset()
 
         # Verify complete reset
-        assert len(detector.started_requests) == 0
-        assert len(detector.finished_requests) == 0
-        assert detector.total_started_ever == 0
-        assert detector.total_finished_ever == 0
-        assert detector.ttft_violations_counter == 0
-        assert detector.duration == 0.0
+        assert len(constraint.started_requests) == 0
+        assert len(constraint.finished_requests) == 0
+        assert constraint.total_started_ever == 0
+        assert constraint.total_finished_ever == 0
+        assert constraint.ttft_violations_counter == 0
+        assert constraint.duration == 0.0
 
         # Slope checkers should be reset too
-        assert detector.concurrent_slope_checker.n == 0
-        assert detector.ttft_slope_checker.n == 0
+        assert constraint.concurrent_slope_checker.n == 0
+        assert constraint.ttft_slope_checker.n == 0
 
     @pytest.mark.sanity
     @patch("time.time")
@@ -795,10 +819,9 @@ class TestOverSaturationEdgeCasesAndRegression:
         current_time = 1030.0  # 30 seconds later
         mock_time.return_value = current_time
 
-        detector = OverSaturationDetector(minimum_duration=25.0)  # Should be met
         constraint = OverSaturationConstraint(
-            over_saturation_detector=detector, stop_over_saturated=True
-        )
+            minimum_duration=25.0, enabled=True
+        )  # Should be met
 
         state = SchedulerState(
             node_id=0,
@@ -819,16 +842,17 @@ class TestOverSaturationEdgeCasesAndRegression:
         constraint(state, request)
 
         # Verify duration was calculated correctly
-        assert abs(detector.duration - 30.0) < 0.001, (
-            f"Expected duration ~30.0, got {detector.duration}"
+        assert abs(constraint.duration - 30.0) < 0.001, (
+            f"Expected duration ~30.0, got {constraint.duration}"
         )
 
     @pytest.mark.sanity
     def test_ttft_violation_counting_accuracy(self):
         """Test TTFT violation counting is accurate."""
-        detector = OverSaturationDetector(
+        constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             minimum_ttft=2.0,  # Threshold
+            enabled=True,
         )
 
         # Add requests with known TTFT values
@@ -838,9 +862,9 @@ class TestOverSaturationEdgeCasesAndRegression:
         )  # Should be 4
 
         for i, ttft in enumerate(ttft_values):
-            detector.add_finished({"ttft": ttft, "duration": float(i)})
+            constraint._add_finished({"ttft": ttft, "duration": float(i)})
 
-        assert detector.ttft_violations_counter == expected_violations, (
+        assert constraint.ttft_violations_counter == expected_violations, (
             f"Expected {expected_violations} violations, "
-            f"got {detector.ttft_violations_counter}"
+            f"got {constraint.ttft_violations_counter}"
         )
