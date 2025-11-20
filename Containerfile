@@ -1,15 +1,15 @@
 # TODO: Update to official python-3.13-minimal image when available
 ARG BASE_IMAGE=quay.io/fedora/python-313-minimal:latest
 
+# Use a multi-stage build to create a lightweight production image
+FROM $BASE_IMAGE as builder
+
 # release: take the last version and add a post if build iteration
 # candidate: increment to next minor, add 'rc' with build iteration
 # nightly: increment to next minor, add 'a' with build iteration
 # alpha: increment to next minor, add 'a' with build iteration
 # dev: increment to next minor, add 'dev' with build iteration
 ARG GUIDELLM_BUILD_TYPE=dev
-
-# Use a multi-stage build to create a lightweight production image
-FROM $BASE_IMAGE as builder
 
 # Switch to root for installing packages
 USER root
