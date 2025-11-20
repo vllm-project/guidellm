@@ -172,6 +172,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     rate: list[float] | None = Field(
         default=None, description="Request rate(s) for rate-based scheduling"
     )
+    profile_kwargs: dict[str, Any] | None = Field(
+        default=None, description="Additional profile-specific configuration arguments"
+    )
     # Backend configuration
     backend: BackendType | Backend = Field(
         default="openai_http", description="Backend type or instance for execution"
