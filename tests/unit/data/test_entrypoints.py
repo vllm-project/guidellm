@@ -2,8 +2,13 @@
 Unit tests for guidellm.data.entrypoints module, specifically process_dataset function.
 """
 
+import os
 import json
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 import pytest
 import yaml
@@ -11,9 +16,15 @@ from datasets import Dataset
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.entrypoints import (
+    STRATEGY_HANDLERS,
     PromptTooShortError,
     ShortPromptStrategy,
+    handle_concatenate_strategy,
+    handle_error_strategy,
+    handle_ignore_strategy,
+    handle_pad_strategy,
     process_dataset,
+    push_dataset_to_hub,
 )
 
 
@@ -735,6 +746,7 @@ class TestProcessDatasetIntegration:
         
         # Verify each row has required fields
         for row in saved_dataset:
+            assert "prompt" in row
             assert "prompt_tokens_count" in row
             assert "output_tokens_count" in row
             assert isinstance(row["prompt_tokens_count"], int)
@@ -775,6 +787,9 @@ class TestProcessDatasetIntegration:
             short_prompt_strategy=ShortPromptStrategy.IGNORE,
         )
 
+        # Verify all expected calls were made (even though dataset is empty)
+        mock_check_processor.assert_called_once()
+        mock_deserializer_factory_class.deserialize.assert_called_once()
         # When all prompts are filtered out, save_dataset_to_file is not called
         # (the function returns early in _finalize_processed_dataset)
         # This is expected behavior - the function handles empty datasets gracefully
@@ -1629,4 +1644,216 @@ class TestProcessDatasetConfigValidation:
             # Verify prompt and output token counts are present
             assert "prompt_tokens_count" in row
             assert "output_tokens_count" in row
+
+
+class TestShortPromptStrategyHandlers:
+    """Unit tests for individual short prompt strategy handler functions."""
+
+    @pytest.mark.sanity
+    def test_handle_ignore_strategy_too_short(self, tokenizer_mock):
+        """Test handle_ignore_strategy returns None for short prompts."""
+        result = handle_ignore_strategy("short", 10, tokenizer_mock)
+        assert result is None
+        tokenizer_mock.encode.assert_called_with("short")
+
+    @pytest.mark.sanity
+    def test_handle_ignore_strategy_sufficient_length(self, tokenizer_mock):
+        """Test handle_ignore_strategy returns prompt for sufficient length."""
+        result = handle_ignore_strategy("long prompt", 5, tokenizer_mock)
+        assert result == "long prompt"
+        tokenizer_mock.encode.assert_called_with("long prompt")
+
+    @pytest.mark.sanity
+    def test_handle_concatenate_strategy_enough_prompts(self, tokenizer_mock):
+        """Test handle_concatenate_strategy with enough prompts."""
+        dataset_iter = iter([{"prompt": "longer"}])
+        result = handle_concatenate_strategy(
+            "short", 10, dataset_iter, "prompt", tokenizer_mock, "\n"
+        )
+        assert result == "short\nlonger"
+
+    @pytest.mark.sanity
+    def test_handle_concatenate_strategy_not_enough_prompts(self, tokenizer_mock):
+        """Test handle_concatenate_strategy without enough prompts."""
+        dataset_iter: Iterator = iter([])
+        result = handle_concatenate_strategy(
+            "short", 10, dataset_iter, "prompt", tokenizer_mock, ""
+        )
+        assert result is None
+
+    @pytest.mark.sanity
+    def test_handle_pad_strategy(self, tokenizer_mock):
+        """Test handle_pad_strategy pads short prompts."""
+        result = handle_pad_strategy("short", 10, tokenizer_mock, "p")
+        assert result.startswith("shortppppp")
+
+    @pytest.mark.sanity
+    def test_handle_error_strategy_valid_prompt(self, tokenizer_mock):
+        """Test handle_error_strategy returns prompt for valid length."""
+        result = handle_error_strategy("valid prompt", 5, tokenizer_mock)
+        assert result == "valid prompt"
+        tokenizer_mock.encode.assert_called_with("valid prompt")
+
+    @pytest.mark.sanity
+    def test_handle_error_strategy_too_short_prompt(self, tokenizer_mock):
+        """Test handle_error_strategy raises error for short prompts."""
+        with pytest.raises(PromptTooShortError):
+            handle_error_strategy("short", 10, tokenizer_mock)
+
+
+class TestProcessDatasetPushToHub:
+    """Test cases for push_to_hub functionality."""
+
+    @pytest.mark.smoke
+    @patch("guidellm.data.entrypoints.push_dataset_to_hub")
+    @patch("guidellm.data.entrypoints.save_dataset_to_file")
+    @patch("guidellm.data.entrypoints.DatasetDeserializerFactory")
+    @patch("guidellm.data.entrypoints.check_load_processor")
+    def test_process_dataset_push_to_hub_called(
+        self,
+        mock_check_processor,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        mock_push,
+        tokenizer_mock,
+        tmp_path,
+    ):
+        """Test that push_to_hub is called when push_to_hub=True."""
+        # Create a dataset with prompts long enough to be processed
+        sample_dataset = Dataset.from_dict({
+            "prompt": ["abc " * 50],  # Long enough
+        })
+        
+        mock_check_processor.return_value = tokenizer_mock
+        mock_deserializer_factory_class.deserialize.return_value = sample_dataset
+
+        output_path = tmp_path / "output.json"
+        config = '{"prompt_tokens": 10, "output_tokens": 5}'
+        
+        process_dataset(
+            data="input",
+            output_path=output_path,
+            processor=tokenizer_mock,
+            config=config,
+            push_to_hub=True,
+            hub_dataset_id="id123",
+        )
+        
+        # Verify push_to_hub was called with the correct arguments
+        assert mock_push.called
+        call_args = mock_push.call_args
+        assert call_args[0][0] == "id123"
+        assert isinstance(call_args[0][1], Dataset)
+
+    @pytest.mark.sanity
+    @patch("guidellm.data.entrypoints.push_dataset_to_hub")
+    @patch("guidellm.data.entrypoints.save_dataset_to_file")
+    @patch("guidellm.data.entrypoints.DatasetDeserializerFactory")
+    @patch("guidellm.data.entrypoints.check_load_processor")
+    def test_process_dataset_push_to_hub_not_called(
+        self,
+        mock_check_processor,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        mock_push,
+        tokenizer_mock,
+        tmp_path,
+    ):
+        """Test that push_to_hub is not called when push_to_hub=False."""
+        # Create a dataset with prompts long enough to be processed
+        sample_dataset = Dataset.from_dict({
+            "prompt": ["abc " * 50],  # Long enough
+        })
+        
+        mock_check_processor.return_value = tokenizer_mock
+        mock_deserializer_factory_class.deserialize.return_value = sample_dataset
+
+        output_path = tmp_path / "output.json"
+        config = '{"prompt_tokens": 10, "output_tokens": 5}'
+        
+        process_dataset(
+            data="input",
+            output_path=output_path,
+            processor=tokenizer_mock,
+            config=config,
+            push_to_hub=False,
+        )
+        
+        # Verify push_to_hub was not called
+        mock_push.assert_not_called()
+
+    @pytest.mark.regression
+    def test_push_dataset_to_hub_success(self):
+        """Test push_dataset_to_hub success case."""
+        os.environ["HF_TOKEN"] = "token"
+        mock_dataset = MagicMock(spec=Dataset)
+        push_dataset_to_hub("dataset_id", mock_dataset)
+        mock_dataset.push_to_hub.assert_called_once_with("dataset_id", token="token")
+
+    @pytest.mark.regression
+    def test_push_dataset_to_hub_error_no_env(self):
+        """Test push_dataset_to_hub raises error when HF_TOKEN is missing."""
+        if "HF_TOKEN" in os.environ:
+            del os.environ["HF_TOKEN"]
+        mock_dataset = MagicMock(spec=Dataset)
+        with pytest.raises(ValueError, match="hub_dataset_id and HF_TOKEN"):
+            push_dataset_to_hub("dataset_id", mock_dataset)
+
+    @pytest.mark.regression
+    def test_push_dataset_to_hub_error_no_id(self):
+        """Test push_dataset_to_hub raises error when hub_dataset_id is missing."""
+        os.environ["HF_TOKEN"] = "token"
+        mock_dataset = MagicMock(spec=Dataset)
+        with pytest.raises(ValueError, match="hub_dataset_id and HF_TOKEN"):
+            push_dataset_to_hub(None, mock_dataset)
+
+
+class TestProcessDatasetStrategyHandlerIntegration:
+    """Test cases for strategy handler integration with process_dataset."""
+
+    @pytest.mark.smoke
+    @patch("guidellm.data.entrypoints.save_dataset_to_file")
+    @patch("guidellm.data.entrypoints.DatasetDeserializerFactory")
+    @patch("guidellm.data.entrypoints.check_load_processor")
+    def test_strategy_handler_called(
+        self,
+        mock_check_processor,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        tokenizer_mock,
+        tmp_path,
+    ):
+        """Test that strategy handlers are called during dataset processing."""
+        mock_handler = MagicMock(return_value="processed_prompt")
+        with patch.dict(STRATEGY_HANDLERS, {ShortPromptStrategy.IGNORE: mock_handler}):
+            # Create a dataset with prompts that need processing
+            sample_dataset = Dataset.from_dict({
+                "prompt": [
+                    "abc" * 20,  # Long enough to pass
+                    "def" * 20,  # Long enough to pass
+                ],
+            })
+            
+            mock_check_processor.return_value = tokenizer_mock
+            mock_deserializer_factory_class.deserialize.return_value = sample_dataset
+            
+            output_path = tmp_path / "output.json"
+            config = '{"prompt_tokens": 10, "output_tokens": 5}'
+            
+            process_dataset(
+                data="input",
+                output_path=output_path,
+                processor=tokenizer_mock,
+                config=config,
+                short_prompt_strategy=ShortPromptStrategy.IGNORE,
+            )
+
+            # Verify that the handler was called during processing
+            # The handler is called for each row that needs processing
+            mock_deserializer_factory_class.deserialize.assert_called_once()
+            mock_check_processor.assert_called_once()
+            assert mock_save_to_file.called
+            # Verify handler was called (at least once if there are rows to process)
+            if len(sample_dataset) > 0:
+                assert mock_handler.called
 
