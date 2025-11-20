@@ -12,11 +12,11 @@ from typing import Any
 
 from guidellm.utils import InfoMixin, RegistryMixin
 
-from .base import UnserializableConstraintInitializer
-from .protocols import (
+from .constraint import (
     Constraint,
     ConstraintInitializer,
     SerializableConstraintInitializer,
+    UnserializableConstraintInitializer,
 )
 
 __all__ = ["ConstraintsInitializerFactory"]

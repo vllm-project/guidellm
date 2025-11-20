@@ -8,16 +8,14 @@ continue or stop based on predefined limits. The constraint system enables
 sophisticated benchmark stopping criteria through composable constraint types.
 """
 
-from .base import (
+from .constraint import (
+    Constraint,
+    ConstraintInitializer,
     PydanticConstraintInitializer,
+    SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
 from .factory import ConstraintsInitializerFactory
-from .protocols import (
-    Constraint,
-    ConstraintInitializer,
-    SerializableConstraintInitializer,
-)
 from .saturation import (
     OverSaturationConstraint,
     OverSaturationConstraintInitializer,

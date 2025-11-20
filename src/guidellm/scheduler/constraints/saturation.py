@@ -63,9 +63,8 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.schemas import RequestInfo
 
-from .base import PydanticConstraintInitializer
+from .constraint import Constraint, PydanticConstraintInitializer
 from .factory import ConstraintsInitializerFactory
-from .protocols import Constraint
 
 __all__ = [
     "OverSaturationConstraint",
@@ -75,11 +74,15 @@ __all__ = [
 ]
 
 
-def approx_t_ppf(p, df):
+def approx_t_ppf(p: float, df: float) -> float:
     """
-    Approximates the percent point function (PPF) for the t-distribution.
-    This provides a close but not exact value compared to scipy.stats.t.ppf,
-    but is much faster.
+    Approximate the percent point function (PPF) for the t-distribution.
+
+    Provides a fast approximation of the t-distribution PPF using numerical
+    methods from Abramowitz & Stegun. This function is significantly faster
+    than scipy.stats.t.ppf while providing sufficient accuracy for statistical
+    slope detection in over-saturation detection. Used internally by SlopeChecker
+    for calculating confidence intervals and margin of error.
 
     Reference:
         Milton Abramowitz and Irene A. Stegun (Eds.). (1965).
@@ -89,9 +92,9 @@ def approx_t_ppf(p, df):
         An electronic version of this book is available at:
         https://personal.math.ubc.ca/~cbm/aands/.
 
-    Args:
-        p (float): The probability (e.g., 0.975 for a 95% CI).
-        df (float): The degrees of freedom.
+    :param p: The probability value (e.g., 0.975 for a 95% confidence interval)
+    :param df: The degrees of freedom for the t-distribution
+    :return: Approximate t-distribution PPF value, or NaN if df <= 0
     """
     dof = df
     if dof <= 0:
@@ -134,12 +137,31 @@ class SlopeChecker:
     Helper class for online slope detection using linear regression.
 
     Maintains running statistics for efficient O(1) updates and provides
-    statistical slope detection with margin of error calculation.
+    statistical slope detection with margin of error calculation. Uses online
+    algorithms to compute linear regression statistics incrementally without
+    storing all data points, enabling memory-efficient slope detection for
+    over-saturation detection. Supports adding and removing data points
+    dynamically while maintaining accurate statistical measures.
+
+    Example:
+    ::
+        checker = SlopeChecker(moe_threshold=2.0, confidence=0.95)
+        checker.add_data_point(1.0, 2.0)
+        checker.add_data_point(2.0, 3.0)
+        checker.add_data_point(3.0, 4.0)
+        is_positive = checker.check_slope(3.0)  # True for positive slope
     """
 
     def __init__(
         self, moe_threshold: float = 1.0, confidence: float = 0.95, eps: float = 1e-12
     ) -> None:
+        """
+        Initialize slope checker with statistical parameters.
+
+        :param moe_threshold: Maximum margin of error threshold for slope detection
+        :param confidence: Statistical confidence level for t-distribution (0-1)
+        :param eps: Epsilon value for numerical stability in calculations
+        """
         self.n = 0
         self.sum_x = 0.0
         self.sum_y = 0.0
@@ -154,12 +176,15 @@ class SlopeChecker:
 
     def add_data_point(self, x_new: float, y_new: float) -> None:
         """
-        Integrates a new data point into the accumulated statistics.
-        This operation is O(1).
+        Integrate a new data point into the accumulated statistics.
 
-        Args:
-            x_new (float): The new x-coordinate.
-            y_new (float): The new y-coordinate.
+        Updates running sums for linear regression calculation in O(1) time.
+        The data point is incorporated into the statistical model without
+        storing the individual value, enabling memory-efficient slope detection.
+
+        :param x_new: The new x-coordinate (typically time or duration)
+        :param y_new: The new y-coordinate (typically metric value like TTFT
+            or concurrent requests)
         """
         self.n += 1
         self.sum_x += x_new
@@ -171,11 +196,13 @@ class SlopeChecker:
     def remove_data_point(self, x_old: float, y_old: float) -> None:
         """
         Remove a data point from the accumulated statistics.
-        This operation is O(1).
 
-        Args:
-            x_old (float): The x-coordinate to remove.
-            y_old (float): The y-coordinate to remove.
+        Updates running sums by subtracting the specified data point in O(1) time.
+        Used for window management when pruning old data points to maintain
+        bounded memory usage while preserving statistical accuracy.
+
+        :param x_old: The x-coordinate to remove (typically time or duration)
+        :param y_old: The y-coordinate to remove (typically metric value)
         """
         self.n -= 1
         self.sum_x -= x_old
@@ -188,11 +215,15 @@ class SlopeChecker:
         """
         Check if there is a statistically significant positive slope.
 
-        Args:
-            effective_n: Effective sample size for slope estimation.
+        Calculates linear regression slope and margin of error using online
+        statistics. Returns True if the slope is positive and the margin of
+        error is below the threshold, indicating statistically significant
+        degradation. Updates internal slope and margin_of_error attributes
+        for external inspection.
 
-        Returns:
-            True if positive slope detected with low margin of error.
+        :param effective_n: Effective sample size for slope estimation (may differ
+            from actual n for correlation adjustment)
+        :return: True if positive slope detected with margin of error below threshold
         """
         minimal_n_for_slope_estimation = 3
         if effective_n < minimal_n_for_slope_estimation:
@@ -265,16 +296,30 @@ class OverSaturationConstraint:  # type: ignore[misc]
         """
         Initialize the over-saturation constraint.
 
-        Args:
-            minimum_duration: Minimum seconds before checking for over-saturation.
-            minimum_ttft: Minimum TTFT threshold for violation counting.
-            maximum_window_seconds: Maximum time window for data retention.
-            moe_threshold: Margin of error threshold for slope detection.
-            maximum_window_ratio: Maximum window size as ratio of total requests.
-            minimum_window_size: Minimum data points required for slope estimation.
-            confidence: Statistical confidence level for t-distribution.
-            eps: Epsilon for numerical stability.
-            enabled: Whether to actually stop when over-saturation is detected.
+        Creates a new constraint instance with specified detection parameters.
+        The constraint will track concurrent requests and TTFT metrics, using
+        statistical slope detection to identify when the model becomes
+        over-saturated. All parameters have sensible defaults suitable for
+        most benchmarking scenarios.
+
+        :param minimum_duration: Minimum seconds before checking for over-saturation
+            (default: 30.0)
+        :param minimum_ttft: Minimum TTFT threshold in seconds for violation counting
+            (default: 2.5)
+        :param maximum_window_seconds: Maximum time window in seconds for data retention
+            (default: 120.0)
+        :param moe_threshold: Margin of error threshold for slope detection
+            (default: 2.0)
+        :param maximum_window_ratio: Maximum window size as ratio of total requests
+            (default: 0.75)
+        :param minimum_window_size: Minimum data points required for slope estimation
+            (default: 5)
+        :param confidence: Statistical confidence level for t-distribution (0-1)
+            (default: 0.95)
+        :param eps: Epsilon for numerical stability in calculations
+            (default: 1e-12)
+        :param enabled: Whether to actually stop when over-saturation is detected
+            (default: True)
         """
         self.minimum_duration = minimum_duration
         self.minimum_ttft = minimum_ttft
@@ -288,7 +333,13 @@ class OverSaturationConstraint:  # type: ignore[misc]
         self.reset()
 
     def reset(self) -> None:
-        """Reset all internal state to initial values."""
+        """
+        Reset all internal state to initial values.
+
+        Clears all tracked requests, resets counters, and reinitializes slope
+        checkers. Useful for reusing constraint instances across multiple
+        benchmark runs or resetting state after configuration changes.
+        """
         self.duration = 0.0
         self.started_requests: list[dict[str, Any]] = []
         self.finished_requests: list[dict[str, Any]] = []
@@ -468,9 +519,35 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
     """
     Factory for creating OverSaturationConstraint instances from configuration.
 
-    Supports both boolean and dictionary inputs:
-    - bool: Enable/disable with default parameters
-    - dict: Provide configuration parameters (min_seconds, max_window_seconds, etc.)
+    Provides a Pydantic-based initializer for over-saturation detection constraints
+    with support for flexible configuration patterns. Supports both simple boolean
+    flags and detailed configuration dictionaries, enabling easy integration with
+    CLI arguments, configuration files, and programmatic constraint creation.
+
+    Example:
+    ::
+        # Simple boolean configuration
+        initializer = OverSaturationConstraintInitializer(enabled=True)
+        constraint = initializer.create_constraint()
+
+        # Detailed configuration
+        initializer = OverSaturationConstraintInitializer(
+            enabled=True,
+            min_seconds=60.0,
+            max_window_seconds=300.0,
+            moe_threshold=1.5
+        )
+        constraint = initializer.create_constraint()
+
+    :cvar type_: Always "over_saturation" to identify this constraint type
+    :cvar enabled: Whether to stop the benchmark if over-saturation is detected
+    :cvar min_seconds: Minimum seconds before checking for over-saturation
+    :cvar max_window_seconds: Maximum time window for data retention
+    :cvar moe_threshold: Margin of error threshold for slope detection
+    :cvar minimum_ttft: Minimum TTFT threshold for violation counting
+    :cvar maximum_window_ratio: Maximum window size as ratio of total requests
+    :cvar minimum_window_size: Minimum data points required for slope estimation
+    :cvar confidence: Statistical confidence level for t-distribution
     """
 
     type_: Literal["over_saturation"] = "over_saturation"  # type: ignore[assignment]
@@ -518,10 +595,14 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
 
     def create_constraint(self, **_kwargs) -> Constraint:
         """
-        Create an OverSaturationConstraint instance.
+        Create an OverSaturationConstraint instance from this initializer.
 
-        :param _kwargs: Additional keyword arguments (unused).
-        :return: Configured OverSaturationConstraint instance.
+        Constructs a new OverSaturationConstraint with the configuration parameters
+        specified in this initializer. The constraint will be ready for evaluation
+        against scheduler state and requests.
+
+        :param _kwargs: Additional keyword arguments (unused)
+        :return: Configured OverSaturationConstraint instance ready for use
         """
         return OverSaturationConstraint(  # type: ignore[return-value]
             minimum_duration=self.min_seconds,
@@ -541,13 +622,17 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         """
         Validate and process arguments for OverSaturationConstraint creation.
 
-        Supports both bool and dict inputs:
-        - bool: Enable/disable with defaults
-        - dict: Provide configuration parameters
+        Processes flexible input formats to create validated constraint configuration.
+        Supports boolean flags for simple enable/disable, dictionary inputs for detailed
+        configuration, and alias parameters for compatibility. Handles parameter
+        normalization and default value application.
 
-        :param over_saturation: Boolean to enable/disable, or dict with configuration
-        :param kwargs: Additional keyword arguments (supports aliases)
-        :return: Validated dictionary with constraint configuration
+        :param over_saturation: Boolean to enable/disable with defaults, or dictionary
+            with configuration parameters (min_seconds, max_window_seconds, etc.)
+        :param kwargs: Additional keyword arguments supporting aliases like
+            "detect_saturation" for compatibility
+        :return: Validated dictionary with constraint configuration ready for
+            initializer creation
         """
         # Check for aliases in kwargs
         aliases = ["over_saturation", "detect_saturation"]
