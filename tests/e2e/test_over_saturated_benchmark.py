@@ -39,7 +39,7 @@ def test_over_saturated_benchmark(server: VllmSimServer):
     Another example test interacting with the server.
     """
     report_path = Path("tests/e2e/over_saturated_benchmarks.json")
-    rate = 100
+    rate = 1
 
     # Create and configure the guidellm client
     client = GuidellmClient(target=server.get_url(), output_path=report_path)
@@ -80,7 +80,7 @@ def test_over_saturated_benchmark_with_dict_config(server: VllmSimServer):
     Test over-saturation detection with dictionary configuration instead of boolean.
     """
     report_path = Path("tests/e2e/over_saturated_benchmarks_dict.json")
-    rate = 100
+    rate = 1
 
     # Create and configure the guidellm client
     client = GuidellmClient(target=server.get_url(), output_path=report_path)
