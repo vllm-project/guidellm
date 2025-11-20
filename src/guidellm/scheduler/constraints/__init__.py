@@ -15,18 +15,20 @@ from .constraint import (
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from .factory import ConstraintsInitializerFactory
-from .saturation import (
-    OverSaturationConstraint,
-    OverSaturationConstraintInitializer,
-)
-from .standard import (
-    MaxDurationConstraint,
+from .error import (
     MaxErrorRateConstraint,
     MaxErrorsConstraint,
     MaxGlobalErrorRateConstraint,
+)
+from .factory import ConstraintsInitializerFactory
+from .request import (
+    MaxDurationConstraint,
     MaxNumberConstraint,
     RequestsExhaustedConstraint,
+)
+from .saturation import (
+    OverSaturationConstraint,
+    OverSaturationConstraintInitializer,
 )
 
 __all__ = [
