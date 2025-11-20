@@ -21,6 +21,7 @@ from .outputs import (
 from .profiles import (
     AsyncProfile,
     ConcurrentProfile,
+    IncrementalProfile,
     Profile,
     ProfileType,
     SweepProfile,
@@ -81,6 +82,7 @@ __all__ = [
     "GenerativeRequestsAccumulator",
     "GenerativeTextMetricsSummary",
     "GenerativeVideoMetricsSummary",
+    "IncrementalProfile",
     "Profile",
     "ProfileType",
     "RunningMetricStats",

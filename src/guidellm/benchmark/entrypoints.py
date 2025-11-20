@@ -324,6 +324,7 @@ async def resolve_profile(
     max_error_rate: float | None,
     max_global_error_rate: float | None,
     console: Console | None = None,
+    profile_kwargs: dict[str, Any] | None = None,
 ) -> Profile:
     """
     Resolve and configure a benchmark profile with rate and constraint settings.
@@ -370,6 +371,7 @@ async def resolve_profile(
             random_seed=random_seed,
             rampup_duration=rampup,
             constraints={**constraints},
+            **(profile_kwargs or {}),
         )
     elif constraints:
         raise ValueError(
@@ -501,6 +503,7 @@ async def benchmark_generative_text(
         max_error_rate=args.max_error_rate,
         max_global_error_rate=args.max_global_error_rate,
         console=console,
+        profile_kwargs=args.profile_kwargs,
     )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console
