@@ -304,7 +304,10 @@ class OpenAIHTTPBackend(Backend):
             request_info.timings.request_end = time.time()
             response.raise_for_status()
             data = response.json()
-            yield response_handler.compile_non_streaming(request, data), request_info
+            yield (
+                response_handler.compile_non_streaming(request, arguments, data),
+                request_info,
+            )
             return
 
         try:
@@ -343,10 +346,10 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.token_iterations += iterations
 
             request_info.timings.request_end = time.time()
-            yield response_handler.compile_streaming(request), request_info
+            yield response_handler.compile_streaming(request, arguments), request_info
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
-            yield response_handler.compile_streaming(request), request_info
+            yield response_handler.compile_streaming(request, arguments), request_info
             raise err
 
     def _build_headers(
