@@ -64,6 +64,7 @@ class CSVFileDatasetDeserializer(DatasetDeserializer):
         **data_kwargs: dict[str, Any],
     ) -> Dataset:
         _ = (processor_factory, random_seed)
+
         if (
             not isinstance(data, str | Path)
             or not (path := Path(data)).exists()
@@ -72,7 +73,7 @@ class CSVFileDatasetDeserializer(DatasetDeserializer):
         ):
             raise DataNotSupportedError(
                 "Unsupported data for CSVFileDatasetDeserializer, "
-                f"expected str or Path to a local .csv file, got {data}"
+                f"expected str or Path to a valid local .csv file, got {data}"
             )
 
         return load_dataset("csv", data_files=str(path), **data_kwargs)

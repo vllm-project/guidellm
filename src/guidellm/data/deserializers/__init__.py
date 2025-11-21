@@ -23,9 +23,7 @@ from .memory import (
 )
 from .synthetic import (
     SyntheticTextDataset,
-    SyntheticTextDatasetConfig,
     SyntheticTextDatasetDeserializer,
-    SyntheticTextPrefixBucketConfig,
 )
 
 __all__ = [
@@ -45,9 +43,7 @@ __all__ = [
     "JSONFileDatasetDeserializer",
     "ParquetFileDatasetDeserializer",
     "SyntheticTextDataset",
-    "SyntheticTextDatasetConfig",
     "SyntheticTextDatasetDeserializer",
-    "SyntheticTextPrefixBucketConfig",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
 ]

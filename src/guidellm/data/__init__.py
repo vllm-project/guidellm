@@ -4,6 +4,7 @@ from .deserializers import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
+from .entrypoints import ShortPromptStrategy, process_dataset
 from .loaders import DataLoader, DatasetsIterator
 from .preprocessors import (
     DataDependentPreprocessor,
@@ -27,4 +28,6 @@ __all__ = [
     "PreprocessorRegistry",
     "ProcessorFactory",
     "RequestFormatter",
+    "ShortPromptStrategy",
+    "process_dataset",
 ]
