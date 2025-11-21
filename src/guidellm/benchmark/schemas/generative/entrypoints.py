@@ -218,7 +218,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         )
     )
     data_finalizer: DatasetFinalizer | str | dict[str, Any] = Field(
-        default="generative_text_finalizer",
+        default="generative",
         description="Finalizer for preparing data samples into requests",
     )
     data_collator: Callable | Literal["generative"] | None = Field(
