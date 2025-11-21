@@ -104,10 +104,6 @@ class SyntheticTextDatasetConfig(TokenCountConfig):
         default=None,
     )
 
-    source: str = Field(
-        description="The source of the text data to be used for generation.",
-        default="data:prideandprejudice.txt.gz",
-    )
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:
