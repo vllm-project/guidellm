@@ -13,6 +13,7 @@ jobs:
     uses: ./.github/workflows/testing.yml
     with:
       python: ${{ matrix.python }}
+      args: -m "smoke"
 
   ui-tests:
     uses: ./.github/workflows/ui-testing.yml
