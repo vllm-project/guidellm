@@ -19,7 +19,7 @@ class FinalizerRegistry(RegistryMixin[type[DatasetFinalizer]]):
     pass
 
 
-@FinalizerRegistry.register("generative_request_finalizer")
+@FinalizerRegistry.register("generative")
 class GenerativeRequestFinalizer(DatasetFinalizer[GenerationRequest]):
     """
     Finalizer that converts dataset rows into GenerationRequest objects,
