@@ -218,12 +218,12 @@ class GenerationRequest(StandardBaseModel):
             "this will be used to determine the request url."
         ),
     )
-    arguments: GenerationRequestArguments = Field(
+    columns: dict[str, list[Any]] = Field(
+        default_factory=dict,
         description=(
-            "Payload for the request, structured as a dictionary of arguments to pass "
-            "to the respective backend method. For example, can contain "
-            "'json', 'headers', 'files', etc."
-        )
+            "Columnar data associated with the request, structured as a dictionary "
+            "where keys are column names and values are lists of column entries."
+        ),
     )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
