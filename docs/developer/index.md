@@ -10,30 +10,26 @@ GuideLLM is an open-source project that values community contributions. We maint
 
 ## Developer Resources
 
-<div class="grid cards" markdown>
-
-- :material-handshake:{ .lg .middle } Code of Conduct
+- 📝 Code of Conduct
 
   ______________________________________________________________________
 
   Our community guidelines ensure that participation in the GuideLLM project is a positive, inclusive, and respectful experience for everyone.
 
-  [:octicons-arrow-right-24: Code of Conduct](code-of-conduct.md)
+  [Code of Conduct](code-of-conduct.md)
 
-- :material-source-pull:{ .lg .middle } Contributing Guide
+- 🔖 Contributing Guide
 
   ______________________________________________________________________
 
   Learn how to effectively contribute to GuideLLM, including reporting bugs, suggesting features, improving documentation, and submitting code.
 
-  [:octicons-arrow-right-24: Contributing Guide](contributing.md)
+  [Contributing Guide](contributing.md)
 
-- :material-tools:{ .lg .middle } Development Guide
+- 📚 Development Guide
 
   ______________________________________________________________________
 
   Detailed instructions for setting up your development environment, implementing changes, and adhering to the project's coding standards and best practices.
 
-  [:octicons-arrow-right-24: Development Guide](developing.md)
-
-</div>
+  [Development Guide](developing.md)

@@ -10,54 +10,50 @@ Whether you're interested in understanding the system architecture, exploring su
 
 ## Key Guides
 
-<div class="grid cards" markdown>
-
-- :material-layers-outline:{ .lg .middle } Architecture
+- 🏗️ Architecture
 
   ______________________________________________________________________
 
   Understanding the modular design of GuideLLM and how core components interact to evaluate LLM deployments.
 
-  [:octicons-arrow-right-24: Architecture Overview](architecture.md)
+  [Architecture Overview](architecture.md)
 
-- :material-server:{ .lg .middle } Backends
+- 🖥️ Backends
 
   ______________________________________________________________________
 
   Learn about supported LLM backends and how to set up OpenAI-compatible servers for benchmarking.
 
-  [:octicons-arrow-right-24: Backend Guide](backends.md)
+  [Backend Guide](backends.md)
 
-- :material-database:{ .lg .middle } Datasets
+- 🗄️ Datasets
 
   ______________________________________________________________________
 
   Configure and use different data sources for benchmarking, including synthetic data, Hugging Face datasets, and file-based options.
 
-  [:octicons-arrow-right-24: Dataset Guide](datasets.md)
+  [Dataset Guide](datasets.md)
 
-- :material-chart-bar:{ .lg .middle } Metrics
+- 📊 Metrics
 
   ______________________________________________________________________
 
   Explore the comprehensive metrics provided by GuideLLM to evaluate performance, including latency, throughput, and token-level analysis.
 
-  [:octicons-arrow-right-24: Metrics Guide](metrics.md)
+  [Metrics Guide](metrics.md)
 
-- :material-file-export:{ .lg .middle } Outputs
+- 📄 Outputs
 
   ______________________________________________________________________
 
   Learn about supported output formats and how to customize result reporting for your benchmarks.
 
-  [:octicons-arrow-right-24: Output Guide](outputs.md)
+  [Output Guide](outputs.md)
 
-- :material-target:{ .lg .middle } Service Level Objectives
+- 🎯 Service Level Objectives
 
   ______________________________________________________________________
 
   Define and implement SLOs and SLAs for your LLM deployments to ensure reliability and performance.
 
-  [:octicons-arrow-right-24: SLO Guide](service_level_objectives.md)
-
-</div>
+  [SLO Guide](service_level_objectives.md)

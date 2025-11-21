@@ -1,10 +1,7 @@
 # Home
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/neuralmagic/guidellm/main/docs/assets/guidellm-logo-light.png">
-    <img alt="GuideLLM Logo" src="https://raw.githubusercontent.com/neuralmagic/guidellm/main/docs/assets/guidellm-logo-dark.png" width=55%>
-  </picture>
+  <img alt="GuideLLM Logo" src="https://raw.githubusercontent.com/neuralmagic/guidellm/main/docs/assets/guidellm-logo-dark.png" width="55%">
 </p>
 
 <h3 align="center">
@@ -23,38 +20,10 @@ SLO-Aware Benchmarking and Evaluation Platform for Optimizing Real-World LLM Inf
 
 ## Key Sections
 
-<div class="grid cards" markdown>
+- 🚀 Getting Started Install GuideLLM, set up your first benchmark, and analyze the results to optimize your LLM deployment. [Getting started](./getting-started/)
 
-- :material-rocket-launch:{ .lg .middle } Getting Started
+- 📚 Guides Detailed guides covering backends, datasets, metrics, and service level objectives for effective LLM benchmarking. [Guides](./guides/)
 
-  ______________________________________________________________________
+- 💻 Examples Step-by-step examples demonstrating real-world benchmarking scenarios and optimization techniques. [Examples](./examples/)
 
-  Install GuideLLM, set up your first benchmark, and analyze the results to optimize your LLM deployment.
-
-  [:octicons-arrow-right-24: Getting started](./getting-started/)
-
-- :material-book-open-variant:{ .lg .middle } Guides
-
-  ______________________________________________________________________
-
-  Detailed guides covering backends, datasets, metrics, and service level objectives for effective LLM benchmarking.
-
-  [:octicons-arrow-right-24: Guides](./guides/)
-
-- :material-code-tags:{ .lg .middle } Examples
-
-  ______________________________________________________________________
-
-  Step-by-step examples demonstrating real-world benchmarking scenarios and optimization techniques.
-
-  [:octicons-arrow-right-24: Examples](./examples/)
-
-- :material-api:{ .lg .middle } API Reference
-
-  ______________________________________________________________________
-
-  Complete reference documentation for the GuideLLM API to integrate benchmarking into your workflow.
-
-  [:octicons-arrow-right-24: API Reference](./api/)
-
-</div>
+- 🔌 API Reference Complete reference documentation for the GuideLLM API to integrate benchmarking into your workflow. [API Reference](./api/)

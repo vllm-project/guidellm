@@ -12,38 +12,34 @@ GuideLLM makes it simple to evaluate and optimize your large language model depl
 
 Follow the guides below in sequence to get the most out of GuideLLM and optimize your LLM deployments for production use.
 
-<div class="grid cards" markdown>
-
-- :material-package-variant:{ .lg .middle } Installation
+- 🛠 Installation
 
   ______________________________________________________________________
 
   Learn how to install GuideLLM using pip, from source, or with specific version requirements.
 
-  [:octicons-arrow-right-24: Installation Guide](install.md)
+  [Installation Guide](install.md)
 
-- :material-server:{ .lg .middle } Start a Server
+- 🚀 Start a Server
 
   ______________________________________________________________________
 
   Set up an OpenAI-compatible server using vLLM or other supported backends to benchmark your LLM deployments.
 
-  [:octicons-arrow-right-24: Server Setup Guide](server.md)
+  [Server Setup Guide](server.md)
 
-- :material-speedometer:{ .lg .middle } Run Benchmarks
+- ⏳ Run Benchmarks
 
   ______________________________________________________________________
 
   Learn how to configure and run performance benchmarks against your LLM server under various load conditions.
 
-  [:octicons-arrow-right-24: Benchmarking Guide](benchmark.md)
+  [Benchmarking Guide](benchmark.md)
 
-- :material-chart-bar:{ .lg .middle } Analyze Results
+- 📊 Analyze Results
 
   ______________________________________________________________________
 
   Interpret benchmark results to understand throughput, latency, reliability, and optimize your deployments.
 
-  [:octicons-arrow-right-24: Analysis Guide](analyze.md)
-
-</div>
+  [Analysis Guide](analyze.md)
