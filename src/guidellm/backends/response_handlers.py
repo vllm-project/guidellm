@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Protocol, cast
 
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
+from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils import RegistryMixin, json
 
 __all__ = [
@@ -33,7 +34,10 @@ class GenerationResponseHandler(Protocol):
     """
 
     def compile_non_streaming(
-        self, request: GenerationRequest, response: Any
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: Any,
     ) -> GenerationResponse:
         """
         Process a complete non-streaming API response.
@@ -53,7 +57,9 @@ class GenerationResponseHandler(Protocol):
         """
         ...
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
         """
         Compile accumulated streaming data into a final response.
 
@@ -127,7 +133,10 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         self.streaming_response_id: str | None = None
 
     def compile_non_streaming(
-        self, request: GenerationRequest, response: dict
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: dict,
     ) -> GenerationResponse:
         """
         Process a complete text completion response.
@@ -143,9 +152,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -181,7 +188,9 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         return 1 if updated else 0
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
         """
         Compile accumulated streaming text chunks into a final response.
 
@@ -193,9 +202,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -290,7 +297,10 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
     """
 
     def compile_non_streaming(
-        self, request: GenerationRequest, response: dict
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: dict,
     ) -> GenerationResponse:
         """
         Process a complete chat completion response.
@@ -309,9 +319,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -347,7 +355,9 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 
         return 1 if updated else 0
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
         """
         Compile accumulated streaming chat completion content into a final response.
 
@@ -359,9 +369,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
