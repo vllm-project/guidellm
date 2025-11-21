@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -44,7 +45,7 @@ class GuidellmClient:
         max_seconds: int | None = None,
         max_requests: int | None = None,
         max_error_rate: float | None = None,
-        stop_over_saturated: bool | None = False,
+        over_saturation: bool | dict[str, Any] | None = None,
         data: str = "prompt_tokens=256,output_tokens=128",
         processor: str = "gpt2",
         additional_args: str = "",
@@ -53,16 +54,18 @@ class GuidellmClient:
         """
         Start a guidellm benchmark command.
 
-        :param rate_type: Type of rate control (constant, etc.)
+        :param profile: Type of rate control (constant, etc.)
         :param rate: Request rate
         :param max_seconds: Maximum duration in seconds
         :param max_requests: Maximum number of requests
         :param max_error_rate: Maximum error rate before stopping
-        :param stop_over_saturated: Whether to stop the benchmark if the model is
-                                    over-saturated.
+        :param over_saturation: Over-saturation detection configuration (bool or dict).
+            When bool is True, passes --over-saturation=True to avoid Click parsing
+            issues.
         :param data: Data configuration string
         :param processor: Processor/tokenizer to use
         :param additional_args: Additional command line arguments
+        :param extra_env: Additional environment variables to set
         """
         guidellm_exe = get_guidellm_executable()
 
@@ -70,7 +73,7 @@ class GuidellmClient:
         cmd_parts = [
             *([f"{k}={v}" for k, v in extra_env.items()] if extra_env else []),
             "HF_HOME=/tmp/huggingface_cache",
-            f"{guidellm_exe} benchmark",
+            f"{guidellm_exe} benchmark run",
             f'--target "{self.target}"',
             f"--profile {profile}",
             f"--rate {rate}",
@@ -85,8 +88,14 @@ class GuidellmClient:
         if max_error_rate is not None:
             cmd_parts.append(f"--max-error-rate {max_error_rate}")
 
-        if stop_over_saturated:
-            cmd_parts.append("--stop-over-saturated")
+        if over_saturation is not None:
+            if isinstance(over_saturation, bool):
+                if over_saturation:
+                    cmd_parts.append("--over-saturation=True")
+            elif isinstance(over_saturation, dict):
+                import json
+
+                cmd_parts.append(f"--over-saturation '{json.dumps(over_saturation)}'")
 
         cmd_parts.extend(
             [

@@ -33,7 +33,6 @@ def server():
         server.stop()  # Teardown: Stop the server after tests are done
 
 
-@pytest.mark.skip(reason="Skipping future feature test")
 @pytest.mark.timeout(60)
 def test_over_saturated_benchmark(server: VllmSimServer):
     """
@@ -50,7 +49,7 @@ def test_over_saturated_benchmark(server: VllmSimServer):
     client.start_benchmark(
         rate=rate,
         max_seconds=20,
-        stop_over_saturated=True,
+        over_saturation=True,
         extra_env={
             "GUIDELLM__CONSTRAINT_OVER_SATURATION_MIN_SECONDS": "0",
             "GOMAXPROCS": "1",
@@ -69,7 +68,53 @@ def test_over_saturated_benchmark(server: VllmSimServer):
 
     # Check that the max duration constraint was triggered
     assert_constraint_triggered(
-        benchmark, "stop_over_saturated", {"is_over_saturated": True}
+        benchmark, "over_saturation", {"is_over_saturated": True}
+    )
+
+    cleanup_report_file(report_path)
+
+
+@pytest.mark.timeout(60)
+def test_over_saturated_benchmark_with_dict_config(server: VllmSimServer):
+    """
+    Test over-saturation detection with dictionary configuration instead of boolean.
+    """
+    report_path = Path("tests/e2e/over_saturated_benchmarks_dict.json")
+    rate = 100
+
+    # Create and configure the guidellm client
+    client = GuidellmClient(target=server.get_url(), output_path=report_path)
+
+    cleanup_report_file(report_path)
+    # Start the benchmark with dictionary configuration for over-saturation
+    client.start_benchmark(
+        rate=rate,
+        max_seconds=20,
+        over_saturation={
+            "enabled": True,
+            "min_seconds": 0,
+            "max_window_seconds": 120.0,
+            "moe_threshold": 2.0,
+            "minimum_window_size": 5,
+        },
+        extra_env={
+            "GOMAXPROCS": "1",
+        },
+    )
+
+    # Wait for the benchmark to complete
+    client.wait_for_completion(timeout=55)
+
+    # Assert no Python exceptions occurred
+    assert_no_python_exceptions(client.stderr)
+
+    # Load and validate the report
+    report = load_benchmark_report(report_path)
+    benchmark = report["benchmarks"][0]
+
+    # Check that the over-saturation constraint was triggered
+    assert_constraint_triggered(
+        benchmark, "over_saturation", {"is_over_saturated": True}
     )
 
     cleanup_report_file(report_path)

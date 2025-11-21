@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import codecs
+import json
 from pathlib import Path
 
 import click
@@ -382,9 +383,42 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("max_global_error_rate"),
     help="Maximum global error rate across all benchmarks.",
 )
-def run(**kwargs):
+@click.option(
+    "--over-saturation",
+    "--detect-saturation",  # alias
+    default=None,
+    help=(
+        "Enable over-saturation detection. "
+        "Use --over-saturation=True for boolean flag, "
+        "or a JSON dict with configuration "
+        '(e.g., \'{"enabled": true, "min_seconds": 30}\'). '
+        "Defaults to None (disabled)."
+    ),
+    type=click.UNPROCESSED,
+)
+def run(**kwargs):  # noqa: C901
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
+
+    # Handle over_saturation parsing (can be bool flag or JSON dict string)
+    if "over_saturation" in kwargs and kwargs["over_saturation"] is not None:
+        over_sat = kwargs["over_saturation"]
+        if isinstance(over_sat, str):
+            try:
+                # Try parsing as JSON dict
+                kwargs["over_saturation"] = json.loads(over_sat)
+            except (json.JSONDecodeError, ValueError):
+                # If not valid JSON, treat as bool flag
+                kwargs["over_saturation"] = over_sat.lower() in (
+                    "true",
+                    "1",
+                    "yes",
+                    "on",
+                )
+        elif isinstance(over_sat, bool):
+            # Already a bool, keep as is
+            pass
+        # If it's already a dict, keep as is
 
     # Handle remapping for request params
     request_type = kwargs.pop("request_type", None)
