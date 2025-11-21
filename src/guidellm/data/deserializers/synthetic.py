@@ -244,4 +244,3 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             processor=processor_factory(),
             random_seed=random_seed,
         )
-

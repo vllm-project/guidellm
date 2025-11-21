@@ -459,7 +459,9 @@ class TestSyntheticDatasetDeserializer:
         ### WRITTEN BY AI ###
         """
         json_str = '{"prompt_tokens": 50, "output_tokens": 25}'
-        loaded_config = config_module._load_config_str(json_str, SyntheticTextDatasetConfig)
+        loaded_config = config_module._load_config_str(
+            json_str, SyntheticTextDatasetConfig,
+        )
 
         assert loaded_config.prompt_tokens == 50
         assert loaded_config.output_tokens == 25
@@ -471,7 +473,9 @@ class TestSyntheticDatasetDeserializer:
         ### WRITTEN BY AI ###
         """
         kv_str = "prompt_tokens=50,output_tokens=25"
-        loaded_config = config_module._load_config_str(kv_str, SyntheticTextDatasetConfig)
+        loaded_config = config_module._load_config_str(
+            kv_str, SyntheticTextDatasetConfig,
+        )
 
         assert loaded_config.prompt_tokens == 50
         assert loaded_config.output_tokens == 25
