@@ -2,125 +2,28 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterator
-from pathlib import Path
 from random import Random
 from typing import Any
 
 import numpy as np
-import yaml
 from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
-from pydantic import ConfigDict, Field, ValidationError, model_validator
 from transformers import PreTrainedTokenizerBase
 
+from guidellm.data.config import load_config
 from guidellm.data.deserializers.deserializer import (
     DataNotSupportedError,
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.schemas import StandardBaseModel
+from guidellm.data.schemas import SyntheticTextDatasetConfig
 from guidellm.utils import IntegerRangeSampler
 
 __all__ = [
     "SyntheticTextDataset",
-    "SyntheticTextDatasetConfig",
     "SyntheticTextDatasetDeserializer",
-    "SyntheticTextPrefixBucketConfig",
 ]
-
-
-class SyntheticTextPrefixBucketConfig(StandardBaseModel):
-    bucket_weight: int = Field(
-        description="Weight of this bucket in the overall distribution.",
-        gt=0,
-        default=100,
-    )
-    prefix_count: int = Field(
-        description="The number of unique prefixes to generate for this bucket.",
-        ge=1,
-        default=1,
-    )
-    prefix_tokens: int = Field(
-        description="The number of prefix tokens per-prompt for this bucket.",
-        ge=0,
-        default=0,
-    )
-
-
-class SyntheticTextDatasetConfig(StandardBaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-
-    prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
-        description="Buckets for the prefix tokens distribution.",
-        default=None,
-    )
-    prompt_tokens: int = Field(
-        description="The average number of text tokens generated for prompts.",
-        gt=0,
-    )
-    prompt_tokens_stdev: int | None = Field(
-        description="The standard deviation of the tokens generated for prompts.",
-        gt=0,
-        default=None,
-    )
-    prompt_tokens_min: int | None = Field(
-        description="The minimum number of text tokens generated for prompts.",
-        gt=0,
-        default=None,
-    )
-    prompt_tokens_max: int | None = Field(
-        description="The maximum number of text tokens generated for prompts.",
-        gt=0,
-        default=None,
-    )
-    output_tokens: int = Field(
-        description="The average number of text tokens generated for outputs.",
-        gt=0,
-    )
-    output_tokens_stdev: int | None = Field(
-        description="The standard deviation of the tokens generated for outputs.",
-        gt=0,
-        default=None,
-    )
-    output_tokens_min: int | None = Field(
-        description="The minimum number of text tokens generated for outputs.",
-        gt=0,
-        default=None,
-    )
-    output_tokens_max: int | None = Field(
-        description="The maximum number of text tokens generated for outputs.",
-        gt=0,
-        default=None,
-    )
-    source: str = Field(
-        description="The source of the text data to be used for generation.",
-        default="data:prideandprejudice.txt.gz",
-    )
-
-    @model_validator(mode="after")
-    def check_prefix_options(self) -> SyntheticTextDatasetConfig:
-        if self.__pydantic_extra__ is not None:
-            prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
-            prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
-
-            if prefix_count is not None or prefix_tokens is not None:
-                if self.prefix_buckets:
-                    raise ValueError(
-                        "prefix_buckets is mutually exclusive"
-                        " with prefix_count and prefix_tokens"
-                    )
-
-                self.prefix_buckets = [
-                    SyntheticTextPrefixBucketConfig(
-                        prefix_count=prefix_count or 1,
-                        prefix_tokens=prefix_tokens or 0,
-                    )
-                ]
-
-        return self
 
 
 class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
@@ -326,11 +229,7 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
         **data_kwargs: dict[str, Any],
     ) -> IterableDataset:
         # Config file and string pathways; deserialize and call self again
-        if (config := self.load_config(data)) is not None:
-            return self(config, processor_factory, random_seed, **data_kwargs)
-
-        # Try to parse dict-like data directly
-        if (config := self._load_config_dict(data)) is not None:
+        if (config := load_config(data, SyntheticTextDatasetConfig)) is not None:
             return self(config, processor_factory, random_seed, **data_kwargs)
 
         if not isinstance(data, SyntheticTextDatasetConfig):
@@ -346,110 +245,3 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
             random_seed=random_seed,
         )
 
-    def load_config(self, config: Any) -> SyntheticTextDatasetConfig | None:
-        # Try file path first
-        if (loaded_config := self._load_config_file(config)) is not None:
-            return loaded_config
-
-        # Try dict parsing next
-        if (loaded_config := self._load_config_dict(config)) is not None:
-            return loaded_config
-
-        # Try string parsing
-        if (loaded_config := self._load_config_str(config)) is not None:
-            return loaded_config
-
-        return None
-
-    @staticmethod
-    def _load_config_dict(data: Any) -> SyntheticTextDatasetConfig | None:
-        if not isinstance(data, dict | list):
-            return None
-
-        try:
-            return SyntheticTextDatasetConfig.model_validate(data)
-        except ValidationError:
-            return None
-
-    @staticmethod
-    def _load_config_file(data: Any) -> SyntheticTextDatasetConfig | None:
-        if (not isinstance(data, str) and not isinstance(data, Path)) or (
-            not Path(data).is_file()
-        ):
-            return None
-
-        data_path = Path(data) if isinstance(data, str) else data
-        error = None
-
-        if Path(data).is_file() and data_path.suffix.lower() == ".json":
-            try:
-                return SyntheticTextDatasetConfig.model_validate_json(
-                    data_path.read_text()
-                )
-            except Exception as err:  # noqa: BLE001
-                error = err
-
-        if Path(data).is_file() and data_path.suffix.lower() in {
-            ".yaml",
-            ".yml",
-            ".config",
-        }:
-            try:
-                return SyntheticTextDatasetConfig.model_validate(
-                    yaml.safe_load(data_path.read_text())
-                )
-            except Exception as err:  # noqa: BLE001
-                error = err
-
-        err_message = (
-            f"Unsupported file {data_path} for "
-            f"SyntheticTextDatasetDeserializer, expected .json, "
-            f".yaml, .yml, or .config"
-        )
-
-        if error is not None:
-            err_message += f" with error: {error}"
-            raise DataNotSupportedError(err_message) from error
-        raise DataNotSupportedError(err_message)
-
-    @staticmethod
-    def _load_config_str(data: str) -> SyntheticTextDatasetConfig | None:
-        if not isinstance(data, str):
-            return None
-
-        data_str = data.strip()
-        error = None
-
-        if (data_str.startswith("{") and data_str.endswith("}")) or (
-            data_str.startswith("[") and data_str.endswith("]")
-        ):
-            try:
-                return SyntheticTextDatasetConfig.model_validate_json(data_str)
-            except Exception as err:  # noqa: BLE001
-                error = err
-
-        if data_str.count("=") > 1:
-            # key=value pairs separated by commas
-            try:
-                config_dict = {}
-                items = data_str.split(",")
-                for item in items:
-                    key, value = item.split("=")
-                    config_dict[key.strip()] = (
-                        int(value.strip())
-                        if value.strip().isnumeric()
-                        else value.strip()
-                    )
-
-                return SyntheticTextDatasetConfig.model_validate(config_dict)
-            except Exception as err:  # noqa: BLE001
-                error = err
-
-        err_message = (
-            "Unsupported string data for SyntheticTextDatasetDeserializer, "
-            f"expected JSON or key-value pairs, got {data}"
-        )
-        if error is not None:
-            err_message += f" with error: {error}"
-            raise DataNotSupportedError(err_message) from error
-        raise DataNotSupportedError(err_message)

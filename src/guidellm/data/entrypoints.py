@@ -8,12 +8,12 @@ from datasets import Dataset
 from loguru import logger
 from transformers import PreTrainedTokenizerBase
 
+from guidellm.data.config import load_config
 from guidellm.data.deserializers import (
     DatasetDeserializerFactory,
-    SyntheticTextDatasetConfig,
-    SyntheticTextDatasetDeserializer,
 )
 from guidellm.data.preprocessors import GenerativeColumnMapper
+from guidellm.data.schemas import PreprocessDatasetConfig
 from guidellm.utils import IntegerRangeSampler, check_load_processor
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
 
@@ -158,9 +158,9 @@ def _validate_output_suffix(output_path: str | Path) -> None:
 
 def parse_synthetic_config(
     config_input: str | Path,
-) -> SyntheticTextDatasetConfig:
+) -> PreprocessDatasetConfig:
     """
-    Parse SyntheticTextDatasetConfig from string or file path.
+    Parse PreprocessDatasetConfig from string or file path.
 
     Reuses SyntheticTextDatasetDeserializer's parsing logic to support:
     - JSON strings
@@ -168,11 +168,10 @@ def parse_synthetic_config(
     - File paths (.json, .yaml, .yml, .config)
 
     :param config_input: String or path to config.
-    :return: Parsed SyntheticTextDatasetConfig instance.
+    :return: Parsed PreprocessDatasetConfig instance.
     :raises ValueError: If the format is not recognized or parsing fails.
     """
-    deserializer = SyntheticTextDatasetDeserializer()
-    config = deserializer.load_config(config_input)
+    config = load_config(config_input, PreprocessDatasetConfig)
 
     if config is not None:
         return config
@@ -195,7 +194,6 @@ def process_dataset(
     short_prompt_strategy: ShortPromptStrategy = ShortPromptStrategy.IGNORE,
     pad_char: str | None = None,
     concat_delimiter: str | None = None,
-    prefix_tokens: int | None = None,
     include_prefix_in_token_count: bool = False,
     push_to_hub: bool = False,
     hub_dataset_id: str | None = None,
@@ -207,14 +205,13 @@ def process_dataset(
     :param data: Path or identifier for dataset input.
     :param output_path: File path to save the processed dataset.
     :param processor: Tokenizer object or its config.
-    :param config: SyntheticTextDatasetConfig string or file path.
+    :param config: PreprocessDatasetConfig string or file path.
     :param processor_args: Optional processor arguments.
     :param data_args: Optional data loading arguments.
     :param data_column_mapper: Optional column mapping dictionary.
     :param short_prompt_strategy: Strategy for handling short prompts.
     :param pad_char: Character used when padding short prompts.
     :param concat_delimiter: Delimiter for concatenation strategy.
-    :param prefix_tokens: Optional single prefix token count (alt. to prefix_buckets).
     :param include_prefix_in_token_count:
         Whether to include prefix in prompt token count, simplifying the token counts.
         When True, prefix trimming is disabled and the prefix is kept as-is. The prefix
@@ -258,11 +255,9 @@ def process_dataset(
     prompt_column, prefix_column, output_column = _extract_column_names(column_mapper)
 
     # Create token samplers
-    prompt_token_sampler, output_token_sampler, prefix_token_sampler = (
+    prompt_token_sampler, output_token_sampler, prefix_tokens_max = (
         _create_token_samplers(
             config_obj,
-            prefix_tokens,
-            include_prefix_in_token_count,
             random_seed,
         )
     )
@@ -279,7 +274,6 @@ def process_dataset(
             prefix_column=prefix_column,
             prompt_token_sampler=prompt_token_sampler,
             output_token_sampler=output_token_sampler,
-            prefix_token_sampler=prefix_token_sampler,
             tokenizer=tokenizer,
             prompt_handler=prompt_handler,
             dataset_iterator=dataset_iterator,
@@ -287,6 +281,7 @@ def process_dataset(
             pad_char=pad_char,
             concat_delimiter=concat_delimiter,
             output_column=output_column,
+            prefix_tokens_max=prefix_tokens_max,
         )
         if processed_row is not None:
             processed_prompts.append(processed_row)
@@ -332,21 +327,18 @@ def _extract_column_names(
 
 
 def _create_token_samplers(
-    config_obj: SyntheticTextDatasetConfig,
-    prefix_tokens: int | None,
-    include_prefix_in_token_count: bool,
+    config_obj: PreprocessDatasetConfig,
     random_seed: int,
-) -> tuple[Iterator[int], Iterator[int], Iterator[int] | None]:
+) -> tuple[Iterator[int], Iterator[int], int | None]:
     """
     Create token samplers for prompt, output, and prefix tokens.
 
     :param config_obj: Configuration object with token settings.
     :param prefix_tokens: Optional single prefix token count.
-    :param include_prefix_in_token_count: Whether prefix is included in prompt count.
-        When True, disables prefix trimming (prefix_sampler will be None).
     :param random_seed: Seed for random sampling.
-    :return: Tuple of (prompt_sampler, output_sampler, prefix_sampler).
-        prefix_sampler is None when include_prefix_in_token_count is True.
+    :return: Tuple of (prompt_sampler, output_sampler, prefix_tokens_max).
+        prefix_sampler is None when prefix_tokens is not provided.
+        prefix_tokens_max is the maximum prefix token limit from config.
     """
     prompt_token_sampler = iter(
         IntegerRangeSampler(
@@ -368,62 +360,7 @@ def _create_token_samplers(
         )
     )
 
-    prefix_token_sampler = _create_prefix_token_sampler(
-        config_obj.prefix_buckets,
-        prefix_tokens,
-        include_prefix_in_token_count,
-        random_seed,
-    )
-
-    return prompt_token_sampler, output_token_sampler, prefix_token_sampler
-
-
-def _create_prefix_token_sampler(
-    prefix_buckets: list | None,
-    prefix_tokens: int | None,
-    include_prefix_in_token_count: bool,
-    random_seed: int,
-) -> Iterator[int] | None:
-    """
-    Create prefix token sampler if needed.
-
-    :param prefix_buckets: List of prefix buckets from config.
-    :param prefix_tokens: Optional single prefix token count.
-    :param include_prefix_in_token_count: Whether prefix is included in prompt count.
-        When True, prefix trimming is disabled and this returns None (no sampler).
-    :param random_seed: Seed for random sampling.
-    :return: Prefix token sampler iterator or None. Returns None when
-        include_prefix_in_token_count is True, which disables prefix trimming.
-    """
-    if include_prefix_in_token_count:
-        return None
-
-    if prefix_tokens is not None:
-        return iter(
-            IntegerRangeSampler(
-                average=prefix_tokens,
-                variance=None,
-                min_value=prefix_tokens,
-                max_value=prefix_tokens,
-                random_seed=random_seed,
-            )
-        )
-
-    if prefix_buckets is None:
-        return None  # No configuration
-
-    # Use prefix buckets with weighted sampling
-    from random import Random
-    rand = Random(random_seed)
-    bucket_choices = []
-    for bucket in prefix_buckets:
-        bucket_choices.extend([bucket.prefix_tokens] * bucket.bucket_weight)
-
-    def prefix_sampler():
-        while True:
-            yield rand.choice(bucket_choices)
-
-    return prefix_sampler()
+    return prompt_token_sampler, output_token_sampler, config_obj.prefix_tokens_max
 
 
 def _process_dataset_row(
@@ -465,7 +402,6 @@ def _process_single_row(
     prefix_column: str | None,
     prompt_token_sampler: Iterator[int],
     output_token_sampler: Iterator[int],
-    prefix_token_sampler: Iterator[int] | None,
     tokenizer: PreTrainedTokenizerBase,
     prompt_handler: Callable,
     dataset_iterator: Iterator[dict[str, Any]],
@@ -473,12 +409,16 @@ def _process_single_row(
     pad_char: str | None,
     concat_delimiter: str | None,
     output_column: str,
+    prefix_tokens_max: int | None,
 ) -> dict[str, Any] | None:
     """
     Process a single row from the dataset.
 
-    :param include_prefix_in_token_count: When True, disables prefix trimming and
-        includes prefix tokens in the prompt token count calculation.
+    :param include_prefix_in_token_count: When True, includes prefix tokens in the
+        prompt token count calculation. When False, prefix tokens are not counted
+        toward prompt tokens.
+    :param prefix_tokens_max: Maximum prefix token limit. If set, the prefix will be
+        trimmed if it exceeds this limit.
     :return: Processed row dictionary or None if row should be skipped.
     """
     # Extract prompt and prefix
@@ -491,16 +431,15 @@ def _process_single_row(
 
     # Handle prefix
     if prefix_text:
-        # Prefix trimming only occurs when include_prefix_in_token_count is False.
-        # When include_prefix_in_token_count is True, prefix_token_sampler is None
-        # and the prefix is kept as-is (no trimming).
-        if prefix_token_sampler:
-            target_prefix_len = next(prefix_token_sampler)
+        # Apply prefix_tokens_max limit if set (strict maximum)
+        if prefix_tokens_max is not None:
             prefix_tokens_list = tokenizer.encode(prefix_text)
-            if len(prefix_tokens_list) > target_prefix_len:
+            if len(prefix_tokens_list) > prefix_tokens_max:
                 prefix_text = tokenizer.decode(
-                    prefix_tokens_list[:target_prefix_len]
+                    prefix_tokens_list[:prefix_tokens_max]
                 )
+
+        # Count prefix tokens toward prompt if enabled
         if include_prefix_in_token_count:
             count_adjustment = len(tokenizer.encode(prefix_text))
 

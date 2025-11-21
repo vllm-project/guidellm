@@ -251,12 +251,37 @@ guidellm preprocess dataset \
     "path/to/input_dataset.jsonl" \
     "path/to/processed_dataset.jsonl" \
     --processor "gpt2" \
-    --config "prompt_tokens=512,output_tokens=256"
+    --config "prompt_tokens=512,output_tokens=256,prefix_tokens_max=100"
 ```
 
 ### Configuration and Processor Options
 
-The `--config` parameter uses the same format as synthetic data configuration. It accepts a JSON string, key=value pairs, or a configuration file path. For detailed information about available configuration parameters (such as `prompt_tokens`, `output_tokens`, `prompt_tokens_stdev`, etc.), see the [Synthetic Data Configuration Options](../datasets.md#configuration-options) in the Dataset Configurations guide.
+The `--config` parameter accepts a `PreprocessDatasetConfig` as a JSON string, key=value pairs, or a configuration file path (.json, .yaml, .yml, .config). This configuration is similar to the synthetic data configuration but includes additional fields specific to preprocessing.
+
+**PreprocessDatasetConfig Options:**
+
+- `prompt_tokens`: Average number of tokens in prompts. If nothing else is specified, all prompts will be resized to this number of tokens.
+- `prompt_tokens_stdev`: Standard deviation for prompt tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
+- `prompt_tokens_min`: Minimum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the minimum is 1.
+- `prompt_tokens_max`: Maximum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `output_tokens`: Average number of tokens in outputs. If nothing else is specified, all outputs will have this number of tokens.
+- `output_tokens_stdev`: Standard deviation for output tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
+- `output_tokens_min`: Minimum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the minimum is 1.
+- `output_tokens_max`: Maximum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `prefix_tokens_max`: Maximum number of prefix tokens to keep. If set, prefixes will be trimmed to this maximum length. If not set, prefixes are kept as-is (unless `--include-prefix-in-token-count` is used, which disables prefix trimming).
+
+**Example configurations:**
+
+```bash
+# Using key=value pairs
+--config "prompt_tokens=512,output_tokens=256,prefix_tokens_max=100"
+
+# Using JSON string
+--config '{"prompt_tokens": 512, "output_tokens": 256, "prefix_tokens_max": 100}'
+
+# Using a configuration file
+--config "path/to/config.json"
+```
 
 The `--processor` argument specifies the tokenizer to use for calculating token counts. This is required because the preprocessing command needs to tokenize prompts to ensure they match the target token sizes. For information about using processors, including Hugging Face model IDs, local paths, and processor arguments, see the [Data Arguments Overview](../datasets.md#data-arguments-overview) section.
 
@@ -358,7 +383,6 @@ guidellm preprocess dataset \
 | Option                            | Description                                                                                                                             |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `--data-args <JSON>`              | JSON string of arguments to pass to dataset loading. See [Data Arguments Overview](../datasets.md#data-arguments-overview) for details. |
-| `--prefix-tokens <NUMBER>`        | Single prefix token count (alternative to `prefix_tokens` in config).                                                                   |
 | `--include-prefix-in-token-count` | Include prefix tokens in prompt token count calculation (flag). When enabled, prefix trimming is disabled and the prefix is kept as-is. |
 | `--random-seed <NUMBER>`          | Random seed for reproducible token sampling (default: 42).                                                                              |
 | `--push-to-hub`                   | Push the processed dataset to Hugging Face Hub (flag).                                                                                  |
@@ -390,7 +414,7 @@ guidellm preprocess dataset \
     --random-seed 123
 ```
 
-**Example 3: Preprocessing with processor arguments and prefix tokens**
+**Example 3: Preprocessing with processor arguments and prefix token limits**
 
 ```bash
 guidellm preprocess dataset \
@@ -398,8 +422,7 @@ guidellm preprocess dataset \
     "processed.jsonl" \
     --processor "gpt2" \
     --processor-args '{"use_fast": false}' \
-    --config "prompt_tokens=512,output_tokens=256" \
-    --prefix-tokens 100 \
+    --config "prompt_tokens=512,output_tokens=256,prefix_tokens_max=100" \
     --include-prefix-in-token-count
 ```
 
@@ -417,9 +440,9 @@ guidellm preprocess dataset \
 
 ### Notes
 
-- The `--config` parameter uses the same format as synthetic data configuration. See the [Synthetic Data Configuration Options](../datasets.md#configuration-options) for all available parameters.
+- The `--config` parameter accepts a `PreprocessDatasetConfig` which includes all token count fields (prompt_tokens, output_tokens, etc.) plus `prefix_tokens_max` for controlling prefix length. See the [Configuration and Processor Options](#configuration-and-processor-options) section above for all available parameters.
 - The processor/tokenizer is required because the preprocessing command needs to tokenize prompts to ensure they match target token sizes. See the [Data Arguments Overview](../datasets.md#data-arguments-overview) for processor usage details.
 - Column mappings are only needed when your dataset uses non-standard column names. GuideLLM will automatically try common column names if no mapping is provided.
 - When using `--short-prompt-strategy concatenate`, ensure your dataset has enough samples to concatenate, or some prompts may be skipped.
 - The output format is determined by the file extension of `OUTPUT_PATH` (e.g., `.jsonl`, `.csv`, `.parquet`).
-- The prefix handling only trims prefixes. It doesn't expand them. Prefix buckets, if specified, only trim the given prefixes by bucket weighting. It doesn't generate unique prefixes for each bucket.
+- The prefix handling only trims prefixes. It doesn't expand them. Use `prefix_tokens_max` in the config to set a maximum prefix length, which will trim prefixes that exceed this limit.

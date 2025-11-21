@@ -520,10 +520,11 @@ def preprocess():
     type=str,
     required=True,
     help=(
-        "SyntheticTextDatasetConfig as JSON string, key=value pairs, "
+        "PreprocessDatasetConfig as JSON string, key=value pairs, "
         "or file path (.json, .yaml, .yml, .config). "
-        "Example: 'prompt_tokens=100,output_tokens=50'"
-        " or '{\"prompt_tokens\": 100, \"output_tokens\": 50}'"
+        "Example: 'prompt_tokens=100,output_tokens=50,prefix_tokens_max=10'"
+        " or '{\"prompt_tokens\": 100, \"output_tokens\": 50, "
+        "\"prefix_tokens_max\": 10}'"
     ),
 )
 @click.option(
@@ -566,17 +567,10 @@ def preprocess():
     ),
 )
 @click.option(
-    "--prefix-tokens",
-    type=int,
-    default=None,
-    help="Single prefix token count (alternative to prefix_buckets in config).",
-)
-@click.option(
     "--include-prefix-in-token-count",
     is_flag=True,
     default=False,
-    help="Include prefix tokens in prompt token count calculation. When enabled, "
-         "prefix trimming is disabled and the prefix is kept as-is.",
+    help="Include prefix tokens in prompt token count calculation.",
 )
 @click.option(
     "--push-to-hub",
@@ -607,7 +601,6 @@ def dataset(
     short_prompt_strategy,
     pad_char,
     concat_delimiter,
-    prefix_tokens,
     include_prefix_in_token_count,
     push_to_hub,
     hub_dataset_id,
@@ -624,7 +617,6 @@ def dataset(
         short_prompt_strategy=short_prompt_strategy,
         pad_char=pad_char,
         concat_delimiter=concat_delimiter,
-        prefix_tokens=prefix_tokens,
         include_prefix_in_token_count=include_prefix_in_token_count,
         push_to_hub=push_to_hub,
         hub_dataset_id=hub_dataset_id,
