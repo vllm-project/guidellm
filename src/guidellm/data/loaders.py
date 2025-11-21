@@ -142,6 +142,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
         data_samples: int,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
+        finalizer: DatasetFinalizer[DataT],
         collator: Callable,
         sampler: Sampler[int] | Literal["shuffle"] | None = None,
         num_workers: int | None = 1,
@@ -154,6 +155,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
             data_samples=data_samples,
             processor_factory=processor_factory,
             preprocessors=preprocessors,
+            finalizer=finalizer,
             random_seed=random_seed,
         )
         self._info: dict[str, Any] = {
@@ -163,6 +165,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
             "preprocessors": [
                 preprocessor.__class__.__name__ for preprocessor in preprocessors
             ],
+            "finalizer": finalizer.__class__.__name__,
             "collator": collator.__class__.__name__,
             "sampler": str(sampler),
             "num_workers": num_workers,
