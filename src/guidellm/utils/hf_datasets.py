@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Union
 
 from datasets import Dataset
 
@@ -11,7 +10,7 @@ SUPPORTED_TYPES = {
 }
 
 
-def save_dataset_to_file(dataset: Dataset, output_path: Union[str, Path]) -> None:
+def save_dataset_to_file(dataset: Dataset, output_path: str | Path) -> None:
     """
     Saves a HuggingFace Dataset to file in a supported format.
 

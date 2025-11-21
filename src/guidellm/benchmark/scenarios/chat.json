@@ -1,13 +1,6 @@
 {
-    "rate_type": "sweep",
-    "data": {
-        "prompt_tokens": 512,
-        "prompt_tokens_stdev": 128,
-        "prompt_tokens_min": 1,
-        "prompt_tokens_max": 1024,
-        "output_tokens": 256,
-        "output_tokens_stdev": 64,
-        "output_tokens_min": 1,
-        "output_tokens_max": 1024
-    }
+    "profile": "sweep",
+    "data": [
+        "prompt_tokens=512,prompt_tokens_stdev=128,prompt_tokens_min=1,prompt_tokens_max=1024,output_tokens=256,output_tokens_stdev=64,output_tokens_min=1,output_tokens_max=1024"
+    ]
 }

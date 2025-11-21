@@ -1,6 +1,5 @@
 import random
 from collections.abc import Iterator
-from typing import Optional
 
 __all__ = ["IntegerRangeSampler"]
 
@@ -9,9 +8,9 @@ class IntegerRangeSampler:
     def __init__(
         self,
         average: int,
-        variance: Optional[int],
-        min_value: Optional[int],
-        max_value: Optional[int],
+        variance: int | None,
+        min_value: int | None,
+        max_value: int | None,
         random_seed: int,
     ):
         self.average = average

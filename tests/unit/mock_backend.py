@@ -1,172 +1,184 @@
+"""
+Mock backend implementation for testing purposes.
+"""
+
 import asyncio
 import random
 import time
-from collections.abc import AsyncGenerator
-from pathlib import Path
-from typing import Any, Optional, Union
+from collections.abc import AsyncIterator
+from typing import Any
 
-from lorem.text import TextLorem  # type: ignore
-from PIL import Image
+from lorem.text import TextLorem
 
-from guidellm.backend import (
-    Backend,
-    RequestArgs,
-    ResponseSummary,
-    StreamingTextResponse,
+from guidellm.backends import Backend
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    RequestInfo,
+    RequestTimings,
 )
 
 
-@Backend.register("mock")  # type: ignore
+@Backend.register("mock")
 class MockBackend(Backend):
+    """
+    Mock backend for testing that simulates text generation.
+
+    Provides predictable responses with configurable delays and token counts
+    for testing the backend interface without requiring an actual LLM service.
+    """
+
     def __init__(
         self,
-        model: Optional[str] = "mock-model",
-        target: Optional[str] = "mock-target",
-        iter_delay: Optional[float] = None,
+        target: str = "mock-target",
+        model: str = "mock-model",
+        iter_delay: float | None = None,
     ):
-        super().__init__(type_="mock")  # type: ignore
+        """
+        Initialize mock backend.
+
+        :param model: Model name to simulate.
+        :param target: Target URL to simulate.
+        :param iter_delay: Delay between iterations in seconds.
+        """
+        super().__init__(type_="mock")  # type: ignore [reportCallIssue]
         self._model = model
         self._target = target
         self._iter_delay = iter_delay
+        self._in_process = False
 
     @property
     def target(self) -> str:
-        return self._target  # type: ignore
+        """Target URL for the mock backend."""
+        return self._target
 
     @property
-    def model(self) -> Optional[str]:
+    def model(self) -> str | None:
+        """Model name for the mock backend."""
         return self._model
 
-    @property
     def info(self) -> dict[str, Any]:
-        return {}
+        """
+        Return mock backend configuration information.
+        """
+        return {
+            "type": "mock",
+            "model": self._model,
+            "target": self._target,
+            "iter_delay": self._iter_delay,
+        }
 
-    async def reset(self) -> None:
-        pass
+    async def process_startup(self) -> None:
+        """
+        Initialize the mock backend process.
+        """
+        self._in_process = True
 
-    async def prepare_multiprocessing(self):
-        pass
+    async def process_shutdown(self) -> None:
+        """
+        Shutdown the mock backend process.
+        """
+        self._in_process = False
 
-    async def check_setup(self):
-        pass
+    async def validate(self) -> None:
+        """
+        Validate the mock backend configuration.
+        """
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process")
 
-    async def available_models(self) -> list[str]:
-        return [self.model]  # type: ignore
+    async def default_model(self) -> str | None:
+        """
+        Return the default model for the mock backend.
+        """
+        return self._model
 
-    async def text_completions(  # type: ignore
+    async def resolve(
         self,
-        prompt: Union[str, list[str]],
-        request_id: Optional[str] = None,
-        prompt_token_count: Optional[int] = None,
-        output_token_count: Optional[int] = None,
-        **kwargs,
-    ) -> AsyncGenerator[Union[StreamingTextResponse, ResponseSummary], None]:
-        if not isinstance(prompt, str) or not prompt:
-            raise ValueError("Prompt must be a non-empty string")
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
+    ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
+        """
+        Process a generation request and yield progressive responses.
 
-        async for response in self._text_prompt_response_generator(
-            prompt,
-            request_id,
-            prompt_token_count,
-            output_token_count,
-        ):
-            yield response
+        ### WRITTEN BY AI ###
+        """
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process")
 
-    async def chat_completions(  # type: ignore
-        self,
-        content: Union[
-            str,
-            list[Union[str, dict[str, Union[str, dict[str, str]]], Path, Image.Image]],
-            Any,
-        ],
-        request_id: Optional[str] = None,
-        prompt_token_count: Optional[int] = None,
-        output_token_count: Optional[int] = None,
-        raw_content: bool = False,
-        **kwargs,
-    ) -> AsyncGenerator[Union[StreamingTextResponse, ResponseSummary], None]:
-        if not isinstance(content, str) or not content:
-            raise ValueError("Content must be a non-empty string")
+        if history is not None:
+            raise NotImplementedError(
+                "Multi-turn requests not supported in mock backend"
+            )
 
-        async for response in self._text_prompt_response_generator(
-            content,
-            request_id,
-            prompt_token_count,
-            output_token_count,
-        ):
-            yield response
+        # Extract token counts from request
+        prompt_tokens = request.stats.get("prompt_tokens")
+        output_tokens = request.constraints.get("output_tokens")
 
-    async def _text_prompt_response_generator(
-        self,
-        prompt: str,
-        request_id: Optional[str],
-        prompt_token_count: Optional[int],
-        output_token_count: Optional[int],
-    ) -> AsyncGenerator[Union[StreamingTextResponse, ResponseSummary], None]:
-        tokens = self._get_tokens(output_token_count)
-        start_time = time.time()
+        # Generate mock tokens
+        tokens = self._get_tokens(output_tokens)
 
-        yield StreamingTextResponse(
-            type_="start",
+        # Initialize response
+        response = GenerationResponse(
+            request_id=request.request_id,
+            request_args={
+                "request_type": request.request_type,
+                "output_token_count": output_tokens,
+                **request.params,
+            },
             value="",
-            start_time=start_time,
-            first_iter_time=None,
-            iter_count=0,
-            delta="",
-            time=start_time,
-            request_id=request_id,
+            request_prompt_tokens=prompt_tokens,
+            request_output_tokens=output_tokens,
         )
 
-        first_iter_time = None
-        last_iter_time = None
+        # Initialize timings
+        request_info.request_timings = RequestTimings()
+        request_info.request_timings.request_start = time.time()
 
+        # Generate response iteratively
         for index, token in enumerate(tokens):
             if self._iter_delay:
                 await asyncio.sleep(self._iter_delay)
 
-            if first_iter_time is None:
-                first_iter_time = time.time()
+            if request_info.request_timings.first_iteration is None:
+                request_info.request_timings.first_iteration = time.time()
 
-            yield StreamingTextResponse(
-                type_="iter",
-                value="".join(tokens[: index + 1]),
-                start_time=start_time,
-                first_iter_time=first_iter_time,
-                iter_count=index + 1,
-                delta=token,
-                time=time.time(),
-                request_id=request_id,
-            )
+            response.value += token  # type: ignore [reportOperatorIssue]
+            response.delta = token
+            response.iterations = index + 1
+            request_info.request_timings.last_iteration = time.time()
 
-            last_iter_time = time.time()
+            yield response, request_info
 
-        yield ResponseSummary(
-            value="".join(tokens),
-            request_args=RequestArgs(
-                target=self.target,
-                headers={},
-                params={},
-                payload={"prompt": prompt, "output_token_count": output_token_count},
-            ),
-            iterations=len(tokens),
-            start_time=start_time,
-            end_time=time.time(),
-            first_iter_time=first_iter_time,
-            last_iter_time=last_iter_time,
-            request_prompt_tokens=prompt_token_count,
-            request_output_tokens=output_token_count,
-            response_prompt_tokens=len(prompt.split()) + prompt.count(" "),
-            response_output_tokens=len(tokens),
-            request_id=request_id,
+        # Final response with usage stats
+        request_info.request_timings.request_end = time.time()
+        response.response_prompt_tokens = prompt_tokens or self._estimate_prompt_tokens(
+            str(request.content)
         )
+        response.response_output_tokens = len(tokens)
+        response.delta = None
+
+        yield response, request_info
 
     @staticmethod
-    def _get_tokens(token_count: Optional[int] = None) -> list[str]:
+    def _estimate_prompt_tokens(content: str) -> int:
+        """
+        Estimate prompt tokens from content.
+        """
+        # Simple word-based token estimation
+        return len(str(content).split())
+
+    @staticmethod
+    def _get_tokens(token_count: int | None = None) -> list[str]:
+        """
+        Generate mock tokens for response.
+        """
         if token_count is None:
             token_count = random.randint(8, 512)
 
         words = TextLorem(srange=(token_count, token_count)).sentence().split()
-        tokens = []  # type: ignore
+        tokens = []
 
         for word in words:
             if len(tokens) == token_count - 1:
