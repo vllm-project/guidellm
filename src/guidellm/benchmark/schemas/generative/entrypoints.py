@@ -202,6 +202,14 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default="generative_column_mapper",
         description="Column mapping preprocessor for dataset fields",
     )
+    data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str] = (
+        Field(
+            default_factory=lambda: [  # type: ignore [arg-type]
+                "encode_media",
+            ],
+            description="List of dataset preprocessors to apply in order",
+        )
+    )
     data_request_formatter: RequestFormatter | dict[str, Any] | str = Field(
         default="chat_completions",
         description="Request formatting preprocessor or template name",
