@@ -2,7 +2,7 @@ import os
 from collections.abc import Callable, Iterator
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from datasets import Dataset
 from loguru import logger
@@ -29,120 +29,136 @@ class ShortPromptStrategy(str, Enum):
     ERROR = "error"
 
 
-def handle_ignore_strategy(
-    current_prompt: str,
-    min_prompt_tokens: int,
-    tokenizer: PreTrainedTokenizerBase,
-    **_kwargs,
-) -> str | None:
-    """
-    Ignores prompts that are shorter than the required minimum token length.
+class ShortPromptStrategyHandler:
+    """Handler class for short prompt strategies."""
 
-    :param current_prompt: The input prompt string.
-    :param min_prompt_tokens: Minimum required token count.
-    :param tokenizer: Tokenizer used to count tokens.
-    :return: The prompt if it meets the length, otherwise None.
-    """
+    @staticmethod
+    def handle_ignore(
+        current_prompt: str,
+        min_prompt_tokens: int,
+        tokenizer: PreTrainedTokenizerBase,
+        **_kwargs,
+    ) -> str | None:
+        """
+        Ignores prompts that are shorter than the required minimum token length.
 
-    if len(tokenizer.encode(current_prompt)) < min_prompt_tokens:
-        logger.warning("Prompt too short, ignoring")
-        return None
-    return current_prompt
+        :param current_prompt: The input prompt string.
+        :param min_prompt_tokens: Minimum required token count.
+        :param tokenizer: Tokenizer used to count tokens.
+        :return: The prompt if it meets the length, otherwise None.
+        """
 
-
-def handle_concatenate_strategy(
-    current_prompt: str,
-    min_prompt_tokens: int,
-    dataset_iterator: Iterator[dict[str, Any]],
-    prompt_column: str,
-    tokenizer: PreTrainedTokenizerBase,
-    concat_delimiter: str,
-    **_kwargs,
-) -> str | None:
-    """
-    Concatenates prompts until the minimum token requirement is met.
-
-    :param current_prompt: The initial prompt.
-    :param min_prompt_tokens: Target minimum token length.
-    :param dataset_iterator: Iterator to fetch more prompts.
-    :param prompt_column: Column key for prompt extraction.
-    :param tokenizer: Tokenizer used to count tokens.
-    :param concat_delimiter: Delimiter to use between prompts.
-    :return: Concatenated prompt or None if not enough data.
-    """
-
-    tokens_len = len(tokenizer.encode(current_prompt))
-    while tokens_len < min_prompt_tokens:
-        try:
-            next_row = next(dataset_iterator)
-        except StopIteration:
-            logger.warning(
-                "Could not concatenate enough prompts to reach minimum length, ignoring"
-            )
+        if len(tokenizer.encode(current_prompt)) < min_prompt_tokens:
+            logger.warning("Prompt too short, ignoring")
             return None
-        current_prompt += concat_delimiter + next_row[prompt_column]
+        return current_prompt
+
+    @staticmethod
+    def handle_concatenate(
+        current_prompt: str,
+        min_prompt_tokens: int,
+        dataset_iterator: Iterator[dict[str, Any]],
+        prompt_column: str,
+        tokenizer: PreTrainedTokenizerBase,
+        concat_delimiter: str,
+        **_kwargs,
+    ) -> str | None:
+        """
+        Concatenates prompts until the minimum token requirement is met.
+
+        :param current_prompt: The initial prompt.
+        :param min_prompt_tokens: Target minimum token length.
+        :param dataset_iterator: Iterator to fetch more prompts.
+        :param prompt_column: Column key for prompt extraction.
+        :param tokenizer: Tokenizer used to count tokens.
+        :param concat_delimiter: Delimiter to use between prompts.
+        :return: Concatenated prompt or None if not enough data.
+        """
+
         tokens_len = len(tokenizer.encode(current_prompt))
-    return current_prompt
+        while tokens_len < min_prompt_tokens:
+            try:
+                next_row = next(dataset_iterator)
+            except StopIteration:
+                logger.warning(
+                    "Could not concatenate enough prompts to reach minimum "
+                    "length, ignoring"
+                )
+                return None
+            current_prompt += concat_delimiter + next_row[prompt_column]
+            tokens_len = len(tokenizer.encode(current_prompt))
+        return current_prompt
+
+    @staticmethod
+    def handle_pad(
+        current_prompt: str,
+        min_prompt_tokens: int,
+        tokenizer: PreTrainedTokenizerBase,
+        pad_char: str,
+        pad_multiplier: int = 2,
+        **_kwargs,
+    ) -> str:
+        """
+        Pads the prompt with a character until it reaches the minimum token length.
+
+        :param current_prompt: The input prompt.
+        :param min_prompt_tokens: Desired minimum token count.
+        :param tokenizer: Tokenizer used to count tokens.
+        :param pad_char: Character used for padding.
+        :param pad_multiplier: Multiplier for padding character length.
+        :return: Padded prompt string.
+        """
+        tokens = tokenizer.encode(current_prompt)
+        pad_count = 1
+        prompt = current_prompt
+        while len(tokens) < min_prompt_tokens:
+            prompt += pad_char * pad_count
+            tokens = tokenizer.encode(prompt)
+            pad_count *= pad_multiplier
+        return prompt
+
+    @staticmethod
+    def handle_error(
+        current_prompt: str,
+        min_prompt_tokens: int,
+        tokenizer: PreTrainedTokenizerBase,
+        **_kwargs,
+    ) -> str | None:
+        """
+        Raises an error if the prompt is too short.
+
+        :param current_prompt: The input prompt.
+        :param min_prompt_tokens: Required token count.
+        :param tokenizer: Tokenizer used to count tokens.
+        :return: The input prompt if valid.
+        :raises PromptTooShortError: If the prompt is too short.
+        """
+
+        prompt_len = len(tokenizer.encode(current_prompt))
+        if prompt_len < min_prompt_tokens:
+            raise PromptTooShortError(
+                f"Found too short prompt: {current_prompt}, with length: {prompt_len}. "
+                f"Minimum length required: {min_prompt_tokens}.",
+            )
+        return current_prompt
+
+    @classmethod
+    def get_strategy_handler(cls, strategy: ShortPromptStrategy) -> Callable[..., Any]:
+        """
+        Get the handler for a specific strategy.
+
+        :param strategy: The short prompt strategy to get the handler for.
+        :return: The handler callable for the specified strategy.
+        """
+        return cast("Callable[..., Any]", STRATEGY_HANDLERS[strategy])
 
 
-def handle_pad_strategy(
-    current_prompt: str,
-    min_prompt_tokens: int,
-    tokenizer: PreTrainedTokenizerBase,
-    pad_char: str,
-    pad_multiplier: int = 2,
-    **_kwargs,
-) -> str:
-    """
-    Pads the prompt with a character until it reaches the minimum token length.
-
-    :param current_prompt: The input prompt.
-    :param min_prompt_tokens: Desired minimum token count.
-    :param tokenizer: Tokenizer used to count tokens.
-    :param pad_char: Character used for padding.
-    :param pad_multiplier: Multiplier for padding character length.
-    :return: Padded prompt string.
-    """
-    tokens = tokenizer.encode(current_prompt)
-    pad_count = 1
-    prompt = current_prompt
-    while len(tokens) < min_prompt_tokens:
-        prompt += pad_char * pad_count
-        tokens = tokenizer.encode(prompt)
-        pad_count *= pad_multiplier
-    return prompt
-
-
-def handle_error_strategy(
-    current_prompt: str,
-    min_prompt_tokens: int,
-    tokenizer: PreTrainedTokenizerBase,
-    **_kwargs,
-) -> str | None:
-    """
-    Raises an error if the prompt is too short.
-
-    :param current_prompt: The input prompt.
-    :param min_prompt_tokens: Required token count.
-    :param tokenizer: Tokenizer used to count tokens.
-    :return: The input prompt if valid.
-    :raises PromptTooShortError: If the prompt is too short.
-    """
-
-    prompt_len = len(tokenizer.encode(current_prompt))
-    if prompt_len < min_prompt_tokens:
-        raise PromptTooShortError(
-            f"Found too short prompt: {current_prompt}, with length: {prompt_len}. "
-            f"Minimum length required: {min_prompt_tokens}.",
-        )
-    return current_prompt
-
-
-STRATEGY_HANDLERS: dict[ShortPromptStrategy, Callable] = {
-    ShortPromptStrategy.IGNORE: handle_ignore_strategy,
-    ShortPromptStrategy.CONCATENATE: handle_concatenate_strategy,
-    ShortPromptStrategy.PAD: handle_pad_strategy,
-    ShortPromptStrategy.ERROR: handle_error_strategy,
+# Initialize STRATEGY_HANDLERS after class definition to allow method references
+STRATEGY_HANDLERS = {
+    ShortPromptStrategy.IGNORE: ShortPromptStrategyHandler.handle_ignore,
+    ShortPromptStrategy.CONCATENATE: ShortPromptStrategyHandler.handle_concatenate,
+    ShortPromptStrategy.PAD: ShortPromptStrategyHandler.handle_pad,
+    ShortPromptStrategy.ERROR: ShortPromptStrategyHandler.handle_error,
 }
 
 
@@ -245,7 +261,9 @@ def process_dataset(
     )
 
     # Setup column mapper
-    column_mapper = GenerativeColumnMapper(column_mappings=data_column_mapper)  # type: ignore[arg-type]
+    column_mapper = GenerativeColumnMapper(
+        column_mappings=data_column_mapper  # type: ignore[arg-type]
+    )
     column_mapper.setup_data(
         datasets=[dataset],
         data_args=[data_args or {}],
@@ -265,7 +283,9 @@ def process_dataset(
     # Process dataset
     dataset_iterator = iter(dataset)
     processed_prompts = []
-    prompt_handler = STRATEGY_HANDLERS[short_prompt_strategy]
+    prompt_handler = ShortPromptStrategyHandler.get_strategy_handler(
+        short_prompt_strategy
+    )
 
     for row in dataset_iterator:
         processed_row = _process_single_row(

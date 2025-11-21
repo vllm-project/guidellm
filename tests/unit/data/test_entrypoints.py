@@ -16,13 +16,9 @@ from datasets import Dataset
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.entrypoints import (
-    STRATEGY_HANDLERS,
     PromptTooShortError,
     ShortPromptStrategy,
-    handle_concatenate_strategy,
-    handle_error_strategy,
-    handle_ignore_strategy,
-    handle_pad_strategy,
+    ShortPromptStrategyHandler,
     process_dataset,
     push_dataset_to_hub,
 )
@@ -1742,54 +1738,58 @@ class TestShortPromptStrategyHandlers:
 
     @pytest.mark.sanity
     def test_handle_ignore_strategy_too_short(self, tokenizer_mock):
-        """Test handle_ignore_strategy returns None for short prompts."""
-        result = handle_ignore_strategy("short", 10, tokenizer_mock)
+        """Test handle_ignore returns None for short prompts."""
+        result = ShortPromptStrategyHandler.handle_ignore("short", 10, tokenizer_mock)
         assert result is None
         tokenizer_mock.encode.assert_called_with("short")
 
     @pytest.mark.sanity
     def test_handle_ignore_strategy_sufficient_length(self, tokenizer_mock):
-        """Test handle_ignore_strategy returns prompt for sufficient length."""
-        result = handle_ignore_strategy("long prompt", 5, tokenizer_mock)
+        """Test handle_ignore returns prompt for sufficient length."""
+        result = ShortPromptStrategyHandler.handle_ignore(
+            "long prompt", 5, tokenizer_mock
+        )
         assert result == "long prompt"
         tokenizer_mock.encode.assert_called_with("long prompt")
 
     @pytest.mark.sanity
     def test_handle_concatenate_strategy_enough_prompts(self, tokenizer_mock):
-        """Test handle_concatenate_strategy with enough prompts."""
+        """Test handle_concatenate with enough prompts."""
         dataset_iter = iter([{"prompt": "longer"}])
-        result = handle_concatenate_strategy(
+        result = ShortPromptStrategyHandler.handle_concatenate(
             "short", 10, dataset_iter, "prompt", tokenizer_mock, "\n"
         )
         assert result == "short\nlonger"
 
     @pytest.mark.sanity
     def test_handle_concatenate_strategy_not_enough_prompts(self, tokenizer_mock):
-        """Test handle_concatenate_strategy without enough prompts."""
+        """Test handle_concatenate without enough prompts."""
         dataset_iter: Iterator = iter([])
-        result = handle_concatenate_strategy(
+        result = ShortPromptStrategyHandler.handle_concatenate(
             "short", 10, dataset_iter, "prompt", tokenizer_mock, ""
         )
         assert result is None
 
     @pytest.mark.sanity
     def test_handle_pad_strategy(self, tokenizer_mock):
-        """Test handle_pad_strategy pads short prompts."""
-        result = handle_pad_strategy("short", 10, tokenizer_mock, "p")
+        """Test handle_pad pads short prompts."""
+        result = ShortPromptStrategyHandler.handle_pad("short", 10, tokenizer_mock, "p")
         assert result.startswith("shortppppp")
 
     @pytest.mark.sanity
     def test_handle_error_strategy_valid_prompt(self, tokenizer_mock):
-        """Test handle_error_strategy returns prompt for valid length."""
-        result = handle_error_strategy("valid prompt", 5, tokenizer_mock)
+        """Test handle_error returns prompt for valid length."""
+        result = ShortPromptStrategyHandler.handle_error(
+            "valid prompt", 5, tokenizer_mock
+        )
         assert result == "valid prompt"
         tokenizer_mock.encode.assert_called_with("valid prompt")
 
     @pytest.mark.sanity
     def test_handle_error_strategy_too_short_prompt(self, tokenizer_mock):
-        """Test handle_error_strategy raises error for short prompts."""
+        """Test handle_error raises error for short prompts."""
         with pytest.raises(PromptTooShortError):
-            handle_error_strategy("short", 10, tokenizer_mock)
+            ShortPromptStrategyHandler.handle_error("short", 10, tokenizer_mock)
 
 
 class TestProcessDatasetPushToHub:
@@ -1915,6 +1915,7 @@ class TestProcessDatasetStrategyHandlerIntegration:
         tmp_path,
     ):
         """Test that strategy handlers are called during dataset processing."""
+        from guidellm.data.entrypoints import STRATEGY_HANDLERS
         mock_handler = MagicMock(return_value="processed_prompt")
         with patch.dict(STRATEGY_HANDLERS, {ShortPromptStrategy.IGNORE: mock_handler}):
             # Create a dataset with prompts that need processing
