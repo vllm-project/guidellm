@@ -1,25 +1,42 @@
-# This workflow builds a Docker artifact, caches it based on the Dockerfile content,
-# and then runs e2e tests using that artifact.
-
-name: E2E Tests
+name: Tests
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      python:
+        required: true
+        type: string
+      args:
+        required: false
+        type: string
 
 jobs:
-  build-and-test:
+  unit-tests:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Run unit tests
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: ${{ inputs.python }}
+          tox-env: test-unit
+          tox-args: ${{ inputs.args }}
 
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run integration tests
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: ${{ inputs.python }}
+          tox-env: test-integration
+          tox-args: ${{ inputs.args }}
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       # Cache the binary artifact
       # The key is based on the runner's OS and the hash of the Dockerfile.
       # If the Dockerfile changes, the hash changes, and a new cache is created.
@@ -31,11 +48,9 @@ jobs:
           path: bin/llm-d-inference-sim
           # The unique key for the cache
           key: vllm-sim-binary-${{ runner.os }}-${{ hashFiles('tests/e2e/vllm-sim.Dockerfile') }}
-
       # Set up Docker Buildx (required for the 'docker build -o' command)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       # Conditionally build the artifact
       # This step only runs if the cache step above did NOT find a match.
       # 'steps.cache-vllm-sim.outputs.cache-hit' will be 'true' if the cache was restored.
@@ -45,7 +60,6 @@ jobs:
           echo "Cache miss. Building artifact..."
           docker build . -f tests/e2e/vllm-sim.Dockerfile -o type=local,dest=./
         shell: bash
-
       - name: Verify artifact
         run: |
           if [ -f "bin/llm-d-inference-sim" ]; then
@@ -55,15 +69,9 @@ jobs:
             exit 1
           fi
         shell: bash
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run end-to-end tests
+        uses: ./.github/actions/run-tox
         with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run E2E tests
-        run: tox -e test-e2e
-        shell: bash
+          python-version: ${{ inputs.python }}
+          tox-env: test-e2e
+          tox-args: ${{ inputs.args }}
