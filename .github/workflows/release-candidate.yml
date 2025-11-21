@@ -226,8 +226,8 @@ jobs:
           export $(grep -v '^#' .env.staging | xargs)
 
           # Set asset prefix and base path with git tag
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/release/${TAG}
-          BASE_PATH=/ui/release/${TAG}
+          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/${{ env.TAG }}
+          BASE_PATH=/ui/${{ env.TAG }}
           GIT_SHA=${{ github.sha }}
           export ASSET_PREFIX=${ASSET_PREFIX}
           export BASE_PATH=${BASE_PATH}
@@ -239,7 +239,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .src/ui/out
-          destination_dir: ui/release/${TAG}
+          destination_dir: ui/${{ env.TAG }}
           keep_files: false
           user_name: ${{ github.actor }}
           user_email: ${{ github.actor }}@users.noreply.github.com
