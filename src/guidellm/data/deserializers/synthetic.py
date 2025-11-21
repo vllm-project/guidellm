@@ -6,8 +6,10 @@ from pathlib import Path
 from random import Random
 from typing import Any
 
+import numpy as np
 import yaml
-from datasets import Features, IterableDataset, Value
+from datasets import DatasetInfo, Features, IterableDataset, Value
+from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 from transformers import PreTrainedTokenizerBase
@@ -17,12 +19,13 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.utils import IntegerRangeSampler, StandardBaseModel
+from guidellm.schemas import StandardBaseModel
+from guidellm.utils import IntegerRangeSampler
 
 __all__ = [
+    "SyntheticTextDataset",
     "SyntheticTextDatasetConfig",
     "SyntheticTextDatasetDeserializer",
-    "SyntheticTextGenerator",
     "SyntheticTextPrefixBucketConfig",
 ]
 
@@ -120,29 +123,34 @@ class SyntheticTextDatasetConfig(StandardBaseModel):
         return self
 
 
-class SyntheticTextGenerator:
+class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
+    """Custom examples iterable for synthetic text generation."""
+
     def __init__(
         self,
         config: SyntheticTextDatasetConfig,
         processor: PreTrainedTokenizerBase,
-        random_seed: int = 42,
+        random_seed: int,
     ):
+        super().__init__()
         self.config = config
         self.processor = processor
         self.random_seed = random_seed
+        self.iteration_count = 0
 
-    def __iter__(self) -> Iterator[dict[str, Any]]:
-        samples_generated = 0
+    def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
+        iter_random_seed = self.random_seed + self.iteration_count
+        self.iteration_count += 1
 
         faker = Faker()
-        faker.seed_instance(self.random_seed)
+        faker.seed_instance(iter_random_seed)
         prompt_tokens_sampler = iter(
             IntegerRangeSampler(
                 average=self.config.prompt_tokens,
                 variance=self.config.prompt_tokens_stdev,
                 min_value=self.config.prompt_tokens_min,
                 max_value=self.config.prompt_tokens_max,
-                random_seed=self.random_seed,
+                random_seed=iter_random_seed,
             )
         )
         output_tokens_sampler = iter(
@@ -151,27 +159,77 @@ class SyntheticTextGenerator:
                 variance=self.config.output_tokens_stdev,
                 min_value=self.config.output_tokens_min,
                 max_value=self.config.output_tokens_max,
-                random_seed=self.random_seed + 1,  # ensure diff dist from prompts
+                random_seed=iter_random_seed + 1,  # ensure diff dist from prompts
             )
         )
 
         # Create a shared prefix if specified
-        rand = Random(self.random_seed + 3)
+        rand = Random(iter_random_seed + 3)
         prefix_iter = self._create_prefix_iter(faker, rand)
+        samples_count = 0
 
         while True:
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
 
-            yield {
-                "prefix": next(prefix_iter),
-                "prompt": self._create_prompt(
-                    prompt_tokens_count, faker, f"{samples_generated} "
-                ),
-                "prompt_tokens_count": prompt_tokens_count,
-                "output_tokens_count": output_tokens_count,
+            yield (
+                samples_count,
+                {
+                    "prefix": next(prefix_iter),
+                    "prompt": self._create_prompt(
+                        prompt_tokens_count,
+                        faker,
+                        f"{self.iteration_count} {samples_count} ",
+                    ),
+                    "prompt_tokens_count": prompt_tokens_count,
+                    "output_tokens_count": output_tokens_count,
+                },
+            )
+            samples_count += 1
+
+    @property
+    def is_typed(self) -> bool:
+        return True
+
+    @property
+    def features(self) -> Features:
+        return Features(
+            {
+                "prefix": Value("string"),
+                "prompt": Value("string"),
+                "prompt_tokens_count": Value("int32"),
+                "output_tokens_count": Value("int32"),
             }
-            samples_generated += 1
+        )
+
+    @property
+    def num_shards(self) -> int:
+        return 1
+
+    def shuffle_data_sources(
+        self,
+        generator: np.random.Generator,  # noqa: ARG002
+    ) -> _SyntheticTextExamplesIterable:
+        """Return self since synthetic data doesn't have fixed sources to shuffle."""
+        return self
+
+    def shard_data_sources(
+        self,
+        num_shards: int,  # noqa: ARG002
+        index: int,  # noqa: ARG002
+        contiguous: bool = True,  # noqa: ARG002
+    ) -> _SyntheticTextExamplesIterable:
+        """Return self since synthetic data generation is infinite and stateless."""
+        return self
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        """Load the state from a state dict."""
+        self.iteration_count = state_dict.get("iteration_count", 0)
+
+    def _init_state_dict(self) -> dict:
+        """Initialize the state dict for the iterable."""
+        self._state_dict = {"iteration_count": self.iteration_count}
+        return self._state_dict
 
     def _create_prompt(
         self, prompt_tokens_count: int, faker: Faker, unique: str = ""
@@ -225,6 +283,39 @@ class SyntheticTextGenerator:
             yield rand.choice(prefixes)
 
 
+class SyntheticTextDataset(IterableDataset):
+    def __init__(
+        self,
+        config: SyntheticTextDatasetConfig,
+        processor: PreTrainedTokenizerBase,
+        random_seed: int = 42,
+    ):
+        self.config = config
+        self.processor = processor
+        self.random_seed = random_seed
+
+        # Create the examples iterable
+        ex_iterable = _SyntheticTextExamplesIterable(
+            config=config,
+            processor=processor,
+            random_seed=random_seed,
+        )
+
+        # Initialize parent with proper ex_iterable
+        super().__init__(
+            ex_iterable=ex_iterable,
+            info=DatasetInfo(
+                description="Synthetic text dataset generator",
+                features=ex_iterable.features,
+            ),
+        )
+
+    def set_epoch(self, epoch: int):
+        """Set the epoch for the dataset iteration."""
+        if isinstance(self._ex_iterable, _SyntheticTextExamplesIterable):
+            self._ex_iterable.iteration_count = epoch
+
+
 @DatasetDeserializerFactory.register("synthetic_text")
 class SyntheticTextDatasetDeserializer(DatasetDeserializer):
     def __call__(
@@ -253,21 +344,10 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
                 f"got {data}"
             )
 
-        return IterableDataset.from_generator(
-            SyntheticTextGenerator,
-            gen_kwargs={
-                "config": data,
-                "processor": processor_factory(),
-                "random_seed": random_seed,
-            },
-            features=Features(
-                {
-                    "prefix": Value("string"),
-                    "prompt": Value("string"),
-                    "prompt_tokens_count": Value("int32"),
-                    "output_tokens_count": Value("int32"),
-                }
-            ),
+        return SyntheticTextDataset(
+            config=data,
+            processor=processor_factory(),
+            random_seed=random_seed,
         )
 
     def _load_config_dict(self, data: Any) -> SyntheticTextDatasetConfig | None:

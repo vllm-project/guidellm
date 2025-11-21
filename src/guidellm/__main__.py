@@ -45,25 +45,11 @@ from guidellm.benchmark import (
     reimport_benchmarks_report,
 )
 from guidellm.mock_server import MockServer, MockServerConfig
-from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import GenerativeRequestType
 from guidellm.settings import print_config
 from guidellm.utils import Console, DefaultGroupHandler, get_literal_vals
 from guidellm.utils import cli as cli_tools
-
-__all__ = [
-    "STRATEGY_PROFILE_CHOICES",
-    "benchmark",
-    "cli",
-    "config",
-    "dataset",
-    "decode_escaped_str",
-    "from_file",
-    "mock_server",
-    "preprocess",
-    "run",
-]
 
 STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
 """Available strategy and profile type choices for benchmark execution."""
@@ -157,9 +143,8 @@ def benchmark():
 )
 @click.option(
     "--rate",
-    type=str,
     callback=cli_tools.parse_list_floats,
-    multiple=False,
+    multiple=True,
     default=BenchmarkGenerativeTextArgs.get_default("rate"),
     help=(
         "Benchmark rate(s) to test. Meaning depends on profile: "
@@ -256,7 +241,7 @@ def benchmark():
     help="Number of worker processes for data loading.",
 )
 @click.option(
-    "--dataloader_kwargs",
+    "--dataloader-kwargs",
     default=BenchmarkGenerativeTextArgs.get_default("dataloader_kwargs"),
     callback=cli_tools.parse_json,
     help="JSON string of arguments to pass to the dataloader constructor.",
@@ -269,58 +254,85 @@ def benchmark():
 )
 # Output configuration
 @click.option(
-    "--output-path",
-    type=click.Path(),
-    default=BenchmarkGenerativeTextArgs.get_default("output_path"),
+    "--output-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=BenchmarkGenerativeTextArgs.get_default("output_dir"),
+    help="The directory path to save file output types in",
+)
+@click.option(
+    "--outputs",
+    callback=cli_tools.parse_list,
+    multiple=True,
+    default=BenchmarkGenerativeTextArgs.get_default("outputs"),
     help=(
-        "Path to save output files. Can be a directory or file. "
-        "If a file, saves that format; mismatched formats save to parent directory."
+        "The filename.ext for each of the outputs to create or the "
+        "alises (json, csv, html) for the output files to create with "
+        "their default file names (benchmark.[EXT])"
     ),
 )
 @click.option(
-    "--output-formats",
-    multiple=True,
-    type=str,
-    default=BenchmarkGenerativeTextArgs.get_default("output_formats"),
-    help="Output formats for results (e.g., console, json, html, csv).",
+    "--output-path",
+    type=click.Path(),
+    default=None,
+    help=(
+        "Legacy parameter for the output path to save the output result to. "
+        "Resolves to fill in output-dir and outputs based on input path."
+    ),
 )
 @click.option(
-    "--disable-console-outputs",
+    "--disable-console",
+    "--disable-console-outputs",  # legacy alias
+    "disable_console",
     is_flag=True,
-    help="Disable console output.",
-)
-# Updates configuration
-@click.option(
-    "--disable-progress",
-    is_flag=True,
-    help="Disable progress updates to the console.",
+    help=(
+        "Disable all outputs to the console (updates, interactive progress, results)."
+    ),
 )
 @click.option(
-    "--display-scheduler-stats",
+    "--disable-console-interactive",
+    "--disable-progress",  # legacy alias
+    "disable_console_interactive",
     is_flag=True,
-    help="Display scheduler process statistics.",
+    help="Disable interactive console progress updates.",
 )
 # Aggregators configuration
 @click.option(
     "--warmup",
     "--warmup-percent",  # legacy alias
     "warmup",
-    type=float,
     default=BenchmarkGenerativeTextArgs.get_default("warmup"),
+    callback=cli_tools.parse_json,
     help=(
-        "Warmup specification: if in (0,1) = percent, if >=1 = number of "
-        "requests/seconds (depends on active constraint)."
+        "Warmup specification: int, float, or dict as string "
+        "(json or key=value). "
+        "Controls time or requests before measurement starts. "
+        "Numeric in (0, 1): percent of duration or request count. "
+        "Numeric >=1: duration in seconds or request count. "
+        "Advanced config: see TransientPhaseConfig schema."
     ),
 )
 @click.option(
     "--cooldown",
     "--cooldown-percent",  # legacy alias
     "cooldown",
-    type=float,
     default=BenchmarkGenerativeTextArgs.get_default("cooldown"),
+    callback=cli_tools.parse_json,
     help=(
-        "Cooldown specification: if in (0,1) = percent, if >=1 = number of "
-        "requests/seconds (depends on active constraint)."
+        "Cooldown specification: int, float, or dict as string "
+        "(json or key=value). "
+        "Controls time or requests after measurement ends. "
+        "Numeric in (0, 1): percent of duration or request count. "
+        "Numeric >=1: duration in seconds or request count. "
+        "Advanced config: see TransientPhaseConfig schema."
+    ),
+)
+@click.option(
+    "--rampup",
+    type=float,
+    default=BenchmarkGenerativeTextArgs.get_default("rampup"),
+    help=(
+        "The time, in seconds, to ramp up the request rate over. "
+        "Only applicable for Throughput/Concurrent strategies"
     ),
 )
 @click.option(
@@ -371,32 +383,39 @@ def benchmark():
     help="Maximum global error rate across all benchmarks.",
 )
 def run(**kwargs):
+    # Only set CLI args that differ from click defaults
+    kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
+
+    # Handle remapping for request params
     request_type = kwargs.pop("request_type", None)
     request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
-    kwargs["data_request_formatter"] = (
-        request_type
-        if not request_formatter_kwargs
-        else {"request_type": request_type, **request_formatter_kwargs}
-    )
-    kwargs["data"] = cli_tools.format_list_arg(
-        kwargs.get("data"), default=[], simplify_single=False
-    )
-    kwargs["data_args"] = cli_tools.format_list_arg(
-        kwargs.get("data_args"), default=[], simplify_single=False
-    )
-    kwargs["rate"] = cli_tools.format_list_arg(
-        kwargs.get("rate"), default=None, simplify_single=False
-    )
+    if request_type is not None:
+        kwargs["data_request_formatter"] = (
+            request_type
+            if not request_formatter_kwargs
+            else {"request_type": request_type, **request_formatter_kwargs}
+        )
+    elif request_formatter_kwargs is not None:
+        kwargs["data_request_formatter"] = request_formatter_kwargs
 
-    disable_console_outputs = kwargs.pop("disable_console_outputs", False)
-    display_scheduler_stats = kwargs.pop("display_scheduler_stats", False)
-    disable_progress = kwargs.pop("disable_progress", False)
+    # Handle output path remapping
+    if (output_path := kwargs.pop("output_path", None)) is not None:
+        path = Path(output_path)
+        if path.is_dir():
+            kwargs["output_dir"] = path
+        else:
+            kwargs["output_dir"] = path.parent
+            kwargs["outputs"] = (path.name,)
+
+    # Handle console options
+    disable_console = kwargs.pop("disable_console", False)
+    disable_console_interactive = (
+        kwargs.pop("disable_console_interactive", False) or disable_console
+    )
 
     try:
-        # Only set CLI args that differ from click defaults
-        new_kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
         args = BenchmarkGenerativeTextArgs.create(
-            scenario=new_kwargs.pop("scenario", None), **new_kwargs
+            scenario=kwargs.pop("scenario", None), **kwargs
         )
     except ValidationError as err:
         # Translate pydantic valdation error to click argument error
@@ -412,13 +431,11 @@ def run(**kwargs):
         benchmark_generative_text(
             args=args,
             progress=(
-                GenerativeConsoleBenchmarkerProgress(
-                    display_scheduler_stats=display_scheduler_stats
-                )
-                if not disable_progress
+                GenerativeConsoleBenchmarkerProgress()
+                if not disable_console_interactive
                 else None
             ),
-            console=Console() if not disable_console_outputs else None,
+            console=Console() if not disable_console else None,
         )
     )
 
@@ -467,128 +484,6 @@ def config():
 @cli.group(help="Tools for preprocessing datasets for use in benchmarks.")
 def preprocess():
     """Dataset preprocessing utilities."""
-
-
-@preprocess.command(
-    "dataset",
-    help=(
-        "Process a dataset to have specific prompt and output token sizes. "
-        "Supports multiple strategies for handling prompts and optional "
-        "Hugging Face Hub upload.\n\n"
-        "DATA: Path to the input dataset or dataset ID.\n\n"
-        "OUTPUT_PATH: Path to save the processed dataset, including file suffix."
-    ),
-    context_settings={"auto_envvar_prefix": "GUIDELLM"},
-)
-@click.argument(
-    "data",
-    type=str,
-    required=True,
-)
-@click.argument(
-    "output_path",
-    type=click.Path(file_okay=True, dir_okay=False, writable=True, resolve_path=True),
-    required=True,
-)
-@click.option(
-    "--processor",
-    type=str,
-    required=True,
-    help="Processor or tokenizer name for calculating token counts.",
-)
-@click.option(
-    "--processor-args",
-    default=None,
-    callback=cli_tools.parse_json,
-    help="JSON string of arguments to pass to the processor constructor.",
-)
-@click.option(
-    "--data-args",
-    callback=cli_tools.parse_json,
-    help="JSON string of arguments to pass to dataset creation.",
-)
-@click.option(
-    "--short-prompt-strategy",
-    type=click.Choice([s.value for s in ShortPromptStrategy]),
-    default=ShortPromptStrategy.IGNORE.value,
-    show_default=True,
-    help="Strategy for handling prompts shorter than target length.",
-)
-@click.option(
-    "--pad-char",
-    type=str,
-    default="",
-    callback=decode_escaped_str,
-    help="Character to pad short prompts with when using 'pad' strategy.",
-)
-@click.option(
-    "--concat-delimiter",
-    type=str,
-    default="",
-    help=(
-        "Delimiter for concatenating short prompts (used with 'concatenate' strategy)."
-    ),
-)
-@click.option(
-    "--prompt-tokens",
-    type=str,
-    default=None,
-    help="Prompt tokens configuration (JSON, YAML file, or key=value string).",
-)
-@click.option(
-    "--output-tokens",
-    type=str,
-    default=None,
-    help="Output tokens configuration (JSON, YAML file, or key=value string).",
-)
-@click.option(
-    "--push-to-hub",
-    is_flag=True,
-    help="Push the processed dataset to Hugging Face Hub.",
-)
-@click.option(
-    "--hub-dataset-id",
-    type=str,
-    default=None,
-    help=("Hugging Face Hub dataset ID for upload (required if --push-to-hub is set)."),
-)
-@click.option(
-    "--random-seed",
-    type=int,
-    default=42,
-    show_default=True,
-    help="Random seed for reproducible token sampling.",
-)
-def dataset(
-    data,
-    output_path,
-    processor,
-    processor_args,
-    data_args,
-    short_prompt_strategy,
-    pad_char,
-    concat_delimiter,
-    prompt_tokens,
-    output_tokens,
-    push_to_hub,
-    hub_dataset_id,
-    random_seed,
-):
-    process_dataset(
-        data=data,
-        output_path=output_path,
-        processor=processor,
-        prompt_tokens=prompt_tokens,
-        output_tokens=output_tokens,
-        processor_args=processor_args,
-        data_args=data_args,
-        short_prompt_strategy=short_prompt_strategy,
-        pad_char=pad_char,
-        concat_delimiter=concat_delimiter,
-        push_to_hub=push_to_hub,
-        hub_dataset_id=hub_dataset_id,
-        random_seed=random_seed,
-    )
 
 
 @cli.command(

@@ -3,6 +3,7 @@ from .formatters import (
     GenerativeAudioTranslationRequestFormatter,
     GenerativeChatCompletionsRequestFormatter,
     GenerativeTextCompletionsRequestFormatter,
+    RequestFormatter,
 )
 from .mappers import GenerativeColumnMapper
 from .preprocessor import (
@@ -22,4 +23,5 @@ __all__ = [
     "GenerativeColumnMapper",
     "GenerativeTextCompletionsRequestFormatter",
     "PreprocessorRegistry",
+    "RequestFormatter",
 ]

@@ -18,7 +18,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run link checks
         run: tox -e links
 
@@ -34,7 +36,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run unit tests
         run: tox -e test-unit
 
@@ -69,7 +73,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run integration tests
         run: tox -e test-integration
 
@@ -104,7 +110,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Run end-to-end tests
         run: tox -e test-e2e
 
@@ -153,7 +161,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          pip install tox tox-pdm
       - name: Build the package
         run: |
           export GUIDELLM_BUILD_TYPE=candidate
@@ -216,8 +226,8 @@ jobs:
           export $(grep -v '^#' .env.staging | xargs)
 
           # Set asset prefix and base path with git tag
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/release/${TAG}
-          BASE_PATH=/ui/release/${TAG}
+          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/${{ env.TAG }}
+          BASE_PATH=/ui/${{ env.TAG }}
           GIT_SHA=${{ github.sha }}
           export ASSET_PREFIX=${ASSET_PREFIX}
           export BASE_PATH=${BASE_PATH}
@@ -229,7 +239,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .src/ui/out
-          destination_dir: ui/release/${TAG}
+          destination_dir: ui/${{ env.TAG }}
           keep_files: false
           user_name: ${{ github.actor }}
           user_email: ${{ github.actor }}@users.noreply.github.com

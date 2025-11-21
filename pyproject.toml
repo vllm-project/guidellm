@@ -54,7 +54,7 @@ keywords = [
 ]
 dependencies = [
     "click>=8.0.0,<8.2.0",
-    "culsans~=0.9.0",
+    "culsans~=0.10.0",
     "datasets",
     "eval_type_backport",
     "faker",
@@ -69,6 +69,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "rich",
     "sanic",
+    "tabulate",
     "transformers",
     "uvloop>=0.18",
     "torch",
@@ -115,6 +116,7 @@ dev = [
     "pytest-cov~=5.0.0",
     "pytest-mock~=3.14.0",
     "pytest-rerunfailures~=14.0",
+    "pytest-timeout~=2.4.0",
     "respx~=0.22.0",
 
     # code quality
@@ -128,6 +130,7 @@ dev = [
     "mdformat-gfm~=0.3.6",
 
     # type-checking
+    "pandas-stubs",
     "types-PyYAML~=6.0.1",
     "types-requests~=2.32.0",
     "types-toml",

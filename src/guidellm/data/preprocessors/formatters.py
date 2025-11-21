@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABCMeta
 from typing import Any
 
 from guidellm.data.preprocessors.preprocessor import (
@@ -14,10 +13,14 @@ __all__ = [
     "GenerativeAudioTranslationRequestFormatter",
     "GenerativeChatCompletionsRequestFormatter",
     "GenerativeTextCompletionsRequestFormatter",
+    "RequestFormatter",
 ]
 
 
-class RequestFormatter(DatasetPreprocessor, metaclass=ABCMeta):
+class RequestFormatter(DatasetPreprocessor):
+    def __init__(self, model: str, **_kwargs):
+        self.model = model
+
     @staticmethod
     def encode_audio(*args, **kwargs):
         from guidellm.extras.audio import encode_audio
@@ -47,7 +50,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
     ):
-        self.model: str | None = model
+        self.model: str = model
         self.extras = (
             GenerationRequestArguments(**extras)
             if extras and isinstance(extras, dict)
@@ -73,6 +76,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
@@ -158,9 +162,8 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
         # Configure streaming
         if self.stream:
             arguments.stream = True
-            arguments.body.update(
-                {"stream": True, "stream_options": {"include_usage": True}}
-            )
+            arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
@@ -334,6 +337,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(

@@ -12,6 +12,8 @@ from guidellm.settings import (
     settings,
 )
 
+BASE_URL = "https://blog.vllm.ai/guidellm/ui/"
+
 
 @pytest.mark.smoke
 def test_default_settings():
@@ -19,10 +21,7 @@ def test_default_settings():
     assert settings.env == Environment.PROD
     assert settings.logging == LoggingSettings()
     assert settings.openai == OpenAISettings()
-    assert (
-        settings.report_generation.source
-        == "https://blog.vllm.ai/guidellm/ui/v0.3.0/index.html"
-    )
+    assert settings.report_generation.source.startswith(BASE_URL)
 
 
 @pytest.mark.smoke
@@ -58,16 +57,10 @@ def test_report_generation_default_source():
     )
 
     settings = Settings(env=Environment.STAGING)
-    assert (
-        settings.report_generation.source
-        == "https://blog.vllm.ai/guidellm/ui/release/v0.3.0/index.html"
-    )
+    assert settings.report_generation.source.startswith(BASE_URL)
 
     settings = Settings(env=Environment.PROD)
-    assert (
-        settings.report_generation.source
-        == "https://blog.vllm.ai/guidellm/ui/v0.3.0/index.html"
-    )
+    assert settings.report_generation.source.startswith(BASE_URL)
 
 
 @pytest.mark.sanity

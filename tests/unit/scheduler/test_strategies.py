@@ -187,8 +187,8 @@ class TestConcurrentStrategy:
         params=[
             {"streams": 1},
             {"streams": 4},
-            {"streams": 8, "startup_duration": 2.0},
-            {"streams": 2, "startup_duration": 0.0},
+            {"streams": 8, "rampup_duration": 2.0},
+            {"streams": 2, "rampup_duration": 0.0},
         ]
     )
     def valid_instances(self, request):
@@ -212,7 +212,7 @@ class TestConcurrentStrategy:
         [
             ("streams", 0),
             ("streams", -1),
-            ("startup_duration", -1.0),
+            ("rampup_duration", -1.0),
         ],
     )
     def test_invalid_initialization(self, field, value):
@@ -288,8 +288,8 @@ class TestThroughputStrategy:
         params=[
             {},
             {"max_concurrency": 10},
-            {"startup_duration": 5.0},
-            {"max_concurrency": 5, "startup_duration": 2.0},
+            {"rampup_duration": 5.0},
+            {"max_concurrency": 5, "rampup_duration": 2.0},
         ]
     )
     def valid_instances(self, request):
@@ -313,7 +313,7 @@ class TestThroughputStrategy:
         [
             ("max_concurrency", 0),
             ("max_concurrency", -1),
-            ("startup_duration", -1.0),
+            ("rampup_duration", -1.0),
         ],
     )
     def test_invalid_initialization(self, field, value):

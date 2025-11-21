@@ -12,18 +12,18 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 from pydantic import Field, field_validator
 
 from guidellm.scheduler.schemas import (
+    SchedulerProgress,
     SchedulerState,
     SchedulerUpdateAction,
-    SchedulerUpdateActionProgress,
 )
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.settings import settings
-from guidellm.utils import InfoMixin, RegistryMixin, StandardBaseModel
+from guidellm.utils import InfoMixin, RegistryMixin
 
 __all__ = [
     "Constraint",
@@ -338,9 +338,7 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
 
     @classmethod
     def validated_kwargs(
-        cls,
-        orig_info: dict[str, Any] | None = None,
-        **kwargs,  # noqa: ARG003
+        cls, orig_info: dict[str, Any] | None = None, **_kwargs
     ) -> dict[str, Any]:
         """
         Validate arguments for unserializable constraint creation.
@@ -351,10 +349,7 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
         """
         return {"orig_info": orig_info or {}}
 
-    def create_constraint(
-        self,
-        **kwargs,  # noqa: ARG002
-    ) -> Constraint:
+    def create_constraint(self, **_kwargs) -> Constraint:
         """
         Raise error for unserializable constraint creation attempt.
 
@@ -368,9 +363,7 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
         )
 
     def __call__(
-        self,
-        state: SchedulerState,  # noqa: ARG002
-        request: RequestInfo,  # noqa: ARG002
+        self, state: SchedulerState, request: RequestInfo
     ) -> SchedulerUpdateAction:
         """
         Raise error since unserializable constraints cannot be invoked.
@@ -379,6 +372,7 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
         :param request: Individual request information (unused)
         :raises RuntimeError: Always raised for unserializable constraints
         """
+        _ = (state, request)  # Unused parameters
         raise RuntimeError(
             "Cannot invoke unserializable constraint instance. "
             "This constraint was not properly serialized and cannot be executed."
@@ -424,7 +418,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
 
         return {"max_num": max_num, "current_index": kwargs.get("current_index", -1)}
 
-    def create_constraint(self, **kwargs) -> Constraint:  # noqa: ARG002
+    def create_constraint(self, **_kwargs) -> Constraint:
         """
         Return self as the constraint instance.
 
@@ -433,12 +427,10 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()  # type: ignore[return-value]
+        return cast("Constraint", self.model_copy())
 
     def __call__(
-        self,
-        state: SchedulerState,
-        request_info: RequestInfo,  # noqa: ARG002
+        self, state: SchedulerState, request_info: RequestInfo
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current scheduler state and request count.
@@ -447,6 +439,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         :param request_info: Individual request information (unused)
         :return: Action indicating whether to continue or stop operations
         """
+        _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_num = (
             self.max_num
@@ -457,7 +450,9 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         create_exceeded = state.created_requests >= max_num
         processed_exceeded = state.processed_requests >= max_num
         remaining_requests = min(max(0, max_num - state.processed_requests), max_num)
-        remaining_fraction = remaining_requests / float(max_num)
+        stop_time = (
+            None if remaining_requests > 0 else request_info.completed_at or time.time()
+        )
 
         return SchedulerUpdateAction(
             request_queuing="stop" if create_exceeded else "continue",
@@ -468,12 +463,13 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
                 "processed_exceeded": processed_exceeded,
                 "created_requests": state.created_requests,
                 "processed_requests": state.processed_requests,
-                "remaining_fraction": remaining_fraction,
                 "remaining_requests": remaining_requests,
+                "stop_time": stop_time,
             },
-            progress=SchedulerUpdateActionProgress(
-                remaining_fraction=remaining_fraction,
+            progress=SchedulerProgress(
                 remaining_requests=remaining_requests,
+                total_requests=max_num,
+                stop_time=stop_time,
             ),
         )
 
@@ -497,7 +493,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
+@ConstraintsInitializerFactory.register(
     ["max_duration", "max_dur", "max_sec", "max_seconds", "max_min", "max_minutes"]
 )
 class MaxDurationConstraint(PydanticConstraintInitializer):
@@ -542,7 +538,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
             "current_index": kwargs.get("current_index", -1),
         }
 
-    def create_constraint(self, **kwargs) -> Constraint:  # noqa: ARG002
+    def create_constraint(self, **_kwargs) -> Constraint:
         """
         Return self as the constraint instance.
 
@@ -551,12 +547,10 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()  # type: ignore[return-value]
+        return cast("Constraint", self.model_copy())
 
     def __call__(
-        self,
-        state: SchedulerState,
-        request_info: RequestInfo,  # noqa: ARG002
+        self, state: SchedulerState, request_info: RequestInfo
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current scheduler state and elapsed time.
@@ -565,6 +559,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         :param request_info: Individual request information (unused)
         :return: Action indicating whether to continue or stop operations
         """
+        _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_duration = (
             self.max_duration
@@ -576,7 +571,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         elapsed = current_time - state.start_time
         duration_exceeded = elapsed >= max_duration
         remaining_duration = min(max(0.0, max_duration - elapsed), max_duration)
-        remaining_fraction = remaining_duration / float(max_duration)
+        stop_time = None if not duration_exceeded else state.start_time + max_duration
 
         return SchedulerUpdateAction(
             request_queuing="stop" if duration_exceeded else "continue",
@@ -587,10 +582,12 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
                 "duration_exceeded": duration_exceeded,
                 "start_time": state.start_time,
                 "current_time": current_time,
+                "stop_time": stop_time,
             },
-            progress=SchedulerUpdateActionProgress(
-                remaining_fraction=remaining_fraction,
+            progress=SchedulerProgress(
                 remaining_duration=remaining_duration,
+                total_duration=max_duration,
+                stop_time=stop_time,
             ),
         )
 
@@ -616,7 +613,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
+@ConstraintsInitializerFactory.register(
     ["max_errors", "max_err", "max_error", "max_errs"]
 )
 class MaxErrorsConstraint(PydanticConstraintInitializer):
@@ -656,7 +653,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
             "current_index": kwargs.get("current_index", -1),
         }
 
-    def create_constraint(self, **kwargs) -> Constraint:  # noqa: ARG002
+    def create_constraint(self, **_kwargs) -> Constraint:
         """
         Return self as the constraint instance.
 
@@ -665,12 +662,10 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()  # type: ignore[return-value]
+        return cast("Constraint", self.model_copy())
 
     def __call__(
-        self,
-        state: SchedulerState,
-        request_info: RequestInfo,  # noqa: ARG002
+        self, state: SchedulerState, request_info: RequestInfo
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current error count.
@@ -679,6 +674,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         :param request_info: Individual request information (unused)
         :return: Action indicating whether to continue or stop operations
         """
+        _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_errors = (
             self.max_errors
@@ -686,6 +682,9 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
             else self.max_errors[min(current_index, len(self.max_errors) - 1)]
         )
         errors_exceeded = state.errored_requests >= max_errors
+        stop_time = (
+            None if not errors_exceeded else request_info.completed_at or time.time()
+        )
 
         return SchedulerUpdateAction(
             request_queuing="stop" if errors_exceeded else "continue",
@@ -694,7 +693,9 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
                 "max_errors": max_errors,
                 "errors_exceeded": errors_exceeded,
                 "current_errors": state.errored_requests,
+                "stop_time": stop_time,
             },
+            progress=SchedulerProgress(stop_time=stop_time),
         )
 
     @field_validator("max_errors")
@@ -718,7 +719,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
+@ConstraintsInitializerFactory.register(
     ["max_error_rate", "max_err_rate", "max_errors_rate"]
 )
 class MaxErrorRateConstraint(PydanticConstraintInitializer):
@@ -775,7 +776,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
             "current_index": kwargs.get("current_index", -1),
         }
 
-    def create_constraint(self, **kwargs) -> Constraint:  # noqa: ARG002
+    def create_constraint(self, **_kwargs) -> Constraint:
         """
         Create a new instance of MaxErrorRateConstraint (due to stateful window).
 
@@ -784,7 +785,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()  # type: ignore[return-value]
+        return cast("Constraint", self.model_copy())
 
     def __call__(
         self, state: SchedulerState, request_info: RequestInfo
@@ -815,16 +816,12 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         )
         exceeded_min_processed = state.processed_requests >= self.window_size
         exceeded_error_rate = error_rate >= max_error_rate
+        exceeded = exceeded_min_processed and exceeded_error_rate
+        stop_time = None if not exceeded else request_info.completed_at or time.time()
 
         return SchedulerUpdateAction(
-            request_queuing=(
-                "stop" if exceeded_min_processed and exceeded_error_rate else "continue"
-            ),
-            request_processing=(
-                "stop_all"
-                if exceeded_min_processed and exceeded_error_rate
-                else "continue"
-            ),
+            request_queuing="stop" if exceeded else "continue",
+            request_processing="stop_all" if exceeded else "continue",
             metadata={
                 "max_error_rate": max_error_rate,
                 "window_size": self.window_size,
@@ -834,6 +831,8 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
                 "current_error_rate": error_rate,
                 "exceeded_min_processed": exceeded_min_processed,
                 "exceeded_error_rate": exceeded_error_rate,
+                "exceeded": exceeded,
+                "stop_time": stop_time,
             },
         )
 
@@ -859,7 +858,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
-@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
+@ConstraintsInitializerFactory.register(
     ["max_global_error_rate", "max_global_err_rate", "max_global_errors_rate"]
 )
 class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
@@ -914,7 +913,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
             "current_index": kwargs.get("current_index", -1),
         }
 
-    def create_constraint(self, **kwargs) -> Constraint:  # noqa: ARG002
+    def create_constraint(self, **_kwargs) -> Constraint:
         """
         Return self as the constraint instance.
 
@@ -923,12 +922,10 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         """
         self.current_index += 1
 
-        return self.model_copy()  # type: ignore[return-value]
+        return cast("Constraint", self.model_copy())
 
     def __call__(
-        self,
-        state: SchedulerState,
-        request_info: RequestInfo,  # noqa: ARG002
+        self, state: SchedulerState, request_info: RequestInfo
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against global error rate.
@@ -937,6 +934,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         :param request_info: Individual request information (unused)
         :return: Action indicating whether to continue or stop operations
         """
+        _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_error_rate = (
             self.max_error_rate
@@ -953,11 +951,12 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
             else 0.0
         )
         exceeded_error_rate = error_rate >= max_error_rate
-        should_stop = exceeded_min_processed and exceeded_error_rate
+        exceeded = exceeded_min_processed and exceeded_error_rate
+        stop_time = None if not exceeded else request_info.completed_at or time.time()
 
         return SchedulerUpdateAction(
-            request_queuing="stop" if should_stop else "continue",
-            request_processing="stop_all" if should_stop else "continue",
+            request_queuing="stop" if exceeded else "continue",
+            request_processing="stop_all" if exceeded else "continue",
             metadata={
                 "max_error_rate": max_error_rate,
                 "min_processed": self.min_processed,
@@ -966,7 +965,10 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
                 "error_rate": error_rate,
                 "exceeded_min_processed": exceeded_min_processed,
                 "exceeded_error_rate": exceeded_error_rate,
+                "exceeded": exceeded,
+                "stop_time": stop_time,
             },
+            progress=SchedulerProgress(stop_time=stop_time),
         )
 
     @field_validator("max_error_rate")
@@ -1005,14 +1007,15 @@ class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
         return self.model_dump()
 
     def __call__(
-        self, state: SchedulerState, _request: RequestInfo
+        self, state: SchedulerState, request: RequestInfo
     ) -> SchedulerUpdateAction:
+        _ = request  # Unused parameter
         create_exceeded = state.created_requests >= self.num_requests
         processed_exceeded = state.processed_requests >= self.num_requests
-        remaining_fraction = min(
-            max(0.0, 1.0 - state.processed_requests / float(self.num_requests)), 1.0
-        )
         remaining_requests = max(0, self.num_requests - state.processed_requests)
+        stop_time = (
+            None if remaining_requests > 0 else request.completed_at or time.time()
+        )
 
         return SchedulerUpdateAction(
             request_queuing="stop" if create_exceeded else "continue",
@@ -1023,11 +1026,12 @@ class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
                 "processed_exceeded": processed_exceeded,
                 "created_requests": state.created_requests,
                 "processed_requests": state.processed_requests,
-                "remaining_fraction": remaining_fraction,
                 "remaining_requests": remaining_requests,
+                "stop_time": stop_time,
             },
-            progress=SchedulerUpdateActionProgress(
-                remaining_fraction=remaining_fraction,
+            progress=SchedulerProgress(
                 remaining_requests=remaining_requests,
+                total_requests=self.num_requests,
+                stop_time=stop_time,
             ),
         )

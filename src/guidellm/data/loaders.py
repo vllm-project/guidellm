@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable, Iterator
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 import torch
 from torch.utils.data import Sampler
@@ -13,11 +13,15 @@ from transformers import PreTrainedTokenizerBase
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
 from guidellm.logger import logger
+from guidellm.utils import InfoMixin
 
 __all__ = ["DataLoader", "DatasetsIterator"]
 
 
-class DatasetsIterator(TorchIterableDataset):
+DataT = TypeVar("DataT")
+
+
+class DatasetsIterator(TorchIterableDataset[DataT]):
     def __init__(
         self,
         data: list[Any],
@@ -59,8 +63,9 @@ class DatasetsIterator(TorchIterableDataset):
         self.precache: list[Any] | None = (
             list(self.generator(data_samples)) if data_samples else None
         )
+        self.epoch = 0
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[DataT]:
         worker_info = torch.utils.data.get_worker_info()
         worker_modulus = worker_info.num_workers if worker_info is not None else 1
         worker_index = worker_info.id if worker_info is not None else 0
@@ -70,18 +75,29 @@ class DatasetsIterator(TorchIterableDataset):
                 if (index + worker_index) % worker_modulus == 0:
                     yield item
         else:
-            yield from self.generator(modulus=worker_modulus, offset=worker_index)
+            yield from self.generator(
+                modulus=worker_modulus, offset=worker_index, epoch=self.epoch
+            )
+
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
 
     def generator(
         self,
         max_items: int | None = None,
         modulus: int | None = None,
         offset: int | None = None,
-    ) -> Iterator[Any]:
+        epoch: int = 0,
+    ) -> Iterator[DataT]:
         gen_count = 0
 
         with contextlib.suppress(StopIteration):
-            dataset_iters = [iter(dataset) for dataset in self.datasets]
+            dataset_iters = []
+            for dataset in self.datasets:
+                if hasattr(dataset, "set_epoch"):
+                    with contextlib.suppress(Exception):
+                        dataset.set_epoch(epoch)
+                dataset_iters.append(iter(dataset))
 
             while max_items is None or gen_count < max_items:
                 try:
@@ -102,7 +118,9 @@ class DatasetsIterator(TorchIterableDataset):
                         # passed into the preprocessor, which is a type violation.
                         # This should be fixed at some point.
                         row = preprocessor(row)  # type: ignore[assignment]
-                    yield row
+                    yield row  # type: ignore[misc]
+                except StopIteration:
+                    raise  # Stop iteration when any dataset is exhausted
                 except Exception as err:  # noqa: BLE001 # Exception logged
                     logger.error(f"Skipping data row due to error: {err}")
                     gen_count -= 1
@@ -114,7 +132,7 @@ class DatasetsIterator(TorchIterableDataset):
             )
 
 
-class DataLoader(PyTorchDataLoader):
+class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
     def __init__(
         self,
         data: list[Any],
@@ -128,7 +146,7 @@ class DataLoader(PyTorchDataLoader):
         random_seed: int = 42,
         **kwargs: Any,
     ):
-        iterator = DatasetsIterator(
+        iterator: DatasetsIterator[DataT] = DatasetsIterator(
             data=data,
             data_args=data_args,
             data_samples=data_samples,
@@ -136,6 +154,19 @@ class DataLoader(PyTorchDataLoader):
             preprocessors=preprocessors,
             random_seed=random_seed,
         )
+        self._info: dict[str, Any] = {
+            "data": str(data),
+            "data_args": str(data_args),
+            "data_samples": data_samples,
+            "preprocessors": [
+                preprocessor.__class__.__name__ for preprocessor in preprocessors
+            ],
+            "collator": collator.__class__.__name__,
+            "sampler": str(sampler),
+            "num_workers": num_workers,
+            "random_seed": random_seed,
+        }
+        self.epoch = 0
 
         super().__init__(
             dataset=iterator,
@@ -146,3 +177,14 @@ class DataLoader(PyTorchDataLoader):
             num_workers=num_workers or 0,
             **kwargs,
         )
+
+    def __iter__(self):
+        if isinstance(self.dataset, DatasetsIterator):
+            self.dataset.set_epoch(self.epoch)
+        self.epoch += 1
+
+        return super().__iter__()
+
+    @property
+    def info(self) -> dict[str, Any]:
+        return self._info

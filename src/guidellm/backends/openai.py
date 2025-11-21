@@ -18,10 +18,7 @@ from typing import Any
 import httpx
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.response_handlers import (
-    GenerationResponseHandler,
-    GenerationResponseHandlerFactory,
-)
+from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
 from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo
 
 __all__ = ["OpenAIHTTPBackend"]
@@ -54,7 +51,7 @@ class OpenAIHTTPBackend(Backend):
     def __init__(
         self,
         target: str,
-        model: str | None = None,
+        model: str = "",
         api_routes: dict[str, str] | None = None,
         response_handlers: dict[str, Any] | None = None,
         timeout: float = 60.0,
@@ -192,7 +189,7 @@ class OpenAIHTTPBackend(Backend):
 
         return [item["id"] for item in response.json()["data"]]
 
-    async def default_model(self) -> str | None:
+    async def default_model(self) -> str:
         """
         Get the default model for this backend.
 
@@ -202,9 +199,9 @@ class OpenAIHTTPBackend(Backend):
             return self.model
 
         models = await self.available_models()
-        return models[0] if models else None
+        return models[0] if models else ""
 
-    async def resolve(
+    async def resolve(  # type: ignore[override]
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
@@ -230,11 +227,9 @@ class OpenAIHTTPBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-        response_handler = self._resolve_response_handler(
-            request_type=request.request_type
-        )
         if (request_path := self.api_routes.get(request.request_type)) is None:
             raise ValueError(f"Unsupported request type '{request.request_type}'")
+
         request_url = f"{self.target}/{request_path}"
         request_files = (
             {
@@ -246,6 +241,9 @@ class OpenAIHTTPBackend(Backend):
         )
         request_json = request.arguments.body if not request_files else None
         request_data = request.arguments.body if request_files else None
+        response_handler = GenerationResponseHandlerFactory.create(
+            request.request_type, handler_overrides=self.response_handlers
+        )
 
         if not request.arguments.stream:
             request_info.timings.request_start = time.time()
@@ -282,24 +280,22 @@ class OpenAIHTTPBackend(Backend):
                 async for chunk in stream.aiter_lines():
                     iter_time = time.time()
 
-                    if (
-                        (iterations := response_handler.add_streaming_line(chunk))
-                        is None
-                        or iterations < 0
-                        or end_reached
-                    ):
+                    if request_info.timings.first_request_iteration is None:
+                        request_info.timings.first_request_iteration = iter_time
+                    request_info.timings.last_request_iteration = iter_time
+                    request_info.timings.request_iterations += 1
+
+                    iterations = response_handler.add_streaming_line(chunk)
+                    if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
                         continue
 
-                    if (
-                        request_info.timings.first_iteration is None
-                        or request_info.timings.iterations is None
-                    ):
-                        request_info.timings.first_iteration = iter_time
-                        request_info.timings.iterations = 0
+                    if request_info.timings.first_token_iteration is None:
+                        request_info.timings.first_token_iteration = iter_time
+                        request_info.timings.token_iterations = 0
 
-                    request_info.timings.last_iteration = iter_time
-                    request_info.timings.iterations += iterations
+                    request_info.timings.last_token_iteration = iter_time
+                    request_info.timings.token_iterations += iterations
 
             request_info.timings.request_end = time.time()
             yield response_handler.compile_streaming(request), request_info
@@ -336,20 +332,3 @@ class OpenAIHTTPBackend(Backend):
             validate_kwargs["method"] = "GET"
 
         return validate_kwargs
-
-    def _resolve_response_handler(self, request_type: str) -> GenerationResponseHandler:
-        if (
-            self.response_handlers is not None
-            and (handler := self.response_handlers.get(request_type)) is not None
-        ):
-            return handler
-
-        handler_class = GenerationResponseHandlerFactory.get_registered_object(
-            request_type
-        )
-        if handler_class is None:
-            raise ValueError(
-                f"No response handler registered for request type '{request_type}'"
-            )
-
-        return handler_class()
