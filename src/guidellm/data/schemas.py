@@ -7,6 +7,7 @@ from pydantic import ConfigDict, Field, model_validator
 from guidellm.schemas import StandardBaseModel
 
 __all__ = [
+    "DataConfig",
     "DataNotSupportedError",
     "GenerativeDatasetColumnType",
     "SyntheticTextDatasetConfig",
@@ -29,47 +30,54 @@ class DataNotSupportedError(Exception):
     Exception raised when the data format is not supported by deserializer or config.
     """
 
-class TokenCountConfig(StandardBaseModel):
+class DataConfig(StandardBaseModel):
+    """
+    A generic parent class for various configs for the data package
+    that can be passed in as key-value pairs or JSON.
+    """
+
+class PreprocessDatasetConfig(DataConfig):
+
     prompt_tokens: int = Field(
-        description="The average number of text tokens in prompts.",
+        description="The average number of text tokens retained or added to prompts.",
         gt=0,
     )
     prompt_tokens_stdev: int | None = Field(
-        description="The standard deviation of the tokens in prompts.",
+        description="The standard deviation of the number of tokens retained in or "
+                    "added to prompts.",
         gt=0,
         default=None,
     )
     prompt_tokens_min: int | None = Field(
-        description="The minimum number of text tokens in prompts.",
+        description="The minimum number of text tokens retained or added to prompts.",
         gt=0,
         default=None,
     )
     prompt_tokens_max: int | None = Field(
-        description="The maximum number of text tokens in prompts.",
+        description="The maximum number of text tokens retained or added to prompts.",
         gt=0,
         default=None,
     )
     output_tokens: int = Field(
-        description="The average number of text tokens in outputs.",
+        description="The average number of text tokens retained or added to outputs.",
         gt=0,
     )
     output_tokens_stdev: int | None = Field(
-        description="The standard deviation of the tokens in outputs.",
+        description="The standard deviation of the number of tokens retained or "
+                    "added to outputs.",
         gt=0,
         default=None,
     )
     output_tokens_min: int | None = Field(
-        description="The minimum number of text tokens in outputs.",
+        description="The minimum number of text tokens retained or added to outputs.",
         gt=0,
         default=None,
     )
     output_tokens_max: int | None = Field(
-        description="The maximum number of text tokens in outputs.",
+        description="The maximum number of text tokens retained or added to outputs.",
         gt=0,
         default=None,
     )
-
-class PreprocessDatasetConfig(TokenCountConfig):
     prefix_tokens_max: int | None = Field(
         description="The maximum number of text tokens left in the prefixes.",
         gt=0,
@@ -94,7 +102,46 @@ class SyntheticTextPrefixBucketConfig(StandardBaseModel):
     )
 
 
-class SyntheticTextDatasetConfig(TokenCountConfig):
+class SyntheticTextDatasetConfig(DataConfig):
+    prompt_tokens: int = Field(
+        description="The average number of text tokens generated for prompts.",
+        gt=0,
+    )
+    prompt_tokens_stdev: int | None = Field(
+        description="The standard deviation of the tokens generated for prompts.",
+        gt=0,
+        default=None,
+    )
+    prompt_tokens_min: int | None = Field(
+        description="The minimum number of text tokens generated for prompts.",
+        gt=0,
+        default=None,
+    )
+    prompt_tokens_max: int | None = Field(
+        description="The maximum number of text tokens generated for prompts.",
+        gt=0,
+        default=None,
+    )
+    output_tokens: int = Field(
+        description="The average number of text tokens generated for outputs.",
+        gt=0,
+    )
+    output_tokens_stdev: int | None = Field(
+        description="The standard deviation of the tokens generated for outputs.",
+        gt=0,
+        default=None,
+    )
+    output_tokens_min: int | None = Field(
+        description="The minimum number of text tokens generated for outputs.",
+        gt=0,
+        default=None,
+    )
+    output_tokens_max: int | None = Field(
+        description="The maximum number of text tokens generated for outputs.",
+        gt=0,
+        default=None,
+    )
+
     model_config = ConfigDict(
         extra="allow",
     )

@@ -6,10 +6,9 @@ from typing import Any, TypeVar
 import yaml
 from pydantic import ValidationError
 
-from guidellm.data.schemas import DataNotSupportedError
-from guidellm.schemas import StandardBaseModel
+from guidellm.data.schemas import DataConfig, DataNotSupportedError
 
-ConfigT = TypeVar("ConfigT", bound=StandardBaseModel)
+ConfigT = TypeVar("ConfigT", bound=DataConfig)
 
 
 def load_config(config: Any, config_class: type[ConfigT]) -> ConfigT | None:
