@@ -432,6 +432,10 @@ class ThroughputProfile(Profile):
         kwargs.pop("random_seed", None)
         if rate is not None and len(rate) > 0:
             kwargs["max_concurrency"] = rate[0]
+        else:
+            # Require explicit max_concurrency; in the future max_concurrency
+            # should be dynamic and rate can specify some tunable
+            raise ValueError("ThroughputProfile requires a rate parameter")
         return kwargs
 
     @property

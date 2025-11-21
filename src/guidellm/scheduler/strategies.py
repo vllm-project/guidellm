@@ -387,7 +387,7 @@ class ThroughputStrategy(SchedulingStrategy):
         """
         :return: String identifier for throughput strategy
         """
-        return "throughput"
+        return f"throughput@{self.max_concurrency or 'unlimited'}"
 
     @property
     def processes_limit(self) -> PositiveInt | None:
