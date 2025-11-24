@@ -1,4 +1,4 @@
-from .encoders import AudioEncoder, ImageEncoder, PreprocessEncoder, VideoEncoder
+from .encoders import MediaEncoder
 from .mappers import GenerativeColumnMapper
 from .preprocessor import (
     DataDependentPreprocessor,
@@ -7,12 +7,9 @@ from .preprocessor import (
 )
 
 __all__ = [
-    "AudioEncoder",
     "DataDependentPreprocessor",
     "DatasetPreprocessor",
     "GenerativeColumnMapper",
-    "ImageEncoder",
-    "PreprocessEncoder",
+    "MediaEncoder",
     "PreprocessorRegistry",
-    "VideoEncoder",
 ]

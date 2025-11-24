@@ -7,10 +7,22 @@ from guidellm.data.preprocessors.preprocessor import (
     PreprocessorRegistry,
 )
 
-__all__ = ["AudioEncoder", "ImageEncoder", "PreprocessEncoder", "VideoEncoder"]
+__all__ = ["MediaEncoder"]
 
 
-class PreprocessEncoder(DatasetPreprocessor):
+@PreprocessorRegistry.register("encode_media")
+class MediaEncoder(DatasetPreprocessor):
+    def __init__(self, encode_kwargs: dict[str, Any] | None = None) -> None:
+        self.encode_audio_kwargs = (
+            encode_kwargs.get("audio", {}) if encode_kwargs else {}
+        )
+        self.encode_image_kwargs = (
+            encode_kwargs.get("image", {}) if encode_kwargs else {}
+        )
+        self.encode_video_kwargs = (
+            encode_kwargs.get("video", {}) if encode_kwargs else {}
+        )
+
     @staticmethod
     def encode_audio(*args, **kwargs):
         from guidellm.extras.audio import encode_audio
@@ -29,14 +41,6 @@ class PreprocessEncoder(DatasetPreprocessor):
 
         return encode_video(*args, **kwargs)
 
-
-@PreprocessorRegistry.register("encode_audio")
-class AudioEncoder(PreprocessEncoder):
-    def __init__(self, encode_kwargs: dict[str, Any] | None = None) -> None:
-        self.encode_audio_kwargs = (
-            encode_kwargs.get("audio", {}) if encode_kwargs else {}
-        )
-
     def __call__(self, columns: dict[str, list[Any]]) -> dict[str, list[Any]]:
         if columns.get("audio_column"):
             encoded_audio = []
@@ -49,17 +53,6 @@ class AudioEncoder(PreprocessEncoder):
                 )
             columns["audio_column"] = encoded_audio
 
-        return columns
-
-
-@PreprocessorRegistry.register("encode_image")
-class ImageEncoder(PreprocessEncoder):
-    def __init__(self, encode_kwargs: dict[str, Any] | None = None) -> None:
-        self.encode_image_kwargs = (
-            encode_kwargs.get("image", {}) if encode_kwargs else {}
-        )
-
-    def __call__(self, columns: dict[str, list[Any]]) -> dict[str, list[Any]]:
         if columns.get("image_column"):
             encoded_images = []
             for image in columns["image_column"]:
@@ -71,17 +64,6 @@ class ImageEncoder(PreprocessEncoder):
                 )
             columns["image_column"] = encoded_images
 
-        return columns
-
-
-@PreprocessorRegistry.register("encode_video")
-class VideoEncoder(PreprocessEncoder):
-    def __init__(self, encode_kwargs: dict[str, Any] | None = None) -> None:
-        self.encode_video_kwargs = (
-            encode_kwargs.get("video", {}) if encode_kwargs else {}
-        )
-
-    def __call__(self, columns: dict[str, list[Any]]) -> dict[str, list[Any]]:
         if columns.get("video_column"):
             encoded_videos = []
             for video in columns["video_column"]:
