@@ -217,6 +217,12 @@ def benchmark():
     ),
 )
 @click.option(
+    "--data-column-mapper",
+    default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
+    callback=cli_tools.parse_json,
+    help="JSON string of column mappings to apply to the dataset.",
+)
+@click.option(
     "--data-preprocessors",
     default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors"),
     callback=cli_tools.parse_json,

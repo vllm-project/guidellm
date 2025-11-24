@@ -202,11 +202,17 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     data_samples: int = Field(
         default=-1, description="Number of samples to use from datasets (-1 for all)"
     )
-    # TODO: Make it easy to cutomize preprocessors without editing the full list
+    data_column_mapper: (
+        DatasetPreprocessor
+        | dict[str, str | list[str]]
+        | Literal["generative_column_mapper"]
+    ) = Field(
+        default_factory=lambda: settings.dataset.default_column_mapper,
+        description="Column mapping preprocessor for dataset fields",
+    )
     data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str] = (
         Field(
             default_factory=lambda: [  # type: ignore [arg-type]
-                "generative_column_mapper",
                 "encode_media",
             ],
             description="List of dataset preprocessors to apply in order",
@@ -327,18 +333,23 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         """Serialize data_collator to string or None."""
         return data_collator if isinstance(data_collator, str) else None
 
+    @field_serializer("data_column_mapper")
+    def serialize_preprocessor(
+        self,
+        data_preprocessor: (DatasetPreprocessor | dict[str, str | list[str]] | str),
+    ) -> dict | str:
+        """Serialize a preprocessor to dict or string."""
+        return data_preprocessor if isinstance(data_preprocessor, dict | str) else {}
+
     @field_serializer("data_preprocessors")
-    def serialize_data_column_mapper(
+    def serialize_preprocessors(
         self,
         data_preprocessors: list[
             DatasetPreprocessor | dict[str, str | list[str]] | str
         ],
     ) -> list[dict | str]:
-        """Serialize data_column_mapper to dict or string."""
-        return [
-            (preprocessor if isinstance(preprocessor, dict | str) else {})
-            for preprocessor in data_preprocessors
-        ]
+        """Serialize each preprocessor to dict or string."""
+        return [self.serialize_preprocessor(p) for p in data_preprocessors]
 
     @field_serializer("data_finalizer")
     def serialize_data_request_formatter(

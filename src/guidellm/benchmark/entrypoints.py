@@ -19,6 +19,7 @@ from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
+from guidellm import settings
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.outputs import (
@@ -236,6 +237,11 @@ async def resolve_request_loader(
     data_samples: int,
     processor: ProcessorInputT | None,
     processor_args: dict[str, Any] | None,
+    data_column_mapper: (
+        DatasetPreprocessor
+        | dict[str, str | list[str]]
+        | Literal["generative_column_mapper"]
+    ),
     data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
     data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
     data_collator: Callable | Literal["generative"] | None,
@@ -279,13 +285,20 @@ async def resolve_request_loader(
         else None
     )
 
+    # If no type is specified for the data column mapper, load default
+    if isinstance(data_column_mapper, dict) and "type" not in data_column_mapper:
+        data_column_mapper = {
+            "type": settings.dataset.default_column_mapper,
+            **data_column_mapper,
+        }
+
     preprocessors_list: list[DatasetPreprocessor] = [
         resolve_item_from_registry(
             DatasetPreprocessor,  # type: ignore [type-abstract]
             PreprocessorRegistry,
             preprocessor,
         )
-        for preprocessor in data_preprocessors
+        for preprocessor in ([data_column_mapper] + data_preprocessors)
     ]
 
     finalizer_instance = resolve_item_from_registry(
