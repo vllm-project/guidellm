@@ -207,9 +207,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         Field(
             default_factory=lambda: [  # type: ignore [arg-type]
                 "generative_column_mapper",
-                "encode_audio",
-                "encode_image",
-                "encode_video",
+                "encode_media",
             ],
             description="List of dataset preprocessors to apply in order",
         )
