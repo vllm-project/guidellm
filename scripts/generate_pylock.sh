@@ -36,4 +36,6 @@ set -e
 # so we need to lock separately for python >=3.12 and <3.12
 # Only set update-reuse if not forcing regeneration
 pdm lock --platform linux --python "~=3.12" $update_stratagy
+pdm lock --platform macos --python "~=3.12" $update_stratagy --append
 pdm lock --platform linux --python "<3.12" $update_stratagy --append
+pdm lock --platform macos --python "<3.12" $update_stratagy --append
