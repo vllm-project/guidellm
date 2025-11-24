@@ -1,0 +1,42 @@
+name: Quality Checks
+
+on:
+  workflow_call:
+    inputs:
+      python:
+        required: true
+        type: string
+
+jobs:
+  quality-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run quality checks
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: ${{ inputs.python }}
+          tox-env: quality
+
+  type-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run type checks
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: ${{ inputs.python }}
+          tox-env: types
+
+  precommit-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Install dependencies
+        run: pip install pre-commit
+      - name: Run pre-commit checks
+        run: SKIP=ruff-format pre-commit run --all-files

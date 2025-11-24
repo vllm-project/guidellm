@@ -6,147 +6,19 @@ on:
       - 'release/*'
 
 jobs:
-  link-checks:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run link checks
-        run: tox -e links
-
-  unit-tests:
-    runs-on: ubuntu-latest
+  tests:
     strategy:
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run unit tests
-        run: tox -e test-unit
+    uses: ./.github/workflows/testing.yml
+    with:
+      python: ${{ matrix.python }}
 
-  ui-unit-tests:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run unit tests
-        run: npm run test:unit
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run integration tests
-        run: tox -e test-integration
-
-  ui-integration-tests:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run integration tests
-        run: npm run test:integration
-
-  e2e-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
-          pip install tox tox-pdm
-      - name: Run end-to-end tests
-        run: tox -e test-e2e
-
-  ui-e2e-tests:
-    permissions:
-      contents: "read"
-      id-token: "write"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Build
-        run: |
-          npm run build
-
-      - name: Start the Next.js app
-        run: |
-          npx serve@latest src/ui/out &
-          npx wait-on http://localhost:3000  # Wait until the app is ready
-
-      - name: Run Cypress tests
-        run: npm run test:e2e --headless
+  ui-tests:
+    uses: ./.github/workflows/ui-testing.yml
 
   build-and-publish:
-    needs: [unit-tests, integration-tests, e2e-tests]
+    needs: [tests]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -157,12 +29,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: pdm-project/setup-pdm@v4
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
         run: |
-          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
           pip install tox tox-pdm
       - name: Build the package
         run: |
@@ -194,7 +65,7 @@ jobs:
           whl: $(find dist -name '*.tar.gz')
 
   publish-versioned-ui-build:
-    needs: [ui-unit-tests, ui-integration-tests, ui-e2e-tests]
+    needs: [ui-tests]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -226,8 +97,8 @@ jobs:
           export $(grep -v '^#' .env.staging | xargs)
 
           # Set asset prefix and base path with git tag
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/release/${TAG}
-          BASE_PATH=/ui/release/${TAG}
+          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/${{ env.TAG }}
+          BASE_PATH=/ui/${{ env.TAG }}
           GIT_SHA=${{ github.sha }}
           export ASSET_PREFIX=${ASSET_PREFIX}
           export BASE_PATH=${BASE_PATH}
@@ -239,7 +110,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .src/ui/out
-          destination_dir: ui/release/${TAG}
+          destination_dir: ui/${{ env.TAG }}
           keep_files: false
           user_name: ${{ github.actor }}
           user_email: ${{ github.actor }}@users.noreply.github.com
@@ -300,7 +171,7 @@ jobs:
           publish_branch: gh-pages
 
   build-and-push-container:
-    needs: [unit-tests, integration-tests, e2e-tests]
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

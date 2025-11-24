@@ -1,0 +1,29 @@
+name: 'Run tox with environment'
+description: 'Runs tox with pdm as the package manager'
+inputs:
+  python-version:
+    type: string
+    required: true
+  tox-env:
+    type: string
+    required: true
+  tox-args:
+    type: string
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python with PDM
+      uses: pdm-project/setup-pdm@v4
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install dependencies
+      run: |
+        pip install tox tox-pdm
+      shell: bash
+    - name: Run tox
+      run: |
+        tox run -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }}
+        # errno 5 means all tests were filtered out, ignore
+        ret=$? && [[ $ret -eq 5 ]] && exit 0; exit $ret
+      shell: bash
