@@ -32,8 +32,8 @@ update_stratagy="$([ $FORCE_REGEN -eq 0 ] && echo "--update-reuse")"
 set -e
 
 # Locking all dependencies to the same version for all supported
-# python versions is not possible (mostly due to numpy)
+# python versions makes us miss out on supported versions for some packages
 # so we need to lock separately for python >=3.12 and <3.12
 # Only set update-reuse if not forcing regeneration
-pdm lock --python "~=3.12" $update_stratagy
-pdm lock --append --python "<3.12" $update_stratagy
+pdm lock --platform linux --python "~=3.12" $update_stratagy
+pdm lock --platform linux --python "<3.12" $update_stratagy --append
