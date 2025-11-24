@@ -4,7 +4,9 @@ lock-version = "1.0"
 requires-python = "<4.0,>=3.10.0"
 environments = [
     "python_version ~= \"3.12\" and sys_platform == \"linux\" and platform_system == \"Linux\" and os_name == \"posix\" and platform_machine == \"x86_64\"",
+    "python_version ~= \"3.12\" and os_name == \"posix\" and platform_machine == \"arm64\" and platform_system == \"Darwin\" and sys_platform == \"darwin\"",
     "python_full_version >= \"3.10.0\" and python_version < \"3.12\" and sys_platform == \"linux\" and platform_system == \"Linux\" and os_name == \"posix\" and platform_machine == \"x86_64\"",
+    "python_full_version >= \"3.10.0\" and python_version < \"3.12\" and os_name == \"posix\" and platform_machine == \"arm64\" and platform_system == \"Darwin\" and sys_platform == \"darwin\"",
 ]
 extras = ["all", "audio", "dev", "openai", "perf", "recommended", "vision"]
 dependency-groups = ["default"]
@@ -15,6 +17,13 @@ created-by = "pdm"
 name = "torch"
 version = "2.9.0+cpu"
 requires-python = ">=3.10"
+wheels = [
+    {name = "torch-2.9.0-cp314-cp314-macosx_11_0_arm64.whl",url = "https://download.pytorch.org/whl/cpu/torch-2.9.0-cp314-cp314-macosx_11_0_arm64.whl",hashes = {sha256 = "d8e2ab7f86010330bdcc39c8b2c795590cc75e37df4823cdaee2c98d6e3ff4a3"}},
+    {name = "torch-2.9.0-cp314-cp314t-macosx_11_0_arm64.whl",url = "https://download.pytorch.org/whl/cpu/torch-2.9.0-cp314-cp314t-macosx_11_0_arm64.whl",hashes = {sha256 = "a3e859039c985d8e3ea60d7a54ca7e97ea2ae15e31beced4f3260128a161bb01"}},
+    {name = "torch-2.9.0-cp313-cp313t-macosx_11_0_arm64.whl",url = "https://download.pytorch.org/whl/cpu/torch-2.9.0-cp313-cp313t-macosx_11_0_arm64.whl",hashes = {sha256 = "259548471194ab63d7ea273873053a6e3cc23530c1510f01e9d7ad259187bbd0"}},
+    {name = "torch-2.9.0-cp313-none-macosx_11_0_arm64.whl",url = "https://download.pytorch.org/whl/cpu/torch-2.9.0-cp313-none-macosx_11_0_arm64.whl",hashes = {sha256 = "e24836d968b54ef4dfb05594001a61958711ac9224026291e4e3f92f83a6fd7f"}},
+    {name = "torch-2.9.0-cp312-none-macosx_11_0_arm64.whl",url = "https://download.pytorch.org/whl/cpu/torch-2.9.0-cp312-none-macosx_11_0_arm64.whl",hashes = {sha256 = "4de0ed8cbc457a506dbca40376e206a29efee10756a00f1f3404bf67ad737d04"}},
+]
 marker = "\"default\" in dependency_groups or \"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
@@ -32,6 +41,10 @@ dependencies = [
 name = "torchcodec"
 version = "0.8.0"
 requires-python = ">=3.8"
+wheels = [
+    {name = "torchcodec-0.8.0-cp313-cp313-macosx_12_0_arm64.whl",url = "https://files.pythonhosted.org/packages/9b/1c/40fd9358e5dd958775b8d0a01c962a022884810f441ac28229ed0e811599/torchcodec-0.8.0-cp313-cp313-macosx_12_0_arm64.whl",hashes = {sha256 = "1f3309252d035c888e6ae4518f5aca24f1c38f163124792d8a29a6872bf457f2"}},
+    {name = "torchcodec-0.8.0-cp312-cp312-macosx_11_0_arm64.whl",url = "https://files.pythonhosted.org/packages/17/ae/8b1d69e653894243fa66e2fec511cf203107dd146d161c9f095893c13bbc/torchcodec-0.8.0-cp312-cp312-macosx_11_0_arm64.whl",hashes = {sha256 = "af82d1fac3667335e089dc958b5e8eef5458e37d65cb3a94ebf81f45f00f7805"}},
+]
 marker = "\"all\" in extras or \"audio\" in extras or \"dev\" in extras"
 
 [packages.tool.pdm]
@@ -2358,5 +2371,13 @@ requires_python = "~=3.12"
 platform = "manylinux_2_17_x86_64"
 
 [[tool.pdm.targets]]
+requires_python = "~=3.12"
+platform = "macos_14_0_arm64"
+
+[[tool.pdm.targets]]
 requires_python = ">=3.10.0,<3.12"
 platform = "manylinux_2_17_x86_64"
+
+[[tool.pdm.targets]]
+requires_python = ">=3.10.0,<3.12"
+platform = "macos_14_0_arm64"
