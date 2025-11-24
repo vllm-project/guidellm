@@ -1,10 +1,11 @@
+from .builders import ShortPromptStrategy
 from .collators import GenerativeRequestCollator
 from .deserializers import (
     DataNotSupportedError,
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from .entrypoints import ShortPromptStrategy, process_dataset
+from .entrypoints import process_dataset
 from .loaders import DataLoader, DatasetsIterator
 from .preprocessors import (
     DataDependentPreprocessor,
