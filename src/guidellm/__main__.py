@@ -416,6 +416,17 @@ def run(**kwargs):
     disable_console_interactive = (
         kwargs.pop("disable_console_interactive", False) or disable_console
     )
+    console = Console() if not disable_console else None
+    envs = cli_tools.list_set_env()
+    if console and envs:
+        console.print_update(
+            title=(
+                "Note: the following environment variables "
+                "are set and **may** affect configuration"
+            ),
+            details=", ".join(envs),
+            status="warning",
+        )
 
     try:
         args = BenchmarkGenerativeTextArgs.create(
@@ -439,7 +450,7 @@ def run(**kwargs):
                 if not disable_console_interactive
                 else None
             ),
-            console=Console() if not disable_console else None,
+            console=console,
         )
     )
 
