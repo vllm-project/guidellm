@@ -402,6 +402,8 @@ def run(**kwargs):
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
+        if kwargs.get("outputs_dir", None) is not None:
+            raise click.BadParameter("Cannot use --output-path with --output-dir.")
         path = Path(output_path)
         if path.is_dir():
             kwargs["output_dir"] = path
@@ -523,8 +525,8 @@ def preprocess():
         "PreprocessDatasetConfig as JSON string, key=value pairs, "
         "or file path (.json, .yaml, .yml, .config). "
         "Example: 'prompt_tokens=100,output_tokens=50,prefix_tokens_max=10'"
-        " or '{\"prompt_tokens\": 100, \"output_tokens\": 50, "
-        "\"prefix_tokens_max\": 10}'"
+        ' or \'{"prompt_tokens": 100, "output_tokens": 50, '
+        '"prefix_tokens_max": 10}\''
     ),
 )
 @click.option(
