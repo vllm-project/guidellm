@@ -154,6 +154,10 @@ class Settings(BaseSettings):
     constraint_error_window_size: float = 30
     constraint_error_min_processed: float = 30
 
+    # Constraint settings
+    constraint_over_saturation_min_seconds: float = 30.0
+    constraint_over_saturation_max_window_seconds: float = 120.0
+
     # Data settings
     dataset: DatasetSettings = DatasetSettings()
 
