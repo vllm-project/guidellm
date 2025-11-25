@@ -1,5 +1,6 @@
 import contextlib
 import json
+import os
 from typing import Any
 
 import click
@@ -7,11 +8,22 @@ import click
 __all__ = [
     "Union",
     "format_list_arg",
+    "list_set_env",
     "parse_json",
     "parse_list",
     "parse_list_floats",
     "set_if_not_default",
 ]
+
+
+def list_set_env(prefix: str = "GUIDELLM_") -> list[str]:
+    """
+    List all set environment variables prefixed with the given prefix.
+
+    :param prefix: The prefix to filter environment variables.
+    :return: List of environment variable names that are set with the given prefix.
+    """
+    return [key for key in os.environ if key.startswith(prefix)]
 
 
 def parse_list(ctx, param, value) -> list[str] | None:
