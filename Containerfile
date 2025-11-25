@@ -1,4 +1,3 @@
-# TODO: Update to official python-3.13-minimal image when available
 ARG BASE_IMAGE=quay.io/fedora/python-313-minimal:latest
 
 # Use a multi-stage build to create a lightweight production image
@@ -51,7 +50,7 @@ USER 1001:0
 # Add guidellm bin to PATH
 # Argument defaults can be set with GUIDELLM_<ARG>
 ENV HOME="/home/guidellm" \
-    GUIDELLM_OUTPUT_PATH="/results/benchmarks.json"
+    GUIDELLM_OUTPUT_DIR="/results"
 
 # Create the user home dir
 WORKDIR $HOME
