@@ -107,8 +107,13 @@ def _decode_audio(  # noqa: C901, PLR0912
             raise ValueError(
                 f"Audio dict must contain either 'data' or 'url' keys, got {audio}"
             )
+        audio_data = audio["data"] if "data" in audio else audio.get("url")
+        if audio_data is None:
+            raise ValueError(
+                f"Audio dict must contain either 'data' or 'url' keys, got {audio}"
+            )
         return _decode_audio(
-            audio=audio.get("data") or audio.get("url"),
+            audio=audio_data,
             sample_rate=sample_rate,
             max_duration=max_duration,
         )
