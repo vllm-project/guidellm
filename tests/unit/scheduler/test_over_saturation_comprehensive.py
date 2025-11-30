@@ -21,6 +21,7 @@ from guidellm.scheduler.constraints.saturation import (
     approx_t_ppf,
 )
 from guidellm.schemas import RequestInfo, RequestTimings
+from guidellm.settings import settings
 
 
 class TestSlopeCheckerStatisticalAccuracy:
@@ -637,7 +638,14 @@ class TestOverSaturationConstraintInitializerRobustness:
         )
 
         # detect_saturation should override over_saturation=False
-        assert result == {"enabled": True}
+        # When a boolean is passed, defaults from settings are included
+        assert result == {
+            "enabled": True,
+            "min_seconds": settings.constraint_over_saturation_min_seconds,
+            "max_window_seconds": (
+                settings.constraint_over_saturation_max_window_seconds
+            ),
+        }
 
     @pytest.mark.smoke
     def test_constraint_creation_with_mock_constraint(self):
