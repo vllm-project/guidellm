@@ -2,7 +2,6 @@ FROM golang AS base
 
 WORKDIR /app
 
-ARG BUILDOS
 ARG BUILDARCH
 
 RUN apt-get update && \
@@ -10,7 +9,7 @@ RUN apt-get update && \
     git clone https://github.com/llm-d/llm-d-inference-sim.git && \
     cd llm-d-inference-sim && \
     git checkout v0.3.0 && \
-    GOOS=${BUILDOS} GOARCH=${BUILDARCH} make build
+    GOOS=darwin GOARCH=${BUILDARCH} make build
 
 WORKDIR /app/llm-d-inference-sim
 

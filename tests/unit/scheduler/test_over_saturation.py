@@ -18,6 +18,7 @@ from guidellm.scheduler import (
     SerializableConstraintInitializer,
 )
 from guidellm.schemas import RequestInfo, RequestTimings
+from guidellm.settings import settings
 
 
 class TestOverSaturationConstraintInternal:
@@ -382,28 +383,46 @@ class TestOverSaturationConstraintInitializer:
     @pytest.mark.smoke
     def test_validated_kwargs(self):
         """Test validated_kwargs method with various inputs."""
+
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation=True
         )
-        assert result == {"enabled": True}
+        # When a boolean is passed, settings values should be included
+        assert result["enabled"] is True
+        assert result["min_seconds"] == settings.constraint_over_saturation_min_seconds
+        assert (
+            result["max_window_seconds"]
+            == settings.constraint_over_saturation_max_window_seconds
+        )
 
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation=False
         )
-        assert result == {"enabled": False}
+        assert result["enabled"] is False
+        assert result["min_seconds"] == settings.constraint_over_saturation_min_seconds
+        assert (
+            result["max_window_seconds"]
+            == settings.constraint_over_saturation_max_window_seconds
+        )
 
         # Test with dict input
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation={"enabled": True, "min_seconds": 20.0}
         )
         assert result["enabled"] is True
-        assert "min_seconds" in result
+        assert result["min_seconds"] == 20.0
+        # Other values should come from settings if not provided
+        assert (
+            result["max_window_seconds"]
+            == settings.constraint_over_saturation_max_window_seconds
+        )
 
         # Test with aliases
         result = OverSaturationConstraintInitializer.validated_kwargs(
             detect_saturation=True
         )
-        assert result == {"enabled": True}
+        assert result["enabled"] is True
+        assert result["min_seconds"] == settings.constraint_over_saturation_min_seconds
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):

@@ -62,6 +62,7 @@ from guidellm.scheduler.schemas import (
     SchedulerUpdateAction,
 )
 from guidellm.schemas import RequestInfo
+from guidellm.settings import settings
 
 from .constraint import Constraint, PydanticConstraintInitializer
 from .factory import ConstraintsInitializerFactory
@@ -630,7 +631,8 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         :param over_saturation: Boolean to enable/disable with defaults, or dictionary
             with configuration parameters (min_seconds, max_window_seconds, etc.)
         :param kwargs: Additional keyword arguments supporting aliases like
-            "detect_saturation" for compatibility
+            "detect_saturation" for compatibility, or unpacked dict values when
+            dict is passed to factory
         :return: Validated dictionary with constraint configuration ready for
             initializer creation
         """
@@ -644,17 +646,49 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
                 result = alias_value
                 break
 
+        # If over_saturation is None but kwargs contain constraint parameters,
+        # treat kwargs as an unpacked dict (happens when dict is passed to factory)
+        if result is None and kwargs:
+            constraint_keys = {
+                "enabled",
+                "min_seconds",
+                "max_window_seconds",
+                "moe_threshold",
+                "minimum_ttft",
+                "maximum_window_ratio",
+                "minimum_window_size",
+                "confidence",
+            }
+            if any(key in kwargs for key in constraint_keys):
+                # Reconstruct dict from kwargs
+                result = {key: kwargs[key] for key in constraint_keys if key in kwargs}
+
         if result is None:
             return {}
 
         if isinstance(result, bool):
-            return {"enabled": result}
+            # When a boolean is passed, read defaults from settings
+            return {
+                "enabled": result,
+                "min_seconds": kwargs.get(
+                    "min_seconds", settings.constraint_over_saturation_min_seconds
+                ),
+                "max_window_seconds": kwargs.get(
+                    "max_window_seconds",
+                    settings.constraint_over_saturation_max_window_seconds,
+                ),
+            }
         elif isinstance(result, dict):
-            # Extract configuration from dict
+            # Extract configuration from dict, reading from settings for missing values
             return {
                 "enabled": result.get("enabled", True),
-                "min_seconds": result.get("min_seconds", 30.0),
-                "max_window_seconds": result.get("max_window_seconds", 120.0),
+                "min_seconds": result.get(
+                    "min_seconds", settings.constraint_over_saturation_min_seconds
+                ),
+                "max_window_seconds": result.get(
+                    "max_window_seconds",
+                    settings.constraint_over_saturation_max_window_seconds,
+                ),
                 "moe_threshold": result.get("moe_threshold", 2.0),
                 "minimum_ttft": result.get("minimum_ttft", 2.5),
                 "maximum_window_ratio": result.get("maximum_window_ratio", 0.75),

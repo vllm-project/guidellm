@@ -93,8 +93,6 @@ class GuidellmClient:
                 if over_saturation:
                     cmd_parts.append("--over-saturation=True")
             elif isinstance(over_saturation, dict):
-                import json
-
                 cmd_parts.append(f"--over-saturation '{json.dumps(over_saturation)}'")
 
         cmd_parts.extend(
