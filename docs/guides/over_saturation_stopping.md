@@ -16,12 +16,14 @@ GuideLLM's Over-Saturation Detection (OSD) algorithm uses statistical slope dete
 2. **Time-to-First-Token (TTFT)**: The latency for the first token of each response
 
 For each metric, the algorithm:
+
 - Maintains a sliding window of recent data points
 - Calculates the linear regression slope using online statistics
 - Computes the margin of error (MOE) using t-distribution confidence intervals
 - Detects positive slopes with low MOE, indicating degradation
 
 Over-saturation is detected when:
+
 - Both concurrent requests and TTFT show statistically significant positive slopes
 - The minimum duration threshold has been met
 - Sufficient data points are available for reliable slope estimation
@@ -132,6 +134,7 @@ guidellm benchmark \
 ```
 
 This example:
+
 - Runs a concurrent benchmark with 16 simultaneous requests
 - Uses synthetic data with 256 prompt tokens and 128 output tokens
 - Enables over-saturation detection with custom timing parameters
