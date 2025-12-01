@@ -52,6 +52,9 @@ class OpenAIHTTPBackend(Backend):
         self,
         target: str,
         model: str = "",
+        api_key: str | None = None,
+        bearer_token: str | None = None,
+        headers: dict[str, str] | None = None,
         api_routes: dict[str, str] | None = None,
         response_handlers: dict[str, Any] | None = None,
         timeout: float = 60.0,
@@ -65,6 +68,9 @@ class OpenAIHTTPBackend(Backend):
 
         :param target: Base URL of the OpenAI-compatible server
         :param model: Model identifier for generation requests
+        :param api_key: API key for authentication (used as Bearer token)
+        :param bearer_token: Bearer token for authentication (alternative to api_key)
+        :param headers: Additional headers to include in all requests
         :param api_routes: Custom API endpoint routes mapping
         :param response_handlers: Custom response handlers for different request types
         :param timeout: Request timeout in seconds
@@ -78,6 +84,29 @@ class OpenAIHTTPBackend(Backend):
         # Request Values
         self.target = target.rstrip("/").removesuffix("/v1")
         self.model = model
+
+        # Build default headers with authentication
+        from guidellm.settings import settings
+
+        self._default_headers: dict[str, str] = {}
+
+        # Merge headers from settings first (lowest priority)
+        if settings.openai.headers:
+            self._default_headers.update(settings.openai.headers)
+
+        # Add explicit headers parameter (medium priority)
+        if headers:
+            self._default_headers.update(headers)
+
+        # Resolve API key (highest priority): explicit param > settings
+        resolved_api_key = api_key or settings.openai.api_key
+        resolved_bearer_token = bearer_token or settings.openai.bearer_token
+
+        # Set Authorization header if we have credentials
+        if resolved_api_key:
+            self._default_headers["Authorization"] = f"Bearer {resolved_api_key}"
+        elif resolved_bearer_token:
+            self._default_headers["Authorization"] = f"Bearer {resolved_bearer_token}"
 
         # Store configuration
         self.api_routes = api_routes or {
@@ -184,7 +213,7 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         target = f"{self.target}/{self.api_routes['models']}"
-        response = await self._async_client.get(target)
+        response = await self._async_client.get(target, headers=self._default_headers)
         response.raise_for_status()
 
         return [item["id"] for item in response.json()["data"]]
@@ -245,13 +274,19 @@ class OpenAIHTTPBackend(Backend):
             request.request_type, handler_overrides=self.response_handlers
         )
 
+        # Merge default headers with request-specific headers
+        merged_headers = {
+            **self._default_headers,
+            **(request.arguments.headers or {}),
+        }
+
         if not request.arguments.stream:
             request_info.timings.request_start = time.time()
             response = await self._async_client.request(
                 request.arguments.method or "POST",
                 request_url,
                 params=request.arguments.params,
-                headers=request.arguments.headers,
+                headers=merged_headers,
                 json=request_json,
                 data=request_data,
                 files=request_files,
@@ -269,7 +304,7 @@ class OpenAIHTTPBackend(Backend):
                 request.arguments.method or "POST",
                 request_url,
                 params=request.arguments.params,
-                headers=request.arguments.headers,
+                headers=merged_headers,
                 json=request_json,
                 data=request_data,
                 files=request_files,
@@ -330,5 +365,10 @@ class OpenAIHTTPBackend(Backend):
 
         if "method" not in validate_kwargs:
             validate_kwargs["method"] = "GET"
+
+        # Include default headers (with auth) in validation request
+        if self._default_headers:
+            existing_headers = validate_kwargs.get("headers", {})
+            validate_kwargs["headers"] = {**self._default_headers, **existing_headers}
 
         return validate_kwargs
