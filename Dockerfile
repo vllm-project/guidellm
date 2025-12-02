@@ -1,6 +1,10 @@
 # GuideLLM with uv, CUDA 13, and embedded dataset
 FROM nvidia/cuda:13.0.0-base-ubuntu22.04
 
+# Configure timezone non-interactively
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -36,9 +40,9 @@ RUN uv venv --python python3.12 /home/guidellm/.venv && \
     . /home/guidellm/.venv/bin/activate && \
     uv pip install --no-cache -e .
 
-# Pre-download LibriSpeech dataset (parquet revision)
-RUN . /home/guidellm/.venv/bin/activate && \
-    python -c "from datasets import load_dataset; load_dataset('hf://datasets/distil-whisper/librispeech_asr@refs%2Fconvert%2Fparquet', 'clean', split='validation', streaming=False, cache_dir='/home/guidellm/.cache/huggingface')"
+# NOTE: Dataset will be downloaded at runtime to save image size
+# The LibriSpeech dataset (~500MB) would make the image too large
+# HuggingFace will cache it in HF_HOME=/home/guidellm/.cache/huggingface
 
 # Add venv to PATH
 ENV PATH="/home/guidellm/.venv/bin:$PATH"
