@@ -35,7 +35,5 @@ set -e
 # python versions makes us miss out on supported versions for some packages
 # so we need to lock separately for python >=3.12 and <3.12
 # Only set update-reuse if not forcing regeneration
-pdm lock --platform manylinux_2_34_x86_64 --python "~=3.12" $update_stratagy
-# pdm lock --platform macos_arm64 --python "~=3.12" $update_stratagy --append
-pdm lock --platform manylinux_2_34_x86_64 --python "<3.12" $update_stratagy --append
-# pdm lock --platform macos_arm64 --python "<3.12" $update_stratagy --append
+pdm lock --platform manylinux_2_34_x86_64 $update_stratagy
+# pdm lock --platform macos_arm64 $update_stratagy --append
