@@ -46,7 +46,20 @@ class HuggingFaceDatasetDeserializer(DatasetDeserializer):
 
         load_error = None
 
-        if (
+        # Handle hf: prefix for explicit HuggingFace Hub datasets
+        if isinstance(data, str) and data.startswith("hf:"):
+            hub_id = data[3:]  # Remove "hf:" prefix
+            try:
+                return load_dataset(hub_id, **data_kwargs)
+            except (
+                FileNotFoundDatasetsError,
+                DatasetNotFoundError,
+                DataFilesNotFoundError,
+            ) as err:
+                load_error = err
+                # Fall through to raise error below
+
+        elif (
             isinstance(data, str | Path)
             and (path := Path(data)).exists()
             and ((path.is_file() and path.suffix == ".py") or path.is_dir())
@@ -71,15 +84,16 @@ class HuggingFaceDatasetDeserializer(DatasetDeserializer):
                 ) as err2:
                     load_error = err2
 
-        try:
-            # Handle dataset identifier from the Hugging Face Hub
-            return load_dataset(str(data), **data_kwargs)
-        except (
-            FileNotFoundDatasetsError,
-            DatasetNotFoundError,
-            DataFilesNotFoundError,
-        ) as err:
-            load_error = err
+        else:
+            try:
+                # Handle dataset identifier from the Hugging Face Hub
+                return load_dataset(str(data), **data_kwargs)
+            except (
+                FileNotFoundDatasetsError,
+                DatasetNotFoundError,
+                DataFilesNotFoundError,
+            ) as err:
+                load_error = err
 
         not_supported = DataNotSupportedError(
             "Unsupported data for HuggingFaceDatasetDeserializer, "
