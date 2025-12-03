@@ -17,9 +17,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-torch = [
-  { index = "pytorch-cpu" },
-]
+torch = { index = "pytorch-cpu" }
 
 # ************************************************
 # ********** Project Metadata **********
