@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Python with UV
-        uses: astral-sh/setup-uv@v7
+        uses: ./.github/actions/python-uv
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies

@@ -14,7 +14,7 @@ runs:
   using: "composite"
   steps:
     - name: Setup Python with UV
-      uses: astral-sh/setup-uv@v7
+      uses: ./.github/actions/python-uv
       with:
         python-version: ${{ inputs.python-version }}
     - name: Install system dependencies
