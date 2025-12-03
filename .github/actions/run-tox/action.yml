@@ -23,7 +23,7 @@ runs:
       shell: bash
     - name: Install dependencies
       run: |
-        uv pip install tox tox-uv
+        uv pip install --system tox tox-uv
       shell: bash
     - name: Run tox
       run: |

@@ -35,7 +35,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
         run: |
-          uv pip install tox tox-pdm
+          uv pip install --system tox tox-pdm
       - name: Build the package
         run: |
           export GUIDELLM_BUILD_TYPE=nightly
