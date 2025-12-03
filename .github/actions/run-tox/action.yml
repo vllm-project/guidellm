@@ -17,6 +17,10 @@ runs:
       uses: pdm-project/setup-pdm@v4
       with:
         python-version: ${{ inputs.python-version }}
+    - name: Install system dependencies
+      run: |
+        sudo apt install -y ffmpeg
+      shell: bash
     - name: Install dependencies
       run: |
         pip install tox tox-pdm
