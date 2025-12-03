@@ -6,12 +6,19 @@ repos:
     exclude: ^tests/?.*/assets/.+
   - id: end-of-file-fixer
     exclude: ^tests/?.*/assets/.+
-- repo: https://github.com/pdm-project/pdm
-  rev: 2.25.6
+- repo: https://github.com/astral-sh/uv-pre-commit
+  rev: 0.9.15
   hooks:
-    - id: pdm-lock-check
-      name: check lock file matches pyproject
-      entry: sh -c "pdm lock -v --check || pdm lock --update-reuse"
+    - id: uv-lock
+      name: check uv.lock file matches pyproject
+    - id: uv-export
+      args:
+        - "--frozen"
+        - "--all-groups"
+        - "--all-extras"
+        - "--format=pylock.toml"
+        - "--output-file=pylock.toml"
+        - "--quiet"
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.11.7
   hooks:
