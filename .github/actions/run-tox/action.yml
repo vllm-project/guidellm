@@ -23,7 +23,7 @@ runs:
       shell: bash
     - name: Run tox
       run: |
-        tox run -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }}
+        tox run -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }} || ret=$?
         # errno 5 means all tests were filtered out, ignore
-        ret=$? && [[ $ret -eq 5 ]] && exit 0; exit $ret
+        [[ "${ret:=0}" -eq 5 ]] && exit 0; exit $ret
       shell: bash
