@@ -29,13 +29,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up Python
-        uses: pdm-project/setup-pdm@v4
+      - name: Setup Python with UV
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
         run: |
-          pip install tox tox-pdm
+          uv pip install tox tox-pdm
       - name: Build the package
         run: |
           export GUIDELLM_BUILD_TYPE=nightly
