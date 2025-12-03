@@ -402,6 +402,8 @@ def run(**kwargs):
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
+        if kwargs.get("outputs_dir", None) is not None:
+            raise click.BadParameter("Cannot use --output-path with --output-dir.")
         path = Path(output_path)
         if path.is_dir():
             kwargs["output_dir"] = path
@@ -414,6 +416,17 @@ def run(**kwargs):
     disable_console_interactive = (
         kwargs.pop("disable_console_interactive", False) or disable_console
     )
+    console = Console() if not disable_console else None
+    envs = cli_tools.list_set_env()
+    if console and envs:
+        console.print_update(
+            title=(
+                "Note: the following environment variables "
+                "are set and **may** affect configuration"
+            ),
+            details=", ".join(envs),
+            status="warning",
+        )
 
     try:
         args = BenchmarkGenerativeTextArgs.create(
@@ -437,7 +450,7 @@ def run(**kwargs):
                 if not disable_console_interactive
                 else None
             ),
-            console=Console() if not disable_console else None,
+            console=console,
         )
     )
 
@@ -523,8 +536,8 @@ def preprocess():
         "PreprocessDatasetConfig as JSON string, key=value pairs, "
         "or file path (.json, .yaml, .yml, .config). "
         "Example: 'prompt_tokens=100,output_tokens=50,prefix_tokens_max=10'"
-        " or '{\"prompt_tokens\": 100, \"output_tokens\": 50, "
-        "\"prefix_tokens_max\": 10}'"
+        ' or \'{"prompt_tokens": 100, "output_tokens": 50, '
+        '"prefix_tokens_max": 10}\''
     ),
 )
 @click.option(
