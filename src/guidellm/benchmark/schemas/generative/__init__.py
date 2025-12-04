@@ -32,13 +32,14 @@ from .metrics import (
     GenerativeVideoMetricsSummary,
     SchedulerMetrics,
 )
-from .report import GenerativeBenchmarksReport
+from .report import GenerativeBenchmarkMetadata, GenerativeBenchmarksReport
 
 __all__ = [
     "BenchmarkGenerativeTextArgs",
     "GenerativeAudioMetricsSummary",
     "GenerativeBenchmark",
     "GenerativeBenchmarkAccumulator",
+    "GenerativeBenchmarkMetadata",
     "GenerativeBenchmarkTimings",
     "GenerativeBenchmarksReport",
     "GenerativeImageMetricsSummary",
