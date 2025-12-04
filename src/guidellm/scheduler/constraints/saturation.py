@@ -57,15 +57,16 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from guidellm.scheduler.constraints.constraint import (
+    Constraint,
+    PydanticConstraintInitializer,
+)
+from guidellm.scheduler.constraints.factory import ConstraintsInitializerFactory
 from guidellm.scheduler.schemas import (
     SchedulerState,
     SchedulerUpdateAction,
 )
 from guidellm.schemas import RequestInfo
-from guidellm.settings import settings
-
-from .constraint import Constraint, PydanticConstraintInitializer
-from .factory import ConstraintsInitializerFactory
 
 __all__ = [
     "OverSaturationConstraint",
@@ -355,7 +356,12 @@ class OverSaturationConstraint:  # type: ignore[misc]
         )
 
     def _add_finished(self, request: dict[str, Any]) -> None:
-        """Add a finished request to tracking."""
+        """
+        Add a finished request to tracking.
+
+        :param request: Dictionary containing request data with 'ttft' and
+            'duration' keys.
+        """
         ttft = request["ttft"]
         duration = request["duration"]
         if ttft is not None:
@@ -366,7 +372,12 @@ class OverSaturationConstraint:  # type: ignore[misc]
             self.ttft_slope_checker.add_data_point(duration, ttft)
 
     def _remove_finished(self, request: dict[str, Any]) -> None:
-        """Remove a finished request from tracking."""
+        """
+        Remove a finished request from tracking.
+
+        :param request: Dictionary containing request data with 'ttft' and
+            'duration' keys.
+        """
         del self.finished_requests[0]
         ttft = request["ttft"]
         duration = request["duration"]
@@ -375,7 +386,12 @@ class OverSaturationConstraint:  # type: ignore[misc]
         self.ttft_slope_checker.remove_data_point(duration, ttft)
 
     def _add_started(self, request: dict[str, Any]) -> None:
-        """Add a started request to tracking."""
+        """
+        Add a started request to tracking.
+
+        :param request: Dictionary containing request data with
+            'concurrent_requests' and 'duration' keys.
+        """
         concurrent = request["concurrent_requests"]
         duration = request["duration"]
         if concurrent is not None:
@@ -384,14 +400,26 @@ class OverSaturationConstraint:  # type: ignore[misc]
             self.concurrent_slope_checker.add_data_point(duration, concurrent)
 
     def _remove_started(self, request: dict[str, Any]) -> None:
-        """Remove a started request from tracking."""
+        """
+        Remove a started request from tracking.
+
+        :param request: Dictionary containing request data with
+            'concurrent_requests' and 'duration' keys.
+        """
         del self.started_requests[0]
         concurrent = request["concurrent_requests"]
         duration = request["duration"]
         self.concurrent_slope_checker.remove_data_point(duration, concurrent)
 
     def _update_duration(self, duration: float) -> None:
-        """Update duration and prune old data points."""
+        """
+        Update duration and prune old data points.
+
+        Updates the current duration and removes data points that exceed the maximum
+        window size (by ratio or time) to maintain bounded memory usage.
+
+        :param duration: Current duration in seconds since benchmark start.
+        """
         self.duration = duration
 
         maximum_finished_window_size = int(
@@ -428,8 +456,7 @@ class OverSaturationConstraint:  # type: ignore[misc]
         """
         Check if over-saturation is currently detected.
 
-        Returns:
-            True if over-saturation is detected, False otherwise.
+        :return: True if over-saturation is detected, False otherwise.
         """
         # Use duration as the maximum n value since requests from the
         # same second are highly correlated, this is simple and good enough
@@ -521,13 +548,13 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
     Factory for creating OverSaturationConstraint instances from configuration.
 
     Provides a Pydantic-based initializer for over-saturation detection constraints
-    with support for flexible configuration patterns. Supports both simple boolean
-    flags and detailed configuration dictionaries, enabling easy integration with
-    CLI arguments, configuration files, and programmatic constraint creation.
+    with support for flexible configuration patterns. Supports detailed configuration
+    dictionaries, enabling easy integration with CLI arguments, configuration files,
+    and programmatic constraint creation.
 
     Example:
     ::
-        # Simple boolean configuration
+        # Configuration with defaults
         initializer = OverSaturationConstraintInitializer(enabled=True)
         constraint = initializer.create_constraint()
 
@@ -618,18 +645,18 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
 
     @classmethod
     def validated_kwargs(
-        cls, over_saturation: bool | dict[str, Any] | None = None, **kwargs
+        cls, over_saturation: dict[str, Any] | None = None, **kwargs
     ) -> dict[str, Any]:
         """
         Validate and process arguments for OverSaturationConstraint creation.
 
-        Processes flexible input formats to create validated constraint configuration.
-        Supports boolean flags for simple enable/disable, dictionary inputs for detailed
-        configuration, and alias parameters for compatibility. Handles parameter
-        normalization and default value application.
+        Processes flexible input formats to create validated constraint
+        configuration. Supports dictionary inputs for detailed configuration, and
+        alias parameters for compatibility. Handles parameter normalization and
+        default value application.
 
-        :param over_saturation: Boolean to enable/disable with defaults, or dictionary
-            with configuration parameters (min_seconds, max_window_seconds, etc.)
+        :param over_saturation: Dictionary with configuration parameters
+            (min_seconds, max_window_seconds, etc.)
         :param kwargs: Additional keyword arguments supporting aliases like
             "detect_saturation" for compatibility, or unpacked dict values when
             dict is passed to factory
@@ -638,7 +665,7 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         """
         # Check for aliases in kwargs
         aliases = ["over_saturation", "detect_saturation"]
-        result: bool | dict[str, Any] | None = over_saturation
+        result: dict[str, Any] | None = over_saturation
 
         for alias in aliases:
             alias_value = kwargs.get(alias)
@@ -664,37 +691,13 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
                 result = {key: kwargs[key] for key in constraint_keys if key in kwargs}
 
         if result is None:
-            return {}
+            return {"enabled": False}
 
-        if isinstance(result, bool):
-            # When a boolean is passed, read defaults from settings
-            return {
-                "enabled": result,
-                "min_seconds": kwargs.get(
-                    "min_seconds", settings.constraint_over_saturation_min_seconds
-                ),
-                "max_window_seconds": kwargs.get(
-                    "max_window_seconds",
-                    settings.constraint_over_saturation_max_window_seconds,
-                ),
-            }
-        elif isinstance(result, dict):
-            # Extract configuration from dict, reading from settings for missing values
-            return {
-                "enabled": result.get("enabled", True),
-                "min_seconds": result.get(
-                    "min_seconds", settings.constraint_over_saturation_min_seconds
-                ),
-                "max_window_seconds": result.get(
-                    "max_window_seconds",
-                    settings.constraint_over_saturation_max_window_seconds,
-                ),
-                "moe_threshold": result.get("moe_threshold", 2.0),
-                "minimum_ttft": result.get("minimum_ttft", 2.5),
-                "maximum_window_ratio": result.get("maximum_window_ratio", 0.75),
-                "minimum_window_size": result.get("minimum_window_size", 5),
-                "confidence": result.get("confidence", 0.95),
-            }
+        if isinstance(result, dict):
+            # Return dict as-is, defaults come from fields above
+            return result
         else:
-            # Convert to bool if it's truthy
-            return {"enabled": bool(result)}
+            # Type signature only accepts dict or None, so this should never happen
+            raise TypeError(
+                f"over_saturation must be a dict or None, got {type(result).__name__}"
+            )

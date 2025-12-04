@@ -323,7 +323,7 @@ async def resolve_profile(
     max_errors: int | None,
     max_error_rate: float | None,
     max_global_error_rate: float | None,
-    over_saturation: bool | dict[str, Any] | None = None,
+    over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
 ) -> Profile:
     """
@@ -344,7 +344,7 @@ async def resolve_profile(
     :param max_errors: Maximum number of errors before stopping
     :param max_error_rate: Maximum error rate threshold before stopping
     :param max_global_error_rate: Maximum global error rate threshold before stopping
-    :param over_saturation: Over-saturation detection configuration (bool or dict)
+    :param over_saturation: Over-saturation detection configuration (dict)
     :param console: Console instance for progress reporting, or None
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile

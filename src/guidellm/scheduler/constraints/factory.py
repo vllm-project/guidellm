@@ -10,14 +10,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from guidellm.utils import InfoMixin, RegistryMixin
-
-from .constraint import (
+from guidellm.scheduler.constraints.constraint import (
     Constraint,
     ConstraintInitializer,
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
+from guidellm.utils import InfoMixin, RegistryMixin
 
 __all__ = ["ConstraintsInitializerFactory"]
 

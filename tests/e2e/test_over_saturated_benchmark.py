@@ -36,7 +36,7 @@ def server():
 @pytest.mark.timeout(60)
 def test_over_saturated_benchmark(server: VllmSimServer):
     """
-    Another example test interacting with the server.
+    Test over-saturation detection using the --default-over-saturation flag.
     """
     report_path = Path("tests/e2e/over_saturated_benchmarks.json")
     rate = 10
@@ -45,14 +45,15 @@ def test_over_saturated_benchmark(server: VllmSimServer):
     client = GuidellmClient(target=server.get_url(), output_path=report_path)
 
     cleanup_report_file(report_path)
-    # Start the benchmark
+    # Start the benchmark with --default-over-saturation flag
     client.start_benchmark(
         rate=rate,
         max_seconds=20,
-        over_saturation=True,
+        over_saturation={},  # Empty dict triggers --default-over-saturation flag
         extra_env={
-            "GUIDELLM__CONSTRAINT_OVER_SATURATION_MIN_SECONDS": "0",
             "GOMAXPROCS": "1",
+            # Set min_seconds via env var for faster test
+            "GUIDELLM__CONSTRAINT_OVER_SATURATION_MIN_SECONDS": "0",
         },
     )
 

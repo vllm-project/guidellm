@@ -21,7 +21,6 @@ from guidellm.scheduler.constraints.saturation import (
     approx_t_ppf,
 )
 from guidellm.schemas import RequestInfo, RequestTimings
-from guidellm.settings import settings
 
 
 class TestSlopeCheckerStatisticalAccuracy:
@@ -633,19 +632,12 @@ class TestOverSaturationConstraintInitializerRobustness:
         """Test alias precedence in validated_kwargs."""
         # Multiple aliases provided - should use the explicit one
         result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation=False,  # Explicit parameter
-            detect_saturation=True,  # Alias
+            over_saturation={"enabled": False},  # Explicit parameter
+            detect_saturation={"enabled": True},  # Alias
         )
 
-        # detect_saturation should override over_saturation=False
-        # When a boolean is passed, defaults from settings are included
-        assert result == {
-            "enabled": True,
-            "min_seconds": settings.constraint_over_saturation_min_seconds,
-            "max_window_seconds": (
-                settings.constraint_over_saturation_max_window_seconds
-            ),
-        }
+        # detect_saturation should override over_saturation
+        assert result == {"enabled": True}
 
     @pytest.mark.smoke
     def test_constraint_creation_with_mock_constraint(self):

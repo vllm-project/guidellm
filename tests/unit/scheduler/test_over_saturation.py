@@ -18,7 +18,6 @@ from guidellm.scheduler import (
     SerializableConstraintInitializer,
 )
 from guidellm.schemas import RequestInfo, RequestTimings
-from guidellm.settings import settings
 
 
 class TestOverSaturationConstraintInternal:
@@ -384,45 +383,37 @@ class TestOverSaturationConstraintInitializer:
     def test_validated_kwargs(self):
         """Test validated_kwargs method with various inputs."""
 
+        # Test with empty dict (uses defaults, enabled=True by default)
         result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation=True
+            over_saturation={}
         )
-        # When a boolean is passed, settings values should be included
-        assert result["enabled"] is True
-        assert result["min_seconds"] == settings.constraint_over_saturation_min_seconds
-        assert (
-            result["max_window_seconds"]
-            == settings.constraint_over_saturation_max_window_seconds
-        )
+        # enabled defaults to True in the Pydantic model
+        assert result == {}
 
+        # Test with dict input (enabled=False)
         result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation=False
+            over_saturation={"enabled": False}
         )
         assert result["enabled"] is False
-        assert result["min_seconds"] == settings.constraint_over_saturation_min_seconds
-        assert (
-            result["max_window_seconds"]
-            == settings.constraint_over_saturation_max_window_seconds
-        )
 
-        # Test with dict input
+        # Test with dict input with min_seconds
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation={"enabled": True, "min_seconds": 20.0}
         )
         assert result["enabled"] is True
         assert result["min_seconds"] == 20.0
-        # Other values should come from settings if not provided
-        assert (
-            result["max_window_seconds"]
-            == settings.constraint_over_saturation_max_window_seconds
+
+        # Test with None (should return enabled=False)
+        result = OverSaturationConstraintInitializer.validated_kwargs(
+            over_saturation=None
         )
+        assert result["enabled"] is False
 
         # Test with aliases
         result = OverSaturationConstraintInitializer.validated_kwargs(
-            detect_saturation=True
+            detect_saturation={"enabled": True}
         )
         assert result["enabled"] is True
-        assert result["min_seconds"] == settings.constraint_over_saturation_min_seconds
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -455,19 +446,22 @@ class TestOverSaturationConstraintInitializer:
     @pytest.mark.parametrize("alias", ["over_saturation", "detect_saturation"])
     def test_factory_creation_with_aliases(self, alias):
         """Test factory creation using different aliases."""
-        # Test with dict configuration
+        # Test with dict configuration using kwargs
         constraint = ConstraintsInitializerFactory.create_constraint(
             alias, enabled=True
         )
         assert isinstance(constraint, OverSaturationConstraint)
         assert constraint.enabled is True
 
-        # Test with simple boolean value
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, True)
+        # Test with empty dict (uses defaults, enabled=True by default)
+        constraint = ConstraintsInitializerFactory.create_constraint(alias, {})
         assert isinstance(constraint, OverSaturationConstraint)
         assert constraint.enabled is True
 
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, False)
+        # Test with dict value (enabled=False)
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            alias, {"enabled": False}
+        )
         assert isinstance(constraint, OverSaturationConstraint)
         assert constraint.enabled is False
 
@@ -481,8 +475,10 @@ class TestOverSaturationConstraintInitializer:
         assert isinstance(resolved["over_saturation"], OverSaturationConstraint)
         assert resolved["over_saturation"].enabled is True
 
-        # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"detect_saturation": True})
+        # Test with dict value
+        resolved = ConstraintsInitializerFactory.resolve(
+            {"detect_saturation": {"enabled": True}}
+        )
         assert isinstance(resolved["detect_saturation"], OverSaturationConstraint)
         assert resolved["detect_saturation"].enabled is True
 

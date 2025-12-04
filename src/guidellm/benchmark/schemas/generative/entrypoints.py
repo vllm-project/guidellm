@@ -283,12 +283,12 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     max_global_error_rate: float | None = Field(
         default=None, description="Maximum global error rate (0-1) before stopping"
     )
-    over_saturation: bool | dict[str, Any] | None = Field(
+    over_saturation: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "Over-saturation detection configuration. Can be a bool to enable/disable "
-            "with defaults, or a dict with configuration parameters (enabled, "
-            "min_seconds, max_window_seconds, moe_threshold, etc.)."
+            "Over-saturation detection configuration. A dict with configuration "
+            "parameters (enabled, min_seconds, max_window_seconds, "
+            "moe_threshold, etc.)."
         ),
     )
 
