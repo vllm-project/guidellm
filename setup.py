@@ -6,7 +6,7 @@ from packaging.version import Version
 from setuptools import setup
 from setuptools_git_versioning import count_since, get_branch, get_sha, get_tags
 
-LAST_RELEASE_VERSION = Version("0.3.0")
+LAST_RELEASE_VERSION = Version("0.4.0")
 TAG_VERSION_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+)$")
 
 
@@ -67,17 +67,19 @@ def get_next_version(
         return version, tag, build_iteration
 
     # not in release pathway, so need to increment to target next release version
-    version = Version(f"{version.major}.{version.minor + 1}.0")
+    version_next = Version(f"{version.major}.{version.minor + 1}.0")
 
     if build_type == "candidate":
         # add 'rc' since we are in candidate pathway
-        version = Version(f"{version}.rc{build_iteration}")
+        version = Version(f"{version_next}.rc{build_iteration}")
     elif build_type in ["nightly", "alpha"]:
         # add 'a' since we are in nightly or alpha pathway
-        version = Version(f"{version}.a{build_iteration}")
-    else:
-        # assume 'dev' if not in any of the above pathways
-        version = Version(f"{version}.dev{build_iteration}")
+        version = Version(f"{version_next}.a{build_iteration}")
+    # assume 'dev' if not in any of the above pathways
+    # None indicates git failed to find last tag
+    # 0 indicates no new commits since last tag
+    elif commits_since_last != 0:
+        version = Version(f"{version_next}.dev{build_iteration}")
 
     return version, tag, build_iteration
 
