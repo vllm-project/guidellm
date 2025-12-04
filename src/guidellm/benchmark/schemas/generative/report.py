@@ -33,8 +33,12 @@ class GenerativeBenchmarkMetadata(StandardBaseModel):
     Versioning and environment metadata for generative benchmark reports.
     """
 
+    # Make sure to update version when making breaking changes to report schema
     version: Literal[1] = Field(
-        description="Version of the benchmark report schema",
+        description=(
+            "Version of the benchmark report schema, increments "
+            "whenever there is a breaking change to the output format"
+        ),
         default=1,
     )
     guidellm_version: str = Field(

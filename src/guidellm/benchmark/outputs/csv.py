@@ -137,6 +137,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                         benchmark_values,
                     )
                 self._add_scheduler_info(benchmark, benchmark_headers, benchmark_values)
+                self._add_runtime_info(report, benchmark_headers, benchmark_values)
 
                 if not headers:
                     headers = benchmark_headers
@@ -181,6 +182,34 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         """
         headers.append([group, field_name, units])
         values.append(value)
+
+    def _add_runtime_info(
+        self,
+        report: GenerativeBenchmarksReport,
+        headers: list[list[str]],
+        values: list[str | int | float],
+    ) -> None:
+        """
+        Add global metadata and environment information.
+
+        :param report: Benchmark report to extract global info from
+        :param headers: List of header hierarchies to append to
+        :param values: List of values to append to
+        """
+        self._add_field(
+            headers,
+            values,
+            "Runtime Info",
+            "Metadata",
+            report.metadata.model_dump_json(),
+        )
+        self._add_field(
+            headers,
+            values,
+            "Runtime Info",
+            "Arguments",
+            report.args.model_dump_json(),
+        )
 
     def _add_run_info(
         self,
