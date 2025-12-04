@@ -24,6 +24,7 @@ runs:
     - name: Install dependencies
       run: |
         pip install tox tox-pdm
+        pip install numpy==2.1.3, h5py==3.9.0
       shell: bash
     - name: Run tox
       run: |
