@@ -166,9 +166,9 @@ class Union(click.ParamType):
 
         self.fail("; ".join(fails) or f"Invalid value: {value}")  # noqa: RET503
 
-    def get_metavar(self, param: click.Parameter) -> str:
+    def get_metavar(self, param: click.Parameter, ctx: click.Context) -> str:
         def get_choices(t: click.ParamType) -> str:
-            meta = t.get_metavar(param)
+            meta = t.get_metavar(param, ctx)
             return meta if meta is not None else t.name
 
         # Get the choices for each type in the union.
