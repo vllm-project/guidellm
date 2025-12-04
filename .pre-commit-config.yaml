@@ -12,6 +12,8 @@ repos:
     - id: uv-lock
       name: check uv.lock file matches pyproject
     - id: uv-export
+      name: Update pylock to match uv.lock
+      # NOTE: Arguments should match ./scripts/generate_pylock.sh
       args:
         - "--frozen"
         - "--all-groups"

@@ -27,6 +27,15 @@ while getopts "fh" opt; do
 done
 
 if [ $FORCE_REGEN -eq 1 ]; then
-    uv lock --refresh
+    uv lock -U
+else
+    uv lock
 fi
-uv export --frozen --all-groups --all-extras --format=pylock.toml --output-file=pylock.toml --quiet
+# NOTE: Ensure pre-commit config uses same arguments
+uv export \
+    --frozen \
+    --all-groups \
+    --all-extras \
+    --format=pylock.toml \
+    --output-file=pylock.toml \
+    --quiet
