@@ -77,35 +77,18 @@ def parse_list_floats(ctx, param, value):
         ) from err
 
 
-def parse_json(ctx, param, value):  # noqa: ARG001, C901, PLR0911, PLR0912
+def parse_json(ctx, param, value):  # noqa: ARG001, C901, PLR0911
+    if isinstance(value, dict):
+        return value
+
     if value is None or value == [None]:
         return None
-    if isinstance(value, dict | list):
-        # Already parsed (e.g., from flag_value), return as-is
-        return value
-    if isinstance(value, list | tuple):
-        return [parse_json(ctx, param, val) for val in value]
 
-    # Handle empty strings (can occur when multiple options map to same parameter)
     if isinstance(value, str) and not value.strip():
         return None
 
-    # Handle string representation of dict (can occur when flag_value dict is
-    # converted to string)
-    if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
-        # Try to parse as JSON first
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            # If JSON parsing fails, try ast.literal_eval for Python dict syntax
-            try:
-                import ast
-
-                parsed = ast.literal_eval(value)
-                if isinstance(parsed, dict):
-                    return parsed
-            except (ValueError, SyntaxError):
-                pass  # Fall through to normal processing
+    if isinstance(value, list | tuple):
+        return [parse_json(ctx, param, val) for val in value]
 
     if "{" not in value and "}" not in value and "=" in value:
         # Treat it as a key=value pair if it doesn't look like JSON.

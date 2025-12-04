@@ -13,6 +13,11 @@ from typing import Any, Literal, cast
 
 from pydantic import Field, field_validator
 
+from guidellm.scheduler.constraints.constraint import (
+    Constraint,
+    PydanticConstraintInitializer,
+)
+from guidellm.scheduler.constraints.factory import ConstraintsInitializerFactory
 from guidellm.scheduler.schemas import (
     SchedulerProgress,
     SchedulerState,
@@ -20,9 +25,6 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.utils import InfoMixin
-
-from .constraint import Constraint, PydanticConstraintInitializer
-from .factory import ConstraintsInitializerFactory
 
 __all__ = [
     "MaxDurationConstraint",

@@ -386,7 +386,6 @@ def benchmark():
 )
 @click.option(
     "--over-saturation",
-    "--detect-saturation",  # alias
     "over_saturation",
     callback=cli_tools.parse_json,
     default=None,
@@ -398,9 +397,11 @@ def benchmark():
     ),
 )
 @click.option(
+    "--detect-saturation",
     "--default-over-saturation",
     "over_saturation",
-    flag_value={"enabled": True},
+    callback=cli_tools.parse_json,
+    flag_value='{"enabled": true}',
     help="Enable over-saturation detection with default settings.",
 )
 def run(**kwargs):  # noqa: C901
