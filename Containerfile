@@ -15,13 +15,15 @@ USER root
 
 # Install build tooling
 RUN dnf install -y git \
-    && /usr/bin/python3 -m venv /tmp/pdm \
-    && /tmp/pdm/bin/pip install --no-cache-dir -U pdm \
-    && ln -s /tmp/pdm/bin/pdm /usr/local/bin/pdm
+    && /usr/bin/python3 -m venv /tmp/uv \
+    && /tmp/uv/bin/pip install --no-cache-dir -U uv \
+    && ln -s /tmp/uv/bin/uv /usr/local/bin/uv
 
-# Disable pdm update check
+# Set the default venv for uv
+# Copy instead of link files with uv
 # Set correct build type for versioning
-ENV PDM_CHECK_UPDATE=false \
+ENV VIRTUAL_ENV=/opt/app-root \
+    UV_LINK_MODE="copy" \
     GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
 
 # Copy repository files
@@ -29,8 +31,7 @@ ENV PDM_CHECK_UPDATE=false \
 COPY / /src
 
 # Install guidellm and locked dependencies
-RUN pdm use -p /src -f /opt/app-root \
-    && pdm install -p /src -G all --check --prod --no-editable
+RUN uv sync --active --project /src --frozen --no-dev --extra all --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
