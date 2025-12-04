@@ -50,7 +50,7 @@ keywords = [
     "vllm",
 ]
 dependencies = [
-    "click>=8.0.0,<8.2.0",
+    "click~=8.3.0",
     "culsans~=0.10.0",
     "datasets",
     "eval_type_backport",
