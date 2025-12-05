@@ -6,7 +6,6 @@ from tests.e2e.utils import (
     GuidellmClient,
     assert_constraint_triggered,
     assert_no_python_exceptions,
-    cleanup_report_file,
     load_benchmark_report,
 )
 from tests.e2e.vllm_sim_server import VllmSimServer
@@ -49,7 +48,6 @@ def test_over_saturated_benchmark(server: VllmSimServer, tmp_path: Path):
         outputs=report_name,
     )
 
-    cleanup_report_file(report_path)
     # Start the benchmark with --default-over-saturation flag
     client.start_benchmark(
         rate=rate,
@@ -75,8 +73,6 @@ def test_over_saturated_benchmark(server: VllmSimServer, tmp_path: Path):
         benchmark, "over_saturation", {"is_over_saturated": True}
     )
 
-    cleanup_report_file(report_path)
-
 
 @pytest.mark.timeout(60)
 def test_over_saturated_benchmark_with_dict_config(
@@ -96,7 +92,6 @@ def test_over_saturated_benchmark_with_dict_config(
         outputs=report_name,
     )
 
-    cleanup_report_file(report_path)
     # Start the benchmark with dictionary configuration for over-saturation
     client.start_benchmark(
         rate=rate,
@@ -127,5 +122,3 @@ def test_over_saturated_benchmark_with_dict_config(
     assert_constraint_triggered(
         benchmark, "over_saturation", {"is_over_saturated": True}
     )
-
-    cleanup_report_file(report_path)

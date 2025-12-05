@@ -341,13 +341,3 @@ def assert_constraint_triggered(
             assert actual_value == expected_value, (
                 f"Expected {key}={expected_value}, got {actual_value}"
             )
-
-
-def cleanup_report_file(report_path: Path) -> None:
-    """
-    Clean up the report file if it exists.
-
-    :param report_path: Path to the report file to remove
-    """
-    if report_path.exists():
-        report_path.unlink()

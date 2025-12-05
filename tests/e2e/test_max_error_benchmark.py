@@ -8,7 +8,6 @@ from tests.e2e.utils import (
     GuidellmClient,
     assert_constraint_triggered,
     assert_no_python_exceptions,
-    cleanup_report_file,
     load_benchmark_report,
 )
 from tests.e2e.vllm_sim_server import VllmSimServer
@@ -51,33 +50,29 @@ def test_max_error_benchmark(server: VllmSimServer, tmp_path: Path):
         outputs=report_name,
     )
 
-    try:
-        # Start the benchmark
-        client.start_benchmark(
-            rate=rate,
-            max_seconds=25,
-            max_error_rate=max_error_rate,
-        )
+    # Start the benchmark
+    client.start_benchmark(
+        rate=rate,
+        max_seconds=25,
+        max_error_rate=max_error_rate,
+    )
 
-        # Wait for the benchmark to complete (server will be stopped after 15 seconds)
-        client.wait_for_completion(timeout=30, stop_server_after=15, server=server)
+    # Wait for the benchmark to complete (server will be stopped after 15 seconds)
+    client.wait_for_completion(timeout=30, stop_server_after=15, server=server)
 
-        # Assert no Python exceptions occurred
-        assert_no_python_exceptions(client.stderr)
+    # Assert no Python exceptions occurred
+    assert_no_python_exceptions(client.stderr)
 
-        # Load and validate the report
-        report = load_benchmark_report(report_path)
-        benchmark = report["benchmarks"][0]
+    # Load and validate the report
+    report = load_benchmark_report(report_path)
+    benchmark = report["benchmarks"][0]
 
-        # Check that the max error rate constraint was triggered
-        assert_constraint_triggered(
-            benchmark,
-            "max_error_rate",
-            {
-                "exceeded_error_rate": True,
-                "current_error_rate": lambda rate: rate >= max_error_rate,
-            },
-        )
-
-    finally:
-        cleanup_report_file(report_path)
+    # Check that the max error rate constraint was triggered
+    assert_constraint_triggered(
+        benchmark,
+        "max_error_rate",
+        {
+            "exceeded_error_rate": True,
+            "current_error_rate": lambda rate: rate >= max_error_rate,
+        },
+    )
