@@ -152,6 +152,7 @@ jobs:
           tags: "pr-${{ github.event.number }}"
           containerfiles: |
             ./Containerfile
+          platforms: linux/amd64,linux/arm64,linux/ppc64le
       - name: Push To ghcr.io
         id: push-to-ghcr
         uses: redhat-actions/push-to-registry@v2
