@@ -269,7 +269,7 @@ class SlopeChecker:
         return (slope > 0) and (margin_of_error < self.moe_threshold)
 
 
-class OverSaturationConstraint:  # type: ignore[misc]
+class OverSaturationConstraint(Constraint):
     """
     Constraint that detects and stops execution when over-saturation is detected.
 
@@ -632,7 +632,7 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         :param _kwargs: Additional keyword arguments (unused)
         :return: Configured OverSaturationConstraint instance ready for use
         """
-        return OverSaturationConstraint(  # type: ignore[return-value]
+        return OverSaturationConstraint(
             minimum_duration=self.min_seconds,
             minimum_ttft=self.minimum_ttft,
             maximum_window_seconds=self.max_window_seconds,
