@@ -256,7 +256,10 @@ def test_arrow_file_deserializer_success(monkeypatch, tmp_path):
 ###################
 
 
-@pytest.mark.sanity
+@pytest.mark.skip(
+    reason="add pyproject extras group in the future \
+                to install hdf5 dependency such as pytables & h5py"
+)
 def test_hdf5_file_deserializer_success(tmp_path):
     df_sample = pd.DataFrame({"text": ["hello", "world"]})
     file_path = tmp_path / "sample.h5"
