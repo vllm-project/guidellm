@@ -334,6 +334,25 @@ class OverSaturationConstraint(Constraint):
         self.enabled = enabled
         self.reset()
 
+    @property
+    def info(self) -> dict[str, Any]:
+        """
+        Get current constraint configuration and state information.
+        :return: Dictionary containing configuration parameters.
+        """
+
+        return {
+            "type_": "over_saturation",
+            "minimum_duration": self.minimum_duration,
+            "minimum_ttft": self.minimum_ttft,
+            "maximum_window_seconds": self.maximum_window_seconds,
+            "maximum_window_ratio": self.maximum_window_ratio,
+            "minimum_window_size": self.minimum_window_size,
+            "moe_threshold": self.moe_threshold,
+            "confidence": self.confidence,
+            "enabled": self.enabled,
+        }
+
     def reset(self) -> None:
         """
         Reset all internal state to initial values.
