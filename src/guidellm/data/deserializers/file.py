@@ -196,7 +196,18 @@ class DBFileDatasetDeserializer(DatasetDeserializer):
                 f"expected str or Path to a local .db file, got {data}"
             )
 
-        return Dataset.from_sql(con=str(path), **data_kwargs)
+        import sqlite3
+
+        conn = sqlite3.connect(path)
+        cursor = conn.cursor()
+        table = cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchone()[0]
+        conn.close()
+
+        query = f"SELECT * FROM {table}"  # noqa: S608 ignore table name injection risk
+
+        return Dataset.from_sql(sql=query, con=str(path), **data_kwargs)
 
 
 @DatasetDeserializerFactory.register("tar_file")
