@@ -35,16 +35,21 @@ def server():
 
 
 @pytest.mark.timeout(30)
-def test_max_error_benchmark(server: VllmSimServer):
+def test_max_error_benchmark(server: VllmSimServer, tmp_path: Path):
     """
     Test that the max error rate constraint is properly triggered when server goes down.
     """
-    report_path = Path("tests/e2e/max_error_benchmarks.json")
+    report_name = "max_error_benchmarks.json"
+    report_path = tmp_path / report_name
     rate = 10
     max_error_rate = 0.1
 
     # Create and configure the guidellm client
-    client = GuidellmClient(target=server.get_url(), output_path=report_path)
+    client = GuidellmClient(
+        target=server.get_url(),
+        output_dir=tmp_path,
+        outputs=report_name,
+    )
 
     try:
         # Start the benchmark

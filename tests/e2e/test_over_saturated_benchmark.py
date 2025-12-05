@@ -34,15 +34,20 @@ def server():
 
 
 @pytest.mark.timeout(60)
-def test_over_saturated_benchmark(server: VllmSimServer):
+def test_over_saturated_benchmark(server: VllmSimServer, tmp_path: Path):
     """
     Test over-saturation detection using the --default-over-saturation flag.
     """
-    report_path = Path("tests/e2e/over_saturated_benchmarks.json")
+    report_name = "over_saturated_benchmarks.json"
+    report_path = tmp_path / report_name
     rate = 10
 
     # Create and configure the guidellm client
-    client = GuidellmClient(target=server.get_url(), output_path=report_path)
+    client = GuidellmClient(
+        target=server.get_url(),
+        output_dir=tmp_path,
+        outputs=report_name,
+    )
 
     cleanup_report_file(report_path)
     # Start the benchmark with --default-over-saturation flag
@@ -74,15 +79,22 @@ def test_over_saturated_benchmark(server: VllmSimServer):
 
 
 @pytest.mark.timeout(60)
-def test_over_saturated_benchmark_with_dict_config(server: VllmSimServer):
+def test_over_saturated_benchmark_with_dict_config(
+    server: VllmSimServer, tmp_path: Path
+):
     """
     Test over-saturation detection with dictionary configuration instead of boolean.
     """
-    report_path = Path("tests/e2e/over_saturated_benchmarks_dict.json")
+    report_name = "over_saturated_benchmarks_dict.json"
+    report_path = tmp_path / report_name
     rate = 10
 
     # Create and configure the guidellm client
-    client = GuidellmClient(target=server.get_url(), output_path=report_path)
+    client = GuidellmClient(
+        target=server.get_url(),
+        output_dir=tmp_path,
+        outputs=report_name,
+    )
 
     cleanup_report_file(report_path)
     # Start the benchmark with dictionary configuration for over-saturation

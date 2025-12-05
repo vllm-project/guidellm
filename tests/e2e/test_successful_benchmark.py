@@ -37,16 +37,21 @@ def server():
 
 @pytest.mark.timeout(30)
 @pytest.mark.sanity
-def test_max_seconds_benchmark(server: VllmSimServer):
+def test_max_seconds_benchmark(server: VllmSimServer, tmp_path: Path):
     """
     Test that the max seconds constraint is properly triggered.
     """
-    report_path = Path("tests/e2e/max_duration_benchmarks.json")
+    report_name = "max_duration_benchmarks.json"
+    report_path = tmp_path / report_name
     rate = 4
     duration = 5
     max_seconds = duration
     # Create and configure the guidellm client
-    client = GuidellmClient(target=server.get_url(), output_path=report_path)
+    client = GuidellmClient(
+        target=server.get_url(),
+        output_dir=tmp_path,
+        outputs=report_name,
+    )
 
     try:
         # Start the benchmark
@@ -80,17 +85,22 @@ def test_max_seconds_benchmark(server: VllmSimServer):
 
 @pytest.mark.timeout(30)
 @pytest.mark.sanity
-def test_max_requests_benchmark(server: VllmSimServer):
+def test_max_requests_benchmark(server: VllmSimServer, tmp_path: Path):
     """
     Test that the max requests constraint is properly triggered.
     """
-    report_path = Path("tests/e2e/max_number_benchmarks.json")
+    report_name = "max_number_benchmarks.json"
+    report_path = tmp_path / report_name
     rate = 4
     duration = 5
     max_requests = rate * duration
 
     # Create and configure the guidellm client
-    client = GuidellmClient(target=server.get_url(), output_path=report_path)
+    client = GuidellmClient(
+        target=server.get_url(),
+        output_dir=tmp_path,
+        outputs=report_name,
+    )
 
     try:
         # Start the benchmark

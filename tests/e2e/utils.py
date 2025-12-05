@@ -26,7 +26,9 @@ def get_guidellm_executable() -> str:
 class GuidellmClient:
     """Wrapper class for running guidellm benchmark commands."""
 
-    def __init__(self, target: str, output_path: Path):
+    def __init__(
+        self, target: str, output_dir: Path, outputs: str = "benchmarks.json"
+    ) -> None:
         """
         Initialize the guidellm client.
 
@@ -34,7 +36,8 @@ class GuidellmClient:
         :param output_path: Path where the benchmark report will be saved
         """
         self.target = target
-        self.output_path = output_path
+        self.output_dir = output_dir
+        self.outputs = outputs
         self.process: subprocess.Popen | None = None
         self.stdout: str | None = None
         self.stderr: str | None = None
@@ -72,7 +75,7 @@ class GuidellmClient:
         # Build command components
         cmd_parts = [
             *([f"{k}={v}" for k, v in extra_env.items()] if extra_env else []),
-            "HF_HOME=/tmp/huggingface_cache",
+            "HF_HOME=" + str(self.output_dir / "huggingface_cache"),
             f"{guidellm_exe} benchmark run",
             f'--target "{self.target}"',
             f"--profile {profile}",
@@ -108,7 +111,8 @@ class GuidellmClient:
             [
                 f'--data "{data}"',
                 f'--processor "{processor}"',
-                f"--output-path {self.output_path}",
+                f"--output-dir {self.output_dir}",
+                f"--outputs {self.outputs}",
             ]
         )
 
@@ -120,7 +124,7 @@ class GuidellmClient:
         logger.info(f"Client command: {command}")
 
         self.process = subprocess.Popen(  # noqa: S603
-            ["/bin/bash", "-c", command],
+            ["/bin/sh", "-c", command],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
