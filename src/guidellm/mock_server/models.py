@@ -26,6 +26,9 @@ __all__ = [
     "CompletionsResponse",
     "DetokenizeRequest",
     "DetokenizeResponse",
+    "EmbeddingObject",
+    "EmbeddingsRequest",
+    "EmbeddingsResponse",
     "ErrorDetail",
     "ErrorResponse",
     "StreamOptions",
@@ -484,6 +487,60 @@ class DetokenizeResponse(BaseModel):
     """
 
     text: str = Field(description="Reconstructed text from tokens")
+
+
+class EmbeddingsRequest(BaseModel):
+    """Request parameters for embeddings API endpoints.
+
+    Converts input text into vector embeddings for semantic search,
+    clustering, and other ML tasks. Supports single or batch text inputs.
+    """
+
+    model: str = Field(description="Model identifier to use for embeddings")
+    input: str | list[str] = Field(description="Input text(s) to embed")
+    encoding_format: Literal["float", "base64"] | None = Field(
+        default="float", description="Format for returned embeddings"
+    )
+    dimensions: int | None = Field(
+        default=None, description="Number of dimensions in output embeddings"
+    )
+    user: str | None = Field(
+        default=None, description="User identifier for tracking and abuse monitoring"
+    )
+
+
+class EmbeddingObject(BaseModel):
+    """A single embedding vector with metadata.
+
+    Represents one embedding result with the vector data,
+    index position, and object type identifier.
+    """
+
+    object: Literal["embedding"] = Field(
+        default="embedding", description="Object type identifier"
+    )
+    embedding: list[float] = Field(description="The embedding vector")
+    index: int = Field(description="Index of this embedding in the response")
+
+
+class EmbeddingsResponse(BaseModel):
+    """Response from embeddings API endpoints.
+
+    Contains embedding vectors for each input text along with
+    usage statistics and metadata.
+    """
+
+    id: str = Field(description="Unique identifier for this embeddings request")
+    object: Literal["list"] = Field(
+        default="list", description="Object type identifier"
+    )
+    created: int = Field(
+        default_factory=lambda: int(time.time()),
+        description="Unix timestamp of creation",
+    )
+    model: str = Field(description="Model used for embeddings")
+    data: list[EmbeddingObject] = Field(description="List of embedding objects")
+    usage: Usage = Field(description="Token usage statistics")
 
 
 class ErrorDetail(BaseModel):

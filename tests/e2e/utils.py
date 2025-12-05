@@ -47,6 +47,7 @@ class GuidellmClient:
         stop_over_saturated: bool | None = False,
         data: str = "prompt_tokens=256,output_tokens=128",
         processor: str = "gpt2",
+        request_type: str | None = None,
         additional_args: str = "",
         extra_env: dict[str, str] | None = None,
     ) -> None:
@@ -62,6 +63,7 @@ class GuidellmClient:
                                     over-saturated.
         :param data: Data configuration string
         :param processor: Processor/tokenizer to use
+        :param request_type: Type of request (e.g., "embeddings")
         :param additional_args: Additional command line arguments
         """
         guidellm_exe = get_guidellm_executable()
@@ -95,6 +97,9 @@ class GuidellmClient:
                 f"--output-path {self.output_path}",
             ]
         )
+
+        if request_type is not None:
+            cmd_parts.append(f"--request-type {request_type}")
 
         if additional_args:
             cmd_parts.append(additional_args)
