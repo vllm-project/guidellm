@@ -41,7 +41,7 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --profile throughput \
   --rate 10 \
-  --over-saturation True
+  --detect-saturation
 ```
 
 ### Advanced Configuration
@@ -54,18 +54,6 @@ guidellm benchmark \
   --profile concurrent \
   --rate 16 \
   --over-saturation '{"enabled": true, "min_seconds": 60, "max_window_seconds": 300, "moe_threshold": 1.5}'
-```
-
-### Using the Alias
-
-You can also use the `--detect-saturation` alias:
-
-```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile throughput \
-  --rate 10 \
-  --detect-saturation True
 ```
 
 ## Configuration Options
@@ -94,7 +82,7 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --profile sweep \
   --rate 5 \
-  --over-saturation True
+  --detect-saturation
 ```
 
 ### Cost-Effective Benchmarking
