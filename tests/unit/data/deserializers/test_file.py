@@ -169,7 +169,7 @@ def create_csv_file(path: Path):
     writer = csv.writer(output)
     writer.writerow(["text"])
     writer.writerow(["hello world"])
-    with Path.open("w") as f:
+    with path.open("w") as f:
         f.write(output.getvalue())
 
 
