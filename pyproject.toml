@@ -11,16 +11,13 @@ include = ["*"]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
 
-[tool.pdm]
-distribution = true
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
-[[tool.pdm.source]]
-name = "torch"
-type = "find_links"
-#url = "https://download.pytorch.org/whl/cpu/torch_stable.html"
-url = "https://download.pytorch.org/whl/cpu/torch/"
-include_packages = ["torch"]
-
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 # ************************************************
 # ********** Project Metadata **********
@@ -53,7 +50,7 @@ keywords = [
     "vllm",
 ]
 dependencies = [
-    "click>=8.0.0,<8.2.0",
+    "click~=8.3.0",
     "culsans~=0.10.0",
     "datasets",
     "eval_type_backport",
@@ -87,7 +84,7 @@ audio = [
     "datasets[audio]>=4.1.0",
     # Torchcodec needs specific torch version
     "torch==2.9.*",
-    "torchcodec==0.8",
+    "torchcodec==0.8.*",
 ]
 vision = [
     "datasets[vision]",

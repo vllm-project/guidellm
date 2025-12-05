@@ -11,6 +11,8 @@ shared configuration parameters and flexible file path resolution.
 from __future__ import annotations
 
 import json
+import platform
+from importlib.metadata import version
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -23,7 +25,34 @@ from guidellm.benchmark.schemas.generative.entrypoints import (
 )
 from guidellm.schemas import StandardBaseModel
 
-__all__ = ["GenerativeBenchmarksReport"]
+__all__ = ["GenerativeBenchmarkMetadata", "GenerativeBenchmarksReport"]
+
+
+class GenerativeBenchmarkMetadata(StandardBaseModel):
+    """
+    Versioning and environment metadata for generative benchmark reports.
+    """
+
+    # Make sure to update version when making breaking changes to report schema
+    version: Literal[1] = Field(
+        description=(
+            "Version of the benchmark report schema, increments "
+            "whenever there is a breaking change to the output format"
+        ),
+        default=1,
+    )
+    guidellm_version: str = Field(
+        description="Version of the guidellm package used for the benchmark",
+        default_factory=lambda: version("guidellm"),
+    )
+    python_version: str = Field(
+        description="Version of Python interpreter used during the benchmark",
+        default_factory=lambda: platform.python_version(),
+    )
+    platform: str = Field(
+        description="Operating system platform where the benchmark was executed",
+        default_factory=lambda: platform.platform(),
+    )
 
 
 class GenerativeBenchmarksReport(StandardBaseModel):
@@ -40,6 +69,10 @@ class GenerativeBenchmarksReport(StandardBaseModel):
 
     DEFAULT_FILE: ClassVar[str] = "benchmarks.json"
 
+    metadata: GenerativeBenchmarkMetadata = Field(
+        description="Metadata about the benchmark report and execution environment",
+        default_factory=GenerativeBenchmarkMetadata,
+    )
     args: BenchmarkGenerativeTextArgs = Field(
         description="Benchmark arguments used for all benchmarks in the report"
     )
