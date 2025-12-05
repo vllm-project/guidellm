@@ -49,11 +49,9 @@ def test_over_saturated_benchmark(server: VllmSimServer):
     client.start_benchmark(
         rate=rate,
         max_seconds=20,
-        over_saturation={},  # Empty dict triggers --default-over-saturation flag
+        over_saturation={"enabled": True, "min_seconds": 0},
         extra_env={
             "GOMAXPROCS": "1",
-            # Set min_seconds via env var for faster test
-            "GUIDELLM__CONSTRAINT_OVER_SATURATION_MIN_SECONDS": "0",
         },
     )
 
