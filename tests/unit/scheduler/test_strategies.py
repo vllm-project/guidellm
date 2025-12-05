@@ -335,9 +335,10 @@ class TestThroughputStrategy:
         self, valid_instances: tuple[ThroughputStrategy, dict]
     ):
         """Test __str__ method for ThroughputStrategy."""
-        instance, _ = valid_instances
+        instance, constructor_args = valid_instances
+        max_concurrency = constructor_args.get("max_concurrency")
         result = str(instance)
-        assert result == "throughput"
+        assert result == f"throughput@{max_concurrency or 'unlimited'}"
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances: tuple[ThroughputStrategy, dict]):

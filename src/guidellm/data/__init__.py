@@ -1,9 +1,11 @@
+from .builders import ShortPromptStrategy
 from .collators import GenerativeRequestCollator
 from .deserializers import (
     DataNotSupportedError,
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
+from .entrypoints import process_dataset
 from .loaders import DataLoader, DatasetsIterator
 from .preprocessors import (
     DataDependentPreprocessor,
@@ -27,4 +29,6 @@ __all__ = [
     "PreprocessorRegistry",
     "ProcessorFactory",
     "RequestFormatter",
+    "ShortPromptStrategy",
+    "process_dataset",
 ]

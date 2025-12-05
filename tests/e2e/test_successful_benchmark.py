@@ -36,6 +36,7 @@ def server():
 
 
 @pytest.mark.timeout(30)
+@pytest.mark.sanity
 def test_max_seconds_benchmark(server: VllmSimServer):
     """
     Test that the max seconds constraint is properly triggered.
@@ -78,6 +79,7 @@ def test_max_seconds_benchmark(server: VllmSimServer):
 
 
 @pytest.mark.timeout(30)
+@pytest.mark.sanity
 def test_max_requests_benchmark(server: VllmSimServer):
     """
     Test that the max requests constraint is properly triggered.

@@ -6,18 +6,14 @@ from typing import Any, Protocol, Union, runtime_checkable
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase
 
+from guidellm.data.schemas import DataNotSupportedError
 from guidellm.data.utils import resolve_dataset_split
 from guidellm.utils import RegistryMixin
 
 __all__ = [
-    "DataNotSupportedError",
     "DatasetDeserializer",
     "DatasetDeserializerFactory",
 ]
-
-
-class DataNotSupportedError(Exception):
-    """Exception raised when data format is not supported by deserializer."""
 
 
 @runtime_checkable
