@@ -60,4 +60,12 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: SLO Guide](service_level_objectives.md)
 
+- :material-stop-circle-outline:{ .lg .middle } Over-Saturation Stopping
+
+  ______________________________________________________________________
+
+  Automatically detect and stop benchmarks when models become over-saturated to prevent wasted compute resources and ensure valid results.
+
+  [:octicons-arrow-right-24: Over-Saturation Guide](over_saturation_stopping.md)
+
 </div>

@@ -6,10 +6,10 @@ The E2E tests in GuideLLM use the [vLLM simulator by llm-d](https://llm-d.ai/doc
 docker build . -f tests/e2e/vllm-sim.Dockerfile -o type=local,dest=./
 ```
 
-On MacOS run:
+For MacOS native:
 
 ```shell
-docker build . -f tests/e2e/vllm-sim.Dockerfile -o type=local,dest=./ --build-arg BUILDOS=darwin
+docker build . -f tests/e2e/vllm-sim-macos.Dockerfile -o type=local,dest=./
 ```
 
 Then to run the tests:
