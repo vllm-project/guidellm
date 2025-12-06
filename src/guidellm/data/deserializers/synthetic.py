@@ -75,6 +75,11 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
 
+            # NOTE: The unique prefix (iteration_count and samples_count) ensures
+            # each request is unique, which is important for caching behavior testing.
+            # This prefix adds 2-5 tokens overhead. When benchmarking models with
+            # strict context limits (e.g., 512 tokens), use prompt_tokens=500 or
+            # similar to leave headroom for this prefix.
             yield (
                 samples_count,
                 {

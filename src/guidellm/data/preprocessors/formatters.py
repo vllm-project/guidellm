@@ -9,6 +9,7 @@ from guidellm.data.preprocessors.preprocessor import (
 from guidellm.schemas import GenerationRequest, GenerationRequestArguments, UsageMetrics
 
 __all__ = [
+    "EmbeddingsRequestFormatter",
     "GenerativeAudioTranscriptionRequestFormatter",
     "GenerativeAudioTranslationRequestFormatter",
     "GenerativeChatCompletionsRequestFormatter",
@@ -402,3 +403,88 @@ class GenerativeAudioTranslationRequestFormatter(
         result = super().__call__(columns)
         result.request_type = "audio_translations"
         return result
+
+
+@PreprocessorRegistry.register("embeddings")
+class EmbeddingsRequestFormatter(RequestFormatter):
+    """
+    Request formatter for embeddings API endpoints.
+
+    Formats requests for embedding models that convert text into vector representations.
+    Unlike generative models, embeddings only process input text and return vectors,
+    so there are no output tokens or streaming.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        extras: dict[str, Any] | GenerationRequestArguments | None = None,
+        encoding_format: str | None = None,
+        dimensions: int | None = None,
+    ):
+        """
+        Initialize the embeddings request formatter.
+
+        :param model: The model name to use for embeddings
+        :param extras: Additional request arguments
+        :param encoding_format: Format for the embedding vectors
+            (e.g., 'float', 'base64')
+        :param dimensions: Number of dimensions for the embedding vectors
+        """
+        self.model = model
+        self.extras = (
+            GenerationRequestArguments(**extras)
+            if extras and isinstance(extras, dict)
+            else extras
+        )
+        self.encoding_format = encoding_format
+        self.dimensions = dimensions
+
+    def __call__(self, columns: dict[str, list[Any]]) -> GenerationRequest:
+        """
+        Format a request for the embeddings endpoint.
+
+        :param columns: A dict of column types to values
+        :return: A GenerationRequest configured for embeddings
+        """
+        arguments = GenerationRequestArguments()
+        arguments.body = {}
+        input_metrics = UsageMetrics()
+        output_metrics = UsageMetrics()
+
+        if self.model is not None:
+            arguments.body["model"] = self.model
+
+        # Embeddings don't support streaming
+        arguments.stream = False
+
+        if self.encoding_format is not None:
+            arguments.body["encoding_format"] = self.encoding_format
+
+        if self.dimensions is not None:
+            arguments.body["dimensions"] = self.dimensions
+
+        if prompt_tokens := sum(
+            count for count in columns.get("prompt_tokens_count_column", []) if count
+        ):
+            input_metrics.text_tokens = prompt_tokens
+
+        if self.extras:
+            arguments.model_combine(self.extras)
+
+        prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
+        text = "".join(txt for txt in columns.get("text_column", []) if txt)
+        if prefix or text:
+            input_text = prefix + text
+            arguments.body["input"] = input_text
+            input_metrics.add_text_metrics(input_text)
+
+        # Embeddings don't have output tokens, only input processing
+        # The output is a vector, not text
+
+        return GenerationRequest(
+            request_type="embeddings",
+            arguments=arguments,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )

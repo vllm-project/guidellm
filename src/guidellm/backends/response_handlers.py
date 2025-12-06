@@ -17,6 +17,7 @@ from guidellm.utils import RegistryMixin, json
 __all__ = [
     "AudioResponseHandler",
     "ChatCompletionsResponseHandler",
+    "EmbeddingsResponseHandler",
     "GenerationResponseHandler",
     "GenerationResponseHandlerFactory",
     "TextCompletionsResponseHandler",
@@ -524,4 +525,153 @@ class AudioResponseHandler:
             ),
             text_words=len(text.split()) if text else 0,
             text_characters=len(text) if text else 0,
+        )
+
+
+@GenerationResponseHandlerFactory.register("embeddings")
+class EmbeddingsResponseHandler:
+    """
+    Response handler for embeddings API endpoints.
+
+    Processes responses from embeddings APIs that convert text into vector
+    representations. Unlike other handlers, embeddings typically don't support
+    streaming, so this handler primarily focuses on non-streaming responses
+    and extracts embedding vectors along with token usage metrics.
+
+    Example:
+    ::
+        handler = EmbeddingsResponseHandler()
+        response = handler.compile_non_streaming(request, api_response)
+    """
+
+    def __init__(self):
+        """
+        Initialize the embeddings response handler.
+
+        Sets up internal state for storing embeddings data and usage metrics.
+        While embeddings don't typically stream, we maintain streaming state
+        for protocol compatibility.
+        """
+        self.streaming_embeddings: list[list[float]] = []
+        self.streaming_usage: dict[str, int | dict[str, int]] | None = None
+        self.streaming_response_id: str | None = None
+
+    def compile_non_streaming(
+        self, request: GenerationRequest, response: dict
+    ) -> GenerationResponse:
+        """
+        Process a complete embeddings response.
+
+        Extracts embedding vectors and usage metrics from the response.
+        Converts the embedding vectors to a string representation for storage
+        in the GenerationResponse.
+
+        :param request: Original generation request
+        :param response: Complete API response containing embeddings and usage data
+        :return: Standardized GenerationResponse with embeddings as text and metrics
+        """
+        usage: dict[str, int | dict[str, int]] = response.get("usage", {})
+
+        embeddings_data = response.get("data", [])
+        embeddings = [item.get("embedding", []) for item in embeddings_data]
+
+        text_data = json.dumps({"embeddings": embeddings})
+        text = text_data.decode() if isinstance(text_data, bytes) else text_data
+
+        input_metrics, output_metrics = self.extract_metrics(usage)
+
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=str(
+                request.arguments.model_dump() if request.arguments else None
+            ),
+            response_id=response.get("id"),
+            text=text,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )
+
+    def add_streaming_line(self, line: str) -> int | None:
+        """
+        Process a single line from an embeddings streaming response.
+
+        Note: Embeddings APIs typically don't support streaming, but this method
+        is implemented for protocol compatibility. It will handle hypothetical
+        streaming scenarios if they exist.
+
+        :param line: Raw line from the streaming response
+        :return: 1 if embeddings were extracted, 0 if line ignored, None if done
+        """
+        if line == "data: [DONE]":
+            return None
+
+        if not line or not (line := line.strip()) or not line.startswith("data:"):
+            return 0
+
+        line = line[len("data:") :].strip()
+        data: dict[str, Any] = json.loads(line)
+        updated = False
+
+        if "id" in data and self.streaming_response_id is None:
+            self.streaming_response_id = data["id"]
+
+        if embeddings_data := data.get("data"):
+            for item in embeddings_data:
+                if embedding := item.get("embedding"):
+                    self.streaming_embeddings.append(embedding)
+                    updated = True
+
+        if usage := data.get("usage"):
+            self.streaming_usage = usage
+
+        return 1 if updated else 0
+
+    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+        """
+        Compile accumulated streaming embeddings into a final response.
+
+        Note: Embeddings APIs typically don't support streaming, but this method
+        is implemented for protocol compatibility.
+
+        :param request: Original generation request
+        :return: Standardized GenerationResponse with embeddings and metrics
+        """
+        text_data = json.dumps({"embeddings": self.streaming_embeddings})
+        text = text_data.decode() if isinstance(text_data, bytes) else text_data
+        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
+
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=str(
+                request.arguments.model_dump() if request.arguments else None
+            ),
+            response_id=self.streaming_response_id,
+            text=text,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )
+
+    def extract_metrics(
+        self, usage: dict[str, int | dict[str, int]] | None
+    ) -> tuple[UsageMetrics, UsageMetrics]:
+        """
+        Extract input and output usage metrics from embeddings API response.
+
+        For embeddings, we primarily track input tokens (the text being embedded).
+        There are no output tokens generated since embeddings produce vectors,
+        not text.
+
+        :param usage: Usage data dictionary from embeddings API response
+        :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
+        """
+        if not usage:
+            return UsageMetrics(), UsageMetrics(text_tokens=0)
+
+        usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
+
+        return UsageMetrics(
+            text_tokens=usage_metrics.get("prompt_tokens", 0),
+        ), UsageMetrics(
+            # Embeddings don't generate text tokens, only consume them
+            text_tokens=0,
         )

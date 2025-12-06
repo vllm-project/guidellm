@@ -1,4 +1,5 @@
 from .formatters import (
+    EmbeddingsRequestFormatter,
     GenerativeAudioTranscriptionRequestFormatter,
     GenerativeAudioTranslationRequestFormatter,
     GenerativeChatCompletionsRequestFormatter,
@@ -17,6 +18,7 @@ __all__ = [
     "ColumnMapperRegistry",
     "DataDependentPreprocessor",
     "DatasetPreprocessor",
+    "EmbeddingsRequestFormatter",
     "GenerativeAudioTranscriptionRequestFormatter",
     "GenerativeAudioTranslationRequestFormatter",
     "GenerativeChatCompletionsRequestFormatter",
