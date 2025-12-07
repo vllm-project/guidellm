@@ -69,7 +69,7 @@ def test_no_duplicates():
 
     filtered = _filter_duplicate_percentiles(percentiles)
 
-    # Should keep largest of each duplicate group (p01 instead of p001, p999 instead of p95)
+    # Should keep largest of each duplicate group (e.g. p999 instead of p95)
     assert filtered == {
         "p01": 13.181080445834912,
         "p05": 13.530595573836457,
