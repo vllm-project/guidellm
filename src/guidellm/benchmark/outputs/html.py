@@ -246,27 +246,31 @@ def _filter_duplicate_percentiles(percentiles: dict[str, float]) -> dict[str, fl
 
     When distributions have very few data points, multiple percentiles can have
     the same value, which causes visualization libraries to fail. This function
-    keeps only the first occurrence of consecutive duplicate values.
+    keeps only the largest percentile for consecutive duplicate values, which is
+    more mathematically accurate as higher percentiles have greater statistical
+    significance.
 
     :param percentiles: Dictionary of percentile names to values
     :return: Filtered percentiles dictionary with no consecutive duplicates
     """
     if not percentiles:
         return percentiles
-    
+
     percentile_order = list(Percentiles.model_fields.keys())
 
+    # Iterate in reverse to keep the largest percentile for each value
     filtered = {}
     previous_value = None
 
-    for key in percentile_order:
+    for key in reversed(percentile_order):
         if key in percentiles:
             current_value = percentiles[key]
             if previous_value is None or current_value != previous_value:
                 filtered[key] = current_value
                 previous_value = current_value
 
-    return filtered
+    # Restore original order
+    return {key: filtered[key] for key in percentile_order if key in filtered}
 
 
 def _inject_data(js_data: dict[str, str], html: str) -> str:

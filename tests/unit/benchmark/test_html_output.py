@@ -21,8 +21,8 @@ def test_filter_all_same_values():
 
     filtered = _filter_duplicate_percentiles(percentiles)
 
-    # Should only keep the first one
-    assert filtered == {"p001": 15.288091352804853}
+    # Should only keep the largest (p999) for mathematical accuracy
+    assert filtered == {"p999": 15.288091352804853}
 
 
 def test_filter_consecutive_duplicates():
@@ -43,11 +43,11 @@ def test_filter_consecutive_duplicates():
 
     filtered = _filter_duplicate_percentiles(percentiles)
 
-    # Should keep first of each group
+    # Should keep largest of each group for mathematical accuracy
     assert filtered == {
-        "p001": 15.288091352804853,
-        "p50": 16.41327511776994,
-        "p90": 17.03541629998259,
+        "p25": 15.288091352804853,
+        "p75": 16.41327511776994,
+        "p999": 17.03541629998259,
     }
 
 
@@ -69,15 +69,16 @@ def test_no_duplicates():
 
     filtered = _filter_duplicate_percentiles(percentiles)
 
+    # Should keep largest of each duplicate group (p01 instead of p001, p999 instead of p95)
     assert filtered == {
-        "p001": 13.181080445834912,
+        "p01": 13.181080445834912,
         "p05": 13.530595573836457,
         "p10": 13.843972502554365,
         "p25": 14.086376978251748,
         "p50": 14.403258051191058,
         "p75": 14.738608817056042,
         "p90": 15.18136631856698,
-        "p95": 15.7213110894772,
+        "p999": 15.7213110894772,
     }
 
 
@@ -150,11 +151,11 @@ def test_model_dump_filters_duplicates():
 
     data = dist.model_dump()
 
-    # Check that percentiles were filtered
+    # Check that percentiles were filtered, keeping largest of each group
     assert data["percentiles"] == {
-        "p001": 15.288091352804853,
-        "p50": 16.41327511776994,
-        "p90": 17.03541629998259,
+        "p25": 15.288091352804853,
+        "p75": 16.41327511776994,
+        "p999": 17.03541629998259,
     }
 
     # Ensure other fields remain unchanged
