@@ -10,6 +10,11 @@ FROM $BASE_IMAGE as builder
 # dev: increment to next minor, add 'dev' with build iteration
 ARG GUIDELLM_BUILD_TYPE=dev
 
+# Extra dependencies to install
+# all: install all extras
+# recommended: install recommended extras
+ARG GUIDELLM_BUILD_EXTRAS=all
+
 # Switch to root for installing packages
 USER root
 
@@ -31,7 +36,7 @@ ENV VIRTUAL_ENV=/opt/app-root \
 COPY / /src
 
 # Install guidellm and locked dependencies
-RUN uv sync --active --project /src --frozen --no-dev --extra all --no-editable
+RUN uv sync --active --project /src --frozen --no-dev --extra $GUIDELLM_BUILD_EXTRAS --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
