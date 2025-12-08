@@ -404,6 +404,13 @@ def benchmark():
     flag_value='{"enabled": true}',
     help="Enable over-saturation detection with default settings.",
 )
+@click.option(
+    "--per-constraints",
+    callback=cli_tools.parse_json,
+    default=None,
+    help="Per-strategy constraints for sweep mode. Format: {'constraint_name': [value1, value2, ...]}",
+)
+
 def run(**kwargs):  # noqa: C901
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
