@@ -27,20 +27,30 @@ RUN /usr/bin/python3 -m venv /tmp/uv \
 RUN --mount=type=cache,sharing=locked,target=/var/cache/dnf \
     dnf install -y git
 
-# Set the default venv for uv
-# Copy instead of link files with uv
 # Set correct build type for versioning
-ENV VIRTUAL_ENV=/opt/app-root \
+# Configure uv for building guidellm
+ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE \
+    VIRTUAL_ENV=/opt/app-root \
+    UV_PROJECT="/src" \
     UV_LINK_MODE="copy" \
-    GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
+    UV_NO_DEV="1" \
+    UV_NO_EDITABLE="1" \
+    UV_FROZEN="1" \
+    UV_CACHE_DIR="/tmp/uv_cache"
+
+# Sync initial environment
+RUN --mount=type=cache,target=$UV_CACHE_DIR \
+    --mount=type=bind,source=uv.lock,target=$UV_PROJECT/uv.lock,relabel=shared \
+    --mount=type=bind,source=pyproject.toml,target=$UV_PROJECT/pyproject.toml,relabel=shared \
+    uv sync --active --no-install-project --extra $GUIDELLM_BUILD_EXTRAS
 
 # Copy repository files
 # Do this as late as possible to leverage layer caching
-COPY / /src
+COPY / $UV_PROJECT
 
-# Install guidellm and locked dependencies
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --active --project /src --frozen --no-dev --extra $GUIDELLM_BUILD_EXTRAS --no-editable
+# Install guidellm
+RUN --mount=type=cache,target=$UV_CACHE_DIR \
+    uv sync --active --extra $GUIDELLM_BUILD_EXTRAS
 
 # Prod image
 FROM $BASE_IMAGE
