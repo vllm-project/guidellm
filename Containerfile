@@ -18,11 +18,14 @@ ARG GUIDELLM_BUILD_EXTRAS=all
 # Switch to root for installing packages
 USER root
 
-# Install build tooling
-RUN dnf install -y git \
-    && /usr/bin/python3 -m venv /tmp/uv \
+# Install uv in a temporary venv
+RUN /usr/bin/python3 -m venv /tmp/uv \
     && /tmp/uv/bin/pip install --no-cache-dir -U uv \
     && ln -s /tmp/uv/bin/uv /usr/local/bin/uv
+
+# Install build dependencies
+RUN --mount=type=cache,sharing=locked,target=/var/cache/dnf \
+    dnf install -y git
 
 # Set the default venv for uv
 # Copy instead of link files with uv
@@ -36,7 +39,8 @@ ENV VIRTUAL_ENV=/opt/app-root \
 COPY / /src
 
 # Install guidellm and locked dependencies
-RUN uv sync --active --project /src --frozen --no-dev --extra $GUIDELLM_BUILD_EXTRAS --no-editable
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --active --project /src --frozen --no-dev --extra $GUIDELLM_BUILD_EXTRAS --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
@@ -45,9 +49,9 @@ FROM $BASE_IMAGE
 USER root
 
 # Install some helpful utilities and deps
-RUN dnf install -y --setopt=install_weak_deps=False \
-        vi tar rsync ffmpeg-free \
-    && dnf clean all
+RUN --mount=type=cache,sharing=locked,target=/var/cache/dnf \
+    dnf install -y --setopt=install_weak_deps=False \
+        vi tar rsync ffmpeg-free
 
 # Switch back to unpriv user
 # Root group for k8s
