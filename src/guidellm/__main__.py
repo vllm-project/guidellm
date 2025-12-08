@@ -384,7 +384,27 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("max_global_error_rate"),
     help="Maximum global error rate across all benchmarks.",
 )
-def run(**kwargs):
+@click.option(
+    "--over-saturation",
+    "over_saturation",
+    callback=cli_tools.parse_json,
+    default=None,
+    help=(
+        "Enable over-saturation detection. "
+        "Pass a JSON dict with configuration "
+        '(e.g., \'{"enabled": true, "min_seconds": 30}\'). '
+        "Defaults to None (disabled)."
+    ),
+)
+@click.option(
+    "--detect-saturation",
+    "--default-over-saturation",
+    "over_saturation",
+    callback=cli_tools.parse_json,
+    flag_value='{"enabled": true}',
+    help="Enable over-saturation detection with default settings.",
+)
+def run(**kwargs):  # noqa: C901
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
 
