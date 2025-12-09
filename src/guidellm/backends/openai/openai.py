@@ -18,7 +18,7 @@ from typing import Any
 import httpx
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
+from guidellm.backends.openai.response_handlers import GenerationResponseHandlerFactory
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
