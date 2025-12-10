@@ -208,14 +208,14 @@ def _get_strategy_display_str(strategy: SchedulingStrategy | str):
         return str(strategy)
 
     strategy_type = strategy
-    
+
     if strategy_type == "concurrent":
         return "concurrent@##"
     elif strategy_type in ("constant", "poisson"):
         return f"{strategy_type}@#.##"
     elif strategy_type == "throughput":
-        return "throughput@##" 
-        
+        return "throughput@##"
+
     return strategy_type
 
 
