@@ -283,14 +283,15 @@ def _build_run_info(
     """
     model = args.model or "N/A"
     timestamp = max(bm.start_time for bm in benchmarks if bm.start_time is not None)
+    model_size = 0
     try:
         response = httpx.get(f"https://huggingface.co/api/models/{model}")
-        model_json = response.json()
-    except Exception as e:
-        raise f"Could not read model size: {e}"
+        model_size = response.json().get("usedStorage", 0)
+    except Exception:
+        logger.warning(f"Could not find huggingface model with model size")
     
     return {
-        "model": {"name": model, "size": model_json.get("usedStorage", 0)},
+        "model": {"name": model, "size": model_size},
         "task": "N/A",
         "timestamp": timestamp,
         "dataset": {"name": "N/A"},
