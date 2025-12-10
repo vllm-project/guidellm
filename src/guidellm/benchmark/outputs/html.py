@@ -202,7 +202,7 @@ class _TabularDistributionSummary(DistributionSummary):
         :return: Tabular distribution summary with formatted percentile rows
         """
         return cls(**distribution.model_dump())
-    
+
 def _get_strategy_display_str(strategy: SchedulingStrategy | str):
     if isinstance(strategy, SchedulingStrategy):
         return str(strategy)
