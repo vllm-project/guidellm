@@ -32,14 +32,6 @@ export const Component = () => {
             variant="body1"
           />
         </HeaderCell>
-        <HeaderCell item xs={5} withDivider>
-          <SpecBadge
-            label="Dataset"
-            value={data?.dataset?.name || 'N/A'}
-            variant="caption"
-            withTooltip
-          />
-        </HeaderCell>
         <HeaderCell item xs={2} sx={{ paddingRight: 0 }}>
           <SpecBadge
             label="Time Stamp"
