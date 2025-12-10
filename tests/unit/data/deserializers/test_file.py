@@ -284,7 +284,7 @@ def test_hdf5_file_deserializer_success(tmp_path):
 ###################
 
 
-@pytest.mark.skip(reason="issue: #492")
+@pytest.mark.sanity
 def test_db_file_deserializer_success(monkeypatch, tmp_path):
     import sqlite3
 
@@ -317,6 +317,7 @@ def test_db_file_deserializer_success(monkeypatch, tmp_path):
         data=db_path,
         processor_factory=processor_factory(),
         random_seed=1,
+        sql="SELECT * FROM samples",
     )
 
     # Assert: result is of type Dataset
