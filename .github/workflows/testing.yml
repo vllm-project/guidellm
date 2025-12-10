@@ -74,4 +74,5 @@ jobs:
         with:
           python-version: ${{ inputs.python }}
           tox-env: test-e2e
-          tox-args: ${{ inputs.args }}
+          # Rerun e2e tests due to flakyness in CI
+          tox-args: --reruns=3 ${{ inputs.args }}
