@@ -11,7 +11,6 @@ JavaScript objects within an HTML template for client-side rendering and visuali
 
 from __future__ import annotations
 
-import httpx
 import json
 import random
 import re
@@ -21,6 +20,7 @@ from math import ceil
 from pathlib import Path
 from typing import Any, ClassVar
 
+import httpx
 from loguru import logger
 from pydantic import BaseModel, Field, computed_field
 
