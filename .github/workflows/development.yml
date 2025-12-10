@@ -5,183 +5,30 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  quality-checks:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: pip install tox
-      - name: Run quality checks
-        run: tox -e quality
-
-  ui-quality-checks:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run quality and typing checks
-        run: npm run lint
-
-  type-checks:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: pip install tox
-      - name: Run quality checks
-        run: tox -e types
-
-  ui-type-checks:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run quality and typing checks
-        run: npm run type-check
-
-  precommit-checks:
-    runs-on: ubuntu-latest
+  tests:
     strategy:
       matrix:
         python: ["3.10"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: pip install pre-commit
-      - name: Run pre-commit checks
-        run: SKIP=ruff-format pre-commit run --all-files
+    uses: ./.github/workflows/testing.yml
+    with:
+      python: ${{ matrix.python }}
 
-  ui-precommit-checks:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
+  ui-tests:
+    uses: ./.github/workflows/ui-testing.yml
 
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run pre-commit checks
-        run: npx husky run pre-commit
-
-  unit-tests:
-    runs-on: ubuntu-latest
+  quality:
     strategy:
       matrix:
-        python: ["3.10", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: pip install tox
-      - name: Run unit tests
-        run: tox -e test-unit
+        python: ["3.10"]
+    uses: ./.github/workflows/quality.yml
+    with:
+      python: ${{ matrix.python }}
 
-  ui-unit-tests:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run unit tests
-        run: npm run test:unit
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: pip install tox
-      - name: Run integration tests
-        run: tox -e test-integration -- -m smoke
-
-  ui-integration-tests:
-    permissions:
-      contents: "read"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run integration tests
-        run: npm run test:integration
+  ui-quality:
+    uses: ./.github/workflows/ui-quality.yml
 
   ui-pr-preview:
-    needs: [ui-quality-checks, ui-precommit-checks, ui-unit-tests, ui-integration-tests]
+    needs: [ui-quality, ui-tests]
     permissions:
       contents: write
       pull-requests: write

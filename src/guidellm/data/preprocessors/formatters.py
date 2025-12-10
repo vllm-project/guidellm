@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABCMeta
 from typing import Any
 
 from guidellm.data.preprocessors.preprocessor import (
@@ -14,10 +13,14 @@ __all__ = [
     "GenerativeAudioTranslationRequestFormatter",
     "GenerativeChatCompletionsRequestFormatter",
     "GenerativeTextCompletionsRequestFormatter",
+    "RequestFormatter",
 ]
 
 
-class RequestFormatter(DatasetPreprocessor, metaclass=ABCMeta):
+class RequestFormatter(DatasetPreprocessor):
+    def __init__(self, model: str, **_kwargs):
+        self.model = model
+
     @staticmethod
     def encode_audio(*args, **kwargs):
         from guidellm.extras.audio import encode_audio
@@ -47,7 +50,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
     ):
-        self.model: str | None = model
+        self.model: str = model
         self.extras = (
             GenerationRequestArguments(**extras)
             if extras and isinstance(extras, dict)
@@ -56,9 +59,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         self.stream: bool = stream
         self.max_tokens: int | None = max_tokens or max_completion_tokens
 
-    def __call__(
-        self, columns: dict[str, list[Any]]
-    ) -> GenerationRequest:
+    def __call__(self, columns: dict[str, list[Any]]) -> GenerationRequest:
         """
         :param columns: A dict of GenerativeDatasetColumnType to Any
         """
@@ -75,6 +76,7 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
@@ -160,9 +162,8 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
         # Configure streaming
         if self.stream:
             arguments.stream = True
-            arguments.body.update(
-                {"stream": True, "stream_options": {"include_usage": True}}
-            )
+            arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
@@ -336,6 +337,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
+            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
@@ -396,9 +398,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
 class GenerativeAudioTranslationRequestFormatter(
     GenerativeAudioTranscriptionRequestFormatter
 ):
-    def __call__(
-        self, columns: dict[str, list[Any]]
-    ) -> GenerationRequest:
+    def __call__(self, columns: dict[str, list[Any]]) -> GenerationRequest:
         result = super().__call__(columns)
         result.request_type = "audio_translations"
         return result

@@ -83,7 +83,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
-        startup_duration: float,
         **constraints: Constraint,
     ):
         """
@@ -92,13 +91,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :param requests: Finite iterable of requests to process sequentially
         :param backend: Backend interface for processing requests
         :param strategy: Scheduling strategy for request timing and distribution
-        :param startup_duration: Duration in seconds for request startup ramping
         :param constraints: Named constraints for controlling execution behavior
         """
-        self.requests = requests
+        self.requests = iter(requests)
         self.backend = backend
         self.strategy = strategy
-        self.startup_duration = startup_duration
         self.constraints = constraints
 
         # Multiprocessing contexts and primitives, created in create_processes
@@ -216,9 +213,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         # Initialize worker processes
         self.processes = []
         self.strategy.init_processes_timings(
-            worker_count=num_processes,
-            max_concurrency=max_conc,
-            startup_duration=self.startup_duration,
+            worker_count=num_processes, max_concurrency=max_conc
         )
         for rank in range(num_processes):
             # Distribute any remainder across the first N ranks
@@ -228,7 +223,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
             worker = WorkerProcess[RequestT, ResponseT](
                 worker_index=rank,
-                messaging=self.messaging.create_worker_copy(
+                messaging=self.messaging.create_worker_copy(  # type: ignore[arg-type]
                     worker_index=rank,
                     max_buffer_send_size=None,
                     max_buffer_receive_size=per_proc_max_buffer_size,
@@ -500,7 +495,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         try:
             count = 0
-            for request in iter(requests):
+            for request in requests:
                 count += 1
 
                 if hasattr(request, "request_id"):
@@ -632,6 +627,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         )
 
     def _update_state_request_counts(self, info: RequestInfo):
+        finalized = time.time()
+
         if info.status == "queued":
             self._queued_request_ids.add(info.request_id)
             self._state.queued_requests = len(self._queued_request_ids)
@@ -647,11 +644,13 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._processing_request_ids.add(info.request_id)
             self._state.processing_requests = len(self._processing_request_ids)
         elif info.status == "completed":
+            info.timings.finalized = finalized
             self._processing_request_ids.remove(info.request_id)
             self._state.processing_requests = len(self._processing_request_ids)
             self._state.processed_requests += 1
             self._state.successful_requests += 1
         elif info.status in ("errored", "cancelled"):
+            info.timings.finalized = finalized
             if info.request_id in self._queued_request_ids:
                 self._queued_request_ids.remove(info.request_id)
                 self._state.queued_requests = len(self._queued_request_ids)
@@ -689,16 +688,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             ):
                 stop_processing_actions[key] = action
 
-            for progress_key in (
-                "remaining_fraction",
-                "remaining_requests",
-                "remaining_duration",
-            ):
-                if (new_val := action.progress.get(progress_key)) is not None and (
-                    getattr(self._state, progress_key) is None
-                    or new_val < getattr(self._state, progress_key)
-                ):
-                    setattr(self._state, progress_key, new_val)
+            self._state.progress.combine(action.progress)
 
         if stop_queuing_actions:
             self._state.end_queuing_constraints = stop_queuing_actions
@@ -707,3 +697,5 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         if stop_processing_actions:
             self._state.end_processing_constraints = stop_processing_actions
             self._state.end_processing_time = time.time()
+            if self._state.progress.stop_time is None:
+                self._state.progress.stop_time = self._state.end_processing_time

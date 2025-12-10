@@ -16,12 +16,11 @@ from guidellm.scheduler import (
     MultiTurnRequestT,
     RequestT,
     ResponseT,
+    SchedulerProgress,
     SchedulerState,
     SchedulerUpdateAction,
-    SchedulerUpdateActionProgress,
 )
-from guidellm.schemas import RequestInfo, RequestTimings
-from guidellm.utils import StandardBaseModel
+from guidellm.schemas import RequestInfo, RequestTimings, StandardBaseModel
 
 
 def test_request_t():
@@ -660,9 +659,7 @@ class TestSchedulerState:
         "end_processing_time",
         "end_processing_constraints",
         "scheduler_constraints",
-        "remaining_fraction",
-        "remaining_requests",
-        "remaining_duration",
+        "progress",
         "created_requests",
         "queued_requests",
         "pending_requests",
@@ -702,9 +699,6 @@ class TestSchedulerState:
                 "scheduler_constraints": {
                     "rate_limit": SchedulerUpdateAction(metadata={"max_rps": 100})
                 },
-                "remaining_fraction": 0.25,
-                "remaining_requests": 50,
-                "remaining_duration": 300.0,
                 "created_requests": 200,
                 "queued_requests": 180,
                 "pending_requests": 20,
@@ -802,7 +796,6 @@ class TestSchedulerState:
             ("node_id", "not_an_int"),
             ("start_time", "not_a_float"),
             ("end_time", [1, 2, 3]),
-            ("remaining_fraction", "not_a_float"),
             ("created_requests", "not_an_int"),
             ("end_queuing_constraints", "not_a_dict"),
             ("scheduler_constraints", ["not", "a", "dict"]),
@@ -860,7 +853,6 @@ class TestSchedulerUpdateAction:
                 "request_queuing": "continue",
                 "request_processing": "continue",
                 "metadata": {},
-                "progress": {},
             },
             # Stop queuing configuration
             {
@@ -894,12 +886,6 @@ class TestSchedulerUpdateAction:
                     "config": {"batch_size": 32, "timeout": 30.0},
                 },
             },
-            # Progress with remaining_fraction only
-            {
-                "request_queuing": "continue",
-                "request_processing": "continue",
-                "progress": {"remaining_fraction": 0.75},
-            },
             # Progress with remaining_requests only
             {
                 "request_queuing": "continue",
@@ -918,7 +904,6 @@ class TestSchedulerUpdateAction:
                 "request_processing": "stop_all",
                 "metadata": {"shutdown_reason": "completion"},
                 "progress": {
-                    "remaining_fraction": 0.0,
                     "remaining_requests": 0.0,
                     "remaining_duration": 0.0,
                 },
@@ -929,7 +914,6 @@ class TestSchedulerUpdateAction:
                 "request_processing": "continue",
                 "metadata": {"checkpoint": "mid_benchmark"},
                 "progress": {
-                    "remaining_fraction": 0.45,
                     "remaining_duration": 180.0,
                 },
             },
@@ -941,7 +925,6 @@ class TestSchedulerUpdateAction:
             "stop_local_processing",
             "stop_all_processing",
             "complex_metadata",
-            "progress_fraction_only",
             "progress_requests_only",
             "progress_duration_only",
             "complete_progress",
@@ -988,13 +971,26 @@ class TestSchedulerUpdateAction:
             assert hasattr(instance, key)
 
         # Validate that the instance attributes match the constructor args or defaults
+
         for field in self.CHECK_KEYS:
             if field in constructor_args:
-                assert getattr(instance, field) == constructor_args[field]
+                expected = constructor_args[field]
+                actual = getattr(instance, field)
+                if field == "progress" and isinstance(expected, dict):
+                    # Progress was passed as dict, check conversion
+                    assert isinstance(actual, SchedulerProgress)
+                    for key, value in expected.items():
+                        assert getattr(actual, key, None) == value
+                else:
+                    assert actual == expected
             elif field in ["request_queuing", "request_processing"]:
                 assert getattr(instance, field) == "continue"
-            elif field in ["metadata", "progress"]:
+            elif field == "metadata":
                 assert getattr(instance, field) == {}
+            elif field == "progress":
+                # Default progress should be an empty SchedulerProgress object
+                progress = getattr(instance, field)
+                assert isinstance(progress, SchedulerProgress)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -1007,8 +1003,7 @@ class TestSchedulerUpdateAction:
             ("metadata", "not_a_dict"),
             ("metadata", [{"key": "value"}]),
             ("progress", "not_a_dict"),
-            ("progress", [{"remaining_fraction": 0.5}]),
-            ("progress", {"remaining_fraction": "not_a_float"}),
+            ("progress", [{"remaining_requests": 50.0}]),
             ("progress", {"remaining_requests": "not_a_float"}),
             ("progress", {"remaining_duration": "not_a_float"}),
         ],
@@ -1040,114 +1035,165 @@ class TestSchedulerUpdateAction:
         # Validate that the reconstructed instance matches expected values
         for field in self.CHECK_KEYS:
             if field in constructor_args:
-                assert getattr(reconstructed, field) == constructor_args[field]
+                expected = constructor_args[field]
+                actual = getattr(reconstructed, field)
+                if field == "progress" and isinstance(expected, dict):
+                    # Progress was passed as dict, check conversion
+                    assert isinstance(actual, SchedulerProgress)
+                    for key, value in expected.items():
+                        assert getattr(actual, key, None) == value
+                else:
+                    assert actual == expected
             elif field in ["request_queuing", "request_processing"]:
                 assert getattr(reconstructed, field) == "continue"
-            elif field in ["metadata", "progress"]:
+            elif field == "metadata":
                 assert getattr(reconstructed, field) == {}
+            elif field == "progress":
+                # Default progress should be an empty SchedulerProgress object
+                progress = getattr(reconstructed, field)
+                assert isinstance(progress, SchedulerProgress)
 
     @pytest.mark.smoke
     def test_progress_field_behavior(self):
         """Test the progress field specific behavior and validation."""
+
         # Test empty progress (default)
         instance = SchedulerUpdateAction()
-        assert instance.progress == {}
-        assert isinstance(instance.progress, dict)
+        assert isinstance(instance.progress, SchedulerProgress)
+        # Empty progress should have all None values
+        assert instance.progress.remaining_requests is None
+        assert instance.progress.remaining_duration is None
+        assert instance.progress.total_requests is None
+        assert instance.progress.total_duration is None
 
-        # Test progress with all valid fields
+        # Test progress with valid fields
         progress_data = {
-            "remaining_fraction": 0.75,
             "remaining_requests": 100.0,
             "remaining_duration": 30.5,
         }
         instance = SchedulerUpdateAction(progress=progress_data)
-        assert instance.progress == progress_data
+        assert isinstance(instance.progress, SchedulerProgress)
+        assert instance.progress.remaining_requests == 100.0
+        assert instance.progress.remaining_duration == 30.5
 
-        # Test progress with partial fields (TypedDict allows partial)
-        partial_progress = {"remaining_fraction": 0.25}
+        # Test progress with partial fields
+        partial_progress = {"remaining_requests": 250.0}
         instance = SchedulerUpdateAction(progress=partial_progress)
-        assert instance.progress == partial_progress
+        assert isinstance(instance.progress, SchedulerProgress)
+        assert instance.progress.remaining_requests == 250.0
+        assert instance.progress.remaining_duration is None
 
         # Test progress with zero values
         zero_progress = {
-            "remaining_fraction": 0.0,
             "remaining_requests": 0.0,
             "remaining_duration": 0.0,
         }
         instance = SchedulerUpdateAction(progress=zero_progress)
-        assert instance.progress == zero_progress
+        assert isinstance(instance.progress, SchedulerProgress)
+        assert instance.progress.remaining_requests == 0.0
+        assert instance.progress.remaining_duration == 0.0
 
         # Test that progress field persists through marshalling
         data = instance.model_dump()
         assert "progress" in data
-        assert data["progress"] == zero_progress
+        assert isinstance(data["progress"], dict)
+        assert data["progress"]["remaining_requests"] == 0.0
+        assert data["progress"]["remaining_duration"] == 0.0
 
         reconstructed = SchedulerUpdateAction.model_validate(data)
-        assert reconstructed.progress == zero_progress
+        assert isinstance(reconstructed.progress, SchedulerProgress)
+        assert reconstructed.progress.remaining_requests == 0.0
+        assert reconstructed.progress.remaining_duration == 0.0
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
         "progress_value",
         [
-            {"remaining_fraction": 0.0},
-            {"remaining_fraction": 1.0},
             {"remaining_requests": 0.0},
             {"remaining_requests": 1000.0},
             {"remaining_duration": 0.0},
             {"remaining_duration": 3600.0},
-            {"remaining_fraction": 0.5, "remaining_requests": 50.0},
+            {"remaining_requests": 50.0},
             {"remaining_requests": 25.0, "remaining_duration": 120.0},
-            {"remaining_fraction": 0.33, "remaining_duration": 45.0},
+            {"remaining_duration": 45.0},
         ],
     )
     def test_progress_valid_combinations(self, progress_value):
         """Test various valid combinations of progress field values."""
+
         instance = SchedulerUpdateAction(progress=progress_value)
-        assert instance.progress == progress_value
+        assert isinstance(instance.progress, SchedulerProgress)
+
+        # Verify the values are set correctly
+        for key, value in progress_value.items():
+            assert getattr(instance.progress, key) == value
 
         # Verify marshalling works correctly
         data = instance.model_dump()
         reconstructed = SchedulerUpdateAction.model_validate(data)
-        assert reconstructed.progress == progress_value
+        assert isinstance(reconstructed.progress, SchedulerProgress)
+
+        # Verify all progress values match after marshalling
+        for key, value in progress_value.items():
+            assert getattr(reconstructed.progress, key) == value
 
     @pytest.mark.smoke
-    def test_scheduler_update_action_progress_typeddict(self):
-        """Test the SchedulerUpdateActionProgress TypedDict behavior."""
-        # Test that SchedulerUpdateActionProgress is a proper TypedDict
-        # Verify it's a TypedDict (has the special attributes)
-        assert hasattr(SchedulerUpdateActionProgress, "__annotations__")
-        assert hasattr(SchedulerUpdateActionProgress, "__total__")
-        assert hasattr(SchedulerUpdateActionProgress, "__required_keys__")
-        assert hasattr(SchedulerUpdateActionProgress, "__optional_keys__")
+    def test_scheduler_update_action_progress_model(self):
+        """Test the SchedulerProgress model behavior."""
 
-        # Check that all keys are optional (total=False)
+        # Test that SchedulerProgress is a proper Pydantic model
+        assert hasattr(SchedulerProgress, "__annotations__")
+        assert hasattr(SchedulerProgress, "model_fields")
+        assert hasattr(SchedulerProgress, "model_dump")
+        assert hasattr(SchedulerProgress, "model_validate")
+
+        # Test that the expected fields are defined
+        expected_fields = [
+            "remaining_requests",
+            "total_requests",
+            "remaining_duration",
+            "total_duration",
+            "stop_time",
+        ]
+        for field in expected_fields:
+            assert field in SchedulerProgress.model_fields
+
+        # Test that remaining_fraction is a property
+        assert hasattr(SchedulerProgress, "remaining_fraction")
+        assert isinstance(
+            SchedulerProgress.remaining_fraction,
+            property,
+        )
+
+        # Check that all model fields are present
+        actual_keys = set(SchedulerProgress.model_fields.keys())
         expected_keys = {
-            "remaining_fraction",
             "remaining_requests",
             "remaining_duration",
+            "total_requests",
+            "total_duration",
+            "stop_time",
         }
-        actual_keys = set(SchedulerUpdateActionProgress.__annotations__.keys())
         assert actual_keys == expected_keys
-        assert SchedulerUpdateActionProgress.__total__ is False
-        assert SchedulerUpdateActionProgress.__required_keys__ == frozenset()
-        assert SchedulerUpdateActionProgress.__optional_keys__ == expected_keys
 
-        # Test that type annotations are correct
-        annotations = SchedulerUpdateActionProgress.__annotations__
-        assert "remaining_fraction" in annotations
-        assert "remaining_requests" in annotations
-        assert "remaining_duration" in annotations
+        # Test that remaining_fraction is not a field (it's a computed property)
+        assert "remaining_fraction" not in SchedulerProgress.model_fields
+        assert "remaining_fraction" in dir(SchedulerProgress)
 
-        # Test creation of valid TypedDict instances
-        valid_progress_1: SchedulerUpdateActionProgress = {}
-        valid_progress_2: SchedulerUpdateActionProgress = {"remaining_fraction": 0.5}
-        valid_progress_3: SchedulerUpdateActionProgress = {
-            "remaining_fraction": 0.25,
-            "remaining_requests": 100.0,
-            "remaining_duration": 60.0,
-        }
+        # Test creation of valid SchedulerProgress instances
+        valid_progress_1 = SchedulerProgress()
+        assert isinstance(valid_progress_1, SchedulerProgress)
 
-        # All should be valid dict instances
-        assert isinstance(valid_progress_1, dict)
-        assert isinstance(valid_progress_2, dict)
-        assert isinstance(valid_progress_3, dict)
+        valid_progress_2 = SchedulerProgress(remaining_requests=100.0)
+        assert isinstance(valid_progress_2, SchedulerProgress)
+        assert valid_progress_2.remaining_requests == 100.0
+
+        valid_progress_3 = SchedulerProgress(
+            remaining_requests=100.0,
+            remaining_duration=60.0,
+            total_requests=400.0,
+            total_duration=240.0,
+        )
+        assert isinstance(valid_progress_3, SchedulerProgress)
+        assert valid_progress_3.remaining_requests == 100.0
+        assert valid_progress_3.remaining_duration == 60.0

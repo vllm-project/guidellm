@@ -11,11 +11,14 @@ import pytest
 import yaml
 from datasets import IterableDataset
 
-from guidellm.data.deserializers.deserializer import DataNotSupportedError
+from guidellm.data import config as config_module
 from guidellm.data.deserializers.synthetic import (
-    SyntheticTextDatasetConfig,
+    SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
-    SyntheticTextGenerator,
+)
+from guidellm.data.schemas import (
+    DataNotSupportedError,
+    SyntheticTextDatasetConfig,
     SyntheticTextPrefixBucketConfig,
 )
 
@@ -264,9 +267,7 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
 
         assert generator.config == simple_config
         assert generator.processor == mock_tokenizer
@@ -278,9 +279,7 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
 
         items = []
         for i, item in enumerate(generator):
@@ -310,20 +309,21 @@ class TestSyntheticTextGenerator:
         """
         from faker import Faker
 
-        generator = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
         faker = Faker()
         faker.seed_instance(42)
 
+        # Access the _create_prompt method through the examples iterable
+        ex_iterable = generator._ex_iterable
+
         # Test normal case
-        result = generator._create_prompt(5, faker, "unique_prefix ")
+        result = ex_iterable._create_prompt(5, faker, "unique_prefix ")
         assert isinstance(result, str)
         # The result should be the decoded tokens (token_0 token_1 etc.) due to our mock
         assert "token_" in result
 
         # Test zero tokens
-        result = generator._create_prompt(0, faker)
+        result = ex_iterable._create_prompt(0, faker)
         assert result == ""
 
     @pytest.mark.regression
@@ -332,7 +332,7 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        generator = SyntheticTextGenerator(
+        generator = SyntheticTextDataset(
             config_with_prefix, mock_tokenizer, random_seed=42
         )
 
@@ -353,12 +353,8 @@ class TestSyntheticTextGenerator:
         ### WRITTEN BY AI ###
         """
         # Create two generators with same seed
-        generator1 = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
-        generator2 = SyntheticTextGenerator(
-            simple_config, mock_tokenizer, random_seed=42
-        )
+        generator1 = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
+        generator2 = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
 
         items1 = []
         items2 = []
@@ -416,13 +412,14 @@ class TestSyntheticDatasetDeserializer:
             yaml_path = f.name
 
         try:
-            deserializer = SyntheticTextDatasetDeserializer()
-            config = deserializer._load_config_file(yaml_path)
+            loaded_config = config_module._load_config_file(
+                yaml_path, SyntheticTextDatasetConfig,
+            )
 
-            assert config.prompt_tokens == 60
-            assert config.output_tokens == 15
-            assert config.source == "yaml_test.txt"
-            assert config.prefix_buckets[0].prefix_tokens == 3  # type: ignore [index]
+            assert loaded_config.prompt_tokens == 60
+            assert loaded_config.output_tokens == 15
+            assert loaded_config.source == "yaml_test.txt"
+            assert loaded_config.prefix_buckets[0].prefix_tokens == 3  # type: ignore [index]
         finally:
             Path(yaml_path).unlink()
 
@@ -445,12 +442,13 @@ class TestSyntheticDatasetDeserializer:
             config_path = f.name
 
         try:
-            deserializer = SyntheticTextDatasetDeserializer()
-            config = deserializer._load_config_file(config_path)
+            loaded_config = config_module._load_config_file(
+                config_path, SyntheticTextDatasetConfig,
+            )
 
-            assert config.prompt_tokens == 90
-            assert config.output_tokens == 35
-            assert config.prefix_buckets[0].prefix_tokens == 2  # type: ignore [index]
+            assert loaded_config.prompt_tokens == 90
+            assert loaded_config.output_tokens == 35
+            assert loaded_config.prefix_buckets[0].prefix_tokens == 2  # type: ignore [index]
         finally:
             Path(config_path).unlink()
 
@@ -461,11 +459,12 @@ class TestSyntheticDatasetDeserializer:
         ### WRITTEN BY AI ###
         """
         json_str = '{"prompt_tokens": 50, "output_tokens": 25}'
-        deserializer = SyntheticTextDatasetDeserializer()
-        config = deserializer._load_config_str(json_str)
+        loaded_config = config_module._load_config_str(
+            json_str, SyntheticTextDatasetConfig,
+        )
 
-        assert config.prompt_tokens == 50
-        assert config.output_tokens == 25
+        assert loaded_config.prompt_tokens == 50
+        assert loaded_config.output_tokens == 25
 
     @pytest.mark.smoke
     def test_load_config_str_key_value(self):
@@ -474,11 +473,12 @@ class TestSyntheticDatasetDeserializer:
         ### WRITTEN BY AI ###
         """
         kv_str = "prompt_tokens=50,output_tokens=25"
-        deserializer = SyntheticTextDatasetDeserializer()
-        config = deserializer._load_config_str(kv_str)
+        loaded_config = config_module._load_config_str(
+            kv_str, SyntheticTextDatasetConfig,
+        )
 
-        assert config.prompt_tokens == 50
-        assert config.output_tokens == 25
+        assert loaded_config.prompt_tokens == 50
+        assert loaded_config.output_tokens == 25
 
     @pytest.mark.sanity
     def test_load_config_str_invalid_format(self):
@@ -486,9 +486,10 @@ class TestSyntheticDatasetDeserializer:
 
         ### WRITTEN BY AI ###
         """
-        deserializer = SyntheticTextDatasetDeserializer()
         with pytest.raises(DataNotSupportedError, match="Unsupported string data"):
-            deserializer._load_config_str("invalid_format_string")
+            config_module._load_config_str(
+                "invalid_format_string", SyntheticTextDatasetConfig,
+            )
 
     @pytest.mark.regression
     def test_load_config_file_non_existent(self):
@@ -496,9 +497,10 @@ class TestSyntheticDatasetDeserializer:
 
         ### WRITTEN BY AI ###
         """
-        deserializer = SyntheticTextDatasetDeserializer()
-        config = deserializer._load_config_file("/non/existent/path.config")
-        assert config is None
+        loaded_config = config_module._load_config_file(
+            "/non/existent/path.config", SyntheticTextDatasetConfig,
+        )
+        assert loaded_config is None
 
     @pytest.mark.regression
     def test_load_config_str_non_string(self):
@@ -506,9 +508,8 @@ class TestSyntheticDatasetDeserializer:
 
         ### WRITTEN BY AI ###
         """
-        deserializer = SyntheticTextDatasetDeserializer()
-        config = deserializer._load_config_str(123)
-        assert config is None
+        loaded_config = config_module._load_config_str(123, SyntheticTextDatasetConfig)
+        assert loaded_config is None
 
     @pytest.mark.smoke
     def test_call_with_config_object(self, mock_tokenizer):
@@ -516,11 +517,11 @@ class TestSyntheticDatasetDeserializer:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(prompt_tokens=50, output_tokens=25)
+        config_input = SyntheticTextDatasetConfig(prompt_tokens=50, output_tokens=25)
         deserializer = SyntheticTextDatasetDeserializer()
 
         result = deserializer(
-            data=config,
+            data=config_input,
             data_kwargs={},
             processor_factory=lambda: mock_tokenizer,
             random_seed=42,

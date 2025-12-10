@@ -1,4 +1,6 @@
+import contextlib
 import json
+import os
 from typing import Any
 
 import click
@@ -6,34 +8,85 @@ import click
 __all__ = [
     "Union",
     "format_list_arg",
+    "list_set_env",
     "parse_json",
+    "parse_list",
     "parse_list_floats",
     "set_if_not_default",
 ]
 
 
-def parse_list_floats(ctx, param, value):  # noqa: ARG001
+def list_set_env(prefix: str = "GUIDELLM_") -> list[str]:
     """
-    Callback to parse a comma-separated string into a list of floats.
-    """
-    # This callback only runs if the --rate option is provided by the user.
-    # If it's not, 'value' will be None, and Click will use the 'default'.
-    if value is None:
-        return None  # Keep the default
+    List all set environment variables prefixed with the given prefix.
 
+    :param prefix: The prefix to filter environment variables.
+    :return: List of environment variable names that are set with the given prefix.
+    """
+    return [key for key in os.environ if key.startswith(prefix)]
+
+
+def parse_list(ctx, param, value) -> list[str] | None:
+    """
+    Click callback to parse the input value into a list of strings.
+    Supports single strings, comma-separated strings,
+    and lists/tuples of any of these formats (when multiple=True is used).
+
+    :param ctx: Click context
+    :param param: Click parameter
+    :param value: The input value to parse
+    :return: List of parsed strings
+    """
+    if value is None or value == [None]:
+        # Handle null values directly or nested null (when multiple=True)
+        return None
+
+    if isinstance(value, list | tuple):
+        # Handle multiple=True case by recursively parsing each item and combining
+        parsed = []
+        for val in value:
+            if (items := parse_list(ctx, param, val)) is not None:
+                parsed.extend(items)
+        return parsed
+
+    if isinstance(value, str) and "," in value:
+        # Handle comma-separated strings
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+    if isinstance(value, str):
+        # Handle single string
+        return [value.strip()]
+
+    # Fall back to returning as a single-item list
+    return [value]
+
+
+def parse_list_floats(ctx, param, value):
+    str_list = parse_list(ctx, param, value)
+    if str_list is None:
+        return None
+
+    item = None  # For error reporting
     try:
-        # Split by comma, strip any whitespace, and convert to float
-        return [float(item.strip()) for item in value.split(",")]
-    except ValueError as e:
+        return [float(item) for item in str_list]
+    except ValueError as err:
         # Raise a Click error if any part isn't a valid float
         raise click.BadParameter(
-            f"Value '{value}' is not a valid comma-separated list "
-            f"of floats/ints. Error: {e}"
-        ) from e
+            f"Input '{value}' is not a valid comma-separated list "
+            f"of floats/ints. Failed on {item} Error: {err}"
+        ) from err
 
-def parse_json(ctx, param, value):  # noqa: ARG001
+
+def parse_json(ctx, param, value):  # noqa: ARG001, C901, PLR0911
+    if isinstance(value, dict):
+        return value
+
     if value is None or value == [None]:
         return None
+
+    if isinstance(value, str) and not value.strip():
+        return None
+
     if isinstance(value, list | tuple):
         return [parse_json(ctx, param, val) for val in value]
 
@@ -50,7 +103,12 @@ def parse_json(ctx, param, value):  # noqa: ARG001
         return result
 
     if "{" not in value and "}" not in value:
-        # Treat it as a plain string if it doesn't look like JSON.
+        # Treat it as a primitive if it doesn't look like JSON.
+        try:
+            value = int(value)
+        except ValueError:
+            with contextlib.suppress(ValueError):
+                value = float(value)
         return value
 
     try:
@@ -115,9 +173,9 @@ class Union(click.ParamType):
 
         self.fail("; ".join(fails) or f"Invalid value: {value}")  # noqa: RET503
 
-    def get_metavar(self, param: click.Parameter) -> str:
+    def get_metavar(self, param: click.Parameter, ctx: click.Context) -> str:
         def get_choices(t: click.ParamType) -> str:
-            meta = t.get_metavar(param)
+            meta = t.get_metavar(param, ctx)
             return meta if meta is not None else t.name
 
         # Get the choices for each type in the union.

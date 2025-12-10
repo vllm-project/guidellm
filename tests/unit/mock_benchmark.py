@@ -1,7 +1,7 @@
 """Mock benchmark objects for unit testing."""
 
 from guidellm.benchmark import (
-    BenchmarkSchedulerStats,
+    BenchmarkSchedulerMetrics,
     GenerativeBenchmark,
     GenerativeMetrics,
 )
@@ -105,9 +105,7 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
         benchmarker=BenchmarkerDict(
             profile=SynchronousProfile.create("synchronous", rate=None),
             requests={
-                "attributes": {
-                    "data": "prompt_tokens=256,output_tokens=128",
-                },
+                "data": "prompt_tokens=256,output_tokens=128",
             },
             backend={},
             environment={},
@@ -115,7 +113,7 @@ def mock_generative_benchmark() -> GenerativeBenchmark:
         ),
         env_args=StandardBaseDict(),
         extras=StandardBaseDict(),
-        run_stats=BenchmarkSchedulerStats(
+        run_stats=BenchmarkSchedulerMetrics(
             start_time=1,
             end_time=2,
             requests_made=StatusBreakdown(

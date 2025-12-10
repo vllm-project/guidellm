@@ -91,7 +91,6 @@ class MockBackend(BackendInterface):
         yield f"response_for_{request.payload}", request_info
 
 
-@pytest.mark.xfail(reason="old and broken", run=False)
 @pytest.mark.smoke
 @pytest.mark.asyncio
 @async_timeout(10.0)
@@ -122,13 +121,12 @@ async def test_scheduler_run_integration(
     received_updates = defaultdict(list)
     received_responses = []
     last_state = None
-    num_requests = 50
+    num_requests = 100
 
     async for resp, req, info, state in scheduler.run(
         requests=[MockRequest(payload=f"req_{ind}") for ind in range(num_requests)],
         backend=MockBackend(),
         strategy=strategy,
-        startup_duration=0.1,
         env=env,
         **constraints,
     ):
@@ -177,4 +175,5 @@ async def test_scheduler_run_integration(
         assert statuses in (
             ["queued", "in_progress", "completed"],
             ["queued", "in_progress", "errored"],
+            ["queued", "pending", "in_progress"],
         )

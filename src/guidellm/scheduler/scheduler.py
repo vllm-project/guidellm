@@ -24,7 +24,7 @@ from guidellm.scheduler.schemas import (
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker_group import WorkerProcessGroup
 from guidellm.schemas import RequestInfo
-from guidellm.utils.singleton import ThreadSafeSingletonMixin
+from guidellm.utils import ThreadSafeSingletonMixin
 
 __all__ = ["Scheduler"]
 
@@ -63,7 +63,6 @@ class Scheduler(
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
-        startup_duration: float,
         env: Environment[RequestT, ResponseT] | None,
         **constraints: Any | dict[str, Any] | Constraint,
     ) -> AsyncIterator[
@@ -86,7 +85,6 @@ class Scheduler(
             multi-turn sequences with optional inter-request delays
         :param backend: Backend interface for request processing and response generation
         :param strategy: Scheduling strategy controlling request timing and distribution
-        :param startup_duration: Duration in seconds for requests to ramp up
         :param env: Environment interface for distributed coordination and
             synchronization. Defaults to NonDistributedEnvironment if None
         :param constraints: Runtime constraints for execution control (max_requests,
@@ -123,7 +121,6 @@ class Scheduler(
                     requests=local_requests,
                     backend=backend,
                     strategy=local_strategy,
-                    startup_duration=startup_duration,
                     **local_constraints,
                 )
                 await worker_group.create_processes()

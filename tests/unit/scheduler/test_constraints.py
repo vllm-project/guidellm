@@ -17,13 +17,14 @@ from guidellm.scheduler import (
     MaxGlobalErrorRateConstraint,
     MaxNumberConstraint,
     PydanticConstraintInitializer,
+    SchedulerProgress,
     SchedulerState,
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from guidellm.schemas import RequestInfo
-from guidellm.utils import InfoMixin, StandardBaseModel
+from guidellm.schemas import RequestInfo, StandardBaseModel
+from guidellm.utils import InfoMixin
 
 
 class TestConstraint:
@@ -564,13 +565,14 @@ class TestMaxDurationConstraint:
             assert action.metadata["elapsed_time"] == pytest.approx(elapsed, abs=0.01)
             assert action.metadata["duration_exceeded"] == duration_exceeded
             assert action.metadata["start_time"] == start_time
-            assert isinstance(action.progress, dict)
+
+            assert isinstance(action.progress, SchedulerProgress)
             expected_remaining_fraction = max(0.0, 1.0 - elapsed / max_duration)
             expected_remaining_duration = max(0.0, max_duration - elapsed)
-            assert action.progress["remaining_fraction"] == pytest.approx(
+            assert action.progress.remaining_fraction == pytest.approx(
                 expected_remaining_fraction, abs=0.1
             )
-            assert action.progress["remaining_duration"] == pytest.approx(
+            assert action.progress.remaining_duration == pytest.approx(
                 expected_remaining_duration, abs=0.1
             )
             time.sleep(sleep_interval)
@@ -762,12 +764,16 @@ class TestMaxErrorsConstraint:
                 assert action.request_processing == "stop_all"
 
             assert isinstance(action.metadata, dict)
-            assert action.metadata == {
+            expected_metadata = {
                 "max_errors": constructor_args["max_errors"],
                 "errors_exceeded": errors_exceeded,
                 "current_errors": num_errors,
             }
-            assert action.progress == {}
+            # Note: metadata may have additional fields like stop_time
+            for key, value in expected_metadata.items():
+                assert action.metadata[key] == value
+
+            assert isinstance(action.progress, SchedulerProgress)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -978,7 +984,8 @@ class TestMaxErrorRateConstraint:
             assert action.metadata["error_count"] == error_count
             assert action.metadata["current_error_rate"] == current_error_rate
             assert action.metadata["exceeded_error_rate"] == exceeded_error_rate
-            assert action.progress == {}
+
+            assert isinstance(action.progress, SchedulerProgress)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -1200,7 +1207,7 @@ class TestMaxGlobalErrorRateConstraint:
             assert action.request_processing == expected_processing
 
             assert isinstance(action.metadata, dict)
-            assert action.metadata == {
+            expected_metadata = {
                 "max_error_rate": max_error_rate,
                 "min_processed": min_processed,
                 "processed_requests": processed_requests,
@@ -1209,9 +1216,12 @@ class TestMaxGlobalErrorRateConstraint:
                 "exceeded_min_processed": exceeded_min_processed,
                 "exceeded_error_rate": exceeded_error_rate,
             }
+            # Note: metadata may have additional fields like stop_time and exceeded
+            for key, value in expected_metadata.items():
+                assert action.metadata[key] == value
 
             # Error constraints don't provide progress information
-            assert action.progress == {}
+            assert isinstance(action.progress, SchedulerProgress)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):

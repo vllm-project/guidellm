@@ -9,7 +9,7 @@ and convert them into standardized GenerationResponse objects.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.utils import RegistryMixin, json
@@ -72,6 +72,33 @@ class GenerationResponseHandlerFactory(RegistryMixin[type[GenerationResponseHand
     responses from different generation services.
     """
 
+    @classmethod
+    def create(
+        cls,
+        request_type: str,
+        handler_overrides: dict[str, type[GenerationResponseHandler]] | None = None,
+    ) -> GenerationResponseHandler:
+        """
+        Create a response handler class for the given request type.
+
+        :param request_type: The type of generation request (e.g., "text_completions")
+        :param handler_overrides: Optional mapping of request types to handler classes
+            to override the default registry by checking first and then falling back
+            to the registered handlers.
+        :return: The corresponding instantiated GenerationResponseHandler
+        :raises ValueError: When no handler is registered for the request type
+        """
+        if handler_overrides and request_type in handler_overrides:
+            return handler_overrides[request_type]()
+
+        handler_cls = cls.get_registered_object(request_type)
+        if not handler_cls:
+            raise ValueError(
+                f"No response handler registered for type '{request_type}'."
+            )
+
+        return handler_cls()
+
 
 @GenerationResponseHandlerFactory.register("text_completions")
 class TextCompletionsResponseHandler(GenerationResponseHandler):
@@ -97,6 +124,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         """
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
+        self.streaming_response_id: str | None = None
 
     def compile_non_streaming(
         self, request: GenerationRequest, response: dict
@@ -109,14 +137,17 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         :return: Standardized GenerationResponse with extracted text and metrics
         """
         choices, usage = self.extract_choices_and_usage(response)
-        input_metrics, output_metrics = self.extract_metrics(usage)
+        choice = choices[0] if choices else {}
+        text = choice.get("text", "")
+        input_metrics, output_metrics = self.extract_metrics(usage, text)
 
         return GenerationResponse(
             request_id=request.request_id,
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            text=choices[0].get("text", "") if choices else "",
+            response_id=response.get("id"),  # use vLLM ID if available
+            text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -134,10 +165,14 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         if not (data := self.extract_line_data(line)):
             return None if data is None else 0
 
+        if "id" in data and self.streaming_response_id is None:
+            self.streaming_response_id = data["id"]
+
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
+        choice = choices[0] if choices else {}
 
-        if text := choices[0].get("text"):
+        if choices and (text := choice.get("text")):
             self.streaming_texts.append(text)
             updated = True
 
@@ -153,14 +188,16 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated text and metrics
         """
-        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
+        text = "".join(self.streaming_texts)
+        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
 
         return GenerationResponse(
             request_id=request.request_id,
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            text="".join(self.streaming_texts),
+            response_id=self.streaming_response_id,  # use vLLM ID if available
+            text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -194,25 +231,34 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         return response.get("choices", []), response.get("usage", {})
 
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None
+        self, usage: dict[str, int | dict[str, int]] | None, text: str
     ) -> tuple[UsageMetrics, UsageMetrics]:
         """
         Extract input and output usage metrics from API response usage data.
 
         :param usage: Usage data dictionary from API response
+        :param text: Generated text for calculating word and character counts
         :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
         if not usage:
-            return UsageMetrics(), UsageMetrics()
+            return UsageMetrics(), UsageMetrics(
+                text_words=len(text.split()) if text else 0,
+                text_characters=len(text) if text else 0,
+            )
 
-        input_details: dict[str, int] = usage.get("prompt_tokens_details", {}) or {}
-        output_details: dict[str, int] = (
-            usage.get("completion_tokens_details", {}) or {}
+        input_details: dict[str, int] = cast(
+            "dict[str, int]", usage.get("prompt_tokens_details", {}) or {}
         )
+        output_details: dict[str, int] = cast(
+            "dict[str, int]", usage.get("completion_tokens_details", {}) or {}
+        )
+        usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
 
         return UsageMetrics(
             text_tokens=(
-                input_details.get("prompt_tokens") or usage.get("prompt_tokens")
+                input_details.get("prompt_tokens")
+                or usage_metrics.get("prompt_tokens")
+                or 0
             ),
             image_tokens=input_details.get("image_tokens"),
             video_tokens=input_details.get("video_tokens"),
@@ -221,8 +267,11 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         ), UsageMetrics(
             text_tokens=(
                 output_details.get("completion_tokens")
-                or usage.get("completion_tokens")
+                or usage_metrics.get("completion_tokens")
+                or 0
             ),
+            text_words=len(text.split()) if text else 0,
+            text_characters=len(text) if text else 0,
             image_tokens=output_details.get("image_tokens"),
             video_tokens=output_details.get("video_tokens"),
             audio_tokens=output_details.get("audio_tokens"),
@@ -254,14 +303,17 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         :return: Standardized GenerationResponse with extracted content and metrics
         """
         choices, usage = self.extract_choices_and_usage(response)
-        input_metrics, output_metrics = self.extract_metrics(usage)
+        choice: dict[str, dict] = choices[0] if choices else {}
+        text = choice.get("message", {}).get("content", "")
+        input_metrics, output_metrics = self.extract_metrics(usage, text)
 
         return GenerationResponse(
             request_id=request.request_id,
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            text=(choices[0].get("message", {}).get("content", "") if choices else ""),
+            response_id=response.get("id"),  # use vLLM ID if available
+            text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -279,10 +331,14 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         if not (data := self.extract_line_data(line)):
             return None if data is None else 0
 
+        if "id" in data and self.streaming_response_id is None:
+            self.streaming_response_id = data["id"]
+
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
+        choice: dict[str, dict] = choices[0] if choices else {}
 
-        if choices and (content := choices[0].get("delta", {}).get("content")):
+        if choices and (content := choice.get("delta", {}).get("content")):
             self.streaming_texts.append(content)
             updated = True
 
@@ -298,14 +354,16 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
-        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
+        text = "".join(self.streaming_texts)
+        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
 
         return GenerationResponse(
             request_id=request.request_id,
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            text="".join(self.streaming_texts),
+            response_id=self.streaming_response_id,  # use vLLM ID if available
+            text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -338,6 +396,7 @@ class AudioResponseHandler:
         self.streaming_buffer: bytearray = bytearray()
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
+        self.streaming_response_id: str | None = None
 
     def compile_non_streaming(
         self, request: GenerationRequest, response: dict
@@ -352,29 +411,19 @@ class AudioResponseHandler:
         :param response: Complete API response containing text and usage data
         :return: Standardized GenerationResponse with extracted text and metrics
         """
-        usage: dict[str, int | dict[str, int]] = response.get("usage", {})
-        input_details: dict[str, int] = usage.get("input_token_details", {}) or {}
-        output_details: dict[str, int] = usage.get("output_token_details", {}) or {}
         text: str = response.get("text", "")
+        usage: dict[str, int | dict[str, int]] = response.get("usage", {})
+        input_metrics, output_metrics = self.extract_metrics(usage, text)
 
         return GenerationResponse(
             request_id=request.request_id,
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
+            response_id=response.get("id"),  # use vLLM ID if available
             text=text,
-            input_metrics=UsageMetrics(
-                text_tokens=input_details.get("text_tokens", usage.get("input_tokens")),
-                audio_tokens=input_details.get(
-                    "audio_tokens", usage.get("input_tokens")
-                ),
-                audio_seconds=input_details.get("seconds", usage.get("seconds")),
-            ),
-            output_metrics=UsageMetrics(
-                text_tokens=output_details.get(
-                    "text_tokens", usage.get("output_tokens")
-                ),
-            ),
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
         )
 
     def add_streaming_line(self, line: str) -> int | None:
@@ -394,9 +443,10 @@ class AudioResponseHandler:
             return 0
 
         data: dict[str, Any] = json.loads(line)
-        text: str
-        usage: dict[str, int | dict[str, int]]
         updated = False
+
+        if "id" in data and self.streaming_response_id is None:
+            self.streaming_response_id = data["id"]
 
         if text := data.get("text"):
             self.streaming_texts.append(text)
@@ -414,20 +464,22 @@ class AudioResponseHandler:
         :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated text and metrics
         """
-        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage)
+        text = "".join(self.streaming_texts)
+        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
 
         return GenerationResponse(
             request_id=request.request_id,
             request_args=str(
                 request.arguments.model_dump() if request.arguments else None
             ),
-            text="".join(self.streaming_texts),
+            response_id=self.streaming_response_id,
+            text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
 
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None
+        self, usage: dict[str, int | dict[str, int]] | None, text: str
     ) -> tuple[UsageMetrics, UsageMetrics]:
         """
         Extract input and output usage metrics from audio API response usage data.
@@ -436,20 +488,40 @@ class AudioResponseHandler:
         in addition to standard text token counts.
 
         :param usage: Usage data dictionary from audio API response
+        :param text: Generated text for calculating word and character counts
         :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
         if not usage:
-            return UsageMetrics(), UsageMetrics()
+            return UsageMetrics(), UsageMetrics(
+                text_words=len(text.split()) if text else 0,
+                text_characters=len(text) if text else 0,
+            )
 
-        input_details: dict[str, int] = usage.get("input_token_details", {}) or {}
-        output_details: dict[str, int] = usage.get("output_token_details", {}) or {}
+        input_details: dict[str, int] = cast(
+            "dict[str, int]", usage.get("input_token_details", {}) or {}
+        )
+        output_details: dict[str, int] = cast(
+            "dict[str, int]", usage.get("output_token_details", {}) or {}
+        )
+        usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
 
         return UsageMetrics(
-            text_tokens=(input_details.get("text_tokens") or usage.get("input_tokens")),
+            text_tokens=input_details.get("text_tokens") or 0,
             audio_tokens=(
-                input_details.get("audio_tokens") or usage.get("audio_tokens")
+                input_details.get("audio_tokens")
+                or usage_metrics.get("audio_tokens")
+                or usage_metrics.get("input_tokens")
+                or 0
             ),
-            audio_seconds=(input_details.get("seconds") or usage.get("seconds")),
+            audio_seconds=(
+                input_details.get("seconds") or usage_metrics.get("seconds") or 0
+            ),
         ), UsageMetrics(
-            text_tokens=output_details.get("text_tokens") or usage.get("output_tokens"),
+            text_tokens=(
+                output_details.get("text_tokens")
+                or usage_metrics.get("output_tokens")
+                or 0
+            ),
+            text_words=len(text.split()) if text else 0,
+            text_characters=len(text) if text else 0,
         )

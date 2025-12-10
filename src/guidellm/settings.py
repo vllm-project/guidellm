@@ -32,8 +32,8 @@ class Environment(str, Enum):
 
 
 ENV_REPORT_MAPPING = {
-    Environment.PROD: "https://blog.vllm.ai/guidellm/ui/v0.3.0/index.html",
-    Environment.STAGING: "https://blog.vllm.ai/guidellm/ui/release/v0.3.0/index.html",
+    Environment.PROD: "https://blog.vllm.ai/guidellm/ui/v0.4.0/index.html",
+    Environment.STAGING: "https://blog.vllm.ai/guidellm/ui/release/v0.4.0/index.html",
     Environment.DEV: "https://blog.vllm.ai/guidellm/ui/dev/index.html",
     Environment.LOCAL: "http://localhost:3000/index.html",
 }
@@ -162,7 +162,7 @@ class Settings(BaseSettings):
     preferred_output_tokens_source: Literal["request", "response"] = "response"
     preferred_backend: Literal["openai"] = "openai"
     preferred_route: Literal["text_completions", "chat_completions"] = (
-        "text_completions"
+        "chat_completions"
     )
     openai: OpenAISettings = OpenAISettings()
 

@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import Field, computed_field
 
-from guidellm.utils import StandardBaseDict, StandardBaseModel
+from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 
 __all__ = ["RequestInfo", "RequestTimings"]
 
@@ -53,17 +53,23 @@ class RequestTimings(StandardBaseDict):
         default=None,
         description="Unix timestamp when the backend began processing the request",
     )
-    first_iteration: float | None = Field(
+    first_request_iteration: float | None = Field(
         default=None,
-        description="Unix timestamp when the first iteration for a streaming began",
     )
-    last_iteration: float | None = Field(
+    first_token_iteration: float | None = Field(
         default=None,
-        description="Unix timestamp when the last iteration for a streaming completed",
     )
-    iterations: int | None = Field(
+    last_token_iteration: float | None = Field(
         default=None,
-        description="Total number of streaming update iterations performed",
+    )
+    last_request_iteration: float | None = Field(
+        default=None,
+    )
+    request_iterations: int = Field(
+        default=0,
+    )
+    token_iterations: int = Field(
+        default=0,
     )
     request_end: float | None = Field(
         default=None,
@@ -77,6 +83,25 @@ class RequestTimings(StandardBaseDict):
         default=None,
         description="Unix timestamp when request was processed by the scheduler",
     )
+
+    @property
+    def last_reported(self) -> float | None:
+        """
+        Get the most recent timing measurement available.
+
+        :return: The latest Unix timestamp from the timing fields, or None if none
+        """
+        timing_fields = [
+            self.queued,
+            self.dequeued,
+            self.scheduled_at,
+            self.resolve_start,
+            self.request_start,
+            self.request_end,
+            self.resolve_end,
+        ]
+        valid_timings = [field for field in timing_fields if field is not None]
+        return max(valid_timings) if valid_timings else None
 
 
 class RequestInfo(StandardBaseModel):

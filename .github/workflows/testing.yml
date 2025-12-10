@@ -1,0 +1,77 @@
+name: Tests
+
+on:
+  workflow_call:
+    inputs:
+      python:
+        required: true
+        type: string
+      args:
+        required: false
+        type: string
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run unit tests
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: ${{ inputs.python }}
+          tox-env: test-unit
+          tox-args: ${{ inputs.args }}
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run integration tests
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: ${{ inputs.python }}
+          tox-env: test-integration
+          tox-args: ${{ inputs.args }}
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Cache the binary artifact
+      # The key is based on the runner's OS and the hash of the Dockerfile.
+      # If the Dockerfile changes, the hash changes, and a new cache is created.
+      - name: Cache vLLM-sim binary
+        id: cache-vllm-sim
+        uses: actions/cache@v4
+        with:
+          # The path to the file you want to cache
+          path: bin/llm-d-inference-sim
+          # The unique key for the cache
+          key: vllm-sim-binary-${{ runner.os }}-${{ hashFiles('tests/e2e/vllm-sim.Dockerfile') }}
+      # Set up Docker Buildx (required for the 'docker build -o' command)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      # Conditionally build the artifact
+      # This step only runs if the cache step above did NOT find a match.
+      # 'steps.cache-vllm-sim.outputs.cache-hit' will be 'true' if the cache was restored.
+      - name: Build vLLM-sim artifact (if not cached)
+        if: steps.cache-vllm-sim.outputs.cache-hit != 'true'
+        run: |
+          echo "Cache miss. Building artifact..."
+          docker build . -f tests/e2e/vllm-sim.Dockerfile -o type=local,dest=./
+        shell: bash
+      - name: Verify artifact
+        run: |
+          if [ -f "bin/llm-d-inference-sim" ]; then
+            echo "Artifact found."
+          else
+            echo "ERROR: Artifact bin/llm-d-inference-sim not found!"
+            exit 1
+          fi
+        shell: bash
+      - name: Run end-to-end tests
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: ${{ inputs.python }}
+          tox-env: test-e2e
+          tox-args: ${{ inputs.args }}

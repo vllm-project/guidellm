@@ -11,16 +11,13 @@ include = ["*"]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
 
-[tool.pdm]
-distribution = true
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
-[[tool.pdm.source]]
-name = "torch"
-type = "find_links"
-#url = "https://download.pytorch.org/whl/cpu/torch_stable.html"
-url = "https://download.pytorch.org/whl/cpu/torch/"
-include_packages = ["torch"]
-
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 # ************************************************
 # ********** Project Metadata **********
@@ -53,8 +50,8 @@ keywords = [
     "vllm",
 ]
 dependencies = [
-    "click>=8.0.0,<8.2.0",
-    "culsans~=0.9.0",
+    "click~=8.3.0",
+    "culsans~=0.10.0",
     "datasets",
     "eval_type_backport",
     "faker",
@@ -69,6 +66,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "rich",
     "sanic",
+    "tabulate",
     "transformers",
     "uvloop>=0.18",
     "torch",
@@ -86,7 +84,7 @@ audio = [
     "datasets[audio]>=4.1.0",
     # Torchcodec needs specific torch version
     "torch==2.9.*",
-    "torchcodec==0.8",
+    "torchcodec==0.8.*",
 ]
 vision = [
     "datasets[vision]",
@@ -115,6 +113,7 @@ dev = [
     "pytest-cov~=5.0.0",
     "pytest-mock~=3.14.0",
     "pytest-rerunfailures~=14.0",
+    "pytest-timeout~=2.4.0",
     "respx~=0.22.0",
 
     # code quality
@@ -128,6 +127,7 @@ dev = [
     "mdformat-gfm~=0.3.6",
 
     # type-checking
+    "pandas-stubs",
     "types-PyYAML~=6.0.1",
     "types-requests~=2.32.0",
     "types-toml",

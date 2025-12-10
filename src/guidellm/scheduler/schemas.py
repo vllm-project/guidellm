@@ -14,10 +14,10 @@ from collections.abc import AsyncIterator
 from typing import Any, Generic, Literal, Protocol, TypeVar
 
 from pydantic import Field
-from typing_extensions import TypeAliasType, TypedDict
+from typing_extensions import TypeAliasType
 
-from guidellm.schemas import RequestInfo
-from guidellm.utils import RegistryMixin, StandardBaseModel
+from guidellm.schemas import RequestInfo, StandardBaseModel
+from guidellm.utils import RegistryMixin
 from guidellm.utils.registry import RegistryObjT
 
 __all__ = [
@@ -27,9 +27,9 @@ __all__ = [
     "RequestT",
     "ResponseT",
     "SchedulerMessagingPydanticRegistry",
+    "SchedulerProgress",
     "SchedulerState",
     "SchedulerUpdateAction",
-    "SchedulerUpdateActionProgress",
 ]
 
 RequestT = TypeVar("RequestT")
@@ -135,7 +135,7 @@ BackendT = TypeVar("BackendT", bound=BackendInterface)
 "Generic backend interface type for request processing"
 
 
-class SchedulerUpdateActionProgress(TypedDict, total=False):
+class SchedulerProgress(StandardBaseModel):
     """
     Progress tracking data for scheduler operations.
 
@@ -144,9 +144,97 @@ class SchedulerUpdateActionProgress(TypedDict, total=False):
     monitoring systems to track execution progress and make termination decisions.
     """
 
-    remaining_fraction: float | None
-    remaining_requests: float | None
-    remaining_duration: float | None
+    remaining_requests: float | None = Field(
+        description="Estimated number of remaining requests to process", default=None
+    )
+    total_requests: float | None = Field(
+        description="Total number of requests to process", default=None
+    )
+    remaining_duration: float | None = Field(
+        description="Estimated remaining duration in seconds", default=None
+    )
+    total_duration: float | None = Field(
+        description="Total duration in seconds to process for", default=None
+    )
+    stop_time: float | None = Field(
+        description="The timestamp the processing stopped at", default=None
+    )
+
+    @property
+    def remaining_fraction(self) -> float | None:
+        """
+        :return: Estimated fraction of remaining progress, if known
+        """
+        fraction: float | None = None
+
+        if (requests_fraction := self.remaining_requests_fraction) is not None:
+            fraction = requests_fraction
+
+        if (duration_fraction := self.remaining_duration_fraction) is not None:
+            fraction = (
+                duration_fraction
+                if fraction is None
+                else min(fraction, duration_fraction)
+            )
+
+        return fraction
+
+    @property
+    def remaining_requests_fraction(self) -> float | None:
+        """
+        :return: Estimated fraction of remaining requests, if known
+        """
+        return (
+            self.remaining_requests / float(self.total_requests)
+            if self.remaining_requests is not None
+            and self.total_requests is not None
+            and self.total_requests > 0
+            else None
+        )
+
+    @property
+    def remaining_duration_fraction(self) -> float | None:
+        """
+        :return: Estimated fraction of remaining duration, if known
+        """
+        return (
+            self.remaining_duration / float(self.total_duration)
+            if self.remaining_duration is not None
+            and self.total_duration is not None
+            and self.total_duration > 0
+            else None
+        )
+
+    def combine(self, other: SchedulerProgress) -> SchedulerProgress:
+        """
+        Combine two progress instances, taking the minimum remaining estimates.
+
+        :param other: Another progress instance to combine with
+        :return: New progress instance with combined estimates
+        """
+        if (other_req_fraction := other.remaining_requests_fraction) is not None and (
+            (cur_req_fraction := self.remaining_requests_fraction) is None
+            or other_req_fraction < cur_req_fraction
+        ):
+            # Only update if the other is more advanced (lower fraction)
+            self.remaining_requests = other.remaining_requests
+            self.total_requests = other.total_requests
+
+        if (other_dur_fraction := other.remaining_duration_fraction) is not None and (
+            (cur_dur_fraction := self.remaining_duration_fraction) is None
+            or other_dur_fraction < cur_dur_fraction
+        ):
+            # Only update if the other is more advanced (lower fraction)
+            self.remaining_duration = other.remaining_duration
+            self.total_duration = other.total_duration
+
+        if other.stop_time is not None and (
+            self.stop_time is None or other.stop_time < self.stop_time
+        ):
+            # Only update if the other has an earlier stop time
+            self.stop_time = other.stop_time
+
+        return self
 
 
 class SchedulerUpdateAction(StandardBaseModel):
@@ -177,8 +265,8 @@ class SchedulerUpdateAction(StandardBaseModel):
         default_factory=dict,
         description="Additional context and data for the scheduler action",
     )
-    progress: SchedulerUpdateActionProgress = Field(
-        default_factory=lambda: SchedulerUpdateActionProgress(),
+    progress: SchedulerProgress = Field(
+        default_factory=lambda: SchedulerProgress(),
         description="Progress information for the scheduler action",
     )
 
@@ -232,17 +320,9 @@ class SchedulerState(StandardBaseModel):
         description="Latest state from all constraints applied during scheduler run",
     )
 
-    remaining_fraction: float | None = Field(
-        default=None,
-        description="Estimated fraction of remaining progress, if known",
-    )
-    remaining_requests: float | None = Field(
-        default=None,
-        description="Estimated number of remaining requests to process, if known",
-    )
-    remaining_duration: float | None = Field(
-        default=None,
-        description="Estimated remaining time in seconds for scheduler run, if known",
+    progress: SchedulerProgress = Field(
+        default_factory=lambda: SchedulerProgress(),
+        description="Overall progress information for the scheduler run",
     )
 
     created_requests: int = Field(
