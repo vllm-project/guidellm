@@ -134,6 +134,12 @@ class OpenAIHTTPBackend(Backend):
             timeout=self.timeout,
             follow_redirects=self.follow_redirects,
             verify=self.verify,
+            # Allow unlimited connections
+            limits=httpx.Limits(
+                max_connections=None,
+                max_keepalive_connections=None,
+                keepalive_expiry=5.0,  # default
+            ),
         )
         self._in_process = True
 
