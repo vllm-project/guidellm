@@ -203,19 +203,20 @@ class _TabularDistributionSummary(DistributionSummary):
         """
         return cls(**distribution.model_dump())
     
-def _get_strategy_display_str(strategy: SchedulingStrategy):
-    strategy_type = strategy if isinstance(strategy, str) else strategy.type_
-    strategy_instance = (
-        strategy if isinstance(strategy, SchedulingStrategy) else None
-    )
+def _get_strategy_display_str(strategy: SchedulingStrategy | str):
+    if isinstance(strategy, SchedulingStrategy):
+        return str(strategy)
 
+    strategy_type = strategy
+    
     if strategy_type == "concurrent":
-        rate = f"@{strategy.streams}" if strategy_instance else "@##"  # type: ignore[attr-defined]
+        return "concurrent@##"
     elif strategy_type in ("constant", "poisson"):
-        rate = f"@{strategy.rate:.2f}" if strategy_instance else "@#.##"  # type: ignore[attr-defined]
-    else:
-        rate = ""
-    return f"{strategy_type}{rate}"
+        return f"{strategy_type}@#.##"
+    elif strategy_type == "throughput":
+        return "throughput@##" 
+        
+    return strategy_type
 
 
 def _create_html_report(js_data: dict[str, str], output_path: Path) -> Path:
@@ -414,11 +415,11 @@ def _build_benchmarks(benchmarks: list[GenerativeBenchmark]) -> list[dict[str, A
     :return: List of dictionaries with formatted benchmark metrics
     """
     result = []
-    rps = bm.metrics.requests_per_second.successful.mean
     for bm in benchmarks:
+        rps = bm.metrics.requests_per_second.successful.mean
         result.append(
             {
-                "strategy_display_str":_get_strategy_display_str(bm.scheduler.strategy),
+                "strategy_display_str":_get_strategy_display_str(bm.config.strategy),
                 "requests_per_second": rps,
                 "itl": _TabularDistributionSummary.from_distribution_summary(
                     bm.metrics.inter_token_latency_ms.successful
