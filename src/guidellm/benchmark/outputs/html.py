@@ -287,9 +287,9 @@ def _build_run_info(
     try:
         response = httpx.get(f"https://huggingface.co/api/models/{model}")
         model_size = response.json().get("usedStorage", 0)
-    except Exception:
-        logger.warning(f"Could not find huggingface model with model size")
-    
+    except (httpx.HTTPError, ValueError):
+        logger.warning("Could not find huggingface model with model size")
+
     return {
         "model": {"name": model, "size": model_size},
         "task": "N/A",
