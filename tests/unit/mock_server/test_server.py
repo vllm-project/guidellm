@@ -162,7 +162,7 @@ class TestMockServerEndpoints:
             assert "status" in data
             assert data["status"] == "healthy"
             assert "timestamp" in data
-            assert isinstance(data["timestamp"], (int, float))
+            assert isinstance(data["timestamp"], int | float)
 
     @pytest.mark.smoke
     @pytest.mark.asyncio

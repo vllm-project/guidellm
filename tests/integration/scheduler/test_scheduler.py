@@ -16,12 +16,12 @@ from guidellm.scheduler import (
     Environment,
     MaxNumberConstraint,
     NonDistributedEnvironment,
-    ScheduledRequestInfo,
     Scheduler,
     SchedulerState,
     SchedulingStrategy,
     SynchronousStrategy,
 )
+from guidellm.schemas import RequestInfo
 
 
 def async_timeout(delay: float):
@@ -121,7 +121,7 @@ async def test_scheduler_run_integration(
     received_updates = defaultdict(list)
     received_responses = []
     last_state = None
-    num_requests = 50
+    num_requests = 100
 
     async for resp, req, info, state in scheduler.run(
         requests=[MockRequest(payload=f"req_{ind}") for ind in range(num_requests)],
@@ -132,7 +132,7 @@ async def test_scheduler_run_integration(
     ):
         assert req is not None
         assert isinstance(req, MockRequest)
-        assert isinstance(info, ScheduledRequestInfo)
+        assert isinstance(info, RequestInfo)
         assert info.status != "cancelled"
         assert isinstance(state, SchedulerState)
         if info.status == "completed":
@@ -168,10 +168,12 @@ async def test_scheduler_run_integration(
         received_updates.keys(),
         received_updates.values(),
         received_responses,
+        strict=False,
     ):
         assert req == f"req_{index}"
         assert resp in (f"response_for_{req}", f"mock_error_for_{req}")
         assert statuses in (
             ["queued", "in_progress", "completed"],
             ["queued", "in_progress", "errored"],
+            ["queued", "pending", "in_progress"],
         )

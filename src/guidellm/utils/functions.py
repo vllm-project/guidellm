@@ -15,6 +15,7 @@ __all__ = [
     "all_defined",
     "safe_add",
     "safe_divide",
+    "safe_format_number",
     "safe_format_timestamp",
     "safe_getattr",
     "safe_multiply",
@@ -96,25 +97,26 @@ def safe_add(
     if not values:
         return default
 
-    values = list(values)
+    values_list = list(values)
 
     if signs is None:
-        signs = [1] * len(values)
+        signs = [1] * len(values_list)
 
-    if len(signs) != len(values):
+    if len(signs) != len(values_list):
         raise ValueError("Length of signs must match length of values")
 
-    result = values[0] if values[0] is not None else default
+    result = values_list[0] if values_list[0] is not None else default
 
-    for ind in range(1, len(values)):
-        val = values[ind] if values[ind] is not None else default
-        result += signs[ind] * val
+    for ind in range(1, len(values_list)):
+        value = values_list[ind]
+        checked_value = value if value is not None else default
+        result += signs[ind] * checked_value
 
     return result
 
 
 def safe_format_timestamp(
-    timestamp: float | None, format_: str = "%H:%M:%S", default: str = "N/A"
+    timestamp: float | int | None, format_: str = "%H:%M:%S", default: str = "N/A"
 ) -> str:
     """
     Safely format a timestamp with error handling and validation.
@@ -130,4 +132,28 @@ def safe_format_timestamp(
     try:
         return datetime.fromtimestamp(timestamp).strftime(format_)
     except (ValueError, OverflowError, OSError):
+        return default
+
+
+def safe_format_number(
+    number: int | float | None, precision: int = 1, default: str = "--"
+) -> str:
+    """
+    Safely format a number with specified precision and default handling.
+
+    :param number: Number to format, or None
+    :param precision: Number of decimal places for formatting floats
+    :param default: Value to return if number is None
+    :return: Formatted number string or default value
+    """
+    if number is None:
+        return default
+
+    if isinstance(number, int):
+        return str(number)
+
+    try:
+        format_str = f"{{:.{precision}f}}"
+        return format_str.format(number)
+    except (ValueError, TypeError):
         return default

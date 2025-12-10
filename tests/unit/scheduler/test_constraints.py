@@ -17,13 +17,14 @@ from guidellm.scheduler import (
     MaxGlobalErrorRateConstraint,
     MaxNumberConstraint,
     PydanticConstraintInitializer,
-    ScheduledRequestInfo,
+    SchedulerProgress,
     SchedulerState,
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from guidellm.utils import InfoMixin, StandardBaseModel
+from guidellm.schemas import RequestInfo, StandardBaseModel
+from guidellm.utils import InfoMixin
 
 
 class TestConstraint:
@@ -59,7 +60,7 @@ class TestConstraint:
             def __call__(
                 self,
                 state: SchedulerState,
-                request: ScheduledRequestInfo,
+                request: RequestInfo,
             ) -> SchedulerUpdateAction:
                 return SchedulerUpdateAction()
 
@@ -83,7 +84,7 @@ class TestConstraint:
             def __call__(
                 self,
                 state: SchedulerState,
-                request: ScheduledRequestInfo,
+                request: RequestInfo,
             ) -> SchedulerUpdateAction:
                 return SchedulerUpdateAction()
 
@@ -124,7 +125,7 @@ class TestConstraintInitializer:
                     def __call__(
                         self,
                         state: SchedulerState,
-                        request: ScheduledRequestInfo,
+                        request: RequestInfo,
                     ) -> SchedulerUpdateAction:
                         return SchedulerUpdateAction()
 
@@ -146,7 +147,7 @@ class TestConstraintInitializer:
                     def __call__(
                         self,
                         state: SchedulerState,
-                        request: ScheduledRequestInfo,
+                        request: RequestInfo,
                     ) -> SchedulerUpdateAction:
                         return SchedulerUpdateAction()
 
@@ -286,11 +287,11 @@ class TestUnserializableConstraintInitializer:
     def test_call_raises(self, valid_instances):
         """Test that calling constraint raises RuntimeError."""
         instance, _ = valid_instances
-        state = SchedulerState(node_id="test_node", num_processes=1, start_time=0.0)
-        request = ScheduledRequestInfo(
+        state = SchedulerState(node_id=0, num_processes=1, start_time=0.0)
+        request = RequestInfo(
             request_id="test_request",
             status="pending",
-            scheduler_node_id="test_node",
+            scheduler_node_id=0,
             scheduler_process_id=1,
             scheduler_start_time=0.0,
         )
@@ -370,7 +371,7 @@ class TestMaxNumberConstraint:
                 processed_requests=num_requests,
                 errored_requests=0,
             )
-            request_info = ScheduledRequestInfo(
+            request_info = RequestInfo(
                 request_id="test", status="completed", created_at=start_time
             )
 
@@ -540,7 +541,7 @@ class TestMaxDurationConstraint:
                 created_requests=step + 1,
                 processed_requests=step,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{step}",
                 status="completed",
                 scheduler_node_id=0,
@@ -564,13 +565,14 @@ class TestMaxDurationConstraint:
             assert action.metadata["elapsed_time"] == pytest.approx(elapsed, abs=0.01)
             assert action.metadata["duration_exceeded"] == duration_exceeded
             assert action.metadata["start_time"] == start_time
-            assert isinstance(action.progress, dict)
+
+            assert isinstance(action.progress, SchedulerProgress)
             expected_remaining_fraction = max(0.0, 1.0 - elapsed / max_duration)
             expected_remaining_duration = max(0.0, max_duration - elapsed)
-            assert action.progress["remaining_fraction"] == pytest.approx(
+            assert action.progress.remaining_fraction == pytest.approx(
                 expected_remaining_fraction, abs=0.1
             )
-            assert action.progress["remaining_duration"] == pytest.approx(
+            assert action.progress.remaining_duration == pytest.approx(
                 expected_remaining_duration, abs=0.1
             )
             time.sleep(sleep_interval)
@@ -744,7 +746,7 @@ class TestMaxErrorsConstraint:
                 processed_requests=processed_requests,
                 errored_requests=num_errors,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{num_errors}",
                 status="completed",
                 scheduler_node_id=0,
@@ -762,12 +764,16 @@ class TestMaxErrorsConstraint:
                 assert action.request_processing == "stop_all"
 
             assert isinstance(action.metadata, dict)
-            assert action.metadata == {
+            expected_metadata = {
                 "max_errors": constructor_args["max_errors"],
                 "errors_exceeded": errors_exceeded,
                 "current_errors": num_errors,
             }
-            assert action.progress == {}
+            # Note: metadata may have additional fields like stop_time
+            for key, value in expected_metadata.items():
+                assert action.metadata[key] == value
+
+            assert isinstance(action.progress, SchedulerProgress)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -947,7 +953,7 @@ class TestMaxErrorRateConstraint:
                 created_requests=request_num + 1,
                 processed_requests=request_num + 1,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{request_num}",
                 status=status,
                 scheduler_node_id=0,
@@ -978,7 +984,8 @@ class TestMaxErrorRateConstraint:
             assert action.metadata["error_count"] == error_count
             assert action.metadata["current_error_rate"] == current_error_rate
             assert action.metadata["exceeded_error_rate"] == exceeded_error_rate
-            assert action.progress == {}
+
+            assert isinstance(action.progress, SchedulerProgress)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -1173,7 +1180,7 @@ class TestMaxGlobalErrorRateConstraint:
                 processed_requests=processed_requests,
                 errored_requests=total_errors,
             )
-            request = ScheduledRequestInfo(
+            request = RequestInfo(
                 request_id=f"test-{request_num}",
                 status=status,
                 scheduler_node_id=0,
@@ -1200,7 +1207,7 @@ class TestMaxGlobalErrorRateConstraint:
             assert action.request_processing == expected_processing
 
             assert isinstance(action.metadata, dict)
-            assert action.metadata == {
+            expected_metadata = {
                 "max_error_rate": max_error_rate,
                 "min_processed": min_processed,
                 "processed_requests": processed_requests,
@@ -1209,9 +1216,12 @@ class TestMaxGlobalErrorRateConstraint:
                 "exceeded_min_processed": exceeded_min_processed,
                 "exceeded_error_rate": exceeded_error_rate,
             }
+            # Note: metadata may have additional fields like stop_time and exceeded
+            for key, value in expected_metadata.items():
+                assert action.metadata[key] == value
 
             # Error constraints don't provide progress information
-            assert action.progress == {}
+            assert isinstance(action.progress, SchedulerProgress)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -1393,7 +1403,7 @@ class TestConstraintsInitializerFactory:
             created_requests=5,
             processed_requests=5,
         )
-        request = ScheduledRequestInfo(
+        request = RequestInfo(
             request_id="test-request",
             status="completed",
             scheduler_node_id=0,

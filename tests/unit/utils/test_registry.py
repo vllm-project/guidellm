@@ -26,7 +26,7 @@ def test_registered_type():
     """Test that RegisterT is configured correctly as a TypeVar."""
     assert isinstance(RegisterT, type(TypeVar("test")))
     assert RegisterT.__name__ == "RegisterT"
-    assert RegisterT.__bound__ is None
+    assert RegisterT.__bound__ is type
     assert RegisterT.__constraints__ == ()
 
 
@@ -579,7 +579,9 @@ class TestRegistryMixin:
         if hasattr(inspect, "get_annotations"):
             # Python 3.10+
             try:
-                annotations = inspect.get_annotations(registered_class.__init__)
+                annotations = inspect.get_annotations(
+                    registered_class.__init__, eval_str=True
+                )
                 assert "value" in annotations
                 assert annotations["value"] is int
                 return_ann = annotations.get("return")

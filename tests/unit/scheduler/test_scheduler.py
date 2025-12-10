@@ -4,7 +4,6 @@ import asyncio
 import inspect
 import random
 import uuid
-from functools import wraps
 from typing import Any, Generic
 
 import pytest
@@ -14,25 +13,13 @@ from guidellm.scheduler import (
     BackendInterface,
     MaxNumberConstraint,
     NonDistributedEnvironment,
-    ScheduledRequestInfo,
     Scheduler,
     SchedulerState,
     SynchronousStrategy,
 )
+from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
-
-
-def async_timeout(delay: float):
-    """Decorator to add timeout to async test functions."""
-
-    def decorator(func):
-        @wraps(func)
-        async def new_func(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-
-        return new_func
-
-    return decorator
+from tests.unit.testing_utils import async_timeout
 
 
 class MockRequest(BaseModel):
@@ -182,7 +169,7 @@ class TestScheduler:
 
         assert len(results) > 0
         assert all(isinstance(r[1], MockRequest) for r in results)
-        assert all(isinstance(r[2], ScheduledRequestInfo) for r in results)
+        assert all(isinstance(r[2], RequestInfo) for r in results)
         assert all(isinstance(r[3], SchedulerState) for r in results)
 
     @pytest.mark.smoke
@@ -223,6 +210,7 @@ class TestScheduler:
                 requests=None,  # Invalid requests
                 backend=None,  # Invalid backend
                 strategy=SynchronousStrategy(),
+                startup_duration=0.1,
                 env=NonDistributedEnvironment(),
             ):
                 pass

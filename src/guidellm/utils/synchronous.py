@@ -16,9 +16,6 @@ from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
 from threading import Barrier as ThreadingBarrier
 from threading import Event as ThreadingEvent
-from typing import Annotated, Union
-
-from typing_extensions import TypeAlias
 
 __all__ = [
     "SyncObjectTypesAlias",
@@ -28,10 +25,10 @@ __all__ = [
 ]
 
 
-SyncObjectTypesAlias: TypeAlias = Annotated[
-    Union[ThreadingEvent, ProcessingEvent, ThreadingBarrier, ProcessingBarrier],
-    "Type alias for threading and multiprocessing synchronization object types",
-]
+# Type alias for threading and multiprocessing synchronization object types
+SyncObjectTypesAlias = (
+    ThreadingEvent | ProcessingEvent | ThreadingBarrier | ProcessingBarrier
+)
 
 
 async def wait_for_sync_event(
@@ -131,8 +128,9 @@ async def wait_for_sync_objects(
     :param poll_interval: Time in seconds between polling checks for each object
     :return: Index (for list/single) or key name (for dict) of the first
         completed object
-    :raises asyncio.CancelledError: If the async task is cancelled
+    :raises asyncio.CancelledError: If the async task is canceled
     """
+    keys: list[int | str]
     if isinstance(objects, dict):
         keys = list(objects.keys())
         objects = list(objects.values())
@@ -145,7 +143,7 @@ async def wait_for_sync_objects(
     tasks = [
         asyncio.create_task(
             wait_for_sync_barrier(obj, poll_interval)
-            if isinstance(obj, (ThreadingBarrier, ProcessingBarrier))
+            if isinstance(obj, ThreadingBarrier | ProcessingBarrier)
             else wait_for_sync_event(obj, poll_interval)
         )
         for obj in objects

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime
 
 import pytest
@@ -178,6 +179,18 @@ class TestSafeAdd:
 
         result = safe_add(None, default=3.0)
         assert result == 3.0
+
+
+@pytest.fixture(autouse=True)
+def force_us_eastern_timezone(monkeypatch):
+    """
+    Forces the timezone to US/Eastern for the duration of a test.
+    This ensures that timestamp formatting is consistent across all environments.
+
+    ## WRITTEN BY AI ##
+    """
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()  # Propagates the change to the underlying C library
 
 
 class TestSafeFormatTimestamp:

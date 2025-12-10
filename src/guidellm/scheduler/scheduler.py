@@ -1,11 +1,10 @@
 """
-Thread-safe singleton scheduler for distributed load generation workload coordination.
+Thread-safe singleton scheduler for distributed benchmarking workload coordination.
 
-Provides the core orchestration engine that coordinates request processing across
-worker processes and distributed environments. Manages timing synchronization,
-resource allocation, constraint enforcement, and result aggregation for
-load generation operations. Integrates with backends, environments, and strategies
-to enable scalable load testing across various scenarios including LLM inference.
+Orchestrates request processing across worker processes with distributed timing
+coordination, constraint enforcement, and result aggregation. Integrates with
+backends, environments, and strategies to enable scalable load testing across
+various scenarios including LLM inference benchmarking.
 """
 
 from __future__ import annotations
@@ -13,22 +12,19 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterable
 from typing import Any, Generic
 
-from guidellm.scheduler.constraints import (
-    Constraint,
-    ConstraintsInitializerFactory,
-)
+from guidellm.scheduler.constraints import Constraint, ConstraintsInitializerFactory
 from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
-from guidellm.scheduler.objects import (
+from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerState,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker_group import WorkerProcessGroup
-from guidellm.utils.singleton import ThreadSafeSingletonMixin
+from guidellm.schemas import RequestInfo
+from guidellm.utils import ThreadSafeSingletonMixin
 
 __all__ = ["Scheduler"]
 
@@ -41,16 +37,14 @@ class Scheduler(
     Thread-safe singleton scheduler for distributed benchmarking workload coordination.
 
     Orchestrates request processing across worker processes with distributed timing
-    coordination, constraint enforcement, and result aggregation. Provides a unified
-    interface for executing benchmarking operations while abstracting the complexity
-    of multi-process coordination, environment synchronization, and resource management.
-    Implements singleton pattern to ensure consistent execution state across concurrent
-    benchmark operations.
+    coordination, constraint enforcement, and result aggregation. Abstracts the
+    complexity of multi-process coordination, environment synchronization, and
+    resource management while providing a unified interface for executing benchmarking
+    operations. Implements singleton pattern to ensure consistent execution state.
 
     Example:
     ::
         from guidellm.scheduler import Scheduler
-        from guidellm.backends import OpenAIBackend
         from guidellm.scheduler import NonDistributedEnvironment, SynchronousStrategy
 
         scheduler = Scheduler()
@@ -61,7 +55,7 @@ class Scheduler(
             env=NonDistributedEnvironment(),
             max_requests=1000
         ):
-            print(f"Processed: {request} with info: {info} and response: {response}")
+            print(f"Processed: {request}")
     """
 
     async def run(
@@ -69,13 +63,13 @@ class Scheduler(
         requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
-        env: Environment | None,
-        **constraints: dict[str, Any | dict[str, Any] | Constraint],
+        env: Environment[RequestT, ResponseT] | None,
+        **constraints: Any | dict[str, Any] | Constraint,
     ) -> AsyncIterator[
         tuple[
             ResponseT | None,
-            RequestT,
-            ScheduledRequestInfo,
+            RequestT | MultiTurnRequestT[RequestT],
+            RequestInfo,
             SchedulerState,
         ]
     ]:
@@ -83,28 +77,28 @@ class Scheduler(
         Execute distributed request processing with coordinated timing and constraints.
 
         Orchestrates the complete benchmarking workflow across worker processes with
-        environment synchronization, constraint enforcement, and error handling.
-        Manages resource lifecycle from initialization through cleanup while yielding
-        real-time processing updates for monitoring and aggregation.
+        environment synchronization, constraint enforcement, and error handling. Manages
+        resource lifecycle from initialization through cleanup while yielding real-time
+        processing updates for monitoring and aggregation.
 
-        :param requests: Request collection to process. Supports single requests or
+        :param requests: Request collection to process, supporting single requests or
             multi-turn sequences with optional inter-request delays
         :param backend: Backend interface for request processing and response generation
         :param strategy: Scheduling strategy controlling request timing and distribution
         :param env: Environment interface for distributed coordination and
-            synchronization
+            synchronization. Defaults to NonDistributedEnvironment if None
         :param constraints: Runtime constraints for execution control (max_requests,
-            max_duration, max_error_rate, etc.). Values can be primitives, dictionaries,
-            or constraint instances
-        :yields: Requests udpates as (response, request, request_info, scheduler_state)
-        tuples. Each request will generate three ordered updates:
-            queued, in_progress, completed | errored | cancelled.
+            max_duration, max_error_rate, etc.) as primitives, dictionaries, or
+            constraint instances
+        :yields: Request updates as (response, request, request_info, scheduler_state)
+            tuples. Each request generates three ordered updates: queued, in_progress,
+            completed | errored | cancelled
         :raises Exception: Worker process errors, environment synchronization failures,
             or constraint evaluation errors are propagated after cleanup
         """
         with self.thread_lock:
             if env is None:
-                env = NonDistributedEnvironment()
+                env = NonDistributedEnvironment[RequestT, ResponseT]()
 
             worker_group: WorkerProcessGroup[RequestT, ResponseT] | None = None
 
@@ -113,22 +107,21 @@ class Scheduler(
             # and will ensure clean up before raising the error.
             try:
                 # Setup local run parameters, sync with the environment
-                constraints = ConstraintsInitializerFactory.resolve_constraints(
-                    constraints
+                resolved_constraints = (
+                    ConstraintsInitializerFactory.resolve_constraints(constraints)
                 )
                 (
                     local_requests,
                     local_strategy,
                     local_constraints,
-                ) = await env.sync_run_params(requests, strategy, constraints)
+                ) = await env.sync_run_params(requests, strategy, resolved_constraints)
 
                 # Setup the worker group, sync start with the environment
                 worker_group = WorkerProcessGroup[RequestT, ResponseT](
-                    requests=None,
-                    cycle_requests=local_requests,
+                    requests=local_requests,
                     backend=backend,
                     strategy=local_strategy,
-                    constraints=local_constraints,
+                    **local_constraints,
                 )
                 await worker_group.create_processes()
                 local_start_time = await env.sync_run_start()
@@ -147,19 +140,20 @@ class Scheduler(
                     yield response, request, request_info, state
             except Exception as err:  # noqa: BLE001
                 await env.sync_run_error(err)
+                raise err
             finally:
                 # Ensure all worker processes are cleaned up for error or completion
                 if worker_group is not None:
-                    err = await worker_group.shutdown()
+                    err = await worker_group.shutdown()  # type: ignore[misc]
                     if err is not None:
                         await env.sync_run_error(err)
 
             # Ensure any errors are raised and all responses
             # are yielded for aggregation on the primary node
             async for (
-                response,
-                request,
-                request_info,
-                state,
+                dist_response,
+                dist_request,
+                dist_request_info,
+                dist_state,
             ) in env.sync_run_end():
-                yield response, request, request_info, state
+                yield dist_response, dist_request, dist_request_info, dist_state

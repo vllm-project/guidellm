@@ -6,17 +6,17 @@ import asyncio
 import random
 import time
 from collections.abc import AsyncIterator
-from typing import Any, Optional
+from typing import Any
 
 from lorem.text import TextLorem
 
-from guidellm.backend.backend import Backend
-from guidellm.backend.objects import (
+from guidellm.backends import Backend
+from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestTimings,
     GenerationResponse,
+    RequestInfo,
+    RequestTimings,
 )
-from guidellm.scheduler import ScheduledRequestInfo
 
 
 @Backend.register("mock")
@@ -32,7 +32,7 @@ class MockBackend(Backend):
         self,
         target: str = "mock-target",
         model: str = "mock-model",
-        iter_delay: Optional[float] = None,
+        iter_delay: float | None = None,
     ):
         """
         Initialize mock backend.
@@ -53,7 +53,7 @@ class MockBackend(Backend):
         return self._target
 
     @property
-    def model(self) -> Optional[str]:
+    def model(self) -> str | None:
         """Model name for the mock backend."""
         return self._model
 
@@ -87,7 +87,7 @@ class MockBackend(Backend):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process")
 
-    async def default_model(self) -> Optional[str]:
+    async def default_model(self) -> str | None:
         """
         Return the default model for the mock backend.
         """
@@ -96,9 +96,9 @@ class MockBackend(Backend):
     async def resolve(
         self,
         request: GenerationRequest,
-        request_info: ScheduledRequestInfo,
-        history: Optional[list[tuple[GenerationRequest, GenerationResponse]]] = None,
-    ) -> AsyncIterator[tuple[GenerationResponse, ScheduledRequestInfo]]:
+        request_info: RequestInfo,
+        history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
+    ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Process a generation request and yield progressive responses.
 
@@ -133,7 +133,7 @@ class MockBackend(Backend):
         )
 
         # Initialize timings
-        request_info.request_timings = GenerationRequestTimings()
+        request_info.request_timings = RequestTimings()
         request_info.request_timings.request_start = time.time()
 
         # Generate response iteratively
@@ -170,7 +170,7 @@ class MockBackend(Backend):
         return len(str(content).split())
 
     @staticmethod
-    def _get_tokens(token_count: Optional[int] = None) -> list[str]:
+    def _get_tokens(token_count: int | None = None) -> list[str]:
         """
         Generate mock tokens for response.
         """

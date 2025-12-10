@@ -1,3 +1,15 @@
+"""
+Scheduler subsystem for orchestrating benchmark workloads and managing worker processes.
+
+This module provides the core scheduling infrastructure for guidellm, including
+strategies for controlling request timing patterns (synchronous, asynchronous,
+constant rate, Poisson), constraints for limiting benchmark execution (duration,
+error rates, request counts), and distributed execution through worker processes.
+The scheduler coordinates between backend interfaces, manages benchmark state
+transitions, and handles multi-turn request sequences with customizable timing
+strategies and resource constraints.
+"""
+
 from .constraints import (
     Constraint,
     ConstraintInitializer,
@@ -7,35 +19,29 @@ from .constraints import (
     MaxErrorsConstraint,
     MaxGlobalErrorRateConstraint,
     MaxNumberConstraint,
+    OverSaturationConstraint,
+    OverSaturationConstraintInitializer,
     PydanticConstraintInitializer,
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
 from .environments import Environment, NonDistributedEnvironment
-from .objects import (
+from .scheduler import Scheduler
+from .schemas import (
     BackendInterface,
     BackendT,
-    MeasuredRequestTimings,
     MultiTurnRequestT,
-    RequestSchedulerTimings,
     RequestT,
     ResponseT,
-    ScheduledRequestInfo,
     SchedulerMessagingPydanticRegistry,
+    SchedulerProgress,
     SchedulerState,
     SchedulerUpdateAction,
-    SchedulerUpdateActionProgress,
 )
-from .scheduler import Scheduler
 from .strategies import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,
-    ConstantRateRequestTimings,
-    LastCompletionRequestTimings,
-    NoDelayRequestTimings,
-    PoissonRateRequestTimings,
-    ScheduledRequestTimings,
     SchedulingStrategy,
     StrategyT,
     StrategyType,
@@ -51,33 +57,27 @@ __all__ = [
     "BackendInterface",
     "BackendT",
     "ConcurrentStrategy",
-    "ConstantRateRequestTimings",
     "Constraint",
     "ConstraintInitializer",
     "ConstraintsInitializerFactory",
     "Environment",
-    "LastCompletionRequestTimings",
     "MaxDurationConstraint",
     "MaxErrorRateConstraint",
     "MaxErrorsConstraint",
     "MaxGlobalErrorRateConstraint",
     "MaxNumberConstraint",
-    "MeasuredRequestTimings",
     "MultiTurnRequestT",
-    "NoDelayRequestTimings",
     "NonDistributedEnvironment",
-    "PoissonRateRequestTimings",
+    "OverSaturationConstraint",
+    "OverSaturationConstraintInitializer",
     "PydanticConstraintInitializer",
-    "RequestSchedulerTimings",
     "RequestT",
     "ResponseT",
-    "ScheduledRequestInfo",
-    "ScheduledRequestTimings",
     "Scheduler",
     "SchedulerMessagingPydanticRegistry",
+    "SchedulerProgress",
     "SchedulerState",
     "SchedulerUpdateAction",
-    "SchedulerUpdateActionProgress",
     "SchedulingStrategy",
     "SerializableConstraintInitializer",
     "StrategyT",

@@ -11,12 +11,13 @@ requiring actual model deployments.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from sanic import Sanic, response
 from sanic.exceptions import NotFound
 from sanic.log import logger
 from sanic.request import Request
-from sanic.response import HTTPResponse
+from sanic.response import BaseHTTPResponse, HTTPResponse
 
 from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.handlers import (
@@ -65,16 +66,20 @@ class MockServer:
         """Setup middleware for CORS, logging, etc."""
 
         @self.app.middleware("request")
-        async def add_cors_headers(_request: Request):
+        async def add_cors_headers(_request: Request) -> None:
             """Add CORS headers to all requests."""
+            return None  # noqa: RET501
 
         @self.app.middleware("response")
-        async def add_response_headers(_request: Request, resp: HTTPResponse):
+        async def add_response_headers(
+            _request: Any, resp: BaseHTTPResponse
+        ) -> HTTPResponse:
             """Add standard response headers."""
             resp.headers["Access-Control-Allow-Origin"] = "*"
             resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
             resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
             resp.headers["Server"] = "guidellm-mock-server"
+            return resp  # type: ignore[return-value]
 
     def _setup_routes(self):  # noqa: C901
         @self.app.get("/health")

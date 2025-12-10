@@ -1,26 +1,17 @@
 """
-Benchmark progress tracking and console display abstractions.
+Progress tracking and console display for benchmark execution monitoring.
 
-Provides progress tracking interfaces and implementations for monitoring benchmark
-execution, displaying real-time statistics, and managing UI updates during
-generative benchmarking operations.
-
-Classes:
-    BenchmarkerProgress: Abstract base for benchmark progress tracking.
-    BenchmarkerProgressGroup: Composite progress handler for multiple instances.
-    GenerativeConsoleBenchmarkerProgress: Console-based progress display.
-
-Type Variables:
-    BenchmarkT: Generic benchmark object type.
+Provides abstract interfaces and concrete implementations for tracking benchmark
+progress during execution. The module enables real-time display of benchmark
+statistics, metrics, and execution state through console-based UI components.
+Primary use cases include monitoring generative benchmark runs with detailed
+request/token statistics and scheduler state updates.
 """
 
 from __future__ import annotations
 
-import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterable, AsyncIterator, Iterable
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Generic, Literal
 
 from rich.console import Group
@@ -37,338 +28,94 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from guidellm.benchmark.aggregator import AggregatorState
-from guidellm.benchmark.objects import BenchmarkT, GenerativeBenchmark
-from guidellm.benchmark.profile import Profile
-from guidellm.scheduler import (
-    SchedulerState,
-    SchedulingStrategy,
-    StrategyType,
+from guidellm.benchmark.profiles import Profile
+from guidellm.benchmark.schemas import (
+    BenchmarkAccumulatorT,
+    BenchmarkT,
+    GenerativeBenchmark,
+    GenerativeBenchmarkAccumulator,
 )
-from guidellm.utils import Colors, format_value_display
+from guidellm.scheduler import SchedulerState, SchedulingStrategy
+from guidellm.utils import Colors, format_value_display, safe_format_timestamp
 
-__all__ = [
-    "BenchmarkerProgress",
-    "BenchmarkerProgressGroup",
-    "GenerativeConsoleBenchmarkerProgress",
-]
+__all__ = ["BenchmarkerProgress", "GenerativeConsoleBenchmarkerProgress"]
 
 
-class BenchmarkerProgress(Generic[BenchmarkT], ABC):
+class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
     """
-    Abstract base class for tracking and displaying benchmark progress.
+    Abstract interface for tracking and displaying benchmark execution progress.
 
-    Provides lifecycle hooks for monitoring benchmark execution stages including
-    initialization, start, updates, completion, and finalization. Supports
-    enable/disable functionality for conditional progress tracking.
+    Provides lifecycle hooks for monitoring benchmark stages including initialization,
+    execution start, progress updates, completion, and finalization. Implementations
+    handle display updates, progress tracking, and resource management for benchmark
+    monitoring.
     """
 
-    def __init__(self, enabled: bool = True):
-        """
-        Initialize progress tracker.
-
-        :param enabled: Whether to enable progress tracking and display.
-        """
-        self._enabled = enabled
-        self.profile: Profile = None
-        self.current_strategy: SchedulingStrategy = None
-
-    @property
-    def enabled(self) -> bool:
-        """
-        :return: Whether progress tracking is currently enabled.
-        """
-        return self._enabled
-
-    @enabled.setter
-    def enabled(self, value: bool) -> None:
-        """
-        :param value: True to enable progress tracking, False to disable.
-        :raises RuntimeError: If called after progress run has started.
-        """
-        if self.profile is not None:
-            raise RuntimeError(
-                "Cannot change enabled state after __call__ for progress run"
-            )
-
-        self._enabled = value
-
-    def __call__(
-        self,
-        profile: Profile,
-        agen: AsyncIterable[
-            tuple[
-                AggregatorState | None,
-                BenchmarkT | None,
-                SchedulingStrategy,
-                SchedulerState | None,
-            ]
-        ],
-    ) -> AsyncIterator[
-        tuple[
-            AggregatorState | None,
-            BenchmarkT | None,
-            SchedulingStrategy,
-            SchedulerState | None,
-        ]
-    ]:
-        """
-        Track progress through benchmark execution pipeline.
-
-        Wraps the provided async generator to monitor benchmark progress,
-        calling appropriate lifecycle hooks based on execution state.
-
-        :param profile: Benchmark profile configuration.
-        :param agen: Async generator yielding benchmark execution updates.
-        :return: Async iterator forwarding original updates with progress tracking.
-        """
-
-        async def aiterator() -> AsyncIterator[
-            tuple[
-                AggregatorState | None,
-                BenchmarkT | None,
-                SchedulingStrategy,
-                SchedulerState | None,
-            ]
-        ]:
-            self.profile = profile
-            if self.enabled:
-                await self.on_initialize(profile)
-
-            async for aggregator_update, benchmark, strategy, scheduler_state in agen:
-                if self.enabled:
-                    await self.on_raw_update(
-                        profile,
-                        aggregator_update,
-                        benchmark,
-                        strategy,
-                        scheduler_state,
-                    )
-
-                    if self.current_strategy != strategy:
-                        self.current_strategy = strategy
-                        await self.on_benchmark_start(strategy)
-                    elif benchmark is not None:
-                        await self.on_benchmark_complete(benchmark)
-                        self.current_strategy = None
-                    else:
-                        await self.on_benchmark_update(
-                            aggregator_update, scheduler_state
-                        )
-
-                yield aggregator_update, benchmark, strategy, scheduler_state
-
-            if self.enabled:
-                await self.on_finalize()
-
-        return aiterator()
+    def __init__(self):
+        """Initialize progress tracker with default state."""
+        self.profile: Profile | None = None
+        self.current_strategy: SchedulingStrategy | None = None
 
     @abstractmethod
     async def on_initialize(self, profile: Profile):
         """
-        Initialize progress tracking for benchmark profile.
+        Initialize progress tracking for the given benchmark profile.
 
-        :param profile: Benchmark profile configuration.
+        :param profile: Benchmark profile configuration defining execution parameters
         """
 
     @abstractmethod
     async def on_benchmark_start(self, strategy: SchedulingStrategy):
         """
-        Handle start of new benchmark strategy execution.
+        Handle benchmark strategy execution start event.
 
-        :param strategy: Scheduling strategy being executed.
+        :param strategy: Scheduling strategy configuration being executed
         """
 
     @abstractmethod
     async def on_benchmark_update(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
+        self, accumulator: BenchmarkAccumulatorT, scheduler_state: SchedulerState
     ):
         """
-        Handle benchmark execution progress update.
+        Handle benchmark execution progress update with current metrics.
 
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param scheduler_state: Current scheduler execution state.
+        :param accumulator: Current accumulated benchmark metrics and statistics
+        :param scheduler_state: Current scheduler execution state and counters
         """
 
     @abstractmethod
     async def on_benchmark_complete(self, benchmark: BenchmarkT):
         """
-        Handle completion of benchmark strategy execution.
+        Handle benchmark strategy execution completion event.
 
-        :param benchmark: Completed benchmark results.
+        :param benchmark: Completed benchmark results with final metrics
         """
 
     @abstractmethod
     async def on_finalize(self):
-        """Finalize progress tracking and cleanup resources."""
-
-    async def on_raw_update(
-        self,
-        profile: Profile,
-        aggregator_update: AggregatorState | None,
-        benchmark: BenchmarkT | None,
-        strategy: SchedulingStrategy,
-        scheduler_state: SchedulerState | None,
-    ):
-        """
-        Handle raw benchmark execution update.
-
-        Optional hook for accessing all execution state updates. Default
-        implementation does nothing.
-
-        :param profile: Benchmark profile configuration.
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param benchmark: Completed benchmark if available.
-        :param strategy: Current scheduling strategy.
-        :param scheduler_state: Current scheduler execution state.
-        """
-
-
-class BenchmarkerProgressGroup(BenchmarkerProgress[BenchmarkT]):
-    """
-    Composite progress handler that manages multiple progress instances.
-
-    Distributes progress events to all contained progress instances, enabling
-    parallel progress tracking through multiple channels (e.g., console display
-    and file logging).
-
-    :param instances: Collection of progress handlers to manage.
-    :param enabled: Whether the group is active.
-    """
-
-    def __init__(
-        self,
-        instances: (
-            Iterable[BenchmarkerProgress[BenchmarkT]]
-            | list[BenchmarkerProgress[BenchmarkT]]
-        ),
-        enabled: bool = True,
-    ):
-        """
-        Initialize progress group with handler instances.
-
-        :param instances: Progress handler instances to coordinate.
-        :param enabled: Whether to enable the progress group.
-        """
-        self.instances: list[BenchmarkerProgress[BenchmarkT]] = list(instances)
-        super().__init__(enabled=enabled)
-
-    @property
-    def enabled(self) -> bool:
-        """Whether the progress group is currently enabled."""
-        return self._enabled
-
-    @enabled.setter
-    def enabled(self, value: bool):
-        """
-        Set enabled state for group and all contained instances.
-
-        :param value: New enabled state.
-        """
-        self._enabled = value
-        for instance in self.instances:
-            instance.enabled = value
-
-    async def on_initialize(self, profile: Profile):
-        """
-        Initialize all progress handler instances.
-
-        :param profile: Benchmark profile configuration.
-        """
-        await asyncio.gather(
-            *[child.on_initialize(profile) for child in self.instances]
-        )
-
-    async def on_benchmark_start(self, strategy: SchedulingStrategy):
-        """
-        Notify all handlers of benchmark strategy start.
-
-        :param strategy: Scheduling strategy being executed.
-        """
-        await asyncio.gather(
-            *[child.on_benchmark_start(strategy) for child in self.instances]
-        )
-
-    async def on_benchmark_update(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
-    ):
-        """
-        Distribute benchmark updates to all handlers.
-
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param scheduler_state: Current scheduler execution state.
-        """
-        await asyncio.gather(
-            *[
-                child.on_benchmark_update(aggregator_update, scheduler_state)
-                for child in self.instances
-            ]
-        )
-
-    async def on_benchmark_complete(self, benchmark: BenchmarkT):
-        """
-        Notify all handlers of benchmark completion.
-
-        :param benchmark: Completed benchmark results.
-        """
-        await asyncio.gather(
-            *[child.on_benchmark_complete(benchmark) for child in self.instances]
-        )
-
-    async def on_finalize(self):
-        """Finalize all progress handler instances."""
-        await asyncio.gather(*[child.on_finalize() for child in self.instances])
-
-    async def on_raw_update(
-        self,
-        profile: Profile,
-        aggregator_update: AggregatorState | None,
-        benchmark: BenchmarkT | None,
-        strategy: SchedulingStrategy,
-        scheduler_state: SchedulerState | None,
-    ):
-        """
-        Distribute raw updates to all handlers.
-
-        :param profile: Benchmark profile configuration.
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param benchmark: Completed benchmark if available.
-        :param strategy: Current scheduling strategy.
-        :param scheduler_state: Current scheduler execution state.
-        """
-        await asyncio.gather(
-            *[
-                child.on_raw_update(
-                    profile,
-                    aggregator_update,
-                    benchmark,
-                    strategy,
-                    scheduler_state,
-                )
-                for child in self.instances
-            ]
-        )
+        """Finalize progress tracking and release associated resources."""
 
 
 class GenerativeConsoleBenchmarkerProgress(
-    BenchmarkerProgress[GenerativeBenchmark], Live
+    BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark], Live
 ):
     """
-    Console-based progress display for generative benchmarks.
+    Console-based real-time progress display for generative benchmarks.
 
-    Provides real-time visual progress tracking using Rich library components,
-    displaying benchmark execution statistics, timing information, and progress
-    bars in a structured console interface.
+    Renders live benchmark execution statistics using Rich library components with
+    structured progress bars, timing information, request/token metrics, and optional
+    scheduler statistics. Updates refresh automatically during benchmark execution.
+
+    :cvar display_scheduler_stats: Whether to include scheduler statistics in display
     """
 
-    def __init__(self, enabled: bool = True, display_scheduler_stats: bool = False):
+    def __init__(self, display_scheduler_stats: bool = False):
         """
-        Initialize console progress display.
+        Initialize console progress display with rendering configuration.
 
-        :param enabled: Whether to enable progress tracking and display.
-        :param display_scheduler_stats: Whether to display scheduler statistics.
+        :param display_scheduler_stats: Whether to display scheduler timing statistics
         """
-        BenchmarkerProgress.__init__(self, enabled=enabled)
+        super().__init__()
         Live.__init__(
             self,
             refresh_per_second=4,
@@ -377,15 +124,15 @@ class GenerativeConsoleBenchmarkerProgress(
             redirect_stderr=True,
         )
         self.display_scheduler_stats: bool = display_scheduler_stats
-        self.run_progress: Progress = None
-        self.run_progress_task: TaskID = None
-        self.tasks_progress: _GenerativeProgressTasks = None
+        self.run_progress: Progress | None = None
+        self.run_progress_task: TaskID | None = None
+        self.tasks_progress: _GenerativeProgressTasks | None = None
 
     async def on_initialize(self, profile: Profile):
         """
-        Initialize console display components and start rendering.
+        Initialize console display components and begin live rendering.
 
-        :param profile: Benchmark profile configuration.
+        :param profile: Benchmark profile configuration defining execution parameters
         """
         self.tasks_progress = _GenerativeProgressTasks(
             profile=profile, display_scheduler_stats=self.display_scheduler_stats
@@ -424,39 +171,46 @@ class GenerativeConsoleBenchmarkerProgress(
 
     async def on_benchmark_start(self, strategy: SchedulingStrategy):
         """
-        Update display for new benchmark strategy start.
+        Update display for benchmark strategy execution start.
 
-        :param strategy: Scheduling strategy being executed.
+        :param strategy: Scheduling strategy configuration being executed
         """
-        self.tasks_progress.start_benchmark(strategy)
-        self._sync_run_progress()
+        if self.tasks_progress is not None:
+            self.tasks_progress.start_benchmark(strategy)
+            self._sync_run_progress()
 
     async def on_benchmark_update(
-        self, aggregator_update: AggregatorState | None, scheduler_state: SchedulerState
+        self,
+        accumulator: GenerativeBenchmarkAccumulator,
+        scheduler_state: SchedulerState,
     ):
         """
-        Update display with current benchmark progress.
+        Update display with current benchmark progress and metrics.
 
-        :param aggregator_update: Current benchmark metrics and statistics.
-        :param scheduler_state: Current scheduler execution state.
+        :param accumulator: Current accumulated benchmark metrics and statistics
+        :param scheduler_state: Current scheduler execution state and counters
         """
-        self.tasks_progress.update_benchmark(aggregator_update, scheduler_state)
-        self._sync_run_progress()
+        if self.tasks_progress is not None:
+            self.tasks_progress.update_benchmark(accumulator, scheduler_state)
+            self._sync_run_progress()
 
     async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
         """
-        Update display for completed benchmark.
+        Update display for completed benchmark strategy.
 
-        :param benchmark: Completed benchmark results.
+        :param benchmark: Completed benchmark results with final metrics
         """
-        self.tasks_progress.complete_benchmark(benchmark)
-        self._sync_run_progress()
+        if self.tasks_progress is not None:
+            self.tasks_progress.complete_benchmark(benchmark)
+            self._sync_run_progress()
 
     async def on_finalize(self):
-        """Stop display rendering and cleanup resources."""
-        self.tasks_progress.finalize()
-        self._sync_run_progress()
-        self.run_progress.stop_task(self.run_progress_task)
+        """Stop display rendering and release resources."""
+        if self.tasks_progress is not None:
+            self.tasks_progress.finalize()
+            self._sync_run_progress()
+        if self.run_progress is not None and self.run_progress_task is not None:
+            self.run_progress.stop_task(self.run_progress_task)
         self.stop()
         self.run_progress = None
         self.run_progress_task = None
@@ -464,13 +218,18 @@ class GenerativeConsoleBenchmarkerProgress(
 
     def _sync_run_progress(self):
         """Synchronize overall progress display with task progress."""
-        self.run_progress.update(
-            self.run_progress_task,
-            total=self.tasks_progress.steps_total,
-            completed=self.tasks_progress.steps_progress,
-            completed_benchmarks=self.tasks_progress.tasks_progress,
-            total_benchmarks=self.tasks_progress.tasks_total,
-        )
+        if (
+            self.run_progress is not None
+            and self.run_progress_task is not None
+            and self.tasks_progress is not None
+        ):
+            self.run_progress.update(
+                self.run_progress_task,
+                total=self.tasks_progress.steps_total,
+                completed=self.tasks_progress.steps_progress,
+                completed_benchmarks=self.tasks_progress.tasks_progress,
+                total_benchmarks=self.tasks_progress.tasks_total,
+            )
 
 
 # Scaling factor for progress calculations to provide granular progress updates
@@ -526,7 +285,7 @@ class _GenerativeProgressTasks(Progress):
         )
         progress_total = self.current_index + (progress_current_task or 0)
 
-        return progress_total * _PROGRESS_SCALE
+        return int(progress_total * _PROGRESS_SCALE)
 
     def start_benchmark(self, strategy: SchedulingStrategy):
         self.current_index += 1
@@ -537,30 +296,36 @@ class _GenerativeProgressTasks(Progress):
             task_state.task_id = task_id
             self.benchmark_task_states.append(task_state)
 
-        self.benchmark_task_states[self.current_index].start(strategy)
-        self.update(
-            self.benchmark_task_states[self.current_index].task_id,
-            start=True,
-            **self.benchmark_task_states[self.current_index].current,
-        )
+        current_state = self.benchmark_task_states[self.current_index]
+        current_state.start(strategy)
+        if current_state.task_id is not None:
+            self.update(
+                current_state.task_id,
+                start=True,
+                **current_state.current,
+            )
 
     def update_benchmark(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
+        self,
+        accumulator: GenerativeBenchmarkAccumulator,
+        scheduler_state: SchedulerState,
     ):
-        self.benchmark_task_states[self.current_index].update(
-            aggregator_update, scheduler_state
-        )
-        self.update(
-            self.benchmark_task_states[self.current_index].task_id,
-            **self.benchmark_task_states[self.current_index].current,
-        )
+        current_state = self.benchmark_task_states[self.current_index]
+        current_state.update(accumulator, scheduler_state)
+        if current_state.task_id is not None:
+            self.update(
+                current_state.task_id,
+                **current_state.current,
+            )
 
     def complete_benchmark(self, benchmark: GenerativeBenchmark):
-        self.benchmark_task_states[self.current_index].complete(benchmark)
-        self.update(
-            self.benchmark_task_states[self.current_index].task_id,
-            **self.benchmark_task_states[self.current_index].current,
-        )
+        current_state = self.benchmark_task_states[self.current_index]
+        current_state.complete(benchmark)
+        if current_state.task_id is not None:
+            self.update(
+                current_state.task_id,
+                **current_state.current,
+            )
 
     def finalize(self):
         self.stop()
@@ -568,29 +333,29 @@ class _GenerativeProgressTasks(Progress):
 
 @dataclass
 class _GenerativeProgressTaskState:
-    strategy_type: StrategyType
-    task_id: TaskID = None
+    strategy_type: str
+    task_id: TaskID | None = None
     strategy: SchedulingStrategy | None = None
     benchmark_status: Literal[
-        "pending", "in_warmup", "in_progress", "in_cooldown", "completed"
+        "pending", "warmup", "active", "cooldown", "completed"
     ] = "pending"
     progress: float | None = None
     start_time: float = -1.0
     successful_requests: int = 0
     cancelled_requests: int = 0
     errored_requests: int = 0
-    request_concurrency: int = 0
-    requests_per_second: float = 0
-    request_latency: float = 0
-    output_tokens: int = 0
-    output_tokens_rate: float = 0
-    prompt_tokens: int = 0
-    total_tokens_rate: float = 0
-    time_to_first_token: float = 0
-    inter_token_latency: float = 0
-    queued_time: float = 0
-    request_targeted_start_delay: float = 0
-    scheduler_overheads_time: float = 0
+    request_concurrency: float = 0.0
+    requests_per_second: float = 0.0
+    request_latency: float = 0.0
+    output_tokens: float = 0
+    output_tokens_rate: float = 0.0
+    prompt_tokens: float = 0
+    total_tokens_rate: float = 0.0
+    time_to_first_token: float = 0.0
+    inter_token_latency: float = 0.0
+    queued_time: float = 0.0
+    request_targeted_start_delay: float = 0.0
+    scheduler_overheads_time: float = 0.0
 
     @property
     def current(self) -> dict[str, Any]:
@@ -608,12 +373,12 @@ class _GenerativeProgressTaskState:
     @property
     def completed(self) -> float:
         if self.benchmark_status == "pending":
-            return 0
+            return 0.0
 
         if self.benchmark_status == "completed":
-            return _PROGRESS_SCALE
+            return float(_PROGRESS_SCALE)
 
-        return self.progress * _PROGRESS_SCALE if self.progress is not None else None
+        return self.progress * _PROGRESS_SCALE if self.progress is not None else 0.0
 
     @property
     def total(self) -> float:
@@ -624,17 +389,17 @@ class _GenerativeProgressTaskState:
         if self.start_time < 0.0:
             return "--:--:--"
 
-        return datetime.fromtimestamp(self.start_time).strftime("%H:%M:%S")
+        return safe_format_timestamp(self.start_time, format_="%H:%M:%S")
 
     @property
     def formatted_progress_status(self) -> str:
-        if self.benchmark_status == "in_warmup":
+        if self.benchmark_status == "warmup":
             status = "warmup"
             color = Colors.progress
-        elif self.benchmark_status == "in_progress":
+        elif self.benchmark_status == "active":
             status = "running"
             color = Colors.progress
-        elif self.benchmark_status == "in_cooldown":
+        elif self.benchmark_status == "cooldown":
             status = "cooldown"
             color = Colors.progress
         elif self.benchmark_status == "completed":
@@ -800,82 +565,50 @@ class _GenerativeProgressTaskState:
         self.strategy_type = strategy.type_
 
     def update(
-        self, aggregator_update: AggregatorState, scheduler_state: SchedulerState
+        self,
+        accumulator: GenerativeBenchmarkAccumulator,
+        scheduler_state: SchedulerState,
     ):
         self.progress = (
-            (1.0 - scheduler_state.remaining_fraction)
-            if scheduler_state.remaining_fraction is not None
+            (1.0 - scheduler_state.progress.remaining_fraction)
+            if scheduler_state.progress.remaining_fraction is not None
             else 0.0
         )
-        status: Literal["in_warmup", "in_progress", "in_cooldown"] | None = (
-            "in_progress"  # Need to handle requests_in_* isn't in aggregator_update
-        )
-        if aggregator_update.get("requests_in_warmup"):
-            status = "in_warmup"
-        elif aggregator_update.get("requests_in_cooldown"):
-            status = "in_cooldown"
         self._update_processing_states(
-            benchmark_status=status,
-            start_time=scheduler_state.start_time,
+            benchmark_status=self._map_status(accumulator.timings.status),
+            start_time=accumulator.timings.measure_start,
             successful_requests=scheduler_state.successful_requests,
             cancelled_requests=scheduler_state.cancelled_requests,
             errored_requests=scheduler_state.errored_requests,
         )
         self._update_request_stats(
-            request_concurrency=aggregator_update.get_metric(
-                key="requests", type_="avg", prefix="completed"
-            ),
-            requests_per_second=aggregator_update.get_metric(
-                key="requests",
-                type_="rate",
-                prefix="completed",
-            ),
-            request_latency=aggregator_update.get_metric(
-                key="request_latency", type_="avg", prefix="completed"
-            ),
+            request_concurrency=accumulator.concurrency_metric.time_weighted_mean,
+            requests_per_second=accumulator.completed_metrics.requests.rate_per_second,
+            request_latency=accumulator.completed_metrics.request_latency.mean,
         )
         self._update_token_stats(
-            output_tokens=aggregator_update.get_metric(
-                key="output_tokens", type_="avg", prefix="completed"
-            ),
-            output_tokens_rate=aggregator_update.get_metric(
-                key="output_tokens", type_="rate"
-            ),
-            prompt_tokens=aggregator_update.get_metric(
-                key="prompt_tokens", type_="avg", prefix="completed"
-            ),
-            total_tokens_rate=aggregator_update.get_metric(
-                key="total_tokens", type_="rate"
-            ),
-            time_to_first_token=(
-                aggregator_update.get_metric(key="time_to_first_token", type_="avg")
-            ),
-            inter_token_latency=(
-                aggregator_update.get_metric(key="inter_token_latency", type_="avg")
-            ),
+            output_tokens=accumulator.completed_metrics.total_tokens.mean,
+            output_tokens_rate=accumulator.completed_metrics.output_tokens.rate_per_second,
+            prompt_tokens=accumulator.completed_metrics.input_tokens.mean,
+            total_tokens_rate=accumulator.completed_metrics.total_tokens.rate_per_second,
+            time_to_first_token=accumulator.completed_metrics.time_to_first_token_ms.mean,
+            inter_token_latency=accumulator.completed_metrics.inter_token_latency_ms.mean,
+            converted=True,
         )
-        if aggregator_update.get("updated_scheduler_stats"):
-            self._update_system_stats(
-                request_targeted_start_delay=(
-                    aggregator_update.get_metric(
-                        key="request_targeted_start_delay", type_="avg", default=0.0
-                    )
-                ),
-                queued_time=(
-                    aggregator_update.get_metric(
-                        key="queued_time", type_="avg", default=0.0
-                    )
-                ),
-                scheduler_overheads_time=0.0,  # Need to add up metrics here
-            )
+        self._update_system_stats(
+            request_targeted_start_delay=accumulator.scheduler_metrics.request_targeted_start_delay.mean,
+            queued_time=accumulator.scheduler_metrics.queued_time.mean,
+            scheduler_overheads_time=accumulator.scheduler_metrics.resolve_end_delay.mean,
+            converted=False,
+        )
 
     def complete(self, benchmark: GenerativeBenchmark):
         self._update_processing_states(
             benchmark_status="completed",
             start_time=benchmark.start_time,
-            successful_requests=benchmark.request_totals.successful,
-            cancelled_requests=benchmark.request_totals.incomplete,
-            errored_requests=benchmark.request_totals.errored,
+            successful_requests=benchmark.metrics.request_totals.successful,
+            cancelled_requests=benchmark.metrics.request_totals.incomplete,
+            errored_requests=benchmark.metrics.request_totals.errored,
         )
         self._update_request_stats(
             request_concurrency=benchmark.metrics.request_concurrency.successful.mean,
@@ -896,11 +629,19 @@ class _GenerativeProgressTaskState:
             converted=True,
         )
 
+    @staticmethod
+    def _map_status(
+        status: Literal["pending", "warmup", "active", "cooldown", "completed"],
+    ) -> Literal["pending", "warmup", "active", "cooldown", "completed"]:
+        """Map accumulator status to internal progress status representation."""
+        return status
+
     def _update_processing_states(
         self,
         benchmark_status: Literal[
-            "pending", "in_warmup", "in_progress", "in_cooldown", "completed"
-        ],
+            "pending", "warmup", "active", "cooldown", "completed"
+        ]
+        | None = None,
         start_time: float | None = None,
         successful_requests: int | None = None,
         cancelled_requests: int | None = None,
@@ -919,7 +660,7 @@ class _GenerativeProgressTaskState:
 
     def _update_request_stats(
         self,
-        request_concurrency: int | None = None,
+        request_concurrency: float | None = None,
         requests_per_second: float | None = None,
         request_latency: float | None = None,
     ):
@@ -932,9 +673,9 @@ class _GenerativeProgressTaskState:
 
     def _update_token_stats(
         self,
-        output_tokens: int | None = None,
+        output_tokens: float | None = None,
         output_tokens_rate: float | None = None,
-        prompt_tokens: int | None = None,
+        prompt_tokens: float | None = None,
         total_tokens_rate: float | None = None,
         time_to_first_token: float | None = None,
         inter_token_latency: float | None = None,

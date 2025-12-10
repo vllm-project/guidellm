@@ -1,14 +1,12 @@
 """
-GuideLLM command-line interface providing benchmarking, dataset preprocessing, and
-mock server functionality.
+GuideLLM command-line interface entry point.
 
-This module serves as the primary entry point for the GuideLLM CLI application,
-offering a comprehensive suite of tools for language model evaluation and testing.
-It provides three main command groups: benchmark operations for performance testing
-against generative models, dataset preprocessing utilities for data preparation and
-transformation, and a mock server for testing and development scenarios. The CLI
-supports various backends, output formats, and configuration options to accommodate
-different benchmarking needs and deployment environments.
+Primary CLI application providing benchmark execution, dataset preprocessing, and
+mock server functionality for language model evaluation. Organizes commands into
+three main groups: benchmark operations for performance testing, preprocessing
+utilities for data transformation, and mock server capabilities for development
+and testing. Supports multiple backends, output formats, and flexible configuration
+through CLI options and environment variables.
 
 Example:
 ::
@@ -28,73 +26,48 @@ from __future__ import annotations
 import asyncio
 import codecs
 from pathlib import Path
-from typing import Annotated, Union
 
 import click
 from pydantic import ValidationError
 
+from guidellm.data import ShortPromptStrategy, process_dataset
+
 try:
     import uvloop
-
-    HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
-    ] = True
 except ImportError:
-    uvloop = None
-
-    HAS_UVLOOP: Annotated[
-        bool, "Flag indicating if uvloop is available for event loop optimization"
-    ] = False
+    uvloop = None  # type: ignore[assignment] # Optional dependency
 
 from guidellm.backends import BackendType
 from guidellm.benchmark import (
+    BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
-    InjectExtrasAggregator,
     ProfileType,
     benchmark_generative_text,
+    get_builtin_scenarios,
     reimport_benchmarks_report,
 )
-from guidellm.benchmark.scenario import (
-    GenerativeTextScenario,
-    get_builtin_scenarios,
-)
 from guidellm.mock_server import MockServer, MockServerConfig
-from guidellm.preprocess.dataset import ShortPromptStrategy, process_dataset
 from guidellm.scheduler import StrategyType
+from guidellm.schemas import GenerativeRequestType
 from guidellm.settings import print_config
 from guidellm.utils import Console, DefaultGroupHandler, get_literal_vals
 from guidellm.utils import cli as cli_tools
 
-__all__ = [
-    "STRATEGY_PROFILE_CHOICES",
-    "benchmark",
-    "cli",
-    "config",
-    "dataset",
-    "decode_escaped_str",
-    "from_file",
-    "mock_server",
-    "preprocess",
-    "run",
-]
-
-STRATEGY_PROFILE_CHOICES: Annotated[
-    list[str], "Available strategy and profile choices for benchmark execution types"
-] = list(get_literal_vals(Union[ProfileType, StrategyType]))
+STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
+"""Available strategy and profile type choices for benchmark execution."""
 
 
 def decode_escaped_str(_ctx, _param, value):
     """
     Decode escape sequences in Click option values.
 
-    Click automatically escapes characters in option values, converting sequences
-    like "\\n" to "\\\\n". This function properly decodes these escape sequences
-    to their intended characters for use in CLI options.
+    Click automatically escapes characters converting sequences like "\\n" to
+    "\\\\n". This function decodes these sequences to their intended characters.
 
     :param _ctx: Click context (unused)
     :param _param: Click parameter (unused)
-    :param value: String value to decode escape sequences from
-    :return: Decoded string with proper escape sequences
+    :param value: String value to decode
+    :return: Decoded string with proper escape sequences, or None if input is None
     :raises click.BadParameter: When escape sequence decoding fails
     """
     if value is None:
@@ -108,37 +81,30 @@ def decode_escaped_str(_ctx, _param, value):
 @click.group()
 @click.version_option(package_name="guidellm", message="guidellm version: %(version)s")
 def cli():
-    """
-    Main entry point for the GuideLLM command-line interface.
-
-    This is the root command group that organizes all GuideLLM CLI functionality
-    into logical subgroups for benchmarking, preprocessing, configuration, and
-    mock server operations.
-    """
+    """GuideLLM CLI for benchmarking, preprocessing, and testing language models."""
 
 
 @cli.group(
-    help="Commands to run a new benchmark or load a prior one.",
+    help="Run a benchmark or load a previously saved benchmark report.",
     cls=DefaultGroupHandler,
     default="run",
 )
 def benchmark():
-    """
-    Benchmark command group for running and managing performance tests.
-
-    This command group provides functionality to execute new benchmarks against
-    generative models and load previously saved benchmark reports for analysis.
-    Supports various benchmarking strategies, output formats, and backend types.
-    """
+    """Benchmark commands for performance testing generative models."""
 
 
 @benchmark.command(
     "run",
-    help="Run a benchmark against a generative model using the specified arguments.",
+    help=(
+        "Run a benchmark against a generative model. "
+        "Supports multiple backends, data sources, strategies, and output formats. "
+        "Configuration can be loaded from a scenario file or specified via options."
+    ),
     context_settings={"auto_envvar_prefix": "GUIDELLM"},
 )
 @click.option(
     "--scenario",
+    "-c",
     type=cli_tools.Union(
         click.Path(
             exists=True,
@@ -147,56 +113,46 @@ def benchmark():
             dir_okay=False,
             path_type=Path,
         ),
-        click.Choice(get_builtin_scenarios()),
+        click.Choice(tuple(get_builtin_scenarios().keys())),
     ),
     default=None,
     help=(
-        "The name of a builtin scenario or path to a config file. "
-        "Missing values from the config will use defaults. "
-        "Options specified on the commandline will override the scenario."
+        "Builtin scenario name or path to config file. "
+        "CLI options override scenario settings."
     ),
 )
 @click.option(
     "--target",
     type=str,
-    help="The target path for the backend to run benchmarks against. For example, http://localhost:8000",
+    help="Target backend URL (e.g., http://localhost:8000).",
 )
 @click.option(
     "--data",
     type=str,
+    multiple=True,
     help=(
-        "The HuggingFace dataset ID, a path to a HuggingFace dataset, "
-        "a path to a data file csv, json, jsonl, or txt, "
-        "or a synthetic data config as a json or key=value string."
+        "HuggingFace dataset ID, path to dataset, path to data file "
+        "(csv/json/jsonl/txt), or synthetic data config (json/key=value)."
     ),
 )
 @click.option(
     "--profile",
     "--rate-type",  # legacy alias
     "profile",
+    default=BenchmarkGenerativeTextArgs.get_default("profile"),
     type=click.Choice(STRATEGY_PROFILE_CHOICES),
-    help=(
-        "The type of benchmark to run. "
-        f"Supported types {', '.join(STRATEGY_PROFILE_CHOICES)}. "
-    ),
+    help=f"Benchmark profile type. Options: {', '.join(STRATEGY_PROFILE_CHOICES)}.",
 )
 @click.option(
     "--rate",
-    default=GenerativeTextScenario.get_default("rate"),
+    callback=cli_tools.parse_list_floats,
+    multiple=True,
+    default=BenchmarkGenerativeTextArgs.get_default("rate"),
     help=(
-        "The rates to run the benchmark at. "
-        "Can be a single number or a comma-separated list of numbers. "
-        "For rate-type=sweep, this is the number of benchmarks it runs in the sweep. "
-        "For rate-type=concurrent, this is the number of concurrent requests. "
-        "For rate-type=async,constant,poisson, this is the rate requests per second. "
-        "For rate-type=synchronous,throughput, this must not be set."
+        "Benchmark rate(s) to test. Meaning depends on profile: "
+        "sweep=number of benchmarks, concurrent=concurrent requests, "
+        "async/constant/poisson=requests per second."
     ),
-)
-@click.option(
-    "--random-seed",
-    default=GenerativeTextScenario.get_default("random_seed"),
-    type=int,
-    help="The random seed to use for benchmarking to ensure reproducibility.",
 )
 # Backend configuration
 @click.option(
@@ -204,257 +160,328 @@ def benchmark():
     "--backend-type",  # legacy alias
     "backend",
     type=click.Choice(list(get_literal_vals(BackendType))),
-    default=GenerativeTextScenario.get_default("backend"),
-    help=(
-        "The type of backend to use to run requests against. Defaults to 'openai_http'."
-        f" Supported types: {', '.join(get_literal_vals(BackendType))}"
-    ),
+    default=BenchmarkGenerativeTextArgs.get_default("backend"),
+    help=f"Backend type. Options: {', '.join(get_literal_vals(BackendType))}.",
 )
 @click.option(
     "--backend-kwargs",
     "--backend-args",  # legacy alias
     "backend_kwargs",
     callback=cli_tools.parse_json,
-    default=GenerativeTextScenario.get_default("backend_kwargs"),
-    help=(
-        "A JSON string containing any arguments to pass to the backend as a "
-        "dict with **kwargs. Headers can be removed by setting their value to "
-        "null. For example: "
-        """'{"headers": {"Authorization": null, "Custom-Header": "Custom-Value"}}'"""
-    ),
+    default=BenchmarkGenerativeTextArgs.get_default("backend_kwargs"),
+    help="JSON string of arguments to pass to the backend.",
 )
 @click.option(
     "--model",
-    default=GenerativeTextScenario.get_default("model"),
+    default=BenchmarkGenerativeTextArgs.get_default("model"),
     type=str,
-    help=(
-        "The ID of the model to benchmark within the backend. "
-        "If None provided (default), then it will use the first model available."
-    ),
+    help="Model ID to benchmark. If not provided, uses first available model.",
 )
 # Data configuration
 @click.option(
+    "--request-type",
+    default=BenchmarkGenerativeTextArgs.get_default("data_request_formatter"),
+    type=click.Choice(list(get_literal_vals(GenerativeRequestType))),
+    help=(
+        f"Request type to create for each data sample. "
+        f"Options: {', '.join(get_literal_vals(GenerativeRequestType))}."
+    ),
+)
+@click.option(
+    "--request-formatter-kwargs",
+    default=None,
+    callback=cli_tools.parse_json,
+    help="JSON string of arguments to pass to the request formatter.",
+)
+@click.option(
     "--processor",
-    default=GenerativeTextScenario.get_default("processor"),
+    default=BenchmarkGenerativeTextArgs.get_default("processor"),
     type=str,
     help=(
-        "The processor or tokenizer to use to calculate token counts for statistics "
-        "and synthetic data generation. If None provided (default), will load "
-        "using the model arg, if needed."
+        "Processor or tokenizer for token count calculations. "
+        "If not provided, loads from model."
     ),
 )
 @click.option(
     "--processor-args",
-    default=GenerativeTextScenario.get_default("processor_args"),
+    default=BenchmarkGenerativeTextArgs.get_default("processor_args"),
     callback=cli_tools.parse_json,
-    help=(
-        "A JSON string containing any arguments to pass to the processor constructor "
-        "as a dict with **kwargs."
-    ),
+    help="JSON string of arguments to pass to the processor constructor.",
 )
 @click.option(
     "--data-args",
-    default=GenerativeTextScenario.get_default("data_args"),
+    multiple=True,
+    default=BenchmarkGenerativeTextArgs.get_default("data_args"),
     callback=cli_tools.parse_json,
+    help="JSON string of arguments to pass to dataset creation.",
+)
+@click.option(
+    "--data-samples",
+    default=BenchmarkGenerativeTextArgs.get_default("data_samples"),
+    type=int,
     help=(
-        "A JSON string containing any arguments to pass to the dataset creation "
-        "as a dict with **kwargs."
+        "Number of samples from dataset. -1 (default) uses all samples "
+        "and dynamically generates more."
     ),
+)
+@click.option(
+    "--data-column-mapper",
+    default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
+    callback=cli_tools.parse_json,
+    help="JSON string of column mappings to apply to the dataset.",
 )
 @click.option(
     "--data-sampler",
-    default=GenerativeTextScenario.get_default("data_sampler"),
-    type=click.Choice(["random"]),
-    help=(
-        "The data sampler type to use. 'random' will add a random shuffle on the data. "
-        "Defaults to None"
-    ),
+    default=BenchmarkGenerativeTextArgs.get_default("data_sampler"),
+    type=click.Choice(["shuffle"]),
+    help="Data sampler type.",
+)
+@click.option(
+    "--data-num-workers",
+    default=BenchmarkGenerativeTextArgs.get_default("data_num_workers"),
+    type=int,
+    help="Number of worker processes for data loading.",
+)
+@click.option(
+    "--dataloader-kwargs",
+    default=BenchmarkGenerativeTextArgs.get_default("dataloader_kwargs"),
+    callback=cli_tools.parse_json,
+    help="JSON string of arguments to pass to the dataloader constructor.",
+)
+@click.option(
+    "--random-seed",
+    default=BenchmarkGenerativeTextArgs.get_default("random_seed"),
+    type=int,
+    help="Random seed for reproducibility.",
 )
 # Output configuration
 @click.option(
+    "--output-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=BenchmarkGenerativeTextArgs.get_default("output_dir"),
+    help="The directory path to save file output types in",
+)
+@click.option(
+    "--outputs",
+    callback=cli_tools.parse_list,
+    multiple=True,
+    default=BenchmarkGenerativeTextArgs.get_default("outputs"),
+    help=(
+        "The filename.ext for each of the outputs to create or the "
+        "alises (json, csv, html) for the output files to create with "
+        "their default file names (benchmark.[EXT])"
+    ),
+)
+@click.option(
     "--output-path",
     type=click.Path(),
-    default=Path.cwd(),
+    default=None,
     help=(
-        "The path to save the output formats to, if the format is a file type. "
-        "If it is a directory, it will save all output formats selected under it. "
-        "If it is a file, it will save the corresponding output format to that file. "
-        "Any output formats that were given that do not match the file extension will "
-        "be saved in the parent directory of the file path. "
-        "Defaults to the current working directory. "
+        "Legacy parameter for the output path to save the output result to. "
+        "Resolves to fill in output-dir and outputs based on input path."
     ),
 )
 @click.option(
-    "--output-formats",
-    multiple=True,
-    type=str,
-    default=("console", "json"),  # ("console", "json", "html", "csv")
+    "--disable-console",
+    "--disable-console-outputs",  # legacy alias
+    "disable_console",
+    is_flag=True,
     help=(
-        "The output formats to use for the benchmark results. "
-        "Defaults to console, json, html, and csv where the file formats "
-        "will be saved at the specified output path."
+        "Disable all outputs to the console (updates, interactive progress, results)."
     ),
 )
 @click.option(
-    "--disable-console-outputs",
+    "--disable-console-interactive",
+    "--disable-progress",  # legacy alias
+    "disable_console_interactive",
     is_flag=True,
-    help="Set this flag to disable console output",
-)
-# Updates configuration
-@click.option(
-    "--disable-progress",
-    is_flag=True,
-    help="Set this flag to disable progress updates to the console",
-)
-@click.option(
-    "--display-scheduler-stats",
-    is_flag=True,
-    help="Set this flag to display stats for the processes running the benchmarks",
+    help="Disable interactive console progress updates.",
 )
 # Aggregators configuration
-@click.option(
-    "--output-extras",
-    callback=cli_tools.parse_json,
-    help="A JSON string of extra data to save with the output benchmarks",
-)
 @click.option(
     "--warmup",
     "--warmup-percent",  # legacy alias
     "warmup",
-    type=float,
-    default=GenerativeTextScenario.get_default("warmup"),
+    default=BenchmarkGenerativeTextArgs.get_default("warmup"),
+    callback=cli_tools.parse_json,
     help=(
-        "The specification around the number of requests to run before benchmarking. "
-        "If within (0, 1), then the percent of requests/time to use for warmup. "
-        "If >=1, then the number of requests or seconds to use for warmup."
-        "Whether it's requests/time used is dependent on which constraint is active. "
-        "Default None for no warmup."
+        "Warmup specification: int, float, or dict as string "
+        "(json or key=value). "
+        "Controls time or requests before measurement starts. "
+        "Numeric in (0, 1): percent of duration or request count. "
+        "Numeric >=1: duration in seconds or request count. "
+        "Advanced config: see TransientPhaseConfig schema."
     ),
 )
 @click.option(
     "--cooldown",
     "--cooldown-percent",  # legacy alias
     "cooldown",
-    type=float,
-    default=GenerativeTextScenario.get_default("cooldown"),
+    default=BenchmarkGenerativeTextArgs.get_default("cooldown"),
+    callback=cli_tools.parse_json,
     help=(
-        "The specification around the number of requests to run after benchmarking. "
-        "If within (0, 1), then the percent of requests/time to use for cooldown. "
-        "If >=1, then the number of requests or seconds to use for cooldown."
-        "Whether it's requests/time used is dependent on which constraint is active. "
-        "Default None for no cooldown."
+        "Cooldown specification: int, float, or dict as string "
+        "(json or key=value). "
+        "Controls time or requests after measurement ends. "
+        "Numeric in (0, 1): percent of duration or request count. "
+        "Numeric >=1: duration in seconds or request count. "
+        "Advanced config: see TransientPhaseConfig schema."
     ),
 )
 @click.option(
-    "--request-samples",
+    "--rampup",
+    type=float,
+    default=BenchmarkGenerativeTextArgs.get_default("rampup"),
+    help=(
+        "The time, in seconds, to ramp up the request rate over. "
+        "Only applicable for Throughput/Concurrent strategies"
+    ),
+)
+@click.option(
+    "--sample-requests",
     "--output-sampling",  # legacy alias
-    "request_samples",
-    default=GenerativeTextScenario.get_default("request_samples"),
+    "sample_requests",
     type=int,
     help=(
-        "The number of samples for each request status and each benchmark to save "
-        "in the output file. If None (default), will save all samples. "
-        "Defaults to 20."
+        "Number of sample requests per status to save. "
+        "None (default) saves all, recommended: 20."
     ),
 )
 # Constraints configuration
 @click.option(
     "--max-seconds",
     type=float,
-    default=GenerativeTextScenario.get_default("max_seconds"),
+    default=BenchmarkGenerativeTextArgs.get_default("max_seconds"),
     help=(
-        "The maximum number of seconds each benchmark can run for. "
-        "If None, will run until max_requests or the data is exhausted."
+        "Maximum seconds per benchmark. "
+        "If None, runs until max_requests or data exhaustion."
     ),
 )
 @click.option(
     "--max-requests",
     type=int,
-    default=GenerativeTextScenario.get_default("max_requests"),
+    default=BenchmarkGenerativeTextArgs.get_default("max_requests"),
     help=(
-        "The maximum number of requests each benchmark can run for. "
-        "If None, will run until max_seconds or the data is exhausted."
+        "Maximum requests per benchmark. "
+        "If None, runs until max_seconds or data exhaustion."
     ),
 )
 @click.option(
     "--max-errors",
     type=int,
-    default=GenerativeTextScenario.get_default("max_errors"),
-    help="Maximum number of errors allowed before stopping the benchmark",
+    default=BenchmarkGenerativeTextArgs.get_default("max_errors"),
+    help="Maximum errors before stopping the benchmark.",
 )
 @click.option(
     "--max-error-rate",
     type=float,
-    default=GenerativeTextScenario.get_default("max_error_rate"),
-    help="Maximum error rate allowed before stopping the benchmark",
+    default=BenchmarkGenerativeTextArgs.get_default("max_error_rate"),
+    help="Maximum error rate before stopping the benchmark.",
 )
 @click.option(
     "--max-global-error-rate",
     type=float,
-    default=GenerativeTextScenario.get_default("max_global_error_rate"),
-    help="Maximum global error rate allowed across all benchmarks",
+    default=BenchmarkGenerativeTextArgs.get_default("max_global_error_rate"),
+    help="Maximum global error rate across all benchmarks.",
 )
-def run(**kwargs):
-    """
-    Execute a generative text benchmark against a target model backend.
+@click.option(
+    "--over-saturation",
+    "over_saturation",
+    callback=cli_tools.parse_json,
+    default=None,
+    help=(
+        "Enable over-saturation detection. "
+        "Pass a JSON dict with configuration "
+        '(e.g., \'{"enabled": true, "min_seconds": 30}\'). '
+        "Defaults to None (disabled)."
+    ),
+)
+@click.option(
+    "--detect-saturation",
+    "--default-over-saturation",
+    "over_saturation",
+    callback=cli_tools.parse_json,
+    flag_value='{"enabled": true}',
+    help="Enable over-saturation detection with default settings.",
+)
+def run(**kwargs):  # noqa: C901
+    # Only set CLI args that differ from click defaults
+    kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
 
-    Runs comprehensive performance testing using various strategies and profiles,
-    collecting metrics on latency, throughput, error rates, and resource usage.
-    Supports multiple backends, data sources, output formats, and constraint types
-    for flexible benchmark configuration.
-    """
-    scenario = kwargs.pop("scenario")
-    click_ctx = click.get_current_context()
-    overrides = cli_tools.set_if_not_default(click_ctx, **kwargs)
+    # Handle remapping for request params
+    request_type = kwargs.pop("request_type", None)
+    request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
+    if request_type is not None:
+        kwargs["data_request_formatter"] = (
+            request_type
+            if not request_formatter_kwargs
+            else {"request_type": request_type, **request_formatter_kwargs}
+        )
+    elif request_formatter_kwargs is not None:
+        kwargs["data_request_formatter"] = request_formatter_kwargs
+
+    # Handle output path remapping
+    if (output_path := kwargs.pop("output_path", None)) is not None:
+        if kwargs.get("outputs_dir", None) is not None:
+            raise click.BadParameter("Cannot use --output-path with --output-dir.")
+        path = Path(output_path)
+        if path.is_dir():
+            kwargs["output_dir"] = path
+        else:
+            kwargs["output_dir"] = path.parent
+            kwargs["outputs"] = (path.name,)
+
+    # Handle console options
+    disable_console = kwargs.pop("disable_console", False)
+    disable_console_interactive = (
+        kwargs.pop("disable_console_interactive", False) or disable_console
+    )
+    console = Console() if not disable_console else None
+    envs = cli_tools.list_set_env()
+    if console and envs:
+        console.print_update(
+            title=(
+                "Note: the following environment variables "
+                "are set and **may** affect configuration"
+            ),
+            details=", ".join(envs),
+            status="warning",
+        )
 
     try:
-        # If a scenario file was specified read from it
-        if scenario is None:
-            _scenario = GenerativeTextScenario.model_validate(overrides)
-        elif isinstance(scenario, Path):
-            _scenario = GenerativeTextScenario.from_file(scenario, overrides)
-        else:  # Only builtins can make it here; click will catch anything else
-            _scenario = GenerativeTextScenario.from_builtin(scenario, overrides)
-    except ValidationError as e:
+        args = BenchmarkGenerativeTextArgs.create(
+            scenario=kwargs.pop("scenario", None), **kwargs
+        )
+    except ValidationError as err:
         # Translate pydantic valdation error to click argument error
-        errs = e.errors(include_url=False, include_context=True, include_input=True)
+        errs = err.errors(include_url=False, include_context=True, include_input=True)
         param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
         raise click.BadParameter(
-            errs[0]["msg"], ctx=click_ctx, param_hint=param_name
-        ) from e
+            errs[0]["msg"], ctx=click.get_current_context(), param_hint=param_name
+        ) from err
 
-    if HAS_UVLOOP:
+    if uvloop is not None:
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     asyncio.run(
         benchmark_generative_text(
-            scenario=_scenario,
-            # Output configuration
-            output_path=kwargs["output_path"],
-            output_formats=[
-                fmt
-                for fmt in kwargs["output_formats"]
-                if not kwargs["disable_console_outputs"] or fmt != "console"
-            ],
-            # Updates configuration
+            args=args,
             progress=(
-                [
-                    GenerativeConsoleBenchmarkerProgress(
-                        display_scheduler_stats=kwargs["display_scheduler_stats"]
-                    )
-                ]
-                if not kwargs["disable_progress"]
+                GenerativeConsoleBenchmarkerProgress()
+                if not disable_console_interactive
                 else None
             ),
-            print_updates=not kwargs["disable_console_outputs"],
-            # Aggregators configuration
-            add_aggregators={
-                "extras": InjectExtrasAggregator(extras=kwargs["output_extras"])
-            },
+            console=console,
         )
     )
 
 
-@benchmark.command("from-file", help="Load a saved benchmark report.")
+@benchmark.command(
+    "from-file",
+    help=(
+        "Load a saved benchmark report and optionally re-export to other formats. "
+        "PATH: Path to the saved benchmark report file (default: ./benchmarks.json)."
+    ),
+)
 @click.argument(
     "path",
     type=click.Path(file_okay=True, dir_okay=False, exists=True),
@@ -465,13 +492,9 @@ def run(**kwargs):
     type=click.Path(),
     default=Path.cwd(),
     help=(
-        "Allows re-exporting the benchmarks to other formats. "
-        "The path to save the output formats to, if the format is a file type. "
-        "If it is a directory, it will save all output formats selected under it. "
-        "If it is a file, it will save the corresponding output format to that file. "
-        "Any output formats that were given that do not match the file extension will "
-        "be saved in the parent directory of the file path. "
-        "Defaults to the current working directory. "
+        "Directory or file path to save re-exported benchmark results. "
+        "If a directory, all output formats will be saved there. "
+        "If a file, the matching format will be saved to that file."
     ),
 )
 @click.option(
@@ -479,57 +502,33 @@ def run(**kwargs):
     multiple=True,
     type=str,
     default=("console", "json"),  # ("console", "json", "html", "csv")
-    help=(
-        "The output formats to use for the benchmark results. "
-        "Defaults to console, json, html, and csv where the file formats "
-        "will be saved at the specified output path."
-    ),
+    help="Output formats for benchmark results (e.g., console, json, html, csv).",
 )
 def from_file(path, output_path, output_formats):
-    """
-    Load and optionally re-export a previously saved benchmark report.
-
-    Imports benchmark results from a saved file and provides optional conversion
-    to different output formats. Supports JSON, YAML, and CSV export formats
-    based on the output file extension.
-    """
     asyncio.run(reimport_benchmarks_report(path, output_path, output_formats))
 
 
 @cli.command(
-    short_help="Prints environment variable settings.",
-    help=(
-        "Print out the available configuration settings that can be set "
-        "through environment variables."
-    ),
+    short_help="Show configuration settings.",
+    help="Display environment variables for configuring GuideLLM behavior.",
 )
 def config():
-    """
-    Display available GuideLLM configuration environment variables.
-
-    Prints a comprehensive list of all environment variables that can be used
-    to configure GuideLLM behavior, including their current values, defaults,
-    and descriptions.
-    """
     print_config()
 
 
-@cli.group(help="General preprocessing tools and utilities.")
+@cli.group(help="Tools for preprocessing datasets for use in benchmarks.")
 def preprocess():
-    """
-    Preprocessing command group for dataset preparation and transformation.
-
-    This command group provides utilities for converting, processing, and
-    optimizing datasets for use in GuideLLM benchmarks. Includes functionality
-    for token count adjustments, format conversions, and data validation.
-    """
+    """Dataset preprocessing utilities."""
 
 
 @preprocess.command(
+    "dataset",
     help=(
-        "Convert a dataset to have specific prompt and output token sizes.\n"
-        "DATA: Path to the input dataset or dataset ID.\n"
-        "OUTPUT_PATH: Path to save the converted dataset, including file suffix."
+        "Process a dataset to have specific prompt and output token sizes. "
+        "Supports multiple strategies for handling prompts and optional "
+        "Hugging Face Hub upload.\n\n"
+        "DATA: Path to the input dataset or dataset ID.\n\n"
+        "OUTPUT_PATH: Path to save the processed dataset, including file suffix."
     ),
     context_settings={"auto_envvar_prefix": "GUIDELLM"},
 )
@@ -547,186 +546,198 @@ def preprocess():
     "--processor",
     type=str,
     required=True,
+    help="Processor or tokenizer name for calculating token counts.",
+)
+@click.option(
+    "--config",
+    type=str,
+    required=True,
     help=(
-        "The processor or tokenizer to use to calculate token counts for statistics "
-        "and synthetic data generation."
+        "PreprocessDatasetConfig as JSON string, key=value pairs, "
+        "or file path (.json, .yaml, .yml, .config). "
+        "Example: 'prompt_tokens=100,output_tokens=50,prefix_tokens_max=10'"
+        ' or \'{"prompt_tokens": 100, "output_tokens": 50, '
+        '"prefix_tokens_max": 10}\''
     ),
 )
 @click.option(
     "--processor-args",
     default=None,
     callback=cli_tools.parse_json,
-    help=(
-        "A JSON string containing any arguments to pass to the processor constructor "
-        "as a dict with **kwargs."
-    ),
+    help="JSON string of arguments to pass to the processor constructor.",
 )
 @click.option(
     "--data-args",
     callback=cli_tools.parse_json,
-    help=(
-        "A JSON string containing any arguments to pass to the dataset creation "
-        "as a dict with **kwargs."
-    ),
+    help="JSON string of arguments to pass to dataset creation.",
+)
+@click.option(
+    "--data-column-mapper",
+    default=None,
+    callback=cli_tools.parse_json,
+    help="JSON string of column mappings to apply to the dataset.",
 )
 @click.option(
     "--short-prompt-strategy",
     type=click.Choice([s.value for s in ShortPromptStrategy]),
     default=ShortPromptStrategy.IGNORE.value,
     show_default=True,
-    help="Strategy to handle prompts shorter than the target length. ",
+    help="Strategy for handling prompts shorter than target length.",
 )
 @click.option(
     "--pad-char",
     type=str,
     default="",
     callback=decode_escaped_str,
-    help="The token to pad short prompts with when using the 'pad' strategy.",
+    help="Character to pad short prompts with when using 'pad' strategy.",
 )
 @click.option(
     "--concat-delimiter",
     type=str,
     default="",
     help=(
-        "The delimiter to use when concatenating prompts that are too short."
-        " Used when strategy is 'concatenate'."
+        "Delimiter for concatenating short prompts (used with 'concatenate' strategy)."
     ),
 )
 @click.option(
-    "--prompt-tokens",
-    type=str,
-    default=None,
-    help="Prompt tokens config (JSON, YAML file or key=value string)",
-)
-@click.option(
-    "--output-tokens",
-    type=str,
-    default=None,
-    help="Output tokens config (JSON, YAML file or key=value string)",
+    "--include-prefix-in-token-count",
+    is_flag=True,
+    default=False,
+    help="Include prefix tokens in prompt token count calculation.",
 )
 @click.option(
     "--push-to-hub",
     is_flag=True,
-    help="Set this flag to push the converted dataset to the Hugging Face Hub.",
+    help="Push the processed dataset to Hugging Face Hub.",
 )
 @click.option(
     "--hub-dataset-id",
     type=str,
     default=None,
-    help="The Hugging Face Hub dataset ID to push to. "
-    "Required if --push-to-hub is used.",
+    help=("Hugging Face Hub dataset ID for upload (required if --push-to-hub is set)."),
 )
 @click.option(
     "--random-seed",
     type=int,
     default=42,
     show_default=True,
-    help="Random seed for prompt token sampling and output tokens sampling.",
+    help="Random seed for reproducible token sampling.",
 )
 def dataset(
     data,
     output_path,
     processor,
+    config,
     processor_args,
     data_args,
+    data_column_mapper,
     short_prompt_strategy,
     pad_char,
     concat_delimiter,
-    prompt_tokens,
-    output_tokens,
+    include_prefix_in_token_count,
     push_to_hub,
     hub_dataset_id,
     random_seed,
 ):
-    """
-    Convert and process datasets for specific prompt and output token requirements.
-
-    Transforms datasets to meet target token length specifications using various
-    strategies for handling short prompts and output length adjustments. Supports
-    multiple input formats and can optionally push results to Hugging Face Hub.
-    """
     process_dataset(
         data=data,
         output_path=output_path,
         processor=processor,
-        prompt_tokens=prompt_tokens,
-        output_tokens=output_tokens,
+        config=config,
         processor_args=processor_args,
         data_args=data_args,
+        data_column_mapper=data_column_mapper,
         short_prompt_strategy=short_prompt_strategy,
         pad_char=pad_char,
         concat_delimiter=concat_delimiter,
+        include_prefix_in_token_count=include_prefix_in_token_count,
         push_to_hub=push_to_hub,
         hub_dataset_id=hub_dataset_id,
         random_seed=random_seed,
     )
 
 
-@cli.command(help="Start the GuideLLM mock OpenAI/vLLM server for testing.")
-@click.option("--host", default="127.0.0.1", help="Host to bind the server to")
-@click.option("--port", default=8000, type=int, help="Port to bind the server to")
-@click.option("--workers", default=1, type=int, help="Number of worker processes")
-@click.option(
-    "--model", default="llama-3.1-8b-instruct", help="The name of the model to mock"
+@cli.command(
+    "mock-server",
+    help=(
+        "Start a mock OpenAI/vLLM-compatible server for testing. "
+        "Simulates model inference with configurable latency and token generation."
+    ),
 )
-@click.option("--processor", default=None, help="The processor to use for requests")
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    help="Host address to bind the server to.",
+)
+@click.option(
+    "--port",
+    default=8000,
+    type=int,
+    help="Port number to bind the server to.",
+)
+@click.option(
+    "--workers",
+    default=1,
+    type=int,
+    help="Number of worker processes.",
+)
+@click.option(
+    "--model",
+    default="llama-3.1-8b-instruct",
+    help="Name of the model to mock.",
+)
+@click.option(
+    "--processor",
+    default=None,
+    help="Processor or tokenizer to use for requests.",
+)
 @click.option(
     "--request-latency",
     default=3,
     type=float,
-    help="Request latency in seconds for non-streaming requests",
+    help="Request latency in seconds for non-streaming requests.",
 )
 @click.option(
     "--request-latency-std",
     default=0,
     type=float,
-    help=(
-        "Request latency standard deviation (normal distribution) "
-        "in seconds for non-streaming requests"
-    ),
+    help="Request latency standard deviation in seconds (normal distribution).",
 )
 @click.option(
     "--ttft-ms",
     default=150,
     type=float,
-    help="Time to first token in milliseconds for streaming requests",
+    help="Time to first token in milliseconds for streaming requests.",
 )
 @click.option(
     "--ttft-ms-std",
     default=0,
     type=float,
-    help=(
-        "Time to first token standard deviation (normal distribution) in milliseconds"
-    ),
+    help="Time to first token standard deviation in milliseconds.",
 )
 @click.option(
     "--itl-ms",
     default=10,
     type=float,
-    help="Inter token latency in milliseconds for streaming requests",
+    help="Inter-token latency in milliseconds for streaming requests.",
 )
 @click.option(
     "--itl-ms-std",
     default=0,
     type=float,
-    help=(
-        "Inter token latency standard deviation (normal distribution) "
-        "in milliseconds for streaming requests"
-    ),
+    help="Inter-token latency standard deviation in milliseconds.",
 )
 @click.option(
     "--output-tokens",
     default=128,
     type=int,
-    help="Output tokens for streaming requests",
+    help="Number of output tokens for streaming requests.",
 )
 @click.option(
     "--output-tokens-std",
     default=0,
     type=float,
-    help=(
-        "Output tokens standard deviation (normal distribution) for streaming requests"
-    ),
+    help="Output tokens standard deviation (normal distribution).",
 )
 def mock_server(
     host: str,
@@ -743,15 +754,6 @@ def mock_server(
     output_tokens: int,
     output_tokens_std: float,
 ):
-    """
-    Start a GuideLLM mock OpenAI/vLLM-compatible server for testing and development.
-
-    Launches a mock server that simulates model inference with configurable latency
-    characteristics, token generation patterns, and response timing. Useful for
-    testing GuideLLM benchmarks without requiring actual model deployment or for
-    development scenarios requiring predictable server behavior.
-    """
-
     config = MockServerConfig(
         host=host,
         port=port,

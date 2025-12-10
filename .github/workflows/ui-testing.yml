@@ -1,0 +1,72 @@
+name: UI Tests
+
+on:
+  workflow_call:
+
+jobs:
+  ui-unit-tests:
+    permissions:
+      contents: "read"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+  ui-integration-tests:
+    permissions:
+      contents: "read"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+  ui-e2e-tests:
+    permissions:
+      contents: "read"
+      id-token: "write"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Build
+        run: |
+          npm run build
+
+      - name: Start the Next.js app
+        run: |
+          npx serve@latest src/ui/out &
+          npx wait-on http://localhost:3000  # Wait until the app is ready
+
+      - name: Run Cypress tests
+        run: npm run test:e2e --headless
