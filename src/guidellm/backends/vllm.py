@@ -103,6 +103,13 @@ class VLLMPythonBackend(Backend):
         self._in_process = False
         self._llm: LLM | None = None
 
+    @property
+    def processes_limit(self) -> int | None:
+        """
+        Limits VLLM Python to a single process, since it starts up an entire VLLM engine.
+        """
+        return 1
+
     def _merge_config(self, user_config: dict[str, Any]) -> dict[str, Any]:
         """
         Merge user configuration with defaults.
