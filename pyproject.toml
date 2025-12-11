@@ -74,11 +74,12 @@ dependencies = [
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,openai,audio,vision]"]
+all = ["guidellm[perf,openai,audio,vision,vllm]"]
 recommended = ["guidellm[perf,openai]"]
 # Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
+vllm = ["vllm>=0.6.0"]
 audio = [
     # Lowest version with full torchcodec support
     "datasets[audio]>=4.1.0",
