@@ -70,16 +70,16 @@ dependencies = [
     "transformers",
     "uvloop>=0.18",
     "torch",
-    "more-itertools>=10.8.0",
 ]
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision]"]
-recommended = ["guidellm[perf,tokenizers]"]
+all = ["guidellm[perf,openai,audio,vision,vllm]"]
+recommended = ["guidellm[perf,openai]"]
 # Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
-tokenizers = ["tiktoken", "blobfile", "mistral-common"]
+openai = ["tiktoken>=0.11.0", "blobfile>=3.1.0"]
+vllm = ["vllm>=0.6.0"]
 audio = [
     # Lowest version with full torchcodec support
     "datasets[audio]>=4.1.0",
@@ -115,7 +115,6 @@ dev = [
     "pytest-mock~=3.14.0",
     "pytest-rerunfailures~=14.0",
     "pytest-timeout~=2.4.0",
-    "pytest-httpx~=0.35.0",
     "respx~=0.22.0",
 
     # code quality
@@ -123,10 +122,10 @@ dev = [
     "ruff~=0.11.7",
 
     # docs quality
-    "mdformat~=1.0.0",
-    "mdformat-footnote~=0.1.3",
-    "mdformat-frontmatter~=2.0.10",
-    "mdformat-gfm~=1.0.0",
+    "mdformat~=0.7.17",
+    "mdformat-footnote~=0.1.1",
+    "mdformat-frontmatter~=2.0.8",
+    "mdformat-gfm~=0.3.6",
 
     # type-checking
     "pandas-stubs",
