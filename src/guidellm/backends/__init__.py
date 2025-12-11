@@ -19,6 +19,15 @@ from .openai import (
     TextCompletionsRequestHandler,
 )
 
+# Conditionally import VLLM backend if available
+try:
+    from .vllm import VLLMPythonBackend
+
+    HAS_VLLM_BACKEND = True
+except ImportError:
+    VLLMPythonBackend = None  # type: ignore[assignment, misc]
+    HAS_VLLM_BACKEND = False
+
 __all__ = [
     "AudioRequestHandler",
     "Backend",
@@ -29,3 +38,7 @@ __all__ = [
     "OpenAIRequestHandlerFactory",
     "TextCompletionsRequestHandler",
 ]
+
+# Conditionally add VLLM backend to exports
+if HAS_VLLM_BACKEND:
+    __all__.append("VLLMPythonBackend")
