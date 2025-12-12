@@ -1,26 +1,30 @@
 """
 VLLM Python API backend implementation for GuideLLM.
 
-Provides direct Python API integration with VLLM's LLM class, enabling local
+Provides direct Python API integration with VLLM's AsyncLLMEngine, enabling local
 inference without HTTP overhead. Supports both GPU-accelerated and CPU-only
-inference, streaming and non-streaming responses, and flexible configuration
-through dict-style parameters.
+inference, true async streaming with token-by-token generation, and flexible
+configuration through dict-style parameters.
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
 try:
-    from vllm import LLM, SamplingParams
+    from vllm import SamplingParams
+    from vllm.engine.async_llm_engine import AsyncLLMEngine
+    from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.outputs import RequestOutput
 
     HAS_VLLM = True
 except ImportError:
-    LLM = None  # type: ignore[assignment, misc]
+    AsyncLLMEngine = None  # type: ignore[assignment, misc]
+    AsyncEngineArgs = None  # type: ignore[assignment, misc]
     SamplingParams = None  # type: ignore[assignment, misc]
     RequestOutput = None  # type: ignore[assignment, misc]
     HAS_VLLM = False
@@ -45,10 +49,10 @@ class VLLMPythonBackend(Backend):
     """
     Python API backend for VLLM inference engine.
 
-    Directly uses VLLM's LLM class for local inference. VLLM automatically uses
-    CUDA if available, otherwise falls back to CPU. Handles request/response
-    conversion between GuideLLM schemas and VLLM's native API, with full support
-    for streaming responses.
+    Directly uses VLLM's AsyncLLMEngine for local async inference. VLLM automatically
+    uses CUDA if available, otherwise falls back to CPU. Handles request/response
+    conversion between GuideLLM schemas and VLLM's native API, with true async
+    streaming support for token-by-token generation.
 
     Example:
     ::
@@ -83,12 +87,12 @@ class VLLMPythonBackend(Backend):
         Initialize VLLM Python backend with model and configuration.
 
         :param model: Model identifier or path for VLLM to load
-        :param vllm_config: Dictionary of VLLM LLM initialization parameters.
+        :param vllm_config: Dictionary of VLLM AsyncEngineArgs initialization parameters.
             Merged with defaults. Common parameters include:
             - tensor_parallel_size: Number of tensor parallel replicas
             - gpu_memory_utilization: Fraction of GPU memory to use
             - max_model_len: Maximum sequence length
-            - Any other parameter accepted by vllm.LLM.__init__
+            - Any other parameter accepted by vllm.AsyncEngineArgs
             Note: VLLM automatically uses CUDA if available, CPU otherwise.
             The 'device' parameter is not supported and will be ignored.
         :param target: Target URL (ignored for VLLM Python backend, which runs locally)
@@ -101,7 +105,7 @@ class VLLMPythonBackend(Backend):
 
         # Runtime state
         self._in_process = False
-        self._llm: LLM | None = None
+        self._engine: AsyncLLMEngine | None = None
 
     @property
     def processes_limit(self) -> int | None:
@@ -122,12 +126,6 @@ class VLLMPythonBackend(Backend):
         # Merge user config, allowing overrides
         config.update(user_config)
 
-        # Remove 'device' parameter if present - VLLM doesn't accept it
-        # VLLM automatically uses CUDA if available, CPU otherwise
-        # For CPU-only inference, VLLM may require environment variables or
-        # different configuration (e.g., setting CUDA_VISIBLE_DEVICES="")
-        config.pop("device", None)
-
         # Ensure model is set in config
         config["model"] = self.model
 
@@ -144,11 +142,12 @@ class VLLMPythonBackend(Backend):
             "model": self.model,
             "vllm_config": self.vllm_config,
             "in_process": self._in_process,
+            "engine_initialized": self._engine is not None,
         }
 
     async def process_startup(self):
         """
-        Initialize VLLM LLM instance with configured parameters.
+        Initialize VLLM AsyncLLMEngine instance with configured parameters.
 
         :raises RuntimeError: If backend is already initialized
         :raises ImportError: If vllm is not available
@@ -158,26 +157,26 @@ class VLLMPythonBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
-        # Initialize VLLM LLM instance
-        # Run in executor to avoid blocking the event loop
-        loop = asyncio.get_event_loop()
-        self._llm = await loop.run_in_executor(
-            None, lambda: LLM(**self.vllm_config)  # type: ignore[misc]
-        )
+        # Initialize VLLM AsyncLLMEngine instance
+        # AsyncLLMEngine initialization is async-friendly
+        engine_args = AsyncEngineArgs(**self.vllm_config)  # type: ignore[misc]
+        self._engine = AsyncLLMEngine.from_engine_args(engine_args)  # type: ignore[misc]
         self._in_process = True
 
     async def process_shutdown(self):
         """
-        Clean up VLLM LLM instance and resources.
+        Clean up VLLM AsyncLLMEngine instance and resources.
 
         :raises RuntimeError: If backend was not properly initialized
         """
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
 
-        # VLLM doesn't have explicit cleanup, but we can clear the reference
-        # and let Python's GC handle it
-        self._llm = None
+        # Shutdown the async engine if it has a shutdown method
+        if self._engine is not None:
+            self._engine.shutdown()
+            self._in_process = False
+            self._engine = None
         self._in_process = False
 
     async def validate(self):
@@ -186,17 +185,17 @@ class VLLMPythonBackend(Backend):
 
         :raises RuntimeError: If backend cannot generate or is not initialized
         """
-        if self._llm is None:
+        if self._engine is None:
             raise RuntimeError("Backend not started up for process.")
 
         # Perform a minimal test generation to verify the model is working
         try:
             test_params = SamplingParams(temperature=0.0, max_tokens=1)  # type: ignore[misc]
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: self._llm.generate(["test"], test_params),  # type: ignore[misc]
-            )
+            request_id = str(uuid.uuid4())
+            # Use async generation for validation
+            async for _ in self._engine.generate("test", test_params, request_id):  # type: ignore[misc]
+                # Just consume the first output to verify it works
+                break
         except Exception as exc:
             raise RuntimeError(
                 "Backend validation failed. VLLM model could not generate text."
@@ -208,6 +207,7 @@ class VLLMPythonBackend(Backend):
 
         :return: List containing the configured model identifier
         """
+        # VLLM only supports one model per VLLM instance.
         return [self.model]
 
     async def default_model(self) -> str:
@@ -218,9 +218,39 @@ class VLLMPythonBackend(Backend):
         """
         return self.model
 
+    def _extract_text_from_content(self, content: str | list[dict[str, Any]] | Any) -> str:
+        """
+        Extract text content from message content field.
+
+        Handles both string content and list-based multimodal content blocks.
+        For list-based content, extracts text from blocks with type "text" and
+        concatenates them together.
+
+        :param content: Content field which can be a string or list of content blocks
+        :return: Extracted text string
+        """
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            # Extract text from content blocks with type "text"
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    block_type = block.get("type", "")
+                    if block_type == "text":
+                        text = block.get("text", "")
+                        if text:
+                            text_parts.append(text)
+            return "".join(text_parts)
+        # Fallback: convert to string
+        return str(content) if content is not None else ""
+
     def _extract_prompt(self, request: GenerationRequest) -> str:
         """
         Extract prompt text from generation request.
+
+        For chat completions, uses the tokenizer's chat template if available,
+        otherwise falls back to simple formatting.
 
         :param request: Generation request with body containing prompt data
         :return: Extracted prompt string
@@ -241,16 +271,34 @@ class VLLMPythonBackend(Backend):
                     "chat_completions request must include 'messages' in body"
                 )
 
-            # Convert chat messages to prompt format
-            # Simple conversion - join messages with newlines
-            prompt_parts = []
-            for msg in messages:
-                role = msg.get("role", "")
-                content = msg.get("content", "")
-                if content:
-                    prompt_parts.append(f"{role}: {content}")
+            # Try to use tokenizer's chat template if available
+            if self._engine is None:
+                raise RuntimeError("Backend not started up while extracting prompt.")
+            tokenizer = self._engine.tokenizer
 
-            return "\n".join(prompt_parts)
+            # Convert messages to format expected by chat template
+            formatted_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    raw_content = msg.get("content", "")
+                    # Extract text from content (handles both string and list formats)
+                    text_content = self._extract_text_from_content(raw_content)
+                    formatted_messages.append({
+                        "role": msg.get("role", ""),
+                        "content": text_content,
+                    })
+                else:
+                    formatted_messages.append(msg)
+
+            prompt = tokenizer.apply_chat_template(  # type: ignore[misc]
+                formatted_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            if isinstance(prompt, str):
+                return prompt
+            else:
+                raise RuntimeError("Code not setup for state")
 
         raise ValueError(f"Unsupported request type: {request.request_type}")
 
@@ -279,13 +327,14 @@ class VLLMPythonBackend(Backend):
         return SamplingParams(**params)  # type: ignore[misc]
 
     def _convert_output_to_response(
-        self, request: GenerationRequest, output: RequestOutput
+        self, request: GenerationRequest, output: RequestOutput, previous_text: str = ""
     ) -> GenerationResponse:
         """
         Convert VLLM RequestOutput to GenerationResponse.
 
         :param request: Original generation request
         :param output: VLLM request output
+        :param previous_text: Previously accumulated text (for streaming)
         :return: Standardized GenerationResponse
         """
         # Extract generated text
@@ -293,22 +342,18 @@ class VLLMPythonBackend(Backend):
         if output.outputs and len(output.outputs) > 0:
             generated_text = output.outputs[0].text
 
-        # Extract token counts from metrics if available
-        input_tokens = None
+        input_tokens = len(output.prompt_token_ids)
+
+        # Extract output token count from VLLM output
         output_tokens = None
-
-        if hasattr(output, "metrics") and output.metrics:
-            metrics = output.metrics
-            input_tokens = getattr(metrics, "num_input_tokens", None)
-            output_tokens = getattr(metrics, "num_output_tokens", None)
-
-        # Fallback: estimate from text if metrics not available
-        if input_tokens is None:
-            # Rough estimate: ~4 chars per token
-            input_tokens = len(self._extract_prompt(request)) // 4
-
+        if output.outputs and len(output.outputs) > 0:
+            # Try to get token IDs from the output
+            output_obj = output.outputs[0]
+            if output_obj.token_ids is not None:
+                output_tokens = len(output_obj.token_ids)
+            # TODO: Determine if this is correct logic. Do we need to add multiple outputs together?
         if output_tokens is None:
-            output_tokens = len(generated_text.split()) if generated_text else 0
+            raise RuntimeError("Failed to get output tokens")
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -323,34 +368,6 @@ class VLLMPythonBackend(Backend):
             ),
         )
 
-    async def _generate_streaming(
-        self, prompt: str, sampling_params: SamplingParams
-    ) -> AsyncIterator[RequestOutput]:
-        """
-        Generate text with streaming support.
-
-        VLLM's Python API doesn't have native async streaming, so we use
-        a background task to generate and yield results incrementally.
-
-        :param prompt: Input prompt text
-        :param sampling_params: Sampling parameters for generation
-        :yields: RequestOutput objects as they become available
-        """
-        if self._llm is None:
-            raise RuntimeError("Backend not started up for process.")
-
-        # VLLM's generate method is synchronous, so we run it in an executor
-        # For true streaming, we'd need to use VLLM's async API or HTTP server
-        # For now, we generate and simulate streaming by yielding the result
-        loop = asyncio.get_event_loop()
-        outputs = await loop.run_in_executor(
-            None,
-            lambda: self._llm.generate([prompt], sampling_params),  # type: ignore[misc]
-        )
-
-        if outputs and len(outputs) > 0:
-            yield outputs[0]
-
     async def resolve(  # type: ignore[override]
         self,
         request: GenerationRequest,
@@ -360,8 +377,10 @@ class VLLMPythonBackend(Backend):
         """
         Process generation request and yield progressive responses.
 
-        Handles both streaming and non-streaming requests, converting between
-        GuideLLM schemas and VLLM's native API format.
+        Handles both streaming and non-streaming requests using AsyncLLMEngine's
+        native async streaming capabilities. For streaming requests, yields
+        token-by-token as they are generated. For non-streaming, yields once
+        with the complete response.
 
         :param request: Generation request with content and parameters
         :param request_info: Request tracking info updated with timing metadata
@@ -371,7 +390,7 @@ class VLLMPythonBackend(Backend):
         :raises ValueError: If request type is unsupported
         :yields: Tuples of (response, updated_request_info) as generation progresses
         """
-        if self._llm is None:
+        if self._engine is None:
             raise RuntimeError("Backend not started up for process.")
 
         if history is not None:
@@ -388,98 +407,90 @@ class VLLMPythonBackend(Backend):
         sampling_params = self._create_sampling_params(request)
         stream = request.arguments.stream or False
 
-        # Run generation in executor to avoid blocking
-        loop = asyncio.get_event_loop()
+        # Generate unique request ID for this generation
+        request_id = str(uuid.uuid4())
 
-        if not stream:
-            # Non-streaming generation
-            request_info.timings.request_start = time.time()
-            outputs = await loop.run_in_executor(
-                None,
-                lambda: self._llm.generate([prompt], sampling_params),  # type: ignore[misc]
-            )
-            request_info.timings.request_end = time.time()
+        request_info.timings.request_start = time.time()
 
-            if outputs and len(outputs) > 0:
-                response = self._convert_output_to_response(request, outputs[0])
-                yield response, request_info
-            return
+        # Track accumulated text for streaming
+        accumulated_text = ""
+        final_output: RequestOutput | None = None
 
-        # Streaming generation
         try:
-            request_info.timings.request_start = time.time()
 
-            # For streaming, we generate once and then simulate token-by-token streaming
-            # by yielding progressive responses
-            # Note: VLLM's Python API doesn't support true async streaming,
-            # so we generate once and simulate streaming by yielding word-by-word
-            output = None
-            async for output in self._generate_streaming(prompt, sampling_params):
+            # Use AsyncLLMEngine's native async generation
+            async for request_output in self._engine.generate(  # type: ignore[misc]
+                prompt, sampling_params, request_id
+            ):
+                iter_time = time.time()
+
+                # Update request iteration timing
+                if request_info.timings.first_request_iteration is None:
+                    request_info.timings.first_request_iteration = iter_time
+                request_info.timings.last_request_iteration = iter_time
+                request_info.timings.request_iterations += 1
+
+                # Extract generated text from output
                 generated_text = ""
-                if output.outputs and len(output.outputs) > 0:
-                    generated_text = output.outputs[0].text
+                if request_output.outputs and len(request_output.outputs) > 0:
+                    generated_text = request_output.outputs[0].text
 
-                # Simulate streaming by yielding word-by-word
-                # In a production implementation, you'd use VLLM's actual streaming API
-                words = generated_text.split() if generated_text else []
-                accumulated_text = ""
+                # For streaming, yield incremental updates
+                if stream:
+                    # Check if this is a new token (text has changed)
+                    if generated_text != accumulated_text:
+                        # Update token iteration timing on first new token
+                        if request_info.timings.first_token_iteration is None:
+                            request_info.timings.first_token_iteration = iter_time
+                            request_info.timings.token_iterations = 0
 
-                for i, word in enumerate(words):
-                    iter_time = time.time()
+                        request_info.timings.last_token_iteration = iter_time
+                        request_info.timings.token_iterations += 1
 
-                    if request_info.timings.first_request_iteration is None:
-                        request_info.timings.first_request_iteration = iter_time
-                    request_info.timings.last_request_iteration = iter_time
-                    request_info.timings.request_iterations += 1
+                        # Create partial response with incremental text
+                        partial_response = self._convert_output_to_response(
+                            request, request_output, accumulated_text
+                        )
+                        yield partial_response, request_info
 
-                    accumulated_text += (" " if i > 0 else "") + word
+                        accumulated_text = generated_text
 
-                    if request_info.timings.first_token_iteration is None:
-                        request_info.timings.first_token_iteration = iter_time
-                        request_info.timings.token_iterations = 0
+                # Keep track of final output for non-streaming or final response
+                final_output = request_output
 
-                    request_info.timings.last_token_iteration = iter_time
-                    request_info.timings.token_iterations += 1
-
-                    # Create partial response
-                    partial_response = GenerationResponse(
-                        request_id=request.request_id,
-                        request_args=str(
-                            request.arguments.model_dump()
-                            if request.arguments
-                            else {}
-                        ),
-                        response_id=(
-                            output.request_id
-                            if hasattr(output, "request_id")
-                            else None
-                        ),
-                        text=accumulated_text,
-                        input_metrics=UsageMetrics(),
-                        output_metrics=UsageMetrics(
-                            text_words=len(accumulated_text.split()),
-                            text_characters=len(accumulated_text),
-                        ),
-                    )
-                    yield partial_response, request_info
-
-                    # Small delay to simulate real streaming
-                    await asyncio.sleep(0.01)
-
-                # Break after first output (we only expect one)
-                break
+                # For non-streaming, wait for generation to finish
+                if not stream:
+                    # Check if generation is finished
+                    if (request_output.outputs and len(request_output.outputs) > 0 and
+                        request_output.outputs[0].finish_reason is not None):
+                        break
 
             request_info.timings.request_end = time.time()
 
-            # Yield final complete response with full metrics
-            if output is not None:
-                final_response = self._convert_output_to_response(request, output)
+            # For streaming, yield final complete response with full metrics
+            # For non-streaming, yield the complete response
+            if final_output is not None:
+                if stream:
+                    # Final response with complete metrics
+                    final_response = self._convert_output_to_response(
+                        request, final_output, ""
+                    )
+                else:
+                    # Single complete response for non-streaming
+                    final_response = self._convert_output_to_response(
+                        request, final_output, ""
+                    )
                 yield final_response, request_info
 
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
-            if output is not None:
-                response = self._convert_output_to_response(request, output)
+            if final_output is not None:
+                response = self._convert_output_to_response(request, final_output, accumulated_text)
                 yield response, request_info
             raise err
+        except Exception as exc:
+            # Re-raise with context
+            raise RuntimeError(
+                f"Generation failed: {exc}"
+            ) from exc
 
