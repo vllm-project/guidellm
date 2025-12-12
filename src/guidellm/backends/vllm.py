@@ -30,7 +30,9 @@ except ImportError:
     HAS_VLLM = False
 
 from guidellm.backends.backend import Backend
+from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
 from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo, UsageMetrics
+from guidellm.utils import json
 
 __all__ = ["VLLMPythonBackend"]
 
@@ -82,6 +84,7 @@ class VLLMPythonBackend(Backend):
         model: str,
         vllm_config: dict[str, Any] | None = None,
         target: str | None = None,  # Ignored for VLLM Python backend
+        response_handlers: dict[str, Any] | None = None,
     ):
         """
         Initialize VLLM Python backend with model and configuration.
@@ -175,7 +178,6 @@ class VLLMPythonBackend(Backend):
         # Shutdown the async engine if it has a shutdown method
         if self._engine is not None:
             self._engine.shutdown()
-            self._in_process = False
             self._engine = None
         self._in_process = False
 
@@ -217,6 +219,69 @@ class VLLMPythonBackend(Backend):
         :return: Model name or identifier
         """
         return self.model
+
+    def _validate_backend_initialized(self) -> None:
+        """
+        Validate that the backend is initialized and ready.
+
+        :raises RuntimeError: If backend is not initialized
+        """
+        if self._engine is None:
+            raise RuntimeError("Backend not started up for process.")
+
+    def _validate_history(
+        self, history: list[tuple[GenerationRequest, GenerationResponse]] | None
+    ) -> None:
+        """
+        Validate that history is not provided (not yet supported).
+
+        :param history: Conversation history
+        :raises NotImplementedError: If history is provided
+        """
+        if history is not None:
+            raise NotImplementedError("Multi-turn requests not yet supported")
+
+    def _validate_request_type(self, request_type: str) -> None:
+        """
+        Validate that the request type is supported.
+
+        :param request_type: The request type to validate
+        :raises ValueError: If request type is not supported
+        """
+        if request_type not in ("text_completions", "chat_completions"):
+            raise ValueError(
+                f"Unsupported request type '{request_type}'. "
+                "Only 'text_completions' and 'chat_completions' are supported."
+            )
+
+    def _update_request_timing(self, request_info: RequestInfo, iter_time: float) -> None:
+        """
+        Update request iteration timing information.
+
+        :param request_info: Request tracking info to update
+        :param iter_time: Current iteration time
+        """
+        if request_info.timings.first_request_iteration is None:
+            request_info.timings.first_request_iteration = iter_time
+        request_info.timings.last_request_iteration = iter_time
+        request_info.timings.request_iterations += 1
+
+    def _update_token_timing(
+        self, request_info: RequestInfo, iter_time: float, iterations: int = 1
+    ) -> None:
+        """
+        Update token iteration timing information.
+
+        :param request_info: Request tracking info to update
+        :param iter_time: Current iteration time
+        :param iterations: Number of token iterations (default: 1)
+        """
+        if request_info.timings.first_token_iteration is None:
+            request_info.timings.first_token_iteration = iter_time
+            request_info.timings.token_iterations = 0
+
+        request_info.timings.last_token_iteration = iter_time
+        request_info.timings.token_iterations += iterations
 
     def _extract_text_from_content(self, content: str | list[dict[str, Any]] | Any) -> str:
         """
@@ -326,47 +391,58 @@ class VLLMPythonBackend(Backend):
 
         return SamplingParams(**params)  # type: ignore[misc]
 
-    def _convert_output_to_response(
-        self, request: GenerationRequest, output: RequestOutput, previous_text: str = ""
-    ) -> GenerationResponse:
+    def _convert_vllm_output_to_openai_format(
+        self, request: GenerationRequest, output: RequestOutput
+    ) -> dict[str, Any]:
         """
-        Convert VLLM RequestOutput to GenerationResponse.
+        Convert VLLM RequestOutput to OpenAI-style dict format.
+
+        Converts VLLM's native output format to the format expected by
+        GenerationResponseHandler, matching OpenAI API response structure.
 
         :param request: Original generation request
         :param output: VLLM request output
-        :param previous_text: Previously accumulated text (for streaming)
-        :return: Standardized GenerationResponse
+        :return: OpenAI-style response dictionary
         """
         # Extract generated text
         generated_text = ""
         if output.outputs and len(output.outputs) > 0:
             generated_text = output.outputs[0].text
 
+        # Calculate token counts
         input_tokens = len(output.prompt_token_ids)
-
-        # Extract output token count from VLLM output
-        output_tokens = None
+        output_tokens = 0
         if output.outputs and len(output.outputs) > 0:
-            # Try to get token IDs from the output
             output_obj = output.outputs[0]
             if output_obj.token_ids is not None:
                 output_tokens = len(output_obj.token_ids)
-            # TODO: Determine if this is correct logic. Do we need to add multiple outputs together?
-        if output_tokens is None:
-            raise RuntimeError("Failed to get output tokens")
 
-        return GenerationResponse(
-            request_id=request.request_id,
-            request_args=str(request.arguments.model_dump() if request.arguments else {}),
-            response_id=output.request_id if hasattr(output, "request_id") else None,
-            text=generated_text,
-            input_metrics=UsageMetrics(text_tokens=input_tokens),
-            output_metrics=UsageMetrics(
-                text_tokens=output_tokens,
-                text_words=len(generated_text.split()) if generated_text else 0,
-                text_characters=len(generated_text) if generated_text else 0,
-            ),
-        )
+        # Build usage dict
+        usage: dict[str, int] = {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        }
+
+        # Build choices array based on request type
+        if request.request_type == "text_completions":
+            choices = [{"text": generated_text}]
+        elif request.request_type == "chat_completions":
+            choices = [{"message": {"content": generated_text, "role": "assistant"}}]
+        else:
+            choices = [{"text": generated_text}]
+
+        # Build response dict
+        response_dict: dict[str, Any] = {
+            "choices": choices,
+            "usage": usage,
+        }
+
+        # Add response ID if available
+        if hasattr(output, "request_id") and output.request_id:
+            response_dict["id"] = output.request_id
+
+        return response_dict
 
     async def resolve(  # type: ignore[override]
         self,
@@ -390,17 +466,13 @@ class VLLMPythonBackend(Backend):
         :raises ValueError: If request type is unsupported
         :yields: Tuples of (response, updated_request_info) as generation progresses
         """
-        if self._engine is None:
-            raise RuntimeError("Backend not started up for process.")
+        # Validate request
+        self._validate_backend_initialized()
+        self._validate_history(history)
+        self._validate_request_type(request.request_type)
 
-        if history is not None:
-            raise NotImplementedError("Multi-turn requests not yet supported")
-
-        if request.request_type not in ("text_completions", "chat_completions"):
-            raise ValueError(
-                f"Unsupported request type '{request.request_type}'. "
-                "Only 'text_completions' and 'chat_completions' are supported."
-            )
+        # Create response handler
+        response_handler = GenerationResponseHandlerFactory.create(request.request_type)
 
         # Extract prompt and create sampling parameters
         prompt = self._extract_prompt(request)
@@ -410,87 +482,110 @@ class VLLMPythonBackend(Backend):
         # Generate unique request ID for this generation
         request_id = str(uuid.uuid4())
 
-        request_info.timings.request_start = time.time()
+        if not stream:
+            # Non-streaming path
+            request_info.timings.request_start = time.time()
+            final_output: RequestOutput | None = None
 
-        # Track accumulated text for streaming
-        accumulated_text = ""
-        final_output: RequestOutput | None = None
+            try:
+                # Use AsyncLLMEngine's native async generation
+                async for request_output in self._engine.generate(  # type: ignore[misc]
+                    prompt, sampling_params, request_id
+                ):
+                    iter_time = time.time()
+                    self._update_request_timing(request_info, iter_time)
+                    final_output = request_output
 
-        try:
+                    # Check if generation is finished
+                    if (
+                        request_output.outputs
+                        and len(request_output.outputs) > 0
+                        and request_output.outputs[0].finish_reason is not None
+                    ):
+                        break
 
-            # Use AsyncLLMEngine's native async generation
-            async for request_output in self._engine.generate(  # type: ignore[misc]
-                prompt, sampling_params, request_id
-            ):
-                iter_time = time.time()
+                request_info.timings.request_end = time.time()
 
-                # Update request iteration timing
-                if request_info.timings.first_request_iteration is None:
-                    request_info.timings.first_request_iteration = iter_time
-                request_info.timings.last_request_iteration = iter_time
-                request_info.timings.request_iterations += 1
+                # Convert to OpenAI format and use handler
+                if final_output is not None:
+                    openai_format = self._convert_vllm_output_to_openai_format(
+                        request, final_output
+                    )
+                    yield response_handler.compile_non_streaming(request, openai_format), request_info
 
-                # Extract generated text from output
-                generated_text = ""
-                if request_output.outputs and len(request_output.outputs) > 0:
-                    generated_text = request_output.outputs[0].text
+            except asyncio.CancelledError as err:
+                # Yield current result to store iterative results before propagating
+                if final_output is not None:
+                    openai_format = self._convert_vllm_output_to_openai_format(
+                        request, final_output
+                    )
+                    yield response_handler.compile_non_streaming(request, openai_format), request_info
+                raise err
+            except Exception as exc:
+                # Re-raise with context
+                raise RuntimeError(f"Generation failed: {exc}") from exc
 
-                # For streaming, yield incremental updates
-                if stream:
+        else:
+            # Streaming path
+            try:
+                request_info.timings.request_start = time.time()
+                accumulated_text = ""
+                final_output: RequestOutput | None = None
+
+                # Use AsyncLLMEngine's native async generation
+                async for request_output in self._engine.generate(  # type: ignore[misc]
+                    prompt, sampling_params, request_id
+                ):
+                    iter_time = time.time()
+                    self._update_request_timing(request_info, iter_time)
+
+                    # Extract generated text from output
+                    generated_text = ""
+                    if request_output.outputs and len(request_output.outputs) > 0:
+                        generated_text = request_output.outputs[0].text
+
                     # Check if this is a new token (text has changed)
                     if generated_text != accumulated_text:
-                        # Update token iteration timing on first new token
-                        if request_info.timings.first_token_iteration is None:
-                            request_info.timings.first_token_iteration = iter_time
-                            request_info.timings.token_iterations = 0
+                        # Calculate delta (new text)
+                        delta_text = generated_text[len(accumulated_text) :]
 
-                        request_info.timings.last_token_iteration = iter_time
-                        request_info.timings.token_iterations += 1
+                        # Build streaming delta format based on request type
+                        if request.request_type == "text_completions":
+                            delta_data = {"choices": [{"text": delta_text}]}
+                        else:  # chat_completions
+                            delta_data = {
+                                "choices": [{"delta": {"content": delta_text, "role": "assistant"}}]
+                            }
 
-                        # Create partial response with incremental text
-                        partial_response = self._convert_output_to_response(
-                            request, request_output, accumulated_text
-                        )
-                        yield partial_response, request_info
+                        # Add response ID if available
+                        if hasattr(request_output, "request_id") and request_output.request_id:
+                            delta_data["id"] = request_output.request_id
+
+                        # Format as SSE line and feed to handler
+                        # json.dumps may return bytes (orjson) or str, ensure it's a string
+                        json_str = json.dumps(delta_data)
+                        if isinstance(json_str, bytes):
+                            json_str = json_str.decode("utf-8")
+                        sse_line = f"data: {json_str}"
+                        iterations = response_handler.add_streaming_line(sse_line)
+
+                        if iterations is not None and iterations > 0:
+                            self._update_token_timing(request_info, iter_time, iterations)
 
                         accumulated_text = generated_text
 
-                # Keep track of final output for non-streaming or final response
-                final_output = request_output
+                    final_output = request_output
 
-                # For non-streaming, wait for generation to finish
-                if not stream:
-                    # Check if generation is finished
-                    if (request_output.outputs and len(request_output.outputs) > 0 and
-                        request_output.outputs[0].finish_reason is not None):
-                        break
+                request_info.timings.request_end = time.time()
 
-            request_info.timings.request_end = time.time()
+                # Yield final compiled response
+                yield response_handler.compile_streaming(request), request_info
 
-            # For streaming, yield final complete response with full metrics
-            # For non-streaming, yield the complete response
-            if final_output is not None:
-                if stream:
-                    # Final response with complete metrics
-                    final_response = self._convert_output_to_response(
-                        request, final_output, ""
-                    )
-                else:
-                    # Single complete response for non-streaming
-                    final_response = self._convert_output_to_response(
-                        request, final_output, ""
-                    )
-                yield final_response, request_info
-
-        except asyncio.CancelledError as err:
-            # Yield current result to store iterative results before propagating
-            if final_output is not None:
-                response = self._convert_output_to_response(request, final_output, accumulated_text)
-                yield response, request_info
-            raise err
-        except Exception as exc:
-            # Re-raise with context
-            raise RuntimeError(
-                f"Generation failed: {exc}"
-            ) from exc
+            except asyncio.CancelledError as err:
+                # Yield current result to store iterative results before propagating
+                yield response_handler.compile_streaming(request), request_info
+                raise err
+            except Exception as exc:
+                # Re-raise with context
+                raise RuntimeError(f"Generation failed: {exc}") from exc
 
