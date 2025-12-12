@@ -5,6 +5,7 @@ import pytest
 from guidellm.backends import (
     AudioResponseHandler,
     ChatCompletionsResponseHandler,
+    EmbeddingsResponseHandler,
     GenerationResponseHandler,
     GenerationResponseHandlerFactory,
     TextCompletionsResponseHandler,
@@ -53,6 +54,7 @@ class TestGenerationResponseHandlerFactory:
             ("chat_completions", None, ChatCompletionsResponseHandler),
             ("audio_transcriptions", None, AudioResponseHandler),
             ("audio_translations", None, AudioResponseHandler),
+            ("embeddings", None, EmbeddingsResponseHandler),
             (
                 "text_completions",
                 {"text_completions": ChatCompletionsResponseHandler},
@@ -64,6 +66,7 @@ class TestGenerationResponseHandlerFactory:
             "chat_completions",
             "audio_transcriptions",
             "audio_translations",
+            "embeddings",
             "override_text_completions",
         ],
     )
@@ -721,3 +724,199 @@ class TestAudioResponseHandler:
         assert output_metrics.text_tokens == expected_output_tokens
         assert output_metrics.text_words == (len(text.split()) if text else 0)
         assert output_metrics.text_characters == len(text)
+
+
+class TestEmbeddingsResponseHandler:
+    @pytest.fixture(
+        params=[{}],
+        ids=["default"],
+    )
+    def valid_instances(self, request):
+        """Create instance of EmbeddingsResponseHandler."""
+        return EmbeddingsResponseHandler()
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """
+        Test EmbeddingsResponseHandler class signatures.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = EmbeddingsResponseHandler()
+        assert hasattr(handler, "compile_non_streaming")
+        assert hasattr(handler, "add_streaming_line")
+        assert hasattr(handler, "compile_streaming")
+        assert hasattr(handler, "extract_metrics")
+        assert hasattr(handler, "streaming_embeddings")
+        assert hasattr(handler, "streaming_usage")
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """
+        Test EmbeddingsResponseHandler initialization.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        assert isinstance(instance, EmbeddingsResponseHandler)
+        assert instance.streaming_embeddings == []
+        assert instance.streaming_usage is None
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        (
+            "response",
+            "expected_embeddings_count",
+            "expected_input_tokens",
+        ),
+        [
+            (
+                {
+                    "data": [
+                        {"embedding": [0.1, 0.2, 0.3]},
+                        {"embedding": [0.4, 0.5, 0.6]},
+                    ],
+                    "usage": {"prompt_tokens": 10},
+                },
+                2,
+                10,
+            ),
+            (
+                {
+                    "data": [
+                        {"embedding": [0.1] * 1536},
+                    ],
+                    "usage": {"prompt_tokens": 5},
+                },
+                1,
+                5,
+            ),
+            (
+                {
+                    "data": [],
+                    "usage": {},
+                },
+                0,
+                None,
+            ),
+        ],
+    )
+    def test_non_streaming(
+        self,
+        valid_instances,
+        generation_request,
+        response,
+        expected_embeddings_count,
+        expected_input_tokens,
+    ):
+        """
+        Test compile_non_streaming method for embeddings.
+
+        ## WRITTEN BY AI ##
+        """
+        instance: EmbeddingsResponseHandler = valid_instances
+
+        result = instance.compile_non_streaming(generation_request, response)
+
+        # Text should be JSON-formatted embeddings
+        import json
+
+        text_data = json.loads(result.text)
+        assert "embeddings" in text_data
+        assert len(text_data["embeddings"]) == expected_embeddings_count
+        assert result.input_metrics.text_tokens == expected_input_tokens
+        # Embeddings don't generate tokens
+        assert result.output_metrics.text_tokens == 0
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("lines", "expected_embeddings_count", "expected_input_tokens"),
+        [
+            (
+                [
+                    'data: {"data": [{"embedding": [0.1, 0.2, 0.3]}], "usage": {}}',
+                    (
+                        'data: {"data": [{"embedding": [0.4, 0.5, 0.6]}], '
+                        '"usage": {"prompt_tokens": 10}}'
+                    ),
+                    "data: [DONE]",
+                ],
+                2,
+                10,
+            ),
+            (
+                [
+                    'data: {"data": [{"embedding": [0.1]}], "usage": {}}',
+                    "data: [DONE]",
+                ],
+                1,
+                None,
+            ),
+            (
+                ["data: [DONE]"],
+                0,
+                None,
+            ),
+        ],
+    )
+    def test_streaming(
+        self,
+        valid_instances,
+        generation_request,
+        lines,
+        expected_embeddings_count,
+        expected_input_tokens,
+    ):
+        """
+        Test streaming pathway for embeddings.
+
+        ## WRITTEN BY AI ##
+        """
+        instance: EmbeddingsResponseHandler = valid_instances
+
+        updated_count = 0
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result == 1:
+                updated_count += 1
+            elif result is None:
+                break
+
+        response = instance.compile_streaming(generation_request)
+
+        # Text should be JSON-formatted embeddings
+        import json
+
+        text_data = json.loads(response.text)
+        assert "embeddings" in text_data
+        assert len(text_data["embeddings"]) == expected_embeddings_count
+        assert response.input_metrics.text_tokens == expected_input_tokens
+        # Embeddings don't generate tokens
+        assert response.output_metrics.text_tokens == 0
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("usage", "expected_input_tokens"),
+        [
+            ({"prompt_tokens": 10}, 10),
+            ({"prompt_tokens": 100}, 100),
+            (None, None),
+            ({}, None),
+        ],
+    )
+    def test_extract_metrics(
+        self,
+        valid_instances,
+        usage,
+        expected_input_tokens,
+    ):
+        """
+        Test extract_metrics method for embeddings.
+
+        ## WRITTEN BY AI ##
+        """
+        instance: EmbeddingsResponseHandler = valid_instances
+        input_metrics, output_metrics = instance.extract_metrics(usage)
+
+        assert input_metrics.text_tokens == expected_input_tokens
+        assert output_metrics.text_tokens == 0  # Embeddings don't generate tokens
