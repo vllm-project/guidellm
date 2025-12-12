@@ -62,6 +62,40 @@ GuideLLM supports several benchmark profiles and strategies:
 - `poisson`: Sends requests following a Poisson distribution
 - `sweep`: Automatically determines optimal performance points (default)
 
+### Per-Strategy Constraints in `sweep`
+
+Sweep benchmarks execute a fixed sequence—synchronous → throughput → async rates—so you can set limits for each stage with `per_constraints`. Two entry points support it:
+
+#### CLI Example
+
+```bash
+guidellm benchmark run \
+  --profile sweep \
+  --rate 5 \
+  --target "http://localhost:8000" \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --per-constraints '{"max_seconds":[5,10,15,15,20], "max_requests":[100, 200, 200, 400, 400]}'
+```
+
+Values are applied in order across the sweep strategies; Providing `--per-constraints` with any non-sweep profile raises a validation error to prevent accidental misuse.
+
+#### Scenario Example
+
+```json
+{
+  "target": "http://localhost:8000",
+  "data": ["prompt_tokens=256,output_tokens=128"],
+  "profile": "sweep",
+  "rate": 5,
+  "per_constraints": {
+    "max_seconds": [5,10,15,15,20],
+    "max_requests": [100, 200, 200, 400, 400]
+  }
+}
+```
+
+Running `guidellm benchmark run --scenario my_sweep.json` automatically applies these per-strategy settings without additional CLI flags.
+
 ### Data Options
 
 For synthetic data, some key options include, among others:
