@@ -72,6 +72,17 @@ class VLLMPythonBackend(Backend):
         await backend.process_shutdown()
     """
 
+    @classmethod
+    def requires_target(cls) -> bool:
+        """
+        VLLM Python backend does not require a target URL.
+
+        This backend runs locally and does not connect to a remote server.
+
+        :return: False, as this backend does not require a target
+        """
+        return False
+
     # Default VLLM configuration
     DEFAULT_VLLM_CONFIG: dict[str, Any] = {
         "tensor_parallel_size": 1,
