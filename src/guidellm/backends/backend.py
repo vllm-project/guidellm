@@ -101,6 +101,15 @@ class Backend(
         """
         return None
 
+    @classmethod
+    def requires_target(cls) -> bool:
+        """
+        Indicate whether this backend requires a target parameter.
+
+        :return: True if the backend requires a target parameter, False otherwise
+        """
+        return True  # Default to True for safety (most backends need a target)
+
     @abstractmethod
     async def default_model(self) -> str:
         """

@@ -48,6 +48,15 @@ class OpenAIHTTPBackend(Backend):
         await backend.process_shutdown()
     """
 
+    @classmethod
+    def requires_target(cls) -> bool:
+        """
+        OpenAI HTTP backend requires a target URL.
+
+        :return: True, as this backend requires a target endpoint URL
+        """
+        return True
+
     def __init__(
         self,
         target: str,

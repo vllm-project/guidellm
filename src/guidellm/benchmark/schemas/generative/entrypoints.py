@@ -27,6 +27,7 @@ from pydantic import (
     ValidatorFunctionWrapHandler,
     field_serializer,
     field_validator,
+    model_validator,
 )
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
@@ -39,7 +40,30 @@ from guidellm.data import DatasetPreprocessor, RequestFormatter
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
 
-__all__ = ["BenchmarkGenerativeTextArgs"]
+__all__ = ["BenchmarkGenerativeTextArgs", "backend_requires_target"]
+
+
+def backend_requires_target(backend: BackendType | Backend) -> bool:
+    """
+    Determine if a backend requires a target parameter.
+
+    Uses the backend's class method to determine if it requires target,
+    making it extensible for new backend implementations.
+
+    :param backend: Backend type identifier or Backend instance
+    :return: True if the backend requires target, False otherwise
+    """
+    if isinstance(backend, Backend):
+        # If it's already a Backend instance, use its class method
+        return backend.__class__.requires_target()
+
+    # If it's a BackendType string, get the registered backend class
+    backend_class = Backend.get_registered_object(backend)
+    if backend_class is None:
+        # Unknown backend type, default to True for safety
+        return True
+
+    return backend_class.requires_target()
 
 
 class BenchmarkGenerativeTextArgs(StandardBaseModel):
@@ -159,7 +183,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     )
 
     # Required
-    target: str = Field(description="Target endpoint URL for benchmark execution")
+    target: str | None = Field(
+        default=None, description="Target endpoint URL for benchmark execution"
+    )
     data: list[Any] = Field(
         description="List of dataset sources or data files",
         default_factory=list,
@@ -303,6 +329,37 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 return handler([value])
             else:
                 raise
+
+    @model_validator(mode="after")
+    def validate_target_required(self) -> BenchmarkGenerativeTextArgs:
+        """
+        Validate target parameter based on backend requirements.
+
+        - If backend requires target: target must be provided (not None)
+        - If backend does not require target: target must be None (not provided)
+
+        :return: Self if validation passes
+        :raises ValueError: If target is provided when backend doesn't support it,
+            or if target is missing when backend requires it
+        """
+        backend_type = (
+            self.backend.type_ if isinstance(self.backend, Backend) else self.backend
+        )
+        requires_target = backend_requires_target(self.backend)
+
+        if requires_target and self.target is None:
+            raise ValueError(
+                f"Backend '{backend_type}' requires a target parameter. "
+                "Please provide --target with a valid endpoint URL."
+            )
+
+        if not requires_target and self.target is not None:
+            raise ValueError(
+                f"Backend '{backend_type}' does not support a target parameter. "
+                "Please remove --target as this backend runs locally."
+            )
+
+        return self
 
     @field_serializer("backend")
     def serialize_backend(self, backend: BackendType | Backend) -> str:
