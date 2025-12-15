@@ -46,7 +46,10 @@ from guidellm.benchmark import (
     get_builtin_scenarios,
     reimport_benchmarks_report,
 )
-from guidellm.benchmark.schemas.generative.entrypoints import backend_requires_target
+from guidellm.benchmark.schemas.generative.entrypoints import (
+    backend_requires_model,
+    backend_requires_target,
+)
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import GenerativeRequestType
@@ -429,12 +432,15 @@ def run(**kwargs):
             status="warning",
         )
 
-    # Early validation: check target parameter based on backend requirements
+    # Early validation: check target and model parameters based on backend requirements
     backend = kwargs.get("backend", BenchmarkGenerativeTextArgs.get_default("backend"))
     target = kwargs.get("target", None)
+    model = kwargs.get("model", None)
     requires_target = backend_requires_target(backend)
+    requires_model = backend_requires_model(backend)
     backend_type = backend.type_ if hasattr(backend, "type_") else backend
 
+    # Validate target parameter
     if requires_target and target is None:
         raise click.BadParameter(
             f"Backend '{backend_type}' requires a target parameter. "
@@ -449,6 +455,15 @@ def run(**kwargs):
             "Please remove --target as this backend runs locally.",
             ctx=click.get_current_context(),
             param_hint="--target",
+        )
+
+    # Validate model parameter
+    if requires_model and model is None:
+        raise click.BadParameter(
+            f"Backend '{backend_type}' requires a model parameter. "
+            "Please provide --model with a valid model identifier.",
+            ctx=click.get_current_context(),
+            param_hint="--model",
         )
 
     try:

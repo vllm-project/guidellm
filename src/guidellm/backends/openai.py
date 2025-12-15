@@ -57,6 +57,17 @@ class OpenAIHTTPBackend(Backend):
         """
         return True
 
+    @classmethod
+    def requires_model(cls) -> bool:
+        """
+        OpenAI HTTP backend does not require a model parameter.
+
+        The model can be optional as the backend can use the default model from the server.
+
+        :return: False, as this backend does not require a model parameter
+        """
+        return False
+
     def __init__(
         self,
         target: str,

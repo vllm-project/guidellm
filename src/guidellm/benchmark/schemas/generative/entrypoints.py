@@ -40,7 +40,11 @@ from guidellm.data import DatasetPreprocessor, RequestFormatter
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
 
-__all__ = ["BenchmarkGenerativeTextArgs", "backend_requires_target"]
+__all__ = [
+    "BenchmarkGenerativeTextArgs",
+    "backend_requires_target",
+    "backend_requires_model",
+]
 
 
 def backend_requires_target(backend: BackendType | Backend) -> bool:
@@ -64,6 +68,29 @@ def backend_requires_target(backend: BackendType | Backend) -> bool:
         return True
 
     return backend_class.requires_target()
+
+
+def backend_requires_model(backend: BackendType | Backend) -> bool:
+    """
+    Determine if a backend requires a model parameter.
+
+    Uses the backend's class method to determine if it requires model,
+    making it extensible for new backend implementations.
+
+    :param backend: Backend type identifier or Backend instance
+    :return: True if the backend requires model, False otherwise
+    """
+    if isinstance(backend, Backend):
+        # If it's already a Backend instance, use its class method
+        return backend.__class__.requires_model()
+
+    # If it's a BackendType string, get the registered backend class
+    backend_class = Backend.get_registered_object(backend)
+    if backend_class is None:
+        # Unknown backend type, default to False for safety
+        return False
+
+    return backend_class.requires_model()
 
 
 class BenchmarkGenerativeTextArgs(StandardBaseModel):
@@ -333,20 +360,28 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     @model_validator(mode="after")
     def validate_target_required(self) -> BenchmarkGenerativeTextArgs:
         """
-        Validate target parameter based on backend requirements.
+        Validate target and model parameters based on backend requirements.
 
+        Target validation:
         - If backend requires target: target must be provided (not None)
         - If backend does not require target: target must be None (not provided)
 
+        Model validation:
+        - If backend requires model: model must be provided (not None)
+        - If backend does not require model: model can be None or provided
+
         :return: Self if validation passes
         :raises ValueError: If target is provided when backend doesn't support it,
-            or if target is missing when backend requires it
+            if target is missing when backend requires it,
+            or if model is missing when backend requires it
         """
         backend_type = (
             self.backend.type_ if isinstance(self.backend, Backend) else self.backend
         )
         requires_target = backend_requires_target(self.backend)
+        requires_model = backend_requires_model(self.backend)
 
+        # Validate target parameter
         if requires_target and self.target is None:
             raise ValueError(
                 f"Backend '{backend_type}' requires a target parameter. "
@@ -357,6 +392,13 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             raise ValueError(
                 f"Backend '{backend_type}' does not support a target parameter. "
                 "Please remove --target as this backend runs locally."
+            )
+
+        # Validate model parameter
+        if requires_model and self.model is None:
+            raise ValueError(
+                f"Backend '{backend_type}' requires a model parameter. "
+                "Please provide --model with a valid model identifier."
             )
 
         return self
