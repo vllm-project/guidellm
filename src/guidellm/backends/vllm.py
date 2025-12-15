@@ -83,6 +83,17 @@ class VLLMPythonBackend(Backend):
         """
         return False
 
+    @classmethod
+    def requires_model(cls) -> bool:
+        """
+        VLLM Python backend requires a model parameter.
+
+        The model must be specified to know which model to load for inference.
+
+        :return: True, as this backend requires a model parameter
+        """
+        return True
+
     # Default VLLM configuration
     DEFAULT_VLLM_CONFIG: dict[str, Any] = {
         "tensor_parallel_size": 1,
