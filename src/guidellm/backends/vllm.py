@@ -15,6 +15,8 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+import numpy as np
+
 try:
     from vllm import SamplingParams
     from vllm.engine.async_llm_engine import AsyncLLMEngine
@@ -31,6 +33,7 @@ except ImportError:
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
+from guidellm.extras.audio import _decode_audio
 from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo, UsageMetrics
 from guidellm.utils import json
 
@@ -270,10 +273,16 @@ class VLLMPythonBackend(Backend):
         :param request_type: The request type to validate
         :raises ValueError: If request type is not supported
         """
-        if request_type not in ("text_completions", "chat_completions"):
+        supported_types = (
+            "text_completions",
+            "chat_completions",
+            "audio_transcriptions",
+            "audio_translations",
+        )
+        if request_type not in supported_types:
             raise ValueError(
                 f"Unsupported request type '{request_type}'. "
-                "Only 'text_completions' and 'chat_completions' are supported."
+                f"Supported types are: {', '.join(supported_types)}."
             )
 
     def _update_request_timing(self, request_info: RequestInfo, iter_time: float) -> None:
@@ -332,6 +341,58 @@ class VLLMPythonBackend(Backend):
         # Fallback: convert to string
         return str(content) if content is not None else ""
 
+    def _extract_audio_from_request(self, request: GenerationRequest) -> tuple[bytes, str] | None:
+        """
+        Extract audio file from generation request.
+
+        Extracts audio file data and mimetype from request.arguments.files.
+        Audio files are expected to be in the format: (filename, bytes, mimetype).
+
+        :param request: Generation request with files containing audio data
+        :return: Tuple of (audio_bytes, mimetype) or None if no audio file found
+        :raises ValueError: If audio file is missing or invalid for audio request types
+        """
+        if request.request_type not in ("audio_transcriptions", "audio_translations"):
+            return None
+
+        files = request.arguments.files or {}
+        if not files:
+            raise ValueError(
+                f"{request.request_type} request must include audio file in 'files'"
+            )
+
+        # Find the audio file (typically keyed as "file")
+        audio_file = None
+        for key, value in files.items():
+            if isinstance(value, (list, tuple)) and len(value) >= 2:
+                # Format: (filename, bytes, mimetype) or [filename, bytes, mimetype]
+                audio_file = value
+                break
+            elif isinstance(value, bytes):
+                # Direct bytes, use default filename and mimetype
+                audio_file = ("audio.wav", value, "audio/wav")
+                break
+
+        if audio_file is None:
+            raise ValueError(
+                f"{request.request_type} request must include audio file in 'files'"
+            )
+
+        # Extract bytes and mimetype
+        if isinstance(audio_file, (list, tuple)):
+            if len(audio_file) >= 2:
+                # Ensure we have actual bytes, not an integer or other type
+                audio_data = audio_file[1]
+                if not isinstance(audio_data, bytes):
+                    raise ValueError(
+                        f"Expected bytes for audio data, got {type(audio_data)}: {audio_data}"
+                    )
+                audio_bytes = audio_data
+                mimetype = audio_file[2] if len(audio_file) >= 3 else "audio/wav"
+                return (audio_bytes, mimetype)
+
+        raise ValueError(f"Invalid audio file format in {request.request_type} request")
+
     def _extract_prompt(self, request: GenerationRequest) -> str:
         """
         Extract prompt text from generation request.
@@ -386,6 +447,12 @@ class VLLMPythonBackend(Backend):
                 return prompt
             else:
                 raise RuntimeError("Code not setup for state")
+
+        if request.request_type in ("audio_transcriptions", "audio_translations"):
+            # For audio requests, prompt is optional (e.g., language hints)
+            body = request.arguments.body or {}
+            prompt = body.get("prompt", "")
+            return prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
 
         raise ValueError(f"Unsupported request type: {request.request_type}")
 
@@ -446,19 +513,26 @@ class VLLMPythonBackend(Backend):
             "total_tokens": input_tokens + output_tokens,
         }
 
-        # Build choices array based on request type
-        if request.request_type == "text_completions":
-            choices = [{"text": generated_text}]
-        elif request.request_type == "chat_completions":
-            choices = [{"message": {"content": generated_text, "role": "assistant"}}]
+        # Audio responses use different format: {"text": "...", "usage": {...}}
+        if request.request_type in ("audio_transcriptions", "audio_translations"):
+            response_dict: dict[str, Any] = {
+                "text": generated_text,
+                "usage": usage,
+            }
         else:
-            choices = [{"text": generated_text}]
+            # Build choices array based on request type
+            if request.request_type == "text_completions":
+                choices = [{"text": generated_text}]
+            elif request.request_type == "chat_completions":
+                choices = [{"message": {"content": generated_text, "role": "assistant"}}]
+            else:
+                choices = [{"text": generated_text}]
 
-        # Build response dict
-        response_dict: dict[str, Any] = {
-            "choices": choices,
-            "usage": usage,
-        }
+            # Build response dict
+            response_dict = {
+                "choices": choices,
+                "usage": usage,
+            }
 
         # Add response ID if available
         if hasattr(output, "request_id") and output.request_id:
@@ -500,6 +574,61 @@ class VLLMPythonBackend(Backend):
         prompt = self._extract_prompt(request)
         sampling_params = self._create_sampling_params(request)
         stream = request.arguments.stream or False
+
+        # For audio requests, construct multimodal input with audio data
+        if request.request_type in ("audio_transcriptions", "audio_translations"):
+            audio_data = self._extract_audio_from_request(request)
+            if audio_data is None:
+                raise ValueError(
+                    f"{request.request_type} request must include audio file in 'files'"
+                )
+            audio_bytes, mimetype = audio_data
+
+            # Validate audio_bytes is actually bytes
+            if not isinstance(audio_bytes, bytes):
+                raise TypeError(
+                    f"Expected bytes for audio data, got {type(audio_bytes)}: {audio_bytes}"
+                )
+            if len(audio_bytes) == 0:
+                raise ValueError("Audio data cannot be empty")
+
+            # Decode audio bytes to numpy array for vLLM
+            # vLLM's _get_audio_with_sr expects decoded audio samples (numpy array, torch tensor, etc.)
+            # not raw encoded bytes
+            try:
+                audio_samples = _decode_audio(audio_bytes)
+                # Convert torch tensor to numpy array (vLLM accepts numpy arrays)
+                if hasattr(audio_samples.data, 'numpy'):
+                    audio_array = audio_samples.data.numpy()
+                elif hasattr(audio_samples.data, 'cpu'):
+                    audio_array = audio_samples.data.cpu().numpy()
+                else:
+                    # Already a numpy array or compatible
+                    audio_array = np.asarray(audio_samples.data)
+                
+                # vLLM can accept either:
+                # 1. Just the numpy array (orig_sr will be None, no resampling)
+                # 2. Tuple (array, sample_rate) - but this triggers resampling which needs target_sr
+                # Since the resampler may not have target_sr configured, pass just the array
+                # The model should handle the sample rate appropriately
+                audio_for_vllm = audio_array
+            except Exception as exc:
+                raise ValueError(
+                    f"Failed to decode audio data for vLLM: {exc}"
+                ) from exc
+
+            # Construct multimodal prompt for vLLM v1 transcription models
+            # vLLM v1's generate method accepts multimodal data in this format
+            # The prompt should be a string, and multimodal data passed as a dict
+            # Note: vLLM's _parse_audio_data automatically wraps single arrays in a list
+            prompt_text = prompt if isinstance(prompt, str) else ""
+            
+            prompt = {
+                "prompt": prompt_text,
+                "multi_modal_data": {
+                    "audio": audio_for_vllm,
+                },
+            }
 
         # Generate unique request ID for this generation
         request_id = str(uuid.uuid4())
@@ -544,6 +673,14 @@ class VLLMPythonBackend(Backend):
                     yield response_handler.compile_non_streaming(request, openai_format), request_info
                 raise err
             except Exception as exc:
+                # Provide clearer error message for audio-related issues
+                error_msg = str(exc)
+                if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
+                    raise RuntimeError(
+                        f"Generation failed: The model '{self.model}' does not support audio inputs. "
+                        f"For audio transcriptions, please use an audio-capable model (e.g., Whisper-based models). "
+                        f"Original error: {exc}"
+                    ) from exc
                 # Re-raise with context
                 raise RuntimeError(f"Generation failed: {exc}") from exc
 
@@ -574,6 +711,9 @@ class VLLMPythonBackend(Backend):
                         # Build streaming delta format based on request type
                         if request.request_type == "text_completions":
                             delta_data = {"choices": [{"text": delta_text}]}
+                        elif request.request_type in ("audio_transcriptions", "audio_translations"):
+                            # Audio streaming uses {"text": "..."} format
+                            delta_data = {"text": delta_text}
                         else:  # chat_completions
                             delta_data = {
                                 "choices": [{"delta": {"content": delta_text, "role": "assistant"}}]
@@ -608,6 +748,14 @@ class VLLMPythonBackend(Backend):
                 yield response_handler.compile_streaming(request), request_info
                 raise err
             except Exception as exc:
+                # Provide clearer error message for audio-related issues
+                error_msg = str(exc)
+                if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
+                    raise RuntimeError(
+                        f"Generation failed: The model '{self.model}' does not support audio inputs. "
+                        f"For audio transcriptions, please use an audio-capable model (e.g., Whisper-based models). "
+                        f"Original error: {exc}"
+                    ) from exc
                 # Re-raise with context
                 raise RuntimeError(f"Generation failed: {exc}") from exc
 
