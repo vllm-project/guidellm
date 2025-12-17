@@ -20,8 +20,7 @@ RUN apt-get update || true \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y git \
-    && /usr/bin/python3 -m venv /tmp/uv \
-    && /tmp/uv/bin/pip install --no-cache-dir -U uv
+    && rm -rf /var/lib/apt/lists/*
 
 # Set the default venv for uv
 # Copy instead of link files with uv
@@ -35,6 +34,9 @@ ENV VIRTUAL_ENV=/opt/app-root \
 COPY / /src
 
 # Install guidellm and locked dependencies
+# Have it use system packages (where vllm is installed)
+RUN uv venv /opt/app-root --system-site-packages
+
 RUN uv sync --active --project /src --frozen --no-dev --extra all --no-editable
 
 # Prod image
@@ -44,9 +46,8 @@ FROM $BASE_IMAGE
 USER root
 
 # Install some helpful utilities and deps
-RUN apt-get install -y --no-install-recommends \
-        vi tar rsync ffmpeg-free \
-    && apt clean
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        vim tar rsync ffmpeg \
 
 # Switch back to unpriv user
 # Root group for k8s
