@@ -37,7 +37,11 @@ COPY / /src
 # Have it use system packages (where vllm is installed)
 RUN uv venv /opt/app-root --system-site-packages
 
-RUN uv sync --active --project /src --frozen --no-dev --extra all --no-editable
+# Install dependencies, then remove packages that conflict with base image
+# The base image already has compatible versions of torch, torchvision, transformers, and vllm
+# Removing them from venv ensures Python uses the base image versions via system-site-packages
+RUN uv sync --active --project /src --frozen --no-dev --extra all --no-editable && \
+    /opt/app-root/bin/pip uninstall -y torch torchvision transformers vllm || true
 
 # Prod image
 FROM $BASE_IMAGE
