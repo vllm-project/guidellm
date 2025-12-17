@@ -48,6 +48,7 @@ USER root
 # Install some helpful utilities and deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
         vim tar rsync ffmpeg \
+        && apt clean
 
 # Switch back to unpriv user
 # Root group for k8s
