@@ -30,7 +30,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarksReport,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import DistributionSummary
+from guidellm.schemas import DistributionSummary, Percentiles
 from guidellm.settings import settings
 from guidellm.utils import camelize_str, recursive_key_update
 from guidellm.utils.text import load_text
@@ -191,6 +191,24 @@ class _TabularDistributionSummary(DistributionSummary):
             filter(lambda row: row["percentile"] in ["p50", "p90", "p95", "p99"], rows)
         )
 
+    def model_dump(self, **kwargs) -> dict:
+        """
+        Override model_dump to filter duplicate consecutive percentile values.
+
+        This prevents visualization errors when distributions have limited data
+        points causing multiple percentiles to collapse to the same value.
+
+        :param kwargs: Arguments to pass to parent model_dump
+        :return: Dictionary with filtered percentiles
+        """
+        data = super().model_dump(**kwargs)
+
+        if "percentiles" in data and data["percentiles"]:
+            filtered_percentiles = _filter_duplicate_percentiles(data["percentiles"])
+            data["percentiles"] = filtered_percentiles
+
+        return data
+
     @classmethod
     def from_distribution_summary(
         cls, distribution: DistributionSummary
@@ -236,6 +254,39 @@ def _create_html_report(js_data: dict[str, str], output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_content)
     return output_path
+
+
+def _filter_duplicate_percentiles(percentiles: dict[str, float]) -> dict[str, float]:
+    """
+    Filter out consecutive duplicate percentile values.
+
+    When distributions have very few data points, multiple percentiles can have
+    the same value, which causes visualization libraries to fail. This function
+    keeps only the largest percentile for consecutive duplicate values, which is
+    more mathematically accurate as higher percentiles have greater statistical
+    significance.
+
+    :param percentiles: Dictionary of percentile names to values
+    :return: Filtered percentiles dictionary with no consecutive duplicates
+    """
+    if not percentiles:
+        return percentiles
+
+    percentile_order = list(Percentiles.model_fields.keys())
+
+    # Iterate in reverse to keep the largest percentile for each value
+    filtered = {}
+    previous_value = None
+
+    for key in reversed(percentile_order):
+        if key in percentiles:
+            current_value = percentiles[key]
+            if previous_value is None or current_value != previous_value:
+                filtered[key] = current_value
+                previous_value = current_value
+
+    # Restore original order
+    return {key: filtered[key] for key in percentile_order if key in filtered}
 
 
 def _inject_data(js_data: dict[str, str], html: str) -> str:
