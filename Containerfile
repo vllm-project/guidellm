@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=quay.io/fedora/python-313-minimal:latest
+ARG BASE_IMAGE=vllm/vllm-openai
 
 # Use a multi-stage build to create a lightweight production image
 FROM $BASE_IMAGE as builder
@@ -13,11 +13,15 @@ ARG GUIDELLM_BUILD_TYPE=dev
 # Switch to root for installing packages
 USER root
 
-# Install build tooling
-RUN dnf install -y git \
+RUN apt-get update || true \
+    && apt-get install -y --no-install-recommends gnupg ca-certificates \
+    && apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 871920D1991BC93C \
+    && apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys BA6932366A755776 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y git \
     && /usr/bin/python3 -m venv /tmp/uv \
-    && /tmp/uv/bin/pip install --no-cache-dir -U uv \
-    && ln -s /tmp/uv/bin/uv /usr/local/bin/uv
+    && /tmp/uv/bin/pip install --no-cache-dir -U uv
 
 # Set the default venv for uv
 # Copy instead of link files with uv
@@ -40,9 +44,9 @@ FROM $BASE_IMAGE
 USER root
 
 # Install some helpful utilities and deps
-RUN dnf install -y --setopt=install_weak_deps=False \
+RUN apt-get install -y --no-install-recommends \
         vi tar rsync ffmpeg-free \
-    && dnf clean all
+    && apt clean
 
 # Switch back to unpriv user
 # Root group for k8s
