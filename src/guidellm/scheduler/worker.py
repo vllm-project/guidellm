@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import traceback
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
 from typing import Annotated, Generic, Literal
@@ -382,7 +383,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             raise
         except Exception as exc:  # noqa: BLE001
             if request is not None and request_info is not None:
-                request_info.error = str(exc)
+                request_info.error = repr(exc)
+                request_info.traceback = traceback.format_exc()
                 request_info.timings.resolve_end = time.time()
                 self._send_update("errored", response, request, request_info)
         finally:
