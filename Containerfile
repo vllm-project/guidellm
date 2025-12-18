@@ -35,10 +35,10 @@ COPY / /src
 
 # Install guidellm and locked dependencies
 # Have it use system packages (where vllm, torch, and transformers are installed)
-# Use the 'container' extra which excludes pytorch and vllm since they're in the base image
+# Use individual extras (perf,openai,audio,vision) which exclude pytorch and vllm since they're in the base image
 RUN uv venv /opt/app-root --system-site-packages
 
-RUN uv sync --active --project /src --frozen --no-dev --extra container --no-editable
+RUN uv sync --active --project /src --frozen --no-dev --extra perf,openai,audio,vision --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
