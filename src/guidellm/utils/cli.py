@@ -77,9 +77,16 @@ def parse_list_floats(ctx, param, value):
         ) from err
 
 
-def parse_json(ctx, param, value):  # noqa: ARG001
+def parse_json(ctx, param, value):  # noqa: ARG001, C901, PLR0911
+    if isinstance(value, dict):
+        return value
+
     if value is None or value == [None]:
         return None
+
+    if isinstance(value, str) and not value.strip():
+        return None
+
     if isinstance(value, list | tuple):
         return [parse_json(ctx, param, val) for val in value]
 

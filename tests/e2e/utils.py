@@ -1,10 +1,12 @@
 """Utilities for E2E tests."""
 
 import json
+import shlex
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -24,7 +26,9 @@ def get_guidellm_executable() -> str:
 class GuidellmClient:
     """Wrapper class for running guidellm benchmark commands."""
 
-    def __init__(self, target: str, output_path: Path):
+    def __init__(
+        self, target: str, output_dir: Path, outputs: str = "benchmarks.json"
+    ) -> None:
         """
         Initialize the guidellm client.
 
@@ -32,7 +36,8 @@ class GuidellmClient:
         :param output_path: Path where the benchmark report will be saved
         """
         self.target = target
-        self.output_path = output_path
+        self.output_dir = output_dir
+        self.outputs = outputs
         self.process: subprocess.Popen | None = None
         self.stdout: str | None = None
         self.stderr: str | None = None
@@ -44,7 +49,7 @@ class GuidellmClient:
         max_seconds: int | None = None,
         max_requests: int | None = None,
         max_error_rate: float | None = None,
-        stop_over_saturated: bool | None = False,
+        over_saturation: dict[str, Any] | None = None,
         data: str = "prompt_tokens=256,output_tokens=128",
         processor: str = "gpt2",
         additional_args: str = "",
@@ -53,24 +58,25 @@ class GuidellmClient:
         """
         Start a guidellm benchmark command.
 
-        :param rate_type: Type of rate control (constant, etc.)
+        :param profile: Type of rate control (constant, etc.)
         :param rate: Request rate
         :param max_seconds: Maximum duration in seconds
         :param max_requests: Maximum number of requests
         :param max_error_rate: Maximum error rate before stopping
-        :param stop_over_saturated: Whether to stop the benchmark if the model is
-                                    over-saturated.
+        :param over_saturation: Over-saturation detection configuration (dict).
+            Passed as JSON string to --over-saturation CLI argument.
         :param data: Data configuration string
         :param processor: Processor/tokenizer to use
         :param additional_args: Additional command line arguments
+        :param extra_env: Additional environment variables to set
         """
         guidellm_exe = get_guidellm_executable()
 
         # Build command components
         cmd_parts = [
             *([f"{k}={v}" for k, v in extra_env.items()] if extra_env else []),
-            "HF_HOME=/tmp/huggingface_cache",
-            f"{guidellm_exe} benchmark",
+            "HF_HOME=" + str(self.output_dir / "huggingface_cache"),
+            f"{guidellm_exe} benchmark run",
             f'--target "{self.target}"',
             f"--profile {profile}",
             f"--rate {rate}",
@@ -85,14 +91,28 @@ class GuidellmClient:
         if max_error_rate is not None:
             cmd_parts.append(f"--max-error-rate {max_error_rate}")
 
-        if stop_over_saturated:
-            cmd_parts.append("--stop-over-saturated")
+        if over_saturation is not None:
+            if isinstance(over_saturation, dict):
+                # Use --default-over-saturation flag for empty dict (defaults)
+                if over_saturation == {}:
+                    cmd_parts.append("--default-over-saturation")
+                else:
+                    # Escape the JSON string properly for shell
+                    json_str = json.dumps(over_saturation)
+                    # Use shlex.quote to properly escape for shell
+                    cmd_parts.append(f"--over-saturation {shlex.quote(json_str)}")
+            else:
+                raise TypeError(
+                    f"over_saturation must be a dict or None, "
+                    f"got {type(over_saturation)}"
+                )
 
         cmd_parts.extend(
             [
                 f'--data "{data}"',
                 f'--processor "{processor}"',
-                f"--output-path {self.output_path}",
+                f"--output-dir {self.output_dir}",
+                f"--outputs {self.outputs}",
             ]
         )
 
@@ -104,7 +124,7 @@ class GuidellmClient:
         logger.info(f"Client command: {command}")
 
         self.process = subprocess.Popen(  # noqa: S603
-            ["/bin/bash", "-c", command],
+            ["/bin/sh", "-c", command],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -321,13 +341,3 @@ def assert_constraint_triggered(
             assert actual_value == expected_value, (
                 f"Expected {key}={expected_value}, got {actual_value}"
             )
-
-
-def cleanup_report_file(report_path: Path) -> None:
-    """
-    Clean up the report file if it exists.
-
-    :param report_path: Path to the report file to remove
-    """
-    if report_path.exists():
-        report_path.unlink()
