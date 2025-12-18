@@ -123,6 +123,11 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Number of tokens in the generated output, or None if unavailable
         """
+        # Fallback if we did not get usage metrics from the server
+        # NOTE: This assumes each iteration is one token
+        if self.output_metrics.total_tokens is None:
+            return self.info.timings.token_iterations or None
+
         return self.output_metrics.total_tokens
 
     @computed_field  # type: ignore[misc]
@@ -131,8 +136,8 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Sum of prompt and output tokens, or None if both unavailable
         """
-        input_tokens = self.input_metrics.total_tokens
-        output_tokens = self.output_metrics.total_tokens
+        input_tokens = self.prompt_tokens
+        output_tokens = self.output_tokens
 
         if input_tokens is None and output_tokens is None:
             return None
