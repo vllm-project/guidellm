@@ -38,7 +38,7 @@ COPY / /src
 # Use individual extras (perf,openai,audio,vision) which exclude pytorch and vllm since they're in the base image
 RUN uv venv /opt/app-root --system-site-packages
 
-RUN uv sync --active --project /src --frozen --no-dev --extra perf,openai,audio,vision --no-editable
+RUN uv sync --active --project /src --frozen --no-dev --extra perf --extra openai --extra audio --extra vision --no-editable
 
 # Prod image
 FROM $BASE_IMAGE
