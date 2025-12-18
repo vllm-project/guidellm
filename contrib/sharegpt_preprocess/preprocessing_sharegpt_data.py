@@ -3,7 +3,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from datasets import load_dataset
@@ -16,7 +15,7 @@ MAX_CHAR = 1000
 class TokenCounter:
     def __init__(self, model_name: str = "mistralai/Mistral-7B-Instruct-v0.2"):
         self.model_name = model_name
-        self._tokenizer: Optional[PreTrainedTokenizerBase] = None
+        self._tokenizer: PreTrainedTokenizerBase | None = None
 
     def _initialize_tokenizer(self) -> None:
         if self._tokenizer is None:
