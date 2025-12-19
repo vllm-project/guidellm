@@ -51,10 +51,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         vim tar rsync ffmpeg \
         && apt clean
 
-# Switch back to unpriv user
-# Root group for k8s
-USER 1001:0
-
 # Add guidellm bin to PATH
 # Argument defaults can be set with GUIDELLM_<ARG>
 ENV HOME="/home/guidellm" \
@@ -76,6 +72,26 @@ LABEL io.k8s.display-name="GuideLLM" \
 # Copy the virtual environment from the builder stage
 # Do this as late as possible to leverage layer caching
 COPY --chown=1001:0 --from=builder /opt/app-root /opt/app-root
+
+# Fix venv paths after copying to ensure system-site-packages works correctly
+# The venv may have hardcoded paths from the builder stage that need to be updated
+# Run as root to modify files, then fix ownership
+RUN python3 -c "import sys; print(sys.executable)" > /tmp/python_path.txt && \
+    PYTHON_PATH=$(cat /tmp/python_path.txt) && \
+    PYTHON_DIR=$(dirname "$PYTHON_PATH") && \
+    # Update pyvenv.cfg with correct Python path and ensure system-site-packages is enabled
+    sed -i "s|^home = .*|home = $PYTHON_DIR|" /opt/app-root/pyvenv.cfg 2>/dev/null || true && \
+    grep -q "include-system-site-packages = true" /opt/app-root/pyvenv.cfg || \
+    echo "include-system-site-packages = true" >> /opt/app-root/pyvenv.cfg && \
+    # Fix shebang paths in Python executables
+    find /opt/app-root/bin -type f -executable -exec sed -i "1s|^#!.*python.*|#!$PYTHON_PATH|" {} \; 2>/dev/null || true && \
+    rm -f /tmp/python_path.txt && \
+    # Fix ownership back to 1001:0
+    chown -R 1001:0 /opt/app-root
+
+# Switch back to unpriv user
+# Root group for k8s
+USER 1001:0
 
 ENTRYPOINT [ "/opt/app-root/bin/guidellm" ]
 CMD [ "benchmark", "run" ]
