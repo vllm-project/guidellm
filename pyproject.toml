@@ -18,6 +18,7 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 # ************************************************
 # ********** Project Metadata **********
@@ -90,6 +91,7 @@ audio = [
 vision = [
     "datasets[vision]",
     "pillow",
+    "torchvision",
 ]
 # Dev Tooling
 dev = [
