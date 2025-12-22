@@ -27,9 +27,9 @@ while getopts "fh" opt; do
 done
 
 if [ $FORCE_REGEN -eq 1 ]; then
-    uv lock -U
+    uv sync --all-extras --no-install-project --upgrade
 else
-    uv lock
+    uv sync --all-extras --no-install-project
 fi
 # NOTE: Ensure pre-commit config uses same arguments
 uv export \
