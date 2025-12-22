@@ -16,6 +16,14 @@ ARG GUIDELLM_BUILD_TYPE=dev
 # container: All extras except vllm
 ARG GUIDELLM_BUILD_EXTRAS=container
 
+# PyTorch CUDA version selection
+# cpu: Use CPU-only PyTorch builds (default)
+# cu121: Use CUDA 12.1 builds
+# cu118: Use CUDA 11.8 builds
+# Other CUDA versions: cu124, cu131, etc.
+# Note: Non-CPU builds will resolve dependencies at build time (no frozen lock file)
+ARG PYTORCH_CUDA_VERSION=cpu
+
 # Switch to root for installing packages
 USER root
 
@@ -30,16 +38,32 @@ RUN --mount=type=cache,sharing=locked,target=/var/cache/dnf \
 
 # Set correct build type for versioning
 # Configure uv for building guidellm
+# UV_FROZEN is only set for CPU builds to use the lock file
+# CUDA builds resolve dependencies at build time for flexibility
 ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE \
     VIRTUAL_ENV=/opt/app-root \
     UV_PROJECT="/src" \
     UV_LINK_MODE="copy" \
     UV_NO_DEV="1" \
     UV_NO_EDITABLE="1" \
-    UV_FROZEN="1" \
+    UV_FROZEN=$([ "$PYTORCH_CUDA_VERSION" = "cpu" ] && echo "1" || echo "") \
     UV_CACHE_DIR="/tmp/uv_cache"
 
+# Conditionally configure PyTorch index based on CUDA version
+# This modifies the pyproject.toml to use the appropriate PyTorch index URL
+RUN --mount=type=bind,source=pyproject.toml,target=$UV_PROJECT/pyproject.toml,relabel=shared \
+    if [ "$PYTORCH_CUDA_VERSION" != "cpu" ]; then \
+        sed -i "s|url = \"https://download.pytorch.org/whl/cpu\"|url = \"https://download.pytorch.org/whl/${PYTORCH_CUDA_VERSION}\"|g" \
+        $UV_PROJECT/pyproject.toml && \
+        echo "Updated PyTorch index to CUDA ${PYTORCH_CUDA_VERSION}"; \
+    else \
+        echo "Using CPU-only PyTorch index"; \
+    fi
+
 # Sync initial environment
+# For CPU builds: mount uv.lock and use frozen mode (UV_FROZEN=1) for reproducibility
+# For CUDA builds: mount lock file but it won't be used since UV_FROZEN is empty,
+#                  allowing dependencies to resolve at build time
 RUN --mount=type=cache,target=$UV_CACHE_DIR \
     --mount=type=bind,source=uv.lock,target=$UV_PROJECT/uv.lock,relabel=shared \
     --mount=type=bind,source=pyproject.toml,target=$UV_PROJECT/pyproject.toml,relabel=shared \
