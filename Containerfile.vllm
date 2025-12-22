@@ -46,10 +46,12 @@ ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE \
     UV_CACHE_DIR="/tmp/uv_cache"
 
 # Sync initial environment
+RUN uv venv /opt/app-root --system-site-packages
+
 RUN --mount=type=cache,target=$UV_CACHE_DIR \
     --mount=type=bind,source=uv.lock,target=$UV_PROJECT/uv.lock,relabel=shared \
     --mount=type=bind,source=pyproject.toml,target=$UV_PROJECT/pyproject.toml,relabel=shared \
-    uv sync --active --no-install-project --extra $GUIDELLM_BUILD_EXTRAS --system-site-packages
+    uv sync --active --no-install-project --extra $GUIDELLM_BUILD_EXTRAS
 
 # Copy repository files
 # Do this as late as possible to leverage layer caching
