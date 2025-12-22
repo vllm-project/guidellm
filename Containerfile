@@ -46,7 +46,6 @@ ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE \
     UV_LINK_MODE="copy" \
     UV_NO_DEV="1" \
     UV_NO_EDITABLE="1" \
-    UV_FROZEN=$([ "$PYTORCH_CUDA_VERSION" = "cpu" ] && echo "1" || echo "") \
     UV_CACHE_DIR="/tmp/uv_cache"
 
 # Conditionally configure PyTorch index based on CUDA version
@@ -61,13 +60,16 @@ RUN --mount=type=bind,source=pyproject.toml,target=$UV_PROJECT/pyproject.toml,re
     fi
 
 # Sync initial environment
-# For CPU builds: mount uv.lock and use frozen mode (UV_FROZEN=1) for reproducibility
-# For CUDA builds: mount lock file but it won't be used since UV_FROZEN is empty,
-#                  allowing dependencies to resolve at build time
+# For CPU builds: mount uv.lock and use frozen mode (--frozen flag) for reproducibility
+# For CUDA builds: mount lock file but don't use --frozen, allowing dependencies to resolve at build time
 RUN --mount=type=cache,target=$UV_CACHE_DIR \
     --mount=type=bind,source=uv.lock,target=$UV_PROJECT/uv.lock,relabel=shared \
     --mount=type=bind,source=pyproject.toml,target=$UV_PROJECT/pyproject.toml,relabel=shared \
-    uv sync --active --no-install-project --extra $GUIDELLM_BUILD_EXTRAS
+    if [ "$PYTORCH_CUDA_VERSION" = "cpu" ]; then \
+        uv sync --active --no-install-project --extra $GUIDELLM_BUILD_EXTRAS --frozen; \
+    else \
+        uv sync --active --no-install-project --extra $GUIDELLM_BUILD_EXTRAS; \
+    fi
 
 # Copy repository files
 # Do this as late as possible to leverage layer caching
@@ -75,7 +77,11 @@ COPY / $UV_PROJECT
 
 # Install guidellm
 RUN --mount=type=cache,target=$UV_CACHE_DIR \
-    uv sync --active --extra $GUIDELLM_BUILD_EXTRAS
+    if [ "$PYTORCH_CUDA_VERSION" = "cpu" ]; then \
+        uv sync --active --extra $GUIDELLM_BUILD_EXTRAS --frozen; \
+    else \
+        uv sync --active --extra $GUIDELLM_BUILD_EXTRAS; \
+    fi
 
 # Prod image
 FROM $BASE_IMAGE
