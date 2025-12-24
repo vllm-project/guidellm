@@ -11,12 +11,12 @@ requiring actual model deployments.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
 from sanic import Sanic, response
 from sanic.exceptions import NotFound
 from sanic.log import logger
-from sanic.request import Request
+from sanic.request import File, Request
 from sanic.response import BaseHTTPResponse, HTTPResponse
 
 from guidellm.mock_server.config import MockServerConfig
@@ -125,6 +125,71 @@ class MockServer:
             if request.method == "OPTIONS":
                 return response.text("", status=204)
             return await self.tokenizer_handler.detokenize(request)
+
+        @self.app.route("/v1/audio/transcriptions", methods=["POST", "OPTIONS"])
+        async def audio_transcriptions(request: Request) -> HTTPResponse:
+            """
+            Mock OpenAI audio transcription endpoint:
+            - receives multipart/form-data
+            - file field contains audio file
+            - model field is optional, default to "mock-model"
+            - returns "transcribed text"
+            """
+            if request.method == "OPTIONS":
+                return response.text("", status=204)
+            if request.files is None or request.form is None:
+                return response.json({"error": "No form data provided"}, status=400)
+            file: File | None = request.files.get("file")
+            if "file" not in request.files or "model" not in request.form:
+                return response.json(
+                    {"error": "Missing 'file' in form-data"}, status=400
+                )
+
+            file = cast("File", file)
+            model = request.form.get("model", "mock-model")
+
+            return response.json(
+                {
+                    "text": f"Mock transcription for {file.name}",
+                    "file_size": len(file.body),
+                    "model_used": model,
+                    "transcription": f"Transcribed({file.name}) using {model}",
+                }
+            )
+
+        @self.app.route("/v1/audio/translations", methods=["POST", "OPTIONS"])
+        async def audio_translations(request: Request) -> HTTPResponse:
+            """
+            Mock OpenAI audio translation endpoint:
+            - receives multipart/form-data
+            - file field contains audio file
+            - model field is optional, default to "mock-model"
+            - returns translated text
+            """
+            if request.method == "OPTIONS":
+                return response.text("", status=204)
+            if request.files is None or request.form is None:
+                return response.json({"error": "No form data provided"}, status=400)
+            file: File | None = request.files.get("file")
+            if "file" not in request.files or "model" not in request.form:
+                return response.json(
+                    {"error": "Missing 'file' in form-data"}, status=400
+                )
+
+            file = cast("File", file)
+            decoded_text = (
+                "This is a mock translation result."  # mock output tranlated text
+            )
+
+            return response.json(
+                {
+                    "text": decoded_text,
+                    "file_size": len(file.body),
+                    "filename": {file.name},
+                    "model_used": request.form.get("model", "mock-model"),
+                    "mimetype": file.type,
+                }
+            )
 
     def _setup_error_handlers(self):
         """Setup error handlers."""
