@@ -337,7 +337,6 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
-            arguments.body["stream_options"] = {"include_usage": True}
 
         # Handle output tokens
         if output_tokens := sum(
