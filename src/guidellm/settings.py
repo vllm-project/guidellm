@@ -73,6 +73,9 @@ class DatasetSettings(BaseModel):
     preferred_data_splits: list[str] = Field(
         default_factory=lambda: ["test", "tst", "validation", "val", "train"]
     )
+    default_column_mapper: Literal["generative_column_mapper"] = (
+        "generative_column_mapper"
+    )
 
 
 class OpenAISettings(BaseModel):

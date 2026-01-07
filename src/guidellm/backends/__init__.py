@@ -9,15 +9,13 @@ the abstract Backend base class, OpenAI-compatible HTTP backend, and response
 handlers for processing streaming and non-streaming API responses.
 """
 
-from __future__ import annotations
-
 from .backend import Backend, BackendType
-from .openai import OpenAIHTTPBackend
-from .response_handlers import (
+from .openai import (
     AudioResponseHandler,
     ChatCompletionsResponseHandler,
     GenerationResponseHandler,
     GenerationResponseHandlerFactory,
+    OpenAIHTTPBackend,
     TextCompletionsResponseHandler,
 )
 

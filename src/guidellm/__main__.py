@@ -180,18 +180,12 @@ def benchmark():
 # Data configuration
 @click.option(
     "--request-type",
-    default=BenchmarkGenerativeTextArgs.get_default("data_request_formatter"),
+    default=BenchmarkGenerativeTextArgs.get_default("request_type"),
     type=click.Choice(list(get_literal_vals(GenerativeRequestType))),
     help=(
         f"Request type to create for each data sample. "
         f"Options: {', '.join(get_literal_vals(GenerativeRequestType))}."
     ),
-)
-@click.option(
-    "--request-formatter-kwargs",
-    default=None,
-    callback=cli_tools.parse_json,
-    help="JSON string of arguments to pass to the request formatter.",
 )
 @click.option(
     "--processor",
@@ -229,6 +223,19 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
     callback=cli_tools.parse_json,
     help="JSON string of column mappings to apply to the dataset.",
+)
+@click.option(
+    "--data-preprocessors",
+    default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors"),
+    callback=cli_tools.parse_json,
+    multiple=True,
+    help="JSON string of preprocessors to apply to the dataset.",
+)
+@click.option(
+    "--data-finalizer",
+    default=BenchmarkGenerativeTextArgs.get_default("data_finalizer"),
+    callback=cli_tools.parse_json,
+    help="JSON string of finalizer to convert dataset rows to requests.",
 )
 @click.option(
     "--data-sampler",
@@ -407,18 +414,6 @@ def benchmark():
 def run(**kwargs):  # noqa: C901
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
-
-    # Handle remapping for request params
-    request_type = kwargs.pop("request_type", None)
-    request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
-    if request_type is not None:
-        kwargs["data_request_formatter"] = (
-            request_type
-            if not request_formatter_kwargs
-            else {"request_type": request_type, **request_formatter_kwargs}
-        )
-    elif request_formatter_kwargs is not None:
-        kwargs["data_request_formatter"] = request_formatter_kwargs
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
