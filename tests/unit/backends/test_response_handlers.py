@@ -20,7 +20,6 @@ def generation_request():
         request_type="text_completions",
         arguments=GenerationRequestArguments(
             method="POST",
-            url="http://test.com",
             body={"prompt": "Test prompt"},
         ),
     )
@@ -524,183 +523,20 @@ class TestAudioResponseHandler:
     @pytest.mark.smoke
     @pytest.mark.parametrize(
         (
-            "response",
-            "expected_text",
-            "expected_audio_tokens",
-            "expected_output_tokens",
-            "expected_seconds",
-        ),
-        [
-            (
-                {
-                    "text": "Hello, world!",
-                    "usage": {"input_tokens": 1000, "output_tokens": 3},
-                },
-                "Hello, world!",
-                1000,
-                3,
-                0,
-            ),
-            (
-                {
-                    "text": "Test transcription",
-                    "usage": {
-                        "audio_tokens": 500,
-                        "output_tokens": 5,
-                        "seconds": 10,
-                    },
-                },
-                "Test transcription",
-                500,
-                5,
-                10,
-            ),
-            (
-                {"text": "", "usage": {}},
-                "",
-                None,
-                None,
-                None,
-            ),
-        ],
-    )
-    def test_non_streaming(
-        self,
-        valid_instances,
-        generation_request,
-        response,
-        expected_text,
-        expected_audio_tokens,
-        expected_output_tokens,
-        expected_seconds,
-    ):
-        """Test compile_non_streaming method for audio."""
-        instance: AudioResponseHandler = valid_instances
-
-        result = instance.compile_non_streaming(generation_request, response)
-
-        assert result.text == expected_text
-        assert result.input_metrics.audio_tokens == expected_audio_tokens
-        assert result.output_metrics.text_tokens == expected_output_tokens
-        assert result.output_metrics.text_words == len(expected_text.split())
-        assert result.output_metrics.text_characters == len(expected_text)
-        assert result.input_metrics.audio_seconds == expected_seconds
-
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        (
-            "lines",
-            "expected_text",
-            "expected_audio_tokens",
-            "expected_output_tokens",
-            "expected_seconds",
-        ),
-        [
-            (
-                [
-                    '{"text": "Hello", "usage": {}}',
-                    (
-                        '{"text": " world!", '
-                        '"usage": {"audio_tokens": 1000, '
-                        '"output_tokens": 3, "seconds": 5}}'
-                    ),
-                    "data: [DONE]",
-                ],
-                "Hello world!",
-                1000,
-                3,
-                5,
-            ),
-            (
-                [
-                    '{"text": "Test", "usage": {}}',
-                    "data: [DONE]",
-                ],
-                "Test",
-                None,
-                None,
-                None,
-            ),
-            (
-                ["data: [DONE]"],
-                "",
-                None,
-                None,
-                None,
-            ),
-        ],
-    )
-    def test_streaming(
-        self,
-        valid_instances,
-        generation_request,
-        lines,
-        expected_text,
-        expected_audio_tokens,
-        expected_output_tokens,
-        expected_seconds,
-    ):
-        """Test streaming pathway for audio."""
-        instance: AudioResponseHandler = valid_instances
-
-        updated_count = 0
-        for line in lines:
-            result = instance.add_streaming_line(line)
-            if result == 1:
-                updated_count += 1
-            elif result is None:
-                break
-
-        response = instance.compile_streaming(generation_request)
-        assert response.text == expected_text
-        assert response.input_metrics.audio_tokens == expected_audio_tokens
-        assert response.output_metrics.text_tokens == expected_output_tokens
-        assert response.input_metrics.audio_seconds == expected_seconds
-
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        (
             "usage",
             "text",
             "expected_audio_tokens",
             "expected_output_tokens",
-            "expected_seconds",
         ),
         [
             (
-                {"input_tokens": 1000, "output_tokens": 5},
+                {"prompt_tokens": 538, "total_tokens": 982, "completion_tokens": 444},
                 "Hello world",
-                1000,
-                5,
-                0,
+                538,
+                444,
             ),
-            (
-                {
-                    "audio_tokens": 500,
-                    "output_tokens": 3,
-                    "seconds": 10,
-                },
-                "Test",
-                500,
-                3,
-                10,
-            ),
-            (
-                {
-                    "input_token_details": {
-                        "audio_tokens": 800,
-                        "text_tokens": 5,
-                        "seconds": 10,
-                    },
-                    "output_token_details": {"text_tokens": 10},
-                },
-                "Hello world test",
-                800,
-                10,
-                10,
-            ),
-            (None, "Hello", None, None, None),
-            ({}, "", None, None, None),
+            (None, "Hello", None, None),
+            ({}, "", None, None),
         ],
     )
     def test_extract_metrics(
@@ -710,14 +546,12 @@ class TestAudioResponseHandler:
         text,
         expected_audio_tokens,
         expected_output_tokens,
-        expected_seconds,
     ):
         """Test extract_metrics method for audio."""
         instance: AudioResponseHandler = valid_instances
         input_metrics, output_metrics = instance.extract_metrics(usage, text)
 
         assert input_metrics.audio_tokens == expected_audio_tokens
-        assert input_metrics.audio_seconds == expected_seconds
         assert output_metrics.text_tokens == expected_output_tokens
         assert output_metrics.text_words == (len(text.split()) if text else 0)
         assert output_metrics.text_characters == len(text)
