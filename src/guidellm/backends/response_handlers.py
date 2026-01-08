@@ -372,7 +372,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 @GenerationResponseHandlerFactory.register(
     ["audio_transcriptions", "audio_translations"]
 )
-class AudioResponseHandler:
+class AudioResponseHandler(ChatCompletionsResponseHandler):
     """
     Response handler for audio transcription and translation endpoints.
 
@@ -398,86 +398,6 @@ class AudioResponseHandler:
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
 
-    def compile_non_streaming(
-        self, request: GenerationRequest, response: dict
-    ) -> GenerationResponse:
-        """
-        Process a complete audio transcription or translation response.
-
-        Extracts transcribed or translated text and audio-specific usage metrics
-        including processing duration and token counts for audio content.
-
-        :param request: Original generation request
-        :param response: Complete API response containing text and usage data
-        :return: Standardized GenerationResponse with extracted text and metrics
-        """
-        text: str = response.get("text", "")
-        usage: dict[str, int | dict[str, int]] = response.get("usage", {})
-        input_metrics, output_metrics = self.extract_metrics(usage, text)
-
-        return GenerationResponse(
-            request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
-            response_id=response.get("id"),  # use vLLM ID if available
-            text=text,
-            input_metrics=input_metrics,
-            output_metrics=output_metrics,
-        )
-
-    def add_streaming_line(self, line: str) -> int | None:
-        """
-        Process a single line from an audio streaming response.
-
-        Handles JSON-formatted streaming responses from audio processing endpoints,
-        extracting text content and usage metrics as they become available.
-
-        :param line: Raw JSON line from the streaming response
-        :return: 1 if text content was extracted, 0 if line ignored, None if done
-        """
-        if line == "data: [DONE]":
-            return None
-
-        if not line or not (line := line.strip()) or not line.startswith("{"):
-            return 0
-
-        data: dict[str, Any] = json.loads(line)
-        updated = False
-
-        if "id" in data and self.streaming_response_id is None:
-            self.streaming_response_id = data["id"]
-
-        if text := data.get("text"):
-            self.streaming_texts.append(text)
-            updated = True
-
-        if usage := data.get("usage"):
-            self.streaming_usage = usage
-
-        return 1 if updated else 0
-
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
-        """
-        Compile accumulated streaming audio text into a final response.
-
-        :param request: Original generation request
-        :return: Standardized GenerationResponse with concatenated text and metrics
-        """
-        text = "".join(self.streaming_texts)
-        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
-
-        return GenerationResponse(
-            request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
-            response_id=self.streaming_response_id,
-            text=text,
-            input_metrics=input_metrics,
-            output_metrics=output_metrics,
-        )
-
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str
     ) -> tuple[UsageMetrics, UsageMetrics]:
@@ -497,31 +417,12 @@ class AudioResponseHandler:
                 text_characters=len(text) if text else 0,
             )
 
-        input_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("input_token_details", {}) or {}
-        )
-        output_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("output_token_details", {}) or {}
-        )
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
 
         return UsageMetrics(
-            text_tokens=input_details.get("text_tokens") or 0,
-            audio_tokens=(
-                input_details.get("audio_tokens")
-                or usage_metrics.get("audio_tokens")
-                or usage_metrics.get("input_tokens")
-                or 0
-            ),
-            audio_seconds=(
-                input_details.get("seconds") or usage_metrics.get("seconds") or 0
-            ),
+            audio_tokens=(usage_metrics.get("prompt_tokens") or 0),
         ), UsageMetrics(
-            text_tokens=(
-                output_details.get("text_tokens")
-                or usage_metrics.get("output_tokens")
-                or 0
-            ),
+            text_tokens=(usage_metrics.get("completion_tokens") or 0),
             text_words=len(text.split()) if text else 0,
             text_characters=len(text) if text else 0,
         )
