@@ -115,14 +115,6 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Number of tokens in the input prompt, or None if unavailable
         """
-        return self.input_metrics.text_tokens
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def input_tokens(self) -> int | None:
-        """
-        :return: Number of tokens in the input prompt, or None if unavailable
-        """
         return self.input_metrics.total_tokens
 
     @computed_field  # type: ignore[misc]
