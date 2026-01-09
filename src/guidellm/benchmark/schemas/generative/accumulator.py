@@ -478,7 +478,7 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         default_factory=RunningMetricStats,
         description="Accumulated request latency statistics",
     )
-    input_tokens: RunningMetricStats = Field(
+    prompt_tokens: RunningMetricStats = Field(
         default_factory=RunningMetricStats,
         description="Accumulated input token count statistics",
     )
@@ -527,7 +527,7 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         :param duration: Current benchmark duration for time-weighted metrics
         """
         self.requests.update_estimate(1.0, duration=duration)
-        self.input_tokens.update_estimate(stats.input_tokens, duration=duration)
+        self.prompt_tokens.update_estimate(stats.prompt_tokens, duration=duration)
         self.output_tokens.update_estimate(stats.output_tokens, duration=duration)
         self.total_tokens.update_estimate(stats.total_tokens, duration=duration)
         self.request_latency.update_estimate(stats.request_latency, duration=duration)

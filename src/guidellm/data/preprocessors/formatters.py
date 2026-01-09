@@ -337,7 +337,8 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
-            arguments.body["stream_options"] = {"include_usage": True}
+            # NOTE: File upload endpoints use flattened stream options
+            arguments.body["stream_include_usage"] = True
 
         # Handle output tokens
         if output_tokens := sum(
@@ -377,14 +378,6 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
                 audio_dict.get("mimetype"),
             )
         }
-
-        # Build prompt
-        prefix = "".join(pre for pre in columns.get("prefix_column", []) if pre)
-        text = "".join(txt for txt in columns.get("text_column", []) if txt)
-        if prefix or text:
-            prompt = prefix + text
-            arguments.body["prompt"] = prompt
-            input_metrics.add_text_metrics(prompt)
 
         return GenerationRequest(
             request_type="audio_transcriptions",
