@@ -397,6 +397,7 @@ class TestUsageMetrics:
         ("metrics_kwargs", "expected_total"),
         [
             ({}, None),
+            ({"text_tokens": 0}, 0),
             ({"text_tokens": 100}, 100),
             ({"text_tokens": 100, "image_tokens": 50}, 150),
             (
@@ -412,6 +413,7 @@ class TestUsageMetrics:
         ],
         ids=[
             "no_tokens",
+            "zero_tokens",
             "text_only",
             "text_and_image",
             "all_modalities",
