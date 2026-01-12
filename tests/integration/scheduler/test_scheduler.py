@@ -141,8 +141,10 @@ async def test_scheduler_run_integration(
         elif info.status == "errored":
             assert resp is None
             assert info.error is not None
-            assert info.error == f"mock_error_for_{req.payload}"
-            received_responses.append(info.error)
+            assert info.error == f"RuntimeError('mock_error_for_{req.payload}')"
+            # The assert protects us but this is ugly and should be improved
+            error_str = str(eval(info.error))  # noqa: S307
+            received_responses.append(error_str)
 
         if len(received_updates[req.payload]) < 3:
             received_updates[req.payload].append(info.status)

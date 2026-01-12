@@ -148,6 +148,10 @@ class RequestInfo(StandardBaseModel):
     error: str | None = Field(
         default=None, description="Error message if the request status is 'errored'"
     )
+    traceback: str | None = Field(
+        default=None,
+        description="Full traceback of the error if the request status is 'errored'",
+    )
 
     @computed_field  # type: ignore[misc]
     @property

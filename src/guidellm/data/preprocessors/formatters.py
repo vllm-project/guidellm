@@ -76,7 +76,10 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
-            arguments.body["stream_options"] = {"include_usage": True}
+            arguments.body["stream_options"] = {
+                "include_usage": True,
+                "continuous_usage_stats": True,
+            }
 
         # Handle output tokens
         if output_tokens := sum(
@@ -163,7 +166,10 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
         if self.stream:
             arguments.stream = True
             arguments.body["stream"] = True
-            arguments.body["stream_options"] = {"include_usage": True}
+            arguments.body["stream_options"] = {
+                "include_usage": True,
+                "continuous_usage_stats": True,
+            }
 
         # Handle output tokens
         if output_tokens := sum(
@@ -339,6 +345,7 @@ class GenerativeAudioTranscriptionRequestFormatter(RequestFormatter):
             arguments.body["stream"] = True
             # NOTE: File upload endpoints use flattened stream options
             arguments.body["stream_include_usage"] = True
+            arguments.body["stream_continuous_usage_stats"] = True
 
         # Handle output tokens
         if output_tokens := sum(

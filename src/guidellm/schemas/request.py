@@ -166,9 +166,17 @@ class UsageMetrics(StandardBaseDict):
 
         :return: Sum of text, image, video, and audio tokens, or None if all are None
         """
-        return (self.text_tokens or 0) + (self.image_tokens or 0) + (
-            self.video_tokens or 0
-        ) + (self.audio_tokens or 0) or None
+        token_metrics = [
+            self.text_tokens,
+            self.image_tokens,
+            self.video_tokens,
+            self.audio_tokens,
+        ]
+        # NOTE: None should indicate no data rather than zero usage
+        if token_metrics.count(None) == len(token_metrics):
+            return None
+        else:
+            return sum(token or 0 for token in token_metrics)
 
     def add_text_metrics(self, text):
         """
