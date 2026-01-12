@@ -234,7 +234,10 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image_url", "image_url": image_dict.get("image")}
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_dict.get("image")},
+                        }
                     ],
                 }
             )
@@ -261,7 +264,10 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "video_url", "video_url": video_dict.get("video")}
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": video_dict.get("video")},
+                        }
                     ],
                 }
             )
