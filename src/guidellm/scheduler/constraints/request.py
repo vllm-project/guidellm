@@ -221,11 +221,12 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
             else self.max_duration[min(current_index, len(self.max_duration) - 1)]
         )
 
+        start_time = state.start_requests_time or state.start_time
         current_time = time.time()
-        elapsed = current_time - state.start_time
+        elapsed = current_time - start_time
         duration_exceeded = elapsed >= max_duration
         remaining_duration = min(max(0.0, max_duration - elapsed), max_duration)
-        stop_time = None if not duration_exceeded else state.start_time + max_duration
+        stop_time = None if not duration_exceeded else start_time + max_duration
 
         return SchedulerUpdateAction(
             request_queuing="stop" if duration_exceeded else "continue",
@@ -234,7 +235,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
                 "max_duration": max_duration,
                 "elapsed_time": elapsed,
                 "duration_exceeded": duration_exceeded,
-                "start_time": state.start_time,
+                "start_time": start_time,
                 "current_time": current_time,
                 "stop_time": stop_time,
             },
