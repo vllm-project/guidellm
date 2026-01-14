@@ -29,6 +29,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
+from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import DistributionSummary, Percentiles
 from guidellm.settings import settings
 from guidellm.utils import camelize_str, recursive_key_update
@@ -219,6 +220,21 @@ class _TabularDistributionSummary(DistributionSummary):
         :return: Tabular distribution summary with formatted percentile rows
         """
         return cls(**distribution.model_dump())
+
+def _get_strategy_display_str(strategy: SchedulingStrategy | str):
+    if isinstance(strategy, SchedulingStrategy):
+        return str(strategy)
+
+    strategy_type = strategy
+
+    if strategy_type == "concurrent":
+        return "concurrent@##"
+    elif strategy_type in ("constant", "poisson"):
+        return f"{strategy_type}@#.##"
+    elif strategy_type == "throughput":
+        return "throughput@##"
+
+    return strategy_type
 
 
 def _create_html_report(js_data: dict[str, str], output_path: Path) -> Path:
@@ -451,9 +467,11 @@ def _build_benchmarks(benchmarks: list[GenerativeBenchmark]) -> list[dict[str, A
     """
     result = []
     for bm in benchmarks:
+        rps = bm.metrics.requests_per_second.successful.mean
         result.append(
             {
-                "requests_per_second": bm.metrics.requests_per_second.successful.mean,
+                "strategy_display_str":_get_strategy_display_str(bm.config.strategy),
+                "requests_per_second": rps,
                 "itl": _TabularDistributionSummary.from_distribution_summary(
                     bm.metrics.inter_token_latency_ms.successful
                 ).model_dump(),
