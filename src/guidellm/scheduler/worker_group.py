@@ -667,6 +667,17 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         else:
             raise ValueError(f"Unknown request_info status {info.status} for {info}")
 
+        # Keep global count of the earliest start and latest end
+        self._state.start_requests_time = min(
+            info.timings.request_start or float("inf"),
+            self._state.start_requests_time or float("inf"),
+        )
+        self._state.end_requests_time = max(
+            info.timings.request_end or float("-inf"),
+            self._state.end_requests_time or float("-inf"),
+            finalized,
+        )
+
     def _update_with_constraints(self, info: RequestInfo):
         actions: dict[str, SchedulerUpdateAction] = {
             name: const(self._state, info) for name, const in self.constraints.items()

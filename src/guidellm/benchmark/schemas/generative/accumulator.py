@@ -168,7 +168,7 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
         :param config: Benchmark configuration with warmup/cooldown settings
         """
         # First update non terminal timestamps
-        self.request_start = scheduler_state.start_time
+        self.request_start = scheduler_state.start_requests_time
         self.last_update = self.current_update
         if (current_time := info.timings.last_reported) is not None:
             self.current_update = (
