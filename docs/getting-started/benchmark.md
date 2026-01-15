@@ -40,16 +40,17 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 
 ### Key Parameters
 
-| Parameter       | Description                                    | Example                                        |
-| --------------- | ---------------------------------------------- | ---------------------------------------------- |
-| `--target`      | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`             |
-| `--model`       | Model name to benchmark (optional)             | `--model "Meta-Llama-3.1-8B-Instruct"`         |
-| `--data`        | Data configuration for benchmarking            | `--data "prompt_tokens=256,output_tokens=128"` |
-| `--profile`     | Type of benchmark profile to run               | `--profile sweep`                              |
-| `--rate`        | Request rate or number of benchmarks for sweep | `--rate 10`                                    |
-| `--max-seconds` | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
-| `--output-dir`  | Directory path to save output files            | `--output-dir results/`                        |
-| `--outputs`     | Output formats to generate                     | `--outputs json csv html`                      |
+| Parameter           | Description                                    | Example                                        |
+| ------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| `--target`          | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`             |
+| `--model`           | Model name to benchmark (optional)             | `--model "Meta-Llama-3.1-8B-Instruct"`         |
+| `--data`            | Data configuration for benchmarking            | `--data "prompt_tokens=256,output_tokens=128"` |
+| `--profile`         | Type of benchmark profile to run               | `--profile sweep`                              |
+| `--rate`            | Request rate or number of benchmarks for sweep | `--rate 10`                                    |
+| `--max-concurrency` | Maximum concurrent requests (default: 512)     | `--max-concurrency 196`                        |
+| `--max-seconds`     | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
+| `--output-dir`      | Directory path to save output files            | `--output-dir results/`                        |
+| `--outputs`         | Output formats to generate                     | `--outputs json csv html`                      |
 
 ### Benchmark Profiles (`--profile`)
 
@@ -61,6 +62,34 @@ GuideLLM supports several benchmark profiles and strategies:
 - `constant`: Sends requests at a fixed rate per second
 - `poisson`: Sends requests following a Poisson distribution
 - `sweep`: Automatically determines optimal performance points (default)
+
+#### Controlling Concurrency
+
+The `--max-concurrency` parameter limits the number of concurrent requests during benchmarks. This parameter applies to profiles that run concurrent requests:
+
+- **`throughput`**: Limits maximum concurrent requests
+- **`constant` / `poisson`**: Caps concurrent requests at the specified rate
+- **`sweep`**: Limits concurrency during throughput and async phases (synchronous phase unaffected)
+- **`synchronous`**: Not applicable (runs one request at a time)
+- **`concurrent`**: Not applicable (uses `--rate` to specify streams)
+
+This is particularly useful for:
+
+- Matching production deployment constraints
+- Preventing resource exhaustion on the server
+- Testing realistic load scenarios with known concurrency limits
+
+Example with limited concurrency:
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --profile sweep \
+  --max-concurrency 196 \
+  --max-seconds 60
+```
+
+**Note:** For sweep profiles, the synchronous phase always runs one request at a time regardless of this setting. The limit only applies to the throughput and async (constant/poisson) phases of the sweep.
 
 ### Data Options
 

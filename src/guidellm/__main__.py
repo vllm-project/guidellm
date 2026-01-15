@@ -338,6 +338,16 @@ def benchmark():
     ),
 )
 @click.option(
+    "--max-concurrency",
+    type=int,
+    default=BenchmarkGenerativeTextArgs.get_default("max_concurrency"),
+    help=(
+        "Maximum concurrent requests to schedule. "
+        "Applies to Throughput/Concurrent/Async/Sweep strategies. "
+        "If not specified, uses system default (512)."
+    ),
+)
+@click.option(
     "--sample-requests",
     "--output-sampling",  # legacy alias
     "sample_requests",

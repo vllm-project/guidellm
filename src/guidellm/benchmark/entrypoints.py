@@ -317,6 +317,7 @@ async def resolve_profile(
     rate: list[float] | None,
     random_seed: int,
     rampup: float,
+    max_concurrency: int | None,
     constraints: MutableMapping[str, ConstraintInitializer | Any],
     max_seconds: int | float | None,
     max_requests: int | None,
@@ -336,8 +337,9 @@ async def resolve_profile(
     :param profile: Profile type identifier or pre-configured Profile instance
     :param rate: Request rate(s) for the benchmark execution
     :param random_seed: Seed for reproducible random operations
-    :param warmup: Warm-up phase configuration for the benchmark execution
+    :param rampup: Ramp-up phase configuration for the benchmark execution
         (used for ramp-up duration calculation)
+    :param max_concurrency: Maximum concurrent requests to schedule
     :param constraints: Dictionary of constraint initializers for benchmark limits
     :param max_seconds: Maximum duration in seconds for the benchmark
     :param max_requests: Maximum number of requests to process
@@ -372,6 +374,7 @@ async def resolve_profile(
             rate=rate,
             random_seed=random_seed,
             rampup_duration=rampup,
+            max_concurrency=max_concurrency,
             constraints={**constraints},
         )
     elif constraints:
@@ -497,6 +500,7 @@ async def benchmark_generative_text(
         rate=args.rate,
         random_seed=args.random_seed,
         rampup=args.rampup,
+        max_concurrency=args.max_concurrency,
         constraints=constraints,
         max_seconds=args.max_seconds,
         max_requests=args.max_requests,

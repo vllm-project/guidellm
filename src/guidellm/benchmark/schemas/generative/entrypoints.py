@@ -263,6 +263,13 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             "Only applicable for Throughput/Concurrent strategies"
         ),
     )
+    max_concurrency: int | None = Field(
+        default=None,
+        description=(
+            "Maximum concurrent requests to schedule. "
+            "Applies to Throughput/Concurrent/Async/Sweep strategies."
+        ),
+    )
     prefer_response_metrics: bool = Field(
         default=True,
         description="Whether to prefer backend response metrics over request metrics",

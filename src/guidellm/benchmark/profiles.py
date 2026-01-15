@@ -94,6 +94,7 @@ class Profile(
         rate_type: str,
         rate: list[float] | None,
         random_seed: int = 42,
+        max_concurrency: int | None = None,
         **kwargs: Any,
     ) -> Profile:
         """
@@ -102,6 +103,7 @@ class Profile(
         :param rate_type: Profile type identifier to instantiate
         :param rate: Rate configuration for the profile strategy
         :param random_seed: Seed for stochastic strategy reproducibility
+        :param max_concurrency: Maximum concurrent requests to schedule
         :param kwargs: Additional profile-specific configuration parameters
         :return: Configured profile instance for the specified type
         :raises ValueError: If rate_type is not registered
@@ -111,7 +113,11 @@ class Profile(
             raise ValueError(f"Profile type '{rate_type}' is not registered")
 
         resolved_kwargs = profile_class.resolve_args(
-            rate_type=rate_type, rate=rate, random_seed=random_seed, **kwargs
+            rate_type=rate_type,
+            rate=rate,
+            random_seed=random_seed,
+            max_concurrency=max_concurrency,
+            **kwargs,
         )
 
         return profile_class(**resolved_kwargs)
@@ -123,6 +129,7 @@ class Profile(
         rate_type: str,
         rate: list[float] | None,
         random_seed: int,
+        max_concurrency: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -131,6 +138,7 @@ class Profile(
         :param rate_type: Profile type identifier
         :param rate: Rate configuration parameter
         :param random_seed: Seed for stochastic strategies
+        :param max_concurrency: Maximum concurrent requests to schedule
         :param kwargs: Additional arguments to resolve and validate
         :return: Resolved arguments dictionary for profile initialization
         """
@@ -284,6 +292,7 @@ class SynchronousProfile(Profile):
         rate_type: str,
         rate: list[float] | None,
         random_seed: int,
+        max_concurrency: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -292,11 +301,12 @@ class SynchronousProfile(Profile):
         :param rate_type: Profile type identifier (ignored)
         :param rate: Rate parameter (must be None)
         :param random_seed: Random seed (ignored)
+        :param max_concurrency: Maximum concurrent requests (ignored)
         :param kwargs: Additional arguments passed through unchanged
         :return: Resolved arguments dictionary
         :raises ValueError: If rate is not None
         """
-        _ = (rate_type, random_seed)  # unused
+        _ = (rate_type, random_seed, max_concurrency)  # unused
         if rate is not None:
             raise ValueError("SynchronousProfile does not accept a rate parameter")
 
@@ -348,6 +358,7 @@ class ConcurrentProfile(Profile):
         rate_type: str,
         rate: list[float] | None,
         random_seed: int,
+        max_concurrency: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -356,11 +367,12 @@ class ConcurrentProfile(Profile):
         :param rate_type: Profile type identifier (ignored)
         :param rate: Rate parameter remapped to streams
         :param random_seed: Random seed (ignored)
+        :param max_concurrency: Maximum concurrent requests (ignored)
         :param kwargs: Additional arguments passed through unchanged
         :return: Resolved arguments dictionary
         :raises ValueError: If rate is None
         """
-        _ = (rate_type, random_seed)  # unused
+        _ = (rate_type, random_seed, max_concurrency)  # unused
         rate = rate if isinstance(rate, list) or rate is None else [rate]
         kwargs["streams"] = [int(stream) for stream in rate] if rate else None
         return kwargs
@@ -416,26 +428,34 @@ class ThroughputProfile(Profile):
         rate_type: str,
         rate: list[float] | None,
         random_seed: int,
+        max_concurrency: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
         Resolve arguments for throughput profile construction.
 
         :param rate_type: Profile type identifier (ignored)
-        :param rate: Rate parameter remapped to max_concurrency
+        :param rate: Rate parameter remapped to max_concurrency if not set
         :param random_seed: Random seed (ignored)
+        :param max_concurrency: Maximum concurrent requests to schedule
         :param kwargs: Additional arguments passed through unchanged
         :return: Resolved arguments dictionary
         """
         _ = (rate_type, random_seed)  # unused
-        # Remap rate to max_concurrency, strip out random_seed
+        # Strip out random_seed
         kwargs.pop("random_seed", None)
-        if rate is not None and len(rate) > 0:
-            kwargs["max_concurrency"] = rate[0]
+
+        # If max_concurrency explicitly provided, use it; otherwise remap from rate
+        if max_concurrency is not None:
+            kwargs["max_concurrency"] = max_concurrency
+        elif rate is not None and len(rate) > 0:
+            kwargs["max_concurrency"] = int(rate[0])
         else:
             # Require explicit max_concurrency; in the future max_concurrency
             # should be dynamic and rate can specify some tunable
-            raise ValueError("ThroughputProfile requires a rate parameter")
+            raise ValueError(
+                "ThroughputProfile requires rate when max_concurrency not specified"
+            )
         return kwargs
 
     @property
@@ -497,6 +517,7 @@ class AsyncProfile(Profile):
         rate_type: str,
         rate: list[float] | None,
         random_seed: int,
+        max_concurrency: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -505,6 +526,7 @@ class AsyncProfile(Profile):
         :param rate_type: Profile type identifier
         :param rate: Rate configuration for the profile
         :param random_seed: Seed for stochastic strategies
+        :param max_concurrency: Maximum concurrent requests to schedule
         :param kwargs: Additional arguments passed through unchanged
         :return: Resolved arguments dictionary
         :raises ValueError: If rate is None
@@ -524,6 +546,8 @@ class AsyncProfile(Profile):
         )
         kwargs["rate"] = rate if isinstance(rate, list) else [rate]
         kwargs["random_seed"] = random_seed
+        if max_concurrency is not None:
+            kwargs["max_concurrency"] = max_concurrency
         return kwargs
 
     @property
@@ -616,6 +640,7 @@ class SweepProfile(Profile):
         rate_type: str,
         rate: list[float] | None,
         random_seed: int,
+        max_concurrency: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -624,12 +649,15 @@ class SweepProfile(Profile):
         :param rate_type: Async strategy type for sweep execution
         :param rate: Rate parameter specifying sweep size (if provided)
         :param random_seed: Seed for stochastic strategies
+        :param max_concurrency: Maximum concurrent requests to schedule
         :param kwargs: Additional arguments passed through unchanged
         :return: Resolved arguments dictionary
         """
         sweep_size_from_rate = int(rate[0]) if rate else settings.default_sweep_number
         kwargs["sweep_size"] = kwargs.get("sweep_size", sweep_size_from_rate)
         kwargs["random_seed"] = random_seed
+        if max_concurrency is not None:
+            kwargs["max_concurrency"] = max_concurrency
         if rate_type in ["constant", "poisson"]:
             kwargs["strategy_type"] = rate_type
         return kwargs
