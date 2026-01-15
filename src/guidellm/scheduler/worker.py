@@ -383,15 +383,15 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", response, request, request_info)
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             if request is not None and request_info is not None:
-                request_info.error = repr(exc)
+                request_info.error = repr(e)
                 request_info.traceback = traceback.format_exc()
                 request_info.timings.resolve_end = time.time()
                 # Log backend exception if enabled
                 if settings.logging.log_backend_exceptions:
                     logger.exception(
-                        f"Backend exception for request {request_info.request_id}: {exc}"
+                        f"Backend exception for request {request_info.request_id}: {e}"
                     )
                 self._send_update("errored", response, request, request_info)
         finally:
