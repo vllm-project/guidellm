@@ -52,6 +52,7 @@ class OpenAIHTTPBackend(Backend):
         self,
         target: str,
         model: str = "",
+        api_key: str | None = None,
         api_routes: dict[str, str] | None = None,
         response_handlers: dict[str, Any] | None = None,
         timeout: float = 60.0,
@@ -65,6 +66,7 @@ class OpenAIHTTPBackend(Backend):
 
         :param target: Base URL of the OpenAI-compatible server
         :param model: Model identifier for generation requests
+        :param api_key: API key for authentication (for Bearer auth)
         :param api_routes: Custom API endpoint routes mapping
         :param response_handlers: Custom response handlers for different request types
         :param timeout: Request timeout in seconds
@@ -78,6 +80,7 @@ class OpenAIHTTPBackend(Backend):
         # Request Values
         self.target = target.rstrip("/").removesuffix("/v1")
         self.model = model
+        self.api_key = api_key
 
         # Store configuration
         self.api_routes = api_routes or {
@@ -117,6 +120,7 @@ class OpenAIHTTPBackend(Backend):
             "verify": self.verify,
             "openai_paths": self.api_routes,
             "validate_backend": self.validate_backend,
+            # Auth token excluded for security
         }
 
     async def process_startup(self):
@@ -170,7 +174,11 @@ class OpenAIHTTPBackend(Backend):
             return
 
         try:
-            response = await self._async_client.request(**self.validate_backend)
+            # Merge bearer token headers into validate_backend dict
+            validate_kwargs = {**self.validate_backend}
+            existing_headers = validate_kwargs.get("headers")
+            validate_kwargs["headers"] = self._build_headers(existing_headers)
+            response = await self._async_client.request(**validate_kwargs)
             response.raise_for_status()
         except Exception as exc:
             raise RuntimeError(
@@ -190,7 +198,7 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         target = f"{self.target}/{self.api_routes['models']}"
-        response = await self._async_client.get(target)
+        response = await self._async_client.get(target, headers=self._build_headers())
         response.raise_for_status()
 
         return [item["id"] for item in response.json()["data"]]
@@ -257,7 +265,7 @@ class OpenAIHTTPBackend(Backend):
                 request.arguments.method or "POST",
                 request_url,
                 params=request.arguments.params,
-                headers=request.arguments.headers,
+                headers=self._build_headers(request.arguments.headers),
                 json=request_json,
                 data=request_data,
                 files=request_files,
@@ -275,7 +283,7 @@ class OpenAIHTTPBackend(Backend):
                 request.arguments.method or "POST",
                 request_url,
                 params=request.arguments.params,
-                headers=request.arguments.headers,
+                headers=self._build_headers(request.arguments.headers),
                 json=request_json,
                 data=request_data,
                 files=request_files,
@@ -309,6 +317,28 @@ class OpenAIHTTPBackend(Backend):
             # Yield current result to store iterative results before propagating
             yield response_handler.compile_streaming(request), request_info
             raise err
+
+    def _build_headers(self, existing_headers: dict[str, str] | None = None) -> dict[str, str]:
+        """
+        Build headers dictionary with bearer token authentication.
+
+        Merges the Authorization bearer token header (if api_key is set) with any
+        existing headers. User-provided headers take precedence over the bearer token.
+
+        :param existing_headers: Optional existing headers to merge with
+        :return: Dictionary of headers with bearer token included if api_key is set
+        """
+        headers: dict[str, str] = {}
+
+        # Add bearer token if api_key is set
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        # Merge with existing headers (user headers take precedence)
+        if existing_headers:
+            headers = {**headers, **existing_headers}
+
+        return headers
 
     def _resolve_validate_kwargs(
         self, validate_backend: bool | str | dict[str, Any]
