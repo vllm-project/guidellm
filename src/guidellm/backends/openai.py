@@ -178,8 +178,7 @@ class OpenAIHTTPBackend(Backend):
             validate_kwargs = {**self.validate_backend}
             existing_headers = validate_kwargs.get("headers")
             built_headers = self._build_headers(existing_headers)
-            if built_headers is not None:
-                validate_kwargs["headers"] = built_headers
+            validate_kwargs["headers"] = built_headers
             response = await self._async_client.request(**validate_kwargs)
             response.raise_for_status()
         except Exception as exc:
