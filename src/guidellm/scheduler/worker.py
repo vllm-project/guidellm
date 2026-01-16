@@ -29,6 +29,7 @@ except ImportError:
     HAS_UVLOOP = False
 
 
+from guidellm.logger import logger
 from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
@@ -387,6 +388,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.traceback = traceback.format_exc()
                 request_info.timings.resolve_end = time.time()
                 self._send_update("errored", response, request, request_info)
+                logger.opt(exception=True).debug(
+                    f"Backend exception for request {request_info.request_id}"
+                )
+
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)
