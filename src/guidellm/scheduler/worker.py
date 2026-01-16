@@ -29,7 +29,6 @@ except ImportError:
     HAS_UVLOOP = False
 
 
-from guidellm.logger import logger
 from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
@@ -38,7 +37,6 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
-from guidellm.settings import settings
 from guidellm.utils import (
     InterProcessMessaging,
     wait_for_sync_barrier,
@@ -383,16 +381,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", response, request, request_info)
             raise
-        except Exception as e:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             if request is not None and request_info is not None:
-                request_info.error = repr(e)
+                request_info.error = repr(exc)
                 request_info.traceback = traceback.format_exc()
                 request_info.timings.resolve_end = time.time()
-                # Log backend exception if enabled
-                if settings.logging.log_backend_exceptions:
-                    logger.exception(
-                        f"Backend exception for request {request_info.request_id}: {e}"
-                    )
                 self._send_update("errored", response, request, request_info)
         finally:
             if request_info is not None:

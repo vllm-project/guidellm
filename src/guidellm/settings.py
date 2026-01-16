@@ -49,7 +49,6 @@ class LoggingSettings(BaseModel):
     console_log_level: str = "WARNING"
     log_file: str | None = None
     log_file_level: str | None = None
-    log_backend_exceptions: bool = False
 
 
 class DatasetSettings(BaseModel):
