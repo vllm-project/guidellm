@@ -322,7 +322,7 @@ class OpenAIHTTPBackend(Backend):
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
-    ) -> dict[str, str]:
+    ) -> dict[str, str] | None:
         """
         Build headers dictionary with bearer token authentication.
 
