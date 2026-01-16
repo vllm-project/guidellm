@@ -87,8 +87,8 @@ class GenerativeTextCompletionsRequestFormatter(RequestFormatter):
         ):
             output_metrics.text_tokens = output_tokens
             arguments.body["max_tokens"] = output_tokens
+            arguments.body["min_tokens"] = output_tokens
             arguments.body["stop"] = None
-            arguments.body["ignore_eos"] = True
         elif self.max_tokens is not None:
             arguments.body["max_tokens"] = self.max_tokens
 
@@ -179,8 +179,8 @@ class GenerativeChatCompletionsRequestFormatter(RequestFormatter):
             arguments.body.update(
                 {
                     "max_completion_tokens": output_tokens,
+                    "min_tokens": output_tokens,
                     "stop": None,
-                    "ignore_eos": True,
                 }
             )
         elif self.max_completion_tokens is not None:
