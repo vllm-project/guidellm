@@ -40,6 +40,7 @@ from .schemas import (
 )
 from .strategies import (
     AsyncConstantStrategy,
+    AsyncIncrementalStrategy,
     AsyncPoissonStrategy,
     ConcurrentStrategy,
     SchedulingStrategy,
@@ -53,6 +54,7 @@ from .worker_group import WorkerProcessGroup
 
 __all__ = [
     "AsyncConstantStrategy",
+    "AsyncIncrementalStrategy",
     "AsyncPoissonStrategy",
     "BackendInterface",
     "BackendT",
