@@ -90,6 +90,7 @@ class OpenAIHTTPBackend(Backend):
             "chat_completions": "v1/chat/completions",
             "audio_transcriptions": "v1/audio/transcriptions",
             "audio_translations": "v1/audio/translations",
+            "embeddings": "v1/embeddings",
         }
         self.response_handlers = response_handlers
         self.timeout = timeout

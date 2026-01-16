@@ -16,6 +16,7 @@ from .openai import OpenAIHTTPBackend
 from .response_handlers import (
     AudioResponseHandler,
     ChatCompletionsResponseHandler,
+    EmbeddingsResponseHandler,
     GenerationResponseHandler,
     GenerationResponseHandlerFactory,
     TextCompletionsResponseHandler,
@@ -26,6 +27,7 @@ __all__ = [
     "Backend",
     "BackendType",
     "ChatCompletionsResponseHandler",
+    "EmbeddingsResponseHandler",
     "GenerationResponseHandler",
     "GenerationResponseHandlerFactory",
     "OpenAIHTTPBackend",

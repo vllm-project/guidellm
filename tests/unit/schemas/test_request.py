@@ -25,11 +25,12 @@ def test_generative_request_type():
     """Test that GenerativeRequestType is defined correctly."""
     assert hasattr(typing, "get_args")
     args = typing.get_args(GenerativeRequestType)
-    assert len(args) == 4
+    assert len(args) == 5
     assert "text_completions" in args
     assert "chat_completions" in args
     assert "audio_transcriptions" in args
     assert "audio_translations" in args
+    assert "embeddings" in args
 
 
 class TestGenerationRequestArguments:

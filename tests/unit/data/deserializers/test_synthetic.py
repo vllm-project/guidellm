@@ -413,7 +413,8 @@ class TestSyntheticDatasetDeserializer:
 
         try:
             loaded_config = config_module._load_config_file(
-                yaml_path, SyntheticTextDatasetConfig,
+                yaml_path,
+                SyntheticTextDatasetConfig,
             )
 
             assert loaded_config.prompt_tokens == 60
@@ -443,7 +444,8 @@ class TestSyntheticDatasetDeserializer:
 
         try:
             loaded_config = config_module._load_config_file(
-                config_path, SyntheticTextDatasetConfig,
+                config_path,
+                SyntheticTextDatasetConfig,
             )
 
             assert loaded_config.prompt_tokens == 90
@@ -460,7 +462,8 @@ class TestSyntheticDatasetDeserializer:
         """
         json_str = '{"prompt_tokens": 50, "output_tokens": 25}'
         loaded_config = config_module._load_config_str(
-            json_str, SyntheticTextDatasetConfig,
+            json_str,
+            SyntheticTextDatasetConfig,
         )
 
         assert loaded_config.prompt_tokens == 50
@@ -474,7 +477,8 @@ class TestSyntheticDatasetDeserializer:
         """
         kv_str = "prompt_tokens=50,output_tokens=25"
         loaded_config = config_module._load_config_str(
-            kv_str, SyntheticTextDatasetConfig,
+            kv_str,
+            SyntheticTextDatasetConfig,
         )
 
         assert loaded_config.prompt_tokens == 50
@@ -488,7 +492,8 @@ class TestSyntheticDatasetDeserializer:
         """
         with pytest.raises(DataNotSupportedError, match="Unsupported string data"):
             config_module._load_config_str(
-                "invalid_format_string", SyntheticTextDatasetConfig,
+                "invalid_format_string",
+                SyntheticTextDatasetConfig,
             )
 
     @pytest.mark.regression
@@ -498,7 +503,8 @@ class TestSyntheticDatasetDeserializer:
         ### WRITTEN BY AI ###
         """
         loaded_config = config_module._load_config_file(
-            "/non/existent/path.config", SyntheticTextDatasetConfig,
+            "/non/existent/path.config",
+            SyntheticTextDatasetConfig,
         )
         assert loaded_config is None
 
