@@ -12,7 +12,6 @@ __all__ = [
     "DatasetSettings",
     "Environment",
     "LoggingSettings",
-    "OpenAISettings",
     "Settings",
     "print_config",
     "reload_settings",
@@ -75,26 +74,6 @@ class DatasetSettings(BaseModel):
     )
 
 
-class OpenAISettings(BaseModel):
-    """
-    OpenAI settings for the application to connect to the API
-    for OpenAI server based pathways
-    """
-
-    api_key: str | None = None
-    bearer_token: str | None = None
-    headers: dict[str, str] | None = None
-    organization: str | None = None
-    project: str | None = None
-    base_url: str = "http://localhost:8000"
-    max_output_tokens: int = 16384
-    verify: bool = True
-    max_output_key: dict[Literal["text_completions", "chat_completions"], str] = {
-        "text_completions": "max_tokens",
-        "chat_completions": "max_completion_tokens",
-    }
-
-
 class ReportGenerationSettings(BaseModel):
     """
     Report generation settings for the application
@@ -112,7 +91,6 @@ class Settings(BaseSettings):
 
     ```sh
     export GUIDELLM__LOGGING__DISABLED=true
-    export GUIDELLM__OPENAI__API_KEY=******
     ```
     """
 
@@ -164,7 +142,6 @@ class Settings(BaseSettings):
     preferred_route: Literal["text_completions", "chat_completions"] = (
         "chat_completions"
     )
-    openai: OpenAISettings = OpenAISettings()
 
     # Report settings
     report_generation: ReportGenerationSettings = ReportGenerationSettings()
