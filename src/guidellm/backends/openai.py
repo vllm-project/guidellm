@@ -318,7 +318,9 @@ class OpenAIHTTPBackend(Backend):
             yield response_handler.compile_streaming(request), request_info
             raise err
 
-    def _build_headers(self, existing_headers: dict[str, str] | None = None) -> dict[str, str]:
+    def _build_headers(
+        self, existing_headers: dict[str, str] | None = None
+    ) -> dict[str, str]:
         """
         Build headers dictionary with bearer token authentication.
 
