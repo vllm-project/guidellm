@@ -348,7 +348,9 @@ class TestOpenAIHTTPBackend:
             await backend.validate()  # Should not raise
 
             backend._async_client.request.assert_called_once_with(
-                method="GET", url="http://test/health"
+                method="GET",
+                url="http://test/health",
+                headers=None,
             )
 
     @pytest.mark.regression

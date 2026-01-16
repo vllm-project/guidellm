@@ -4,7 +4,6 @@ from guidellm.settings import (
     DatasetSettings,
     Environment,
     LoggingSettings,
-    OpenAISettings,
     ReportGenerationSettings,
     Settings,
     print_config,
@@ -20,7 +19,6 @@ def test_default_settings():
     settings = Settings()
     assert settings.env == Environment.PROD
     assert settings.logging == LoggingSettings()
-    assert settings.openai == OpenAISettings()
     assert settings.report_generation.source.startswith(BASE_URL)
 
 
@@ -31,8 +29,6 @@ def test_settings_from_env_variables(mocker):
         {
             "GUIDELLM__env": "dev",
             "GUIDELLM__logging__disabled": "true",
-            "GUIDELLM__OPENAI__API_KEY": "test_key",
-            "GUIDELLM__OPENAI__BASE_URL": "http://test.url",
             "GUIDELLM__REPORT_GENERATION__SOURCE": "http://custom.url",
         },
     )
@@ -40,8 +36,6 @@ def test_settings_from_env_variables(mocker):
     settings = Settings()
     assert settings.env == Environment.DEV
     assert settings.logging.disabled is True
-    assert settings.openai.api_key == "test_key"
-    assert settings.openai.base_url == "http://test.url"
     assert settings.report_generation.source == "http://custom.url"
 
 
@@ -77,13 +71,6 @@ def test_logging_settings():
     assert logging_settings.log_file_level == "ERROR"
 
 
-@pytest.mark.sanity
-def test_openai_settings():
-    openai_settings = OpenAISettings(api_key="test_api_key", base_url="http://test.api")
-    assert openai_settings.api_key == "test_api_key"
-    assert openai_settings.base_url == "http://test.api"
-
-
 def test_report_generation_settings():
     report_settings = ReportGenerationSettings(source="http://custom.report")
     assert report_settings.source == "http://custom.report"
@@ -94,7 +81,6 @@ def test_generate_env_file():
     settings = Settings()
     env_file_content = settings.generate_env_file()
     assert "GUIDELLM__LOGGING__DISABLED" in env_file_content
-    assert "GUIDELLM__OPENAI__API_KEY" in env_file_content
 
 
 @pytest.mark.sanity
@@ -117,7 +103,6 @@ def test_print_config(capsys):
     captured = capsys.readouterr()
     assert "Settings:" in captured.out
     assert "GUIDELLM__LOGGING__DISABLED" in captured.out
-    assert "GUIDELLM__OPENAI__API_KEY" in captured.out
 
 
 @pytest.mark.sanity
@@ -145,17 +130,6 @@ def test_dataset_settings_defaults():
 
 
 @pytest.mark.sanity
-def test_openai_settings_defaults():
-    openai_settings = OpenAISettings()
-    assert openai_settings.api_key is None
-    assert openai_settings.bearer_token is None
-    assert openai_settings.organization is None
-    assert openai_settings.project is None
-    assert openai_settings.base_url == "http://localhost:8000"
-    assert openai_settings.max_output_tokens == 16384
-
-
-@pytest.mark.sanity
 def test_table_properties_defaults():
     settings = Settings()
     assert settings.table_border_char == "="
@@ -169,15 +143,9 @@ def test_settings_with_env_variables(mocker):
         "os.environ",
         {
             "GUIDELLM__DATASET__PREFERRED_DATA_COLUMNS": '["custom_column"]',
-            "GUIDELLM__OPENAI__API_KEY": "env_api_key",
             "GUIDELLM__TABLE_BORDER_CHAR": "*",
-            "GUIDELLM__OPENAI__HEADERS": '{"Authorization": "Bearer env-token"}',
-            "GUIDELLM__OPENAI__VERIFY": "false",
         },
     )
     settings = Settings()
     assert settings.dataset.preferred_data_columns == ["custom_column"]
-    assert settings.openai.api_key == "env_api_key"
     assert settings.table_border_char == "*"
-    assert settings.openai.headers == {"Authorization": "Bearer env-token"}
-    assert settings.openai.verify is False
