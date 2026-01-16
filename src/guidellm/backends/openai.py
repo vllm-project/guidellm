@@ -177,7 +177,9 @@ class OpenAIHTTPBackend(Backend):
             # Merge bearer token headers into validate_backend dict
             validate_kwargs = {**self.validate_backend}
             existing_headers = validate_kwargs.get("headers")
-            validate_kwargs["headers"] = self._build_headers(existing_headers)
+            built_headers = self._build_headers(existing_headers)
+            if built_headers is not None:
+                validate_kwargs["headers"] = built_headers
             response = await self._async_client.request(**validate_kwargs)
             response.raise_for_status()
         except Exception as exc:
@@ -340,7 +342,7 @@ class OpenAIHTTPBackend(Backend):
         if existing_headers:
             headers = {**headers, **existing_headers}
 
-        return headers
+        return headers or None
 
     def _resolve_validate_kwargs(
         self, validate_backend: bool | str | dict[str, Any]
