@@ -40,6 +40,24 @@ docker run --gpus 1 -ti --shm-size 1g --ipc=host --rm -p 8080:80 \
 
 For more information on starting a TGI server, see the [TGI Documentation](https://huggingface.co/docs/text-generation-inference/index).
 
+### 3. llama.cpp
+
+[llama.cpp](https://github.com/ggml-org/llama.cpp) provides lightweight, OpenAI-compatible server through its [llama-server](https://github.com/ggml-org/llama.cpp/blob/master/tools/server) tool.
+
+To start a llama.cpp server with the gpt-oss-20b model, you can use the following command:
+
+```bash
+llama-server -hf ggml-org/gpt-oss-20b-GGUF --alias gpt-oss-20b --ctx-size 0 --jinja -ub 2048 -b 2048
+```
+
+Note that we are providing an alias `gpt-oss-20b` for the model name because `guidellm` is using it to retrieve model metadata in JSON format and such metadata is not included in GGUF model repositories. A simple workaround is to download the metadata files from safetensors repository and place them in a local directory named after the alias:
+
+```bash
+huggingface-cli download openai/gpt-oss-20b --include "*.json" --local-dir gpt-oss-20b/
+```
+
+Now you can run `guidellm` as usual and it will be able to fetch the model metadata from the local directory.
+
 ## API Key Configuration
 
 Some OpenAI-compatible servers require authentication via an API key. This is typically needed when:
