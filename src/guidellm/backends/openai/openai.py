@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
 from guidellm.backends.backend import Backend
+from guidellm.backends.openai.request_formatter import GenerationRequestFormatterFactory
 from guidellm.backends.openai.response_handlers import GenerationResponseHandlerFactory
 from guidellm.schemas import (
     GenerationRequest,
@@ -119,16 +120,6 @@ class OpenAIHTTPBackend(Backend):
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
-
-        # TODO: Find a better way to register formatters
-        self.request_formatters: dict[
-            str, Callable[[GenerationRequest], GenerationRequestArguments]
-        ] = {
-            "text_completions": self.formatter_text_completions,
-            "chat_completions": self.formatter_chat_completions,
-            "audio_transcriptions": self.formatter_audio_transcriptions,
-            "audio_translations": self.formatter_audio_transcriptions,
-        }
 
     @property
     def info(self) -> dict[str, Any]:
@@ -268,9 +259,16 @@ class OpenAIHTTPBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-        arguments: GenerationRequestArguments = self.request_formatters[
+        request_formatter = GenerationRequestFormatterFactory.create(
             request.request_type
-        ](request)
+        )
+        arguments: GenerationRequestArguments = request_formatter.format(
+            request,
+            model=self.model,
+            stream=self.stream,
+            extras=self.extras,
+            max_tokens=self.max_tokens,
+        )
 
         if (request_path := self.api_routes.get(request.request_type)) is None:
             raise ValueError(f"Unsupported request type '{request.request_type}'")
@@ -404,188 +402,3 @@ class OpenAIHTTPBackend(Backend):
             validate_kwargs["method"] = "GET"
 
         return validate_kwargs
-
-    def formatter_text_completions(
-        self, data: GenerationRequest
-    ) -> GenerationRequestArguments:
-        arguments: GenerationRequestArguments = GenerationRequestArguments()
-        arguments.body = {}  # The type checker works better setting this field here
-
-        # Add model
-        if self.model is not None:
-            arguments.body["model"] = self.model
-
-        # Configure streaming
-        if self.stream:
-            arguments.stream = True
-            arguments.body["stream"] = True
-            arguments.body["stream_options"] = {
-                "include_usage": True,
-                "continuous_usage_stats": True,
-            }
-
-        # Handle output tokens
-        if data.output_metrics.text_tokens:
-            arguments.body["max_tokens"] = data.output_metrics.text_tokens
-            arguments.body["stop"] = None
-            arguments.body["ignore_eos"] = True
-        elif self.max_tokens is not None:
-            arguments.body["max_tokens"] = self.max_tokens
-
-        # Apply extra arguments
-        if self.extras:
-            arguments.model_combine(self.extras)
-
-        # Build prompt
-        prefix = "".join(pre for pre in data.columns.get("prefix_column", []) if pre)
-        text = "".join(txt for txt in data.columns.get("text_column", []) if txt)
-        if prefix or text:
-            prompt = prefix + text
-            arguments.body["prompt"] = prompt
-
-        return arguments
-
-    def formatter_chat_completions(  # noqa: C901, PLR0912, PLR0915
-        self, data: GenerationRequest
-    ) -> GenerationRequestArguments:
-        arguments = GenerationRequestArguments()
-        arguments.body = {}  # The type checker works best with body assigned here
-
-        # Add model
-        if self.model is not None:
-            arguments.body["model"] = self.model
-
-        # Configure streaming
-        if self.stream:
-            arguments.stream = True
-            arguments.body["stream"] = True
-            arguments.body["stream_options"] = {
-                "include_usage": True,
-                "continuous_usage_stats": True,
-            }
-
-        # Handle output tokens
-        if data.output_metrics.text_tokens:
-            arguments.body.update(
-                {
-                    "max_completion_tokens": data.output_metrics.text_tokens,
-                    "stop": None,
-                    "ignore_eos": True,
-                }
-            )
-        elif self.max_tokens is not None:
-            arguments.body["max_completion_tokens"] = self.max_tokens
-
-        # Apply extra arguments
-        if self.extras:
-            arguments.model_combine(self.extras)
-
-        # Build messages
-        arguments.body["messages"] = []
-
-        for prefix in data.columns.get("prefix_column", []):
-            if not prefix:
-                continue
-
-            arguments.body["messages"].append({"role": "system", "content": prefix})
-
-        for text in data.columns.get("text_column", []):
-            if not text:
-                continue
-
-            arguments.body["messages"].append(
-                {"role": "user", "content": [{"type": "text", "text": text}]}
-            )
-
-        for image in data.columns.get("image_column", []):
-            if not image:
-                continue
-
-            arguments.body["messages"].append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image.get("image")},
-                        }
-                    ],
-                }
-            )
-
-        for video in data.columns.get("video_column", []):
-            if not video:
-                continue
-
-            arguments.body["messages"].append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "video_url",
-                            "video_url": {"url": video.get("video")},
-                        }
-                    ],
-                }
-            )
-
-        for audio in data.columns.get("audio_column", []):
-            if not audio:
-                continue
-
-            arguments.body["messages"].append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_audio",
-                            "input_audio": {
-                                "data": audio.get("audio"),
-                                "format": audio.get("format"),
-                            },
-                        }
-                    ],
-                }
-            )
-
-        return arguments
-
-    def formatter_audio_transcriptions(  # noqa: C901
-        self, data: GenerationRequest
-    ) -> GenerationRequestArguments:
-        arguments = GenerationRequestArguments(files={})
-        arguments.body = {}
-
-        # Add model
-        if self.model is not None:
-            arguments.body["model"] = self.model
-
-        # Configure streaming
-        if self.stream:
-            arguments.stream = True
-            arguments.body["stream"] = True
-            # NOTE: File upload endpoints use flattened stream options
-            arguments.body["stream_include_usage"] = True
-            arguments.body["stream_continuous_usage_stats"] = True
-
-        # Apply extra arguments
-        if self.extras:
-            arguments.model_combine(self.extras)
-
-        # Build audio input
-        audio_columns = data.columns.get("audio_column", [])
-        if len(audio_columns) != 1:
-            raise ValueError(
-                f"GenerativeAudioTranscriptionRequestFormatter expects exactly "
-                f"one audio column, but got {len(audio_columns)}."
-            )
-
-        arguments.files = {
-            "file": (
-                audio_columns[0].get("file_name", "audio_input"),
-                audio_columns[0].get("audio"),
-                audio_columns[0].get("mimetype"),
-            )
-        }
-
-        return arguments
