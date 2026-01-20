@@ -15,9 +15,6 @@ jobs:
       python: ${{ matrix.python }}
       args: -m "smoke or sanity"
 
-  ui-tests:
-    uses: ./.github/workflows/ui-testing.yml
-
   build-and-publish:
     needs: [tests]
     runs-on: ubuntu-latest
@@ -72,60 +69,6 @@ jobs:
       - name: Log artifact location
         run: |
           echo "Artifacts uploaded to: ${{ steps.artifact-upload.outputs.artifact-url }}"
-
-  publish-ui-build:
-    needs: [ui-tests]
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: "Set GIT_TAG"
-        id: vars
-        run: |
-          if [ -z "${{ github.ref_name }}" ]; then
-            echo "TAG=latest" >> $GITHUB_ENV
-          else
-            echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
-          fi
-
-      - name: Build app to root
-        id: build
-        run: |
-          # Export vars to ensure they are loaded before build
-          export $(grep -v '^#' .env.staging | xargs)
-
-          # Set asset prefix and base path with git tag
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/nightly
-          BASE_PATH=/ui/nightly
-          GIT_SHA=${{ github.sha }}
-          export ASSET_PREFIX=${ASSET_PREFIX}
-          export BASE_PATH=${BASE_PATH}
-          export GIT_SHA=${GIT_SHA}
-          npm run build
-
-      - name: Update latest build in GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./src/ui/out
-          destination_dir: ui/nightly
-          keep_files: false
-          user_name: ${{ github.actor }}
-          user_email: ${{ github.actor }}@users.noreply.github.com
-          publish_branch: gh-pages
 
   build-and-push-container:
     needs: [tests]

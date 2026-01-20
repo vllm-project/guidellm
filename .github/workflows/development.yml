@@ -13,9 +13,6 @@ jobs:
     with:
       python: ${{ matrix.python }}
 
-  ui-tests:
-    uses: ./.github/workflows/ui-testing.yml
-
   quality:
     strategy:
       matrix:
@@ -23,113 +20,6 @@ jobs:
     uses: ./.github/workflows/quality.yml
     with:
       python: ${{ matrix.python }}
-
-  ui-quality:
-    uses: ./.github/workflows/ui-quality.yml
-
-  ui-pr-preview:
-    needs: [ui-quality, ui-tests]
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Check if UI-related files changed
-        id: check-changes
-        run: |
-          BASE_BRANCH=${{ github.event.pull_request.base.ref }}
-          CHANGED_FILES=$(git diff --name-only origin/$BASE_BRANCH...HEAD)
-          SHOULD_BUILD=false
-
-          if echo "$CHANGED_FILES" | grep -q "^src/ui/"; then
-            echo "UI source files changed"
-            SHOULD_BUILD=true
-          fi
-
-          echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
-          echo "Should build: $SHOULD_BUILD"
-
-      - name: Install dependencies
-        if: steps.check-changes.outputs.should_build == 'true'
-        run: npm ci
-
-      - name: Build app to root
-        if: steps.check-changes.outputs.should_build == 'true'
-        id: build
-        run: |
-          # Export vars to ensure they are loaded before build
-          export $(grep -v '^#' .env.development | xargs)
-
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
-
-          # Set asset prefix and base path with PR number
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/pr/${PR_NUMBER}
-          USE_MOCK_DATA=true
-          BASE_PATH=/ui/pr/${PR_NUMBER}
-          GIT_SHA=${{ github.sha }}
-          export ASSET_PREFIX=${ASSET_PREFIX}
-          export BASE_PATH=${BASE_PATH}
-          export GIT_SHA=${GIT_SHA}
-          export USE_MOCK_DATA=${USE_MOCK_DATA}
-          npm run build
-
-      - name: Deploy to GitHub Pages
-        if: steps.check-changes.outputs.should_build == 'true'
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./src/ui/out
-          destination_dir: ui/pr/${{ steps.build.outputs.pr_number }}
-          keep_files: false
-          user_name: ${{ github.actor }}
-          user_email: ${{ github.actor }}@users.noreply.github.com
-          publish_branch: gh-pages
-          commit_message: 'build: Deploy preview build for PR #${{ github.event.pull_request.number }}'
-
-      - name: Set deployment url
-        if: steps.check-changes.outputs.should_build == 'true'
-        id: deploy
-        run: |
-          DEPLOY_URL=https://blog.vllm.ai/guidellm/ui/pr/${{ steps.build.outputs.pr_number }}
-          echo "url=${DEPLOY_URL}" >> $GITHUB_OUTPUT
-
-      - name: Find PR comment
-        if: steps.check-changes.outputs.should_build == 'true'
-        uses: peter-evans/find-comment@v2
-        id: find-comment
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body-includes: '<!-- pr-preview-comment -->'
-
-      - name: Post Deployment URL to PR
-        if: steps.check-changes.outputs.should_build == 'true'
-        uses: peter-evans/create-or-update-comment@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          edit-mode: replace
-          body: |
-            <!-- pr-preview-comment -->
-            🎉 **Live Preview:** [Click here to view the live version](${{ steps.deploy.outputs.url }})
-            *Last updated: ${{ github.sha }}*
-
-      - name: Skip build notification
-        if: steps.check-changes.outputs.should_build == 'false'
-        run: echo "Skipping UI preview build - no relevant files changed"
 
   build-and-push-container:
     # Only build if the PR branch is local
