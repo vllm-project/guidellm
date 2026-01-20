@@ -221,6 +221,27 @@ class PlotlyTheme:
             color: rgba(255, 255, 255, 0.7);
         }}
 
+        .sample-carousel {{
+            margin: 0.5rem 0;
+        }}
+
+        .sample-display {{
+            padding: 0.5rem;
+            background-color: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.7);
+            min-height: 4rem;
+            display: flex;
+            align-items: center;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out;
+        }}
+
+        .sample-display.fade-out {{
+            opacity: 0;
+        }}
+
         .mean-container {{
             margin-top: 1.5rem;
             margin-bottom: 0.5rem;
@@ -248,6 +269,28 @@ class PlotlyTheme:
             grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
             margin-top: 1rem;
+            align-items: start;
+        }}
+
+        .chart-container {{
+            display: flex;
+            flex-direction: column;
+        }}
+
+        .chart-wrapper {{
+            flex: 1;
+            display: flex;
+            align-items: flex-end;
+            width: 100%;
+            overflow: hidden;
+        }}
+
+        .chart-wrapper > div {{
+            width: 100% !important;
+        }}
+
+        .chart-wrapper .plotly {{
+            width: 100% !important;
         }}
 
         .flex-col {{
@@ -261,5 +304,30 @@ class PlotlyTheme:
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 0.5rem;
+        }}
+
+        /* Workload metrics grid */
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 2rem;
+            margin-top: 1.5rem;
+        }}
+
+        .metric-card {{
+            background-color: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }}
+
+        .metric-card h3 {{
+            font-size: 0.875rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
         }}
         """

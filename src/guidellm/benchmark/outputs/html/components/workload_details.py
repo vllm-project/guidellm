@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from guidellm.benchmark.outputs.html.components.base import PlotlyComponentBase
 
 # Maximum characters to display for sample text
-_SAMPLE_MAX_LENGTH = 100
+_SAMPLE_MAX_LENGTH = 200
 
 
 class WorkloadDetailsComponent(PlotlyComponentBase):
@@ -31,13 +31,13 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         generations_data = data.get("generations", {})
         requests_data = data.get("requests_over_time", {})
         server_data = data.get("server", {})
-        rate_type = data.get("rate_type", "N/A")
+        rate_types = data.get("rate_types", ["N/A"])
         num_benchmarks = requests_data.get("num_benchmarks", 0)
 
         # Build HTML sections
         prompts_html = self._generate_prompts_section(prompts_data)
         server_html = self._generate_server_section(
-            server_data, rate_type, num_benchmarks
+            server_data, rate_types, num_benchmarks
         )
         generations_html = self._generate_generations_section(generations_data)
 
@@ -69,20 +69,26 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         <div class="section">
             <h2>Workload Details</h2>
             <div class="grid-3col">
-                <div>
+                <div class="chart-container">
                     <h3>Prompts</h3>
                     {prompts_html}
-                    {prompt_chart_html}
+                    <div class="chart-wrapper">
+                        {prompt_chart_html}
+                    </div>
                 </div>
-                <div>
-                    <h3>Server Configuration</h3>
+                <div class="chart-container">
+                    <h3>Run Configuration</h3>
                     {server_html}
-                    {requests_chart_html}
+                    <div class="chart-wrapper">
+                        {requests_chart_html}
+                    </div>
                 </div>
-                <div>
+                <div class="chart-container">
                     <h3>Generations</h3>
                     {generations_html}
-                    {output_chart_html}
+                    <div class="chart-wrapper">
+                        {output_chart_html}
+                    </div>
                 </div>
             </div>
         </div>
@@ -107,12 +113,44 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         if not samples:
             samples_html = "<p>No prompt samples available</p>"
         else:
-            samples_html = "".join(
-                f'<div class="sample-box">'
-                f"{sample[:_SAMPLE_MAX_LENGTH]}"
-                f"{'...' if len(sample) > _SAMPLE_MAX_LENGTH else ''}</div>"
-                for sample in samples[:5]
-            )
+            # Use only first 5 samples
+            samples_to_show = samples[:5]
+            # Prepare samples for JavaScript (escape quotes and truncate)
+            samples_js = [
+                s[:_SAMPLE_MAX_LENGTH].replace("\\", "\\\\").replace('"', '\\"')
+                for s in samples_to_show
+            ]
+
+            samples_html = f"""
+            <div class="sample-carousel">
+                <div class="sample-display" id="prompt-sample-display">
+                    {samples_js[0]}...
+                </div>
+            </div>
+            <script>
+            (function() {{
+                const samples = {samples_js};
+                let currentIndex = 0;
+                const displayEl = document.getElementById(
+                    'prompt-sample-display'
+                );
+
+                function rotateSample() {{
+                    // Fade out
+                    displayEl.classList.add('fade-out');
+
+                    // Wait for fade out to complete, then update and fade in
+                    setTimeout(function() {{
+                        currentIndex = (currentIndex + 1) % samples.length;
+                        displayEl.textContent = samples[currentIndex] + '...';
+                        displayEl.classList.remove('fade-out');
+                    }}, 500);
+                }}
+
+                setInterval(rotateSample, 3000);
+            }})();
+            </script>
+            """
 
         # Mean prompt length
         mean_html = f"""
@@ -125,55 +163,35 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         return f"{header_html}{samples_html}{mean_html}"
 
     def _generate_server_section(
-        self, server_data: dict[str, Any], rate_type: str, num_benchmarks: int
+        self, _server_data: dict[str, Any], rate_types: list[str], num_benchmarks: int
     ) -> str:
-        """Generate HTML for server configuration.
+        """Generate HTML for benchmark configuration.
 
         Args:
-            server_data: Dict with 'target' URL.
-            rate_type: Rate type string.
+            _server_data: Dict with server data (unused but kept for compatibility).
+            rate_types: List of rate type strings in execution order.
             num_benchmarks: Number of benchmarks.
 
         Returns:
-            HTML string for server section.
+            HTML string for benchmark configuration section.
         """
-        target = server_data.get("target", "N/A")
+        # Generate multiple rate type badges
+        rate_badges = " ".join(
+            f'<span class="badge badge-primary">{rt}</span>' for rt in rate_types
+        )
 
-        # Parse URL to extract protocol and port
-        protocol = "N/A"
-        port = "N/A"
-        if target != "N/A" and "://" in target:
-            protocol = target.split("://")[0]
-            rest = target.split("://")[1]
-            if ":" in rest:
-                port = rest.split(":")[1].split("/")[0]
-            else:
-                port = "80" if protocol == "http" else "443"
+        rate_label = "Profile" + ("s" if len(rate_types) > 1 else "")
 
         return f"""
         <div class="flex-col">
-            <div class="info-item">
-                <div class="info-label">Target</div>
-                <div class="info-value-primary">{target}</div>
-            </div>
-            <div class="grid-2col">
-                <div class="info-item">
-                    <div class="info-label">Type</div>
-                    <div class="info-value-primary">{protocol}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Port</div>
-                    <div class="info-value-primary">{port}</div>
-                </div>
-            </div>
             <div class="info-item">
                 <div class="info-label">Number of Benchmarks</div>
                 <div class="info-value-primary">{num_benchmarks}</div>
             </div>
             <div class="info-item">
-                <div class="info-label">Rate Type</div>
+                <div class="info-label">{rate_label}</div>
                 <div class="info-value">
-                    <span class="badge badge-primary">{rate_type}</span>
+                    {rate_badges}
                 </div>
             </div>
         </div>
@@ -200,12 +218,44 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         if not samples:
             samples_html = "<p>No generation samples available</p>"
         else:
-            samples_html = "".join(
-                f'<div class="sample-box">'
-                f"{sample[:_SAMPLE_MAX_LENGTH]}"
-                f"{'...' if len(sample) > _SAMPLE_MAX_LENGTH else ''}</div>"
-                for sample in samples[:5]
-            )
+            # Use only first 5 samples
+            samples_to_show = samples[:5]
+            # Prepare samples for JavaScript (escape quotes and truncate)
+            samples_js = [
+                s[:_SAMPLE_MAX_LENGTH].replace("\\", "\\\\").replace('"', '\\"')
+                for s in samples_to_show
+            ]
+
+            samples_html = f"""
+            <div class="sample-carousel">
+                <div class="sample-display" id="generation-sample-display">
+                    {samples_js[0]}...
+                </div>
+            </div>
+            <script>
+            (function() {{
+                const samples = {samples_js};
+                let currentIndex = 0;
+                const displayEl = document.getElementById(
+                    'generation-sample-display'
+                );
+
+                function rotateSample() {{
+                    // Fade out
+                    displayEl.classList.add('fade-out');
+
+                    // Wait for fade out to complete, then update and fade in
+                    setTimeout(function() {{
+                        currentIndex = (currentIndex + 1) % samples.length;
+                        displayEl.textContent = samples[currentIndex] + '...';
+                        displayEl.classList.remove('fade-out');
+                    }}, 500);
+                }}
+
+                setInterval(rotateSample, 3000);
+            }})();
+            </script>
+            """
 
         # Mean generated length
         mean_html = f"""
@@ -234,7 +284,11 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         statistics = distribution_data.get("statistics", {})
 
         fig = self._create_figure(
-            title=title, xaxis_title=xaxis_title, yaxis_title="Count"
+            title=title,
+            xaxis_title=xaxis_title,
+            yaxis_title="Count",
+            autosize=True,
+            width=None,
         )
 
         if not buckets:
@@ -244,6 +298,15 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         x_values = [b["value"] for b in buckets]
         counts = [b["count"] for b in buckets]
 
+        # Calculate appropriate bar width with max limit
+        if len(x_values) > 1:
+            data_range = max(x_values) - min(x_values)
+            calculated_width = data_range / len(x_values) * 0.8
+            max_width = 20  # Maximum bar width in data units
+            bar_width = min(calculated_width, max_width)
+        else:
+            bar_width = 10  # Single bar default width
+
         # Add bar chart
         fig.add_trace(
             go.Bar(
@@ -252,6 +315,7 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
                 name="Count",
                 marker_color=self.theme.PRIMARY,
                 hovertemplate="Tokens: %{x}<br>Count: %{y}<extra></extra>",
+                width=bar_width,
             )
         )
 
@@ -287,6 +351,8 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
             title="Requests Over Time",
             xaxis_title="Time (seconds)",
             yaxis_title="Request Count",
+            autosize=True,
+            width=None,
         )
 
         if not buckets:
@@ -296,6 +362,11 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         x_values = [b["value"] for b in buckets]
         counts = [b["count"] for b in buckets]
 
+        # Calculate bar width with max limit
+        calculated_width = bucket_width * 0.8
+        max_width = 50  # Maximum width in seconds for requests chart
+        bar_width = min(calculated_width, max_width)
+
         # Add bar chart
         fig.add_trace(
             go.Bar(
@@ -304,7 +375,7 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
                 name="Requests",
                 marker_color=self.theme.TERTIARY,
                 hovertemplate="Time: %{x:.1f}s<br>Requests: %{y}<extra></extra>",
-                width=bucket_width * 0.8,  # Make bars slightly narrower than buckets
+                width=bar_width,
             )
         )
 

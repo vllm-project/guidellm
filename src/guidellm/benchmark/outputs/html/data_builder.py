@@ -211,7 +211,16 @@ def build_workload_details(
     :return: Dictionary with prompts, generations, request timing, and server info
     """
     target = args.target
-    rate_type = benchmarks[0].config.strategy.type_
+
+    # Collect all rate types in execution order, keeping first occurrence only
+    rate_types_raw = [bm.config.strategy.type_ for bm in benchmarks]
+    seen = set()
+    rate_types = []
+    for rt in rate_types_raw:
+        if rt not in seen:
+            seen.add(rt)
+            rate_types.append(rt)
+
     successful_requests = [req for bm in benchmarks for req in bm.requests.successful]
 
     sample_indices = random.sample(
@@ -288,7 +297,7 @@ def build_workload_details(
             },
             "num_benchmarks": number_of_buckets,
         },
-        "rate_type": rate_type,
+        "rate_types": rate_types,
         "server": {"target": target},
     }
 
@@ -312,7 +321,7 @@ def build_benchmarks(benchmarks: list[GenerativeBenchmark]) -> list[dict[str, An
                     bm.metrics.time_to_first_token_ms.successful
                 ).model_dump(),
                 "throughput": TabularDistributionSummary.from_distribution_summary(
-                    bm.metrics.output_tokens_per_second.successful
+                    bm.metrics.output_tokens_per_second.total
                 ).model_dump(),
                 "time_per_request": (
                     TabularDistributionSummary.from_distribution_summary(

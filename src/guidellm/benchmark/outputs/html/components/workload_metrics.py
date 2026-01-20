@@ -3,16 +3,15 @@
 from typing import Any
 
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from guidellm.benchmark.outputs.html.components.base import PlotlyComponentBase
 
 
 class WorkloadMetricsComponent(PlotlyComponentBase):
-    """Generates the 2x2 workload metrics grid."""
+    """Generates the 2x2 workload metrics grid with separate charts."""
 
     def generate(self, data: dict[str, Any]) -> str:
-        """Generate workload metrics HTML with 2x2 grid of charts.
+        """Generate workload metrics HTML with 4 separate charts.
 
         Args:
             data: Dictionary containing:
@@ -31,139 +30,152 @@ class WorkloadMetricsComponent(PlotlyComponentBase):
             </div>
             """
 
-        # Create 2x2 subplot figure
-        fig = make_subplots(
-            rows=2,
-            cols=2,
-            subplot_titles=(
-                "Time to First Token (TTFT)",
-                "Inter-Token Latency (ITL)",
-                "Time Per Request",
-                "Throughput (tokens/sec)",
-            ),
-            vertical_spacing=0.12,
-            horizontal_spacing=0.1,
+        # Sort benchmarks by requests_per_second to prevent line crossovers
+        benchmarks_sorted = sorted(
+            benchmarks, key=lambda bm: bm.get("requests_per_second", 0)
         )
 
-        # Apply base theme
-        fig = self._apply_theme_to_figure(fig)
-
-        # Extract RPS values for x-axis
-        [bm["requests_per_second"] for bm in benchmarks]
-
-        # Add metric traces to each subplot
-        self._add_metric_traces(fig, benchmarks, "ttft", 1, 1, "TTFT (ms)")
-        self._add_metric_traces(fig, benchmarks, "itl", 1, 2, "ITL (ms)")
-        self._add_metric_traces(
-            fig, benchmarks, "time_per_request", 2, 1, "Latency (s)"
+        # Create 4 separate figures
+        ttft_fig = self._create_metric_chart(
+            benchmarks_sorted,
+            "ttft",
+            "Time to First Token (TTFT)",
+            "Milliseconds",
         )
-        self._add_metric_traces(
-            fig, benchmarks, "throughput", 2, 2, "Throughput (tokens/s)"
+        itl_fig = self._create_metric_chart(
+            benchmarks_sorted,
+            "itl",
+            "Inter-Token Latency (ITL)",
+            "Milliseconds",
         )
-
-        # Update axes
-        fig.update_xaxes(title_text="Requests per Second (RPS)", row=2, col=1)
-        fig.update_xaxes(title_text="Requests per Second (RPS)", row=2, col=2)
-        fig.update_yaxes(title_text="Milliseconds", row=1, col=1)
-        fig.update_yaxes(title_text="Milliseconds", row=1, col=2)
-        fig.update_yaxes(title_text="Seconds", row=2, col=1)
-        fig.update_yaxes(title_text="Tokens/Second", row=2, col=2)
-
-        # Update layout
-        fig.update_layout(
-            title_text="Workload Metrics",
-            title_font_size=24,
-            title_font_color=self.theme.SECONDARY,
-            showlegend=True,
-            legend={
-                "orientation": "h",
-                "yanchor": "bottom",
-                "y": 1.02,
-                "xanchor": "right",
-                "x": 1,
-            },
-            height=800,
+        tpr_fig = self._create_metric_chart(
+            benchmarks_sorted,
+            "time_per_request",
+            "Time Per Request",
+            "Seconds",
+        )
+        throughput_fig = self._create_metric_chart(
+            benchmarks_sorted,
+            "throughput",
+            "Throughput",
+            "Tokens/Second",
         )
 
-        # Convert to HTML
-        chart_html = fig.to_html(include_plotlyjs=False, div_id="workload-metrics")
+        # Convert each figure to HTML
+        ttft_html = ttft_fig.to_html(include_plotlyjs=False, div_id="ttft-chart")
+        itl_html = itl_fig.to_html(include_plotlyjs=False, div_id="itl-chart")
+        tpr_html = tpr_fig.to_html(include_plotlyjs=False, div_id="tpr-chart")
+        throughput_html = throughput_fig.to_html(
+            include_plotlyjs=False, div_id="throughput-chart"
+        )
 
+        # Return HTML with 2x2 grid layout
         return f"""
         <div class="section">
-            {chart_html}
+            <h2>Workload Metrics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>TIME TO FIRST TOKEN</h3>
+                    {ttft_html}
+                </div>
+                <div class="metric-card">
+                    <h3>INTER-TOKEN LATENCY</h3>
+                    {itl_html}
+                </div>
+                <div class="metric-card">
+                    <h3>TIME PER REQUEST</h3>
+                    {tpr_html}
+                </div>
+                <div class="metric-card">
+                    <h3>THROUGHPUT</h3>
+                    {throughput_html}
+                </div>
+            </div>
         </div>
         """
 
-    def _add_metric_traces(
+    def _create_metric_chart(
         self,
-        fig: go.Figure,
         benchmarks: list[dict[str, Any]],
-        metric_name: str,
-        row: int,
-        col: int,
-        trace_prefix: str,
-    ) -> None:
-        """Add metric traces to a subplot.
+        metric_key: str,
+        title: str,
+        yaxis_title: str,
+    ) -> go.Figure:
+        """Create a single metric chart with mean + percentile lines.
 
         Args:
-            fig: Plotly figure to add traces to.
-            benchmarks: List of benchmark data dicts.
-            metric_name: Name of the metric (e.g., 'ttft', 'itl').
-            row: Subplot row number.
-            col: Subplot column number.
-            trace_prefix: Prefix for trace names.
+            benchmarks: Sorted list of benchmark data dicts.
+            metric_key: Name of the metric (e.g., 'ttft', 'itl').
+            title: Chart title.
+            yaxis_title: Y-axis title.
+
+        Returns:
+            Plotly figure with metric chart.
         """
+        fig = self._create_figure(
+            title=title,
+            xaxis_title="Requests per Second",
+            yaxis_title=yaxis_title,
+        )
+
+        # Extract data
         rps_values = [bm["requests_per_second"] for bm in benchmarks]
+        metric_data = [bm[metric_key] for bm in benchmarks]
 
-        # Extract metric data
-        mean_values = [bm[metric_name].get("mean", 0) for bm in benchmarks]
-
-        # Add mean line (primary trace)
+        # Add mean line (solid, primary color, thicker)
+        mean_values = [m["mean"] for m in metric_data]
         fig.add_trace(
             go.Scatter(
                 x=rps_values,
                 y=mean_values,
                 mode="lines+markers",
-                name=f"{trace_prefix} Mean",
-                line={"width": 3, "color": self.theme.PRIMARY},
-                marker={"size": 8},
-                hovertemplate=(
-                    f"RPS: %{{x:.2f}}<br>{trace_prefix}: %{{y:.2f}}<extra></extra>"
-                ),
-            ),
-            row=row,
-            col=col,
+                name="mean",
+                line={"color": self.theme.PRIMARY, "width": 3},
+                marker={"size": 6, "color": self.theme.PRIMARY},
+                hovertemplate="RPS: %{x:.2f}<br>Mean: %{y:.2f}<extra></extra>",
+            )
         )
 
-        # Add percentile lines
+        # Add percentile lines (dashed, thinner)
         percentiles = ["p50", "p90", "p95", "p99"]
         colors = [
-            self.theme.TERTIARY,
-            self.theme.SECONDARY,
-            self.theme.QUATERNARY,
-            self.theme.ERROR,
+            self.theme.TERTIARY,  # p50 - teal
+            self.theme.SECONDARY,  # p90 - purple
+            self.theme.QUATERNARY,  # p95 - yellow
+            self.theme.ERROR,  # p99 - red
         ]
 
         for pct, color in zip(percentiles, colors, strict=False):
             # Check if percentiles exist in the data
-            if benchmarks[0][metric_name].get("percentiles"):
-                pct_values = [
-                    bm[metric_name].get("percentiles", {}).get(pct, 0)
-                    for bm in benchmarks
-                ]
-
+            if metric_data[0].get("percentiles"):
+                pct_values = [m.get("percentiles", {}).get(pct, 0) for m in metric_data]
                 fig.add_trace(
                     go.Scatter(
                         x=rps_values,
                         y=pct_values,
-                        mode="lines",
-                        name=f"{trace_prefix} {pct.upper()}",
-                        line={"width": 1.5, "dash": "dash", "color": color},
+                        mode="lines+markers",
+                        name=pct,
+                        line={"color": color, "width": 2, "dash": "dot"},
+                        marker={"size": 4, "color": color},
                         hovertemplate=(
                             f"RPS: %{{x:.2f}}<br>{pct.upper()}: "
                             "%{y:.2f}<extra></extra>"
                         ),
-                    ),
-                    row=row,
-                    col=col,
+                    )
                 )
+
+        # Update layout with individual legend
+        fig.update_layout(
+            showlegend=True,
+            legend={
+                "orientation": "h",
+                "yanchor": "top",
+                "y": -0.15,  # Below the chart
+                "xanchor": "center",
+                "x": 0.5,
+            },
+            height=400,  # Fixed height for consistency
+            margin={"l": 60, "r": 20, "t": 60, "b": 100},  # Extra bottom for legend
+        )
+
+        return fig
