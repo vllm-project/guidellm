@@ -1,8 +1,0 @@
-{
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "types": ["cypress", "node"],
-    "noEmit": true
-  },
-  "include": ["cypress.config.ts", "tests/ui/cypress/**/*.ts"]
-}
