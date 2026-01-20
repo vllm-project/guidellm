@@ -223,7 +223,6 @@ src/ui/next-env.d.ts
 
 # Root-level UI config files that should be tracked
 !package.json
-!package-lock.json
 !tsconfig.json
 !tsconfig.*.json
 !src/ui/lib
