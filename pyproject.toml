@@ -18,6 +18,7 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
+guidellm = { workspace = true }
 
 # ************************************************
 # ********** Project Metadata **********
@@ -75,8 +76,8 @@ dependencies = [
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision]"]
-recommended = ["guidellm[perf,tokenizers]"]
+all = ["guidellm[perf,tokenizers,audio,vision,ui]"]
+recommended = ["guidellm[perf,tokenizers,ui]"]
 # Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 tokenizers = ["tiktoken", "blobfile", "mistral-common"]
@@ -136,6 +137,9 @@ dev = [
 
     # link checking
     "mkdocs-linkcheck~=1.0.6",
+]
+ui = [
+    "plotly>=5.24.0",
 ]
 
 [dependency-groups]
