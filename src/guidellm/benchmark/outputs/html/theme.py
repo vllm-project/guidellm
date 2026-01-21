@@ -72,6 +72,8 @@ class PlotlyTheme:
                 "bgcolor": cls.SURFACE,
                 "font": {"family": cls.FONT_FAMILY, "color": cls.TEXT_PRIMARY},
             },
+            "shapes": [],
+            "margin": {"pad": 0},
         }
 
     @classmethod
@@ -331,5 +333,20 @@ class PlotlyTheme:
             color: rgba(255, 255, 255, 0.6);
             margin-bottom: 1rem;
             text-transform: uppercase;
+        }}
+
+        /* Plotly chart styling */
+        .plotly {{
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+
+        .js-plotly-plot {{
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+
+        .plotly .main-svg {{
+            border-radius: 8px;
         }}
         """
