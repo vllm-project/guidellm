@@ -33,13 +33,43 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         server_data = data.get("server", {})
         rate_types = data.get("rate_types", ["N/A"])
         num_benchmarks = requests_data.get("num_benchmarks", 0)
+        total_requests = requests_data.get("total_requests", 0)
+        requests_per_benchmark = requests_data.get(
+            "requests_per_benchmark",
+            {"successful": [], "incomplete": [], "errored": []},
+        )
+
+        # Extract samples for unified JavaScript rotation
+        prompt_samples = prompts_data.get("samples", [])[:5]
+        generation_samples = generations_data.get("samples", [])[:5]
+
+        # Prepare samples for JavaScript (escape quotes and truncate)
+        prompt_samples_js = (
+            [
+                s[:_SAMPLE_MAX_LENGTH].replace("\\", "\\\\").replace('"', '\\"')
+                for s in prompt_samples
+            ]
+            if prompt_samples
+            else []
+        )
+
+        generation_samples_js = (
+            [
+                s[:_SAMPLE_MAX_LENGTH].replace("\\", "\\\\").replace('"', '\\"')
+                for s in generation_samples
+            ]
+            if generation_samples
+            else []
+        )
 
         # Build HTML sections
-        prompts_html = self._generate_prompts_section(prompts_data)
+        prompts_html = self._generate_prompts_section(prompts_data, prompt_samples_js)
         server_html = self._generate_server_section(
-            server_data, rate_types, num_benchmarks
+            server_data, rate_types, num_benchmarks, total_requests
         )
-        generations_html = self._generate_generations_section(generations_data)
+        generations_html = self._generate_generations_section(
+            generations_data, generation_samples_js
+        )
 
         # Build charts
         prompt_tokens_fig = self._create_histogram_chart(
@@ -52,7 +82,7 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
             "Output Token Distribution",
             "length (tokens)",
         )
-        requests_fig = self._create_requests_over_time_chart(requests_data)
+        requests_fig = self._create_requests_per_benchmark_chart(requests_per_benchmark)
 
         # Convert figures to HTML
         prompt_chart_html = prompt_tokens_fig.to_html(
@@ -62,94 +92,95 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
             include_plotlyjs=False, div_id="output-tokens-chart"
         )
         requests_chart_html = requests_fig.to_html(
-            include_plotlyjs=False, div_id="requests-over-time-chart"
+            include_plotlyjs=False, div_id="requests-per-benchmark-chart"
         )
+
+        # Create unified JavaScript for synchronized sample rotation
+        unified_script = ""
+        if prompt_samples_js and generation_samples_js:
+            unified_script = f"""
+            <script>
+            (function() {{
+                const promptSamples = {prompt_samples_js};
+                const generationSamples = {generation_samples_js};
+                let currentIndex = 0;
+
+                const promptDisplayEl = document.getElementById(
+                    'prompt-sample-display'
+                );
+                const generationDisplayEl = document.getElementById(
+                    'generation-sample-display'
+                );
+
+                function rotateSamples() {{
+                    // Fade out both displays
+                    promptDisplayEl.classList.add('fade-out');
+                    generationDisplayEl.classList.add('fade-out');
+
+                    // Wait for fade out, then update both and fade in
+                    setTimeout(function() {{
+                        currentIndex = (currentIndex + 1) % promptSamples.length;
+                        promptDisplayEl.textContent =
+                            promptSamples[currentIndex] + '...';
+                        generationDisplayEl.textContent =
+                            generationSamples[currentIndex] + '...';
+                        promptDisplayEl.classList.remove('fade-out');
+                        generationDisplayEl.classList.remove('fade-out');
+                    }}, 500);
+                }}
+
+                setInterval(rotateSamples, 3000);
+            }})();
+            </script>
+            """
 
         return f"""
         <div class="section">
             <h2>Workload Details</h2>
             <div class="grid-3col">
-                <div class="chart-container">
-                    <h3>Prompts</h3>
-                    {prompts_html}
-                    <div class="chart-wrapper">
-                        {prompt_chart_html}
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <h3>Run Configuration</h3>
-                    {server_html}
-                    <div class="chart-wrapper">
-                        {requests_chart_html}
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <h3>Generations</h3>
-                    {generations_html}
-                    <div class="chart-wrapper">
-                        {output_chart_html}
-                    </div>
-                </div>
+                <h3>Prompts</h3>
+                <h3>Run Configuration</h3>
+                <h3>Outputs</h3>
+
+                <div class="content-section">{prompts_html}</div>
+                <div class="content-section">{server_html}</div>
+                <div class="content-section">{generations_html}</div>
+
+                <div class="chart-section">{prompt_chart_html}</div>
+                <div class="chart-section">{requests_chart_html}</div>
+                <div class="chart-section">{output_chart_html}</div>
             </div>
+            {unified_script}
         </div>
         """
 
-    def _generate_prompts_section(self, prompts_data: dict[str, Any]) -> str:
+    def _generate_prompts_section(
+        self, prompts_data: dict[str, Any], samples_js: list[str]
+    ) -> str:
         """Generate HTML for prompts samples.
 
         Args:
             prompts_data: Dict with 'samples' and 'token_distributions'.
+            samples_js: Prepared JavaScript-safe sample strings.
 
         Returns:
             HTML string for prompts section.
         """
-        samples = prompts_data.get("samples", [])
         token_stats = prompts_data.get("token_distributions", {}).get("statistics", {})
         mean_tokens = token_stats.get("mean", 0) if token_stats else 0
 
         # Sample prompt header
         header_html = '<div class="section-header">Sample Prompt</div>'
 
-        if not samples:
+        if not samples_js:
             samples_html = "<p>No prompt samples available</p>"
         else:
-            # Use only first 5 samples
-            samples_to_show = samples[:5]
-            # Prepare samples for JavaScript (escape quotes and truncate)
-            samples_js = [
-                s[:_SAMPLE_MAX_LENGTH].replace("\\", "\\\\").replace('"', '\\"')
-                for s in samples_to_show
-            ]
-
             samples_html = f"""
             <div class="sample-carousel">
                 <div class="sample-display" id="prompt-sample-display">
                     {samples_js[0]}...
                 </div>
             </div>
-            <script>
-            (function() {{
-                const samples = {samples_js};
-                let currentIndex = 0;
-                const displayEl = document.getElementById(
-                    'prompt-sample-display'
-                );
-
-                function rotateSample() {{
-                    // Fade out
-                    displayEl.classList.add('fade-out');
-
-                    // Wait for fade out to complete, then update and fade in
-                    setTimeout(function() {{
-                        currentIndex = (currentIndex + 1) % samples.length;
-                        displayEl.textContent = samples[currentIndex] + '...';
-                        displayEl.classList.remove('fade-out');
-                    }}, 500);
-                }}
-
-                setInterval(rotateSample, 3000);
-            }})();
-            </script>
             """
 
         # Mean prompt length
@@ -163,7 +194,11 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
         return f"{header_html}{samples_html}{mean_html}"
 
     def _generate_server_section(
-        self, _server_data: dict[str, Any], rate_types: list[str], num_benchmarks: int
+        self,
+        _server_data: dict[str, Any],
+        rate_types: list[str],
+        num_benchmarks: int,
+        total_requests: int,
     ) -> str:
         """Generate HTML for benchmark configuration.
 
@@ -171,6 +206,7 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
             _server_data: Dict with server data (unused but kept for compatibility).
             rate_types: List of rate type strings in execution order.
             num_benchmarks: Number of benchmarks.
+            total_requests: Total number of requests across all benchmarks.
 
         Returns:
             HTML string for benchmark configuration section.
@@ -195,72 +231,47 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
                 </div>
             </div>
         </div>
+        <div class="mean-container">
+            <div class="mean-label">Total Request Count</div>
+            <div class="mean-value-primary">{total_requests}</div>
+        </div>
         """
 
-    def _generate_generations_section(self, generations_data: dict[str, Any]) -> str:
+    def _generate_generations_section(
+        self, generations_data: dict[str, Any], samples_js: list[str]
+    ) -> str:
         """Generate HTML for generation samples.
 
         Args:
             generations_data: Dict with 'samples' and 'token_distributions'.
+            samples_js: Prepared JavaScript-safe sample strings.
 
         Returns:
             HTML string for generations section.
         """
-        samples = generations_data.get("samples", [])
         token_stats = generations_data.get("token_distributions", {}).get(
             "statistics", {}
         )
         mean_tokens = token_stats.get("mean", 0) if token_stats else 0
 
-        # Sample generated header
-        header_html = '<div class="section-header">Sample Generated</div>'
+        # Sample output header
+        header_html = '<div class="section-header">Sample Output</div>'
 
-        if not samples:
-            samples_html = "<p>No generation samples available</p>"
+        if not samples_js:
+            samples_html = "<p>No output samples available</p>"
         else:
-            # Use only first 5 samples
-            samples_to_show = samples[:5]
-            # Prepare samples for JavaScript (escape quotes and truncate)
-            samples_js = [
-                s[:_SAMPLE_MAX_LENGTH].replace("\\", "\\\\").replace('"', '\\"')
-                for s in samples_to_show
-            ]
-
             samples_html = f"""
             <div class="sample-carousel">
                 <div class="sample-display" id="generation-sample-display">
                     {samples_js[0]}...
                 </div>
             </div>
-            <script>
-            (function() {{
-                const samples = {samples_js};
-                let currentIndex = 0;
-                const displayEl = document.getElementById(
-                    'generation-sample-display'
-                );
-
-                function rotateSample() {{
-                    // Fade out
-                    displayEl.classList.add('fade-out');
-
-                    // Wait for fade out to complete, then update and fade in
-                    setTimeout(function() {{
-                        currentIndex = (currentIndex + 1) % samples.length;
-                        displayEl.textContent = samples[currentIndex] + '...';
-                        displayEl.classList.remove('fade-out');
-                    }}, 500);
-                }}
-
-                setInterval(rotateSample, 3000);
-            }})();
-            </script>
             """
 
-        # Mean generated length
+        # Mean output length
         mean_html = f"""
         <div class="mean-container">
-            <div class="mean-label">Mean Generated Length</div>
+            <div class="mean-label">Mean Output Length</div>
             <div class="mean-value-primary">{mean_tokens:.2f} tokens</div>
         </div>
         """
@@ -329,6 +340,94 @@ class WorkloadDetailsComponent(PlotlyComponentBase):
                 annotation_text=f"Mean: {mean:.1f}",
                 annotation_position="top",
             )
+
+        return fig
+
+    def _create_requests_per_benchmark_chart(
+        self, requests_per_benchmark: dict[str, list[int]]
+    ) -> go.Figure:
+        """Create requests per benchmark stacked bar chart.
+
+        Args:
+            requests_per_benchmark: Dict with 'successful', 'incomplete',
+                and 'errored' lists.
+
+        Returns:
+            Plotly figure with stacked requests per benchmark.
+        """
+        fig = self._create_figure(
+            title="Requests per Benchmark",
+            xaxis_title="Benchmark Index",
+            yaxis_title="Request Count",
+            autosize=True,
+            width=None,
+        )
+
+        successful = requests_per_benchmark.get("successful", [])
+        incomplete = requests_per_benchmark.get("incomplete", [])
+        errored = requests_per_benchmark.get("errored", [])
+
+        if not successful and not incomplete and not errored:
+            return fig
+
+        # Create x values as benchmark indices (1-based for display)
+        num_benchmarks = max(len(successful), len(incomplete), len(errored))
+        x_values = list(range(1, num_benchmarks + 1))
+
+        # Add stacked bars - order matters for stacking
+        # Add successful requests bar using primary theme color
+        if successful:
+            fig.add_trace(
+                go.Bar(
+                    x=x_values,
+                    y=successful,
+                    name="Successful",
+                    marker_color=self.theme.PRIMARY,
+                    hovertemplate=(
+                        "Benchmark: %{x}<br>Successful: %{y}<extra></extra>"
+                    ),
+                )
+            )
+
+        # Add incomplete requests bar using secondary theme color (lavender)
+        if incomplete:
+            fig.add_trace(
+                go.Bar(
+                    x=x_values,
+                    y=incomplete,
+                    name="Incomplete",
+                    marker_color=self.theme.SECONDARY,
+                    hovertemplate=(
+                        "Benchmark: %{x}<br>Incomplete: %{y}<extra></extra>"
+                    ),
+                )
+            )
+
+        # Add errored requests bar using error theme color
+        if errored:
+            fig.add_trace(
+                go.Bar(
+                    x=x_values,
+                    y=errored,
+                    name="Errored",
+                    marker_color=self.theme.ERROR,
+                    hovertemplate=("Benchmark: %{x}<br>Errored: %{y}<extra></extra>"),
+                )
+            )
+
+        # Enable stacked bar mode with legend at bottom
+        fig.update_layout(
+            barmode="stack",
+            showlegend=True,
+            legend={
+                "orientation": "h",
+                "yanchor": "top",
+                "y": -0.2,
+                "xanchor": "center",
+                "x": 0.5,
+            },
+            margin={"b": 80},
+        )
 
         return fig
 

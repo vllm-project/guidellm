@@ -239,15 +239,18 @@ def build_workload_details(
         for i in sample_indices
     ]
 
+    # Token counts for successful requests only
     prompt_tokens = [
-        float(req.prompt_tokens) if req.prompt_tokens is not None else -1
+        float(req.prompt_tokens)
         for bm in benchmarks
         for req in bm.requests.successful
+        if req.prompt_tokens is not None
     ]
     output_tokens = [
-        float(req.output_tokens) if req.output_tokens is not None else -1
+        float(req.output_tokens)
         for bm in benchmarks
         for req in bm.requests.successful
+        if req.output_tokens is not None
     ]
 
     prompt_token_buckets, _prompt_bucket_width = Bucket.from_data(prompt_tokens, 1)
@@ -267,6 +270,19 @@ def build_workload_details(
     number_of_buckets = len(benchmarks)
     request_buckets, bucket_width = Bucket.from_data(
         all_req_times, None, number_of_buckets
+    )
+
+    # Calculate requests per benchmark (successful, incomplete, errored)
+    requests_per_benchmark = {
+        "successful": [len(bm.requests.successful) for bm in benchmarks],
+        "incomplete": [len(bm.requests.incomplete) for bm in benchmarks],
+        "errored": [len(bm.requests.errored) for bm in benchmarks],
+    }
+    total_requests = sum(
+        len(bm.requests.successful)
+        + len(bm.requests.incomplete)
+        + len(bm.requests.errored)
+        for bm in benchmarks
     )
 
     return {
@@ -296,6 +312,8 @@ def build_workload_details(
                 "bucket_width": bucket_width,
             },
             "num_benchmarks": number_of_buckets,
+            "requests_per_benchmark": requests_per_benchmark,
+            "total_requests": total_requests,
         },
         "rate_types": rate_types,
         "server": {"target": target},
