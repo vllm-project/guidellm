@@ -593,6 +593,35 @@ class SweepProfile(Profile):
         default=42,
         description="Random seed for Poisson distribution strategy",
     )
+    exclude_throughput_target: bool = Field(
+        default=False,
+        description=(
+            "Exclude constant-rate test at throughput level. "
+            "When True, constant-rate tests stop before reaching throughput rate, "
+            "preventing 'elbow' artifacts in performance graphs. "
+            "Recommended for CPU-based deployments."
+        ),
+    )
+    exclude_throughput_result: bool = Field(
+        default=False,
+        description=(
+            "Exclude throughput benchmark from saved results. "
+            "When True, the throughput benchmark is not saved to the report, "
+            "preventing anomalous data points in graphs. "
+            "Recommended for CPU-based deployments when saturation is detected."
+        ),
+    )
+    saturation_threshold: float = Field(
+        default=0.98,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Efficiency threshold for saturation detection (achieved/target rate). "
+            "Sweep stops when efficiency drops below this value. "
+            "Default 0.98 (98%) is recommended for CPU deployments. "
+            "Use 0.95 (95%) for noisier systems, 0.99 (99%) for very stable systems."
+        ),
+    )
     synchronous_rate: float = Field(
         default=-1.0,
         description="Measured rate from synchronous strategy execution",
@@ -632,6 +661,24 @@ class SweepProfile(Profile):
         kwargs["random_seed"] = random_seed
         if rate_type in ["constant", "poisson"]:
             kwargs["strategy_type"] = rate_type
+
+        # Resolve sweep profile parameters from settings if not provided
+        if (
+            "exclude_throughput_target" not in kwargs
+            or kwargs["exclude_throughput_target"] is None
+        ):
+            kwargs["exclude_throughput_target"] = settings.exclude_throughput_target
+        if (
+            "exclude_throughput_result" not in kwargs
+            or kwargs["exclude_throughput_result"] is None
+        ):
+            kwargs["exclude_throughput_result"] = settings.exclude_throughput_result
+        if (
+            "saturation_threshold" not in kwargs
+            or kwargs["saturation_threshold"] is None
+        ):
+            kwargs["saturation_threshold"] = settings.saturation_threshold
+
         return kwargs
 
     @property
@@ -643,7 +690,7 @@ class SweepProfile(Profile):
         types += [self.strategy_type] * (self.sweep_size - len(types))
         return types
 
-    def next_strategy(
+    def next_strategy(  # noqa: C901
         self,
         prev_strategy: SchedulingStrategy | None,
         prev_benchmark: Benchmark | None,
@@ -683,13 +730,55 @@ class SweepProfile(Profile):
                     "Invalid rates in sweep; aborting. "
                     "Were there any successful requests?"
                 )
-            self.measured_rates = list(
-                np.linspace(
-                    self.synchronous_rate,
-                    self.throughput_rate,
-                    self.sweep_size - 1,
-                )
-            )[1:]  # don't rerun synchronous
+
+            # Generate interpolated rates between synchronous and throughput.
+            # The behavior depends on exclude_throughput_target setting:
+            #
+            # When exclude_throughput_target=False (default, GPU mode):
+            #   - Generate (sweep_size - 1) points from sync to throughput
+            #   - Remove sync (already tested), keep throughput-level test
+            #   - Example: sweep_size=10 -> 9 points, remove 1 = 8 async tests
+            #   - Last async test targets throughput_rate
+            #
+            # When exclude_throughput_target=True (CPU mode):
+            #   - Generate (sweep_size) points from sync to throughput
+            #   - Remove sync AND throughput-level test
+            #   - Example: sweep_size=10 -> 10 points, remove 2 = 8 async tests
+            #   - Last async test stops before throughput_rate
+            #   - Prevents "elbow" artifact in graphs
+            if self.exclude_throughput_target:
+                # CPU mode: stop before throughput level
+                self.measured_rates = list(
+                    np.linspace(
+                        self.synchronous_rate,
+                        self.throughput_rate,
+                        self.sweep_size,
+                    )
+                )[1:-1]
+            else:
+                # GPU mode: include throughput level
+                self.measured_rates = list(
+                    np.linspace(
+                        self.synchronous_rate,
+                        self.throughput_rate,
+                        self.sweep_size - 1,
+                    )
+                )[1:]
+
+        # Check for saturation: if the previous constant-rate test couldn't
+        # achieve its target rate, the system has saturated
+        if (
+            prev_strategy
+            and prev_strategy.type_ in ["constant", "poisson"]
+            and prev_benchmark
+        ):
+            target_rate = prev_strategy.rate
+            achieved_rate = prev_benchmark.metrics.requests_per_second.successful.mean
+
+            # If achieved rate is below threshold, system is saturated
+            if achieved_rate < (target_rate * self.saturation_threshold):
+                # System saturated - don't test higher rates
+                return None
 
         next_index = (
             len(self.completed_strategies) - 1 - 1

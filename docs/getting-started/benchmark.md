@@ -62,6 +62,57 @@ GuideLLM supports several benchmark profiles and strategies:
 - `poisson`: Sends requests following a Poisson distribution
 - `sweep`: Automatically determines optimal performance points (default)
 
+#### Sweep Profile Configuration
+
+The sweep profile includes advanced configuration options for optimizing benchmarks on CPU-based deployments. These parameters help manage saturation detection and prevent graph artifacts:
+
+**Available Parameters:**
+
+| Parameter                       | Description                                           | Default | Environment Variable                     |
+| ------------------------------- | ----------------------------------------------------- | ------- | ---------------------------------------- |
+| `--exclude-throughput-target`   | Stop constant-rate tests before throughput level      | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_TARGET`    |
+| `--exclude-throughput-result`   | Exclude throughput benchmark from saved results       | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_RESULT`    |
+| `--saturation-threshold`        | Efficiency threshold for stopping sweep (0.0-1.0)     | `0.98`  | `GUIDELLM__SATURATION_THRESHOLD`         |
+
+**When to Use:**
+
+- **CPU Deployments**: Enable `exclude-throughput-target` and `exclude-throughput-result` to prevent anomalous data points in performance graphs (TTFT spikes, inter-token latency anomalies)
+- **GPU Deployments**: Use default settings (all disabled)
+
+**Example for CPU-optimized benchmarking:**
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --profile sweep \
+  --exclude-throughput-target true \
+  --exclude-throughput-result true \
+  --saturation-threshold 0.98 \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --max-seconds 300
+```
+
+**Using Environment Variables:**
+
+```bash
+export GUIDELLM__EXCLUDE_THROUGHPUT_TARGET=true
+export GUIDELLM__EXCLUDE_THROUGHPUT_RESULT=true
+export GUIDELLM__SATURATION_THRESHOLD=0.98
+
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --profile sweep \
+  --data "prompt_tokens=256,output_tokens=128"
+```
+
+**How It Works:**
+
+- `exclude-throughput-target`: Prevents generating a constant-rate test at the throughput level, avoiding "elbow" artifacts in graphs
+- `exclude-throughput-result`: Removes the throughput benchmark from saved results, eliminating visual anomalies caused by burst capacity measurements
+- `saturation-threshold`: Automatically stops the sweep when achieved rate falls below this percentage of target rate (e.g., 0.98 = 98%)
+
+These parameters are particularly useful for CPU deployments where saturation occurs at lower rates than burst capacity, creating misleading graph patterns if throughput measurements are included.
+
 ### Data Options
 
 For synthetic data, some key options include, among others:

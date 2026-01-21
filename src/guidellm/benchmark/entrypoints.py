@@ -534,7 +534,14 @@ async def benchmark_generative_text(
         prefer_response_metrics=args.prefer_response_metrics,
     ):
         if benchmark:
-            report.benchmarks.append(benchmark)
+            # Check if we should exclude the throughput benchmark
+            should_exclude = (
+                hasattr(profile, "exclude_throughput_result")
+                and profile.exclude_throughput_result
+                and benchmark.config.strategy.type_ == "throughput"
+            )
+            if not should_exclude:
+                report.benchmarks.append(benchmark)
 
     output_format_results = {}
     for key, output in output_formats.items():
