@@ -267,29 +267,31 @@ class PlotlyTheme:
         .grid-3col {{
             display: grid;
             grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: auto auto 1fr;
             gap: 1.5rem;
+            column-gap: 1.5rem;
+            row-gap: 1rem;
             margin-top: 1rem;
             align-items: start;
         }}
 
-        .chart-container {{
+        .grid-3col h3 {{
+            align-self: start;
+        }}
+
+        .grid-3col .content-section {{
+            align-self: start;
+        }}
+
+        .grid-3col .chart-section {{
+            align-self: stretch;
             display: flex;
             flex-direction: column;
+            justify-content: flex-end;
+            min-height: 300px;
         }}
 
-        .chart-wrapper {{
-            flex: 1;
-            display: flex;
-            align-items: flex-end;
-            width: 100%;
-            overflow: hidden;
-        }}
-
-        .chart-wrapper > div {{
-            width: 100% !important;
-        }}
-
-        .chart-wrapper .plotly {{
+        .grid-3col .chart-section > div {{
             width: 100% !important;
         }}
 
