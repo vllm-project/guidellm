@@ -107,11 +107,33 @@ guidellm benchmark \
 
 **How It Works:**
 
-- `exclude-throughput-target`: Prevents generating a constant-rate test at the throughput level, avoiding "elbow" artifacts in graphs
-- `exclude-throughput-result`: Removes the throughput benchmark from saved results, eliminating visual anomalies caused by burst capacity measurements
-- `saturation-threshold`: Automatically stops the sweep when achieved rate falls below this percentage of target rate (e.g., 0.98 = 98%)
+The sweep profile runs tests in this order:
+1. **Synchronous test**: Measures baseline single-request performance
+2. **Throughput test**: Discovers maximum server capacity with parallel requests
+3. **Constant-rate tests**: Tests at interpolated rates between synchronous and throughput
 
-These parameters are particularly useful for CPU deployments where saturation occurs at lower rates than burst capacity, creating misleading graph patterns if throughput measurements are included.
+Each parameter optimizes a different aspect:
+
+- **`exclude-throughput-target`**: Prevents generating a constant-rate test at the throughput level itself
+  - **Why**: The highest constant-rate test would target the same rate as the throughput test, creating redundant "elbow" artifacts in graphs
+  - **Effect**: Stops constant-rate tests just before reaching throughput rate
+
+- **`exclude-throughput-result`**: Removes the throughput benchmark from saved results
+  - **Why**: Throughput tests measure burst capacity with severe queuing (e.g., 23+ second TTFT), creating extreme outliers in graphs
+  - **Effect**: Graphs only show sustainable performance metrics from constant-rate tests
+
+- **`saturation-threshold`**: Stops the sweep when efficiency drops below threshold
+  - **Why**: Once saturation is detected (achieved rate < target rate × threshold), further tests provide diminishing returns
+  - **Effect**: Saves time by stopping early when the server can no longer meet target rates
+
+**Why use all three together?**
+
+For CPU deployments, all three parameters work synergistically:
+- `saturation-threshold` stops the sweep efficiently when saturation is detected
+- `exclude-throughput-target` prevents testing at the unsustainable throughput rate
+- `exclude-throughput-result` removes the anomalous throughput spike from graphs
+
+This combination produces clean, efficient benchmarks that focus on sustainable performance ranges.
 
 **Important Note:**
 
