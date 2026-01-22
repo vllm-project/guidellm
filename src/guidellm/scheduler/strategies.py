@@ -16,6 +16,7 @@ throughput (maximum load), constant-rate (steady intervals), and Poisson-distrib
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 from abc import abstractmethod
 from multiprocessing import Event, Value, synchronize
@@ -453,6 +454,13 @@ class AsyncConstantStrategy(SchedulingStrategy):
         default=None,
         description="Maximum number of concurrent requests to schedule",
     )
+    rampup_duration: NonNegativeFloat = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds to linearly ramp up from 0 to target rate "
+            "at the beginning of each strategy run"
+        ),
+    )
 
     def __str__(self) -> str:
         """
@@ -476,19 +484,47 @@ class AsyncConstantStrategy(SchedulingStrategy):
 
     async def next_request_time(self, worker_index: PositiveInt) -> float:
         """
-        Calculate next request time at fixed intervals.
+        Calculate next request time at fixed intervals with optional linear rampup.
 
         Schedules requests at uniform intervals determined by the configured rate,
-        independent of request completion times.
+        independent of request completion times. If rampup_duration is set, the rate
+        increases linearly from 0 to the target rate during the rampup period, then
+        continues at the constant rate.
 
         :param worker_index: Unused for constant strategy
-        :return: Start time plus constant interval based on request index
+        :return: Start time plus interval based on request index and
+            rampup configuration
         """
         _ = worker_index  # unused
         current_index = self.next_request_index()
         start_time = await self.get_processes_start_time()
 
-        return start_time + current_index / self.rate
+        if self.rampup_duration > 0:
+            # Calculate number of requests that would be sent during rampup
+            # Cumulative requests by time t during rampup:
+            # n = rate * t² / (2 * rampup_duration)
+            # At end of rampup (t = rampup_duration), n_rampup is calculated below
+            n_rampup = self.rate * self.rampup_duration / 2.0
+
+            if current_index == 1:
+                # First request at start_time
+                return start_time
+            elif current_index <= n_rampup:
+                # During rampup: solve for t where
+                # n = rate * t² / (2 * rampup_duration)
+                time_offset = math.sqrt(
+                    2.0 * current_index * self.rampup_duration / self.rate
+                )
+                return start_time + time_offset
+            else:
+                # After rampup: continue at constant rate
+                time_offset = (
+                    self.rampup_duration + (current_index - n_rampup) / self.rate
+                )
+                return start_time + time_offset
+        else:
+            # No rampup: uniform intervals
+            return start_time + current_index / self.rate
 
     def request_completed(self, request_info: RequestInfo):
         """
