@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from sanic import response
 from sanic.request import Request
 from sanic.response import HTTPResponse
-from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers import AutoTokenizer
 
 from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.models import (
@@ -55,7 +55,7 @@ class TokenizerHandler:
         self.tokenizer = (
             MockTokenizer()
             if config.processor is None
-            else PreTrainedTokenizer.from_pretrained(config.processor)
+            else AutoTokenizer.from_pretrained(config.processor)
         )
 
     async def tokenize(self, request: Request) -> HTTPResponse:
