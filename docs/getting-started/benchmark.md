@@ -113,6 +113,10 @@ guidellm benchmark \
 
 These parameters are particularly useful for CPU deployments where saturation occurs at lower rates than burst capacity, creating misleading graph patterns if throughput measurements are included.
 
+**Important Note:**
+
+Do not set `--max-concurrency` or `GUIDELLM__MAX_CONCURRENCY` when running sweep tests. The sweep profile uses the throughput test to discover the server's true capacity, and artificially limiting concurrency will result in an underestimated throughput measurement. This causes the constant-rate tests to run at rates far below the actual server capacity, preventing proper saturation detection and producing misleading results where TTFT may decrease instead of increase.
+
 ### Data Options
 
 For synthetic data, some key options include, among others:
