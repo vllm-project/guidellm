@@ -522,8 +522,6 @@ class TestAsyncConstantStrategy:
 
         ### WRITTEN BY AI ###
         """
-        import math
-
         rate = 10.0
         rampup_duration = 2.0
         strategy = AsyncConstantStrategy(rate=rate, rampup_duration=rampup_duration)
@@ -612,8 +610,6 @@ class TestAsyncConstantStrategy:
 
         ### WRITTEN BY AI ###
         """
-        import math
-
         rate = 10.0
         rampup_duration = 2.0
         strategy = AsyncConstantStrategy(rate=rate, rampup_duration=rampup_duration)
