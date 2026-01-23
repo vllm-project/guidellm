@@ -14,7 +14,11 @@ import re
 from collections.abc import Generator
 
 from faker import Faker
-from transformers.tokenization_utils import AddedToken, PreTrainedTokenizer, TextInput
+from transformers.tokenization_utils_base import (
+    AddedToken,
+    PreTrainedTokenizerBase,
+    TextInput,
+)
 
 __all__ = [
     "MockTokenizer",
@@ -25,7 +29,7 @@ __all__ = [
 ]
 
 
-class MockTokenizer(PreTrainedTokenizer):
+class MockTokenizer(PreTrainedTokenizerBase):
     """
     Mock tokenizer implementation for testing text processing workflows.
 
@@ -207,7 +211,7 @@ class MockTokenizer(PreTrainedTokenizer):
 
 def create_fake_text(
     num_tokens: int,
-    processor: PreTrainedTokenizer,
+    processor: PreTrainedTokenizerBase,
     seed: int = 42,
     fake: Faker | None = None,
 ) -> str:
@@ -229,7 +233,7 @@ def create_fake_text(
 
 def create_fake_tokens_str(
     num_tokens: int,
-    processor: PreTrainedTokenizer,
+    processor: PreTrainedTokenizerBase,
     seed: int = 42,
     fake: Faker | None = None,
 ) -> list[str]:

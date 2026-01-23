@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from transformers import AutoTokenizer, PreTrainedTokenizerBase  # type: ignore[import]
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 __all__ = ["ProcessorFactory"]
 
