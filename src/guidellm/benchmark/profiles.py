@@ -771,9 +771,11 @@ class SweepProfile(Profile):
             prev_strategy
             and prev_strategy.type_ in ["constant", "poisson"]
             and prev_benchmark
+            and hasattr(prev_strategy, "rate")
+            and hasattr(prev_benchmark, "metrics")
         ):
-            target_rate = prev_strategy.rate
-            achieved_rate = prev_benchmark.metrics.requests_per_second.successful.mean
+            target_rate = prev_strategy.rate  # type: ignore[attr-defined]
+            achieved_rate = prev_benchmark.metrics.requests_per_second.successful.mean  # type: ignore[attr-defined]
 
             # If achieved rate is below threshold, system is saturated
             if achieved_rate < (target_rate * self.saturation_threshold):
