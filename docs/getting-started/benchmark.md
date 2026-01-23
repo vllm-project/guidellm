@@ -68,11 +68,11 @@ The sweep profile includes advanced configuration options for optimizing benchma
 
 **Available Parameters:**
 
-| Parameter                       | Description                                           | Default | Environment Variable                     |
-| ------------------------------- | ----------------------------------------------------- | ------- | ---------------------------------------- |
-| `--exclude-throughput-target`   | Stop constant-rate tests before throughput level      | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_TARGET`    |
-| `--exclude-throughput-result`   | Exclude throughput benchmark from saved results       | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_RESULT`    |
-| `--saturation-threshold`        | Efficiency threshold for stopping sweep (0.0-1.0)     | `0.98`  | `GUIDELLM__SATURATION_THRESHOLD`         |
+| Parameter                     | Description                                       | Default | Environment Variable                  |
+| ----------------------------- | ------------------------------------------------- | ------- | ------------------------------------- |
+| `--exclude-throughput-target` | Stop constant-rate tests before throughput level  | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_TARGET` |
+| `--exclude-throughput-result` | Exclude throughput benchmark from saved results   | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_RESULT` |
+| `--saturation-threshold`      | Efficiency threshold for stopping sweep (0.0-1.0) | `0.98`  | `GUIDELLM__SATURATION_THRESHOLD`      |
 
 **When to Use:**
 
@@ -108,6 +108,7 @@ guidellm benchmark \
 **How It Works:**
 
 The sweep profile runs tests in this order:
+
 1. **Synchronous test**: Measures baseline single-request performance
 2. **Throughput test**: Discovers maximum server capacity with parallel requests
 3. **Constant-rate tests**: Tests at interpolated rates between synchronous and throughput
@@ -115,20 +116,24 @@ The sweep profile runs tests in this order:
 Each parameter optimizes a different aspect:
 
 - **`exclude-throughput-target`**: Prevents generating a constant-rate test at the throughput level itself
+
   - **Why**: The highest constant-rate test would target the same rate as the throughput test, creating redundant "elbow" artifacts in graphs
   - **Effect**: Stops constant-rate tests just before reaching throughput rate
 
 - **`exclude-throughput-result`**: Removes the throughput benchmark from saved results
+
   - **Why**: Throughput tests measure burst capacity with severe queuing (e.g., 23+ second TTFT), creating extreme outliers in graphs
   - **Effect**: Graphs only show sustainable performance metrics from constant-rate tests
 
 - **`saturation-threshold`**: Stops the sweep when efficiency drops below threshold
+
   - **Why**: Once saturation is detected (achieved rate < target rate × threshold), further tests provide diminishing returns
   - **Effect**: Saves time by stopping early when the server can no longer meet target rates
 
 **Why use all three together?**
 
 For CPU deployments, all three parameters work synergistically:
+
 - `saturation-threshold` stops the sweep efficiently when saturation is detected
 - `exclude-throughput-target` prevents testing at the unsustainable throughput rate
 - `exclude-throughput-result` removes the anomalous throughput spike from graphs
