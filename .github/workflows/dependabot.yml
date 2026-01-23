@@ -19,15 +19,15 @@ jobs:
       run: |
         UV_FROZEN=1 ./scripts/generate_pylock.sh
     - name: Commit and Push changes
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add pylock.toml
-          # Only commit if there are actually changes
-          if ! git diff --cached --quiet; then
-            git commit -m "auto-update pylock from dependabot"
-            git push
-          else
-            echo "No changes to commit"
-          fi
+        git add pylock.toml
+        # Only commit if there are actually changes
+        if ! git diff --cached --quiet; then
+          git commit -m "auto-update pylock from dependabot"
+          git push
+        else
+          echo "No changes to commit"
+        fi
