@@ -334,7 +334,7 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("rampup"),
     help=(
         "The time, in seconds, to ramp up the request rate over. "
-        "Only applicable for Throughput/Concurrent strategies"
+        "Applicable for Throughput, Concurrent, and Constant strategies"
     ),
 )
 @click.option(
