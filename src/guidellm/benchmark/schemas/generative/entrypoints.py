@@ -249,7 +249,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         description=(
             "Efficiency threshold for saturation detection (achieved/target rate). "
             "Sweep stops when efficiency drops below this value. "
-            "Default 0.98 (98%) is recommended for CPU deployments."
+            "Default 0.98 (98%) is recommended for CPU based system under test."
         ),
     )
     # Output configuration

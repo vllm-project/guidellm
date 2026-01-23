@@ -608,7 +608,7 @@ class SweepProfile(Profile):
             "Exclude throughput benchmark from saved results. "
             "When True, the throughput benchmark is not saved to the report, "
             "preventing anomalous data points in graphs. "
-            "Recommended for CPU-based deployments when saturation is detected."
+            "Recommended for CPU based system under test when saturation is detected."
         ),
     )
     saturation_threshold: float = Field(
@@ -618,7 +618,7 @@ class SweepProfile(Profile):
         description=(
             "Efficiency threshold for saturation detection (achieved/target rate). "
             "Sweep stops when efficiency drops below this value. "
-            "Default 0.98 (98%) is recommended for CPU deployments. "
+            "Default 0.98 (98%) is recommended for CPU based system under test. "
             "Use 0.95 (95%) for noisier systems, 0.99 (99%) for very stable systems."
         ),
     )

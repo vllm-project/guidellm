@@ -76,8 +76,8 @@ The sweep profile includes advanced configuration options for optimizing benchma
 
 **When to Use:**
 
-- **CPU Deployments**: Enable `exclude-throughput-target` and `exclude-throughput-result` to prevent anomalous data points in performance graphs (TTFT spikes, inter-token latency anomalies)
-- **GPU Deployments**: Use default settings (all disabled)
+- **CPU based system under test**: Enable `exclude-throughput-target` and `exclude-throughput-result` to prevent anomalous data points in performance graphs (TTFT spikes, inter-token latency anomalies)
+- **GPU based system under test**: Use default settings (all disabled)
 
 **Example for CPU-optimized benchmarking:**
 
@@ -132,7 +132,7 @@ Each parameter optimizes a different aspect:
 
 **Why use all three together?**
 
-For CPU deployments, all three parameters work synergistically:
+For CPU based system under test, all three parameters work synergistically:
 
 - `saturation-threshold` stops the sweep efficiently when saturation is detected
 - `exclude-throughput-target` prevents testing at the unsustainable throughput rate
