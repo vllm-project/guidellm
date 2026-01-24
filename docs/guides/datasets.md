@@ -62,6 +62,21 @@ guidellm benchmark \
     --data '{"prompt_tokens": 256, "output_tokens": 128}'
 ```
 
+For embeddings endpoints, you need to specify `output_tokens=1` (a current limitation of the synthetic data generator):
+
+```bash
+guidellm benchmark \
+    --target "http://localhost:8000" \
+    --request-type embeddings \
+    --profile concurrent \
+    --rate 32 \
+    --max-requests 500 \
+    --data "prompt_tokens=256,output_tokens=1" \
+    --processor "BAAI/bge-small-en-v1.5"
+```
+
+For more details on embeddings benchmarking, see the [Embeddings Guide](./embeddings.md).
+
 #### Configuration Options
 
 - `prompt_tokens`: Average number of tokens in prompts. If nothing else is specified, all requests will have this number of tokens.
