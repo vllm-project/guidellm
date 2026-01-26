@@ -722,9 +722,9 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
             )
 
         if response is None:
-            # FIXME: request_args is wrong
             response = GenerationResponse(
-                request_id=info.request_id, request_args=str(first_request.columns)
+                request_id=info.request_id,
+                request_args=None,
             )
 
         return response.compile_stats(
