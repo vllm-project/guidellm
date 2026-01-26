@@ -14,7 +14,6 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
 )
-from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils import (
     InterProcessMessaging,
     InterProcessMessagingManagerQueue,
@@ -300,8 +299,7 @@ class TestInterProcessMessagingQueue:
             (
                 None,
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -312,8 +310,7 @@ class TestInterProcessMessagingQueue:
                     text="test response",
                 ),
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -383,8 +380,7 @@ class TestInterProcessMessagingQueue:
             (
                 None,
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -395,8 +391,7 @@ class TestInterProcessMessagingQueue:
                     text="test response",
                 ),
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -622,8 +617,7 @@ class TestInterProcessMessagingManagerQueue:
             (
                 None,
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -693,8 +687,7 @@ class TestInterProcessMessagingManagerQueue:
             (
                 None,
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -705,8 +698,7 @@ class TestInterProcessMessagingManagerQueue:
                     text="test response",
                 ),
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -932,8 +924,7 @@ class TestInterProcessMessagingPipe:
             (
                 None,
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
@@ -944,8 +935,7 @@ class TestInterProcessMessagingPipe:
                     text="test response",
                 ),
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(),
             ),
