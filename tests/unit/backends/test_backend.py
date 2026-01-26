@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from guidellm.backends import Backend
-from guidellm.schemas import GenerationRequest, GenerationRequestArguments, RequestInfo
+from guidellm.schemas import GenerationRequest, RequestInfo
 from guidellm.utils import RegistryMixin
 from tests.unit.testing_utils import async_timeout
 
@@ -217,7 +217,7 @@ class TestBackend:
         """Test Backend.resolve method."""
         instance, _ = valid_instances
         request = GenerationRequest(
-            request_type="text_completions", arguments=GenerationRequestArguments()
+            columns={"text_column": ["test prompt"]},
         )
         request_info = RequestInfo(request_id="test-id")
 
