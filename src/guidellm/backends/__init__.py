@@ -16,6 +16,7 @@ from .openai import (
     GenerationResponseHandler,
     GenerationResponseHandlerFactory,
     OpenAIHTTPBackend,
+    OpenAIRequestType,
     TextCompletionsResponseHandler,
 )
 
@@ -27,5 +28,6 @@ __all__ = [
     "GenerationResponseHandler",
     "GenerationResponseHandlerFactory",
     "OpenAIHTTPBackend",
+    "OpenAIRequestType",
     "TextCompletionsResponseHandler",
 ]
