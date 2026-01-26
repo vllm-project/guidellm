@@ -1,0 +1,626 @@
+From 72f248d6328d66211b148239d9e0cea54b28c80f Mon Sep 17 00:00:00 2001
+From: AiKiAi-stack <karsonwan@foxmail.com>
+Date: Wed, 26 Nov 2025 13:12:12 +0800
+Subject: [PATCH] feature: add `per_constraints`, unit_test and docs
+
+---
+ docs/getting-started/benchmark.md             |  34 ++++
+ src/guidellm/__main__.py                      |   6 +
+ src/guidellm/benchmark/entrypoints.py         |  29 +++-
+ src/guidellm/benchmark/profiles.py            |  73 ++++++++
+ .../schemas/generative/entrypoints.py         |  25 +++
+ tests/unit/benchmark/test_per_constraints.py  | 157 ++++++++++++++++++
+ tests/unit/benchmark/test_profiles.py         | 128 ++++++++++++++
+ tests/unit/test_main.py                       |  33 +++-
+ 8 files changed, 479 insertions(+), 6 deletions(-)
+ create mode 100644 tests/unit/benchmark/test_per_constraints.py
+ create mode 100644 tests/unit/benchmark/test_profiles.py
+
+diff --git a/docs/getting-started/benchmark.md b/docs/getting-started/benchmark.md
+index 24a3204..afbccb9 100644
+--- a/docs/getting-started/benchmark.md
++++ b/docs/getting-started/benchmark.md
+@@ -62,6 +62,40 @@ GuideLLM supports several benchmark profiles and strategies:
+ - `poisson`: Sends requests following a Poisson distribution
+ - `sweep`: Automatically determines optimal performance points (default)
+ 
++### Per-Strategy Constraints in `sweep`
++
++Sweep benchmarks execute a fixed sequence—synchronous → throughput → async rates—so you can set limits for each stage with `per_constraints`. Two entry points support it:
++
++#### CLI Example
++
++```bash
++guidellm benchmark run \
++  --profile sweep \
++  --rate 5 \
++  --target "http://localhost:8000" \
++  --data "prompt_tokens=256,output_tokens=128" \
++  --per-constraints '{"max_seconds":[5,10,15,15,20], "max_requests":[100, 200, 200, 400, 400]}'
++```
++
++Values are applied in order across the sweep strategies; Providing `--per-constraints` with any non-sweep profile raises a validation error to prevent accidental misuse.
++
++#### Scenario Example
++
++```json
++{
++  "target": "http://localhost:8000",
++  "data": ["prompt_tokens=256,output_tokens=128"],
++  "profile": "sweep",
++  "rate": 5,
++  "per_constraints": {
++    "max_seconds": [5,10,15,15,20],
++    "max_requests": [100, 200, 200, 400, 400]
++  }
++}
++```
++
++Running `guidellm benchmark run --scenario my_sweep.json` automatically applies these per-strategy settings without additional CLI flags.
++
+ ### Data Options
+ 
+ For synthetic data, some key options include, among others:
+diff --git a/src/guidellm/__main__.py b/src/guidellm/__main__.py
+index 8506b08..176b7e1 100644
+--- a/src/guidellm/__main__.py
++++ b/src/guidellm/__main__.py
+@@ -384,6 +384,12 @@ def benchmark():
+     default=BenchmarkGenerativeTextArgs.get_default("max_global_error_rate"),
+     help="Maximum global error rate across all benchmarks.",
+ )
++@click.option(
++    "--per-constraints",
++    callback=cli_tools.parse_json,
++    default=None,
++    help="Per-strategy constraints for sweep mode. Format: {'constraint_name': [value1, value2, ...]}",
++)
+ def run(**kwargs):
+     # Only set CLI args that differ from click defaults
+     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
+diff --git a/src/guidellm/benchmark/entrypoints.py b/src/guidellm/benchmark/entrypoints.py
+index 5b57b22..6b40403 100644
+--- a/src/guidellm/benchmark/entrypoints.py
++++ b/src/guidellm/benchmark/entrypoints.py
+@@ -324,6 +324,8 @@ async def resolve_profile(
+     max_error_rate: float | None,
+     max_global_error_rate: float | None,
+     console: Console | None = None,
++    per_constraints: dict[str, Any] | None = None,
++    **kwargs: Any,
+ ) -> Profile:
+     """
+     Resolve and configure a benchmark profile with rate and constraint settings.
+@@ -343,6 +345,7 @@ async def resolve_profile(
+     :param max_errors: Maximum number of errors before stopping
+     :param max_error_rate: Maximum error rate threshold before stopping
+     :param max_global_error_rate: Maximum global error rate threshold before stopping
++    :param per_constraints: Per-strategy constraints (sweep profile only)
+     :param console: Console instance for progress reporting, or None
+     :return: Configured Profile instance ready for benchmarking
+     :raises ValueError: If constraints are provided with a pre-configured Profile
+@@ -362,20 +365,35 @@ async def resolve_profile(
+     }.items():
+         if val is not None:
+             constraints[key] = val
+-
+     if not isinstance(profile, Profile):
++        supported_per_constraints = {"sweep"}
++        profile_kwargs = dict(kwargs)
++        profile_kwargs["constraints"] = constraints
++        if per_constraints:
++            profile_type = profile if isinstance(profile, str) else str(profile)
++            if profile_type not in supported_per_constraints:
++                raise ValueError(
++                    "Per-strategy constraints are only supported with the 'sweep' profile."
++                )
++            # Validate no nulls in per_constraints lists
++            for key, val_list in per_constraints.items():
++                if isinstance(val_list, list) and any(item is None for item in val_list):
++                    raise ValueError(f"Per-strategy constraints for '{key}' contain null values, which are not allowed.")
++            profile_kwargs["per_constraints"] = per_constraints
+         profile = Profile.create(
+             rate_type=profile,
+             rate=rate,
+             random_seed=random_seed,
+             rampup_duration=rampup,
+-            constraints={**constraints},
++            **profile_kwargs,
+         )
+-    elif constraints:
++    elif per_constraints:
+         raise ValueError(
+-            "Constraints must be empty when providing a Profile instance. "
+-            f"Provided constraints: {constraints} ; provided profile: {profile}"
++            "Per-strategy constraints cannot be applied when providing a Profile instance."
+         )
++    elif constraints:
++        # If profile is already an instance, it shouldn't be modified by constraints
++        pass
+     elif rampup > 0.0:
+         raise ValueError(
+             "Ramp-up duration must not be set when providing a Profile instance. "
+@@ -501,6 +519,7 @@ async def benchmark_generative_text(
+         max_error_rate=args.max_error_rate,
+         max_global_error_rate=args.max_global_error_rate,
+         console=console,
++        per_constraints=args.per_constraints,
+     )
+     output_formats = await resolve_output_formats(
+         outputs=args.outputs, output_dir=args.output_dir, console=console
+diff --git a/src/guidellm/benchmark/profiles.py b/src/guidellm/benchmark/profiles.py
+index 8487228..45b0cc6 100644
+--- a/src/guidellm/benchmark/profiles.py
++++ b/src/guidellm/benchmark/profiles.py
+@@ -609,6 +609,35 @@ class SweepProfile(Profile):
+         default_factory=list,
+         description="Interpolated rates between synchronous and throughput",
+     )
++    per_constraints: dict[str, list[Any]] | None = Field(
++        default=None,
++        description="Per-strategy constraints only valid in sweep mode",
++    )
++
++    @field_validator("per_constraints", mode="before")
++    @classmethod
++    def validate_per_constraints(cls, value: Any) -> dict[str, list[Any]] | None:
++        """
++        Validate that per_constraints doesn't contain null values in the lists.
++
++        :param value: Input value for per_constraints field
++        :return: Validated per_constraints dictionary
++        """
++        if value is None:
++            return None
++
++        if not isinstance(value, dict):
++            return value
++
++        for key, val_list in value.items():
++            if not isinstance(val_list, list):
++                continue
++
++            if any(item is None for item in val_list):
++                raise ValueError(f"Per-strategy constraints for '{key}' contain null values, which are not allowed.")
++
++        return value
++
+ 
+     @classmethod
+     def resolve_args(
+@@ -632,8 +661,52 @@ class SweepProfile(Profile):
+         kwargs["random_seed"] = random_seed
+         if rate_type in ["constant", "poisson"]:
+             kwargs["strategy_type"] = rate_type
++
++        # Handle per-strategy constraints
++        if "per_constraints" in kwargs:
++            # Already in the correct format, keep it
++            pass
++        elif "constraints" in kwargs:
++            # Backward compatibility: split into per-strategy and shared constraints
++            constraints = kwargs["constraints"]
++            if isinstance(constraints, dict):
++                shared_constraints = {}
++                per_constraints = {}
++                for key, val in constraints.items():
++                    if isinstance(val, list):
++                        per_constraints[key] = val
++                    else:
++                        shared_constraints[key] = val
++                kwargs["constraints"] = shared_constraints or None
++                kwargs["per_constraints"] = per_constraints or None
+         return kwargs
+ 
++    def next_strategy_constraints(
++        self,
++        next_strategy: SchedulingStrategy | None,
++        prev_strategy: SchedulingStrategy | None,
++        prev_benchmark: Benchmark | None,
++    ) -> dict[str, Constraint] | None:
++        if not next_strategy:
++            return None
++
++        current_index = len(self.completed_strategies)
++        final_constraints: dict[str, Any] = dict(self.constraints or {})
++
++        if self.per_constraints:
++            for key, val in self.per_constraints.items():
++                if 0 <= current_index < self.sweep_size:
++                    constraint_val = val[current_index]
++                    if constraint_val is None:
++                        final_constraints.pop(key, None)
++                    else:
++                        final_constraints[key] = constraint_val
++        return (
++            ConstraintsInitializerFactory.resolve(final_constraints)
++            if final_constraints
++            else None
++        )
++
+     @property
+     def strategy_types(self) -> list[str]:
+         """
+diff --git a/src/guidellm/benchmark/schemas/generative/entrypoints.py b/src/guidellm/benchmark/schemas/generative/entrypoints.py
+index a080daa..fc63bec 100644
+--- a/src/guidellm/benchmark/schemas/generative/entrypoints.py
++++ b/src/guidellm/benchmark/schemas/generative/entrypoints.py
+@@ -283,6 +283,31 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
+     max_global_error_rate: float | None = Field(
+         default=None, description="Maximum global error rate (0-1) before stopping"
+     )
++    per_constraints: dict[str, Any] | None = Field(
++        default=None,
++        description="Specified constraints to apply to the sweep profile",
++    )
++
++    @field_validator("per_constraints", mode="before")
++    @classmethod
++    def validate_per_constraints(cls, value: Any) -> dict[str, Any] | None:
++        """
++        Validate that per_constraints doesn't contain null values in the lists.
++
++        :param value: Input value for per_constraints field
++        :return: Validated per_constraints dictionary
++        """
++        if value is None:
++            return None
++
++        if not isinstance(value, dict):
++            return value
++
++        for key, val_list in value.items():
++            if isinstance(val_list, list) and any(item is None for item in val_list):
++                raise ValueError(f"Per-strategy constraints for '{key}' contain null values, which are not allowed.")
++
++        return value
+ 
+     @field_validator("data", "data_args", "rate", mode="wrap")
+     @classmethod
+diff --git a/tests/unit/benchmark/test_per_constraints.py b/tests/unit/benchmark/test_per_constraints.py
+new file mode 100644
+index 0000000..2330679
+--- /dev/null
++++ b/tests/unit/benchmark/test_per_constraints.py
+@@ -0,0 +1,157 @@
++import json
++from pathlib import Path
++
++import pytest
++
++from guidellm.benchmark.entrypoints import resolve_profile
++from guidellm.benchmark.profiles import SweepProfile, SynchronousProfile
++from guidellm.benchmark.schemas import BenchmarkGenerativeTextArgs
++from guidellm.scheduler import (
++    AsyncConstantStrategy,
++    ConstraintsInitializerFactory,
++    SynchronousStrategy,
++    ThroughputStrategy,
++)
++
++@pytest.mark.smoke
++@pytest.mark.asyncio
++async def test_resolve_profile_allows_per_constraints_for_sweep():
++    profile = await resolve_profile(
++        profile="sweep",
++        rate=[5],
++        random_seed=123,
++        rampup=0.0,
++        constraints={},
++        max_seconds=None,
++        max_requests=None,
++        max_errors=None,
++        max_error_rate=None,
++        max_global_error_rate=None,
++        console=None,
++        per_constraints={"max_seconds": [1, 2, 3, 4, 5]},
++    )
++
++    assert isinstance(profile, SweepProfile)
++    assert profile.per_constraints == {"max_seconds": [1, 2, 3, 4, 5]}
++
++@pytest.mark.smoke
++@pytest.mark.asyncio
++async def test_resolve_profile_rejects_per_constraints_for_non_sweep():
++    with pytest.raises(ValueError, match="Per-strategy constraints are only supported with the 'sweep' profile."):
++        await resolve_profile(
++            profile="synchronous",
++            rate=None,
++            random_seed=123,
++            rampup=0.0,
++            constraints={},
++            max_seconds=None,
++            max_requests=None,
++            max_errors=None,
++            max_error_rate=None,
++            max_global_error_rate=None,
++            console=None,
++            per_constraints={"max_seconds": [1]},
++        )
++
++@pytest.mark.smoke
++@pytest.mark.asyncio
++async def test_resolve_profile_rejects_per_constraints_for_instances():
++    synchronous_profile = SynchronousProfile()
++
++    with pytest.raises(
++        ValueError, match="Per-strategy constraints cannot be applied"
++    ):
++        await resolve_profile(
++            profile=synchronous_profile,
++            rate=None,
++            random_seed=123,
++            rampup=0.0,
++            constraints={},
++            max_seconds=None,
++            max_requests=None,
++            max_errors=None,
++            max_error_rate=None,
++            max_global_error_rate=None,
++            console=None,
++            per_constraints={"max_seconds": [1]},
++        )
++
++@pytest.mark.smoke
++def test_sweep_profile_applies_per_constraints_sequence(monkeypatch):
++    captured: list[dict[str, int]] = []
++
++    def fake_resolve(value):
++        captured.append(value)
++        return value
++
++    monkeypatch.setattr(
++        ConstraintsInitializerFactory, "resolve", staticmethod(fake_resolve)
++    )
++
++    profile = SweepProfile(
++        sweep_size=3,
++        per_constraints={"max_seconds": [5, 10, 15]},
++        constraints={"max_seconds": 30, "max_requests": 100},
++    )
++
++    sync = SynchronousStrategy()
++    profile.next_strategy_constraints(sync, None, None)
++    assert captured[-1]["max_seconds"] == 5
++    assert captured[-1]["max_requests"] == 100
++
++    profile.completed_strategies.append(sync)
++    throughput = ThroughputStrategy(max_concurrency=1, rampup_duration=0.0)
++    profile.next_strategy_constraints(throughput, sync, None)
++    assert captured[-1]["max_seconds"] == 10
++    assert captured[-1]["max_requests"] == 100
++
++    profile.completed_strategies.append(throughput)
++    async_strategy = AsyncConstantStrategy(rate=1.0, max_concurrency=None)
++    profile.next_strategy_constraints(async_strategy, throughput, None)
++    assert captured[-1]["max_seconds"] == 15
++    assert captured[-1]["max_requests"] == 100
++
++@pytest.mark.smoke
++def test_benchmark_args_accept_per_constraints_from_scenario(tmp_path: Path):
++    scenario_path = tmp_path / "scenario.json"
++    scenario_content = {
++        "target": "http://localhost:9000",
++        "data": ["prompt_tokens=8,output_tokens=8"],
++        "profile": "sweep",
++        "rate": 5,
++        "per_constraints": {"max_seconds": [5, 10, 15, 15, 20], "max_requests": [100, 200, 200, 400, 400]},
++    }
++    scenario_path.write_text(json.dumps(scenario_content))
++
++    args = BenchmarkGenerativeTextArgs.create(scenario=scenario_path)
++
++    assert args.per_constraints == {"max_seconds": [5, 10, 15, 15, 20], "max_requests": [100, 200, 200, 400, 400]}
++
++
++@pytest.mark.smoke
++@pytest.mark.asyncio
++async def test_resolve_profile_rejects_null_per_constraints():
++    with pytest.raises(ValueError, match="Per-strategy constraints for 'max_seconds' contain null values, which are not allowed."):
++        await resolve_profile(
++            profile="sweep",
++            rate=[5],
++            random_seed=123,
++            rampup=0.0,
++            constraints={},
++            max_seconds=None,
++            max_requests=None,
++            max_errors=None,
++            max_error_rate=None,
++            max_global_error_rate=None,
++            console=None,
++            per_constraints={"max_seconds": [5, None, 15, 20, 25, 30]},
++        )
++
++
++@pytest.mark.smoke
++def test_sweep_profile_rejects_null_per_constraints():
++    with pytest.raises(ValueError, match="Per-strategy constraints for 'max_requests' contain null values, which are not allowed."):
++        SweepProfile(
++            sweep_size=5,
++            per_constraints={"max_requests": [100, None, 200, 300, 400]},
++        )
+diff --git a/tests/unit/benchmark/test_profiles.py b/tests/unit/benchmark/test_profiles.py
+new file mode 100644
+index 0000000..68c0e4f
+--- /dev/null
++++ b/tests/unit/benchmark/test_profiles.py
+@@ -0,0 +1,128 @@
++
++from __future__ import annotations
++
++from unittest.mock import Mock
++
++import pytest
++
++from guidellm.benchmark.profiles import (
++    AsyncConstantStrategy,
++    Profile,
++    SweepProfile,
++    SynchronousStrategy,
++    ThroughputStrategy,
++)
++from guidellm.scheduler import Constraint, ConstraintsInitializerFactory, SchedulingStrategy, MaxDurationConstraint, MaxNumberConstraint
++
++
++def test_sweep_profile_strategies_generator_adaptive_rates():
++    """
++    Tests that the SweepProfile strategies_generator yields the correct sequence of
++    strategies with adaptively calculated rates.
++    """
++    # 1. Initialize SweepProfile
++    profile = SweepProfile(sweep_size=4, strategy_type="constant", max_concurrency=16)
++    generator = profile.strategies_generator()
++
++    # 2. First step should be SynchronousStrategy
++    strategy, constraints = next(generator)
++    assert isinstance(strategy, SynchronousStrategy)
++
++    # 3. Send mock benchmark result for the synchronous run
++    mock_sync_benchmark = Mock()
++    mock_sync_benchmark.request_throughput.successful.mean = 50.0
++    strategy, constraints = generator.send(mock_sync_benchmark)
++
++    # 4. Second step should be ThroughputStrategy
++    assert isinstance(strategy, ThroughputStrategy)
++    assert strategy.max_concurrency == 16
++
++    # 5. Send mock benchmark result for the throughput run
++    mock_throughput_benchmark = Mock()
++    mock_throughput_benchmark.request_throughput.successful.mean = 200.0
++    strategy, constraints = generator.send(mock_throughput_benchmark)
++
++    # The profile should now have calculated the rates for the async strategies.
++    # np.linspace(50, 200, 3) -> [50., 125., 200.]. After slicing [1:], it's [125., 200.]
++    assert profile.measured_rates == [125.0, 200.0]
++
++    # 6. Third step should be AsyncConstantStrategy with the first calculated rate
++    assert isinstance(strategy, AsyncConstantStrategy)
++    assert strategy.rate == 125.0
++    assert strategy.max_concurrency == 16
++
++    # 7. Send a dummy benchmark result
++    mock_async_benchmark_1 = Mock()
++    strategy, constraints = generator.send(mock_async_benchmark_1)
++
++    # 8. Fourth step should be AsyncConstantStrategy with the second calculated rate
++    assert isinstance(strategy, AsyncConstantStrategy)
++    assert strategy.rate == 200.0
++    assert strategy.max_concurrency == 16
++
++    # 9. Send the final dummy benchmark, expecting the generator to stop
++    mock_async_benchmark_2 = Mock()
++    with pytest.raises(StopIteration):
++        generator.send(mock_async_benchmark_2)
++
++
++def test_sweep_profile_strategy_constraints():
++    """
++    Tests that the SweepProfile applies both shared and per-strategy constraints
++    correctly at each step of the strategy generation process.
++    """
++    # 1. Initialize SweepProfile with both shared and per-strategy constraints.
++    # `max_duration` is shared across all steps.
++    # `max_requests` has a specific value for each step.
++    # `max_errors` is specified for some steps and disabled (None) for others.
++    profile = SweepProfile(
++        sweep_size=5,
++        strategy_type="constant",
++        rate=[1.0],  # Dummy rate, not directly used by constraints test
++        max_duration=60,
++        per_constraints={
++            "max_requests": [10, 100, 200, 300, 400],
++            "max_errors": [1, 5, 10, 15, 20],
++        },
++    )
++
++    # 2. Verify that constraints were parsed and separated correctly.
++    assert profile.per_constraints == {
++        "max_requests": [10, 100, 200, 300, 400],
++        "max_errors": [1, 5, 10, 15, 20],
++    }
++
++    generator = profile.strategies_generator()
++    mock_benchmark = Mock()
++    mock_benchmark.request_throughput.successful.mean = 50.0
++
++    # 3. Test Step 1: Synchronous Strategy
++    strategy, constraints_dict = next(generator)
++    assert isinstance(strategy, SynchronousStrategy)
++    assert constraints_dict["max_requests"].max_num == 10
++
++    # 4. Test Step 2: Throughput Strategy
++    strategy, constraints_dict = generator.send(mock_benchmark)
++    assert isinstance(strategy, ThroughputStrategy)
++    assert constraints_dict["max_requests"].max_num == 100
++    assert constraints_dict["max_errors"].max_errors == 5
++
++    # 5. Test Step 3, 4, 5: Async Strategies
++    expected_async_max_requests = [200, 300, 400]
++    expected_async_max_errors = [10, 15, 20]
++    for i in range(3):
++        strategy, constraints_dict  = generator.send(mock_benchmark)
++        assert isinstance(strategy, AsyncConstantStrategy)
++        assert constraints_dict is not None
++        # Check shared and per-strategy constraints for this async step
++        assert constraints_dict["max_requests"].max_num  == expected_async_max_requests[i]
++        if expected_async_max_errors[i] is not None:
++            assert "max_errors" in constraints_dict
++            assert constraints_dict["max_errors"].max_errors == expected_async_max_errors[i]
++        else:
++            assert "max_errors" not in constraints_dict
++
++    # 6. Expect StopIteration after the last step
++    with pytest.raises(StopIteration):
++        generator.send(mock_benchmark)
++
+diff --git a/tests/unit/test_main.py b/tests/unit/test_main.py
+index 134f553..e2852f7 100644
+--- a/tests/unit/test_main.py
++++ b/tests/unit/test_main.py
+@@ -1,6 +1,6 @@
+ import json
+ from pathlib import Path
+-from unittest.mock import patch
++from unittest.mock import patch, AsyncMock
+ 
+ import pytest
+ from click.testing import CliRunner
+@@ -83,3 +83,34 @@ def test_cli_backend_args_header_removal(mock_benchmark_func, tmp_path: Path):
+     backend_args = scenario.backend_kwargs
+     expected_headers = {"Authorization": None, "Custom-Header": "Custom-Value"}
+     assert backend_args["headers"] == expected_headers
++@patch("guidellm.__main__.benchmark_generative_text", new_callable=AsyncMock)
++def test_cli_passes_per_constraints(mock_benchmark_func):
++    runner = CliRunner()
++    result = runner.invoke(
++        cli,
++        [
++            "benchmark",
++            "run",
++            "--target",
++            "http://localhost:9",
++            "--data",
++            "prompt_tokens=1,output_tokens=1",
++            "--profile",
++            "sweep",
++            "--rate",
++            "5",
++            "--max-requests",
++            "1",
++            "--per-constraints",
++            '{"max_seconds":[5,10,15,15,20], "max_requests":[100,200,200,400,400]}',
++        ],
++        catch_exceptions=False,
++    )
++
++    assert result.exit_code == 0, result.output
++    mock_benchmark_func.assert_called_once()
++    args = mock_benchmark_func.call_args.kwargs["args"]
++    assert args.per_constraints == {
++        "max_seconds": [5,10,15,15,20],
++        "max_requests": [100,200,200,400,400],
++    }
+-- 
+2.34.1
+
