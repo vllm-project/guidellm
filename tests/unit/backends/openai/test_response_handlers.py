@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from guidellm.backends import (
+from guidellm.backends.openai.response_handlers import (
     AudioResponseHandler,
     ChatCompletionsResponseHandler,
     GenerationResponseHandler,
@@ -22,6 +22,15 @@ def generation_request():
             method="POST",
             body={"prompt": "Test prompt"},
         ),
+    )
+
+
+@pytest.fixture
+def generation_arguments():
+    """Create basic GenerationRequestArguments for testing."""
+    return GenerationRequestArguments(
+        method="POST",
+        body={"prompt": "Test prompt"},
     )
 
 
@@ -156,6 +165,7 @@ class TestTextCompletionsResponseHandler:
         self,
         valid_instances,
         generation_request,
+        generation_arguments,
         response,
         expected_text,
         expected_input_tokens,
@@ -164,7 +174,9 @@ class TestTextCompletionsResponseHandler:
         """Test compile_non_streaming method."""
         instance: TextCompletionsResponseHandler = valid_instances
 
-        result = instance.compile_non_streaming(generation_request, response)
+        result = instance.compile_non_streaming(
+            generation_request, generation_arguments, response
+        )
 
         assert result.text == expected_text
         assert result.input_metrics.text_tokens == expected_input_tokens
@@ -213,6 +225,7 @@ class TestTextCompletionsResponseHandler:
         self,
         valid_instances,
         generation_request,
+        generation_arguments,
         lines,
         expected_text,
         expected_input_tokens,
@@ -229,7 +242,7 @@ class TestTextCompletionsResponseHandler:
             elif result is None:
                 break
 
-        response = instance.compile_streaming(generation_request)
+        response = instance.compile_streaming(generation_request, generation_arguments)
         assert response.text == expected_text
         assert response.input_metrics.text_tokens == expected_input_tokens
         assert response.output_metrics.text_tokens == expected_output_tokens
@@ -412,6 +425,7 @@ class TestChatCompletionsResponseHandler:
         self,
         valid_instances,
         generation_request,
+        generation_arguments,
         response,
         expected_text,
         expected_input_tokens,
@@ -420,7 +434,9 @@ class TestChatCompletionsResponseHandler:
         """Test compile_non_streaming method for chat completions."""
         instance: ChatCompletionsResponseHandler = valid_instances
 
-        result = instance.compile_non_streaming(generation_request, response)
+        result = instance.compile_non_streaming(
+            generation_request, generation_arguments, response
+        )
 
         assert result.text == expected_text
         assert result.input_metrics.text_tokens == expected_input_tokens
@@ -467,6 +483,7 @@ class TestChatCompletionsResponseHandler:
         self,
         valid_instances,
         generation_request,
+        generation_arguments,
         lines,
         expected_text,
         expected_input_tokens,
@@ -483,7 +500,7 @@ class TestChatCompletionsResponseHandler:
             elif result is None:
                 break
 
-        response = instance.compile_streaming(generation_request)
+        response = instance.compile_streaming(generation_request, generation_arguments)
         assert response.text == expected_text
         assert response.input_metrics.text_tokens == expected_input_tokens
         assert response.output_metrics.text_tokens == expected_output_tokens

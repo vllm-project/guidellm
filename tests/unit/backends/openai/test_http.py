@@ -10,7 +10,11 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from guidellm.backends import Backend, OpenAIHTTPBackend
+from guidellm.backends.backend import Backend
+from guidellm.backends.openai.http import OpenAIHTTPBackend
+from guidellm.backends.openai.response_handlers import (
+    GenerationResponseHandler,
+)
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
@@ -47,6 +51,11 @@ class TestOpenAIHTTPBackend:
         constructor_args = request.param
         instance = OpenAIHTTPBackend(**constructor_args)
         return instance, constructor_args
+
+    @pytest.fixture
+    def mock_response_handler(self):
+        """Fixture providing a mocked GenerationResponseHandler for testing."""
+        return Mock(spec=GenerationResponseHandler)
 
     @pytest.mark.smoke
     def test_class_signatures(self):
@@ -506,7 +515,7 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import (
+        from guidellm.backends.openai.response_handlers import (
             GenerationResponseHandler,
             GenerationResponseHandlerFactory,
         )
@@ -565,7 +574,7 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import (
+        from guidellm.backends.openai.response_handlers import (
             GenerationResponseHandler,
             GenerationResponseHandlerFactory,
         )
@@ -622,7 +631,7 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import (
+        from guidellm.backends.openai.response_handlers import (
             GenerationResponseHandler,
             GenerationResponseHandlerFactory,
         )
@@ -680,7 +689,7 @@ class TestOpenAIHTTPBackend:
         )
 
         # Mock response handler
-        from guidellm.backends.response_handlers import (
+        from guidellm.backends.openai.response_handlers import (
             GenerationResponseHandler,
             GenerationResponseHandlerFactory,
         )
