@@ -2,7 +2,7 @@
 set -ex
 
 usage() {
-    echo "Script to generate pylock.toml"
+    echo "Script to generate python dependency lock"
     echo "Usage: $0 [-f] [-h]"
     echo "  -f    Force update of all dependencies"
     echo "  -h    Show this help message"
@@ -31,11 +31,3 @@ if [ $FORCE_REGEN -eq 1 ]; then
 else
     uv lock
 fi
-# NOTE: Ensure pre-commit config uses same arguments
-uv export \
-    --frozen \
-    --all-groups \
-    --all-extras \
-    --format=pylock.toml \
-    --output-file=pylock.toml \
-    --quiet

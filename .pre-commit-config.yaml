@@ -11,16 +11,6 @@ repos:
   hooks:
     - id: uv-lock
       name: check uv.lock file matches pyproject
-    - id: uv-export
-      name: Update pylock to match uv.lock
-      # NOTE: Arguments should match ./scripts/generate_pylock.sh
-      args:
-        - "--frozen"
-        - "--all-groups"
-        - "--all-extras"
-        - "--format=pylock.toml"
-        - "--output-file=pylock.toml"
-        - "--quiet"
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.11.7
   hooks:
