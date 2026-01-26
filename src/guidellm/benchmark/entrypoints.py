@@ -497,6 +497,7 @@ async def benchmark_generative_text(
         data_samples=args.data_samples,
         processor=processor,
         processor_args=args.processor_args,
+        data_column_mapper=args.data_column_mapper,
         data_preprocessors=args.data_preprocessors,
         data_finalizer=args.data_finalizer,
         data_collator=args.data_collator,
