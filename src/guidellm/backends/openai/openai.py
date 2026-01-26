@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -27,7 +27,18 @@ from guidellm.schemas import (
     RequestInfo,
 )
 
-__all__ = ["OpenAIHTTPBackend"]
+__all__ = [
+    "OpenAIHTTPBackend",
+    "OpenAIRequestType",
+]
+
+
+OpenAIRequestType = Literal[
+    "text_completions",
+    "chat_completions",
+    "audio_transcriptions",
+    "audio_translations",
+]
 
 
 @Backend.register("openai_http")
@@ -57,6 +68,7 @@ class OpenAIHTTPBackend(Backend):
     def __init__(
         self,
         target: str,
+        request_type: OpenAIRequestType,
         model: str = "",
         api_key: str | None = None,
         api_routes: dict[str, str] | None = None,
@@ -89,6 +101,7 @@ class OpenAIHTTPBackend(Backend):
 
         # Request Values
         self.target = target.rstrip("/").removesuffix("/v1")
+        self.request_type = request_type
         self.model = model
         self.api_key = api_key
 
@@ -259,9 +272,7 @@ class OpenAIHTTPBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-        request_formatter = GenerationRequestFormatterFactory.create(
-            request.request_type
-        )
+        request_formatter = GenerationRequestFormatterFactory.create(self.request_type)
         arguments: GenerationRequestArguments = request_formatter.format(
             request,
             model=self.model,
@@ -270,8 +281,8 @@ class OpenAIHTTPBackend(Backend):
             max_tokens=self.max_tokens,
         )
 
-        if (request_path := self.api_routes.get(request.request_type)) is None:
-            raise ValueError(f"Unsupported request type '{request.request_type}'")
+        if (request_path := self.api_routes.get(self.request_type)) is None:
+            raise ValueError(f"Unsupported request type '{self.request_type}'")
 
         request_url = f"{self.target}/{request_path}"
         request_files = (
@@ -285,7 +296,7 @@ class OpenAIHTTPBackend(Backend):
         request_json = arguments.body if not request_files else None
         request_data = arguments.body if request_files else None
         response_handler = GenerationResponseHandlerFactory.create(
-            request.request_type, handler_overrides=self.response_handlers
+            self.request_type, handler_overrides=self.response_handlers
         )
 
         if not arguments.stream:

@@ -26,10 +26,6 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerationRequest]):
     aggregating usage metrics from the provided columns.
     """
 
-    def __init__(self, request_type: str) -> None:
-        # TODO: Drop this in favor stting on the backend
-        self.request_type = request_type
-
     def __call__(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]
     ) -> GenerationRequest:
@@ -114,7 +110,6 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerationRequest]):
 
         # TODO: Filter columns to only those needed for the request
         return GenerationRequest(
-            request_type=self.request_type,
             columns=columns,
             input_metrics=input_metrics,
             output_metrics=output_metrics,

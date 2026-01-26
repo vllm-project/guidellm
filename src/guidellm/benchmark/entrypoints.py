@@ -81,7 +81,7 @@ async def resolve_backend(
     target: str,
     model: str | None,
     console: Console | None = None,
-    **backend_kwargs: dict[str, Any],
+    **backend_kwargs: Any,
 ) -> tuple[Backend, str]:
     """
     Initialize and validate a backend instance for benchmarking execution.
@@ -231,7 +231,6 @@ def resolve_item_from_registry(
 async def resolve_request_loader(
     data: list[Any],
     model: str,
-    request_type: str,
     data_args: list[dict[str, Any]] | None,
     data_samples: int,
     processor: ProcessorInputT | None,
@@ -304,7 +303,6 @@ async def resolve_request_loader(
         DatasetFinalizer,  # type: ignore [type-abstract]
         FinalizerRegistry,
         data_finalizer,
-        extras={"request_type": request_type},
     )
 
     request_loader: DataLoader[GenerationRequest] = DataLoader(
@@ -483,6 +481,7 @@ async def benchmark_generative_text(
         target=args.target,
         model=args.model,
         console=console,
+        request_type=args.request_type,
         **(args.backend_kwargs or {}),
     )
     processor = await resolve_processor(
@@ -491,7 +490,6 @@ async def benchmark_generative_text(
     request_loader = await resolve_request_loader(
         data=args.data,
         model=model,
-        request_type=args.request_type,
         data_args=args.data_args,
         data_samples=args.data_samples,
         processor=processor,

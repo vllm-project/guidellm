@@ -1,4 +1,4 @@
-from .openai import OpenAIHTTPBackend
+from .openai import OpenAIHTTPBackend, OpenAIRequestType
 from .response_handlers import (
     AudioResponseHandler,
     ChatCompletionsResponseHandler,
@@ -13,5 +13,6 @@ __all__ = [
     "GenerationResponseHandler",
     "GenerationResponseHandlerFactory",
     "OpenAIHTTPBackend",
+    "OpenAIRequestType",
     "TextCompletionsResponseHandler",
 ]
