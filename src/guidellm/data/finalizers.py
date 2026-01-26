@@ -108,7 +108,6 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerationRequest]):
                     input_metrics.audio_bytes or 0
                 ) + audio_bytes
 
-        # TODO: Filter columns to only those needed for the request
         return GenerationRequest(
             columns=columns,
             input_metrics=input_metrics,
