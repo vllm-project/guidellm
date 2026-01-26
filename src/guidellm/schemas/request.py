@@ -10,7 +10,7 @@ consistent interaction with various AI generation APIs.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import Field, computed_field
 
@@ -19,16 +19,7 @@ from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 __all__ = [
     "GenerationRequest",
     "GenerationRequestArguments",
-    "GenerativeRequestType",
     "UsageMetrics",
-]
-
-
-GenerativeRequestType = Literal[
-    "text_completions",
-    "chat_completions",
-    "audio_transcriptions",
-    "audio_translations",
 ]
 
 
@@ -211,12 +202,6 @@ class GenerationRequest(StandardBaseModel):
     request_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         description="Unique identifier for the request.",
-    )
-    request_type: GenerativeRequestType | str = Field(
-        description=(
-            "Type of request. If url is not provided in arguments, "
-            "this will be used to determine the request url."
-        ),
     )
     columns: dict[str, list[Any]] = Field(
         default_factory=dict,
