@@ -4,7 +4,6 @@ Unit tests for GenerationRequest, GenerationRequestArguments, and UsageMetrics.
 
 from __future__ import annotations
 
-import typing
 import uuid
 
 import pytest
@@ -17,19 +16,6 @@ from guidellm.schemas import (
     StandardBaseModel,
     UsageMetrics,
 )
-from guidellm.schemas.request import GenerativeRequestType
-
-
-@pytest.mark.smoke
-def test_generative_request_type():
-    """Test that GenerativeRequestType is defined correctly."""
-    assert hasattr(typing, "get_args")
-    args = typing.get_args(GenerativeRequestType)
-    assert len(args) == 4
-    assert "text_completions" in args
-    assert "chat_completions" in args
-    assert "audio_transcriptions" in args
-    assert "audio_translations" in args
 
 
 class TestGenerationRequestArguments:
@@ -479,33 +465,41 @@ class TestGenerationRequest:
     @pytest.fixture(
         params=[
             {
-                "request_type": "text_completions",
-                "arguments": GenerationRequestArguments(),
+                "columns": {"text_column": ["Hello world"]},
             },
             {
-                "request_type": "chat_completions",
-                "arguments": GenerationRequestArguments(body={"temperature": 0.7}),
+                "columns": {
+                    "text_column": ["Translate this"],
+                    "prompt_tokens_count_column": [50],
+                },
+                "input_metrics": UsageMetrics(text_tokens=50),
+                "output_metrics": UsageMetrics(text_tokens=100),
             },
             {
                 "request_id": "custom-id",
-                "request_type": "text_completions",
-                "arguments": GenerationRequestArguments(body={"prompt": "test"}),
+                "columns": {"text_column": ["Test prompt"]},
             },
             {
-                "request_type": "audio_transcriptions",
-                "arguments": GenerationRequestArguments(
-                    method="POST",
-                    files={"file": "audio.mp3"},
-                ),
+                "columns": {
+                    "text_column": ["Describe this image"],
+                    "image_column": ["path/to/image.jpg"],
+                },
+                "input_metrics": UsageMetrics(text_tokens=10, image_tokens=256),
+            },
+            {
+                "columns": {
+                    "audio_column": ["path/to/audio.mp3"],
+                },
                 "input_metrics": UsageMetrics(audio_seconds=30.0),
                 "output_metrics": UsageMetrics(text_tokens=100),
             },
         ],
         ids=[
             "minimal",
-            "with_body",
+            "with_token_counts",
             "custom_id",
-            "with_metrics",
+            "multimodal",
+            "audio",
         ],
     )
     def valid_instances(self, request):
@@ -525,8 +519,7 @@ class TestGenerationRequest:
         fields = GenerationRequest.model_fields
         expected_fields = [
             "request_id",
-            "request_type",
-            "arguments",
+            "columns",
             "input_metrics",
             "output_metrics",
         ]
@@ -538,11 +531,10 @@ class TestGenerationRequest:
         """Test GenerationRequest initialization."""
         instance, constructor_args = valid_instances
         assert isinstance(instance, GenerationRequest)
-        assert instance.arguments == constructor_args["arguments"]
 
-        # Check request_type
-        expected_request_type = constructor_args.get("request_type", "text_completions")
-        assert instance.request_type == expected_request_type
+        # Check columns
+        expected_columns = constructor_args.get("columns", {})
+        assert instance.columns == expected_columns
 
         # Check request_id
         if "request_id" in constructor_args:
@@ -566,58 +558,42 @@ class TestGenerationRequest:
     @pytest.mark.sanity
     def test_invalid_initialization_values(self):
         """Test GenerationRequest with invalid field values."""
-        # Invalid request_type (not a string)
+        # Invalid columns type (not a dict)
         with pytest.raises(ValidationError):
             GenerationRequest(
-                request_type=123,
-                arguments=GenerationRequestArguments(),
-            )
-
-        # Invalid arguments type
-        with pytest.raises(ValidationError):
-            GenerationRequest(
-                request_type="text_completions",
-                arguments="not_a_dict",
+                columns="not_a_dict",
             )
 
         # Invalid input_metrics type
         with pytest.raises(ValidationError):
             GenerationRequest(
-                request_type="text_completions",
-                arguments=GenerationRequestArguments(),
+                columns={"text_column": ["test"]},
                 input_metrics="invalid",
             )
 
         # Invalid output_metrics type
         with pytest.raises(ValidationError):
             GenerationRequest(
-                request_type="text_completions",
-                arguments=GenerationRequestArguments(),
+                columns={"text_column": ["test"]},
                 output_metrics=123,
             )
 
     @pytest.mark.sanity
-    def test_invalid_initialization_missing(self):
-        """Test GenerationRequest initialization without required field."""
-        # Missing required 'request_type' field
-        with pytest.raises(ValidationError):
-            GenerationRequest()
-
-        # Missing required 'arguments' field
-        with pytest.raises(ValidationError):
-            GenerationRequest(request_type="text_completions")
+    def test_initialization_all_optional(self):
+        """Test GenerationRequest initialization without any fields."""
+        # Should succeed since all fields are optional
+        request = GenerationRequest()
+        assert isinstance(request, GenerationRequest)
+        assert isinstance(request.request_id, str)
+        assert request.columns == {}
+        assert isinstance(request.input_metrics, UsageMetrics)
+        assert isinstance(request.output_metrics, UsageMetrics)
 
     @pytest.mark.smoke
     def test_auto_id_generation(self):
         """Test that request_id is auto-generated if not provided."""
-        request1 = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
-        )
-        request2 = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
-        )
+        request1 = GenerationRequest()
+        request2 = GenerationRequest()
 
         assert request1.request_id != request2.request_id
         assert len(request1.request_id) > 0
@@ -629,63 +605,35 @@ class TestGenerationRequest:
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        ("request_type", "expected_type"),
+        ("columns", "expected_columns"),
         [
-            ("text_completions", "text_completions"),
-            ("chat_completions", "chat_completions"),
-            ("audio_transcriptions", "audio_transcriptions"),
-            ("audio_translations", "audio_translations"),
-            ("custom_type", "custom_type"),
+            ({"text_column": ["Hello"]}, {"text_column": ["Hello"]}),
+            (
+                {"text_column": ["Test"], "prompt_tokens_count_column": [50]},
+                {"text_column": ["Test"], "prompt_tokens_count_column": [50]},
+            ),
+            (
+                {"image_column": ["img.jpg"], "text_column": ["Describe"]},
+                {"image_column": ["img.jpg"], "text_column": ["Describe"]},
+            ),
+            ({"audio_column": ["audio.mp3"]}, {"audio_column": ["audio.mp3"]}),
         ],
         ids=[
-            "text_completions",
-            "chat_completions",
-            "audio_transcriptions",
-            "audio_translations",
-            "custom_type",
+            "text_only",
+            "text_with_token_count",
+            "multimodal_image",
+            "audio",
         ],
     )
-    def test_request_types(self, request_type, expected_type):
-        """Test GenerationRequest with different request types."""
-        request = GenerationRequest(
-            request_type=request_type,
-            arguments=GenerationRequestArguments(),
-        )
-        assert request.request_type == expected_type
-
-    @pytest.mark.regression
-    def test_content_types(self):
-        """Test GenerationRequest with different argument types."""
-        # Basic arguments
-        request1 = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
-        )
-        assert isinstance(request1.arguments, GenerationRequestArguments)
-
-        # Arguments with body
-        request2 = GenerationRequest(
-            request_type="chat_completions",
-            arguments=GenerationRequestArguments(body={"prompt": "test"}),
-        )
-        assert request2.arguments.body == {"prompt": "test"}
-
-        # Arguments with headers
-        request3 = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(
-                headers={"Authorization": "Bearer token"}
-            ),
-        )
-        assert request3.arguments.headers == {"Authorization": "Bearer token"}
+    def test_column_types(self, columns, expected_columns):
+        """Test GenerationRequest with different column types."""
+        request = GenerationRequest(columns=columns)
+        assert request.columns == expected_columns
 
     @pytest.mark.smoke
     def test_metrics_defaults(self):
         """Test that input_metrics and output_metrics are initialized."""
-        request = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
-        )
+        request = GenerationRequest()
 
         assert isinstance(request.input_metrics, UsageMetrics)
         assert isinstance(request.output_metrics, UsageMetrics)
@@ -698,14 +646,13 @@ class TestGenerationRequest:
         instance, constructor_args = valid_instances
         data_dict = instance.model_dump()
         assert isinstance(data_dict, dict)
-        assert "arguments" in data_dict
+        assert "columns" in data_dict
         assert "input_metrics" in data_dict
         assert "output_metrics" in data_dict
 
         # Test reconstruction
         reconstructed = GenerationRequest.model_validate(data_dict)
-        assert reconstructed.arguments == instance.arguments
-        assert reconstructed.request_type == instance.request_type
+        assert reconstructed.columns == instance.columns
         assert reconstructed.request_id == instance.request_id
         assert reconstructed.input_metrics.model_dump() == (
             instance.input_metrics.model_dump()
