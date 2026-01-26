@@ -68,8 +68,8 @@ class OpenAIHTTPBackend(Backend):
     def __init__(
         self,
         target: str,
-        request_type: OpenAIRequestType,
         model: str = "",
+        request_type: OpenAIRequestType = "chat_completions",
         api_key: str | None = None,
         api_routes: dict[str, str] | None = None,
         response_handlers: dict[str, Any] | None = None,
