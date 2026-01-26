@@ -1,4 +1,4 @@
-from .openai import OpenAIHTTPBackend, OpenAIRequestType
+from .http import OpenAIHTTPBackend, OpenAIRequestType
 from .response_handlers import (
     AudioResponseHandler,
     ChatCompletionsResponseHandler,
