@@ -244,7 +244,8 @@ class OpenAIHTTPBackend(Backend):
             return self.model
 
         models = await self.available_models()
-        return models[0] if models else ""
+        self.model = models[0] if models else ""
+        return self.model
 
     async def resolve(  # type: ignore[override]
         self,
@@ -275,7 +276,7 @@ class OpenAIHTTPBackend(Backend):
         request_formatter = GenerationRequestFormatterFactory.create(self.request_type)
         arguments: GenerationRequestArguments = request_formatter.format(
             request,
-            model=self.model,
+            model=(await self.default_model()),
             stream=self.stream,
             extras=self.extras,
             max_tokens=self.max_tokens,
