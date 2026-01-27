@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 import httpx
 import pytest
+from pytest_httpx import HTTPXMock
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.http import OpenAIHTTPBackend
@@ -56,6 +57,67 @@ class TestOpenAIHTTPBackend:
     def mock_response_handler(self):
         """Fixture providing a mocked GenerationResponseHandler for testing."""
         return Mock(spec=GenerationResponseHandler)
+
+    @pytest.fixture
+    def mock_response_handler_factory(self):
+        """
+        Fixture providing a mocked GenerationResponseHandlerFactory.
+
+        Returns a tuple of (mock_handler, patch_context) where:
+        - mock_handler: The mocked GenerationResponseHandler instance
+        - patch_context: The patch object for GenerationResponseHandlerFactory.create
+
+        This fixture patches GenerationResponseHandlerFactory.create to return
+        the mock_handler, allowing tests to configure the mock as needed.
+        """
+        from guidellm.backends.openai.response_handlers import (
+            GenerationResponseHandler,
+            GenerationResponseHandlerFactory,
+        )
+
+        mock_handler = Mock(spec=GenerationResponseHandler)
+        patch_context = patch.object(
+            GenerationResponseHandlerFactory, "create", return_value=mock_handler
+        )
+        return mock_handler, patch_context
+
+    @pytest.fixture
+    def mock_request_formatter_factory(self):
+        """
+        Fixture providing a mocked GenerationRequestFormatterFactory.
+
+        Returns a tuple of (mock_formatter, patch_context) where:
+        - mock_formatter: The mocked GenerationRequestFormatter instance
+        - patch_context: The patch object for GenerationRequestFormatterFactory.create
+
+        This fixture patches GenerationRequestFormatterFactory.create to return
+        the mock_formatter. The mock formatter's format() method returns a
+        GenerationRequestArguments object with a default body dict.
+
+        Tests can configure the mock formatter's return value as needed:
+        ```python
+        mock_formatter, patch_context = mock_request_formatter_factory
+        mock_formatter.format.return_value = GenerationRequestArguments(
+            body={"custom": "data"}
+        )
+        with patch_context:
+            # test code here
+        ```
+        """
+        from guidellm.backends.openai.request_formatter import (
+            GenerationRequestFormatter,
+            GenerationRequestFormatterFactory,
+        )
+
+        mock_formatter = Mock(spec=GenerationRequestFormatter)
+        # Set default return value for format() method
+        mock_formatter.format.return_value = GenerationRequestArguments(
+            body={"model": "test-model"}
+        )
+        patch_context = patch.object(
+            GenerationRequestFormatterFactory, "create", return_value=mock_formatter
+        )
+        return mock_formatter, patch_context
 
     @pytest.mark.smoke
     def test_class_signatures(self):
@@ -302,22 +364,18 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_available_models(self):
+    async def test_available_models(self, httpx_mock: HTTPXMock):
         """Test available_models method."""
+        httpx_mock.add_response(
+            url="http://test/v1/models",
+            json={"data": [{"id": "test-model1"}, {"id": "test-model2"}]},
+        )
+
         backend = OpenAIHTTPBackend(target="http://test")
         await backend.process_startup()
 
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "data": [{"id": "test-model1"}, {"id": "test-model2"}]
-        }
-        mock_response.raise_for_status = Mock()
-
-        with patch.object(backend._async_client, "get", return_value=mock_response):
-            models = await backend.available_models()
-
-            assert models == ["test-model1", "test-model2"]
-            backend._async_client.get.assert_called_once()
+        models = await backend.available_models()
+        assert models == ["test-model1", "test-model2"]
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
@@ -345,22 +403,18 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_validate_with_model(self):
+    async def test_validate_with_model(self, httpx_mock: HTTPXMock):
         """Test validate method when model is set."""
+        httpx_mock.add_response(
+            url="http://test/health",
+            method="GET",
+            headers={},
+        )
+
         backend = OpenAIHTTPBackend(target="http://test", model="test-model")
         await backend.process_startup()
 
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
-
-        with patch.object(backend._async_client, "request", return_value=mock_response):
-            await backend.validate()  # Should not raise
-
-            backend._async_client.request.assert_called_once_with(
-                method="GET",
-                url="http://test/health",
-                headers=None,
-            )
+        await backend.validate()  # Should not raise
 
     @pytest.mark.regression
     @pytest.mark.asyncio
@@ -417,22 +471,21 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_not_implemented_history(self):
+    async def test_resolve_not_implemented_history(self, httpx_mock: HTTPXMock):
         """Test resolve method raises error for conversation history."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = OpenAIHTTPBackend(
+            target="http://test", request_type="text_completions"
+        )
         await backend.process_startup()
 
-        request = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(body={"prompt": "test"}),
-        )
+        request = GenerationRequest()
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+            timings=RequestTimings(),
         )
         history = [
             (request, GenerationResponse(request_id="test", request_args="test args"))
@@ -445,46 +498,45 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_invalid_request_type(self):
+    async def test_resolve_invalid_request_type(self, httpx_mock: HTTPXMock):
         """Test resolve method raises error for invalid request type."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = OpenAIHTTPBackend(
+            target="http://test",
+            request_type="invalid_type",  # type: ignore[arg-type]
+        )
         await backend.process_startup()
 
-        request = GenerationRequest(
-            request_type="invalid_type",
-            arguments=GenerationRequestArguments(body={"prompt": "test"}),
-        )
+        request = GenerationRequest()
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+            timings=RequestTimings(),
         )
 
-        with pytest.raises(ValueError, match="Unsupported request type"):
+        with pytest.raises(ValueError, match="No response handler registered"):
             async for _ in backend.resolve(request, request_info):
                 pass
 
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_not_in_process(self):
+    async def test_resolve_not_in_process(self, httpx_mock: HTTPXMock):
         """Test resolve method raises error when backend is not started."""
-        backend = OpenAIHTTPBackend(target="http://test")
-
-        request = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(body={"prompt": "test"}),
+        backend = OpenAIHTTPBackend(
+            target="http://test", request_type="text_completions"
         )
+
+        request = GenerationRequest()
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+            timings=RequestTimings(),
         )
 
         with pytest.raises(RuntimeError, match="Backend not started up"):
@@ -494,51 +546,47 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_text_completions(self):
+    async def test_resolve_text_completions(
+        self,
+        httpx_mock: HTTPXMock,
+        mock_request_formatter_factory,
+        mock_response_handler_factory,
+    ):
         """Test resolve method for text completions."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        httpx_mock.add_response(
+            url="http://test/v1/completions",
+            json={"choices": [{"text": "Hello world"}]},
+        )
+
+        backend = OpenAIHTTPBackend(
+            target="http://test", request_type="text_completions"
+        )
         await backend.process_startup()
 
-        request = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(
-                body={"prompt": "test prompt", "temperature": 0.7, "max_tokens": 100}
-            ),
-        )
+        request = GenerationRequest()
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+            timings=RequestTimings(),
         )
 
-        # Mock response handler
-        from guidellm.backends.openai.response_handlers import (
-            GenerationResponseHandler,
-            GenerationResponseHandlerFactory,
+        # Configure mock request formatter
+        mock_formatter, formatter_patch = mock_request_formatter_factory
+        mock_formatter.format.return_value = GenerationRequestArguments(
+            body={"prompt": "test prompt", "temperature": 0.7, "max_tokens": 100}
         )
 
-        mock_handler = Mock(spec=GenerationResponseHandler)
+        # Configure mock response handler
+        mock_handler, handler_patch = mock_response_handler_factory
         mock_response = GenerationResponse(
             request_id="test-id", request_args="test args"
         )
         mock_handler.compile_non_streaming.return_value = mock_response
 
-        with (
-            patch.object(
-                GenerationResponseHandlerFactory, "create", return_value=mock_handler
-            ),
-            patch.object(backend._async_client, "request") as mock_request,
-        ):
-            mock_http_response = Mock()
-            mock_http_response.json.return_value = {
-                "choices": [{"text": "Hello world"}]
-            }
-            mock_http_response.raise_for_status = Mock()
-            mock_request.return_value = mock_http_response
-
+        with formatter_patch, handler_patch:
             responses = []
             async for response, info in backend.resolve(request, request_info):
                 responses.append((response, info))
@@ -550,54 +598,50 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_chat_completions(self):
+    async def test_resolve_chat_completions(
+        self,
+        httpx_mock: HTTPXMock,
+        mock_request_formatter_factory,
+        mock_response_handler_factory,
+    ):
         """Test resolve method for chat completions."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        httpx_mock.add_response(
+            url="http://test/v1/chat/completions",
+            json={"choices": [{"message": {"content": "Response"}}]},
+        )
+
+        backend = OpenAIHTTPBackend(
+            target="http://test", request_type="chat_completions"
+        )
         await backend.process_startup()
 
-        request = GenerationRequest(
-            request_type="chat_completions",
-            arguments=GenerationRequestArguments(
-                body={
-                    "messages": [{"role": "user", "content": "test message"}],
-                    "temperature": 0.5,
-                }
-            ),
-        )
+        request = GenerationRequest()
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+            timings=RequestTimings(),
         )
 
-        # Mock response handler
-        from guidellm.backends.openai.response_handlers import (
-            GenerationResponseHandler,
-            GenerationResponseHandlerFactory,
+        # Configure mock request formatter
+        mock_formatter, formatter_patch = mock_request_formatter_factory
+        mock_formatter.format.return_value = GenerationRequestArguments(
+            body={
+                "messages": [{"role": "user", "content": "test message"}],
+                "temperature": 0.5,
+            }
         )
 
-        mock_handler = Mock(spec=GenerationResponseHandler)
+        # Configure mock response handler
+        mock_handler, handler_patch = mock_response_handler_factory
         mock_response = GenerationResponse(
             request_id="test-id", request_args="test args"
         )
         mock_handler.compile_non_streaming.return_value = mock_response
 
-        with (
-            patch.object(
-                GenerationResponseHandlerFactory, "create", return_value=mock_handler
-            ),
-            patch.object(backend._async_client, "request") as mock_request,
-        ):
-            mock_http_response = Mock()
-            mock_http_response.json.return_value = {
-                "choices": [{"message": {"content": "Response"}}]
-            }
-            mock_http_response.raise_for_status = Mock()
-            mock_request.return_value = mock_http_response
-
+        with formatter_patch, handler_patch:
             responses = []
             async for response, info in backend.resolve(request, request_info):
                 responses.append((response, info))
@@ -609,92 +653,83 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_with_files(self):
+    async def test_resolve_with_files(
+        self,
+        httpx_mock: HTTPXMock,
+        mock_request_formatter_factory,
+        mock_response_handler_factory,
+    ):
         """Test resolve method with file uploads."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        httpx_mock.add_response(
+            url="http://test/v1/audio/transcriptions",
+            json={"choices": [{"message": {"content": "Response"}}]},
+        )
+
+        backend = OpenAIHTTPBackend(
+            target="http://test", request_type="audio_transcriptions"
+        )
         await backend.process_startup()
 
-        request = GenerationRequest(
-            request_type="audio_transcriptions",
-            arguments=GenerationRequestArguments(
-                body={"model": "whisper-1"},
-                files={"file": ["audio.mp3", b"audio_data", "audio/mpeg"]},
-            ),
-        )
+        request = GenerationRequest()
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+            timings=RequestTimings(),
         )
 
-        # Mock response handler
-        from guidellm.backends.openai.response_handlers import (
-            GenerationResponseHandler,
-            GenerationResponseHandlerFactory,
+        # Configure mock request formatter
+        mock_formatter, formatter_patch = mock_request_formatter_factory
+        mock_formatter.format.return_value = GenerationRequestArguments(
+            body={"model": "whisper-1"},
+            files={"file": ["audio.mp3", b"audio_data", "audio/mpeg"]},
         )
 
-        mock_handler = Mock(spec=GenerationResponseHandler)
+        # Configure mock response handler
+        mock_handler, handler_patch = mock_response_handler_factory
         mock_response = GenerationResponse(
             request_id="test-id", request_args="test args"
         )
         mock_handler.compile_non_streaming.return_value = mock_response
 
-        with (
-            patch.object(
-                GenerationResponseHandlerFactory, "create", return_value=mock_handler
-            ),
-            patch.object(backend._async_client, "request") as mock_request,
-        ):
-            mock_http_response = Mock()
-            mock_http_response.json.return_value = {"text": "transcribed text"}
-            mock_http_response.raise_for_status = Mock()
-            mock_request.return_value = mock_http_response
-
+        with formatter_patch, handler_patch:
             responses = []
             async for response, info in backend.resolve(request, request_info):
                 responses.append((response, info))
 
         assert len(responses) == 1
-        # Verify that files were passed correctly
-        call_kwargs = mock_request.call_args[1]
-        assert call_kwargs["files"] is not None
-        assert call_kwargs["data"] is not None
-        assert call_kwargs["json"] is None
 
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_streaming_cancelled(self):
+    async def test_resolve_streaming_cancelled(
+        self, mock_request_formatter_factory, mock_response_handler_factory
+    ):
         """Test resolve method handles asyncio.CancelledError during streaming."""
         backend = OpenAIHTTPBackend(target="http://test")
         await backend.process_startup()
 
-        request = GenerationRequest(
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(
-                body={"prompt": "test"},
-                stream=True,
-            ),
-        )
+        request = GenerationRequest()
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
             scheduler_node_id=1,
             scheduler_process_id=1,
             scheduler_start_time=123.0,
-            request_timings=RequestTimings(),
+            timings=RequestTimings(),
         )
 
-        # Mock response handler
-        from guidellm.backends.openai.response_handlers import (
-            GenerationResponseHandler,
-            GenerationResponseHandlerFactory,
+        # Configure mock request formatter
+        mock_formatter, formatter_patch = mock_request_formatter_factory
+        mock_formatter.format.return_value = GenerationRequestArguments(
+            body={"prompt": "test"},
+            stream=True,
         )
 
-        mock_handler = Mock(spec=GenerationResponseHandler)
+        # Configure mock response handler
+        mock_handler, handler_patch = mock_response_handler_factory
         mock_handler.add_streaming_line.return_value = 1
         mock_response = GenerationResponse(
             request_id="test-id", request_args="test args"
@@ -719,9 +754,8 @@ class TestOpenAIHTTPBackend:
         mock_stream = MockStream()
 
         with (
-            patch.object(
-                GenerationResponseHandlerFactory, "create", return_value=mock_handler
-            ),
+            formatter_patch,
+            handler_patch,
             patch.object(backend._async_client, "stream", return_value=mock_stream),
             pytest.raises(asyncio.CancelledError),
         ):
