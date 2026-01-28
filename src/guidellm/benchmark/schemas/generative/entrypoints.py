@@ -38,7 +38,6 @@ from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import DatasetFinalizer, DatasetPreprocessor
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
-from guidellm.settings import settings
 
 __all__ = ["BenchmarkGenerativeTextArgs"]
 
@@ -207,7 +206,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         | dict[str, str | list[str]]
         | Literal["generative_column_mapper"]
     ) = Field(
-        default_factory=lambda: settings.dataset.default_column_mapper,
+        default="generative_column_mapper",
         description="Column mapping preprocessor for dataset fields",
     )
     data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str] = (

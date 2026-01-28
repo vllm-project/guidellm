@@ -19,7 +19,6 @@ from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
-from guidellm import settings
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.outputs import (
@@ -287,7 +286,7 @@ async def resolve_request_loader(
     # If no type is specified for the data column mapper, load default
     if isinstance(data_column_mapper, dict) and "type" not in data_column_mapper:
         data_column_mapper = {
-            "type": settings.dataset.default_column_mapper,
+            "type": BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
             **data_column_mapper,
         }
 
