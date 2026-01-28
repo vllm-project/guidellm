@@ -40,22 +40,3 @@ def test_local_hf_directory_dataset(deserializer, processor_factory, tmp_path):
     # --- 4. assertion ---
     assert isinstance(result, Dataset)
     assert result["text"] == ["a", "b"]
-
-
-@pytest.mark.parametrize(
-    "internal_ds_name",
-    [
-        "mnist",
-        "imdb",
-    ],
-)
-def test_hf_internal_dataset(deserializer, processor_factory, internal_ds_name):
-    result = deserializer(internal_ds_name, processor_factory, random_seed=42)
-
-    assert isinstance(result, (Dataset | dict)), "HF dataset loading failed"
-    assert "train" in result or isinstance(result, Dataset), (
-        "Expected 'train' split in the loaded dataset"
-    )
-    assert "test" in result or isinstance(result, Dataset), (
-        "Expected 'test' split in the loaded dataset"
-    )

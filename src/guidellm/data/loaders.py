@@ -11,6 +11,7 @@ from torch.utils.data.dataset import IterableDataset as TorchIterableDataset
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
+from guidellm.data.finalizers import DatasetFinalizer
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
 from guidellm.logger import logger
 from guidellm.utils import InfoMixin
@@ -29,6 +30,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         data_samples: int,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
+        finalizer: DatasetFinalizer[DataT],
         random_seed: int,
     ):
         if not data or not isinstance(data, list):
@@ -60,6 +62,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                     datasets=self.datasets,
                     data_args=data_args,
                 )
+        self.finalizer = finalizer
         self.precache: list[Any] | None = (
             list(self.generator(data_samples)) if data_samples else None
         )
@@ -113,12 +116,11 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                     ):
                         continue
 
+                    # Apply preprocessors in sequence
                     for preprocessor in self.preprocessors:
-                        # This can assign a GenerationRequest, which would then be
-                        # passed into the preprocessor, which is a type violation.
-                        # This should be fixed at some point.
-                        row = preprocessor(row)  # type: ignore[assignment]
-                    yield row  # type: ignore[misc]
+                        row = preprocessor(row)
+
+                    yield self.finalizer(row)
                 except StopIteration:
                     raise  # Stop iteration when any dataset is exhausted
                 except Exception as err:  # noqa: BLE001 # Exception logged
@@ -140,6 +142,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
         data_samples: int,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
+        finalizer: DatasetFinalizer[DataT],
         collator: Callable,
         sampler: Sampler[int] | Literal["shuffle"] | None = None,
         num_workers: int | None = 1,
@@ -152,6 +155,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
             data_samples=data_samples,
             processor_factory=processor_factory,
             preprocessors=preprocessors,
+            finalizer=finalizer,
             random_seed=random_seed,
         )
         self._info: dict[str, Any] = {
@@ -161,6 +165,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
             "preprocessors": [
                 preprocessor.__class__.__name__ for preprocessor in preprocessors
             ],
+            "finalizer": finalizer.__class__.__name__,
             "collator": collator.__class__.__name__,
             "sampler": str(sampler),
             "num_workers": num_workers,
