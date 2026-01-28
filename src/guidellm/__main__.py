@@ -37,7 +37,7 @@ try:
 except ImportError:
     uvloop = None  # type: ignore[assignment] # Optional dependency
 
-from guidellm.backends import BackendType, OpenAIRequestType
+from guidellm.backends import BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
@@ -178,12 +178,12 @@ def benchmark():
 )
 # Data configuration
 @click.option(
+    "--request-format",
     "--request-type",
-    default=BenchmarkGenerativeTextArgs.get_default("request_type"),
-    type=click.Choice(list(get_literal_vals(OpenAIRequestType))),
+    default=BenchmarkGenerativeTextArgs.get_default("request_format"),
     help=(
-        f"Request type to create for each data sample. "
-        f"Options: {', '.join(get_literal_vals(OpenAIRequestType))}."
+        "Format to use for requests. Options depend on backend. "
+        "If not provided, uses backend default."
     ),
 )
 @click.option(
