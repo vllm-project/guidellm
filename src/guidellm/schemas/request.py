@@ -191,7 +191,6 @@ class GenerationRequest(StandardBaseModel):
 
     Example::
         request = GenerationRequest(
-            request_type="text_completions",
             arguments=GenerationRequestArguments(
                 method="POST",
                 body={"prompt": "Hello world", "max_tokens": 100}

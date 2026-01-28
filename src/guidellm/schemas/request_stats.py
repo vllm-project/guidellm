@@ -35,7 +35,6 @@ class GenerativeRequestStats(StandardBaseDict):
     ::
         stats = GenerativeRequestStats(
             request_id="req_123",
-            request_type="text_completion",
             info=request_info,
             input_metrics=input_usage,
             output_metrics=output_usage

@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import httpx
 
@@ -69,7 +69,7 @@ class OpenAIHTTPBackend(Backend):
         self,
         target: str,
         model: str = "",
-        request_type: OpenAIRequestType = "chat_completions",
+        request_format: OpenAIRequestType | None = None,
         api_key: str | None = None,
         api_routes: dict[str, str] | None = None,
         response_handlers: dict[str, Any] | None = None,
@@ -101,9 +101,17 @@ class OpenAIHTTPBackend(Backend):
 
         # Request Values
         self.target = target.rstrip("/").removesuffix("/v1")
-        self.request_type = request_type
         self.model = model
         self.api_key = api_key
+        if request_format is None:
+            self.request_type: OpenAIRequestType = "chat_completions"
+        else:
+            if request_format not in get_args(OpenAIRequestType):
+                raise ValueError(
+                    f"Invalid request_format '{request_format}'. Must be one of: "
+                    f"{', '.join(get_args(OpenAIRequestType))}"
+                )
+            self.request_type = request_format
 
         # Store configuration
         self.api_routes = api_routes or {
