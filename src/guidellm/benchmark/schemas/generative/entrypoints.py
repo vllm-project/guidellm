@@ -179,11 +179,11 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     backend_kwargs: dict[str, Any] | None = Field(
         default=None, description="Additional backend configuration arguments"
     )
-    request_type: str = Field(
-        default_factory=lambda: settings.preferred_route,
+    request_format: str | None = Field(
+        default=None,
         description=(
-            "Request type for backend operations;"
-            " shorthand for backend_kwargs['request_type']"
+            "Query format for backend operations;"
+            " shorthand for backend_kwargs['request_format']"
         ),
     )
     model: str | None = Field(default=None, description="Model identifier for backend")

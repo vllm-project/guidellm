@@ -480,8 +480,8 @@ async def benchmark_generative_text(
         backend=args.backend,
         target=args.target,
         model=args.model,
+        request_format=args.request_format,
         console=console,
-        request_type=args.request_type,
         **(args.backend_kwargs or {}),
     )
     processor = await resolve_processor(
