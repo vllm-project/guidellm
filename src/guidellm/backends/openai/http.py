@@ -31,6 +31,24 @@ __all__ = [
 ]
 
 
+DEFAULT_API_PATHS = {
+    "/health": "health",
+    "/models": "v1/models",
+    "/completions": "v1/completions",
+    "/chat/completions": "v1/chat/completions",
+    "/audio/transcriptions": "v1/audio/transcriptions",
+    "/audio/translations": "v1/audio/translations",
+}
+
+# Legacy aliases for common API paths
+LEGACY_API_ALIASES = {
+    "text_completions": "/completions",
+    "chat_completions": "/chat/completions",
+    "audio_transcriptions": "/audio/transcriptions",
+    "audio_translations": "/audio/translations",
+}
+
+
 @Backend.register("openai_http")
 class OpenAIHTTPBackend(Backend):
     """
@@ -94,27 +112,23 @@ class OpenAIHTTPBackend(Backend):
         self.model = model
         self.api_key = api_key
 
-        # Validate the request handler
-        valid_formats = OpenAIRequestHandlerFactory.registered_names()
+        # Resolve request format
         if request_format is None:
-            self.request_type: str = "/chat/completions"
-        else:
-            if request_format not in valid_formats:
-                raise ValueError(
-                    f"Invalid request_format '{request_format}'. Must be one of: "
-                    f"{', '.join(valid_formats)}"
-                )
-            self.request_type = request_format
+            request_format = "/chat/completions"
+        elif request_format in LEGACY_API_ALIASES:
+            request_format = LEGACY_API_ALIASES[request_format]
+
+        # Validate that the request handler exists
+        valid_formats = OpenAIRequestHandlerFactory.registered_names()
+        if request_format not in valid_formats:
+            raise ValueError(
+                f"Invalid request_format '{request_format}'. Must be one of: "
+                f"{', '.join(valid_formats)}"
+            )
+        self.request_type = request_format
 
         # Store configuration
-        self.api_routes = api_routes or {
-            "health": "health",
-            "models": "v1/models",
-            "text_completions": "v1/completions",
-            "chat_completions": "v1/chat/completions",
-            "audio_transcriptions": "v1/audio/transcriptions",
-            "audio_translations": "v1/audio/translations",
-        }
+        self.api_routes = api_routes or DEFAULT_API_PATHS
         self.request_handlers = request_handlers
         self.timeout = timeout
         self.http2 = http2
@@ -229,7 +243,7 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        target = f"{self.target}/{self.api_routes['models']}"
+        target = f"{self.target}/{self.api_routes['/models']}"
         response = await self._async_client.get(target, headers=self._build_headers())
         response.raise_for_status()
 
@@ -393,7 +407,7 @@ class OpenAIHTTPBackend(Backend):
             return None
 
         if validate_kwargs is True:
-            validate_kwargs = "health"
+            validate_kwargs = "/health"
 
         if isinstance(validate_kwargs, str) and validate_kwargs in self.api_routes:
             validate_kwargs = f"{self.target}/{self.api_routes[validate_kwargs]}"
