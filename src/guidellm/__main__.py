@@ -422,7 +422,7 @@ def run(**kwargs):  # noqa: C901
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
-        if kwargs.get("outputs_dir", None) is not None:
+        if kwargs.get("output_dir", None) is not None:
             raise click.BadParameter("Cannot use --output-path with --output-dir.")
         path = Path(output_path)
         if path.is_dir():
