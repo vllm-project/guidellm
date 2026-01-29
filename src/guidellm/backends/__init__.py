@@ -11,23 +11,21 @@ handlers for processing streaming and non-streaming API responses.
 
 from .backend import Backend, BackendType
 from .openai import (
-    AudioResponseHandler,
-    ChatCompletionsResponseHandler,
-    GenerationResponseHandler,
-    GenerationResponseHandlerFactory,
+    AudioRequestHandler,
+    ChatCompletionsRequestHandler,
     OpenAIHTTPBackend,
-    OpenAIRequestType,
-    TextCompletionsResponseHandler,
+    OpenAIRequestHandler,
+    OpenAIRequestHandlerFactory,
+    TextCompletionsRequestHandler,
 )
 
 __all__ = [
-    "AudioResponseHandler",
+    "AudioRequestHandler",
     "Backend",
     "BackendType",
-    "ChatCompletionsResponseHandler",
-    "GenerationResponseHandler",
-    "GenerationResponseHandlerFactory",
+    "ChatCompletionsRequestHandler",
     "OpenAIHTTPBackend",
-    "OpenAIRequestType",
-    "TextCompletionsResponseHandler",
+    "OpenAIRequestHandler",
+    "OpenAIRequestHandlerFactory",
+    "TextCompletionsRequestHandler",
 ]

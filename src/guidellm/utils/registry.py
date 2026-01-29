@@ -182,6 +182,28 @@ class RegistryMixin(Generic[RegistryObjT], AutoImporterMixin):
         return tuple(cls.registry.values())
 
     @classmethod
+    def registered_names(cls) -> tuple[str, ...]:
+        """
+        Get all registered names from the registry.
+
+        Automatically triggers auto-discovery if registry_auto_discovery is enabled
+        to ensure all available implementations are included.
+
+        :return: Tuple of all registered names including auto-discovered ones
+        :raises ValueError: If called before any objects have been registered
+        """
+        if cls.registry_auto_discovery:
+            cls.auto_populate_registry()
+
+        if cls.registry is None:
+            raise ValueError(
+                "RegistryMixin.registered_objects() must be called after "
+                "registering objects with RegistryMixin.register()."
+            )
+
+        return tuple(cls.registry.keys())
+
+    @classmethod
     def is_registered(cls, name: str) -> bool:
         """
         Check if an object is registered under the given name.
