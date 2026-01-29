@@ -226,7 +226,7 @@ def benchmark():
 @click.option(
     "--data-preprocessors",
     default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors"),
-    callback=cli_tools.parse_json,
+    callback=cli_tools.parse_json_list,
     multiple=True,
     help="JSON string of preprocessors to apply to the dataset.",
 )
