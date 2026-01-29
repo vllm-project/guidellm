@@ -1,10 +1,11 @@
 """
-Response handlers for processing API responses from different generation backends.
+Request handlers for formatting requests and processing API responses from
+different OpenAI endpoints.
 
-Provides a pluggable system for handling responses from language model backends,
-supporting both streaming and non-streaming responses. Each handler implements the
-GenerationResponseHandler protocol to parse API responses, extract usage metrics,
-and convert them into standardized GenerationResponse objects.
+Provides a pluggable system for handling format differences while supporting
+both streaming and non-streaming responses. Each handler implements the
+GenerationRequestHandler protocol to format json requests, parse API responses,
+extract usage metrics, and convert results into standardized GenerationResponse.
 """
 
 from __future__ import annotations
@@ -87,9 +88,9 @@ class OpenAIRequestHandler(Protocol):
 
 class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
     """
-    Factory for registering and creating response handlers by backend type.
+    Factory for registering and creating OpenAI request handlers by request type.
 
-    Registry-based system for associating handler classes with specific backend API
+    Registry-based system for associating handler classes with specific API
     types, enabling automatic selection of the appropriate handler for processing
     responses from different generation services.
     """
@@ -101,9 +102,9 @@ class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
         handler_overrides: dict[str, type[OpenAIRequestHandler]] | None = None,
     ) -> OpenAIRequestHandler:
         """
-        Create a response handler class for the given request type.
+        Create a request handler class for the given request type.
 
-        :param request_type: The type of generation request (e.g., "text_completions")
+        :param request_type: The type of generation request (e.g., "/chat/completions")
         :param handler_overrides: Optional mapping of request types to handler classes
             to override the default registry by checking first and then falling back
             to the registered handlers.
@@ -125,7 +126,7 @@ class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
 @OpenAIRequestHandlerFactory.register("/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
-    Response handler for OpenAI-style text completion endpoints.
+    Request handler for OpenAI-style legacy completion endpoints.
 
     Processes responses from text completion APIs that return generated text in the
     'choices' array with 'text' fields. Handles both streaming and non-streaming
@@ -354,9 +355,9 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 @OpenAIRequestHandlerFactory.register("/chat/completions")
 class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     """
-    Response handler for OpenAI-style chat completion endpoints.
+    Request handler for OpenAI-style chat completion endpoints.
 
-    Extends TextCompletionsResponseHandler to handle chat completion responses where
+    Extends TextCompletionsResponseHandler to handle chat completion requests where
     generated text is nested within message objects in the choices array. Processes
     both streaming and non-streaming chat completion responses.
     """
@@ -559,7 +560,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 @OpenAIRequestHandlerFactory.register(["/audio/transcriptions", "/audio/translations"])
 class AudioRequestHandler(ChatCompletionsRequestHandler):
     """
-    Response handler for audio transcription and translation endpoints.
+    Request handler for audio transcription and translation endpoints.
 
     Processes responses from audio processing APIs that convert speech to text,
     handling both transcription and translation services. Manages audio-specific
