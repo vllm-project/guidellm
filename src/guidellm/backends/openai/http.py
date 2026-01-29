@@ -13,13 +13,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from typing import Any, Literal, get_args
+from typing import Any
 
 import httpx
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.openai.request_formatter import GenerationRequestFormatterFactory
-from guidellm.backends.openai.response_handlers import GenerationResponseHandlerFactory
+from guidellm.backends.openai.request_handlers import OpenAIRequestHandlerFactory
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
@@ -29,15 +28,6 @@ from guidellm.schemas import (
 
 __all__ = [
     "OpenAIHTTPBackend",
-    "OpenAIRequestType",
-]
-
-
-OpenAIRequestType = Literal[
-    "text_completions",
-    "chat_completions",
-    "audio_transcriptions",
-    "audio_translations",
 ]
 
 
@@ -69,10 +59,10 @@ class OpenAIHTTPBackend(Backend):
         self,
         target: str,
         model: str = "",
-        request_format: OpenAIRequestType | None = None,
+        request_format: str | None = None,
         api_key: str | None = None,
         api_routes: dict[str, str] | None = None,
-        response_handlers: dict[str, Any] | None = None,
+        request_handlers: dict[str, Any] | None = None,
         timeout: float = 60.0,
         http2: bool = True,
         follow_redirects: bool = True,
@@ -103,13 +93,16 @@ class OpenAIHTTPBackend(Backend):
         self.target = target.rstrip("/").removesuffix("/v1")
         self.model = model
         self.api_key = api_key
+
+        # Validate the request handler
+        valid_formats = OpenAIRequestHandlerFactory.registered_names()
         if request_format is None:
-            self.request_type: OpenAIRequestType = "chat_completions"
+            self.request_type: str = "/chat/completions"
         else:
-            if request_format not in get_args(OpenAIRequestType):
+            if request_format not in valid_formats:
                 raise ValueError(
                     f"Invalid request_format '{request_format}'. Must be one of: "
-                    f"{', '.join(get_args(OpenAIRequestType))}"
+                    f"{', '.join(valid_formats)}"
                 )
             self.request_type = request_format
 
@@ -122,7 +115,7 @@ class OpenAIHTTPBackend(Backend):
             "audio_transcriptions": "v1/audio/transcriptions",
             "audio_translations": "v1/audio/translations",
         }
-        self.response_handlers = response_handlers
+        self.request_handlers = request_handlers
         self.timeout = timeout
         self.http2 = http2
         self.follow_redirects = follow_redirects
@@ -281,17 +274,19 @@ class OpenAIHTTPBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-        request_formatter = GenerationRequestFormatterFactory.create(self.request_type)
-        arguments: GenerationRequestArguments = request_formatter.format(
+        if (request_path := self.api_routes.get(self.request_type)) is None:
+            raise ValueError(f"Unsupported request type '{self.request_type}'")
+
+        request_handler = OpenAIRequestHandlerFactory.create(
+            self.request_type, handler_overrides=self.request_handlers
+        )
+        arguments: GenerationRequestArguments = request_handler.format(
             request,
             model=(await self.default_model()),
             stream=self.stream,
             extras=self.extras,
             max_tokens=self.max_tokens,
         )
-
-        if (request_path := self.api_routes.get(self.request_type)) is None:
-            raise ValueError(f"Unsupported request type '{self.request_type}'")
 
         request_url = f"{self.target}/{request_path}"
         request_files = (
@@ -304,9 +299,6 @@ class OpenAIHTTPBackend(Backend):
         )
         request_json = arguments.body if not request_files else None
         request_data = arguments.body if request_files else None
-        response_handler = GenerationResponseHandlerFactory.create(
-            self.request_type, handler_overrides=self.response_handlers
-        )
 
         if not arguments.stream:
             request_info.timings.request_start = time.time()
@@ -323,7 +315,7 @@ class OpenAIHTTPBackend(Backend):
             response.raise_for_status()
             data = response.json()
             yield (
-                response_handler.compile_non_streaming(request, arguments, data),
+                request_handler.compile_non_streaming(request, arguments, data),
                 request_info,
             )
             return
@@ -351,7 +343,7 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.last_request_iteration = iter_time
                     request_info.timings.request_iterations += 1
 
-                    iterations = response_handler.add_streaming_line(chunk)
+                    iterations = request_handler.add_streaming_line(chunk)
                     if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
                         continue
@@ -364,10 +356,10 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.token_iterations += iterations
 
             request_info.timings.request_end = time.time()
-            yield response_handler.compile_streaming(request, arguments), request_info
+            yield request_handler.compile_streaming(request, arguments), request_info
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
-            yield response_handler.compile_streaming(request, arguments), request_info
+            yield request_handler.compile_streaming(request, arguments), request_info
             raise err
 
     def _build_headers(

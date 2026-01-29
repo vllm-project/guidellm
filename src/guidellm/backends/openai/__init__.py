@@ -1,18 +1,17 @@
-from .http import OpenAIHTTPBackend, OpenAIRequestType
-from .response_handlers import (
-    AudioResponseHandler,
-    ChatCompletionsResponseHandler,
-    GenerationResponseHandler,
-    GenerationResponseHandlerFactory,
-    TextCompletionsResponseHandler,
+from .http import OpenAIHTTPBackend
+from .request_handlers import (
+    AudioRequestHandler,
+    ChatCompletionsRequestHandler,
+    OpenAIRequestHandler,
+    OpenAIRequestHandlerFactory,
+    TextCompletionsRequestHandler,
 )
 
 __all__ = [
-    "AudioResponseHandler",
-    "ChatCompletionsResponseHandler",
-    "GenerationResponseHandler",
-    "GenerationResponseHandlerFactory",
+    "AudioRequestHandler",
+    "ChatCompletionsRequestHandler",
     "OpenAIHTTPBackend",
-    "OpenAIRequestType",
-    "TextCompletionsResponseHandler",
+    "OpenAIRequestHandler",
+    "OpenAIRequestHandlerFactory",
+    "TextCompletionsRequestHandler",
 ]
