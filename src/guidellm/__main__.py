@@ -168,7 +168,10 @@ def benchmark():
     "backend_kwargs",
     callback=cli_tools.parse_json,
     default=BenchmarkGenerativeTextArgs.get_default("backend_kwargs"),
-    help="JSON string of arguments to pass to the backend.",
+    help=(
+        "JSON string of arguments to pass to the backend. E.g., "
+        '\'{"api_key": "apikey-*", "verify": false}\''
+    ),
 )
 @click.option(
     "--model",
@@ -221,20 +224,30 @@ def benchmark():
     "--data-column-mapper",
     default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
     callback=cli_tools.parse_json,
-    help="JSON string of column mappings to apply to the dataset.",
+    help=(
+        "JSON string of column mappings to apply to the dataset. "
+        'E.g., \'{"text_column": "article", '
+        '"output_tokens_count_column" :"output_tokens"}\''
+    ),
 )
 @click.option(
     "--data-preprocessors",
     default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors"),
     callback=cli_tools.parse_json_list,
     multiple=True,
-    help="JSON string of preprocessors to apply to the dataset.",
+    help=(
+        "List of of preprocessors to apply to the dataset. E.g., "
+        "'encode_media,my_custom_preprocessor'"
+    ),
 )
 @click.option(
     "--data-finalizer",
     default=BenchmarkGenerativeTextArgs.get_default("data_finalizer"),
     callback=cli_tools.parse_json,
-    help="JSON string of finalizer to convert dataset rows to requests.",
+    help=(
+        "JSON string of finalizer to convert dataset rows to requests."
+        " E.g., 'generative' or '{\"type\": \"generative\"}'"
+    ),
 )
 @click.option(
     "--data-sampler",
