@@ -23,6 +23,7 @@ from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.handlers import (
     ChatCompletionsHandler,
     CompletionsHandler,
+    EmbeddingsHandler,
     TokenizerHandler,
 )
 
@@ -56,6 +57,7 @@ class MockServer:
         self.app = Sanic("guidellm-mock-server")
         self.chat_handler = ChatCompletionsHandler(config)
         self.completions_handler = CompletionsHandler(config)
+        self.embeddings_handler = EmbeddingsHandler(config)
         self.tokenizer_handler = TokenizerHandler(config)
 
         self._setup_middleware()
@@ -113,6 +115,12 @@ class MockServer:
             if request.method == "OPTIONS":
                 return response.text("", status=204)
             return await self.completions_handler.handle(request)
+
+        @self.app.route("/v1/embeddings", methods=["POST", "OPTIONS"])
+        async def embeddings(request: Request):
+            if request.method == "OPTIONS":
+                return response.text("", status=204)
+            return await self.embeddings_handler.handle(request)
 
         @self.app.route("/tokenize", methods=["POST", "OPTIONS"])
         async def tokenize(request: Request):

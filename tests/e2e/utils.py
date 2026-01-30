@@ -52,6 +52,7 @@ class GuidellmClient:
         over_saturation: dict[str, Any] | None = None,
         data: str = "prompt_tokens=256,output_tokens=128",
         processor: str = "gpt2",
+        request_type: str | None = None,
         additional_args: str = "",
         extra_env: dict[str, str] | None = None,
     ) -> None:
@@ -67,6 +68,7 @@ class GuidellmClient:
             Passed as JSON string to --over-saturation CLI argument.
         :param data: Data configuration string
         :param processor: Processor/tokenizer to use
+        :param request_type: Type of request (e.g., "embeddings")
         :param additional_args: Additional command line arguments
         :param extra_env: Additional environment variables to set
         """
@@ -115,6 +117,9 @@ class GuidellmClient:
                 f"--outputs {self.outputs}",
             ]
         )
+
+        if request_type is not None:
+            cmd_parts.append(f"--request-type {request_type}")
 
         if additional_args:
             cmd_parts.append(additional_args)
