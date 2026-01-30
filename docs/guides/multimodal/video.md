@@ -7,7 +7,7 @@ This guide demonstrates how to benchmark Video-Language Models (Video-LLMs) for 
 First, ensure you have a running inference server and model compatible with the OpenAI Chat API. GuideLLM supports any OpenAI-compatible server that can handle video inputs through the `chat/completions` endpoint. For the benchmarking examples below, we’ll use vLLM serving the Qwen3-VL model.
 
 ```bash
-# Qwen2-VL Video QA/Captioning
+# Qwen3-VL Video QA/Captioning
 vllm serve Qwen/Qwen3-VL-2B-Instruct
 ```
 
