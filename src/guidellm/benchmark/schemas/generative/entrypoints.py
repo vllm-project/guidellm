@@ -38,6 +38,7 @@ from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import DatasetPreprocessor, RequestFormatter
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
+from guidellm.utils import arg_string
 
 __all__ = ["BenchmarkGenerativeTextArgs"]
 
@@ -311,6 +312,50 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 return handler([value])
             else:
                 raise
+
+    @field_validator(
+        "backend_kwargs",
+        "processor_args",
+        "data_args",
+        "data_column_mapper",
+        "data_request_formatter",
+        "dataloader_kwargs",
+        "warmup",
+        "cooldown",
+        "over_saturation",
+        mode="wrap",
+    )
+    @classmethod
+    def parse_config_str(
+        cls,
+        value: Any,
+        handler: ValidatorFunctionWrapHandler,
+    ) -> Any:
+        """
+        Parse backend/profile from string to instance if necessary.
+
+        :param value: Input value for the 'backend' or 'profile' field
+        :return: Parsed backend/profile instance or original value
+        """
+        if isinstance(value, str):
+            try:
+                value_parsed = yaml.safe_load(value)
+            except yaml.YAMLError:
+                value_parsed = value
+            # If no change from YAML parsing, try arg_string parsing
+            if value_parsed == value:
+                try:
+                    value_parsed = arg_string.loads(value)
+                # If arg_string parsing fails, attempt to parse the original string
+                except arg_string.ArgStringParseError as e:
+                    try:
+                        return handler(value)
+                    except ValidationError as err:
+                        # If validation fails, re-raise from the arg_string error
+                        raise err from e
+            return handler(value_parsed)
+        else:
+            return handler(value)
 
     @field_serializer("backend")
     def serialize_backend(self, backend: BackendType | Backend) -> str:

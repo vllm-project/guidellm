@@ -1,3 +1,4 @@
+from . import arg_string
 from .auto_importer import AutoImporterMixin
 from .console import Colors, Console, ConsoleUpdateStep, StatusIcons, StatusStyles
 from .default_group import DefaultGroupHandler
@@ -77,6 +78,7 @@ __all__ = [
     "StatusStyles",
     "ThreadSafeSingletonMixin",
     "all_defined",
+    "arg_string",
     "camelize_str",
     "check_load_processor",
     "clean_text",
