@@ -143,7 +143,6 @@ def benchmark():
     "--backend-kwargs",
     "--backend-args",  # legacy alias
     "backend_kwargs",
-    callback=cli_tools.parse_json,
     default=BenchmarkGenerativeTextArgs.get_default("backend_kwargs"),
     help=(
         "JSON string of arguments to pass to the backend. E.g., "
@@ -181,14 +180,12 @@ def benchmark():
 @click.option(
     "--processor-args",
     default=BenchmarkGenerativeTextArgs.get_default("processor_args"),
-    callback=cli_tools.parse_json,
     help="JSON string of arguments to pass to the processor constructor.",
 )
 @click.option(
     "--data-args",
     multiple=True,
     default=BenchmarkGenerativeTextArgs.get_default("data_args"),
-    callback=cli_tools.parse_json,
     help="JSON string of arguments to pass to dataset creation.",
 )
 @click.option(
@@ -203,7 +200,6 @@ def benchmark():
 @click.option(
     "--data-column-mapper",
     default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
-    callback=cli_tools.parse_json,
     help=(
         "JSON string of column mappings to apply to the dataset. "
         'E.g., \'{"column_mappings": {"text_column": "article", '
@@ -213,7 +209,6 @@ def benchmark():
 @click.option(
     "--data-preprocessors",
     default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors"),
-    callback=cli_tools.parse_json_list,
     multiple=True,
     help=(
         "List of of preprocessors to apply to the dataset. E.g., "
@@ -222,13 +217,11 @@ def benchmark():
 )
 @click.option(
     "--data-preprocessors-kwargs",
-    callback=cli_tools.parse_json,
     help="JSON string of arguments to pass to all preprocessors.",
 )
 @click.option(
     "--data-finalizer",
     default=BenchmarkGenerativeTextArgs.get_default("data_finalizer"),
-    callback=cli_tools.parse_json,
     help=(
         "JSON string of finalizer to convert dataset rows to requests."
         " E.g., 'generative' or '{\"type\": \"generative\"}'"
@@ -249,7 +242,6 @@ def benchmark():
 @click.option(
     "--dataloader-kwargs",
     default=BenchmarkGenerativeTextArgs.get_default("dataloader_kwargs"),
-    callback=cli_tools.parse_json,
     help="JSON string of arguments to pass to the dataloader constructor.",
 )
 @click.option(
@@ -307,7 +299,6 @@ def benchmark():
     "--warmup-percent",  # legacy alias
     "warmup",
     default=BenchmarkGenerativeTextArgs.get_default("warmup"),
-    callback=cli_tools.parse_json,
     help=(
         "Warmup specification: int, float, or dict as string "
         "(json or key=value). "
@@ -322,7 +313,6 @@ def benchmark():
     "--cooldown-percent",  # legacy alias
     "cooldown",
     default=BenchmarkGenerativeTextArgs.get_default("cooldown"),
-    callback=cli_tools.parse_json,
     help=(
         "Cooldown specification: int, float, or dict as string "
         "(json or key=value). "
@@ -391,7 +381,6 @@ def benchmark():
 @click.option(
     "--over-saturation",
     "over_saturation",
-    callback=cli_tools.parse_json,
     default=None,
     help=(
         "Enable over-saturation detection. "
