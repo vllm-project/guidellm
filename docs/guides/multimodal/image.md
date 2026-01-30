@@ -159,6 +159,7 @@ guidellm benchmark \
 - `--model`: The model name to use for requests.
 - `--request-type`: chat_completions, supporting multimodal inputs.
 - `--data`: The dataset identifier (lmms-lab/MMBench_EN).
+- `--data-args`: Configuration for the dataset loading, selecting the "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Maps the dataset’s `image` column to `image_column` and `question` to `text_column`.
 
 The above command benchmarks the chat/completions endpoint on the target server using the prompt text and image from the MMBench_EN dataset. It will result in an output similar to the following:
