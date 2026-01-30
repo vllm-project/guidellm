@@ -286,9 +286,9 @@ guidellm benchmark \
 - `--request-type`: chat_completions, supporting multimodal inputs (audio + text).
 - `--profile`: synchronous execution.
 - `--max-requests`: Limits to 20 requests.
-- `--data`: Specified twice to mix real audio (openslr/librispeech_asr) and defaults for synthetic prompts.
-- `--data-args`: Dataset arguments corresponding to the order of --data inputs (Librispeech config first, empty for synthetic).
-- `--data-column-mapper`: Maps audio from the first dataset and text from the synthetic dataset (index 0) to the request.
+- `--data`: Specified twice: first for synthetic prompt configuration (`prompt_tokens=256,output_tokens=128`), second for real audio from `openslr/librispeech_asr`.
+- `--data-args`: Dataset arguments corresponding to the order of `--data` inputs (empty `{}` for synthetic prompts, LibriSpeech config second).
+- `--data-column-mapper`: Maps audio from dataset index 1 (`"1.audio"`, LibriSpeech) and text from dataset index 0 (`"0.prompt"`, synthetic prompts) into each request.
 
 The above command benchmarks the chat/completions endpoint on the target server using the prompt text from the synthetic dataset and audio from the LibriSpeech dataset. It will result in an output similar to the following:
 
