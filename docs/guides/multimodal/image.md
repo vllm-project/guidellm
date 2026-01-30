@@ -7,7 +7,7 @@ This guide demonstrates how to benchmark Vision-Language Models (VLMs) for tasks
 First, ensure you have a running inference server and model compatible with the OpenAI Chat API. GuideLLM supports any OpenAI-compatible server that can handle image inputs through chat/completions endpoint. For the benchmarking examples below, we’ll use vLLM serving the Qwen3-VL model.
 
 ```bash
-# Qwen2-VL VQA/Captioning
+# Qwen3-VL VQA/Captioning
 vllm serve Qwen/Qwen3-VL-2B-Instruct
 ```
 
