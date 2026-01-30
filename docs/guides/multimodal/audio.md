@@ -168,7 +168,7 @@ guidellm benchmark \
 - `--profile`: The load generation profile. synchronous runs requests sequentially.
 - `--max-requests`: Limits the benchmark to 20 total requests.
 - `--data`: The dataset identifier (openslr/librispeech_asr) to load from Hugging Face.
-- `--data-args`: Configuration for the dataset loading, selecting the "clean" config and "test" split.
+- `--data-args`: Configuration for the dataset loading, selecting the "clean" config and "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Maps the dataset’s audio column to GuideLLM’s audio_column to ensure correct processing.
 
 The above command benchmarks the audio/transcriptions endpoint on the target server using audio from the LibriSpeech dataset for ASR. It will result in an output similar to the following:
