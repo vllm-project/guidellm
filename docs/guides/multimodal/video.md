@@ -66,8 +66,8 @@ A dictionary of arguments passed to the video encoder that controls how video da
 Supported arguments include:
 
 - "encode_type": How to include the video in the request.
-    - "base64" (default): Downloads (if URL) or reads the video and encodes it as a base64 string.
-    - "url": Sends the video URL directly in the request. This requires the inference server to have network access to the video URL.
+  - "base64" (default): Downloads (if URL) or reads the video and encodes it as a base64 string.
+  - "url": Sends the video URL directly in the request. This requires the inference server to have network access to the video URL.
 
 **Examples:**
 

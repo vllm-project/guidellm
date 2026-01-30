@@ -71,8 +71,8 @@ Supported arguments include:
 - "width": Force resize to specific width (in pixels).
 - "height": Force resize to specific height (in pixels).
 - "encode_type": How to include the image in the request.
-    - "base64" (default): Downloads (if URL) or reads the image, processes it (resize), and encodes it as a base64 string.
-    - "url": Sends the image URL directly in the request. This requires the inference server to have network access to the image URL. Resizing options cannot be used with this type.
+  - "base64" (default): Downloads (if URL) or reads the image, processes it (resize), and encodes it as a base64 string.
+  - "url": Sends the image URL directly in the request. This requires the inference server to have network access to the image URL. Resizing options cannot be used with this type.
 
 **Examples:**
 
