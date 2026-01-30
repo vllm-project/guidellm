@@ -11,7 +11,6 @@ from pydantic import ValidationError
 
 from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestArguments,
     GenerationResponse,
     GenerativeRequestStats,
     RequestInfo,
@@ -148,8 +147,6 @@ class TestGenerationResponse:
 
         request = GenerationRequest(
             request_id="test-123",
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
             input_metrics=UsageMetrics(text_tokens=40),
             output_metrics=UsageMetrics(text_tokens=20),
         )
@@ -159,7 +156,6 @@ class TestGenerationResponse:
         stats = response.compile_stats(request, request_info, prefer_response)
         assert isinstance(stats, GenerativeRequestStats)
         assert stats.request_id == "test-123"
-        assert stats.request_type == "text_completions"
         assert stats.output == "Generated response"
 
         total_tokens = (
@@ -178,8 +174,6 @@ class TestGenerationResponse:
 
         request = GenerationRequest(
             request_id="test-123",
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
         )
 
         request_info = RequestInfo(request_id="test-123", status="completed")
@@ -201,8 +195,6 @@ class TestGenerationResponse:
 
         request = GenerationRequest(
             request_id="test-123",
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
             output_metrics=UsageMetrics(text_tokens=20),
         )
 
@@ -223,8 +215,6 @@ class TestGenerationResponse:
 
         request = GenerationRequest(
             request_id="test-456",
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
         )
 
         request_info = RequestInfo(request_id="test-123")
@@ -242,8 +232,6 @@ class TestGenerationResponse:
 
         request = GenerationRequest(
             request_id="test-123",
-            request_type="text_completions",
-            arguments=GenerationRequestArguments(),
         )
 
         request_info = RequestInfo(request_id="test-456")
