@@ -171,7 +171,7 @@ guidellm benchmark \
 - `--data-args`: Configuration for the dataset loading, selecting the "clean" config and "test" split.
 - `--data-column-mapper`: Maps the dataset’s audio column to GuideLLM’s audio_column to ensure correct processing.
 
-The above command benchmarks the chat/completions endpoint on the target server using the prompt text from the synthetic dataset and audio from the LibriSpeech dataset. It will result in an output similar to the following:
+The above command benchmarks the audio/transcriptions endpoint on the target server using audio from the LibriSpeech dataset for ASR. It will result in an output similar to the following:
 
 ```bash
 ✔ OpenAIHTTPBackend backend validated with model openai/whisper-small
