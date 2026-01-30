@@ -37,7 +37,7 @@ Ensure you have a running inference server and model compatible with the OpenAI 
 
   ______________________________________________________________________
 
-  Evaluate video understanding models by processing video inputs. Includes configuration for frame sampling and video encoding.
+  Evaluate video understanding models by processing video inputs. Includes configuration for video request formatting and encoding options.
 
   [:octicons-arrow-right-24: Video Guide](video.md)
 
