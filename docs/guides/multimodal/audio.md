@@ -227,7 +227,7 @@ guidellm benchmark \
 - `--profile`: synchronous execution mode.
 - `--max-requests`: Limits the test to 20 requests.
 - `--data`: Uses openslr/librispeech_asr as the source.
-- `--data-args`: Selects the "clean" configuration and "test" split.
+- `--data-args`: Selects the "clean" configuration and "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Identifies the audio column for audio processing.
 
 The above command benchmarks the audio/translations endpoint on the target server using audio from the LibriSpeech dataset and requesting translations to French. It will result in an output similar to the following:
