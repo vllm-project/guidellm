@@ -274,8 +274,8 @@ guidellm benchmark \
   --profile synchronous \
   --max-requests 20 \
   --data "prompt_tokens=256,output_tokens=128" \
-  --data openslr/librispeech_asr \
   --data-args "{}" \
+  --data openslr/librispeech_asr \
   --data-args "{\"name\": \"clean\", \"split\": \"test\"}" \
   --data-column-mapper "{\"audio_column\": \"1.audio\", \"text_column\": \"0.prompt\"}"
 ```
