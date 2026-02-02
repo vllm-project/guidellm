@@ -33,19 +33,21 @@ __all__ = [
 
 DEFAULT_API_PATHS = {
     "/health": "health",
-    "/models": "v1/models",
-    "/completions": "v1/completions",
-    "/chat/completions": "v1/chat/completions",
-    "/audio/transcriptions": "v1/audio/transcriptions",
-    "/audio/translations": "v1/audio/translations",
+    "/v1/models": "v1/models",
+    "/v1/completions": "v1/completions",
+    "/v1/chat/completions": "v1/chat/completions",
+    "/v1/audio/transcriptions": "v1/audio/transcriptions",
+    "/v1/audio/translations": "v1/audio/translations",
 }
+
+DEFAULT_API = "/v1/chat/completions"
 
 # Legacy aliases for common API paths
 LEGACY_API_ALIASES = {
-    "text_completions": "/completions",
-    "chat_completions": "/chat/completions",
-    "audio_transcriptions": "/audio/transcriptions",
-    "audio_translations": "/audio/translations",
+    "text_completions": "/v1/completions",
+    "chat_completions": "/v1/chat/completions",
+    "audio_transcriptions": "/v1/audio/transcriptions",
+    "audio_translations": "/v1/audio/translations",
 }
 
 
@@ -114,7 +116,7 @@ class OpenAIHTTPBackend(Backend):
 
         # Resolve request format
         if request_format is None:
-            request_format = "/chat/completions"
+            request_format = DEFAULT_API
         elif request_format in LEGACY_API_ALIASES:
             request_format = LEGACY_API_ALIASES[request_format]
 
@@ -243,7 +245,7 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        target = f"{self.target}/{self.api_routes['/models']}"
+        target = f"{self.target}/{self.api_routes['/v1/models']}"
         response = await self._async_client.get(target, headers=self._build_headers())
         response.raise_for_status()
 

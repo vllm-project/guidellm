@@ -123,7 +123,7 @@ class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
         return handler_cls()
 
 
-@OpenAIRequestHandlerFactory.register("/completions")
+@OpenAIRequestHandlerFactory.register("/v1/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
     Request handler for OpenAI-style legacy completion endpoints.
@@ -352,7 +352,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         )
 
 
-@OpenAIRequestHandlerFactory.register("/chat/completions")
+@OpenAIRequestHandlerFactory.register("/v1/chat/completions")
 class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     """
     Request handler for OpenAI-style chat completion endpoints.
@@ -557,7 +557,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         )
 
 
-@OpenAIRequestHandlerFactory.register(["/audio/transcriptions", "/audio/translations"])
+@OpenAIRequestHandlerFactory.register(
+    ["/v1/audio/transcriptions", "/v1/audio/translations"]
+)
 class AudioRequestHandler(ChatCompletionsRequestHandler):
     """
     Request handler for audio transcription and translation endpoints.

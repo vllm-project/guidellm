@@ -66,21 +66,21 @@ class TestOpenAIRequestHandlerFactory:
     @pytest.mark.parametrize(
         ("request_type", "handler_overrides", "expected_class"),
         [
-            ("/completions", None, TextCompletionsRequestHandler),
-            ("/chat/completions", None, ChatCompletionsRequestHandler),
-            ("/audio/transcriptions", None, AudioRequestHandler),
-            ("/audio/translations", None, AudioRequestHandler),
+            ("/v1/completions", None, TextCompletionsRequestHandler),
+            ("/v1/chat/completions", None, ChatCompletionsRequestHandler),
+            ("/v1/audio/transcriptions", None, AudioRequestHandler),
+            ("/v1/audio/translations", None, AudioRequestHandler),
             (
-                "/completions",
-                {"/completions": ChatCompletionsRequestHandler},
+                "/v1/completions",
+                {"/v1/completions": ChatCompletionsRequestHandler},
                 ChatCompletionsRequestHandler,
             ),
         ],
         ids=[
-            "/completions",
-            "/chat/completions",
-            "/audio/transcriptions",
-            "/audio/translations",
+            "/v1/completions",
+            "/v1/chat/completions",
+            "/v1/audio/transcriptions",
+            "/v1/audio/translations",
             "override_text_completions",
         ],
     )

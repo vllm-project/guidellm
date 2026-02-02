@@ -260,9 +260,9 @@ class TestOpenAIHTTPBackend:
         assert info["model"] == "test-model"
         assert info["timeout"] == 30.0
         assert info["openai_paths"]["/health"] == "health"
-        assert info["openai_paths"]["/models"] == "v1/models"
-        assert info["openai_paths"]["/completions"] == "v1/completions"
-        assert info["openai_paths"]["/chat/completions"] == "v1/chat/completions"
+        assert info["openai_paths"]["/v1/models"] == "v1/models"
+        assert info["openai_paths"]["/v1/completions"] == "v1/completions"
+        assert info["openai_paths"]["/v1/chat/completions"] == "v1/chat/completions"
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -658,7 +658,7 @@ class TestOpenAIHTTPBackend:
             model="test-model",
             stream=True,
             validate_backend=False,
-            request_format="/chat/completions",
+            request_format="/v1/chat/completions",
         )
         await backend.process_startup()
 
