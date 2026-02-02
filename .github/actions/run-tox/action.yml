@@ -19,7 +19,7 @@ runs:
         python-version: ${{ inputs.python-version }}
     - name: Install system dependencies
       run: |
-        sudo apt install -y ffmpeg
+        sudo apt update && sudo apt install -y ffmpeg
       shell: bash
     - name: Install dependencies
       run: |
