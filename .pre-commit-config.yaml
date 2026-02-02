@@ -6,6 +6,16 @@ repos:
     exclude: ^tests/?.*/assets/.+
   - id: end-of-file-fixer
     exclude: ^tests/?.*/assets/.+
+- repo: https://github.com/hukkin/mdformat
+  rev: 0.7.17
+  hooks:
+    - id: mdformat
+      name: run markdown formatter
+      exclude: ^\.github/.+
+      additional_dependencies:
+        - "mdformat-footnote~=0.1.1"
+        - "mdformat-frontmatter~=2.0.8"
+        - "mdformat-gfm~=0.3.6"
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.9.15
   hooks:
