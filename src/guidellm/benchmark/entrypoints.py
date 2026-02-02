@@ -193,6 +193,7 @@ def resolve_item_from_registry(
     :param base_type: The expected base type of the item
     :param item: The item to resolve, either an instance or a string identifier
     :param registry: The registry to use for resolving string identifiers
+    :param extras: Additional keyword arguments to pass during instantiation
     :return: The resolved item as an instance of the base type
     :raises ValueError: If the item cannot be resolved from the registry
     :raises TypeError: If the resolved item is not of the expected base type
@@ -200,9 +201,9 @@ def resolve_item_from_registry(
     if isinstance(item, base_type):
         return item
     else:
+        kwargs: dict[str, Any] = extras.copy() if extras is not None else {}
         if isinstance(item, str):
             item_type = item
-            kwargs = {}
         else:
             item_dict = dict(item)
             item_type = item_dict.pop("type", None)
@@ -211,7 +212,7 @@ def resolve_item_from_registry(
                     f"Item dictionary must contain a 'type' key to resolve from "
                     f"{registry.__class__.__name__}."
                 )
-            kwargs = item_dict
+            kwargs.update(item_dict)
 
         if (item_class := registry.get_registered_object(item_type)) is None:
             raise ValueError(
@@ -223,8 +224,6 @@ def resolve_item_from_registry(
                 f"Resolved item type '{item_type}' is not a subclass of "
                 f"{base_type.__name__}."
             )
-        if extras:
-            kwargs.update(extras)
         return item_class(**kwargs)
 
 
@@ -241,6 +240,7 @@ async def resolve_request_loader(
         | Literal["generative_column_mapper"]
     ),
     data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
+    data_preprocessors_kwargs: dict[str, Any],
     data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
     data_collator: Callable | Literal["generative"] | None,
     data_sampler: Sampler[int] | Literal["shuffle"] | None,
@@ -295,6 +295,7 @@ async def resolve_request_loader(
             DatasetPreprocessor,  # type: ignore [type-abstract]
             PreprocessorRegistry,
             preprocessor,
+            data_preprocessors_kwargs,
         )
         for preprocessor in ([data_column_mapper] + data_preprocessors)
     ]
@@ -496,6 +497,7 @@ async def benchmark_generative_text(
         processor_args=args.processor_args,
         data_column_mapper=args.data_column_mapper,
         data_preprocessors=args.data_preprocessors,
+        data_preprocessors_kwargs=args.data_preprocessors_kwargs,
         data_finalizer=args.data_finalizer,
         data_collator=args.data_collator,
         data_sampler=args.data_sampler,

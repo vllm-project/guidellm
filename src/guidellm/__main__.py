@@ -241,6 +241,12 @@ def benchmark():
     ),
 )
 @click.option(
+    "--data-preprocessors-kwargs",
+    default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors_kwargs"),
+    callback=cli_tools.parse_json,
+    help="JSON string of arguments to pass to all preprocessors.",
+)
+@click.option(
     "--data-finalizer",
     default=BenchmarkGenerativeTextArgs.get_default("data_finalizer"),
     callback=cli_tools.parse_json,

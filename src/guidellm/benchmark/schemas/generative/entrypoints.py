@@ -217,6 +217,10 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             description="List of dataset preprocessors to apply in order",
         )
     )
+    data_preprocessors_kwargs: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Global arguments for data preprocessors",
+    )
     data_finalizer: DatasetFinalizer | str | dict[str, Any] = Field(
         default="generative",
         description="Finalizer for preparing data samples into requests",

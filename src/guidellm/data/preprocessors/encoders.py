@@ -12,7 +12,11 @@ __all__ = ["MediaEncoder"]
 
 @PreprocessorRegistry.register("encode_media")
 class MediaEncoder(DatasetPreprocessor):
-    def __init__(self, encode_kwargs: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        encode_kwargs: dict[str, Any] | None = None,
+        **_: Any,  # Ignore global kwargs
+    ) -> None:
         self.encode_audio_kwargs = (
             encode_kwargs.get("audio", {}) if encode_kwargs else {}
         )
