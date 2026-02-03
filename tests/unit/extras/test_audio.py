@@ -56,7 +56,6 @@ def test_encode_audio_with_tensor_input(sample_audio_tensor):
         sample_rate=16000,
         audio_format="mp3",
         bitrate="64k",
-        b64encode=False,
     )
 
     assert result["type"] == "audio_file"
@@ -67,20 +66,6 @@ def test_encode_audio_with_tensor_input(sample_audio_tensor):
     assert result["audio_seconds"] == 1.0
     assert isinstance(result["audio_bytes"], int)
     assert result["audio_bytes"] > 0
-
-
-def test_encode_audio_with_base64(sample_audio_tensor):
-    result = encode_audio(audio=sample_audio_tensor, sample_rate=16000, b64encode=True)
-
-    assert result["type"] == "audio_base64"
-    assert isinstance(result["audio"], str)
-    import base64
-
-    try:
-        decoded = base64.b64decode(result["audio"])
-        assert len(decoded) > 0
-    except (base64.binascii.Error, ValueError) as e:
-        pytest.fail(f"Invalid base64 encoding: {e}")
 
 
 def test_encode_audio_with_numpy_array(sample_audio_tensor):
@@ -201,12 +186,11 @@ def test_end_to_end_audio_processing(sample_audio_tensor):
         sample_rate=16000,
         audio_format="mp3",
         bitrate="64k",
-        b64encode=True,
         max_duration=0.5,
     )
 
-    assert result["type"] == "audio_base64"
-    assert isinstance(result["audio"], str)
+    assert result["type"] == "audio_file"
+    assert isinstance(result["audio"], bytes)
     assert result["format"] == "mp3"
     assert result["audio_samples"] == 16000
-    assert result["audio_seconds"] <= original_duration
+    assert result["audio_seconds"] == min(original_duration, 0.5)

@@ -734,7 +734,7 @@ class TestChatCompletionsRequestHandler:
         data = GenerationRequest(
             columns={
                 "audio_column": [
-                    {"audio": "base64data", "format": "wav"},
+                    {"audio": b"base64data", "format": "wav"},
                 ]
             },
         )
@@ -746,7 +746,7 @@ class TestChatCompletionsRequestHandler:
         assert result.body["messages"][0]["content"][0]["type"] == "input_audio"
         assert (
             result.body["messages"][0]["content"][0]["input_audio"]["data"]
-            == "base64data"
+            == "YmFzZTY0ZGF0YQ=="
         )
         assert (
             result.body["messages"][0]["content"][0]["input_audio"]["format"] == "wav"

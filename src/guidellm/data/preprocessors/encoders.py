@@ -53,7 +53,7 @@ class MediaEncoder(DatasetPreprocessor):
                     continue
 
                 encoded_audio.append(
-                    self.encode_audio(audio, b64encode=True, **self.encode_audio_kwargs)
+                    self.encode_audio(audio, **self.encode_audio_kwargs)
                 )
             columns["audio_column"] = encoded_audio
 

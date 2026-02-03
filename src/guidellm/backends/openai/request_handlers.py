@@ -10,6 +10,7 @@ extract usage metrics, and convert results into standardized GenerationResponse.
 
 from __future__ import annotations
 
+import base64
 from typing import Any, Protocol, cast
 
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
@@ -466,7 +467,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                         {
                             "type": "input_audio",
                             "input_audio": {
-                                "data": audio.get("audio"),
+                                "data": base64.b64encode(
+                                    audio.get("audio", b"")
+                                ).decode("utf-8"),
                                 "format": audio.get("format"),
                             },
                         }
