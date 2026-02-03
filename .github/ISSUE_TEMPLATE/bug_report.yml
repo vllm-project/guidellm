@@ -65,7 +65,7 @@ body:
       required: true
 
   - type: dropdown
-    id: installation
+    id: installation-method
     attributes:
       label: Installation Method
       description: How did you install GuideLLM?
@@ -73,11 +73,17 @@ body:
         - pip install guidellm
         - pip install guidellm[recommended]
         - pip install guidellm[all]
-        - Container/Docker
-        - From source
+        - Official Container Image (Docker)
         - Other
     validations:
       required: true
+
+  - type: input
+    id: installation-details
+    attributes:
+      label: Installation Details
+      description: If installation method is \"Other\" please specify.
+      placeholder: "e.g., Custom container build"
 
   - type: textarea
     id: errors
