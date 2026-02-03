@@ -1,0 +1,52 @@
+name: Documentation Update
+description: Propose improvements or corrections to project documentation
+type: Task
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve GuideLLM's documentation! Please provide details about your proposed changes below.
+
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: What is the URL, file path, or section containing the documentation in question?
+      placeholder: e.g., docs/guides/benchmarking.md, https://github.com/vllm-project/guidellm/blob/main/README.md#installation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      options:
+        - Typo/Grammar
+        - Incorrect/Outdated Information
+        - Missing Information
+        - Unclear/Confusing Content
+        - Broken Link
+        - New Documentation Needed
+        - Improvement/Enhancement
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed Changes
+      description: Describe or provide the updated content you're proposing.
+      placeholder: It should say... or It should include...
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Why is this change important? Any references, examples, or screenshots?
+      placeholder: This would help users who...
