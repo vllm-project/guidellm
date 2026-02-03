@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
@@ -36,21 +36,21 @@ from guidellm.benchmark.schemas import (
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
     DataLoader,
+    DatasetFinalizer,
     DatasetPreprocessor,
+    FinalizerRegistry,
     GenerativeRequestCollator,
     PreprocessorRegistry,
     ProcessorFactory,
-    RequestFormatter,
 )
-from guidellm.data.preprocessors import GenerativeColumnMapper
 from guidellm.scheduler import (
     ConstraintInitializer,
     NonDistributedEnvironment,
     StrategyType,
 )
 from guidellm.schemas import GenerationRequest, GenerationResponse
-from guidellm.settings import settings
 from guidellm.utils import Console, InfoMixin
+from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "benchmark_generative_text",
@@ -81,7 +81,7 @@ async def resolve_backend(
     target: str,
     model: str | None,
     console: Console | None = None,
-    **backend_kwargs: dict[str, Any],
+    **backend_kwargs: Any,
 ) -> tuple[Backend, str]:
     """
     Initialize and validate a backend instance for benchmarking execution.
@@ -178,6 +178,55 @@ async def resolve_processor(
     return processor
 
 
+BaseTypeT = TypeVar("BaseTypeT")
+
+
+def resolve_item_from_registry(
+    base_type: type[BaseTypeT],
+    registry: type[RegistryMixin],
+    item: Any,
+    extras: dict[str, Any] | None = None,
+) -> BaseTypeT:
+    """
+    Resolve an item from a registry, instantiating it if necessary.
+
+    :param base_type: The expected base type of the item
+    :param item: The item to resolve, either an instance or a string identifier
+    :param registry: The registry to use for resolving string identifiers
+    :param extras: Additional keyword arguments to pass during instantiation
+    :return: The resolved item as an instance of the base type
+    :raises ValueError: If the item cannot be resolved from the registry
+    :raises TypeError: If the resolved item is not of the expected base type
+    """
+    if isinstance(item, base_type):
+        return item
+    else:
+        kwargs: dict[str, Any] = extras.copy() if extras is not None else {}
+        if isinstance(item, str):
+            item_type = item
+        else:
+            item_dict = dict(item)
+            item_type = item_dict.pop("type", None)
+            if item_type is None:
+                raise ValueError(
+                    f"Item dictionary must contain a 'type' key to resolve from "
+                    f"{registry.__class__.__name__}."
+                )
+            kwargs.update(item_dict)
+
+        if (item_class := registry.get_registered_object(item_type)) is None:
+            raise ValueError(
+                f"Item type '{item_type}' is not registered in the "
+                f"{registry.__class__.__name__}."
+            )
+        if not issubclass(item_class, base_type):
+            raise TypeError(
+                f"Resolved item type '{item_type}' is not a subclass of "
+                f"{base_type.__name__}."
+            )
+        return item_class(**kwargs)
+
+
 async def resolve_request_loader(
     data: list[Any],
     model: str,
@@ -190,7 +239,9 @@ async def resolve_request_loader(
         | dict[str, str | list[str]]
         | Literal["generative_column_mapper"]
     ),
-    data_request_formatter: (RequestFormatter | dict[str, str] | str),
+    data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
+    data_preprocessors_kwargs: dict[str, Any],
+    data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
     data_collator: Callable | Literal["generative"] | None,
     data_sampler: Sampler[int] | Literal["shuffle"] | None,
     data_num_workers: int | None,
@@ -232,53 +283,28 @@ async def resolve_request_loader(
         else None
     )
 
-    data_column_mapper_instance: DatasetPreprocessor
-    if isinstance(data_column_mapper, DatasetPreprocessor):
-        data_column_mapper_instance = data_column_mapper
-    else:
-        column_mappings = (
-            data_column_mapper if isinstance(data_column_mapper, dict) else None
-        )
-        data_column_mapper_instance = GenerativeColumnMapper(
-            column_mappings=column_mappings  # type: ignore[arg-type]
-        )
+    # If no type is specified for the data column mapper, load default
+    if isinstance(data_column_mapper, dict) and "type" not in data_column_mapper:
+        data_column_mapper = {
+            "type": BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
+            **data_column_mapper,
+        }
 
-    data_request_formatter_instance: RequestFormatter
-    if isinstance(data_request_formatter, RequestFormatter):
-        data_request_formatter_instance = data_request_formatter
-    else:
-        if isinstance(data_request_formatter, str):
-            request_type = data_request_formatter
-            formatter_kwargs: dict[str, Any] = {}
-        else:
-            # Extract request_type from formatter dictionary
-            formatter_dict = dict(data_request_formatter)
-            request_type = formatter_dict.pop("request_type", settings.preferred_route)
-            formatter_kwargs = formatter_dict
-
-        if (
-            formatter_class := PreprocessorRegistry.get_registered_object(request_type)
-        ) is None:
-            raise ValueError(
-                f"Request formatter '{request_type}' is not registered in the "
-                f"PreprocessorRegistry."
-            )
-        if not issubclass(formatter_class, RequestFormatter):
-            raise TypeError(
-                f"Request formatter '{request_type}' is not a subclass of "
-                f"RequestFormatter."
-            )
-
-        data_request_formatter_instance = formatter_class(
-            model=model,
-            **formatter_kwargs,
-        )
-
-    # Cast to proper types for the DataLoader preprocessors list
     preprocessors_list: list[DatasetPreprocessor] = [
-        data_column_mapper_instance,
-        data_request_formatter_instance,
+        resolve_item_from_registry(
+            DatasetPreprocessor,  # type: ignore [type-abstract]
+            PreprocessorRegistry,
+            preprocessor,
+            data_preprocessors_kwargs,
+        )
+        for preprocessor in ([data_column_mapper] + data_preprocessors)
     ]
+
+    finalizer_instance = resolve_item_from_registry(
+        DatasetFinalizer,  # type: ignore [type-abstract]
+        FinalizerRegistry,
+        data_finalizer,
+    )
 
     request_loader: DataLoader[GenerationRequest] = DataLoader(
         data=data,
@@ -289,6 +315,7 @@ async def resolve_request_loader(
             processor_args=processor_args,
         ),
         preprocessors=preprocessors_list,
+        finalizer=finalizer_instance,
         collator=(
             data_collator if callable(data_collator) else GenerativeRequestCollator()
         ),
@@ -454,6 +481,7 @@ async def benchmark_generative_text(
         backend=args.backend,
         target=args.target,
         model=args.model,
+        request_format=args.request_format,
         console=console,
         **(args.backend_kwargs or {}),
     )
@@ -468,7 +496,9 @@ async def benchmark_generative_text(
         processor=processor,
         processor_args=args.processor_args,
         data_column_mapper=args.data_column_mapper,
-        data_request_formatter=args.data_request_formatter,
+        data_preprocessors=args.data_preprocessors,
+        data_preprocessors_kwargs=args.data_preprocessors_kwargs,
+        data_finalizer=args.data_finalizer,
         data_collator=args.data_collator,
         data_sampler=args.data_sampler,
         data_num_workers=args.data_num_workers,

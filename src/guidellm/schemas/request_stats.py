@@ -17,7 +17,7 @@ from pydantic import Field, computed_field
 
 from guidellm.schemas.base import StandardBaseDict
 from guidellm.schemas.info import RequestInfo
-from guidellm.schemas.request import GenerativeRequestType, UsageMetrics
+from guidellm.schemas.request import UsageMetrics
 
 __all__ = ["GenerativeRequestStats"]
 
@@ -35,7 +35,6 @@ class GenerativeRequestStats(StandardBaseDict):
     ::
         stats = GenerativeRequestStats(
             request_id="req_123",
-            request_type="text_completion",
             info=request_info,
             input_metrics=input_usage,
             output_metrics=output_usage
@@ -45,9 +44,6 @@ class GenerativeRequestStats(StandardBaseDict):
 
     type_: Literal["generative_request_stats"] = "generative_request_stats"
     request_id: str = Field(description="Unique identifier for the request")
-    request_type: GenerativeRequestType | str = Field(
-        description="Type of generative request (text_completion or chat_completion)"
-    )
     response_id: str | None = Field(
         default=None, description="Unique identifier matching vLLM Response ID"
     )

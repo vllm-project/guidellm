@@ -723,7 +723,8 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
 
         if response is None:
             response = GenerationResponse(
-                request_id=info.request_id, request_args=str(first_request.arguments)
+                request_id=info.request_id,
+                request_args=None,
             )
 
         return response.compile_stats(

@@ -48,7 +48,6 @@ from guidellm.benchmark import (
 )
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
-from guidellm.schemas import GenerativeRequestType
 from guidellm.settings import print_config
 from guidellm.utils import Console, DefaultGroupHandler, get_literal_vals
 from guidellm.utils import cli as cli_tools
@@ -169,7 +168,10 @@ def benchmark():
     "backend_kwargs",
     callback=cli_tools.parse_json,
     default=BenchmarkGenerativeTextArgs.get_default("backend_kwargs"),
-    help="JSON string of arguments to pass to the backend.",
+    help=(
+        "JSON string of arguments to pass to the backend. E.g., "
+        '\'{"api_key": "apikey-*", "verify": false}\''
+    ),
 )
 @click.option(
     "--model",
@@ -179,19 +181,13 @@ def benchmark():
 )
 # Data configuration
 @click.option(
+    "--request-format",
     "--request-type",
-    default=BenchmarkGenerativeTextArgs.get_default("data_request_formatter"),
-    type=click.Choice(list(get_literal_vals(GenerativeRequestType))),
+    default=BenchmarkGenerativeTextArgs.get_default("request_format"),
     help=(
-        f"Request type to create for each data sample. "
-        f"Options: {', '.join(get_literal_vals(GenerativeRequestType))}."
+        "Format to use for requests. Options depend on backend. "
+        "If not provided, uses backend default."
     ),
-)
-@click.option(
-    "--request-formatter-kwargs",
-    default=None,
-    callback=cli_tools.parse_json,
-    help="JSON string of arguments to pass to the request formatter.",
 )
 @click.option(
     "--processor",
@@ -228,7 +224,35 @@ def benchmark():
     "--data-column-mapper",
     default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
     callback=cli_tools.parse_json,
-    help="JSON string of column mappings to apply to the dataset.",
+    help=(
+        "JSON string of column mappings to apply to the dataset. "
+        'E.g., \'{"text_column": "article", '
+        '"output_tokens_count_column" :"output_tokens"}\''
+    ),
+)
+@click.option(
+    "--data-preprocessors",
+    default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors"),
+    callback=cli_tools.parse_json_list,
+    multiple=True,
+    help=(
+        "List of of preprocessors to apply to the dataset. E.g., "
+        "'encode_media,my_custom_preprocessor'"
+    ),
+)
+@click.option(
+    "--data-preprocessors-kwargs",
+    callback=cli_tools.parse_json,
+    help="JSON string of arguments to pass to all preprocessors.",
+)
+@click.option(
+    "--data-finalizer",
+    default=BenchmarkGenerativeTextArgs.get_default("data_finalizer"),
+    callback=cli_tools.parse_json,
+    help=(
+        "JSON string of finalizer to convert dataset rows to requests."
+        " E.g., 'generative' or '{\"type\": \"generative\"}'"
+    ),
 )
 @click.option(
     "--data-sampler",
@@ -407,18 +431,6 @@ def benchmark():
 def run(**kwargs):  # noqa: C901
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
-
-    # Handle remapping for request params
-    request_type = kwargs.pop("request_type", None)
-    request_formatter_kwargs = kwargs.pop("request_formatter_kwargs", None)
-    if request_type is not None:
-        kwargs["data_request_formatter"] = (
-            request_type
-            if not request_formatter_kwargs
-            else {"request_type": request_type, **request_formatter_kwargs}
-        )
-    elif request_formatter_kwargs is not None:
-        kwargs["data_request_formatter"] = request_formatter_kwargs
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:

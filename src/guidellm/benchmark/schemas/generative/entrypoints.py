@@ -35,7 +35,7 @@ from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
-from guidellm.data import DatasetPreprocessor, RequestFormatter
+from guidellm.data import DatasetFinalizer, DatasetPreprocessor
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
 
@@ -179,6 +179,13 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     backend_kwargs: dict[str, Any] | None = Field(
         default=None, description="Additional backend configuration arguments"
     )
+    request_format: str | None = Field(
+        default=None,
+        description=(
+            "Query format for backend operations;"
+            " shorthand for backend_kwargs['request_format']"
+        ),
+    )
     model: str | None = Field(default=None, description="Model identifier for backend")
     # Data configuration
     processor: str | Path | PreTrainedTokenizerBase | None = Field(
@@ -202,15 +209,21 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default="generative_column_mapper",
         description="Column mapping preprocessor for dataset fields",
     )
-    data_request_formatter: RequestFormatter | dict[str, Any] | str = Field(
-        default="chat_completions",
-        description="Request formatting preprocessor or template name",
-        validation_alias=AliasChoices(
-            "data_request_formatter",
-            "data-request-formatter",
-            "request_type",
-            "request-type",
-        ),
+    data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str] = (
+        Field(
+            default_factory=lambda: [  # type: ignore [arg-type]
+                "encode_media",
+            ],
+            description="List of dataset preprocessors to apply in order",
+        )
+    )
+    data_preprocessors_kwargs: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Global arguments for data preprocessors",
+    )
+    data_finalizer: DatasetFinalizer | str | dict[str, Any] = Field(
+        default="generative",
+        description="Finalizer for preparing data samples into requests",
     )
     data_collator: Callable | Literal["generative"] | None = Field(
         default="generative", description="Data collator for batch processing"
@@ -292,7 +305,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         ),
     )
 
-    @field_validator("data", "data_args", "rate", mode="wrap")
+    @field_validator("data", "data_args", "rate", "data_preprocessors", mode="wrap")
     @classmethod
     def single_to_list(
         cls, value: Any, handler: ValidatorFunctionWrapHandler
@@ -332,27 +345,29 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         return data_collator if isinstance(data_collator, str) else None
 
     @field_serializer("data_column_mapper")
-    def serialize_data_column_mapper(
+    def serialize_preprocessor(
         self,
-        data_column_mapper: (
-            DatasetPreprocessor
-            | dict[str, str | list[str]]
-            | Literal["generative_column_mapper"]
-        ),
+        data_preprocessor: (DatasetPreprocessor | dict[str, str | list[str]] | str),
     ) -> dict | str:
-        """Serialize data_column_mapper to dict or string."""
-        return data_column_mapper if isinstance(data_column_mapper, dict | str) else {}
+        """Serialize a preprocessor to dict or string."""
+        return data_preprocessor if isinstance(data_preprocessor, dict | str) else {}
 
-    @field_serializer("data_request_formatter")
+    @field_serializer("data_preprocessors")
+    def serialize_preprocessors(
+        self,
+        data_preprocessors: list[
+            DatasetPreprocessor | dict[str, str | list[str]] | str
+        ],
+    ) -> list[dict | str]:
+        """Serialize each preprocessor to dict or string."""
+        return [self.serialize_preprocessor(p) for p in data_preprocessors]
+
+    @field_serializer("data_finalizer")
     def serialize_data_request_formatter(
-        self, data_request_formatter: RequestFormatter | dict[str, Any] | str
+        self, data_finalizer: DatasetFinalizer | dict[str, Any] | str
     ) -> dict | str:
         """Serialize data_request_formatter to dict or string."""
-        return (
-            data_request_formatter
-            if isinstance(data_request_formatter, dict | str)
-            else {}
-        )
+        return data_finalizer if isinstance(data_finalizer, dict | str) else {}
 
     @field_serializer("data_sampler")
     def serialize_data_sampler(

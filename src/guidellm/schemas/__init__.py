@@ -26,7 +26,6 @@ from .info import RequestInfo, RequestTimings
 from .request import (
     GenerationRequest,
     GenerationRequestArguments,
-    GenerativeRequestType,
     UsageMetrics,
 )
 from .request_stats import GenerativeRequestStats
@@ -47,7 +46,6 @@ __all__ = [
     "GenerationRequestArguments",
     "GenerationResponse",
     "GenerativeRequestStats",
-    "GenerativeRequestType",
     "IncompleteT",
     "Percentiles",
     "PydanticClassRegistryMixin",

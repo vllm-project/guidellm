@@ -161,6 +161,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         self,
         column_mappings: dict[GenerativeDatasetColumnType, str | list[str]]
         | None = None,
+        **_: Any,  # Ignore global kwargs
     ):
         self.input_mappings = column_mappings
         self.datasets_column_mappings: (
