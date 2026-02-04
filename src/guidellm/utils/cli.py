@@ -1,4 +1,3 @@
-import contextlib
 import json
 import os
 from typing import Any
@@ -77,9 +76,16 @@ def parse_list_floats(ctx, param, value):
         ) from err
 
 
-def parse_json(ctx, param, value):  # noqa: ARG001
+def parse_json(ctx, param, value):  # noqa: ARG001, C901, PLR0911
+    if isinstance(value, dict):
+        return value
+
     if value is None or value == [None]:
         return None
+
+    if isinstance(value, str) and not value.strip():
+        return None
+
     if isinstance(value, list | tuple):
         return [parse_json(ctx, param, val) for val in value]
 
@@ -95,19 +101,23 @@ def parse_json(ctx, param, value):  # noqa: ARG001
             result[key.strip()] = val.strip()
         return result
 
-    if "{" not in value and "}" not in value:
-        # Treat it as a primitive if it doesn't look like JSON.
-        try:
-            value = int(value)
-        except ValueError:
-            with contextlib.suppress(ValueError):
-                value = float(value)
-        return value
-
     try:
         return json.loads(value)
     except json.JSONDecodeError as err:
+        # If json parsing fails, check if it looks like a plain string
+        if "{" not in value and "}" not in value:
+            return value
+
         raise click.BadParameter(f"{param.name} must be a valid JSON string.") from err
+
+
+def parse_json_list(ctx, param, value):
+    list_value = parse_list(ctx, param, value)
+
+    if list_value is None:
+        return None
+
+    return [parse_json(ctx, param, item) for item in list_value]
 
 
 def set_if_not_default(ctx: click.Context, **kwargs) -> dict[str, Any]:

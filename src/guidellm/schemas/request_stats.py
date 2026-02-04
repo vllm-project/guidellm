@@ -17,7 +17,7 @@ from pydantic import Field, computed_field
 
 from guidellm.schemas.base import StandardBaseDict
 from guidellm.schemas.info import RequestInfo
-from guidellm.schemas.request import GenerativeRequestType, UsageMetrics
+from guidellm.schemas.request import UsageMetrics
 
 __all__ = ["GenerativeRequestStats"]
 
@@ -35,7 +35,6 @@ class GenerativeRequestStats(StandardBaseDict):
     ::
         stats = GenerativeRequestStats(
             request_id="req_123",
-            request_type="text_completion",
             info=request_info,
             input_metrics=input_usage,
             output_metrics=output_usage
@@ -45,9 +44,6 @@ class GenerativeRequestStats(StandardBaseDict):
 
     type_: Literal["generative_request_stats"] = "generative_request_stats"
     request_id: str = Field(description="Unique identifier for the request")
-    request_type: GenerativeRequestType | str = Field(
-        description="Type of generative request (text_completion or chat_completion)"
-    )
     response_id: str | None = Field(
         default=None, description="Unique identifier matching vLLM Response ID"
     )
@@ -115,14 +111,6 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Number of tokens in the input prompt, or None if unavailable
         """
-        return self.input_metrics.text_tokens
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def input_tokens(self) -> int | None:
-        """
-        :return: Number of tokens in the input prompt, or None if unavailable
-        """
         return self.input_metrics.total_tokens
 
     @computed_field  # type: ignore[misc]
@@ -131,6 +119,11 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Number of tokens in the generated output, or None if unavailable
         """
+        # Fallback if we did not get usage metrics from the server
+        # NOTE: This assumes each iteration is one token
+        if self.output_metrics.total_tokens is None:
+            return self.info.timings.token_iterations or None
+
         return self.output_metrics.total_tokens
 
     @computed_field  # type: ignore[misc]
@@ -139,8 +132,8 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Sum of prompt and output tokens, or None if both unavailable
         """
-        input_tokens = self.input_metrics.total_tokens
-        output_tokens = self.output_metrics.total_tokens
+        input_tokens = self.prompt_tokens
+        output_tokens = self.output_tokens
 
         if input_tokens is None and output_tokens is None:
             return None

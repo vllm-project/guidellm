@@ -557,7 +557,9 @@ class AsyncProfile(Profile):
 
         if self.strategy_type == "constant":
             return AsyncConstantStrategy(
-                rate=current_rate, max_concurrency=self.max_concurrency
+                rate=current_rate,
+                max_concurrency=self.max_concurrency,
+                rampup_duration=self.rampup_duration,
             )
         elif self.strategy_type == "poisson":
             return AsyncPoissonStrategy(

@@ -168,7 +168,7 @@ class GenerativeBenchmarkTimings(StandardBaseModel):
         :param config: Benchmark configuration with warmup/cooldown settings
         """
         # First update non terminal timestamps
-        self.request_start = scheduler_state.start_time
+        self.request_start = scheduler_state.start_requests_time
         self.last_update = self.current_update
         if (current_time := info.timings.last_reported) is not None:
             self.current_update = (
@@ -478,7 +478,7 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         default_factory=RunningMetricStats,
         description="Accumulated request latency statistics",
     )
-    input_tokens: RunningMetricStats = Field(
+    prompt_tokens: RunningMetricStats = Field(
         default_factory=RunningMetricStats,
         description="Accumulated input token count statistics",
     )
@@ -527,7 +527,7 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         :param duration: Current benchmark duration for time-weighted metrics
         """
         self.requests.update_estimate(1.0, duration=duration)
-        self.input_tokens.update_estimate(stats.input_tokens, duration=duration)
+        self.prompt_tokens.update_estimate(stats.prompt_tokens, duration=duration)
         self.output_tokens.update_estimate(stats.output_tokens, duration=duration)
         self.total_tokens.update_estimate(stats.total_tokens, duration=duration)
         self.request_latency.update_estimate(stats.request_latency, duration=duration)
@@ -723,7 +723,8 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
 
         if response is None:
             response = GenerationResponse(
-                request_id=info.request_id, request_args=str(first_request.arguments)
+                request_id=info.request_id,
+                request_args=None,
             )
 
         return response.compile_stats(

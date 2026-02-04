@@ -182,16 +182,18 @@ guidellm benchmark \
 GuideLLM supports HuggingFace datasets, local files, and synthetic data. This example loads the CNN DailyMail dataset from HuggingFace and maps the article column to prompts while using the summary token count column to determine output lengths.
 
 ```bash
-guidellm benchmark \
+guidellm benchmark run \
   --target http://localhost:8000 \
-  --data "hf:cnn_dailymail" \
-  --data-args '{"prompt_column":"article","output_tokens_count_column":"summary_tokens"}'
+  --data "abisee/cnn_dailymail" \
+  --data-args '{"name": "3.0.0"}' \
+  --data-column-mapper '{"text_column":"article"}'
 ```
 
 **Key parameters:**
 
 - `--data`: Data source specification - accepts HuggingFace dataset IDs (prefix with `hf:`), local file paths (`.json`, `.csv`, `.jsonl`, `.txt`), or synthetic data configs (JSON object or `key=value` pairs like `prompt_tokens=256,output_tokens=128`)
-- `--data-args`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `prompt_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
+- `--data-args`: Arguments for loading the dataset. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for valid options.
+- `--data-column-mapper`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `text_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
 - `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
 - `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths
 
@@ -234,6 +236,7 @@ guidellm benchmark \
   --warmup 0.1 \
   --cooldown 0.1 \
   --max-errors 5
+  --detect-saturation
 ```
 
 **Key parameters:**
@@ -243,6 +246,7 @@ guidellm benchmark \
 - `--max-seconds`: Maximum duration in seconds for each benchmark before automatic termination
 - `--max-requests`: Maximum number of requests per benchmark before automatic termination
 - `--max-errors`: Maximum number of individual errors before stopping the benchmark entirely
+- `--detect-saturation`: Enable over-saturation detection to automatically stop benchmarks when the model becomes over-saturated (see also `--over-saturation` for more advanced control)
 
 ## Development and Contribution
 

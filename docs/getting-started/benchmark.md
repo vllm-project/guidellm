@@ -90,6 +90,8 @@ guidellm benchmark \
 
 You can also use datasets from HuggingFace or customize synthetic data generation with additional parameters such as standard deviation, minimum, and maximum values.
 
+**Note:** When benchmarking against servers that require authentication (such as OpenAI's API), you'll need to provide an API key. See the [API Key Configuration](../guides/backends.md#api-key-configuration) section in the Backends documentation for details.
+
 By default, complete results are saved to `benchmarks.json`, `benchmarks.csv`, and `benchmarks.html` in your current directory. Use the `--output-dir` parameter to specify a different location and `--outputs` to control which formats are generated.
 
-Learn more about dataset options in the [Datasets documentation](../guides/datasets.md).
+Learn more about dataset options in the [Datasets documentation](../guides/datasets.md) and backend configuration in the [Backends documentation](../guides/backends.md).

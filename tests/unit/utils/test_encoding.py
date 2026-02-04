@@ -12,7 +12,6 @@ from guidellm.schemas import (
     RequestInfo,
     RequestTimings,
 )
-from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils.encoding import Encoder, MessageEncoding, Serializer
 
 
@@ -210,8 +209,7 @@ class TestMessageEncoding:
             (
                 None,
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(
                     timings=RequestTimings(
@@ -232,8 +230,7 @@ class TestMessageEncoding:
                     text="test response",
                 ),
                 GenerationRequest(
-                    request_type="text_completions",
-                    arguments=GenerationRequestArguments(),
+                    columns={"text_column": ["test prompt"]},
                 ),
                 RequestInfo(
                     timings=RequestTimings(

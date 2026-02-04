@@ -6,26 +6,26 @@ repos:
     exclude: ^tests/?.*/assets/.+
   - id: end-of-file-fixer
     exclude: ^tests/?.*/assets/.+
+- repo: https://github.com/hukkin/mdformat
+  rev: 1.0.0
+  hooks:
+  - id: mdformat
+    name: run markdown formatter
+    exclude: ^\.github/.+
+    additional_dependencies:
+    - "mdformat-footnote~=0.1.3"
+    - "mdformat-frontmatter~=2.0.10"
+    - "mdformat-gfm~=1.0.0"
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.9.15
   hooks:
-    - id: uv-lock
-      name: check uv.lock file matches pyproject
-    - id: uv-export
-      name: Update pylock to match uv.lock
-      # NOTE: Arguments should match ./scripts/generate_pylock.sh
-      args:
-        - "--frozen"
-        - "--all-groups"
-        - "--all-extras"
-        - "--format=pylock.toml"
-        - "--output-file=pylock.toml"
-        - "--quiet"
+  - id: uv-lock
+    name: check uv.lock file matches pyproject
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.11.7
   hooks:
-    - id: ruff
-      name: run linter
-      args: [ --fix, --show-fixes ]
-    - id: ruff-format
-      name: run formatter
+  - id: ruff
+    name: run linter
+    args: [ --fix, --show-fixes ]
+  - id: ruff-format
+    name: run formatter

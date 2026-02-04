@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Generic, Literal
 
 from rich.console import Group
@@ -37,7 +36,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarkAccumulator,
 )
 from guidellm.scheduler import SchedulerState, SchedulingStrategy
-from guidellm.utils import Colors, format_value_display
+from guidellm.utils import Colors, format_value_display, safe_format_timestamp
 
 __all__ = ["BenchmarkerProgress", "GenerativeConsoleBenchmarkerProgress"]
 
@@ -390,7 +389,7 @@ class _GenerativeProgressTaskState:
         if self.start_time < 0.0:
             return "--:--:--"
 
-        return datetime.fromtimestamp(self.start_time).strftime("%H:%M:%S")
+        return safe_format_timestamp(self.start_time, format_="%H:%M:%S")
 
     @property
     def formatted_progress_status(self) -> str:
@@ -590,7 +589,7 @@ class _GenerativeProgressTaskState:
         self._update_token_stats(
             output_tokens=accumulator.completed_metrics.total_tokens.mean,
             output_tokens_rate=accumulator.completed_metrics.output_tokens.rate_per_second,
-            prompt_tokens=accumulator.completed_metrics.input_tokens.mean,
+            prompt_tokens=accumulator.completed_metrics.prompt_tokens.mean,
             total_tokens_rate=accumulator.completed_metrics.total_tokens.rate_per_second,
             time_to_first_token=accumulator.completed_metrics.time_to_first_token_ms.mean,
             inter_token_latency=accumulator.completed_metrics.inter_token_latency_ms.mean,

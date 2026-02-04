@@ -1,39 +1,61 @@
 """
-Response handlers for processing API responses from different generation backends.
+Request handlers for formatting requests and processing API responses from
+different OpenAI endpoints.
 
-Provides a pluggable system for handling responses from language model backends,
-supporting both streaming and non-streaming responses. Each handler implements the
-GenerationResponseHandler protocol to parse API responses, extract usage metrics,
-and convert them into standardized GenerationResponse objects.
+Provides a pluggable system for handling format differences while supporting
+both streaming and non-streaming responses. Each handler implements the
+GenerationRequestHandler protocol to format json requests, parse API responses,
+extract usage metrics, and convert results into standardized GenerationResponse.
 """
 
 from __future__ import annotations
 
+import base64
 from typing import Any, Protocol, cast
 
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
+from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils import RegistryMixin, json
 
 __all__ = [
-    "AudioResponseHandler",
-    "ChatCompletionsResponseHandler",
-    "GenerationResponseHandler",
-    "GenerationResponseHandlerFactory",
-    "TextCompletionsResponseHandler",
+    "AudioRequestHandler",
+    "ChatCompletionsRequestHandler",
+    "OpenAIRequestHandler",
+    "OpenAIRequestHandlerFactory",
+    "TextCompletionsRequestHandler",
 ]
 
 
-class GenerationResponseHandler(Protocol):
+class OpenAIRequestHandler(Protocol):
     """
-    Protocol for handling generation API responses.
+    Protocol for handling OpenAI request endpoint
 
-    Defines the interface for processing both streaming and non-streaming responses
-    from backend APIs, converting them into standardized GenerationResponse objects
+    Defines the interface to format the request for a given endpoint and to
+    process both streaming and non-streaming responses from backend APIs,
+    converting them into standardized GenerationResponse objects
     with consistent metrics extraction.
     """
 
+    def format(
+        self,
+        data: GenerationRequest,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        """
+        Format the generation request into the appropriate structure for
+        the backend API.
+
+        :param request: The generation request to format
+        :param **kwargs: Additional keyword arguments for request formatting
+        :return: The formatted request arguments
+        """
+        ...
+
     def compile_non_streaming(
-        self, request: GenerationRequest, response: Any
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: Any,
     ) -> GenerationResponse:
         """
         Process a complete non-streaming API response.
@@ -53,7 +75,9 @@ class GenerationResponseHandler(Protocol):
         """
         ...
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
         """
         Compile accumulated streaming data into a final response.
 
@@ -63,11 +87,11 @@ class GenerationResponseHandler(Protocol):
         ...
 
 
-class GenerationResponseHandlerFactory(RegistryMixin[type[GenerationResponseHandler]]):
+class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
     """
-    Factory for registering and creating response handlers by backend type.
+    Factory for registering and creating OpenAI request handlers by request type.
 
-    Registry-based system for associating handler classes with specific backend API
+    Registry-based system for associating handler classes with specific API
     types, enabling automatic selection of the appropriate handler for processing
     responses from different generation services.
     """
@@ -76,12 +100,12 @@ class GenerationResponseHandlerFactory(RegistryMixin[type[GenerationResponseHand
     def create(
         cls,
         request_type: str,
-        handler_overrides: dict[str, type[GenerationResponseHandler]] | None = None,
-    ) -> GenerationResponseHandler:
+        handler_overrides: dict[str, type[OpenAIRequestHandler]] | None = None,
+    ) -> OpenAIRequestHandler:
         """
-        Create a response handler class for the given request type.
+        Create a request handler class for the given request type.
 
-        :param request_type: The type of generation request (e.g., "text_completions")
+        :param request_type: The type of generation request (e.g., "/chat/completions")
         :param handler_overrides: Optional mapping of request types to handler classes
             to override the default registry by checking first and then falling back
             to the registered handlers.
@@ -100,10 +124,10 @@ class GenerationResponseHandlerFactory(RegistryMixin[type[GenerationResponseHand
         return handler_cls()
 
 
-@GenerationResponseHandlerFactory.register("text_completions")
-class TextCompletionsResponseHandler(GenerationResponseHandler):
+@OpenAIRequestHandlerFactory.register("/v1/completions")
+class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
-    Response handler for OpenAI-style text completion endpoints.
+    Request handler for OpenAI-style legacy completion endpoints.
 
     Processes responses from text completion APIs that return generated text in the
     'choices' array with 'text' fields. Handles both streaming and non-streaming
@@ -126,8 +150,60 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
 
+    def format(
+        self,
+        data: GenerationRequest,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        """
+        Format the text completion generation request into the appropriate structure.
+
+        :param request: The generation request to format
+        :param **kwargs: Additional keyword arguments for request formatting
+        :return: The formatted request arguments
+        """
+        arguments: GenerationRequestArguments = GenerationRequestArguments()
+        arguments.body = {}  # The type checker works better setting this field here
+
+        # Add model
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        # Configure streaming
+        if kwargs.get("stream"):
+            arguments.stream = True
+            arguments.body["stream"] = True
+            arguments.body["stream_options"] = {
+                "include_usage": True,
+                "continuous_usage_stats": True,
+            }
+
+        # Handle output tokens
+        if data.output_metrics.text_tokens:
+            arguments.body["max_tokens"] = data.output_metrics.text_tokens
+            arguments.body["stop"] = None
+            arguments.body["ignore_eos"] = True
+        elif kwargs.get("max_tokens") is not None:
+            arguments.body["max_tokens"] = kwargs["max_tokens"]
+
+        # Apply extra arguments
+        if kwargs.get("extras"):
+            arguments.model_combine(kwargs["extras"])
+
+        # Build prompt
+        prefix = "".join(pre for pre in data.columns.get("prefix_column", []) if pre)
+        text = "".join(txt for txt in data.columns.get("text_column", []) if txt)
+        if prefix or text:
+            prompt = prefix + text
+            arguments.body["prompt"] = prompt
+
+        return arguments
+
     def compile_non_streaming(
-        self, request: GenerationRequest, response: dict
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: dict,
     ) -> GenerationResponse:
         """
         Process a complete text completion response.
@@ -143,9 +219,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -181,7 +255,9 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         return 1 if updated else 0
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
         """
         Compile accumulated streaming text chunks into a final response.
 
@@ -193,9 +269,7 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -279,18 +353,137 @@ class TextCompletionsResponseHandler(GenerationResponseHandler):
         )
 
 
-@GenerationResponseHandlerFactory.register("chat_completions")
-class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
+@OpenAIRequestHandlerFactory.register("/v1/chat/completions")
+class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     """
-    Response handler for OpenAI-style chat completion endpoints.
+    Request handler for OpenAI-style chat completion endpoints.
 
-    Extends TextCompletionsResponseHandler to handle chat completion responses where
+    Extends TextCompletionsResponseHandler to handle chat completion requests where
     generated text is nested within message objects in the choices array. Processes
     both streaming and non-streaming chat completion responses.
     """
 
+    def format(  # noqa: C901, PLR0912, PLR0915
+        self,
+        data: GenerationRequest,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        """
+        Format the chat completion generation request into the appropriate structure.
+
+        :param request: The generation request to format
+        :param **kwargs: Additional keyword arguments for request formatting
+        :return: The formatted request arguments
+        """
+        arguments = GenerationRequestArguments()
+        arguments.body = {}  # The type checker works best with body assigned here
+
+        # Add model
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        # Configure streaming
+        if kwargs.get("stream"):
+            arguments.stream = True
+            arguments.body["stream"] = True
+            arguments.body["stream_options"] = {
+                "include_usage": True,
+                "continuous_usage_stats": True,
+            }
+
+        # Handle output tokens
+        if data.output_metrics.text_tokens:
+            arguments.body.update(
+                {
+                    "max_completion_tokens": data.output_metrics.text_tokens,
+                    "stop": None,
+                    "ignore_eos": True,
+                }
+            )
+        elif kwargs.get("max_tokens") is not None:
+            arguments.body["max_completion_tokens"] = kwargs["max_tokens"]
+
+        # Apply extra arguments
+        if kwargs.get("extras"):
+            arguments.model_combine(kwargs["extras"])
+
+        # Build messages
+        arguments.body["messages"] = []
+
+        for prefix in data.columns.get("prefix_column", []):
+            if not prefix:
+                continue
+
+            arguments.body["messages"].append({"role": "system", "content": prefix})
+
+        for text in data.columns.get("text_column", []):
+            if not text:
+                continue
+
+            arguments.body["messages"].append(
+                {"role": "user", "content": [{"type": "text", "text": text}]}
+            )
+
+        for image in data.columns.get("image_column", []):
+            if not image:
+                continue
+
+            arguments.body["messages"].append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image.get("image")},
+                        }
+                    ],
+                }
+            )
+
+        for video in data.columns.get("video_column", []):
+            if not video:
+                continue
+
+            arguments.body["messages"].append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": video.get("video")},
+                        }
+                    ],
+                }
+            )
+
+        for audio in data.columns.get("audio_column", []):
+            if not audio:
+                continue
+
+            arguments.body["messages"].append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": base64.b64encode(
+                                    audio.get("audio", b"")
+                                ).decode("utf-8"),
+                                "format": audio.get("format"),
+                            },
+                        }
+                    ],
+                }
+            )
+
+        return arguments
+
     def compile_non_streaming(
-        self, request: GenerationRequest, response: dict
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: dict,
     ) -> GenerationResponse:
         """
         Process a complete chat completion response.
@@ -309,9 +502,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -347,7 +538,9 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 
         return 1 if updated else 0
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
         """
         Compile accumulated streaming chat completion content into a final response.
 
@@ -359,9 +552,7 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
+            request_args=arguments.model_dump_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -369,12 +560,12 @@ class ChatCompletionsResponseHandler(TextCompletionsResponseHandler):
         )
 
 
-@GenerationResponseHandlerFactory.register(
-    ["audio_transcriptions", "audio_translations"]
+@OpenAIRequestHandlerFactory.register(
+    ["/v1/audio/transcriptions", "/v1/audio/translations"]
 )
-class AudioResponseHandler:
+class AudioRequestHandler(ChatCompletionsRequestHandler):
     """
-    Response handler for audio transcription and translation endpoints.
+    Request handler for audio transcription and translation endpoints.
 
     Processes responses from audio processing APIs that convert speech to text,
     handling both transcription and translation services. Manages audio-specific
@@ -398,85 +589,55 @@ class AudioResponseHandler:
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
 
-    def compile_non_streaming(
-        self, request: GenerationRequest, response: dict
-    ) -> GenerationResponse:
+    def format(
+        self,
+        data: GenerationRequest,
+        **kwargs,
+    ) -> GenerationRequestArguments:  # noqa: C901
         """
-        Process a complete audio transcription or translation response.
+        Format the audio transcription generation request into the
+        appropriate structure.
 
-        Extracts transcribed or translated text and audio-specific usage metrics
-        including processing duration and token counts for audio content.
-
-        :param request: Original generation request
-        :param response: Complete API response containing text and usage data
-        :return: Standardized GenerationResponse with extracted text and metrics
+        :param request: The generation request to format
+        :param **kwargs: Additional keyword arguments for request formatting
+        :return: The formatted request arguments
         """
-        text: str = response.get("text", "")
-        usage: dict[str, int | dict[str, int]] = response.get("usage", {})
-        input_metrics, output_metrics = self.extract_metrics(usage, text)
+        arguments = GenerationRequestArguments(files={})
+        arguments.body = {}
 
-        return GenerationResponse(
-            request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
-            response_id=response.get("id"),  # use vLLM ID if available
-            text=text,
-            input_metrics=input_metrics,
-            output_metrics=output_metrics,
-        )
+        # Add model
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
 
-    def add_streaming_line(self, line: str) -> int | None:
-        """
-        Process a single line from an audio streaming response.
+        # Configure streaming
+        if kwargs.get("stream"):
+            arguments.stream = True
+            arguments.body["stream"] = True
+            # NOTE: File upload endpoints use flattened stream options
+            arguments.body["stream_include_usage"] = True
+            arguments.body["stream_continuous_usage_stats"] = True
 
-        Handles JSON-formatted streaming responses from audio processing endpoints,
-        extracting text content and usage metrics as they become available.
+        # Apply extra arguments
+        if kwargs.get("extras"):
+            arguments.model_combine(kwargs["extras"])
 
-        :param line: Raw JSON line from the streaming response
-        :return: 1 if text content was extracted, 0 if line ignored, None if done
-        """
-        if line == "data: [DONE]":
-            return None
+        # Build audio input
+        audio_columns = data.columns.get("audio_column", [])
+        if len(audio_columns) != 1:
+            raise ValueError(
+                f"GenerativeAudioTranscriptionRequestFormatter expects exactly "
+                f"one audio column, but got {len(audio_columns)}."
+            )
 
-        if not line or not (line := line.strip()) or not line.startswith("{"):
-            return 0
+        arguments.files = {
+            "file": (
+                audio_columns[0].get("file_name", "audio_input"),
+                audio_columns[0].get("audio"),
+                audio_columns[0].get("mimetype"),
+            )
+        }
 
-        data: dict[str, Any] = json.loads(line)
-        updated = False
-
-        if "id" in data and self.streaming_response_id is None:
-            self.streaming_response_id = data["id"]
-
-        if text := data.get("text"):
-            self.streaming_texts.append(text)
-            updated = True
-
-        if usage := data.get("usage"):
-            self.streaming_usage = usage
-
-        return 1 if updated else 0
-
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
-        """
-        Compile accumulated streaming audio text into a final response.
-
-        :param request: Original generation request
-        :return: Standardized GenerationResponse with concatenated text and metrics
-        """
-        text = "".join(self.streaming_texts)
-        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
-
-        return GenerationResponse(
-            request_id=request.request_id,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else None
-            ),
-            response_id=self.streaming_response_id,
-            text=text,
-            input_metrics=input_metrics,
-            output_metrics=output_metrics,
-        )
+        return arguments
 
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str
@@ -497,31 +658,12 @@ class AudioResponseHandler:
                 text_characters=len(text) if text else 0,
             )
 
-        input_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("input_token_details", {}) or {}
-        )
-        output_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("output_token_details", {}) or {}
-        )
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
 
         return UsageMetrics(
-            text_tokens=input_details.get("text_tokens") or 0,
-            audio_tokens=(
-                input_details.get("audio_tokens")
-                or usage_metrics.get("audio_tokens")
-                or usage_metrics.get("input_tokens")
-                or 0
-            ),
-            audio_seconds=(
-                input_details.get("seconds") or usage_metrics.get("seconds") or 0
-            ),
+            audio_tokens=(usage_metrics.get("prompt_tokens") or 0),
         ), UsageMetrics(
-            text_tokens=(
-                output_details.get("text_tokens")
-                or usage_metrics.get("output_tokens")
-                or 0
-            ),
+            text_tokens=(usage_metrics.get("completion_tokens") or 0),
             text_words=len(text.split()) if text else 0,
             text_characters=len(text) if text else 0,
         )

@@ -185,6 +185,12 @@ jobs:
         if: ${{ env.package_version == '' }}
         run: |
           exit 1
+      - name: Store/retrieve build caches
+        id: cache-buildah
+        uses: actions/cache@v4
+        with:
+          path: /var/tmp/buildah-cache-*
+          key: buildah-mount-cache-${{ runner.os }}-${{ runner.arch }}
       - name: Buildah build
         id: build-image
         uses: redhat-actions/buildah-build@v2
@@ -192,7 +198,7 @@ jobs:
           image: ${{ github.event.repository.name }}
           build-args: |
             GUIDELLM_BUILD_TYPE=candidate
-          tags: ${{ env.package_version }}~rc
+          tags: ${{ env.package_version }}-rc
           containerfiles: |
             ./Containerfile
       - name: Push To ghcr.io

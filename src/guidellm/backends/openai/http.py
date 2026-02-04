@@ -18,10 +18,37 @@ from typing import Any
 import httpx
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
-from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo
+from guidellm.backends.openai.request_handlers import OpenAIRequestHandlerFactory
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationRequestArguments,
+    GenerationResponse,
+    RequestInfo,
+)
 
-__all__ = ["OpenAIHTTPBackend"]
+__all__ = [
+    "OpenAIHTTPBackend",
+]
+
+
+DEFAULT_API_PATHS = {
+    "/health": "health",
+    "/v1/models": "v1/models",
+    "/v1/completions": "v1/completions",
+    "/v1/chat/completions": "v1/chat/completions",
+    "/v1/audio/transcriptions": "v1/audio/transcriptions",
+    "/v1/audio/translations": "v1/audio/translations",
+}
+
+DEFAULT_API = "/v1/chat/completions"
+
+# Legacy aliases for common API paths
+LEGACY_API_ALIASES = {
+    "text_completions": "/v1/completions",
+    "chat_completions": "/v1/chat/completions",
+    "audio_transcriptions": "/v1/audio/transcriptions",
+    "audio_translations": "/v1/audio/translations",
+}
 
 
 @Backend.register("openai_http")
@@ -72,19 +99,26 @@ class OpenAIHTTPBackend(Backend):
         self,
         target: str,
         model: str = "",
+        request_format: str | None = None,
+        api_key: str | None = None,
         api_routes: dict[str, str] | None = None,
-        response_handlers: dict[str, Any] | None = None,
+        request_handlers: dict[str, Any] | None = None,
         timeout: float = 60.0,
         http2: bool = True,
         follow_redirects: bool = True,
         verify: bool = False,
         validate_backend: bool | str | dict[str, Any] = True,
+        stream: bool = True,
+        extras: dict[str, Any] | GenerationRequestArguments | None = None,
+        max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
     ):
         """
         Initialize OpenAI HTTP backend with server configuration.
 
         :param target: Base URL of the OpenAI-compatible server
         :param model: Model identifier for generation requests
+        :param api_key: API key for authentication (for Bearer auth)
         :param api_routes: Custom API endpoint routes mapping
         :param response_handlers: Custom response handlers for different request types
         :param timeout: Request timeout in seconds
@@ -98,17 +132,26 @@ class OpenAIHTTPBackend(Backend):
         # Request Values
         self.target = target.rstrip("/").removesuffix("/v1")
         self.model = model
+        self.api_key = api_key
+
+        # Resolve request format
+        if request_format is None:
+            request_format = DEFAULT_API
+        elif request_format in LEGACY_API_ALIASES:
+            request_format = LEGACY_API_ALIASES[request_format]
+
+        # Validate that the request handler exists
+        valid_formats = OpenAIRequestHandlerFactory.registered_names()
+        if request_format not in valid_formats:
+            raise ValueError(
+                f"Invalid request_format '{request_format}'. Must be one of: "
+                f"{', '.join(valid_formats)}"
+            )
+        self.request_type = request_format
 
         # Store configuration
-        self.api_routes = api_routes or {
-            "health": "health",
-            "models": "v1/models",
-            "text_completions": "v1/completions",
-            "chat_completions": "v1/chat/completions",
-            "audio_transcriptions": "v1/audio/transcriptions",
-            "audio_translations": "v1/audio/translations",
-        }
-        self.response_handlers = response_handlers
+        self.api_routes = api_routes or DEFAULT_API_PATHS
+        self.request_handlers = request_handlers
         self.timeout = timeout
         self.http2 = http2
         self.follow_redirects = follow_redirects
@@ -116,6 +159,13 @@ class OpenAIHTTPBackend(Backend):
         self.validate_backend: dict[str, Any] | None = self._resolve_validate_kwargs(
             validate_backend
         )
+        self.stream: bool = stream
+        self.extras = (
+            GenerationRequestArguments(**extras)
+            if extras and isinstance(extras, dict)
+            else extras
+        )
+        self.max_tokens: int | None = max_tokens or max_completion_tokens
 
         # Runtime state
         self._in_process = False
@@ -137,6 +187,7 @@ class OpenAIHTTPBackend(Backend):
             "verify": self.verify,
             "openai_paths": self.api_routes,
             "validate_backend": self.validate_backend,
+            # Auth token excluded for security
         }
 
     async def process_startup(self):
@@ -154,6 +205,12 @@ class OpenAIHTTPBackend(Backend):
             timeout=self.timeout,
             follow_redirects=self.follow_redirects,
             verify=self.verify,
+            # Allow unlimited connections
+            limits=httpx.Limits(
+                max_connections=None,
+                max_keepalive_connections=None,
+                keepalive_expiry=5.0,  # default
+            ),
         )
         self._in_process = True
 
@@ -184,7 +241,12 @@ class OpenAIHTTPBackend(Backend):
             return
 
         try:
-            response = await self._async_client.request(**self.validate_backend)
+            # Merge bearer token headers into validate_backend dict
+            validate_kwargs = {**self.validate_backend}
+            existing_headers = validate_kwargs.get("headers")
+            built_headers = self._build_headers(existing_headers)
+            validate_kwargs["headers"] = built_headers
+            response = await self._async_client.request(**validate_kwargs)
             response.raise_for_status()
         except Exception as exc:
             raise RuntimeError(
@@ -203,8 +265,8 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        target = f"{self.target}/{self.api_routes['models']}"
-        response = await self._async_client.get(target)
+        target = f"{self.target}/{self.api_routes['/v1/models']}"
+        response = await self._async_client.get(target, headers=self._build_headers())
         response.raise_for_status()
 
         return [item["id"] for item in response.json()["data"]]
@@ -219,7 +281,8 @@ class OpenAIHTTPBackend(Backend):
             return self.model
 
         models = await self.available_models()
-        return models[0] if models else ""
+        self.model = models[0] if models else ""
+        return self.model
 
     async def resolve(  # type: ignore[override]
         self,
@@ -247,31 +310,39 @@ class OpenAIHTTPBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-        if (request_path := self.api_routes.get(request.request_type)) is None:
-            raise ValueError(f"Unsupported request type '{request.request_type}'")
+        if (request_path := self.api_routes.get(self.request_type)) is None:
+            raise ValueError(f"Unsupported request type '{self.request_type}'")
+
+        request_handler = OpenAIRequestHandlerFactory.create(
+            self.request_type, handler_overrides=self.request_handlers
+        )
+        arguments: GenerationRequestArguments = request_handler.format(
+            request,
+            model=(await self.default_model()),
+            stream=self.stream,
+            extras=self.extras,
+            max_tokens=self.max_tokens,
+        )
 
         request_url = f"{self.target}/{request_path}"
         request_files = (
             {
                 key: tuple(value) if isinstance(value, list) else value
-                for key, value in request.arguments.files.items()
+                for key, value in arguments.files.items()
             }
-            if request.arguments.files
+            if arguments.files
             else None
         )
-        request_json = request.arguments.body if not request_files else None
-        request_data = request.arguments.body if request_files else None
-        response_handler = GenerationResponseHandlerFactory.create(
-            request.request_type, handler_overrides=self.response_handlers
-        )
+        request_json = arguments.body if not request_files else None
+        request_data = arguments.body if request_files else None
 
-        if not request.arguments.stream:
+        if not arguments.stream:
             request_info.timings.request_start = time.time()
             response = await self._async_client.request(
-                request.arguments.method or "POST",
+                arguments.method or "POST",
                 request_url,
-                params=request.arguments.params,
-                headers=request.arguments.headers,
+                params=arguments.params,
+                headers=self._build_headers(arguments.headers),
                 json=request_json,
                 data=request_data,
                 files=request_files,
@@ -279,17 +350,20 @@ class OpenAIHTTPBackend(Backend):
             request_info.timings.request_end = time.time()
             response.raise_for_status()
             data = response.json()
-            yield response_handler.compile_non_streaming(request, data), request_info
+            yield (
+                request_handler.compile_non_streaming(request, arguments, data),
+                request_info,
+            )
             return
 
         try:
             request_info.timings.request_start = time.time()
 
             async with self._async_client.stream(
-                request.arguments.method or "POST",
+                arguments.method or "POST",
                 request_url,
-                params=request.arguments.params,
-                headers=request.arguments.headers,
+                params=arguments.params,
+                headers=self._build_headers(arguments.headers),
                 json=request_json,
                 data=request_data,
                 files=request_files,
@@ -305,7 +379,7 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.last_request_iteration = iter_time
                     request_info.timings.request_iterations += 1
 
-                    iterations = response_handler.add_streaming_line(chunk)
+                    iterations = request_handler.add_streaming_line(chunk)
                     if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
                         continue
@@ -318,11 +392,35 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.token_iterations += iterations
 
             request_info.timings.request_end = time.time()
-            yield response_handler.compile_streaming(request), request_info
+            yield request_handler.compile_streaming(request, arguments), request_info
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
-            yield response_handler.compile_streaming(request), request_info
+            yield request_handler.compile_streaming(request, arguments), request_info
             raise err
+
+    def _build_headers(
+        self, existing_headers: dict[str, str] | None = None
+    ) -> dict[str, str] | None:
+        """
+        Build headers dictionary with bearer token authentication.
+
+        Merges the Authorization bearer token header (if api_key is set) with any
+        existing headers. User-provided headers take precedence over the bearer token.
+
+        :param existing_headers: Optional existing headers to merge with
+        :return: Dictionary of headers with bearer token included if api_key is set
+        """
+        headers: dict[str, str] = {}
+
+        # Add bearer token if api_key is set
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        # Merge with existing headers (user headers take precedence)
+        if existing_headers:
+            headers = {**headers, **existing_headers}
+
+        return headers or None
 
     def _resolve_validate_kwargs(
         self, validate_backend: bool | str | dict[str, Any]
@@ -331,7 +429,7 @@ class OpenAIHTTPBackend(Backend):
             return None
 
         if validate_kwargs is True:
-            validate_kwargs = "health"
+            validate_kwargs = "/health"
 
         if isinstance(validate_kwargs, str) and validate_kwargs in self.api_routes:
             validate_kwargs = f"{self.target}/{self.api_routes[validate_kwargs]}"

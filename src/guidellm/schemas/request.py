@@ -10,7 +10,7 @@ consistent interaction with various AI generation APIs.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import Field, computed_field
 
@@ -19,16 +19,7 @@ from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 __all__ = [
     "GenerationRequest",
     "GenerationRequestArguments",
-    "GenerativeRequestType",
     "UsageMetrics",
-]
-
-
-GenerativeRequestType = Literal[
-    "text_completions",
-    "chat_completions",
-    "audio_transcriptions",
-    "audio_translations",
 ]
 
 
@@ -166,9 +157,17 @@ class UsageMetrics(StandardBaseDict):
 
         :return: Sum of text, image, video, and audio tokens, or None if all are None
         """
-        return (self.text_tokens or 0) + (self.image_tokens or 0) + (
-            self.video_tokens or 0
-        ) + (self.audio_tokens or 0) or None
+        token_metrics = [
+            self.text_tokens,
+            self.image_tokens,
+            self.video_tokens,
+            self.audio_tokens,
+        ]
+        # NOTE: None should indicate no data rather than zero usage
+        if token_metrics.count(None) == len(token_metrics):
+            return None
+        else:
+            return sum(token or 0 for token in token_metrics)
 
     def add_text_metrics(self, text):
         """
@@ -192,7 +191,6 @@ class GenerationRequest(StandardBaseModel):
 
     Example::
         request = GenerationRequest(
-            request_type="text_completions",
             arguments=GenerationRequestArguments(
                 method="POST",
                 body={"prompt": "Hello world", "max_tokens": 100}
@@ -204,18 +202,12 @@ class GenerationRequest(StandardBaseModel):
         default_factory=lambda: str(uuid.uuid4()),
         description="Unique identifier for the request.",
     )
-    request_type: GenerativeRequestType | str = Field(
+    columns: dict[str, list[Any]] = Field(
+        default_factory=dict,
         description=(
-            "Type of request. If url is not provided in arguments, "
-            "this will be used to determine the request url."
+            "Columnar data associated with the request, structured as a dictionary "
+            "where keys are column names and values are lists of column entries."
         ),
-    )
-    arguments: GenerationRequestArguments = Field(
-        description=(
-            "Payload for the request, structured as a dictionary of arguments to pass "
-            "to the respective backend method. For example, can contain "
-            "'json', 'headers', 'files', etc."
-        )
     )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,

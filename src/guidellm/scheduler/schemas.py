@@ -301,6 +301,12 @@ class SchedulerState(StandardBaseModel):
     end_time: float | None = Field(
         default=None, description="Unix timestamp when the scheduler stopped"
     )
+    start_requests_time: float | None = Field(
+        default=None, description="Unix timestamp of the first sent request"
+    )
+    end_requests_time: float | None = Field(
+        default=None, description="Unix timestamp of the last finalized request"
+    )
     end_queuing_time: float | None = Field(
         default=None, description="Unix timestamp when request queuing stopped"
     )

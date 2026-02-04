@@ -4,7 +4,6 @@ from typing import Any, Protocol, runtime_checkable
 
 from datasets import Dataset, IterableDataset
 
-from guidellm.schemas import GenerationRequest
 from guidellm.utils import RegistryMixin
 
 __all__ = ["DataDependentPreprocessor", "DatasetPreprocessor", "PreprocessorRegistry"]
@@ -12,7 +11,7 @@ __all__ = ["DataDependentPreprocessor", "DatasetPreprocessor", "PreprocessorRegi
 
 @runtime_checkable
 class DatasetPreprocessor(Protocol):
-    def __call__(self, item: dict[str, Any]) -> GenerationRequest | dict[str, Any]: ...
+    def __call__(self, item: dict[str, Any]) -> dict[str, Any]: ...
 
 
 @runtime_checkable

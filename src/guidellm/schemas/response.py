@@ -113,10 +113,7 @@ class GenerationResponse(StandardBaseModel):
         return GenerativeRequestStats(
             request_id=self.request_id,
             response_id=self.response_id,
-            request_type=request.request_type,
-            request_args=str(
-                request.arguments.model_dump() if request.arguments else {}
-            ),
+            request_args=self.request_args,
             output=self.text,
             info=info,
             input_metrics=UsageMetrics(**input_metrics_dict),

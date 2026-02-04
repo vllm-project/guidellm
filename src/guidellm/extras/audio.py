@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from pathlib import Path
 from typing import Any, Literal
 
@@ -33,7 +32,6 @@ def encode_audio(
     | np.ndarray
     | torch.Tensor
     | dict[str, Any],
-    b64encode: bool = False,
     sample_rate: int | None = None,
     file_name: str = "audio.wav",
     encode_sample_rate: int = 16000,
@@ -71,12 +69,8 @@ def encode_audio(
     )
 
     return {
-        "type": "audio_base64" if b64encode else "audio_file",
-        "audio": (
-            base64.b64encode(encoded_audio).decode("utf-8")
-            if b64encode
-            else encoded_audio
-        ),
+        "type": "audio_file",
+        "audio": encoded_audio,
         "file_name": get_file_name(audio)
         if isinstance(audio, str | Path)
         else file_name,

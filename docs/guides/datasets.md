@@ -1,5 +1,7 @@
 # Datasets
 
+> [!WARNING] 🚧 This documentation is in the process of being updated. Some information may be outdated. 🚧
+
 GuideLLM supports various dataset configurations to enable benchmarking and evaluation of large language models (LLMs). This document provides a comprehensive guide to configuring datasets for different use cases, along with detailed examples and rationale for choosing specific pathways.
 
 ## Data Arguments Overview
@@ -25,7 +27,8 @@ guidellm benchmark \
     --profile "throughput" \
     --max-requests 1000 \
     --data "path/to/dataset|dataset_id" \
-    --data-args '{"prompt_column": "prompt", "split": "train"}' \
+    --data-column-mapper '{"text_column": "prompt"}' \
+    --data-args '{"split": "train"}' \
     --processor "path/to/processor" \
     --processor-args '{"arg1": "value1"}' \
     --data-sampler "random"
@@ -117,7 +120,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   Hello, how are you?
   What is your name?
   ```
-- **CSV files (`.csv`)**: Where each row is a separate dataset entry and the first row contains the column names. The columns should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-args` argument.
+- **CSV files (`.csv`)**: Where each row is a separate dataset entry and the first row contains the column names. The columns should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```csv
   prompt,output_tokens_count,additional_column,additional_column2
   Hello, how are you?,5,foo,bar
@@ -128,7 +131,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"}
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
-- **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-args` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-args` argument.
+- **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```json
   {
     "version": "1.0",
@@ -150,7 +153,8 @@ guidellm benchmark \
     --profile "throughput" \
     --max-requests 1000 \
     --data "path/to/dataset.ext" \
-    --data-args '{"prompt_column": "prompt", "split": "train"}'
+    --data-column-mapper '{"text_column": "prompt"}' \
+    --data-args '{"split": "train"}'
 ```
 
 Where `.ext` can be any of the supported file formats listed above.
@@ -158,7 +162,7 @@ Where `.ext` can be any of the supported file formats listed above.
 #### Notes
 
 - Ensure the file format matches the expected structure for the dataset and is listed as a supported format.
-- The `--data-args` argument can be used to specify additional parameters for parsing the dataset, such as the prompt column name or the split to use.
+- The `--data-column-mapper` argument can be used to specify additional parameters for parsing the dataset, such as the prompt column name or the split to use.
 - A processor/tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the processor/tokenizer must be specified using the `--processor` argument. If not set, the processor/tokenizer will be set to the model passed in or retrieved from the server.
 - More information on the supported formats and additional args for the underlying use of `load_dataset` can be found in the [Hugging Face datasets documentation](https://huggingface.co/docs/datasets/en/loading#local-and-remote-files).
 
@@ -168,21 +172,21 @@ In-memory datasets allow you to directly pass data as Python objects, making the
 
 #### Supported Formats with Examples
 
-- **Dictionary of columns and values**: Where each key is a column name and the values are lists of data points. The keys should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-args` argument.
+- **Dictionary of columns and values**: Where each key is a column name and the values are lists of data points. The keys should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```python
   {
       "column1": ["value1", "value2"],
       "column2": ["value3", "value4"]
   }
   ```
-- **List of dictionaries**: Where each dictionary represents a single data point with key-value pairs. The dictionaries should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-args` argument.
+- **List of dictionaries**: Where each dictionary represents a single data point with key-value pairs. The dictionaries should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```python
   [
       {"column1": "value1", "column2": "value3"},
       {"column1": "value2", "column2": "value4"}
   ]
   ```
-- **List of items**: Where each item is a single data point. The items should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-args` argument.
+- **List of items**: Where each item is a single data point. The items should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```python
   [
       "value1",

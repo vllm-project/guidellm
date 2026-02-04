@@ -24,6 +24,7 @@ class TestGenerativeRequestStats:
             "short_completion",
             "long_chat",
             "single_token_output",
+            "no_usage_fallback",
             "no_iterations_fallback",
         ],
     )
@@ -41,9 +42,8 @@ class TestGenerativeRequestStats:
         # Define realistic scenarios based on common generative AI patterns
         if case_id == "short_completion":
             # Quick completion with moderate tokens
-            request_type = "text_completions"
-            prompt_tokens = 30
-            output_tokens = 20
+            usage_prompt_tokens = prompt_tokens = 30
+            usage_output_tokens = output_tokens = 20
             request_start = 0.0
             # Time to first token: ~200ms (typical for small models)
             ttft_ms = rng.uniform(150, 250)
@@ -57,9 +57,8 @@ class TestGenerativeRequestStats:
 
         elif case_id == "long_chat":
             # Long conversation with many tokens
-            request_type = "chat_completions"
-            prompt_tokens = 400
-            output_tokens = 256
+            usage_prompt_tokens = prompt_tokens = 400
+            usage_output_tokens = output_tokens = 256
             request_start = 10.0
             # Longer TTFT for larger context
             ttft_ms = rng.uniform(2000, 3000)
@@ -73,9 +72,8 @@ class TestGenerativeRequestStats:
 
         elif case_id == "single_token_output":
             # Edge case: single token generation
-            request_type = "text_completions"
-            prompt_tokens = 5
-            output_tokens = 1
+            usage_prompt_tokens = prompt_tokens = 5
+            usage_output_tokens = output_tokens = 1
             request_start = 5.0
             ttft_ms = rng.uniform(80, 120)
             first_iter = request_start + ttft_ms / 1000.0
@@ -84,11 +82,28 @@ class TestGenerativeRequestStats:
             request_end = last_iter + rng.uniform(0.05, 0.1)
             resolve_end = request_end
 
+        elif case_id == "no_usage_fallback":
+            # Fallback scenario with missing usage data
+            usage_prompt_tokens = prompt_tokens = (
+                30  # Assume prompt_tokens comes from dataset
+            )
+            output_tokens = 6
+            usage_output_tokens = None
+            request_start = 0.0
+            # Time to first token: ~200ms (typical for small models)
+            ttft_ms = rng.uniform(150, 250)
+            first_iter = request_start + ttft_ms / 1000.0
+            # Inter-token latency: ~50ms per token
+            token_iters = 6
+            inter_token_ms = rng.uniform(40, 60)
+            last_iter = first_iter + (output_tokens - 1) * inter_token_ms / 1000.0
+            request_end = last_iter + rng.uniform(0.05, 0.15)
+            resolve_end = request_end
+
         else:  # no_iterations_fallback
             # Fallback scenario with missing timing data
-            request_type = "text_completions"
-            prompt_tokens = 12
-            output_tokens = 7
+            usage_prompt_tokens = prompt_tokens = 12
+            usage_output_tokens = output_tokens = 7
             request_start = None
             first_iter = None
             last_iter = None
@@ -108,10 +123,9 @@ class TestGenerativeRequestStats:
 
         stats = GenerativeRequestStats(
             request_id=case_id,
-            request_type=request_type,
             info=info,
-            input_metrics=UsageMetrics(text_tokens=prompt_tokens),
-            output_metrics=UsageMetrics(text_tokens=output_tokens),
+            input_metrics=UsageMetrics(text_tokens=usage_prompt_tokens),
+            output_metrics=UsageMetrics(text_tokens=usage_output_tokens),
         )
 
         # Compute expected properties from the generated timings
@@ -213,7 +227,6 @@ class TestGenerativeRequestStats:
             ),
             "request_latency": expected_latency,
             "prompt_tokens": prompt_tokens,
-            "input_tokens": prompt_tokens,
             "output_tokens": output_tokens,
             "total_tokens": total_tokens,
             "time_to_first_token_ms": expected_time_to_first_ms,
@@ -248,7 +261,6 @@ class TestGenerativeRequestStats:
         for field_name in (
             "type_",
             "request_id",
-            "request_type",
             "request_args",
             "output",
             "info",
@@ -263,7 +275,6 @@ class TestGenerativeRequestStats:
             "request_end_time",
             "request_latency",
             "prompt_tokens",
-            "input_tokens",
             "output_tokens",
             "total_tokens",
             "time_to_first_token_ms",
@@ -295,7 +306,6 @@ class TestGenerativeRequestStats:
         assert isinstance(instance, GenerativeRequestStats)
         assert instance.type_ == "generative_request_stats"
         assert instance.request_id
-        assert instance.request_type in ("text_completions", "chat_completions")
 
         # Basic fields echo
         assert instance.prompt_tokens == expected["prompt_tokens"]
@@ -313,8 +323,6 @@ class TestGenerativeRequestStats:
         [
             ("request_id", None),
             ("request_id", 123),
-            ("request_type", None),
-            ("request_type", 456),
             ("info", None),
             ("info", "not_request_info"),
             ("input_metrics", None),
@@ -329,7 +337,6 @@ class TestGenerativeRequestStats:
         info.timings.resolve_end = 1.0
         base = {
             "request_id": "ok",
-            "request_type": "text_completions",
             "info": info,
             "input_metrics": UsageMetrics(text_tokens=1),
             "output_metrics": UsageMetrics(text_tokens=1),
@@ -349,7 +356,6 @@ class TestGenerativeRequestStats:
             "request_end_time",
             "request_latency",
             "prompt_tokens",
-            "input_tokens",
             "output_tokens",
             "total_tokens",
             "time_to_first_token_ms",
@@ -401,7 +407,6 @@ class TestGenerativeRequestStats:
         info.timings.request_end = 2.0
         instance = GenerativeRequestStats(
             request_id="no-end",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=3),
             output_metrics=UsageMetrics(text_tokens=2),
@@ -420,7 +425,6 @@ class TestGenerativeRequestStats:
         info.timings.resolve_end = 1.0  # minimal to avoid property error
         instance = GenerativeRequestStats(
             request_id="none-lat",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=4),
             output_metrics=UsageMetrics(text_tokens=6),
@@ -440,7 +444,8 @@ class TestGenerativeRequestStats:
         assert dumped["type_"] == "generative_request_stats"
         rebuilt = GenerativeRequestStats.model_validate(dumped)
         assert rebuilt.request_id == instance.request_id
-        assert rebuilt.request_type == instance.request_type
+        assert rebuilt.prompt_tokens == instance.prompt_tokens
+        assert rebuilt.output_tokens == instance.output_tokens
 
     @pytest.mark.sanity
     def test_optional_fields(self):
@@ -451,7 +456,6 @@ class TestGenerativeRequestStats:
         # Without optional fields
         instance = GenerativeRequestStats(
             request_id="opt-test",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(text_tokens=10),
@@ -462,7 +466,6 @@ class TestGenerativeRequestStats:
         # With optional fields
         instance_with_opts = GenerativeRequestStats(
             request_id="opt-test-2",
-            request_type="chat_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(text_tokens=10),
@@ -495,7 +498,6 @@ class TestGenerativeRequestStats:
         info.timings.token_iterations = token_iters_value
         stats = GenerativeRequestStats(
             request_id="iter-calc",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=3),
             output_metrics=UsageMetrics(text_tokens=output_tokens_value),
@@ -519,7 +521,6 @@ class TestGenerativeRequestStats:
         # With valid iteration data
         stats = GenerativeRequestStats(
             request_id="iter-time",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(text_tokens=10),
@@ -538,7 +539,6 @@ class TestGenerativeRequestStats:
         info_no_iter.timings.token_iterations = 0
         stats_no_iter = GenerativeRequestStats(
             request_id="no-iter",
-            request_type="text_completions",
             info=info_no_iter,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(text_tokens=10),
@@ -558,7 +558,6 @@ class TestGenerativeRequestStats:
 
         stats = GenerativeRequestStats(
             request_id="total-time",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(text_tokens=6),
@@ -581,7 +580,6 @@ class TestGenerativeRequestStats:
 
         stats = GenerativeRequestStats(
             request_id="zero-div",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(text_tokens=0),
@@ -601,7 +599,6 @@ class TestGenerativeRequestStats:
 
         stats_zero_tokens = GenerativeRequestStats(
             request_id="zero-tokens",
-            request_type="text_completions",
             info=info_zero_tokens,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(text_tokens=0),
@@ -617,7 +614,6 @@ class TestGenerativeRequestStats:
         # Both None returns None
         stats_both_none = GenerativeRequestStats(
             request_id="none-tokens-1",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(),
             output_metrics=UsageMetrics(),
@@ -627,7 +623,6 @@ class TestGenerativeRequestStats:
         # One None, one with value
         stats_input_none = GenerativeRequestStats(
             request_id="none-tokens-2",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(),
             output_metrics=UsageMetrics(text_tokens=10),
@@ -644,7 +639,6 @@ class TestGenerativeRequestStats:
 
         stats = GenerativeRequestStats(
             request_id="none-output",
-            request_type="text_completions",
             info=info,
             input_metrics=UsageMetrics(text_tokens=5),
             output_metrics=UsageMetrics(),  # No text_tokens

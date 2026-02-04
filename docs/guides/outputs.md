@@ -66,7 +66,30 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 - **Output Formats**: Use the `--outputs` argument to specify which formats or exact file names (with supported file extensions, e.g. `benchmarks.json`) to generate. By default, JSON, CSV, and HTML are generated.
 - **Sampling**: To limit the size of the output files and number of detailed request samples included, you can configure sampling options using the `--sample-requests` argument.
 
-Example command to save results in specific formats:
+#### Example commands to save results in specific formats:
+
+The `--outputs` parameter accepts output formats in the following ways:
+
+**Command Line:**
+
+```bash
+# Comma-separated format aliases (recommended)
+--outputs json,csv,html
+
+# Or using multiple flags
+--outputs json --outputs csv --outputs html
+```
+
+**Environment Variables:**
+
+```bash
+# Comma-separated values for environment variables
+-e GUIDELLM_OUTPUTS=json,csv,html
+```
+
+#### Examples
+
+**Example 1: Comma-separated format aliases (recommended)**
 
 ```bash
 guidellm benchmark \
@@ -75,7 +98,50 @@ guidellm benchmark \
   --max-seconds 30 \
   --data "prompt_tokens=256,output_tokens=128" \
   --output-dir "results/" \
-  --outputs json csv \
+  --outputs json,csv,html \
+  --sample-requests 20
+```
+
+**Example 2: Multiple flags for each format**
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --profile sweep \
+  --max-seconds 30 \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --output-dir "results/" \
+  --outputs json \
+  --outputs csv \
+  --outputs html \
+  --sample-requests 20
+```
+
+**Example 3: Using environment variables with Docker/Podman**
+
+```bash
+podman run --rm -it --network=host \
+  -v "/tmp/results:/results:z" \
+  -e GUIDELLM_TARGET=http://localhost:8000 \
+  -e GUIDELLM_PROFILE=sweep \
+  -e GUIDELLM_MAX_SECONDS=30 \
+  -e GUIDELLM_DATA="prompt_tokens=256,output_tokens=128" \
+  -e GUIDELLM_OUTPUT_DIR=/results \
+  -e GUIDELLM_OUTPUTS=json,csv,html \
+  -e GUIDELLM_SAMPLE_REQUESTS=20 \
+  ghcr.io/vllm-project/guidellm:latest
+```
+
+**Example 4: Single output format**
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --profile sweep \
+  --max-seconds 30 \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --output-dir "results/" \
+  --outputs json \
   --sample-requests 20
 ```
 
