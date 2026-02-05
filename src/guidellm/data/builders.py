@@ -307,18 +307,25 @@ def _extract_column_names(
     if column_mapper.datasets_column_mappings is None:
         raise ValueError("Column mapper not properly initialized")
 
-    text_mappings = column_mapper.datasets_column_mappings.get("text_column", [])
-    if not text_mappings:
-        raise ValueError("Could not find text column in dataset")
-    prompt_column = text_mappings[0][1]
+    try:
+        text_mappings = column_mapper.datasets_column_mappings[("text_column", 0)]
+        prompt_column = text_mappings[0][1]
+    except KeyError as err:
+        raise ValueError("Could not find text column in dataset") from err
 
-    prefix_mappings = column_mapper.datasets_column_mappings.get("prefix_column", [])
-    prefix_column = prefix_mappings[0][1] if prefix_mappings else None
+    try:
+        prefix_mappings = column_mapper.datasets_column_mappings[("prefix_column", 0)]
+        prefix_column = prefix_mappings[0][1]
+    except (KeyError, IndexError):
+        prefix_column = None
 
-    output_mappings = column_mapper.datasets_column_mappings.get(
-        "output_tokens_count_column", []
-    )
-    output_column = output_mappings[0][1] if output_mappings else "output_tokens_count"
+    try:
+        output_mappings = column_mapper.datasets_column_mappings[
+            ("output_tokens_count_column", 0)
+        ]
+        output_column = output_mappings[0][1]
+    except (KeyError, IndexError):
+        output_column = "output_tokens_count"
 
     return prompt_column, prefix_column, output_column
 
