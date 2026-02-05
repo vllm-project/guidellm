@@ -478,7 +478,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self._processing_request_ids: set[str] = set()
 
     def requests_generator(
-        self, requests: Iterable[MultiTurnRequestT[RequestT]]
+        self, requests: Iterable[RequestT | MultiTurnRequestT[RequestT]]
     ) -> Generator[
         tuple[RequestT | MultiTurnRequestT[RequestT], RequestInfo], None, None
     ]:
@@ -495,8 +495,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         try:
             count = 0
-            for turns in requests:
-                request = turns[0][0]
+            for request in requests:
                 count += 1
 
                 if hasattr(request, "request_id"):
