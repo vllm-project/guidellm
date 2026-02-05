@@ -143,7 +143,7 @@ class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
         self,
         request: RequestT,
         request_info: RequestInfo,
-        history: list[tuple[RequestT, ResponseT]] | None = None,
+        history: HistoryT[RequestT, ResponseT] | None = None,
     ) -> AsyncIterator[tuple[ResponseT, RequestInfo]]:
         """
         Process a request and yield incremental response updates.

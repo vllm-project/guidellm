@@ -25,10 +25,12 @@ GenerativeDatasetColumnType = Literal[
     "audio_column",
 ]
 
+
 class DataNotSupportedError(Exception):
     """
     Exception raised when the data format is not supported by deserializer or config.
     """
+
 
 class DataConfig(StandardBaseModel):
     """
@@ -36,15 +38,15 @@ class DataConfig(StandardBaseModel):
     that can be passed in as key-value pairs or JSON.
     """
 
-class PreprocessDatasetConfig(DataConfig):
 
+class PreprocessDatasetConfig(DataConfig):
     prompt_tokens: int = Field(
         description="The average number of text tokens retained or added to prompts.",
         gt=0,
     )
     prompt_tokens_stdev: int | None = Field(
         description="The standard deviation of the number of tokens retained in or "
-                    "added to prompts.",
+        "added to prompts.",
         gt=0,
         default=None,
     )
@@ -64,7 +66,7 @@ class PreprocessDatasetConfig(DataConfig):
     )
     output_tokens_stdev: int | None = Field(
         description="The standard deviation of the number of tokens retained or "
-                    "added to outputs.",
+        "added to outputs.",
         gt=0,
         default=None,
     )
@@ -83,6 +85,7 @@ class PreprocessDatasetConfig(DataConfig):
         gt=0,
         default=None,
     )
+
 
 class SyntheticTextPrefixBucketConfig(StandardBaseModel):
     bucket_weight: int = Field(
@@ -141,6 +144,11 @@ class SyntheticTextDatasetConfig(DataConfig):
         gt=0,
         default=None,
     )
+    turns: int = Field(
+        description="The number of turns in the conversation.",
+        gt=0,
+        default=1,
+    )
 
     model_config = ConfigDict(
         extra="allow",
@@ -150,7 +158,6 @@ class SyntheticTextDatasetConfig(DataConfig):
         description="Buckets for the prefix tokens distribution.",
         default=None,
     )
-
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:
