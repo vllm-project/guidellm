@@ -19,7 +19,7 @@ from typing import Literal
 from pydantic import Field
 
 from guidellm.benchmark.schemas.base import BenchmarkAccumulator, BenchmarkConfig
-from guidellm.scheduler import MultiTurnRequestT, SchedulerState
+from guidellm.scheduler import SchedulerState
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
@@ -633,7 +633,7 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
     def update_estimate(
         self,
         response: GenerationResponse | None,
-        request: GenerationRequest | MultiTurnRequestT[GenerationRequest],
+        request: GenerationRequest,
         info: RequestInfo,
         prefer_response_metrics: bool,
     ) -> GenerativeRequestStats:
@@ -697,7 +697,7 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
     def compile_stats(
         cls,
         response: GenerationResponse | None,
-        request: GenerationRequest | MultiTurnRequestT[GenerationRequest],
+        request: GenerationRequest,
         info: RequestInfo,
         prefer_response_metrics: bool,
     ) -> GenerativeRequestStats:
@@ -806,7 +806,7 @@ class GenerativeBenchmarkAccumulator(
     def update_estimate(
         self,
         response: GenerationResponse | None,
-        request: GenerationRequest | MultiTurnRequestT[GenerationRequest],
+        request: GenerationRequest,
         info: RequestInfo,
         scheduler_state: SchedulerState,
     ):

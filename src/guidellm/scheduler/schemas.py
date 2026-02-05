@@ -10,7 +10,7 @@ coordination, and state management across distributed worker processes.
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from typing import Any, Generic, Literal, Protocol, TypeVar
 
 from pydantic import Field
@@ -23,7 +23,10 @@ from guidellm.utils.registry import RegistryObjT
 __all__ = [
     "BackendInterface",
     "BackendT",
-    "MultiTurnRequestT",
+    "ConversationT",
+    "DatasetIterT",
+    "HistoryT",
+    "RequestDataT",
     "RequestT",
     "ResponseT",
     "SchedulerMessagingPydanticRegistry",
@@ -38,12 +41,34 @@ RequestT = TypeVar("RequestT")
 ResponseT = TypeVar("ResponseT")
 "Generic response object type returned by backend processing"
 
-MultiTurnRequestT = TypeAliasType(
-    "MultiTurnRequestT",
-    list[RequestT | tuple[RequestT, float]] | tuple[RequestT | tuple[RequestT, float]],
+RequestDataT = TypeAliasType(
+    "RequestDataT",
+    tuple[RequestT, RequestInfo],
     type_params=(RequestT,),
 )
-"Multi-turn request structure supporting conversation history with optional delays"
+"""Request including external metadata and scheduling config."""
+
+ConversationT = TypeAliasType(
+    "ConversationT",
+    list[RequestDataT[RequestT]],
+    type_params=(RequestT,),
+)
+
+HistoryT = TypeAliasType(
+    "HistoryT",
+    list[tuple[RequestT, ResponseT | None]],
+    type_params=(RequestT, ResponseT),
+)
+"""Record of requests + responses in conversation."""
+
+# NOTE: This is the interface between data and scheduler.
+DatasetIterT = TypeAliasType(
+    "DatasetIterT", Iterable[Iterable[tuple[RequestT, float]]], type_params=(RequestT,)
+)
+"""
+Output of data loader, an iterable of batches,
+where each batch is an iterable of (request, timestamp) tuples.
+"""
 
 
 class SchedulerMessagingPydanticRegistry(RegistryMixin[RegistryObjT]):

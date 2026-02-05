@@ -16,7 +16,7 @@ from pydantic import Field, computed_field
 
 from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 
-__all__ = ["RequestInfo", "RequestTimings"]
+__all__ = ["RequestInfo", "RequestSettings", "RequestTimings"]
 
 
 class RequestTimings(StandardBaseDict):
@@ -104,6 +104,24 @@ class RequestTimings(StandardBaseDict):
         return max(valid_timings) if valid_timings else None
 
 
+class RequestSettings(StandardBaseDict):
+    """
+    Additional metadata and augmentations for requests in the scheduler system.
+
+    Provides a flexible structure for attaching extra information to requests,
+    such as delays for multi-turn processing or custom tags for tracking. Enables
+    enhanced request handling and customization within the distributed scheduler
+    architecture.
+    """
+
+    next_turn_delay: float = Field(
+        default=0.0,
+        description=(
+            "Delay in seconds before processing the next turn in a multi-turn request"
+        ),
+    )
+
+
 class RequestInfo(StandardBaseModel):
     """
     Complete information about a request in the scheduler system.
@@ -151,6 +169,10 @@ class RequestInfo(StandardBaseModel):
     traceback: str | None = Field(
         default=None,
         description="Full traceback of the error if the request status is 'errored'",
+    )
+    settings: RequestSettings = Field(
+        default_factory=RequestSettings,
+        description="Additional metadata and augmentations for the request",
     )
 
     @computed_field  # type: ignore[misc]

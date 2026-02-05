@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator
 from typing import Generic
 
 from guidellm.scheduler.constraints import Constraint
 from guidellm.scheduler.schemas import (
-    MultiTurnRequestT,
+    DatasetIterT,
     RequestT,
     ResponseT,
     SchedulerState,
@@ -51,11 +51,11 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
     @abstractmethod
     async def sync_run_params(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
     ) -> tuple[
-        Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        DatasetIterT[RequestT],
         SchedulingStrategy,
         dict[str, Constraint],
     ]:
@@ -84,7 +84,7 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
     async def update_run_iteration(
         self,
         response: ResponseT | None,
-        request: RequestT | MultiTurnRequestT[RequestT],
+        request: RequestT,
         request_info: RequestInfo,
         state: SchedulerState,
     ):
@@ -172,11 +172,11 @@ class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
 
     async def sync_run_params(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
     ) -> tuple[
-        Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        DatasetIterT[RequestT],
         SchedulingStrategy,
         dict[str, Constraint],
     ]:
@@ -201,7 +201,7 @@ class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
     async def update_run_iteration(
         self,
         response: ResponseT | None,
-        request: RequestT | MultiTurnRequestT[RequestT],
+        request: RequestT,
         request_info: RequestInfo,
         state: SchedulerState,
     ):
