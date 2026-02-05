@@ -219,9 +219,7 @@ def process_dataset(
     Main method to process and save a dataset with sampled prompt/output token counts.
     """
     _validate_output_suffix(output_path)
-    logger.info(
-        f"Starting dataset conversion | Input: {data} | Output: {output_path}"
-    )
+    logger.info(f"Starting dataset conversion | Input: {data} | Output: {output_path}")
 
     # Parse config
     config_obj = parse_synthetic_config(config)
@@ -309,20 +307,25 @@ def _extract_column_names(
     if column_mapper.datasets_column_mappings is None:
         raise ValueError("Column mapper not properly initialized")
 
-    text_mappings = column_mapper.datasets_column_mappings.get("text_column", [])
-    if not text_mappings:
-        raise ValueError("Could not find text column in dataset")
-    prompt_column = text_mappings[0][1]
+    try:
+        text_mappings = column_mapper.datasets_column_mappings[("text_column", 0)]
+        prompt_column = text_mappings[0][1]
+    except KeyError as err:
+        raise ValueError("Could not find text column in dataset") from err
 
-    prefix_mappings = column_mapper.datasets_column_mappings.get("prefix_column", [])
-    prefix_column = prefix_mappings[0][1] if prefix_mappings else None
+    try:
+        prefix_mappings = column_mapper.datasets_column_mappings[("prefix_column", 0)]
+        prefix_column = prefix_mappings[0][1]
+    except KeyError:
+        prefix_column = None
 
-    output_mappings = column_mapper.datasets_column_mappings.get(
-        "output_tokens_count_column", []
-    )
-    output_column = (
-        output_mappings[0][1] if output_mappings else "output_tokens_count"
-    )
+    try:
+        output_mappings = column_mapper.datasets_column_mappings[
+            ("output_tokens_count_column", 0)
+        ]
+        output_column = output_mappings[0][1]
+    except KeyError:
+        output_column = "output_tokens_count"
 
     return prompt_column, prefix_column, output_column
 
@@ -436,9 +439,7 @@ def _process_single_row(
         if prefix_tokens_max is not None:
             prefix_tokens_list = tokenizer.encode(prefix_text)
             if len(prefix_tokens_list) > prefix_tokens_max:
-                prefix_text = tokenizer.decode(
-                    prefix_tokens_list[:prefix_tokens_max]
-                )
+                prefix_text = tokenizer.decode(prefix_tokens_list[:prefix_tokens_max])
 
         # Count prefix tokens toward prompt if enabled
         if include_prefix_in_token_count:
@@ -450,9 +451,11 @@ def _process_single_row(
     elif count_adjustment > 0:
         adjusted_prompt_len = target_prompt_len - count_adjustment
         if adjusted_prompt_len <= 0:
-            logger.warning("The prefix exceeds target output length with "
-                           "--include-prefix-in-token-count enabled; Using prompt size"
-                            "of 1; skipping row")
+            logger.warning(
+                "The prefix exceeds target output length with "
+                "--include-prefix-in-token-count enabled; Using prompt size"
+                "of 1; skipping row"
+            )
             return None
         target_prompt_len = adjusted_prompt_len
 

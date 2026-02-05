@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, TypeAlias, cast
 
 from datasets import Dataset, IterableDataset
 
@@ -12,6 +13,11 @@ from guidellm.data.preprocessors.preprocessor import (
 from guidellm.data.schemas import GenerativeDatasetColumnType
 
 __all__ = ["GenerativeColumnMapper"]
+
+# (dataset_column_type, turn)  # noqa: ERA001
+DatasetColumnKey: TypeAlias = tuple[GenerativeDatasetColumnType, int]
+# (dataset_index, column_name)  # noqa: ERA001
+DatasetColumnValue: TypeAlias = tuple[int, str]
 
 
 @PreprocessorRegistry.register("generative_column_mapper")
@@ -62,127 +68,129 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "mp3",
         ],
     }
+    column_name_pattern: str = (
+        r"^(?P<full_name>(?P<match_name>({name})(es|s)?)([-_](?P<turn>\d+))?)$"
+    )
 
-    @classmethod
-    def datasets_default_mappings(
-        cls, datasets: list[Dataset | IterableDataset]
-    ) -> dict[GenerativeDatasetColumnType, list[tuple[int, str]]]:
-        mappings: dict[GenerativeDatasetColumnType, list[tuple[int, str]]] = (
-            defaultdict(list)
-        )
+    @staticmethod
+    def _filter_for_dataset(names: list[str], *dataset_names: str) -> list[str]:
+        filtered_names: list[str] = []
+        for name in names:
+            if "." in name:
+                dataset_part, column_part = name.split(".", 1)
+                if dataset_part in dataset_names:
+                    filtered_names.append(column_part)
+            else:
+                filtered_names.append(name)
 
-        for index, dataset in enumerate(datasets):
-            dataset_columns = dataset.column_names or list(next(iter(dataset)).keys())
+        return filtered_names
 
-            for column_type in cls.defaults:
-                if column_type in mappings:
-                    continue
+    @staticmethod
+    def _extract_turn_columns(
+        turn_pattern: str, columns_str: str
+    ) -> list[tuple[int, str]]:
+        # Now find all columns that match a variant of the base name
+        turn_matches = re.finditer(turn_pattern, columns_str, re.M | re.I)
 
-                type_names = [
-                    variant
-                    for name in cls.defaults.get(column_type, [])
-                    for plural in [name, f"{name}s", f"{name}es"]
-                    for variant in [
-                        plural,
-                        plural.lower(),
-                        plural.upper(),
-                        plural.capitalize(),
-                    ]
-                ]
+        turn_columns: list[tuple[int, str]] = []
+        turn_count = 0
+        for match in turn_matches:
+            column_name = match.group("full_name")
+            if not column_name:
+                continue
 
-                for name in type_names:
-                    if name in dataset_columns:
-                        key = cast("GenerativeDatasetColumnType", column_type)
-                        mappings[key].append((index, name))
-                        break
+            turn_str = match.group("turn")
+            turn = int(turn_str) if turn_str is not None else turn_count
+            turn_columns.append((turn, column_name))
+            turn_count += 1
 
-        return mappings
+        return turn_columns
 
     @classmethod
     def datasets_mappings(
         cls,
         datasets: list[Dataset | IterableDataset],
-        input_mappings: dict[GenerativeDatasetColumnType, str | list[str]],
-    ) -> dict[GenerativeDatasetColumnType, list[tuple[int, str]]]:
-        mappings: dict[GenerativeDatasetColumnType, list[tuple[int, str]]] = (
-            defaultdict(list)
-        )
-        datasets_named_indices = {
-            (
+        input_mappings: dict[str, str | list[str]] | None = None,
+    ) -> dict[DatasetColumnKey, list[DatasetColumnValue]]:
+        mappings: dict[DatasetColumnKey, list[DatasetColumnValue]] = defaultdict(list)
+        input_map: dict[str, list[str]] = cls.defaults
+        if input_mappings:
+            input_map = {
+                k: v if isinstance(v, list) else [v] for k, v in input_mappings.items()
+            }
+
+        for index, dataset in enumerate(datasets):
+            dataset_name = (
                 dataset.info.dataset_name
                 if dataset.info and dataset.info.dataset_name
                 else index
-            ): index
-            for index, dataset in enumerate(datasets)
-        }
-        datasets_columns = {
-            index: dataset.column_names or list(next(iter(dataset)).keys())
-            for index, dataset in enumerate(datasets)
-        }
+            )
+            dataset_columns = dataset.column_names or list(next(iter(dataset)).keys())
+            dataset_columns_str = "\n".join(dataset_columns)
 
-        # Parse out user mappings that were passed in and validate them
-        # Must be in the format of:
-        # {<column_type>: [<column_names>]}
-        # where <column_names> can be a single string or list of strings
-        # and each string can be any of:
-        # - a column name (assumes the first dataset was intended)
-        # - <int>.<column_name> where <int> is the dataset index
-        # - <str>.<column_name> where <str> is the dataset name
-        for column_type, names in input_mappings.items():
-            mappings[column_type] = []
-            for name in names if isinstance(names, list) else [names]:
-                if "." in name:
-                    dataset, column_name = name.split(".", 1)
-                    dataset_index = (
-                        int(dataset)
-                        if dataset.isdigit()
-                        else datasets_named_indices.get(dataset)
-                    )
-                else:
-                    dataset_index = 0
-                    column_name = name
+            for column_type, names in input_map.items():
+                filtered_names = cls._filter_for_dataset(
+                    names, str(index), str(dataset_name)
+                )
+                if not filtered_names:
+                    continue
 
-                if dataset_index is None or dataset_index >= len(datasets):
-                    raise ValueError(
-                        f"Dataset '{name}' not found in datasets: "
-                        f"{datasets_named_indices}."
-                    )
-                if column_name not in datasets_columns[dataset_index]:
-                    raise ValueError(
-                        f"Column '{column_name}' not found in dataset "
-                        f"'{datasets[dataset_index]}' "
-                        f"columns: {datasets_columns[dataset_index]}."
-                    )
-                mappings[column_type].append((dataset_index, column_name))
+                column_pattern = cls.column_name_pattern.format(
+                    name="|".join(re.escape(n) for n in filtered_names)
+                )
+                # Find the first matching column name
+                base_match = re.search(column_pattern, dataset_columns_str, re.M | re.I)
+                if not base_match:
+                    continue
+
+                turn_pattern = cls.column_name_pattern.format(
+                    name=base_match.group("match_name"),
+                )
+                turn_columns = cls._extract_turn_columns(
+                    turn_pattern,
+                    dataset_columns_str,
+                )
+
+                # Re-enumerate to ensure we don't have a gap in turns
+                for turn, (_, column_name) in enumerate(sorted(turn_columns)):
+                    column_type = cast("GenerativeDatasetColumnType", column_type)
+                    mappings[(column_type, turn)].append((index, column_name))
 
         return mappings
 
     def __init__(
         self,
-        column_mappings: dict[GenerativeDatasetColumnType, str | list[str]]
-        | None = None,
+        column_mappings: dict[str, str | list[str]] | None = None,
         **_: Any,  # Ignore global kwargs
     ):
         self.input_mappings = column_mappings
         self.datasets_column_mappings: (
-            dict[GenerativeDatasetColumnType, list[tuple[int, str]]] | None
+            dict[DatasetColumnKey, list[DatasetColumnValue]] | None
         )
 
-    def __call__(self, row: dict[str, Any]) -> dict[str, list[Any]]:
+    def __call__(self, items: list[dict[str, Any]]) -> list[dict[str, list[Any]]]:
         if self.datasets_column_mappings is None:
             raise ValueError("DefaultGenerativeColumnMapper not setup with data.")
 
-        items = cast("dict[int, dict[str, Any]]", row.pop("items"))
-        mapped: dict[str, Any] = defaultdict(list)
+        mapped: list[dict[str, Any]] = []
 
-        for column_type, column_mappings in self.datasets_column_mappings.items():
+        for (column_type, turn), column_mappings in sorted(
+            self.datasets_column_mappings.items()
+        ):
+            # Ensure the mapped list has enough turns for this turn
+            # Should never need to happen
+            while len(mapped) <= turn:
+                mapped.append(defaultdict(list))
+
             for (
                 dataset_index,
                 dataset_column,
             ) in column_mappings:
-                mapped[column_type].append(items[dataset_index][dataset_column])
+                mapped[turn][column_type].append(
+                    items[dataset_index]["dataset"][dataset_column]
+                )
 
-        return dict(mapped)
+        return [dict(m) for m in mapped if len(m) > 0]
 
     def setup_data(
         self,
@@ -190,8 +198,6 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         data_args: list[dict[str, Any]],
     ):
         _ = data_args  # Unused for this mapper
-        self.datasets_column_mappings = (
-            self.datasets_default_mappings(datasets)
-            if self.input_mappings is None
-            else self.datasets_mappings(datasets, self.input_mappings)
+        self.datasets_column_mappings = self.datasets_mappings(
+            datasets, self.input_mappings
         )
