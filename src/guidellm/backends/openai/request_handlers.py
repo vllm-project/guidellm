@@ -432,7 +432,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return formatted_data
 
-    def format(
+    def format(  # noqa: C901
         self,
         data: GenerationRequest,
         response: GenerationResponse | None = None,
@@ -446,6 +446,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
+        prev_requests: list[GenerationRequestArguments] = []
+        if history:
+            # NOTE: Don't include history to avoid infinite recursion
+            prev_requests = [
+                self.format(req, response=res, **kwargs) for req, res in history
+            ]
+
         arguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works best with body assigned here
 
@@ -481,6 +488,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Build messages
         arguments.body["messages"] = []
 
+        # Include previous requests
+        for req in prev_requests:
+            if req.body and "messages" in req.body:
+                arguments.body["messages"].extend(req.body["messages"])
+
         # Build the system prompt
         prefix = " ".join(data.columns.get("prefix_column", []))
         if prefix:
@@ -495,6 +507,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             # Interleave prompt types
             arguments.body["messages"].append(
                 {"role": "user", "content": list(roundrobin(*prompts))}
+            )
+
+        # Add the response to the current prompt if available
+        if response and response.text:
+            arguments.body["messages"].append(
+                {"role": "assistant", "content": response.text}
             )
 
         return arguments
