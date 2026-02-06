@@ -642,6 +642,9 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
+        if history or response:
+            raise ValueError("AudioRequestHandler does not support multiturn.")
+
         arguments = GenerationRequestArguments(files={})
         arguments.body = {}
 
