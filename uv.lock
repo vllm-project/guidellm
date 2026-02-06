@@ -801,6 +801,7 @@ dependencies = [
     { name = "ftfy" },
     { name = "httpx", extra = ["http2"] },
     { name = "loguru" },
+    { name = "more-itertools" },
     { name = "msgpack" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -934,6 +935,7 @@ requires-dist = [
     { name = "mdformat-gfm", marker = "extra == 'dev'", specifier = "~=1.0.0" },
     { name = "mistral-common", marker = "extra == 'tokenizers'" },
     { name = "mkdocs-linkcheck", marker = "extra == 'dev'", specifier = "~=1.0.6" },
+    { name = "more-itertools", specifier = ">=10.8.0" },
     { name = "msgpack" },
     { name = "msgpack", marker = "extra == 'perf'" },
     { name = "msgspec", marker = "extra == 'perf'" },
@@ -1589,6 +1591,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7e/f7/1a3e4add133371662484b7f1b6470c658a16fbef19ffb013d96236d7f053/mkdocs_linkcheck-1.0.6.tar.gz", hash = "sha256:908ca6f370eee0b55b5337142e2f092f1a0af9e50ab3046712b4baefdc989672", size = 12179, upload-time = "2021-08-20T20:38:20.379Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/74/87/240a21533662ba227ec683adcc187ec3a64e927ccf0c35f0d3b1b2fd331c/mkdocs_linkcheck-1.0.6-py3-none-any.whl", hash = "sha256:70dceae090101778002d949dc7b55f56eeb0c294bd9053fb6b197c26591665b1", size = 19759, upload-time = "2021-08-20T20:38:18.87Z" },
+]
+
+[[package]]
+name = "more-itertools"
+version = "10.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/5d/38b681d3fce7a266dd9ab73c66959406d565b3e85f21d5e66e1181d93721/more_itertools-10.8.0.tar.gz", hash = "sha256:f638ddf8a1a0d134181275fb5d58b086ead7c6a72429ad725c67503f13ba30bd", size = 137431, upload-time = "2025-09-02T15:23:11.018Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/8e/469e5a4a2f5855992e425f3cb33804cc07bf18d48f2db061aec61ce50270/more_itertools-10.8.0-py3-none-any.whl", hash = "sha256:52d4362373dcf7c52546bc4af9a86ee7c4579df9a8dc268be0a2f949d376cc9b", size = 69667, upload-time = "2025-09-02T15:23:09.635Z" },
 ]
 
 [[package]]
