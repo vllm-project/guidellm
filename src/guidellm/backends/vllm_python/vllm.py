@@ -12,8 +12,11 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from pathlib import Path
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
+
+_Mode = Literal["audio", "chat", "text"]
 
 import numpy as np
 
@@ -32,12 +35,30 @@ except ImportError:
     HAS_VLLM = False
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.response_handlers import GenerationResponseHandlerFactory
+from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras.audio import _decode_audio
 from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo, UsageMetrics
 from guidellm.utils import json
 
 __all__ = ["VLLMPythonBackend"]
+
+
+class _RequestContext:
+    """Resolved mode, body, stream, and files for a generation request."""
+
+    __slots__ = ("mode", "body", "stream", "files")
+
+    def __init__(
+        self,
+        mode: _Mode,
+        body: dict[str, Any],
+        stream: bool,
+        files: dict[str, Any],
+    ) -> None:
+        self.mode = mode
+        self.body = body
+        self.stream = stream
+        self.files = files
 
 
 def _check_vllm_available() -> None:
@@ -108,8 +129,8 @@ class VLLMPythonBackend(Backend):
         self,
         model: str,
         vllm_config: dict[str, Any] | None = None,
+        request_format: str | None = None,
         target: str | None = None,  # Ignored for VLLM Python backend
-        response_handlers: dict[str, Any] | None = None,
     ):
         """
         Initialize VLLM Python backend with model and configuration.
@@ -124,11 +145,15 @@ class VLLMPythonBackend(Backend):
             Note: VLLM automatically uses CUDA if available, CPU otherwise.
             The 'device' parameter is not supported and will be ignored.
         :param target: Target URL (ignored for VLLM Python backend, which runs locally)
+        :param kwargs: Additional arguments from the benchmark. request_format can be
+            "plain" (no chat template, text appending only), "default-template" (use
+            tokenizer default), or a vLLM chat template file path / single-line string.
         """
         _check_vllm_available()
         super().__init__(type_="vllm_python")
 
         self.model = model
+        self.request_format = request_format
         self.vllm_config = self._merge_config(vllm_config or {})
 
         # Runtime state
@@ -146,6 +171,9 @@ class VLLMPythonBackend(Backend):
         """
         Merge user configuration with defaults.
 
+        When request_format is a custom template (not plain or default-template),
+        adds chat_template to config for the vLLM engine if supported.
+
         :param user_config: User-provided configuration dictionary
         :return: Merged configuration with defaults applied
         """
@@ -156,6 +184,13 @@ class VLLMPythonBackend(Backend):
 
         # Ensure model is set in config
         config["model"] = self.model
+
+        # Pass custom chat template to vLLM engine when applicable
+        if (
+            self.request_format is not None
+            and self.request_format not in ("plain", "default-template")
+        ):
+            config["chat_template"] = self.request_format
 
         return config
 
@@ -266,24 +301,52 @@ class VLLMPythonBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-    def _validate_request_type(self, request_type: str) -> None:
+    def _get_request_context(self, request: GenerationRequest) -> _RequestContext:
         """
-        Validate that the request type is supported.
+        Resolve body, stream, and files from request; infer mode from that data.
 
-        :param request_type: The request type to validate
-        :raises ValueError: If request type is not supported
+        When the request has arguments, use body/stream/files from them. Otherwise
+        build body from request.columns (always messages) so the standard benchmark
+        pipeline works. Mode is inferred from body and files (audio/chat/text).
         """
-        supported_types = (
-            "text_completions",
-            "chat_completions",
-            "audio_transcriptions",
-            "audio_translations",
-        )
-        if request_type not in supported_types:
+        arguments = getattr(request, "arguments", None)
+
+        if arguments is not None:
+            body = getattr(arguments, "body", None) or {}
+            stream = bool(getattr(arguments, "stream", False))
+            files = getattr(arguments, "files", None) or {}
+        else:
+            columns = getattr(request, "columns", {}) or {}
+            prefix_parts = list(columns.get("prefix_column", []) or [])
+            text_parts = list(columns.get("text_column", []) or [])
+            messages: list[dict[str, Any]] = []
+            for p in prefix_parts:
+                if p:
+                    messages.append({"role": "system", "content": str(p)})
+            for t in text_parts:
+                if t:
+                    messages.append({
+                        "role": "user",
+                        "content": [{"type": "text", "text": str(t)}],
+                    })
+            body = {"messages": messages}
+            stream = False
+            files = {}
+
+        if files:
+            mode: _Mode = "audio"
+        elif body.get("messages"):
+            mode = "chat"
+        elif body.get("prompt") is not None and body.get("prompt") != "":
+            mode = "text"
+        elif "prompt" in body:
+            mode = "text"
+        else:
             raise ValueError(
-                f"Unsupported request type '{request_type}'. "
-                f"Supported types are: {', '.join(supported_types)}."
+                "Request must include prompt, messages, or audio files."
             )
+
+        return _RequestContext(mode=mode, body=body, stream=stream, files=files)
 
     def _update_request_timing(self, request_info: RequestInfo, iter_time: float) -> None:
         """
@@ -341,95 +404,83 @@ class VLLMPythonBackend(Backend):
         # Fallback: convert to string
         return str(content) if content is not None else ""
 
-    def _extract_audio_from_request(self, request: GenerationRequest) -> tuple[bytes, str] | None:
+    def _extract_audio_from_request(
+        self, files: dict[str, Any]
+    ) -> tuple[bytes, str]:
         """
-        Extract audio file from generation request.
+        Extract audio file from request files dict.
 
-        Extracts audio file data and mimetype from request.arguments.files.
-        Audio files are expected to be in the format: (filename, bytes, mimetype).
+        Caller must only call when mode is audio. Audio files are expected in
+        the format (filename, bytes, mimetype) or as raw bytes.
 
-        :param request: Generation request with files containing audio data
-        :return: Tuple of (audio_bytes, mimetype) or None if no audio file found
-        :raises ValueError: If audio file is missing or invalid for audio request types
+        :param files: Files dict from request context
+        :return: Tuple of (audio_bytes, mimetype)
+        :raises ValueError: If files is empty or no valid audio file found
         """
-        if request.request_type not in ("audio_transcriptions", "audio_translations"):
-            return None
-
-        files = request.arguments.files or {}
         if not files:
             raise ValueError(
-                f"{request.request_type} request must include audio file in 'files'"
+                "Audio request must include audio file in 'files'."
             )
 
-        # Find the audio file (typically keyed as "file")
         audio_file = None
-        for key, value in files.items():
+        for value in files.values():
             if isinstance(value, (list, tuple)) and len(value) >= 2:
-                # Format: (filename, bytes, mimetype) or [filename, bytes, mimetype]
                 audio_file = value
                 break
             elif isinstance(value, bytes):
-                # Direct bytes, use default filename and mimetype
                 audio_file = ("audio.wav", value, "audio/wav")
                 break
 
         if audio_file is None:
             raise ValueError(
-                f"{request.request_type} request must include audio file in 'files'"
+                "Audio request must include audio file in 'files'."
             )
 
-        # Extract bytes and mimetype
-        if isinstance(audio_file, (list, tuple)):
-            if len(audio_file) >= 2:
-                # Ensure we have actual bytes, not an integer or other type
-                audio_data = audio_file[1]
-                if not isinstance(audio_data, bytes):
-                    raise ValueError(
-                        f"Expected bytes for audio data, got {type(audio_data)}: {audio_data}"
-                    )
-                audio_bytes = audio_data
-                mimetype = audio_file[2] if len(audio_file) >= 3 else "audio/wav"
-                return (audio_bytes, mimetype)
+        if isinstance(audio_file, (list, tuple)) and len(audio_file) >= 2:
+            audio_data = audio_file[1]
+            if not isinstance(audio_data, bytes):
+                raise ValueError(
+                    f"Expected bytes for audio data, got {type(audio_data)}: {audio_data}"
+                )
+            mimetype = audio_file[2] if len(audio_file) >= 3 else "audio/wav"
+            return (audio_data, mimetype)
 
-        raise ValueError(f"Invalid audio file format in {request.request_type} request")
+        raise ValueError("Invalid audio file format in 'files'.")
 
-    def _extract_prompt(self, request: GenerationRequest) -> str:
+    def _extract_prompt(
+        self,
+        body: dict[str, Any],
+        mode: _Mode,
+    ) -> str:
         """
-        Extract prompt text from generation request.
+        Extract prompt text from request body based on mode.
 
-        For chat completions, uses the tokenizer's chat template if available,
-        otherwise falls back to simple formatting.
+        For chat mode, uses the tokenizer's chat template or plain concat per
+        request_format. For text mode uses body prompt. For audio, prompt is optional.
 
-        :param request: Generation request with body containing prompt data
+        :param body: Request body dict (prompt or messages)
+        :param mode: Inferred mode (audio, chat, text)
         :return: Extracted prompt string
         :raises ValueError: If prompt cannot be extracted
         """
-        body = request.arguments.body or {}
-
-        if request.request_type == "text_completions":
+        if mode == "text":
             prompt = body.get("prompt", "")
             if not prompt:
-                raise ValueError("text_completions request must include 'prompt' in body")
+                raise ValueError("Text request must include 'prompt' in body.")
             return prompt if isinstance(prompt, str) else str(prompt)
 
-        if request.request_type == "chat_completions":
+        if mode == "chat":
             messages = body.get("messages", [])
             if not messages:
                 raise ValueError(
-                    "chat_completions request must include 'messages' in body"
+                    "Chat request must include 'messages' in body."
                 )
 
-            # Try to use tokenizer's chat template if available
-            if self._engine is None:
-                raise RuntimeError("Backend not started up while extracting prompt.")
-            tokenizer = self._engine.tokenizer
-
-            # Convert messages to format expected by chat template
+            # Convert messages to format expected by chat template or plain concat
             formatted_messages = []
             for msg in messages:
                 if isinstance(msg, dict):
                     raw_content = msg.get("content", "")
-                    # Extract text from content (handles both string and list formats)
                     text_content = self._extract_text_from_content(raw_content)
                     formatted_messages.append({
                         "role": msg.get("role", ""),
@@ -438,6 +489,34 @@ class VLLMPythonBackend(Backend):
                 else:
                     formatted_messages.append(msg)
 
+            if self.request_format == "plain":
+                # No chat template: append message content only (e.g. "User: ...\nAssistant: ")
+                parts = []
+                for msg in formatted_messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if role and content:
+                        parts.append(f"{role.capitalize()}: {content}")
+                parts.append("Assistant: ")
+                return "\n".join(parts)
+
+            # default-template, None, or custom template: use tokenizer
+            if self._engine is None:
+                raise RuntimeError("Backend not started up while extracting prompt.")
+            tokenizer = self._engine.tokenizer
+
+            if (
+                self.request_format is not None
+                and self.request_format not in ("plain", "default-template")
+            ):
+                # Custom template: set on tokenizer if not already passed via engine config
+                template_value = self.request_format
+                path = Path(template_value)
+                if path.exists() and path.is_file():
+                    tokenizer.chat_template = path.read_text()
+                else:
+                    tokenizer.chat_template = template_value  # type: ignore[assignment]
+
             prompt = tokenizer.apply_chat_template(  # type: ignore[misc]
                 formatted_messages,
                 tokenize=False,
@@ -445,25 +524,20 @@ class VLLMPythonBackend(Backend):
             )
             if isinstance(prompt, str):
                 return prompt
-            else:
-                raise RuntimeError("Code not setup for state")
+            raise RuntimeError("Code not setup for state")
 
-        if request.request_type in ("audio_transcriptions", "audio_translations"):
-            # For audio requests, prompt is optional (e.g., language hints)
-            body = request.arguments.body or {}
+        if mode == "audio":
             prompt = body.get("prompt", "")
             return prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
+        raise ValueError(f"Unsupported mode: {mode!r}.")
 
-        raise ValueError(f"Unsupported request type: {request.request_type}")
-
-    def _create_sampling_params(self, request: GenerationRequest) -> SamplingParams:
+    def _create_sampling_params(self, body: dict[str, Any]) -> SamplingParams:
         """
-        Create VLLM SamplingParams from generation request.
+        Create VLLM SamplingParams from request body.
 
-        :param request: Generation request with parameters
+        :param body: Request body dict with sampling parameters
         :return: Configured SamplingParams instance
         """
-        body = request.arguments.body or {}
 
         # Extract common parameters
         params = {
@@ -481,16 +555,18 @@ class VLLMPythonBackend(Backend):
         return SamplingParams(**params)  # type: ignore[misc]
 
     def _convert_vllm_output_to_openai_format(
-        self, request: GenerationRequest, output: RequestOutput
+        self,
+        output: RequestOutput,
+        mode: _Mode,
     ) -> dict[str, Any]:
         """
         Convert VLLM RequestOutput to OpenAI-style dict format.
 
         Converts VLLM's native output format to the format expected by
-        GenerationResponseHandler, matching OpenAI API response structure.
+        VLLMResponseHandler, matching OpenAI API response structure.
 
-        :param request: Original generation request
         :param output: VLLM request output
+        :param mode: Inferred mode (audio, chat, text) for response shape
         :return: OpenAI-style response dictionary
         """
         # Extract generated text
@@ -513,24 +589,21 @@ class VLLMPythonBackend(Backend):
             "total_tokens": input_tokens + output_tokens,
         }
 
-        # Audio responses use different format: {"text": "...", "usage": {...}}
-        if request.request_type in ("audio_transcriptions", "audio_translations"):
+        if mode == "audio":
             response_dict: dict[str, Any] = {
                 "text": generated_text,
                 "usage": usage,
             }
-        else:
-            # Build choices array based on request type
-            if request.request_type == "text_completions":
-                choices = [{"text": generated_text}]
-            elif request.request_type == "chat_completions":
-                choices = [{"message": {"content": generated_text, "role": "assistant"}}]
-            else:
-                choices = [{"text": generated_text}]
-
-            # Build response dict
+        elif mode == "text":
             response_dict = {
-                "choices": choices,
+                "choices": [{"text": generated_text}],
+                "usage": usage,
+            }
+        else:
+            response_dict = {
+                "choices": [
+                    {"message": {"content": generated_text, "role": "assistant"}}
+                ],
                 "usage": usage,
             }
 
@@ -559,30 +632,27 @@ class VLLMPythonBackend(Backend):
         :param history: Conversation history (currently not supported)
         :raises NotImplementedError: If history is provided
         :raises RuntimeError: If backend is not initialized
-        :raises ValueError: If request type is unsupported
+        :raises ValueError: If request body/files do not imply a valid mode
         :yields: Tuples of (response, updated_request_info) as generation progresses
         """
+        # Resolve request context (supports standard pipeline with columns only)
+        ctx = self._get_request_context(request)
+
         # Validate request
         self._validate_backend_initialized()
         self._validate_history(history)
-        self._validate_request_type(request.request_type)
 
-        # Create response handler
-        response_handler = GenerationResponseHandlerFactory.create(request.request_type)
+        # Create response handler (no request type; handler infers from response shape)
+        response_handler = VLLMResponseHandler()
 
         # Extract prompt and create sampling parameters
-        prompt = self._extract_prompt(request)
-        sampling_params = self._create_sampling_params(request)
-        stream = request.arguments.stream or False
+        prompt = self._extract_prompt(ctx.body, ctx.mode)
+        sampling_params = self._create_sampling_params(ctx.body)
+        stream = ctx.stream
 
         # For audio requests, construct multimodal input with audio data
-        if request.request_type in ("audio_transcriptions", "audio_translations"):
-            audio_data = self._extract_audio_from_request(request)
-            if audio_data is None:
-                raise ValueError(
-                    f"{request.request_type} request must include audio file in 'files'"
-                )
-            audio_bytes, mimetype = audio_data
+        if ctx.mode == "audio":
+            audio_bytes, mimetype = self._extract_audio_from_request(ctx.files)
 
             # Validate audio_bytes is actually bytes
             if not isinstance(audio_bytes, bytes):
@@ -660,7 +730,7 @@ class VLLMPythonBackend(Backend):
                 # Convert to OpenAI format and use handler
                 if final_output is not None:
                     openai_format = self._convert_vllm_output_to_openai_format(
-                        request, final_output
+                        final_output, ctx.mode
                     )
                     yield response_handler.compile_non_streaming(request, openai_format), request_info
 
@@ -668,7 +738,7 @@ class VLLMPythonBackend(Backend):
                 # Yield current result to store iterative results before propagating
                 if final_output is not None:
                     openai_format = self._convert_vllm_output_to_openai_format(
-                        request, final_output
+                        final_output, ctx.mode
                     )
                     yield response_handler.compile_non_streaming(request, openai_format), request_info
                 raise err
@@ -708,13 +778,12 @@ class VLLMPythonBackend(Backend):
                         # Calculate delta (new text)
                         delta_text = generated_text[len(accumulated_text) :]
 
-                        # Build streaming delta format based on request type
-                        if request.request_type == "text_completions":
+                        # Build streaming delta format based on mode
+                        if ctx.mode == "text":
                             delta_data = {"choices": [{"text": delta_text}]}
-                        elif request.request_type in ("audio_transcriptions", "audio_translations"):
-                            # Audio streaming uses {"text": "..."} format
+                        elif ctx.mode == "audio":
                             delta_data = {"text": delta_text}
-                        else:  # chat_completions
+                        else:
                             delta_data = {
                                 "choices": [{"delta": {"content": delta_text, "role": "assistant"}}]
                             }
@@ -758,4 +827,3 @@ class VLLMPythonBackend(Backend):
                     ) from exc
                 # Re-raise with context
                 raise RuntimeError(f"Generation failed: {exc}") from exc
-

@@ -235,8 +235,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     request_format: str | None = Field(
         default=None,
         description=(
-            "Query format for backend operations;"
-            " shorthand for backend_kwargs['request_format']"
+            "Query format for backend operations; shorthand for "
+            "backend_kwargs['request_format']. For vLLM backend: plain, "
+            "default-template, or chat template path/single-line string."
         ),
     )
     model: str | None = Field(default=None, description="Model identifier for backend")
