@@ -190,7 +190,12 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("request_format"),
     help=(
         "Format to use for requests. Options depend on backend. "
-        "If not provided, uses backend default."
+        "For vLLM backend: plain (no chat template, text appending only), "
+        "default-template (use tokenizer default), or a file path / single-line "
+        "template per vLLM docs. Default: default-template"
+        "For openai backend: http endpoint path (/v1/chat/completions, "
+        "/v1/completions, /v1/audio/transcriptions, /v1/audio/translations) or "
+        "alias (e.g. chat_completions); default /v1/chat/completions."
     ),
 )
 @click.option(
