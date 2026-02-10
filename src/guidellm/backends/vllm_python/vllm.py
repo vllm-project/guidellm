@@ -858,10 +858,6 @@ class VLLMPythonBackend(Backend):
                 )
                 if usage is not None:
                     response_handler.streaming_usage = usage
-                    logger.debug(
-                        "[vllm_python streaming] injected usage completion_tokens={}",
-                        usage.get("completion_tokens"),
-                    )
                 # Yield final compiled response
                 response = response_handler.compile_streaming(request)
                 yield response, request_info
