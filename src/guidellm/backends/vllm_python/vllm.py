@@ -330,7 +330,9 @@ class VLLMPythonBackend(Backend):
                         "content": [{"type": "text", "text": str(t)}],
                     })
             body = {"messages": messages}
-            stream = False
+            # Default to streaming when using standard pipeline (no arguments), to match
+            # OpenAI HTTP backend behavior and enable correct token timing metrics.
+            stream = True
             files = {}
 
         if files:
@@ -809,8 +811,22 @@ class VLLMPythonBackend(Backend):
 
                 request_info.timings.request_end = time.time()
 
+                # Inject real token counts into handler so compile_streaming gets correct metrics
+                if final_output is not None:
+                    input_tokens = len(final_output.prompt_token_ids)
+                    output_tokens = 0
+                    if final_output.outputs and len(final_output.outputs) > 0:
+                        out = final_output.outputs[0]
+                        if out.token_ids is not None:
+                            output_tokens = len(out.token_ids)
+                    response_handler.streaming_usage = {
+                        "prompt_tokens": input_tokens,
+                        "completion_tokens": output_tokens,
+                        "total_tokens": input_tokens + output_tokens,
+                    }
                 # Yield final compiled response
-                yield response_handler.compile_streaming(request), request_info
+                response = response_handler.compile_streaming(request)
+                yield response, request_info
 
             except asyncio.CancelledError as err:
                 # Yield current result to store iterative results before propagating
