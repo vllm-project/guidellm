@@ -34,6 +34,7 @@ except ImportError:
     RequestOutput = None  # type: ignore[assignment, misc]
     HAS_VLLM = False
 
+from guidellm.logger import logger
 from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras.audio import _decode_audio
@@ -384,24 +385,37 @@ class VLLMPythonBackend(Backend):
         final_output: RequestOutput | None,
         accumulated_text: str,
         request_info: RequestInfo,
+        accumulated_output_tokens: int | None = None,
     ) -> dict[str, int] | None:
         """
         Build usage dict (prompt_tokens, completion_tokens, total_tokens) for streaming.
 
-        Uses token_ids when available; otherwise tokenizes generated text with the
-        engine tokenizer, or falls back to token_iterations.
+        When accumulated_output_tokens is provided (from summing chunk token_ids in the
+        loop), uses that. Otherwise uses token_ids from final_output (last chunk only),
+        then tokenizer, then token_iterations fallback.
         """
         if final_output is None:
             return None
         input_tokens = len(final_output.prompt_token_ids)
         output_tokens = 0
+        source = "unknown"
         generated_text = accumulated_text
-        if final_output.outputs and len(final_output.outputs) > 0:
+        if accumulated_output_tokens is not None and accumulated_output_tokens > 0:
+            output_tokens = accumulated_output_tokens
+            source = "token_ids"
+        elif final_output.outputs and len(final_output.outputs) > 0:
             out = final_output.outputs[0]
             if not generated_text and out.text:
                 generated_text = out.text
             if out.token_ids is not None:
                 output_tokens = len(out.token_ids)
+                source = "token_ids"
+            else:
+                logger.debug(
+                    "[vllm_python streaming] final_output.outputs[0].token_ids is None, "
+                    "len(generated_text)={}",
+                    len(generated_text or ""),
+                )
         if output_tokens == 0 and generated_text and self._engine is not None:
             try:
                 tokenizer = getattr(self._engine, "tokenizer", None)
@@ -410,10 +424,27 @@ class VLLMPythonBackend(Backend):
                         generated_text, add_special_tokens=False
                     )
                     output_tokens = len(ids)
-            except Exception:
-                pass
+                    source = "tokenizer"
+                else:
+                    logger.debug(
+                        "[vllm_python streaming] engine has no tokenizer attribute"
+                    )
+            except Exception as exc:
+                logger.debug(
+                    "[vllm_python streaming] tokenizer.encode failed: {}",
+                    exc,
+                )
         if output_tokens == 0 and request_info.timings.token_iterations:
             output_tokens = request_info.timings.token_iterations
+            source = "token_iterations"
+        logger.warning(
+            "[vllm_python streaming usage] source={} completion_tokens={} "
+            "prompt_tokens={} token_iterations={}",
+            source,
+            output_tokens,
+            input_tokens,
+            request_info.timings.token_iterations,
+        )
         return {
             "prompt_tokens": input_tokens,
             "completion_tokens": output_tokens,
@@ -801,8 +832,10 @@ class VLLMPythonBackend(Backend):
             # Streaming path
             try:
                 request_info.timings.request_start = time.time()
+                request_info.timings.output_token_iteration_timings = []
                 accumulated_text = ""
                 final_output: RequestOutput | None = None
+                total_output_tokens = 0
 
                 # Use AsyncLLMEngine's native async generation
                 async for request_output in self._engine.generate(  # type: ignore[misc]
@@ -810,6 +843,13 @@ class VLLMPythonBackend(Backend):
                 ):
                     iter_time = time.time()
                     self._update_request_timing(request_info, iter_time)
+
+                    # Accumulate output token count from each chunk (vLLM streaming gives
+                    # token_ids per chunk, not cumulative)
+                    if request_output.outputs and len(request_output.outputs) > 0:
+                        out = request_output.outputs[0]
+                        if out.token_ids is not None:
+                            total_output_tokens += len(out.token_ids)
 
                     # Extract generated text from output
                     generated_text = ""
@@ -844,6 +884,17 @@ class VLLMPythonBackend(Backend):
                         iterations = response_handler.add_streaming_line(sse_line)
 
                         if iterations is not None and iterations > 0:
+                            chunk_token_count = 1
+                            if request_output.outputs and len(request_output.outputs) > 0:
+                                out = request_output.outputs[0]
+                                chunk_token_count = (
+                                    len(out.token_ids)
+                                    if out.token_ids is not None
+                                    else 1
+                                )
+                            request_info.timings.output_token_iteration_timings.append(
+                                (iter_time, float(chunk_token_count))
+                            )
                             self._update_token_timing(request_info, iter_time, iterations)
 
                         accumulated_text = generated_text
@@ -854,7 +905,10 @@ class VLLMPythonBackend(Backend):
 
                 # Inject real token counts into handler so compile_streaming gets correct metrics
                 usage = self._streaming_usage_from_output(
-                    final_output, accumulated_text, request_info
+                    final_output,
+                    accumulated_text,
+                    request_info,
+                    accumulated_output_tokens=total_output_tokens,
                 )
                 if usage is not None:
                     response_handler.streaming_usage = usage
@@ -865,7 +919,10 @@ class VLLMPythonBackend(Backend):
             except asyncio.CancelledError as err:
                 # Yield current result; inject usage from last known state if available
                 usage = self._streaming_usage_from_output(
-                    final_output, accumulated_text, request_info
+                    final_output,
+                    accumulated_text,
+                    request_info,
+                    accumulated_output_tokens=total_output_tokens,
                 )
                 if usage is not None:
                     response_handler.streaming_usage = usage

@@ -71,6 +71,10 @@ class RequestTimings(StandardBaseDict):
     token_iterations: int = Field(
         default=0,
     )
+    output_token_iteration_timings: list[tuple[float, float]] | None = Field(
+        default=None,
+        description="Chronological (timestamp, token_count) per stream chunk when available",
+    )
     request_end: float | None = Field(
         default=None,
         description="Unix timestamp when the backend completed processing the request",
