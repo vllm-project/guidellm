@@ -379,6 +379,47 @@ class VLLMPythonBackend(Backend):
         request_info.timings.last_token_iteration = iter_time
         request_info.timings.token_iterations += iterations
 
+    def _streaming_usage_from_output(
+        self,
+        final_output: RequestOutput | None,
+        accumulated_text: str,
+        request_info: RequestInfo,
+    ) -> dict[str, int] | None:
+        """
+        Build usage dict (prompt_tokens, completion_tokens, total_tokens) for streaming.
+
+        Uses token_ids when available; otherwise tokenizes generated text with the
+        engine tokenizer, or falls back to token_iterations.
+        """
+        if final_output is None:
+            return None
+        input_tokens = len(final_output.prompt_token_ids)
+        output_tokens = 0
+        generated_text = accumulated_text
+        if final_output.outputs and len(final_output.outputs) > 0:
+            out = final_output.outputs[0]
+            if not generated_text and out.text:
+                generated_text = out.text
+            if out.token_ids is not None:
+                output_tokens = len(out.token_ids)
+        if output_tokens == 0 and generated_text and self._engine is not None:
+            try:
+                tokenizer = getattr(self._engine, "tokenizer", None)
+                if tokenizer is not None:
+                    ids = tokenizer.encode(  # type: ignore[union-attr]
+                        generated_text, add_special_tokens=False
+                    )
+                    output_tokens = len(ids)
+            except Exception:
+                pass
+        if output_tokens == 0 and request_info.timings.token_iterations:
+            output_tokens = request_info.timings.token_iterations
+        return {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        }
+
     def _extract_text_from_content(self, content: str | list[dict[str, Any]] | Any) -> str:
         """
         Extract text content from message content field.
@@ -812,24 +853,26 @@ class VLLMPythonBackend(Backend):
                 request_info.timings.request_end = time.time()
 
                 # Inject real token counts into handler so compile_streaming gets correct metrics
-                if final_output is not None:
-                    input_tokens = len(final_output.prompt_token_ids)
-                    output_tokens = 0
-                    if final_output.outputs and len(final_output.outputs) > 0:
-                        out = final_output.outputs[0]
-                        if out.token_ids is not None:
-                            output_tokens = len(out.token_ids)
-                    response_handler.streaming_usage = {
-                        "prompt_tokens": input_tokens,
-                        "completion_tokens": output_tokens,
-                        "total_tokens": input_tokens + output_tokens,
-                    }
+                usage = self._streaming_usage_from_output(
+                    final_output, accumulated_text, request_info
+                )
+                if usage is not None:
+                    response_handler.streaming_usage = usage
+                    logger.debug(
+                        "[vllm_python streaming] injected usage completion_tokens={}",
+                        usage.get("completion_tokens"),
+                    )
                 # Yield final compiled response
                 response = response_handler.compile_streaming(request)
                 yield response, request_info
 
             except asyncio.CancelledError as err:
-                # Yield current result to store iterative results before propagating
+                # Yield current result; inject usage from last known state if available
+                usage = self._streaming_usage_from_output(
+                    final_output, accumulated_text, request_info
+                )
+                if usage is not None:
+                    response_handler.streaming_usage = usage
                 yield response_handler.compile_streaming(request), request_info
                 raise err
             except Exception as exc:

@@ -119,12 +119,13 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Number of tokens in the generated output, or None if unavailable
         """
-        # Fallback if we did not get usage metrics from the server
-        # NOTE: This assumes each iteration is one token
-        if self.output_metrics.total_tokens is None:
-            return self.info.timings.token_iterations or None
-
-        return self.output_metrics.total_tokens
+        # Prefer total_tokens; fall back to text_tokens (e.g. from injected streaming usage)
+        # then token_iterations (assumes each iteration is one token)
+        if self.output_metrics.total_tokens is not None:
+            return self.output_metrics.total_tokens
+        if self.output_metrics.text_tokens is not None:
+            return self.output_metrics.text_tokens
+        return self.info.timings.token_iterations or None
 
     @computed_field  # type: ignore[misc]
     @property
