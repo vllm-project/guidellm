@@ -625,13 +625,23 @@ class VLLMPythonBackend(Backend):
         if max_tokens == 0:
             max_tokens = 16
 
+        using_benchmark_target = (
+            body.get("max_tokens") is None and max_tokens_override is not None
+        )
+        if using_benchmark_target:
+            ignore_eos = True
+            stop: list[str] | None = []
+        else:
+            ignore_eos = body.get("ignore_eos", False)
+            stop = body.get("stop", None)
+
         params = {
             "temperature": body.get("temperature", 1.0),
             "top_p": body.get("top_p", 1.0),
             "max_tokens": max_tokens,
             "min_tokens": body.get("min_tokens", 0),
-            "stop": body.get("stop", None),
-            "ignore_eos": body.get("ignore_eos", False),
+            "stop": stop,
+            "ignore_eos": ignore_eos,
             "frequency_penalty": body.get("frequency_penalty", 0.0),
             "presence_penalty": body.get("presence_penalty", 0.0),
         }
