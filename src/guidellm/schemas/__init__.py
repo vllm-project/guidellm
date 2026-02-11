@@ -22,7 +22,7 @@ from .base import (
     SuccessfulT,
     TotalT,
 )
-from .info import RequestInfo, RequestSettings, RequestTimings
+from .info import RequestInfo, RequestTimings
 from .request import (
     GenerationRequest,
     GenerationRequestArguments,
@@ -52,7 +52,6 @@ __all__ = [
     "RegisterClassT",
     "ReloadableBaseModel",
     "RequestInfo",
-    "RequestSettings",
     "RequestTimings",
     "StandardBaseDict",
     "StandardBaseModel",

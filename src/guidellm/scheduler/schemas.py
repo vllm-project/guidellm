@@ -63,7 +63,7 @@ HistoryT = TypeAliasType(
 
 # NOTE: This is the interface between data and scheduler.
 DatasetIterT = TypeAliasType(
-    "DatasetIterT", Iterable[Iterable[tuple[RequestT, float]]], type_params=(RequestT,)
+    "DatasetIterT", Iterable[Iterable[RequestT]], type_params=(RequestT,)
 )
 """
 Output of data loader, an iterable of batches,
