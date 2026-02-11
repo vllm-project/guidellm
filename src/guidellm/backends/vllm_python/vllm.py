@@ -622,37 +622,20 @@ class VLLMPythonBackend(Backend):
             if body.get("max_tokens") is not None
             else (max_tokens_override if max_tokens_override is not None else 16)
         )
+        if max_tokens == 0:
+            max_tokens = 16
 
-        # When generating to benchmark target (max_tokens from override or body equals
-        # override), ignore EOS and stop so generation runs until max_tokens.
-        using_override = (
-            max_tokens_override is not None and body.get("max_tokens") is None
-        )
-        generating_to_benchmark_target = (
-            max_tokens_override is not None and max_tokens == max_tokens_override
-        )
-        ignore_eos = (
-            generating_to_benchmark_target
-            or body.get("ignore_eos", False)
-        )
-        if generating_to_benchmark_target and ignore_eos:
-            logger.info(
-                "[vllm_python] Using benchmark target max_tokens=%s with ignore_eos=True",
-                max_tokens,
-            )
-
-        # Extract common parameters
         params = {
             "temperature": body.get("temperature", 1.0),
             "top_p": body.get("top_p", 1.0),
             "max_tokens": max_tokens,
-            "stop": [] if generating_to_benchmark_target else body.get("stop", None),
-            "ignore_eos": ignore_eos,
+            "min_tokens": body.get("min_tokens", 0),
+            "stop": body.get("stop", None),
+            "ignore_eos": body.get("ignore_eos", False),
             "frequency_penalty": body.get("frequency_penalty", 0.0),
             "presence_penalty": body.get("presence_penalty", 0.0),
         }
 
-        # Remove None values (except ignore_eos which is bool)
         params = {k: v for k, v in params.items() if v is not None}
 
         return SamplingParams(**params)  # type: ignore[misc]
