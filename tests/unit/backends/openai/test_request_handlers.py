@@ -649,13 +649,13 @@ class TestChatCompletionsRequestHandler:
 
         result = instance.format(data)
 
-        assert len(result.body["messages"]) == 2
+        assert len(result.body["messages"]) == 1
         assert result.body["messages"][0]["role"] == "user"
+        assert len(result.body["messages"][0]["content"]) == 2
         assert result.body["messages"][0]["content"][0]["type"] == "text"
         assert result.body["messages"][0]["content"][0]["text"] == "Hello"
-        assert result.body["messages"][1]["role"] == "user"
-        assert result.body["messages"][1]["content"][0]["type"] == "text"
-        assert result.body["messages"][1]["content"][0]["text"] == "How are you?"
+        assert result.body["messages"][0]["content"][1]["type"] == "text"
+        assert result.body["messages"][0]["content"][1]["text"] == "How are you?"
 
     @pytest.mark.sanity
     def test_format_messages_prefix(self, valid_instances):
@@ -670,9 +670,11 @@ class TestChatCompletionsRequestHandler:
 
         result = instance.format(data)
 
-        assert len(result.body["messages"]) == 1
+        assert len(result.body["messages"]) == 2
         assert result.body["messages"][0]["role"] == "system"
         assert result.body["messages"][0]["content"] == "You are a helpful assistant."
+        assert result.body["messages"][1]["role"] == "user"
+        assert result.body["messages"][1]["content"] == []
 
     @pytest.mark.sanity
     def test_format_messages_image(self, valid_instances):
@@ -769,16 +771,21 @@ class TestChatCompletionsRequestHandler:
 
         result = instance.format(data)
 
-        assert len(result.body["messages"]) == 3
+        assert len(result.body["messages"]) == 2
         # System message from prefix
         assert result.body["messages"][0]["role"] == "system"
         assert result.body["messages"][0]["content"] == "You are a helpful assistant."
-        # Text message
+        # User message with interleaved text and image content
         assert result.body["messages"][1]["role"] == "user"
+        assert len(result.body["messages"][1]["content"]) == 2
+        # roundrobin interleaves: text first, then image
         assert result.body["messages"][1]["content"][0]["type"] == "text"
-        # Image message
-        assert result.body["messages"][2]["role"] == "user"
-        assert result.body["messages"][2]["content"][0]["type"] == "image_url"
+        assert result.body["messages"][1]["content"][0]["text"] == "Describe this image"
+        assert result.body["messages"][1]["content"][1]["type"] == "image_url"
+        assert (
+            result.body["messages"][1]["content"][1]["image_url"]["url"]
+            == "https://example.com/image.jpg"
+        )
 
     # Response handling tests
     @pytest.mark.smoke

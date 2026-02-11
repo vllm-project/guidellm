@@ -70,6 +70,7 @@ dependencies = [
     "transformers",
     "uvloop>=0.18",
     "torch",
+    "more-itertools>=10.8.0",
 ]
 
 [project.optional-dependencies]
