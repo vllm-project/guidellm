@@ -273,7 +273,7 @@ class BenchmarkConfig(StandardBaseDict):
         description="Constraint definitions applied to scheduler strategy execution",
     )
     sample_requests: int | None = Field(
-        default=20,
+        default=None,
         description="Request count for statistical sampling in final metrics",
     )
     warmup: TransientPhaseConfig = Field(
