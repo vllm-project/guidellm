@@ -239,7 +239,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     )
     # Benchmarker configuration
     sample_requests: int | None = Field(
-        default=10,
+        default=None,
         description="Number of requests to sample for detailed metrics (None for all)",
     )
     warmup: int | float | dict | TransientPhaseConfig | None = Field(
