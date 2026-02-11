@@ -623,19 +623,31 @@ class VLLMPythonBackend(Backend):
             else (max_tokens_override if max_tokens_override is not None else 16)
         )
 
-        # When using benchmark target (max_tokens_override), ignore EOS and stop so
-        # generation continues until max_tokens (match HTTP backend behavior).
+        # When generating to benchmark target (max_tokens from override or body equals
+        # override), ignore EOS and stop so generation runs until max_tokens.
         using_override = (
             max_tokens_override is not None and body.get("max_tokens") is None
         )
+        generating_to_benchmark_target = (
+            max_tokens_override is not None and max_tokens == max_tokens_override
+        )
+        ignore_eos = (
+            generating_to_benchmark_target
+            or body.get("ignore_eos", False)
+        )
+        if generating_to_benchmark_target and ignore_eos:
+            logger.info(
+                "[vllm_python] Using benchmark target max_tokens=%s with ignore_eos=True",
+                max_tokens,
+            )
 
         # Extract common parameters
         params = {
             "temperature": body.get("temperature", 1.0),
             "top_p": body.get("top_p", 1.0),
             "max_tokens": max_tokens,
-            "stop": None if using_override else body.get("stop", None),
-            "ignore_eos": True if using_override else body.get("ignore_eos", False),
+            "stop": [] if generating_to_benchmark_target else body.get("stop", None),
+            "ignore_eos": ignore_eos,
             "frequency_penalty": body.get("frequency_penalty", 0.0),
             "presence_penalty": body.get("presence_penalty", 0.0),
         }
