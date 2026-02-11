@@ -635,16 +635,10 @@ class VLLMPythonBackend(Backend):
             generating_to_benchmark_target
             or body.get("ignore_eos", False)
         )
-        # min_tokens: require this many tokens before EOS/stop can stop generation.
-        # When ignore_eos is not respected by the engine, this still forces length.
-        min_tokens = (
-            max_tokens if generating_to_benchmark_target else body.get("min_tokens", 0)
-        )
         if generating_to_benchmark_target and ignore_eos:
             logger.info(
-                "[vllm_python] Using benchmark target max_tokens={} with ignore_eos=True, min_tokens={}",
+                "[vllm_python] Using benchmark target max_tokens=%s with ignore_eos=True",
                 max_tokens,
-                min_tokens,
             )
 
         # Extract common parameters
@@ -652,7 +646,6 @@ class VLLMPythonBackend(Backend):
             "temperature": body.get("temperature", 1.0),
             "top_p": body.get("top_p", 1.0),
             "max_tokens": max_tokens,
-            "min_tokens": min_tokens,
             "stop": [] if generating_to_benchmark_target else body.get("stop", None),
             "ignore_eos": ignore_eos,
             "frequency_penalty": body.get("frequency_penalty", 0.0),
