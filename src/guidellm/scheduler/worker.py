@@ -40,7 +40,7 @@ from guidellm.scheduler.schemas import (
     ResponseT,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas import RequestInfo
 from guidellm.utils import (
     InterProcessMessaging,
     wait_for_sync_barrier,
@@ -318,7 +318,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                             self._wait_then_requeue(
                                 history,
                                 conversation,
-                                info.settings if info else RequestSettings(),
+                                self.strategy.requeue_delay(),
                             )
                         )
                         pending_tasks.add(requeue_task)
@@ -463,11 +463,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self,
         history: HistoryT[RequestT, ResponseT],
         conversation: ConversationT[RequestT],
-        settings: RequestSettings,
+        requeue_delay: float,
     ):
         try:
-            if settings.next_turn_delay > 0:
-                await asyncio.sleep(settings.next_turn_delay)
+            if requeue_delay > 0:
+                await asyncio.sleep(requeue_delay)
         except asyncio.CancelledError:
             # If we are cancelled, dump straight to queue
             raise

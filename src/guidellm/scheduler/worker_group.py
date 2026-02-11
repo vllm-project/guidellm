@@ -38,7 +38,7 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
-from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils import (
     InterProcessMessaging,
@@ -493,10 +493,10 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             stop_queueing: bool = False
 
             def _turn_iter(
-                requests_chain: Iterable[tuple[RequestT, float]],
+                requests_chain: Iterable[RequestT],
             ) -> Generator[RequestDataT[RequestT], None, None]:
                 nonlocal count, stop_queueing
-                for request, delay in requests_chain:
+                for request in requests_chain:
                     count += 1
 
                     request_id: str
@@ -511,7 +511,6 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,
-                        settings=RequestSettings(next_turn_delay=delay),
                     )
                     state_update = self._locked_update(request_info)
                     request_info.timings.queued = time.time()
