@@ -50,6 +50,9 @@ LEGACY_API_ALIASES = {
     "audio_translations": "/v1/audio/translations",
 }
 
+# NOTE: This value is taken from httpx's default
+FALLBACK_TIMEOUT = 5.0
+
 
 @Backend.register("openai_http")
 class OpenAIHTTPBackend(Backend):
@@ -84,7 +87,7 @@ class OpenAIHTTPBackend(Backend):
         api_routes: dict[str, str] | None = None,
         request_handlers: dict[str, Any] | None = None,
         timeout: float | None = None,
-        timeout_connect: float | None = 5.0,  # 5.0 is httpx default
+        timeout_connect: float | None = FALLBACK_TIMEOUT,
         http2: bool = True,
         follow_redirects: bool = True,
         verify: bool = False,
@@ -186,7 +189,7 @@ class OpenAIHTTPBackend(Backend):
         self._async_client = httpx.AsyncClient(
             http2=self.http2,
             timeout=httpx.Timeout(
-                5.0,  # default httpx timeout
+                FALLBACK_TIMEOUT,
                 read=self.timeout,
                 connect=self.timeout_connect,
             ),
