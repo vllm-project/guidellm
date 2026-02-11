@@ -216,6 +216,17 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
             and completion status
         """
 
+    def requeue_delay(self) -> float:
+        """
+        Calculate delay before requeuing a conversation.
+
+        Default implementation returns zero delay. Strategies can override
+        to implement custom requeue timing logic.
+
+        :return: Delay in seconds before the conversation should be requeued.
+        """
+        return 0.0
+
 
 StrategyT = TypeVar("StrategyT", bound=SchedulingStrategy)
 "Type variable bound to SchedulingStrategy for generic strategy operations"
