@@ -844,13 +844,6 @@ class VLLMPythonBackend(Backend):
                     iter_time = time.time()
                     self._update_request_timing(request_info, iter_time)
 
-                    # Accumulate output token count from each chunk (vLLM streaming gives
-                    # token_ids per chunk, not cumulative)
-                    if request_output.outputs and len(request_output.outputs) > 0:
-                        out = request_output.outputs[0]
-                        if out.token_ids is not None:
-                            total_output_tokens += len(out.token_ids)
-
                     # Extract generated text from output
                     generated_text = ""
                     if request_output.outputs and len(request_output.outputs) > 0:
@@ -892,6 +885,7 @@ class VLLMPythonBackend(Backend):
                                     if out.token_ids is not None
                                     else 1
                                 )
+                            total_output_tokens += chunk_token_count
                             request_info.timings.output_token_iteration_timings.append(
                                 (iter_time, float(chunk_token_count))
                             )
