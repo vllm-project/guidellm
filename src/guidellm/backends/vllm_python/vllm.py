@@ -605,19 +605,29 @@ class VLLMPythonBackend(Backend):
             return prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
         raise ValueError(f"Unsupported mode: {mode!r}.")
 
-    def _create_sampling_params(self, body: dict[str, Any]) -> SamplingParams:
+    def _create_sampling_params(
+        self,
+        body: dict[str, Any],
+        max_tokens_override: int | None = None,
+    ) -> SamplingParams:
         """
         Create VLLM SamplingParams from request body.
 
         :param body: Request body dict with sampling parameters
+        :param max_tokens_override: Optional max_tokens from request (e.g. benchmark target)
         :return: Configured SamplingParams instance
         """
+        max_tokens = (
+            body.get("max_tokens")
+            if body.get("max_tokens") is not None
+            else (max_tokens_override if max_tokens_override is not None else 16)
+        )
 
         # Extract common parameters
         params = {
             "temperature": body.get("temperature", 1.0),
             "top_p": body.get("top_p", 1.0),
-            "max_tokens": body.get("max_tokens", 16),
+            "max_tokens": max_tokens,
             "stop": body.get("stop", None),
             "frequency_penalty": body.get("frequency_penalty", 0.0),
             "presence_penalty": body.get("presence_penalty", 0.0),
@@ -721,7 +731,14 @@ class VLLMPythonBackend(Backend):
 
         # Extract prompt and create sampling parameters
         prompt = self._extract_prompt(ctx.body, ctx.mode)
-        sampling_params = self._create_sampling_params(ctx.body)
+        sampling_params = self._create_sampling_params(
+            ctx.body,
+            max_tokens_override=(
+                request.output_metrics.text_tokens
+                if request.output_metrics.text_tokens
+                else None
+            ),
+        )
         stream = ctx.stream
 
         # For audio requests, construct multimodal input with audio data
