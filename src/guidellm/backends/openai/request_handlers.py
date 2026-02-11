@@ -15,6 +15,7 @@ from typing import Any, Protocol, cast
 
 from more_itertools import roundrobin
 
+from guidellm.scheduler import HistoryT
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils import RegistryMixin, json
@@ -41,6 +42,8 @@ class OpenAIRequestHandler(Protocol):
     def format(
         self,
         data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
         """
@@ -152,9 +155,11 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
 
-    def format(
+    def format(  # noqa: C901
         self,
         data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
         """
@@ -164,6 +169,13 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
+        prev_requests: list[GenerationRequestArguments] = []
+        if history:
+            # NOTE: Don't include history to avoid infinite recursion
+            prev_requests = [
+                self.format(req, response=res, **kwargs) for req, res in history
+            ]
+
         arguments: GenerationRequestArguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works better setting this field here
 
@@ -192,12 +204,25 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         if kwargs.get("extras"):
             arguments.model_combine(kwargs["extras"])
 
-        # Build prompt
-        prefix = "".join(pre for pre in data.columns.get("prefix_column", []) if pre)
-        text = "".join(txt for txt in data.columns.get("text_column", []) if txt)
-        if prefix or text:
-            prompt = prefix + text
-            arguments.body["prompt"] = prompt
+        ## Build prompt ##
+        prompts = []
+
+        # Include previous requests
+        for req in prev_requests:
+            if req.body and "prompt" in req.body:
+                prompts.append(req.body["prompt"])
+
+        # Include prefix
+        prompts.extend(data.columns.get("prefix_column", []))
+        # Include text column
+        prompts.extend(data.columns.get("text_column", []))
+
+        # Include the response to the current prompt
+        if response and response.text:
+            prompts.append(response.text)
+
+        if prompts:
+            arguments.body["prompt"] = " ".join(prompts)
 
         return arguments
 
@@ -407,9 +432,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return formatted_data
 
-    def format(
+    def format(  # noqa: C901
         self,
         data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
         """
@@ -419,6 +446,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
+        prev_requests: list[GenerationRequestArguments] = []
+        if history:
+            # NOTE: Don't include history to avoid infinite recursion
+            prev_requests = [
+                self.format(req, response=res, **kwargs) for req, res in history
+            ]
+
         arguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works best with body assigned here
 
@@ -454,6 +488,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Build messages
         arguments.body["messages"] = []
 
+        # Include previous requests
+        for req in prev_requests:
+            if req.body and "messages" in req.body:
+                arguments.body["messages"].extend(req.body["messages"])
+
         # Build the system prompt
         prefix = " ".join(data.columns.get("prefix_column", []))
         if prefix:
@@ -468,6 +507,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             # Interleave prompt types
             arguments.body["messages"].append(
                 {"role": "user", "content": list(roundrobin(*prompts))}
+            )
+
+        # Add the response to the current prompt if available
+        if response and response.text:
+            arguments.body["messages"].append(
+                {"role": "assistant", "content": response.text}
             )
 
         return arguments
@@ -585,6 +630,8 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
     def format(
         self,
         data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:  # noqa: C901
         """
@@ -595,6 +642,9 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
+        if history or response:
+            raise ValueError("AudioRequestHandler does not support multiturn.")
+
         arguments = GenerationRequestArguments(files={})
         arguments.body = {}
 

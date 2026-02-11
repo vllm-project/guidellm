@@ -278,7 +278,8 @@ class OpenAIHTTPBackend(Backend):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
+        history: list[tuple[GenerationRequest, GenerationResponse | None]]
+        | None = None,
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Process generation request and yield progressive responses.
@@ -297,9 +298,6 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        if history is not None:
-            raise NotImplementedError("Multi-turn requests not yet supported")
-
         if (request_path := self.api_routes.get(self.request_type)) is None:
             raise ValueError(f"Unsupported request type '{self.request_type}'")
 
@@ -307,7 +305,8 @@ class OpenAIHTTPBackend(Backend):
             self.request_type, handler_overrides=self.request_handlers
         )
         arguments: GenerationRequestArguments = request_handler.format(
-            request,
+            data=request,
+            history=history,
             model=(await self.default_model()),
             stream=self.stream,
             extras=self.extras,
