@@ -108,11 +108,6 @@ class Settings(BaseSettings):
     logging: LoggingSettings = LoggingSettings()
     default_sweep_number: int = 10
 
-    # HTTP settings
-    request_follow_redirects: bool = True
-    request_timeout: int = 60 * 5  # 5 minutes
-    request_http2: bool = True
-
     # Scheduler settings
     mp_context_type: Literal["spawn", "fork", "forkserver"] | None = "fork"
     mp_serialization: Literal["dict", "sequence"] | None = "dict"
@@ -134,14 +129,6 @@ class Settings(BaseSettings):
 
     # Data settings
     dataset: DatasetSettings = DatasetSettings()
-
-    # Request/stats settings
-    preferred_prompt_tokens_source: Literal["request", "response"] = "response"
-    preferred_output_tokens_source: Literal["request", "response"] = "response"
-    preferred_backend: Literal["openai"] = "openai"
-    preferred_route: Literal["text_completions", "chat_completions"] = (
-        "chat_completions"
-    )
 
     # Report settings
     report_generation: ReportGenerationSettings = ReportGenerationSettings()
