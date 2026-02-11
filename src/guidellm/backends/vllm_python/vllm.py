@@ -812,7 +812,7 @@ class VLLMPythonBackend(Backend):
             final_output: RequestOutput | None = None
 
             try:
-                # Use AsyncLLMEngine's native async generation
+                # Use AsyncLLMEngine's native async generatio
                 async for request_output in self._engine.generate(  # type: ignore[misc]
                     prompt, sampling_params, request_id
                 ):
@@ -865,6 +865,7 @@ class VLLMPythonBackend(Backend):
                 accumulated_text = ""
                 final_output: RequestOutput | None = None
                 total_output_tokens = 0
+                previous_token_count = 0  # vLLM yields CUMULATIVE token_ids per chunk
 
                 # Use AsyncLLMEngine's native async generation
                 async for request_output in self._engine.generate(  # type: ignore[misc]
@@ -906,18 +907,26 @@ class VLLMPythonBackend(Backend):
                         iterations = response_handler.add_streaming_line(sse_line)
 
                         if iterations is not None and iterations > 0:
-                            chunk_token_count = 1
-                            if request_output.outputs and len(request_output.outputs) > 0:
-                                out = request_output.outputs[0]
-                                chunk_token_count = (
-                                    len(out.token_ids)
-                                    if out.token_ids is not None
-                                    else 1
-                                )
-                            total_output_tokens += chunk_token_count
-                            request_info.timings.output_token_iteration_timings.append(
-                                (iter_time, float(chunk_token_count))
+                            # vLLM token_ids is CUMULATIVE (all tokens so far); add only delta.
+                            out = (
+                                request_output.outputs[0]
+                                if request_output.outputs
+                                else None
                             )
+                            if out is not None and out.token_ids is not None:
+                                current_count = len(out.token_ids)
+                                chunk_token_count = max(
+                                    0, current_count - previous_token_count
+                                )
+                                previous_token_count = current_count
+                            else:
+                                chunk_token_count = 1
+                                previous_token_count += 1
+                            if chunk_token_count > 0:
+                                total_output_tokens += chunk_token_count
+                                request_info.timings.output_token_iteration_timings.append(
+                                    (iter_time, float(chunk_token_count))
+                                )
                             self._update_token_timing(request_info, iter_time, iterations)
 
                         accumulated_text = generated_text
