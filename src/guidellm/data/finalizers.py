@@ -21,18 +21,14 @@ class FinalizerRegistry(RegistryMixin[type[DatasetFinalizer]]):
 
 
 @FinalizerRegistry.register("generative")
-class GenerativeRequestFinalizer(
-        DatasetFinalizer[Iterable[tuple[GenerationRequest, float]]]
-):
+class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
     """
     Finalizer that converts dataset rows into GenerationRequest objects,
     aggregating usage metrics from the provided columns.
     """
 
-    def __call__(
-        self, items: list[dict[str, Any]]
-    ) -> list[tuple[GenerationRequest, float]]:
-        return [(self.finalize_turn(item), 0.0) for item in items]
+    def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
+        return [self.finalize_turn(item) for item in items]
 
     def finalize_turn(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]
