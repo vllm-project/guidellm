@@ -123,7 +123,6 @@ class VLLMPythonBackend(Backend):
     DEFAULT_VLLM_CONFIG: dict[str, Any] = {
         "tensor_parallel_size": 1,
         "gpu_memory_utilization": 0.9,
-        "max_model_len": 2048,
     }
 
     def __init__(
