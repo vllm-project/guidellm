@@ -46,6 +46,10 @@ from guidellm.benchmark import (
     get_builtin_scenarios,
     reimport_benchmarks_report,
 )
+from guidellm.benchmark.schemas.generative.entrypoints import (
+    backend_requires_model,
+    backend_requires_target,
+)
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
 from guidellm.settings import print_config
@@ -186,7 +190,12 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("request_format"),
     help=(
         "Format to use for requests. Options depend on backend. "
-        "If not provided, uses backend default."
+        "For vLLM backend: plain (no chat template, text appending only), "
+        "default-template (use tokenizer default), or a file path / single-line "
+        "template per vLLM docs. Default: default-template"
+        "For openai backend: http endpoint path (/v1/chat/completions, "
+        "/v1/completions, /v1/audio/transcriptions, /v1/audio/translations) or "
+        "alias (e.g. chat_completions); default /v1/chat/completions."
     ),
 )
 @click.option(
@@ -458,6 +467,40 @@ def run(**kwargs):  # noqa: C901
             ),
             details=", ".join(envs),
             status="warning",
+        )
+
+    # Early validation: check target and model parameters based on backend requirements
+    backend = kwargs.get("backend", BenchmarkGenerativeTextArgs.get_default("backend"))
+    target = kwargs.get("target", None)
+    model = kwargs.get("model", None)
+    requires_target = backend_requires_target(backend)
+    requires_model = backend_requires_model(backend)
+    backend_type = backend.type_ if hasattr(backend, "type_") else backend
+
+    # Validate target parameter
+    if requires_target and target is None:
+        raise click.BadParameter(
+            f"Backend '{backend_type}' requires a target parameter. "
+            "Please provide --target with a valid endpoint URL.",
+            ctx=click.get_current_context(),
+            param_hint="--target",
+        )
+
+    if not requires_target and target is not None:
+        raise click.BadParameter(
+            f"Backend '{backend_type}' does not support a target parameter. "
+            "Please remove --target as this backend runs locally.",
+            ctx=click.get_current_context(),
+            param_hint="--target",
+        )
+
+    # Validate model parameter
+    if requires_model and model is None:
+        raise click.BadParameter(
+            f"Backend '{backend_type}' requires a model parameter. "
+            "Please provide --model with a valid model identifier.",
+            ctx=click.get_current_context(),
+            param_hint="--model",
         )
 
     try:
