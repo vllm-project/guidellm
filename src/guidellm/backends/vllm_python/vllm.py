@@ -366,31 +366,85 @@ class VLLMPythonBackend(Backend):
         request_info.timings.last_token_iteration = iter_time
         request_info.timings.token_iterations += iterations
 
-    def _streaming_usage_from_output(
+    def _text_from_output(self, output: RequestOutput | None) -> str:
+        """
+        Extract generated text from VLLM RequestOutput.
+
+        :param output: VLLM request output (may be None)
+        :return: output.outputs[0].text if present, else ""
+        """
+        if output is None or not output.outputs or len(output.outputs) == 0:
+            return ""
+        return output.outputs[0].text or ""
+
+    def _openai_payload_for_mode(
+        self, mode: _Mode, text: str, *, is_delta: bool = False
+    ) -> dict[str, Any]:
+        """
+        Build OpenAI-style payload (content/choices only, no usage or id) for a mode.
+
+        :param mode: Inferred mode (audio, chat, text)
+        :param text: Content text (full or delta)
+        :param is_delta: If True, chat uses delta shape; else uses message shape
+        :return: Dict with "text" (audio) or "choices" (text/chat)
+        """
+        if mode == "audio":
+            return {"text": text}
+        if mode == "text":
+            return {"choices": [{"text": text}]}
+        # chat
+        if is_delta:
+            return {
+                "choices": [
+                    {"delta": {"content": text, "role": "assistant"}}
+                ]
+            }
+        return {
+            "choices": [
+                {"message": {"content": text, "role": "assistant"}}
+            ]
+        }
+
+    def _usage_from_output(
         self,
-        final_output: RequestOutput | None,
-        accumulated_text: str,
-        request_info: RequestInfo,
+        output: RequestOutput | None,
+        *,
         accumulated_output_tokens: int | None = None,
+        accumulated_text: str = "",
+        request_info: RequestInfo | None = None,
     ) -> dict[str, int] | None:
         """
-        Build usage dict (prompt_tokens, completion_tokens, total_tokens) for streaming.
+        Build usage dict (prompt_tokens, completion_tokens, total_tokens).
 
-        When accumulated_output_tokens is provided (from summing chunk token_ids in the
-        loop), uses that. Otherwise uses token_ids from final_output (last chunk only),
-        then tokenizer, then token_iterations fallback.
+        When request_info is None (non-stream), uses only output token counts.
+        When request_info is set (stream), uses accumulated_output_tokens if provided,
+        else token_ids from output, then tokenizer fallback, then token_iterations.
         """
-        if final_output is None:
+        if output is None:
             return None
-        input_tokens = len(final_output.prompt_token_ids)
+        input_tokens = len(output.prompt_token_ids)
         output_tokens = 0
+
+        if request_info is None:
+            # Simple path (non-stream): use output token counts only
+            if output.outputs and len(output.outputs) > 0:
+                out = output.outputs[0]
+                if out.token_ids is not None:
+                    output_tokens = len(out.token_ids)
+            return {
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+
+        # Stream path: fallback chain
         source = "unknown"
         generated_text = accumulated_text
         if accumulated_output_tokens is not None and accumulated_output_tokens > 0:
             output_tokens = accumulated_output_tokens
             source = "token_ids"
-        elif final_output.outputs and len(final_output.outputs) > 0:
-            out = final_output.outputs[0]
+        elif output.outputs and len(output.outputs) > 0:
+            out = output.outputs[0]
             if not generated_text and out.text:
                 generated_text = out.text
             if out.token_ids is not None:
@@ -452,11 +506,11 @@ class VLLMPythonBackend(Backend):
         if final_output is None:
             return None
         if stream:
-            usage = self._streaming_usage_from_output(
+            usage = self._usage_from_output(
                 final_output,
-                accumulated_text,
-                request_info,
                 accumulated_output_tokens=total_output_tokens,
+                accumulated_text=accumulated_text,
+                request_info=request_info,
             )
             if usage is not None:
                 response_handler.streaming_usage = usage
@@ -689,48 +743,15 @@ class VLLMPythonBackend(Backend):
         :param mode: Inferred mode (audio, chat, text) for response shape
         :return: OpenAI-style response dictionary
         """
-        # Extract generated text
-        generated_text = ""
-        if output.outputs and len(output.outputs) > 0:
-            generated_text = output.outputs[0].text
+        generated_text = self._text_from_output(output)
+        usage = self._usage_from_output(output) or {}
 
-        # Calculate token counts
-        input_tokens = len(output.prompt_token_ids)
-        output_tokens = 0
-        if output.outputs and len(output.outputs) > 0:
-            output_obj = output.outputs[0]
-            if output_obj.token_ids is not None:
-                output_tokens = len(output_obj.token_ids)
-
-        # Build usage dict
-        usage: dict[str, int] = {
-            "prompt_tokens": input_tokens,
-            "completion_tokens": output_tokens,
-            "total_tokens": input_tokens + output_tokens,
+        response_dict: dict[str, Any] = {
+            **self._openai_payload_for_mode(mode, generated_text, is_delta=False),
+            "usage": usage,
         }
-
-        if mode == "audio":
-            response_dict: dict[str, Any] = {
-                "text": generated_text,
-                "usage": usage,
-            }
-        elif mode == "text":
-            response_dict = {
-                "choices": [{"text": generated_text}],
-                "usage": usage,
-            }
-        else:
-            response_dict = {
-                "choices": [
-                    {"message": {"content": generated_text, "role": "assistant"}}
-                ],
-                "usage": usage,
-            }
-
-        # Add response ID if available
         if hasattr(output, "request_id") and output.request_id:
             response_dict["id"] = output.request_id
-
         return response_dict
 
     async def resolve(  # type: ignore[override]
@@ -841,10 +862,12 @@ class VLLMPythonBackend(Backend):
             async for request_output in self._engine.generate(  # type: ignore[misc]
                 prompt, sampling_params, request_id
             ):
+                # Per-iteration: record timing and keep latest output for final response
                 iter_time = time.time()
                 self._update_request_timing(request_info, iter_time)
                 final_output = request_output
 
+                # Stop when vLLM signals completion (e.g. EOS or max_tokens)
                 if (
                     request_output.outputs
                     and len(request_output.outputs) > 0
@@ -852,38 +875,35 @@ class VLLMPythonBackend(Backend):
                 ):
                     break
 
+                # Streaming: emit new text as SSE deltas and accumulate token count
                 if stream:
-                    generated_text = ""
-                    if request_output.outputs and len(request_output.outputs) > 0:
-                        generated_text = request_output.outputs[0].text
+                    generated_text = self._text_from_output(request_output)
 
                     if generated_text != accumulated_text:
+                        # Only the new slice since last iteration (vLLM gives cumulative text)
                         delta_text = generated_text[len(accumulated_text) :]
-
-                        if ctx.mode == "text":
-                            delta_data = {"choices": [{"text": delta_text}]}
-                        elif ctx.mode == "audio":
-                            delta_data = {"text": delta_text}
-                        else:
-                            delta_data = {
-                                "choices": [{"delta": {"content": delta_text, "role": "assistant"}}]
-                            }
-
+                        # Build OpenAI-style delta: {"text": ...}, choices[].text, or choices[].delta
+                        delta_data = self._openai_payload_for_mode(
+                            ctx.mode, delta_text, is_delta=True
+                        )
                         if hasattr(request_output, "request_id") and request_output.request_id:
                             delta_data["id"] = request_output.request_id
 
+                        # Serialize to SSE line and feed to handler (accumulates for compile_streaming)
                         json_str = json.dumps(delta_data)
                         if isinstance(json_str, bytes):
                             json_str = json_str.decode("utf-8")
                         sse_line = f"data: {json_str}"
                         iterations = response_handler.add_streaming_line(sse_line)
 
+                        # Update token count (delta from cumulative token_ids) and token timings
                         if iterations is not None and iterations > 0:
                             out = (
                                 request_output.outputs[0]
                                 if request_output.outputs
                                 else None
                             )
+                            # vLLM yields cumulative token_ids; take delta since previous iteration
                             if out is not None and out.token_ids is not None:
                                 current_count = len(out.token_ids)
                                 chunk_token_count = max(
@@ -898,6 +918,7 @@ class VLLMPythonBackend(Backend):
 
                             self._update_token_timing(request_info, iter_time, iterations)
 
+                        # Track consumed text so next delta is again only the new slice
                         accumulated_text = generated_text
 
             request_info.timings.request_end = time.time()
