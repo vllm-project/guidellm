@@ -603,15 +603,6 @@ class VLLMPythonBackend(Backend):
                     formatted_messages.append(msg)
 
             if self.request_format == "plain":
-                if (
-                    self._engine is not None
-                    and getattr(self._engine, "tokenizer", None) is not None
-                ):
-                    logger.warning(
-                        "Tokenizer is set (from model) but not used: request_format is "
-                        "'plain', so chat prompt is built by string concatenation "
-                        "instead of the tokenizer's chat template."
-                    )
                 # No chat template: append message content only (e.g. "User: ...\nAssistant: ")
                 parts = []
                 for msg in formatted_messages:
