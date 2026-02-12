@@ -850,8 +850,6 @@ class VLLMPythonBackend(Backend):
         accumulated_text = ""
         total_output_tokens = 0
         previous_token_count = 0
-        if stream:
-            request_info.timings.output_token_iteration_timings = []
 
         try:
             async for request_output in self._engine.generate(  # type: ignore[misc]
@@ -911,9 +909,7 @@ class VLLMPythonBackend(Backend):
                                 previous_token_count += 1
                             if chunk_token_count > 0:
                                 total_output_tokens += chunk_token_count
-                                request_info.timings.output_token_iteration_timings.append(
-                                    (iter_time, float(chunk_token_count))
-                                )
+                                
                             self._update_token_timing(request_info, iter_time, iterations)
 
                         accumulated_text = generated_text
