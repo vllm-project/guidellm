@@ -78,8 +78,8 @@ class VLLMPythonBackend(Backend):
 
     Directly uses VLLM's AsyncLLMEngine for local async inference. VLLM automatically
     uses CUDA if available, otherwise falls back to CPU. Handles request/response
-    conversion between GuideLLM schemas and VLLM's native API, with true async
-    streaming support for token-by-token generation.
+    conversion between GuideLLM schemas and VLLM's native API, with async support for
+    finer token-by-token processing and timings.
 
     Example:
     ::
@@ -225,8 +225,6 @@ class VLLMPythonBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
-        # Initialize VLLM AsyncLLMEngine instance
-        # AsyncLLMEngine initialization is async-friendly
         engine_args = AsyncEngineArgs(**self.vllm_config)  # type: ignore[misc]
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)  # type: ignore[misc]
         self._in_process = True
@@ -440,7 +438,7 @@ class VLLMPythonBackend(Backend):
         if output_tokens == 0 and request_info.timings.token_iterations:
             output_tokens = request_info.timings.token_iterations
             source = "token_iterations"
-        logger.warning(
+        logger.debug(
             "[vllm_python streaming usage] source={} completion_tokens={} "
             "prompt_tokens={} token_iterations={}",
             source,
@@ -570,6 +568,15 @@ class VLLMPythonBackend(Backend):
         :raises ValueError: If prompt cannot be extracted
         """
         if mode == "text":
+            if (
+                self._engine is not None
+                and getattr(self._engine, "tokenizer", None) is not None
+            ):
+                logger.warning(
+                    "Tokenizer is set (from model) but not used: request has 'prompt' "
+                    "so mode was inferred as text; prompt is passed through without "
+                    "tokenizer formatting."
+                )
             prompt = body.get("prompt", "")
             if not prompt:
                 raise ValueError("Text request must include 'prompt' in body.")
@@ -596,6 +603,15 @@ class VLLMPythonBackend(Backend):
                     formatted_messages.append(msg)
 
             if self.request_format == "plain":
+                if (
+                    self._engine is not None
+                    and getattr(self._engine, "tokenizer", None) is not None
+                ):
+                    logger.warning(
+                        "Tokenizer is set (from model) but not used: request_format is "
+                        "'plain', so chat prompt is built by string concatenation "
+                        "instead of the tokenizer's chat template."
+                    )
                 # No chat template: append message content only (e.g. "User: ...\nAssistant: ")
                 parts = []
                 for msg in formatted_messages:
@@ -630,7 +646,7 @@ class VLLMPythonBackend(Backend):
             )
             if isinstance(prompt, str):
                 return prompt
-            raise RuntimeError("Code not setup for state")
+            raise RuntimeError("Backend received unexpected type from tokenizer.")
 
         if mode == "audio":
             prompt = body.get("prompt", "")
