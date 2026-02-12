@@ -132,6 +132,7 @@ class VLLMPythonBackend(Backend):
         vllm_config: dict[str, Any] | None = None,
         request_format: str | None = None,
         target: str | None = None,  # Ignored for VLLM Python backend
+        stream: bool = True,
     ):
         """
         Initialize VLLM Python backend with model and configuration.
@@ -145,16 +146,18 @@ class VLLMPythonBackend(Backend):
             - Any other parameter accepted by vllm.AsyncEngineArgs
             Note: VLLM automatically uses CUDA if available, CPU otherwise.
             The 'device' parameter is not supported and will be ignored.
+        :param request_format: "plain" (no chat template), "default-template" (use
+            tokenizer default), or a chat template path / single-line string.
         :param target: Target URL (ignored for VLLM Python backend, which runs locally)
-        :param kwargs: Additional arguments from the benchmark. request_format can be
-            "plain" (no chat template, text appending only), "default-template" (use
-            tokenizer default), or a vLLM chat template file path / single-line string.
+        :param stream: Whether to stream responses (default True). Can be overridden per
+            request via request.arguments.stream.
         """
         _check_vllm_available()
         super().__init__(type_="vllm_python")
 
         self.model = model
         self.request_format = request_format
+        self.stream = stream
         self.vllm_config = self._merge_config(vllm_config or {})
 
         # Runtime state
@@ -205,6 +208,7 @@ class VLLMPythonBackend(Backend):
         return {
             "model": self.model,
             "vllm_config": self.vllm_config,
+            "stream": self.stream,
             "in_process": self._in_process,
             "engine_initialized": self._engine is not None,
         }
@@ -314,7 +318,8 @@ class VLLMPythonBackend(Backend):
 
         if arguments is not None:
             body = getattr(arguments, "body", None) or {}
-            stream = bool(getattr(arguments, "stream", False))
+            stream_override = getattr(arguments, "stream", None)
+            stream = self.stream if stream_override is None else bool(stream_override)
             files = getattr(arguments, "files", None) or {}
         else:
             columns = getattr(request, "columns", {}) or {}
@@ -331,9 +336,7 @@ class VLLMPythonBackend(Backend):
                         "content": [{"type": "text", "text": str(t)}],
                     })
             body = {"messages": messages}
-            # Default to streaming when using standard pipeline (no arguments), to match
-            # OpenAI HTTP backend behavior and enable correct token timing metrics.
-            stream = True
+            stream = self.stream
             files = {}
 
         if files:
@@ -450,6 +453,35 @@ class VLLMPythonBackend(Backend):
             "completion_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
         }
+
+    def _build_final_response(
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        final_output: RequestOutput | None,
+        ctx: _RequestContext,
+        response_handler: VLLMResponseHandler,
+        stream: bool,
+        accumulated_text: str = "",
+        total_output_tokens: int = 0,
+    ) -> tuple[GenerationResponse, RequestInfo] | None:
+        """Build and return the final (response, request_info) to yield, or None."""
+        if final_output is None:
+            return None
+        if stream:
+            usage = self._streaming_usage_from_output(
+                final_output,
+                accumulated_text,
+                request_info,
+                accumulated_output_tokens=total_output_tokens,
+            )
+            if usage is not None:
+                response_handler.streaming_usage = usage
+            return response_handler.compile_streaming(request), request_info
+        openai_format = self._convert_vllm_output_to_openai_format(
+            final_output, ctx.mode
+        )
+        return response_handler.compile_non_streaming(request, openai_format), request_info
 
     def _extract_text_from_content(self, content: str | list[dict[str, Any]] | Any) -> str:
         """
@@ -716,12 +748,13 @@ class VLLMPythonBackend(Backend):
         history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
-        Process generation request and yield progressive responses.
+        Process generation request and yield a single response.
 
         Handles both streaming and non-streaming requests using AsyncLLMEngine's
-        native async streaming capabilities. For streaming requests, yields
-        token-by-token as they are generated. For non-streaming, yields once
-        with the complete response.
+        native async generation. For streaming, records per-token timings and
+        yields once with a response compiled from the stream. For non-streaming,
+        yields once with the complete response. In both cases the caller receives
+        exactly one (response, request_info) pair.
 
         :param request: Generation request with content and parameters
         :param request_info: Request tracking info updated with timing metadata
@@ -729,7 +762,7 @@ class VLLMPythonBackend(Backend):
         :raises NotImplementedError: If history is provided
         :raises RuntimeError: If backend is not initialized
         :raises ValueError: If request body/files do not imply a valid mode
-        :yields: Tuples of (response, updated_request_info) as generation progresses
+        :yields: Single tuple of (response, updated_request_info)
         """
         # Resolve request context (supports standard pipeline with columns only)
         ctx = self._get_request_context(request)
@@ -806,85 +839,37 @@ class VLLMPythonBackend(Backend):
         # Generate unique request ID for this generation
         request_id = str(uuid.uuid4())
 
-        if not stream:
-            # Non-streaming path
-            request_info.timings.request_start = time.time()
-            final_output: RequestOutput | None = None
+        request_info.timings.request_start = time.time()
+        final_output: RequestOutput | None = None
+        accumulated_text = ""
+        total_output_tokens = 0
+        previous_token_count = 0
+        if stream:
+            request_info.timings.output_token_iteration_timings = []
 
-            try:
-                # Use AsyncLLMEngine's native async generatio
-                async for request_output in self._engine.generate(  # type: ignore[misc]
-                    prompt, sampling_params, request_id
+        try:
+            async for request_output in self._engine.generate(  # type: ignore[misc]
+                prompt, sampling_params, request_id
+            ):
+                iter_time = time.time()
+                self._update_request_timing(request_info, iter_time)
+                final_output = request_output
+
+                if (
+                    request_output.outputs
+                    and len(request_output.outputs) > 0
+                    and request_output.outputs[0].finish_reason is not None
                 ):
-                    iter_time = time.time()
-                    self._update_request_timing(request_info, iter_time)
-                    final_output = request_output
+                    break
 
-                    # Check if generation is finished
-                    if (
-                        request_output.outputs
-                        and len(request_output.outputs) > 0
-                        and request_output.outputs[0].finish_reason is not None
-                    ):
-                        break
-
-                request_info.timings.request_end = time.time()
-
-                # Convert to OpenAI format and use handler
-                if final_output is not None:
-                    openai_format = self._convert_vllm_output_to_openai_format(
-                        final_output, ctx.mode
-                    )
-                    yield response_handler.compile_non_streaming(request, openai_format), request_info
-
-            except asyncio.CancelledError as err:
-                # Yield current result to store iterative results before propagating
-                if final_output is not None:
-                    openai_format = self._convert_vllm_output_to_openai_format(
-                        final_output, ctx.mode
-                    )
-                    yield response_handler.compile_non_streaming(request, openai_format), request_info
-                raise err
-            except Exception as exc:
-                # Provide clearer error message for audio-related issues
-                error_msg = str(exc)
-                if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
-                    raise RuntimeError(
-                        f"Generation failed: The model '{self.model}' does not support audio inputs. "
-                        f"For audio transcriptions, please use an audio-capable model (e.g., Whisper-based models). "
-                        f"Original error: {exc}"
-                    ) from exc
-                # Re-raise with context
-                raise RuntimeError(f"Generation failed: {exc}") from exc
-
-        else:
-            # Streaming path
-            try:
-                request_info.timings.request_start = time.time()
-                request_info.timings.output_token_iteration_timings = []
-                accumulated_text = ""
-                final_output: RequestOutput | None = None
-                total_output_tokens = 0
-                previous_token_count = 0  # vLLM yields CUMULATIVE token_ids per chunk
-
-                # Use AsyncLLMEngine's native async generation
-                async for request_output in self._engine.generate(  # type: ignore[misc]
-                    prompt, sampling_params, request_id
-                ):
-                    iter_time = time.time()
-                    self._update_request_timing(request_info, iter_time)
-
-                    # Extract generated text from output
+                if stream:
                     generated_text = ""
                     if request_output.outputs and len(request_output.outputs) > 0:
                         generated_text = request_output.outputs[0].text
 
-                    # Check if this is a new token (text has changed)
                     if generated_text != accumulated_text:
-                        # Calculate delta (new text)
                         delta_text = generated_text[len(accumulated_text) :]
 
-                        # Build streaming delta format based on mode
                         if ctx.mode == "text":
                             delta_data = {"choices": [{"text": delta_text}]}
                         elif ctx.mode == "audio":
@@ -894,12 +879,9 @@ class VLLMPythonBackend(Backend):
                                 "choices": [{"delta": {"content": delta_text, "role": "assistant"}}]
                             }
 
-                        # Add response ID if available
                         if hasattr(request_output, "request_id") and request_output.request_id:
                             delta_data["id"] = request_output.request_id
 
-                        # Format as SSE line and feed to handler
-                        # json.dumps may return bytes (orjson) or str, ensure it's a string
                         json_str = json.dumps(delta_data)
                         if isinstance(json_str, bytes):
                             json_str = json_str.decode("utf-8")
@@ -907,7 +889,6 @@ class VLLMPythonBackend(Backend):
                         iterations = response_handler.add_streaming_line(sse_line)
 
                         if iterations is not None and iterations > 0:
-                            # vLLM token_ids is CUMULATIVE (all tokens so far); add only delta.
                             out = (
                                 request_output.outputs[0]
                                 if request_output.outputs
@@ -931,43 +912,43 @@ class VLLMPythonBackend(Backend):
 
                         accumulated_text = generated_text
 
-                    final_output = request_output
+            request_info.timings.request_end = time.time()
 
-                request_info.timings.request_end = time.time()
-
-                # Inject real token counts into handler so compile_streaming gets correct metrics
-                usage = self._streaming_usage_from_output(
-                    final_output,
-                    accumulated_text,
+            if (
+                result := self._build_final_response(
+                    request,
                     request_info,
-                    accumulated_output_tokens=total_output_tokens,
-                )
-                if usage is not None:
-                    response_handler.streaming_usage = usage
-                # Yield final compiled response
-                response = response_handler.compile_streaming(request)
-                yield response, request_info
-
-            except asyncio.CancelledError as err:
-                # Yield current result; inject usage from last known state if available
-                usage = self._streaming_usage_from_output(
                     final_output,
+                    ctx,
+                    response_handler,
+                    stream,
                     accumulated_text,
-                    request_info,
-                    accumulated_output_tokens=total_output_tokens,
+                    total_output_tokens,
                 )
-                if usage is not None:
-                    response_handler.streaming_usage = usage
-                yield response_handler.compile_streaming(request), request_info
-                raise err
-            except Exception as exc:
-                # Provide clearer error message for audio-related issues
-                error_msg = str(exc)
-                if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
-                    raise RuntimeError(
-                        f"Generation failed: The model '{self.model}' does not support audio inputs. "
-                        f"For audio transcriptions, please use an audio-capable model (e.g., Whisper-based models). "
-                        f"Original error: {exc}"
-                    ) from exc
-                # Re-raise with context
-                raise RuntimeError(f"Generation failed: {exc}") from exc
+            ) is not None:
+                yield result
+
+        except asyncio.CancelledError as err:
+            if (
+                result := self._build_final_response(
+                    request,
+                    request_info,
+                    final_output,
+                    ctx,
+                    response_handler,
+                    stream,
+                    accumulated_text,
+                    total_output_tokens,
+                )
+            ) is not None:
+                yield result
+            raise err
+        except Exception as exc:
+            error_msg = str(exc)
+            if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
+                raise RuntimeError(
+                    f"Generation failed: The model '{self.model}' does not support audio inputs. "
+                    f"For audio transcriptions, please use an audio-capable model (e.g., Whisper-based models). "
+                    f"Original error: {exc}"
+                ) from exc
+            raise RuntimeError(f"Generation failed: {exc}") from exc
