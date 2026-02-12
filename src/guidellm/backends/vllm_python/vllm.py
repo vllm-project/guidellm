@@ -81,15 +81,11 @@ class VLLMPythonBackend(Backend):
     conversion between GuideLLM schemas and VLLM's native API, with async support for
     finer token-by-token processing and timings.
 
-    Example:
+    Engine parameters not set in vllm_config use vLLM's AsyncEngineArgs defaults.
+    Example (optional overrides):
     ::
-        backend = VLLMPythonBackend(
-            model="meta-llama/Llama-2-7b-chat-hf",
-            vllm_config={
-                "tensor_parallel_size": 1,
-                "gpu_memory_utilization": 0.9,
-            }
-        )
+        backend = VLLMPythonBackend(model="meta-llama/Llama-2-7b-chat-hf")
+        # Or with overrides: vllm_config={"tensor_parallel_size": 1, "gpu_memory_utilization": 0.9}
 
         await backend.process_startup()
         async for response, request_info in backend.resolve(request, info):
@@ -119,12 +115,6 @@ class VLLMPythonBackend(Backend):
         """
         return True
 
-    # Default VLLM configuration
-    DEFAULT_VLLM_CONFIG: dict[str, Any] = {
-        "tensor_parallel_size": 1,
-        "gpu_memory_utilization": 0.9,
-    }
-
     def __init__(
         self,
         model: str,
@@ -137,13 +127,11 @@ class VLLMPythonBackend(Backend):
         Initialize VLLM Python backend with model and configuration.
 
         :param model: Model identifier or path for VLLM to load
-        :param vllm_config: Dictionary of VLLM AsyncEngineArgs initialization parameters.
-            Merged with defaults. Common parameters include:
-            - tensor_parallel_size: Number of tensor parallel replicas
-            - gpu_memory_utilization: Fraction of GPU memory to use
-            - max_model_len: Maximum sequence length
-            - Any other parameter accepted by vllm.AsyncEngineArgs
-            Note: VLLM automatically uses CUDA if available, CPU otherwise.
+        :param vllm_config: Optional dict of VLLM AsyncEngineArgs parameters. Passed through
+            with no GuideLLM defaults; only model (and optionally chat_template) are set by
+            the backend. Unset parameters use vLLM's defaults. Common options include
+            tensor_parallel_size, gpu_memory_utilization, max_model_len, and any other
+            parameter accepted by vllm.AsyncEngineArgs. VLLM uses CUDA if available, else CPU.
             The 'device' parameter is not supported and will be ignored.
         :param request_format: "plain" (no chat template), "default-template" (use
             tokenizer default), or a chat template path / single-line string.
@@ -172,20 +160,18 @@ class VLLMPythonBackend(Backend):
 
     def _merge_config(self, user_config: dict[str, Any]) -> dict[str, Any]:
         """
-        Merge user configuration with defaults.
+        Build engine config from user config plus required model and optional chat_template.
 
-        When request_format is a custom template (not plain or default-template),
-        adds chat_template to config for the vLLM engine if supported.
+        No GuideLLM defaults are applied; any parameter not set here or in user_config
+        is left to vLLM's AsyncEngineArgs defaults. When request_format is a custom
+        template (not plain or default-template), adds chat_template to config.
 
         :param user_config: User-provided configuration dictionary
-        :return: Merged configuration with defaults applied
+        :return: Config dict for AsyncEngineArgs (model always set; chat_template if applicable)
         """
-        config = self.DEFAULT_VLLM_CONFIG.copy()
+        config = dict(user_config)
 
-        # Merge user config, allowing overrides
-        config.update(user_config)
-
-        # Ensure model is set in config
+        # Ensure model is set in config (required; overrides user if they passed it)
         config["model"] = self.model
 
         # Pass custom chat template to vLLM engine when applicable
@@ -909,7 +895,7 @@ class VLLMPythonBackend(Backend):
                                 previous_token_count += 1
                             if chunk_token_count > 0:
                                 total_output_tokens += chunk_token_count
-                                
+
                             self._update_token_timing(request_info, iter_time, iterations)
 
                         accumulated_text = generated_text
