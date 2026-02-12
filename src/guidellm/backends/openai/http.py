@@ -358,7 +358,6 @@ class OpenAIHTTPBackend(Backend):
 
         try:
             request_info.timings.request_start = time.time()
-            request_info.timings.output_token_iteration_timings = []
 
             async with self._async_client.stream(
                 arguments.method or "POST",
@@ -391,9 +390,6 @@ class OpenAIHTTPBackend(Backend):
 
                     request_info.timings.last_token_iteration = iter_time
                     request_info.timings.token_iterations += iterations
-                    request_info.timings.output_token_iteration_timings.append(
-                        (iter_time, float(iterations))
-                    )
 
             request_info.timings.request_end = time.time()
             yield request_handler.compile_streaming(request, arguments), request_info

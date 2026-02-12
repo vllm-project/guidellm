@@ -27,7 +27,7 @@ while getopts "fh" opt; do
 done
 
 if [ $FORCE_REGEN -eq 1 ]; then
-    uv sync --all-extras --no-install-project --upgrade
+    uv lock -U
 else
-    uv sync --all-extras --no-install-project
+    uv lock
 fi

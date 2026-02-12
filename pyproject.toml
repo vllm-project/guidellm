@@ -18,7 +18,6 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
-torchvision = { index = "pytorch-cpu" }
 
 # ************************************************
 # ********** Project Metadata **********
@@ -68,7 +67,9 @@ dependencies = [
     "rich",
     "sanic",
     "tabulate",
+    "transformers",
     "uvloop>=0.18",
+    "torch",
 ]
 
 [project.optional-dependencies]
@@ -82,13 +83,12 @@ audio = [
     # Lowest version with full torchcodec support
     "datasets[audio]>=4.1.0",
     # Torchcodec needs specific torch version
-    # Note: torch is provided by pytorch extra or base image in containers
+    "torch==2.9.*",
     "torchcodec==0.8.*",
 ]
 vision = [
     "datasets[vision]",
     "pillow",
-    "torchvision",
 ]
 # Dev Tooling
 dev = [
