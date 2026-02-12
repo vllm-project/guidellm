@@ -119,13 +119,12 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         :return: Number of tokens in the generated output, or None if unavailable
         """
-        # Prefer total_tokens; fall back to text_tokens (e.g. from injected streaming usage)
-        # then token_iterations (assumes each iteration is one token)
-        if self.output_metrics.total_tokens is not None:
-            return self.output_metrics.total_tokens
-        if self.output_metrics.text_tokens is not None:
-            return self.output_metrics.text_tokens
-        return self.info.timings.token_iterations or None
+        # Fallback if we did not get usage metrics from the server
+        # NOTE: This assumes each iteration is one token
+        if self.output_metrics.total_tokens is None:
+            return self.info.timings.token_iterations or None
+
+        return self.output_metrics.total_tokens
 
     @computed_field  # type: ignore[misc]
     @property
@@ -289,10 +288,6 @@ class GenerativeRequestStats(StandardBaseDict):
         :return: List of (timestamp, token_count) tuples for output token generations
         :raises ValueError: If resolve_end timings are not set
         """
-        real = self.info.timings.output_token_iteration_timings
-        if real is not None and len(real) > 0:
-            return [(float(t), float(n)) for t, n in real]
-
         if (
             self.first_token_iteration is None
             or self.last_token_iteration is None
@@ -321,10 +316,6 @@ class GenerativeRequestStats(StandardBaseDict):
         :return: List of (timestamp, token_count) tuples for iterations excluding
             first token
         """
-        real = self.info.timings.output_token_iteration_timings
-        if real is not None and len(real) > 1:
-            return [(float(t), float(n)) for t, n in real[1:]]
-
         if (
             self.first_token_iteration is None
             or self.last_token_iteration is None
