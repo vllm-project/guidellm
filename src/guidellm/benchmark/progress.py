@@ -32,6 +32,8 @@ from guidellm.benchmark.profiles import Profile
 from guidellm.benchmark.schemas import (
     BenchmarkAccumulatorT,
     BenchmarkT,
+    EmbeddingsBenchmark,
+    EmbeddingsBenchmarkAccumulator,
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
 )
@@ -181,7 +183,7 @@ class GenerativeConsoleBenchmarkerProgress(
 
     async def on_benchmark_update(
         self,
-        accumulator: GenerativeBenchmarkAccumulator,
+        accumulator: GenerativeBenchmarkAccumulator | EmbeddingsBenchmarkAccumulator,
         scheduler_state: SchedulerState,
     ):
         """
@@ -307,7 +309,7 @@ class _GenerativeProgressTasks(Progress):
 
     def update_benchmark(
         self,
-        accumulator: GenerativeBenchmarkAccumulator,
+        accumulator: GenerativeBenchmarkAccumulator | EmbeddingsBenchmarkAccumulator,
         scheduler_state: SchedulerState,
     ):
         current_state = self.benchmark_task_states[self.current_index]
@@ -356,6 +358,7 @@ class _GenerativeProgressTaskState:
     queued_time: float = 0.0
     request_targeted_start_delay: float = 0.0
     scheduler_overheads_time: float = 0.0
+    is_embeddings: bool = False  # Track if this is an embeddings benchmark
 
     @property
     def current(self) -> dict[str, Any]:
@@ -473,6 +476,28 @@ class _GenerativeProgressTaskState:
         if self.benchmark_status == "pending":
             return " "
 
+        # Show simplified metrics for embeddings (no output tokens, TTFT, ITL)
+        if self.is_embeddings:
+            return (
+                f"[{Colors.info}]Tok:[/{Colors.info}] "
+                + format_value_display(
+                    value=self.total_tokens_rate,
+                    label="inp/s",
+                    total_characters=12,
+                    digits_places=4,
+                    decimal_places=1,
+                )
+                + ", "
+                + format_value_display(
+                    value=self.prompt_tokens,
+                    label="Input",
+                    total_characters=12,
+                    digits_places=4,
+                    decimal_places=0,
+                )
+            )
+
+        # Full metrics for generative models
         return (
             f"[{Colors.info}]Tok:[/{Colors.info}] "
             + format_value_display(
@@ -566,7 +591,7 @@ class _GenerativeProgressTaskState:
 
     def update(
         self,
-        accumulator: GenerativeBenchmarkAccumulator,
+        accumulator: GenerativeBenchmarkAccumulator | EmbeddingsBenchmarkAccumulator,
         scheduler_state: SchedulerState,
     ):
         self.progress = (
@@ -586,15 +611,33 @@ class _GenerativeProgressTaskState:
             requests_per_second=accumulator.completed_metrics.requests.rate_per_second,
             request_latency=accumulator.completed_metrics.request_latency.mean,
         )
-        self._update_token_stats(
-            output_tokens=accumulator.completed_metrics.total_tokens.mean,
-            output_tokens_rate=accumulator.completed_metrics.output_tokens.rate_per_second,
-            prompt_tokens=accumulator.completed_metrics.prompt_tokens.mean,
-            total_tokens_rate=accumulator.completed_metrics.total_tokens.rate_per_second,
-            time_to_first_token=accumulator.completed_metrics.time_to_first_token_ms.mean,
-            inter_token_latency=accumulator.completed_metrics.inter_token_latency_ms.mean,
-            converted=True,
-        )
+
+        # Handle token stats differently for embeddings vs generative
+        if isinstance(accumulator, EmbeddingsBenchmarkAccumulator):
+            # Mark as embeddings benchmark
+            self.is_embeddings = True
+            # For embeddings: no output tokens, TTFT, or ITL
+            self._update_token_stats(
+                output_tokens=0.0,
+                output_tokens_rate=0.0,
+                prompt_tokens=accumulator.completed_metrics.prompt_tokens.mean,
+                total_tokens_rate=accumulator.completed_metrics.prompt_tokens.rate_per_second,
+                time_to_first_token=0.0,
+                inter_token_latency=0.0,
+                converted=True,
+            )
+        else:
+            # For generative: full token stats
+            self._update_token_stats(
+                output_tokens=accumulator.completed_metrics.total_tokens.mean,
+                output_tokens_rate=accumulator.completed_metrics.output_tokens.rate_per_second,
+                prompt_tokens=accumulator.completed_metrics.prompt_tokens.mean,
+                total_tokens_rate=accumulator.completed_metrics.total_tokens.rate_per_second,
+                time_to_first_token=accumulator.completed_metrics.time_to_first_token_ms.mean,
+                inter_token_latency=accumulator.completed_metrics.inter_token_latency_ms.mean,
+                converted=True,
+            )
+
         self._update_system_stats(
             request_targeted_start_delay=accumulator.scheduler_metrics.request_targeted_start_delay.mean,
             queued_time=accumulator.scheduler_metrics.queued_time.mean,
@@ -602,7 +645,7 @@ class _GenerativeProgressTaskState:
             converted=False,
         )
 
-    def complete(self, benchmark: GenerativeBenchmark):
+    def complete(self, benchmark: GenerativeBenchmark | EmbeddingsBenchmark):
         self._update_processing_states(
             benchmark_status="completed",
             start_time=benchmark.start_time,
@@ -615,19 +658,40 @@ class _GenerativeProgressTaskState:
             requests_per_second=benchmark.metrics.requests_per_second.successful.mean,
             request_latency=benchmark.metrics.request_latency.successful.mean,
         )
-        self._update_token_stats(
-            output_tokens=benchmark.metrics.output_token_count.successful.mean,
-            output_tokens_rate=benchmark.metrics.output_tokens_per_second.successful.mean,
-            prompt_tokens=benchmark.metrics.prompt_token_count.successful.mean,
-            total_tokens_rate=benchmark.metrics.tokens_per_second.successful.mean,
-            time_to_first_token=(
-                benchmark.metrics.time_to_first_token_ms.successful.mean
-            ),
-            inter_token_latency=(
-                benchmark.metrics.inter_token_latency_ms.successful.mean
-            ),
-            converted=True,
-        )
+
+        # Handle token stats differently for embeddings vs generative benchmarks
+        if isinstance(benchmark, EmbeddingsBenchmark):
+            # Mark as embeddings benchmark
+            self.is_embeddings = True
+            # For embeddings: output_token_count is StatusBreakdown[int] not stats
+            self._update_token_stats(
+                output_tokens=0.0,  # Embeddings have no output tokens
+                output_tokens_rate=0.0,
+                prompt_tokens=(
+                    benchmark.metrics.input_tokens_count.successful
+                    if hasattr(benchmark.metrics, 'input_tokens_count')
+                    else benchmark.metrics.prompt_token_count.successful
+                ),
+                total_tokens_rate=benchmark.metrics.input_tokens_per_second.successful.mean,
+                time_to_first_token=0.0,  # No TTFT for embeddings
+                inter_token_latency=0.0,  # No ITL for embeddings
+                converted=True,
+            )
+        else:
+            # For generative: output_token_count is StatusDistributionSummary
+            self._update_token_stats(
+                output_tokens=benchmark.metrics.output_token_count.successful.mean,
+                output_tokens_rate=benchmark.metrics.output_tokens_per_second.successful.mean,
+                prompt_tokens=benchmark.metrics.prompt_token_count.successful.mean,
+                total_tokens_rate=benchmark.metrics.tokens_per_second.successful.mean,
+                time_to_first_token=(
+                    benchmark.metrics.time_to_first_token_ms.successful.mean
+                ),
+                inter_token_latency=(
+                    benchmark.metrics.inter_token_latency_ms.successful.mean
+                ),
+                converted=True,
+            )
 
     @staticmethod
     def _map_status(

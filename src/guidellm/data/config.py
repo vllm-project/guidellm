@@ -93,7 +93,7 @@ def _load_config_str(data: str, config_class: type[ConfigT]) -> ConfigT | None:
         except Exception as err:  # noqa: BLE001
             error = err
 
-    if data_str.count("=") > 1:
+    if data_str.count("=") >= 1:
         # key=value pairs separated by commas
         try:
             config_dict = {}
