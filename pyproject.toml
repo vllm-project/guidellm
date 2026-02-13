@@ -70,11 +70,12 @@ dependencies = [
     "transformers",
     "uvloop>=0.18",
     "torch",
+    "more-itertools>=10.8.0",
 ]
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision]"]
+all = ["guidellm[perf,tokenizers,audio,vision,embeddings]"]
 recommended = ["guidellm[perf,tokenizers]"]
 # Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
@@ -89,6 +90,12 @@ audio = [
 vision = [
     "datasets[vision]",
     "pillow",
+]
+embeddings = [
+    # Quality validation with baseline models
+    "sentence-transformers>=2.2.0",
+    # MTEB benchmark integration
+    "mteb>=1.0.0",
 ]
 # Dev Tooling
 dev = [
@@ -179,7 +186,9 @@ module = [
     "transformers.*",
     "setuptools.*",
     "setuptools_git_versioning.*",
-    "torchcodec.*"
+    "torchcodec.*",
+    "sentence_transformers.*",
+    "mteb.*"
 ]
 ignore_missing_imports = true
 

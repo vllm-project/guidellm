@@ -13,6 +13,8 @@ from __future__ import annotations
 import base64
 from typing import Any, Protocol, cast
 
+from more_itertools import roundrobin
+
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.utils import RegistryMixin, json
@@ -20,6 +22,7 @@ from guidellm.utils import RegistryMixin, json
 __all__ = [
     "AudioRequestHandler",
     "ChatCompletionsRequestHandler",
+    "EmbeddingsRequestHandler",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
     "TextCompletionsRequestHandler",
@@ -363,7 +366,49 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     both streaming and non-streaming chat completion responses.
     """
 
-    def format(  # noqa: C901, PLR0912, PLR0915
+    def _format_prompts(
+        self, column_data: list[dict[str, Any]], column_type: str
+    ) -> list[dict[str, Any]]:
+        """
+        Helper method to format different types of data columns
+        into the appropriate structure for chat messages.
+        """
+        formatted_data = []
+        for item in column_data:
+            if column_type == "text_column":
+                formatted_data.append({"type": "text", "text": item})
+            elif column_type == "image_column":
+                formatted_data.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": item.get("image")},
+                    }
+                )
+            elif column_type == "video_column":
+                formatted_data.append(
+                    {
+                        "type": "video_url",
+                        "video_url": {"url": item.get("video")},
+                    }
+                )
+            elif column_type == "audio_column":
+                formatted_data.append(
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": base64.b64encode(item.get("audio", b"")).decode(
+                                "utf-8"
+                            ),
+                            "format": item.get("format"),
+                        },
+                    }
+                )
+            else:
+                raise ValueError(f"Unsupported column type: {column_type}")
+
+        return formatted_data
+
+    def format(
         self,
         data: GenerationRequest,
         **kwargs,
@@ -410,71 +455,20 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Build messages
         arguments.body["messages"] = []
 
-        for prefix in data.columns.get("prefix_column", []):
-            if not prefix:
-                continue
-
+        # Build the system prompt
+        prefix = " ".join(data.columns.get("prefix_column", []))
+        if prefix:
             arguments.body["messages"].append({"role": "system", "content": prefix})
 
-        for text in data.columns.get("text_column", []):
-            if not text:
-                continue
-
+        # Build each prompt then combine into a single user message
+        prompts = [
+            self._format_prompts(data.columns.get(col, []), col)
+            for col in ("text_column", "image_column", "video_column", "audio_column")
+        ]
+        if prompts:
+            # Interleave prompt types
             arguments.body["messages"].append(
-                {"role": "user", "content": [{"type": "text", "text": text}]}
-            )
-
-        for image in data.columns.get("image_column", []):
-            if not image:
-                continue
-
-            arguments.body["messages"].append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image.get("image")},
-                        }
-                    ],
-                }
-            )
-
-        for video in data.columns.get("video_column", []):
-            if not video:
-                continue
-
-            arguments.body["messages"].append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "video_url",
-                            "video_url": {"url": video.get("video")},
-                        }
-                    ],
-                }
-            )
-
-        for audio in data.columns.get("audio_column", []):
-            if not audio:
-                continue
-
-            arguments.body["messages"].append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_audio",
-                            "input_audio": {
-                                "data": base64.b64encode(
-                                    audio.get("audio", b"")
-                                ).decode("utf-8"),
-                                "format": audio.get("format"),
-                            },
-                        }
-                    ],
-                }
+                {"role": "user", "content": list(roundrobin(*prompts))}
             )
 
         return arguments
@@ -667,3 +661,114 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             text_words=len(text.split()) if text else 0,
             text_characters=len(text) if text else 0,
         )
+
+
+@OpenAIRequestHandlerFactory.register("/v1/embeddings")
+class EmbeddingsRequestHandler(OpenAIRequestHandler):
+    """
+    Request handler for OpenAI-style embeddings endpoints.
+
+    Handles embeddings requests which do not support streaming and return
+    embedding vectors instead of generated text. Processes input text into
+    embeddings with optional quality validation support.
+    """
+
+    def format(
+        self,
+        data: GenerationRequest,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        """
+        Format the embeddings generation request.
+
+        :param data: The generation request to format
+        :param **kwargs: Additional keyword arguments (model, encoding_format, etc.)
+        :return: The formatted request arguments
+        """
+        arguments = GenerationRequestArguments()
+        arguments.body = {}
+        arguments.stream = False  # Embeddings never stream
+
+        # Add model
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        # Build input from text columns
+        input_texts = []
+        for text in data.columns.get("text_column", []):
+            if text:
+                input_texts.append(text)
+
+        # Use single string if only one text, otherwise list
+        if len(input_texts) == 1:
+            arguments.body["input"] = input_texts[0]
+        else:
+            arguments.body["input"] = input_texts
+
+        # Add optional parameters
+        if kwargs.get("encoding_format"):
+            arguments.body["encoding_format"] = kwargs["encoding_format"]
+        if kwargs.get("dimensions"):
+            arguments.body["dimensions"] = kwargs["dimensions"]
+        if kwargs.get("truncate_prompt_tokens"):
+            arguments.body["truncate_prompt_tokens"] = kwargs["truncate_prompt_tokens"]
+
+        # Apply extra arguments
+        if kwargs.get("extras"):
+            arguments.body.update(kwargs["extras"])
+
+        return arguments
+
+    def compile_non_streaming(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: Any,
+    ) -> GenerationResponse:
+        """
+        Process a complete non-streaming embeddings API response.
+
+        :param request: Original generation request
+        :param arguments: Request arguments used
+        :param response: Raw API response data
+        :return: GenerationResponse with embeddings data
+        """
+        # Extract embeddings data
+        embeddings_data = response.get("data", [])
+        usage = response.get("usage", {})
+
+        # Build response (no text output for embeddings)
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=arguments.model_dump_json(),
+            text="",  # Embeddings don't generate text
+            input_metrics=UsageMetrics(
+                text_tokens=usage.get("prompt_tokens", 0),
+            ),
+            output_metrics=UsageMetrics(
+                text_tokens=0,  # No output tokens for embeddings
+            ),
+        )
+
+    def add_streaming_line(self, line: str) -> int | None:
+        """
+        Embeddings do not support streaming.
+
+        :param line: Streaming line (unused)
+        :return: None (not supported)
+        :raises NotImplementedError: Embeddings never stream
+        """
+        raise NotImplementedError("Embeddings do not support streaming")
+
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        """
+        Embeddings do not support streaming.
+
+        :param request: Generation request (unused)
+        :param arguments: Request arguments (unused)
+        :return: Never returns
+        :raises NotImplementedError: Embeddings never stream
+        """
+        raise NotImplementedError("Embeddings do not support streaming")

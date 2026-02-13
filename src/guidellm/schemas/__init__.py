@@ -28,6 +28,7 @@ from .request import (
     GenerationRequestArguments,
     UsageMetrics,
 )
+from .embeddings_request_stats import EmbeddingsRequestStats
 from .request_stats import GenerativeRequestStats
 from .response import GenerationResponse
 from .statistics import (
@@ -40,6 +41,7 @@ from .statistics import (
 __all__ = [
     "BaseModelT",
     "DistributionSummary",
+    "EmbeddingsRequestStats",
     "ErroredT",
     "FunctionObjT",
     "GenerationRequest",

@@ -26,6 +26,9 @@ __all__ = [
     "CompletionsResponse",
     "DetokenizeRequest",
     "DetokenizeResponse",
+    "EmbeddingObject",
+    "EmbeddingsRequest",
+    "EmbeddingsResponse",
     "ErrorDetail",
     "ErrorResponse",
     "StreamOptions",
@@ -484,6 +487,73 @@ class DetokenizeResponse(BaseModel):
     """
 
     text: str = Field(description="Reconstructed text from tokens")
+
+
+class EmbeddingsRequest(BaseModel):
+    """Request parameters for embeddings API endpoints.
+
+    OpenAI-compatible embeddings request supporting both single and batch
+    input processing with multiple encoding formats and optional parameters.
+    """
+
+    input: str | list[str] = Field(
+        description="Text(s) to generate embeddings for (single string or list)"
+    )
+    model: str = Field(description="Model identifier to use for embeddings")
+    encoding_format: Literal["float", "base64"] | None = Field(
+        default="float",
+        description="Format for embedding output (float array or base64-encoded binary)",
+    )
+    dimensions: int | None = Field(
+        default=None,
+        description=(
+            "Number of dimensions for output embeddings. "
+            "Supports matryoshka embeddings for models that support it."
+        ),
+    )
+    truncate_prompt_tokens: int | None = Field(
+        default=None,
+        description="Maximum number of tokens to use from input (truncates if exceeded)",
+    )
+    user: str | None = Field(
+        default=None, description="User identifier for tracking and abuse monitoring"
+    )
+
+
+class EmbeddingObject(BaseModel):
+    """A single embedding vector in the response.
+
+    Represents one embedded text with its vector representation and
+    metadata for batch processing.
+    """
+
+    object: Literal["embedding"] = Field(
+        default="embedding", description="Object type identifier"
+    )
+    embedding: list[float] | str = Field(
+        description=(
+            "Embedding vector as float list or base64-encoded binary string. "
+            "Format depends on encoding_format parameter in request."
+        )
+    )
+    index: int = Field(
+        description="Position of this embedding in the input batch (0-indexed)"
+    )
+
+
+class EmbeddingsResponse(BaseModel):
+    """Response containing generated embeddings for input text(s).
+
+    Returns embedding vectors for each input text along with token
+    usage statistics and model metadata.
+    """
+
+    object: Literal["list"] = Field(default="list", description="Object type identifier")
+    data: list[EmbeddingObject] = Field(
+        description="List of embedding objects, one per input text"
+    )
+    model: str = Field(description="Model identifier used for generation")
+    usage: Usage = Field(description="Token usage statistics for the request")
 
 
 class ErrorDetail(BaseModel):

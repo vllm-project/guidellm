@@ -20,7 +20,6 @@ import ftfy
 import httpx
 from loguru import logger
 
-from guidellm.settings import settings
 from guidellm.utils.console import Colors
 
 __all__ = [
@@ -232,7 +231,7 @@ def load_text(data: str | Path, encoding: str | None = None) -> str:
 
     # check URLs
     if isinstance(data, str) and data.strip().startswith(("http", "ftp")):
-        with httpx.Client(timeout=settings.request_timeout) as client:
+        with httpx.Client() as client:
             response = client.get(data.strip())
             response.raise_for_status()
             return response.text

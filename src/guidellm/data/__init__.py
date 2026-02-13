@@ -1,5 +1,5 @@
 from .builders import ShortPromptStrategy
-from .collators import GenerativeRequestCollator
+from .collators import EmbeddingsRequestCollator, GenerativeRequestCollator
 from .deserializers import (
     DataNotSupportedError,
     DatasetDeserializer,
@@ -25,6 +25,7 @@ __all__ = [
     "DatasetFinalizer",
     "DatasetPreprocessor",
     "DatasetsIterator",
+    "EmbeddingsRequestCollator",
     "FinalizerRegistry",
     "GenerativeDatasetColumnType",
     "GenerativeRequestCollator",

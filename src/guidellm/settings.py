@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Sequence
 from enum import Enum
 from typing import Literal
@@ -36,6 +37,24 @@ ENV_REPORT_MAPPING = {
     Environment.DEV: "https://blog.vllm.ai/guidellm/ui/dev/index.html",
     Environment.LOCAL: "http://localhost:3000/index.html",
 }
+
+
+def _get_default_mp_context_type() -> Literal["spawn", "fork", "forkserver"]:
+    """
+    Get the default multiprocessing context type based on the platform.
+
+    On macOS (darwin), 'fork' is unsafe and causes issues with asyncio and
+    multiprocessing queues. Use 'spawn' instead. On Linux, 'fork' is the
+    default and generally works well.
+
+    :return: The recommended multiprocessing context type for the platform
+    """
+    if sys.platform == "darwin":
+        # macOS: fork is unsafe, use spawn
+        return "spawn"
+    else:
+        # Linux and others: fork is generally safe and faster
+        return "fork"
 
 
 class LoggingSettings(BaseModel):
@@ -108,13 +127,10 @@ class Settings(BaseSettings):
     logging: LoggingSettings = LoggingSettings()
     default_sweep_number: int = 10
 
-    # HTTP settings
-    request_follow_redirects: bool = True
-    request_timeout: int = 60 * 5  # 5 minutes
-    request_http2: bool = True
-
     # Scheduler settings
-    mp_context_type: Literal["spawn", "fork", "forkserver"] | None = "fork"
+    mp_context_type: Literal["spawn", "fork", "forkserver"] | None = Field(
+        default_factory=_get_default_mp_context_type
+    )
     mp_serialization: Literal["dict", "sequence"] | None = "dict"
     mp_encoding: (
         Literal["msgpack", "msgspec"]
@@ -134,14 +150,6 @@ class Settings(BaseSettings):
 
     # Data settings
     dataset: DatasetSettings = DatasetSettings()
-
-    # Request/stats settings
-    preferred_prompt_tokens_source: Literal["request", "response"] = "response"
-    preferred_output_tokens_source: Literal["request", "response"] = "response"
-    preferred_backend: Literal["openai"] = "openai"
-    preferred_route: Literal["text_completions", "chat_completions"] = (
-        "chat_completions"
-    )
 
     # Report settings
     report_generation: ReportGenerationSettings = ReportGenerationSettings()
