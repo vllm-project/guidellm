@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import Field, PositiveFloat, PositiveInt, field_validator
 
 from guidellm.benchmark.schemas import ProfileArgs
+from guidellm.logger import logger
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -56,7 +57,12 @@ class AsyncProfileArgs(ProfileArgs):
         if not value:
             raise ValueError("rate requires at least one value")
         if isinstance(value, list | tuple):
-            return value
+            sorted_rates = sorted(value)
+            if list(sorted_rates) != list(value):
+                logger.warning(
+                    f"Rates reordered from {list(value)} to {sorted_rates} (ascending)"
+                )
+            return sorted_rates
         if isinstance(value, int | float):
             return [value]
         raise ValueError(
@@ -107,15 +113,22 @@ class AsyncProfile(Profile):
         """
         Generate async strategy for next configured rate.
 
-        :param prev_strategy: Previously completed strategy (unused)
-        :param prev_benchmark: Benchmark results from previous execution (unused)
+        Rates are sorted ascending, so if a previous rate was terminated by a
+        failure constraint (over-saturation, errors, etc.), all remaining higher
+        rates are skipped.
+
+        :param prev_strategy: Previously completed strategy
+        :param prev_benchmark: Benchmark results from previous execution
         :return: AsyncConstantStrategy or AsyncPoissonStrategy for next rate,
-            or None if all rates completed
+            or None if all rates completed or failure detected
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'
         """
-        _ = (prev_strategy, prev_benchmark)  # unused
+        _ = prev_strategy
 
         if len(self.completed_strategies) >= len(self.args.rate):
+            return None
+
+        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
             return None
 
         current_rate = self.args.rate[len(self.completed_strategies)]
