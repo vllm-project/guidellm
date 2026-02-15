@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import Field, PositiveInt, field_validator
 
 from guidellm.benchmark.schemas import ProfileArgs
+from guidellm.logger import logger
 from guidellm.scheduler import (
     ConcurrentStrategy,
     ConstraintInitializer,
@@ -48,7 +49,13 @@ class ConcurrentProfileArgs(ProfileArgs):
         if not value:
             raise ValueError("streams requires at least one value")
         if isinstance(value, list | tuple):
-            return [int(stream) for stream in value]
+            streams = [int(stream) for stream in value]
+            sorted_streams = sorted(streams)
+            if sorted_streams != streams:
+                logger.warning(
+                    f"Streams reordered from {streams} to {sorted_streams} (ascending)"
+                )
+            return sorted_streams
         if isinstance(value, int | float):
             return [int(value)]
         raise ValueError(
@@ -93,13 +100,21 @@ class ConcurrentProfile(Profile):
         """
         Generate concurrent strategy for next stream count.
 
-        :param prev_strategy: Previously completed strategy (unused)
-        :param prev_benchmark: Benchmark results from previous execution (unused)
+        Stream counts are sorted ascending, so if a previous stream count was
+        terminated by a failure constraint (over-saturation, errors, etc.), all
+        remaining higher stream counts are skipped.
+
+        :param prev_strategy: Previously completed strategy
+        :param prev_benchmark: Benchmark results from previous execution
         :return: ConcurrentStrategy with next stream count, or None if complete
+            or failure detected
         """
-        _ = (prev_strategy, prev_benchmark)  # unused
+        _ = prev_strategy
 
         if len(self.completed_strategies) >= len(self.args.streams):
+            return None
+
+        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
             return None
 
         return ConcurrentStrategy(

@@ -9,6 +9,7 @@ from collections.abc import Generator, MutableMapping
 from typing import Any
 
 from guidellm.benchmark.schemas import Benchmark, ProfileArgs
+from guidellm.logger import logger
 from guidellm.scheduler import (
     Constraint,
     ConstraintInitializer,
@@ -114,6 +115,33 @@ class Profile(ABC):
         :return: Strategy types executed or to be executed in this profile
         """
         return [strat.type_ for strat in self.completed_strategies]
+
+    @staticmethod
+    def _should_stop_escalating(prev_benchmark: Benchmark) -> bool:
+        """
+        Check if a benchmark was terminated by a failure constraint.
+
+        Inspects the scheduler state's end_queuing_constraints for any constraint
+        that used "stop_all" for request processing, which indicates the system
+        could not handle the load (over-saturation, excessive errors, etc.).
+        Constraints that use "stop_local" (max duration, max requests) are normal
+        completions and do not trigger escalation stops.
+
+        :param prev_benchmark: Benchmark instance with a scheduler_state attribute
+        :return: True if a failure constraint was triggered, False otherwise
+        """
+        scheduler_state = getattr(prev_benchmark, "scheduler_state", None)
+        if scheduler_state is None:
+            return False
+
+        for name, action in scheduler_state.end_queuing_constraints.items():
+            if action.request_processing == "stop_all":
+                logger.info(
+                    f"Stopping rate escalation: constraint '{name}' "
+                    f"triggered (request_processing=stop_all)"
+                )
+                return True
+        return False
 
     def strategies_generator(
         self,
