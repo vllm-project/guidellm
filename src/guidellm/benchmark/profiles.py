@@ -27,6 +27,7 @@ from pydantic import (
 )
 
 from guidellm import settings
+from guidellm.logger import logger
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -161,6 +162,33 @@ class Profile(
         :return: Strategy types executed or to be executed in this profile
         """
         return [strat.type_ for strat in self.completed_strategies]
+
+    @staticmethod
+    def _should_stop_escalating(prev_benchmark: Benchmark) -> bool:
+        """
+        Check if a benchmark was terminated by a failure constraint.
+
+        Inspects the scheduler state's end_queuing_constraints for any constraint
+        that used "stop_all" for request processing, which indicates the system
+        could not handle the load (over-saturation, excessive errors, etc.).
+        Constraints that use "stop_local" (max duration, max requests) are normal
+        completions and do not trigger escalation stops.
+
+        :param prev_benchmark: Benchmark instance with a scheduler_state attribute
+        :return: True if a failure constraint was triggered, False otherwise
+        """
+        scheduler_state = getattr(prev_benchmark, "scheduler_state", None)
+        if scheduler_state is None:
+            return False
+
+        for name, action in scheduler_state.end_queuing_constraints.items():
+            if action.request_processing == "stop_all":
+                logger.info(
+                    f"Stopping rate escalation: constraint '{name}' "
+                    f"triggered (request_processing=stop_all)"
+                )
+                return True
+        return False
 
     def strategies_generator(
         self,
@@ -362,7 +390,17 @@ class ConcurrentProfile(Profile):
         """
         _ = (rate_type, random_seed)  # unused
         rate = rate if isinstance(rate, list) or rate is None else [rate]
-        kwargs["streams"] = [int(stream) for stream in rate] if rate else None
+        if rate:
+            streams = [int(stream) for stream in rate]
+            sorted_streams = sorted(streams)
+            if sorted_streams != streams:
+                logger.warning(
+                    f"Streams reordered from {streams} to "
+                    f"{sorted_streams} (ascending)"
+                )
+            kwargs["streams"] = sorted_streams
+        else:
+            kwargs["streams"] = None
         return kwargs
 
     @property
@@ -380,13 +418,19 @@ class ConcurrentProfile(Profile):
         """
         Generate concurrent strategy for next stream count.
 
-        :param prev_strategy: Previously completed strategy (unused)
-        :param prev_benchmark: Benchmark results from previous execution (unused)
-        :return: ConcurrentStrategy with next stream count, or None if complete
-        """
-        _ = (prev_strategy, prev_benchmark)  # unused
+        Stream counts are sorted ascending, so if a previous stream count was
+        terminated by a failure constraint (over-saturation, errors, etc.), all
+        remaining higher stream counts are skipped.
 
+        :param prev_strategy: Previously completed strategy
+        :param prev_benchmark: Benchmark results from previous execution
+        :return: ConcurrentStrategy with next stream count, or None if complete
+            or failure detected
+        """
         if len(self.completed_strategies) >= len(self.streams):
+            return None
+
+        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
             return None
 
         return ConcurrentStrategy(
@@ -522,7 +566,13 @@ class AsyncProfile(Profile):
             if rate_type in ["constant", "poisson"]
             else kwargs.get("strategy_type", "constant")
         )
-        kwargs["rate"] = rate if isinstance(rate, list) else [rate]
+        rate_list = rate if isinstance(rate, list) else [rate]
+        sorted_rates = sorted(rate_list)
+        if sorted_rates != rate_list:
+            logger.warning(
+                f"Rates reordered from {rate_list} to {sorted_rates} (ascending)"
+            )
+        kwargs["rate"] = sorted_rates
         kwargs["random_seed"] = random_seed
         return kwargs
 
@@ -542,15 +592,20 @@ class AsyncProfile(Profile):
         """
         Generate async strategy for next configured rate.
 
-        :param prev_strategy: Previously completed strategy (unused)
-        :param prev_benchmark: Benchmark results from previous execution (unused)
+        Rates are sorted ascending, so if a previous rate was terminated by a
+        failure constraint (over-saturation, errors, etc.), all remaining higher
+        rates are skipped.
+
+        :param prev_strategy: Previously completed strategy
+        :param prev_benchmark: Benchmark results from previous execution
         :return: AsyncConstantStrategy or AsyncPoissonStrategy for next rate,
-            or None if all rates completed
+            or None if all rates completed or failure detected
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'
         """
-        _ = (prev_strategy, prev_benchmark)  # unused
-
         if len(self.completed_strategies) >= len(self.rate):
+            return None
+
+        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
             return None
 
         current_rate = self.rate[len(self.completed_strategies)]
@@ -660,7 +715,9 @@ class SweepProfile(Profile):
         Generate next strategy in adaptive sweep sequence.
 
         Executes synchronous and throughput strategies first to measure baseline
-        rates, then generates interpolated rates for async strategies.
+        rates, then generates interpolated rates for async strategies. If a
+        failure constraint is triggered during the async phase, all remaining
+        higher rates are skipped.
 
         :param prev_strategy: Previously completed strategy instance
         :param prev_benchmark: Benchmark results from previous strategy execution
@@ -692,6 +749,18 @@ class SweepProfile(Profile):
                     self.sweep_size - 1,
                 )
             )[1:]  # don't rerun synchronous
+            # After throughput, fall through to async rate logic below.
+            # Don't check escalation since throughput is designed to push
+            # beyond sustainable load (over-saturation is expected).
+
+        # Stop escalation if a failure constraint was triggered.
+        # The throughput guard above skips this via the != "throughput" check.
+        # Synchronous never reaches here (returns ThroughputStrategy above).
+        if (
+            prev_strategy.type_ != "throughput"
+            and self._should_stop_escalating(prev_benchmark)
+        ):
+            return None
 
         next_index = (
             len(self.completed_strategies) - 1 - 1
