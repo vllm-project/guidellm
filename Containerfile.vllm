@@ -11,7 +11,7 @@ FROM $BASE_IMAGE
 ARG GUIDELLM_BUILD_TYPE=dev
 
 # Extra dependencies to install (e.g. recommended, all)
-ARG GUIDELLM_BUILD_EXTRAS=recommended
+ARG GUIDELLM_BUILD_EXTRAS=recommended,audio
 
 # Switch to root for installing system deps and pip install
 USER root
