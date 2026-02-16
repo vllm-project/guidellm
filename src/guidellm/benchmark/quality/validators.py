@@ -225,7 +225,7 @@ class EmbeddingsQualityValidator:
 
         # Compute similarities
         similarities = []
-        for baseline_emb, target_emb in zip(baseline_embeddings, target_array):
+        for baseline_emb, target_emb in zip(baseline_embeddings, target_array, strict=False):
             sim = compute_cosine_similarity(baseline_emb, target_emb)
             similarities.append(sim)
 

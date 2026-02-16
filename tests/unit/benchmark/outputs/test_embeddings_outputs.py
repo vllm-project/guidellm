@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,6 +14,7 @@ from guidellm.benchmark.outputs.embeddings_html import EmbeddingsBenchmarkerHTML
 from guidellm.benchmark.outputs.embeddings_serialized import (
     EmbeddingsBenchmarkerSerialized,
 )
+from guidellm.benchmark.profiles import SynchronousProfile
 from guidellm.benchmark.schemas.base import BenchmarkConfig
 from guidellm.benchmark.schemas.embeddings import (
     EmbeddingsBenchmark,
@@ -25,7 +25,6 @@ from guidellm.benchmark.schemas.embeddings import (
 )
 from guidellm.benchmark.schemas.embeddings.entrypoints import BenchmarkEmbeddingsArgs
 from guidellm.benchmark.schemas.embeddings.metrics import SchedulerMetrics
-from guidellm.benchmark.profiles import SynchronousProfile
 from guidellm.scheduler import SchedulerState
 from guidellm.schemas import (
     DistributionSummary,
@@ -36,9 +35,6 @@ from guidellm.schemas import (
     StatusDistributionSummary,
     UsageMetrics,
 )
-
-if TYPE_CHECKING:
-    from _pytest.tmpdir import TempPathFactory
 
 
 def create_percentiles(p50=0.5) -> Percentiles:

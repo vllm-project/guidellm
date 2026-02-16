@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from guidellm.schemas import GenerationRequest
 
-__all__ = ["GenerativeRequestCollator", "EmbeddingsRequestCollator"]
+__all__ = ["EmbeddingsRequestCollator", "GenerativeRequestCollator"]
 
 
 class GenerativeRequestCollator:

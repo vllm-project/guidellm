@@ -39,7 +39,6 @@ from guidellm.data import (
     DatasetFinalizer,
     DatasetPreprocessor,
     FinalizerRegistry,
-    GenerativeRequestCollator,
     PreprocessorRegistry,
     ProcessorFactory,
 )

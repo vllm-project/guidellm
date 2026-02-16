@@ -9,9 +9,8 @@ executing new embeddings benchmarks with comprehensive metric tracking.
 
 from __future__ import annotations
 
-from typing import Any
-
 from pathlib import Path
+from typing import Any
 
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.entrypoints import (
@@ -195,7 +194,7 @@ async def benchmark_embeddings(
                     details=f"Tolerance: {args.quality_tolerance}",
                     status="success",
                 )
-        except ImportError as e:
+        except ImportError:
             if console:
                 console.print_update(
                     title="Quality validation unavailable",
@@ -231,7 +230,7 @@ async def benchmark_embeddings(
                     details=f"Main score: {mteb_results['mteb_main_score']:.4f}",
                     status="success",
                 )
-        except ImportError as e:
+        except ImportError:
             if console:
                 console.print_update(
                     title="MTEB evaluation unavailable",

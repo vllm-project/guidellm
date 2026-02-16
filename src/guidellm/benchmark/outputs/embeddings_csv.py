@@ -10,9 +10,8 @@ metrics hierarchically without output tokens or streaming behavior.
 from __future__ import annotations
 
 import csv
-import json
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar
 
 from pydantic import Field
 

@@ -25,8 +25,8 @@ from .embeddings import (
     EmbeddingsBenchmark,
     EmbeddingsBenchmarkAccumulator,
     EmbeddingsBenchmarkMetadata,
-    EmbeddingsBenchmarkTimings,
     EmbeddingsBenchmarksReport,
+    EmbeddingsBenchmarkTimings,
     EmbeddingsMetrics,
     EmbeddingsQualityMetrics,
 )

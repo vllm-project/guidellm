@@ -20,7 +20,6 @@ from guidellm.benchmark.schemas.embeddings.accumulator import (
 )
 from guidellm.scheduler import SchedulerState
 from guidellm.schemas import (
-    EmbeddingsRequestStats,
     StandardBaseDict,
     StatusBreakdown,
     StatusDistributionSummary,

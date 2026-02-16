@@ -669,7 +669,7 @@ class _GenerativeProgressTaskState:
                 output_tokens_rate=0.0,
                 prompt_tokens=(
                     benchmark.metrics.input_tokens_count.successful
-                    if hasattr(benchmark.metrics, 'input_tokens_count')
+                    if hasattr(benchmark.metrics, "input_tokens_count")
                     else benchmark.metrics.prompt_token_count.successful
                 ),
                 total_tokens_rate=benchmark.metrics.input_tokens_per_second.successful.mean,

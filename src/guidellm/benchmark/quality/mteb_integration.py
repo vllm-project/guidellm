@@ -14,8 +14,8 @@ from typing import Any
 import numpy as np
 
 __all__ = [
-    "MTEBValidator",
     "DEFAULT_MTEB_TASKS",
+    "MTEBValidator",
 ]
 
 DEFAULT_MTEB_TASKS = ["STS12", "STS13", "STSBenchmark"]

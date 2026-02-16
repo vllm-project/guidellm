@@ -22,13 +22,13 @@ from .base import (
     SuccessfulT,
     TotalT,
 )
+from .embeddings_request_stats import EmbeddingsRequestStats
 from .info import RequestInfo, RequestTimings
 from .request import (
     GenerationRequest,
     GenerationRequestArguments,
     UsageMetrics,
 )
-from .embeddings_request_stats import EmbeddingsRequestStats
 from .request_stats import GenerativeRequestStats
 from .response import GenerationResponse
 from .statistics import (

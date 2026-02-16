@@ -6,7 +6,6 @@ from guidellm.benchmark.schemas.embeddings.accumulator import (
     EmbeddingsBenchmarkAccumulator,
     EmbeddingsQualityMetricsAccumulator,
 )
-from guidellm.schemas import EmbeddingsRequestStats, RequestInfo, UsageMetrics
 
 
 class TestEmbeddingsQualityMetricsAccumulator:

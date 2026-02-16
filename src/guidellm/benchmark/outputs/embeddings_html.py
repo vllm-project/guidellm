@@ -23,7 +23,6 @@ from guidellm.benchmark.schemas.embeddings import (
     EmbeddingsBenchmarksReport,
 )
 from guidellm.utils import camelize_str, recursive_key_update
-from guidellm.utils.text import load_text
 
 __all__ = ["EmbeddingsBenchmarkerHTML"]
 

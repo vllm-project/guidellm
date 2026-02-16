@@ -20,13 +20,13 @@ from .output import EmbeddingsBenchmarkerOutput, GenerativeBenchmarkerOutput
 from .serialized import GenerativeBenchmarkerSerialized
 
 __all__ = [
-    "EmbeddingsBenchmarkerConsole",
     "EmbeddingsBenchmarkerCSV",
+    "EmbeddingsBenchmarkerConsole",
     "EmbeddingsBenchmarkerHTML",
     "EmbeddingsBenchmarkerOutput",
     "EmbeddingsBenchmarkerSerialized",
-    "GenerativeBenchmarkerConsole",
     "GenerativeBenchmarkerCSV",
+    "GenerativeBenchmarkerConsole",
     "GenerativeBenchmarkerHTML",
     "GenerativeBenchmarkerOutput",
     "GenerativeBenchmarkerSerialized",
