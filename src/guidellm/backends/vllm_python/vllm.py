@@ -20,7 +20,6 @@ import numpy as np
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-from guidellm.extras.audio import _decode_audio
 from guidellm.logger import logger
 from guidellm.schemas import (
     GenerationRequest,
@@ -811,6 +810,13 @@ class VLLMPythonBackend(Backend):
             )
         if len(audio_bytes) == 0:
             raise ValueError("Audio data cannot be empty")
+        try:
+            from guidellm.extras.audio import _decode_audio
+        except ImportError as e:
+            raise ImportError(
+                "Audio support requires guidellm[audio] (torchcodec). "
+                "Install with: pip install 'guidellm[audio]'"
+            ) from e
         try:
             audio_samples = _decode_audio(audio_bytes)
             if hasattr(audio_samples.data, "numpy"):
