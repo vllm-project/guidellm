@@ -304,6 +304,23 @@ class TestBackend:
         assert backend.type_ == "openai_http"
 
     @pytest.mark.smoke
+    def test_vllm_python_backend_registered(self):
+        """
+        Test that vllm_python backend is registered and createable.
+        ## WRITTEN BY AI ##
+        """
+        from unittest.mock import patch
+
+        from guidellm.backends.vllm_python.vllm import VLLMPythonBackend
+
+        assert Backend.is_registered("vllm_python")
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend = Backend.create("vllm_python", model="test-model")
+        assert isinstance(backend, VLLMPythonBackend)
+        assert backend.model == "test-model"
+        assert backend.type_ == "vllm_python"
+
+    @pytest.mark.smoke
     def test_backend_registry_functionality(self):
         """Test that backend registry functions work."""
         from guidellm.backends.openai import OpenAIHTTPBackend
