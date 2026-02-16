@@ -81,28 +81,23 @@ class VLLMResponseHandler:
         if "usage" in data:
             self.streaming_usage = data.get("usage") or self.streaming_usage
 
-        # Audio-style: {"text": "..."}
+        result = 0
         if "text" in data and data["text"]:
             self.streaming_texts.append(data["text"])
-            return 1
-
-        # Choices-style
-        choices = data.get("choices", [])
-        if not choices:
-            return 0
-
-        choice = choices[0]
-        # Text completions: {"choices": [{"text": "..."}]}
-        if "text" in choice and choice["text"]:
-            self.streaming_texts.append(choice["text"])
-            return 1
-        # Chat completions: {"choices": [{"delta": {"content": "..."}}]}
-        delta = choice.get("delta", {})
-        if isinstance(delta, dict) and delta.get("content"):
-            self.streaming_texts.append(delta["content"])
-            return 1
-
-        return 0
+            result = 1
+        else:
+            choices = data.get("choices", [])
+            if choices:
+                choice = choices[0]
+                if "text" in choice and choice["text"]:
+                    self.streaming_texts.append(choice["text"])
+                    result = 1
+                else:
+                    delta = choice.get("delta", {})
+                    if isinstance(delta, dict) and delta.get("content"):
+                        self.streaming_texts.append(delta["content"])
+                        result = 1
+        return result
 
     def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
         """
@@ -112,7 +107,9 @@ class VLLMResponseHandler:
         :return: GenerationResponse with concatenated text and metrics
         """
         text = "".join(self.streaming_texts)
-        input_metrics, output_metrics = self._extract_metrics(self.streaming_usage, text)
+        input_metrics, output_metrics = self._extract_metrics(
+            self.streaming_usage, text
+        )
         request_args = self._get_request_args(request)
 
         return GenerationResponse(
@@ -132,11 +129,11 @@ class VLLMResponseHandler:
 
         if "text" in response_dict:
             text = response_dict["text"]
-            return (text if isinstance(text, str) else str(text), usage)
+            return text if isinstance(text, str) else str(text), usage
 
         choices = response_dict.get("choices", [])
         if not choices:
-            return ("", usage)
+            return "", usage
 
         choice = choices[0]
         if "text" in choice:
@@ -147,7 +144,7 @@ class VLLMResponseHandler:
         else:
             text = ""
 
-        return (text if isinstance(text, str) else str(text), usage)
+        return text if isinstance(text, str) else str(text), usage
 
     def _extract_metrics(
         self, usage: dict[str, Any] | None, text: str
@@ -203,7 +200,7 @@ class VLLMResponseHandler:
         line = line[len("data:") :].strip()
         try:
             return json.loads(line)
-        except Exception:
+        except (ValueError, TypeError):
             return {}
 
     def _get_request_args(self, request: GenerationRequest) -> str | None:
