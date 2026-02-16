@@ -1,0 +1,49 @@
+# Base image: vllm/vllm-openai (has vLLM pre-installed). Override with build arg.
+ARG BASE_IMAGE=vllm/vllm-openai
+
+FROM $BASE_IMAGE
+
+# release: take the last version and add a post if build iteration
+# candidate: increment to next minor, add 'rc' with build iteration
+# nightly: increment to next minor, add 'a' with build iteration
+# alpha: increment to next minor, add 'a' with build iteration
+# dev: increment to next minor, add 'dev' with build iteration
+ARG GUIDELLM_BUILD_TYPE=dev
+
+# Extra dependencies to install (e.g. recommended, all)
+ARG GUIDELLM_BUILD_EXTRAS=recommended
+
+# Switch to root for installing system deps and pip install
+USER root
+
+# Install git for setuptools-git-versioning (version discovery)
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
+
+# Copy repository and install GuideLLM from source with pip (no uv, to avoid
+# conflicting with the pre-installed vLLM in the base image)
+COPY / /src
+WORKDIR /src
+RUN pip install --no-cache-dir ".[${GUIDELLM_BUILD_EXTRAS}]"
+
+# Metadata
+LABEL io.k8s.display-name="GuideLLM" \
+      org.opencontainers.image.description="GuideLLM Performance Benchmarking Container" \
+      org.opencontainers.image.source="https://github.com/vllm-project/guidellm" \
+      org.opencontainers.image.documentation="https://blog.vllm.ai/guidellm/stable" \
+      org.opencontainers.image.license="Apache-2.0"
+
+ENV HOME="/home/guidellm" \
+    GUIDELLM_OUTPUT_DIR="/results"
+
+WORKDIR $HOME
+
+VOLUME /results
+
+# Root group for k8s
+USER 1001:0
+
+ENTRYPOINT [ "guidellm" ]
+CMD [ "benchmark", "run" ]
