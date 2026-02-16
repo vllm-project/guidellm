@@ -12,18 +12,27 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from pathlib import Path
 from collections.abc import AsyncIterator
-from typing import Any, Literal
-
-_Mode = Literal["audio", "chat", "text"]
+from pathlib import Path
+from typing import Any, Literal, cast
 
 import numpy as np
 
+from guidellm.backends.backend import Backend
+from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
+from guidellm.extras.audio import _decode_audio
+from guidellm.logger import logger
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    RequestInfo,
+)
+from guidellm.utils import json
+
 try:
     from vllm import SamplingParams
-    from vllm.engine.async_llm_engine import AsyncLLMEngine
     from vllm.engine.arg_utils import AsyncEngineArgs
+    from vllm.engine.async_llm_engine import AsyncLLMEngine
     from vllm.outputs import RequestOutput
 
     HAS_VLLM = True
@@ -34,12 +43,12 @@ except ImportError:
     RequestOutput = None  # type: ignore[assignment, misc]
     HAS_VLLM = False
 
-from guidellm.logger import logger
-from guidellm.backends.backend import Backend
-from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-from guidellm.extras.audio import _decode_audio
-from guidellm.schemas import GenerationRequest, GenerationResponse, RequestInfo, UsageMetrics
-from guidellm.utils import json
+_Mode = Literal["audio", "chat", "text"]
+
+# Audio file tuple: (path_or_name, data_bytes) or (path_or_name, data_bytes, mimetype)
+_AUDIO_FILE_MIN_LEN = 2
+_AUDIO_FILE_DATA_INDEX = 1
+_AUDIO_FILE_MIMETYPE_INDEX = 2
 
 __all__ = ["VLLMPythonBackend"]
 
@@ -66,8 +75,8 @@ def _check_vllm_available() -> None:
     """Check if vllm is available and raise helpful error if not."""
     if not HAS_VLLM:
         raise ImportError(
-            "vllm is not installed. Please install it using 'pip install guidellm[vllm]' "
-            "or 'pip install vllm>=0.6.0'"
+            "vllm is not installed. Please install it using "
+            "'pip install guidellm[vllm]' or 'pip install vllm>=0.6.0'"
         )
 
 
@@ -85,7 +94,7 @@ class VLLMPythonBackend(Backend):
     Example (optional overrides):
     ::
         backend = VLLMPythonBackend(model="meta-llama/Llama-2-7b-chat-hf")
-        # Or with overrides: vllm_config={"tensor_parallel_size": 1, "gpu_memory_utilization": 0.9}
+        # Or: vllm_config={"tensor_parallel_size": 1, "gpu_memory_utilization": 0.9}
 
         await backend.process_startup()
         async for response, request_info in backend.resolve(request, info):
@@ -120,27 +129,29 @@ class VLLMPythonBackend(Backend):
         model: str,
         vllm_config: dict[str, Any] | None = None,
         request_format: str | None = None,
-        target: str | None = None,  # Ignored for VLLM Python backend
+        target: str | None = None,  # Backend.create API; unused (local)
         stream: bool = True,
     ):
         """
         Initialize VLLM Python backend with model and configuration.
 
         :param model: Model identifier or path for VLLM to load
-        :param vllm_config: Optional dict of VLLM AsyncEngineArgs parameters. Passed through
-            with no GuideLLM defaults; only model (and optionally chat_template) are set by
-            the backend. Unset parameters use vLLM's defaults. Common options include
-            tensor_parallel_size, gpu_memory_utilization, max_model_len, and any other
-            parameter accepted by vllm.AsyncEngineArgs. VLLM uses CUDA if available, else CPU.
+        :param vllm_config: Optional dict of VLLM AsyncEngineArgs parameters.
+            Passed through with no GuideLLM defaults; only model (and optionally
+            chat_template) are set by the backend. Unset parameters use vLLM's
+            defaults. Common options include tensor_parallel_size,
+            gpu_memory_utilization, max_model_len, and any other parameter
+            accepted by vllm.AsyncEngineArgs. VLLM uses CUDA if available, else CPU.
             The 'device' parameter is not supported and will be ignored.
-        :param request_format: "plain" (no chat template), "default-template" (use
-            tokenizer default), or a chat template path / single-line string.
-        :param target: Target URL (ignored for VLLM Python backend, which runs locally)
+        :param request_format: "plain" (no chat template), "default-template"
+            (use tokenizer default), or a chat template path / single-line string.
+        :param target: Target URL (ignored for VLLM Python backend, runs locally)
         :param stream: Whether to stream responses (default True). Can be overridden per
             request via request.arguments.stream.
         """
         _check_vllm_available()
         super().__init__(type_="vllm_python")
+        _ = target  # Required by Backend.create(); unused for local backend
 
         self.model = model
         self.request_format = request_format
@@ -154,20 +165,23 @@ class VLLMPythonBackend(Backend):
     @property
     def processes_limit(self) -> int | None:
         """
-        Limits VLLM Python to a single process, since it starts up an entire VLLM engine.
+        Limits VLLM Python to a single process, since it starts up an entire
+        VLLM engine.
         """
         return 1
 
     def _merge_config(self, user_config: dict[str, Any]) -> dict[str, Any]:
         """
-        Build engine config from user config plus required model and optional chat_template.
+        Build engine config from user config plus required model and optional
+        chat_template.
 
-        No GuideLLM defaults are applied; any parameter not set here or in user_config
-        is left to vLLM's AsyncEngineArgs defaults. When request_format is a custom
-        template (not plain or default-template), adds chat_template to config.
+        No GuideLLM defaults are applied; any parameter not set here or in
+        user_config is left to vLLM's AsyncEngineArgs defaults. When
+        request_format is a custom template (not plain or default-template),
+        adds chat_template to config.
 
         :param user_config: User-provided configuration dictionary
-        :return: Config dict for AsyncEngineArgs (model always set; chat_template if applicable)
+        :return: Config dict for AsyncEngineArgs (model set; chat_template if set)
         """
         config = dict(user_config)
 
@@ -175,9 +189,9 @@ class VLLMPythonBackend(Backend):
         config["model"] = self.model
 
         # Pass custom chat template to vLLM engine when applicable
-        if (
-            self.request_format is not None
-            and self.request_format not in ("plain", "default-template")
+        if self.request_format is not None and self.request_format not in (
+            "plain",
+            "default-template",
         ):
             config["chat_template"] = self.request_format
 
@@ -246,7 +260,7 @@ class VLLMPythonBackend(Backend):
             async for _ in self._engine.generate("test", test_params, request_id):  # type: ignore[misc]
                 # Just consume the first output to verify it works
                 break
-        except Exception as exc:
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
             raise RuntimeError(
                 "Backend validation failed. VLLM model could not generate text."
             ) from exc
@@ -314,10 +328,12 @@ class VLLMPythonBackend(Backend):
                     messages.append({"role": "system", "content": str(p)})
             for t in text_parts:
                 if t:
-                    messages.append({
-                        "role": "user",
-                        "content": [{"type": "text", "text": str(t)}],
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": [{"type": "text", "text": str(t)}],
+                        }
+                    )
             body = {"messages": messages}
             stream = self.stream
             files = {}
@@ -326,18 +342,20 @@ class VLLMPythonBackend(Backend):
             mode: _Mode = "audio"
         elif body.get("messages"):
             mode = "chat"
-        elif body.get("prompt") is not None and body.get("prompt") != "":
-            mode = "text"
-        elif "prompt" in body:
+        elif (
+            body.get("prompt") is not None
+            and body.get("prompt") != ""
+            or "prompt" in body
+        ):
             mode = "text"
         else:
-            raise ValueError(
-                "Request must include prompt, messages, or audio files."
-            )
+            raise ValueError("Request must include prompt, messages, or audio files.")
 
         return _RequestContext(mode=mode, body=body, stream=stream, files=files)
 
-    def _update_request_timing(self, request_info: RequestInfo, iter_time: float) -> None:
+    def _update_request_timing(
+        self, request_info: RequestInfo, iter_time: float
+    ) -> None:
         """
         Update request iteration timing information.
 
@@ -394,52 +412,25 @@ class VLLMPythonBackend(Backend):
             return {"choices": [{"text": text}]}
         # chat
         if is_delta:
-            return {
-                "choices": [
-                    {"delta": {"content": text, "role": "assistant"}}
-                ]
-            }
-        return {
-            "choices": [
-                {"message": {"content": text, "role": "assistant"}}
-            ]
-        }
+            return {"choices": [{"delta": {"content": text, "role": "assistant"}}]}
+        return {"choices": [{"message": {"content": text, "role": "assistant"}}]}
 
-    def _usage_from_output(
+    def _stream_usage_tokens(
         self,
-        output: RequestOutput | None,
-        *,
-        accumulated_output_tokens: int | None = None,
-        accumulated_text: str = "",
-        request_info: RequestInfo | None = None,
-    ) -> dict[str, int] | None:
+        output: RequestOutput,
+        accumulated_output_tokens: int | None,
+        accumulated_text: str,
+        request_info: RequestInfo,
+    ) -> tuple[int, int]:
         """
-        Build usage dict (prompt_tokens, completion_tokens, total_tokens).
-
-        When request_info is None (non-stream), uses only output token counts.
-        When request_info is set (stream), uses accumulated_output_tokens if provided,
-        else token_ids from output, then tokenizer fallback, then token_iterations.
+        Stream path: compute output_tokens; return input and output token counts
+        in the form of (input_tokens, output_tokens).
         """
-        if output is None:
-            return None
-        input_tokens = len(output.prompt_token_ids)
+        input_tokens = len(output.prompt_token_ids or [])
         output_tokens = 0
-
-        if request_info is None:
-            # Simple path (non-stream): use output token counts only
-            if output.outputs and len(output.outputs) > 0:
-                out = output.outputs[0]
-                if out.token_ids is not None:
-                    output_tokens = len(out.token_ids)
-            return {
-                "prompt_tokens": input_tokens,
-                "completion_tokens": output_tokens,
-                "total_tokens": input_tokens + output_tokens,
-            }
-
-        # Stream path: fallback chain
         source = "unknown"
         generated_text = accumulated_text
+
         if accumulated_output_tokens is not None and accumulated_output_tokens > 0:
             output_tokens = accumulated_output_tokens
             source = "token_ids"
@@ -452,8 +443,8 @@ class VLLMPythonBackend(Backend):
                 source = "token_ids"
             else:
                 logger.debug(
-                    "[vllm_python streaming] final_output.outputs[0].token_ids is None, "
-                    "len(generated_text)={}",
+                    "[vllm_python streaming] final_output.outputs[0].token_ids "
+                    "is None, len(generated_text)={}",
                     len(generated_text or ""),
                 )
         if output_tokens == 0 and generated_text and self._engine is not None:
@@ -469,7 +460,7 @@ class VLLMPythonBackend(Backend):
                     logger.debug(
                         "[vllm_python streaming] engine has no tokenizer attribute"
                     )
-            except Exception as exc:
+            except (TypeError, ValueError, RuntimeError) as exc:
                 logger.debug(
                     "[vllm_python streaming] tokenizer.encode failed: {}",
                     exc,
@@ -484,6 +475,42 @@ class VLLMPythonBackend(Backend):
             output_tokens,
             input_tokens,
             request_info.timings.token_iterations,
+        )
+        return input_tokens, output_tokens
+
+    def _usage_from_output(
+        self,
+        output: RequestOutput | None,
+        *,
+        accumulated_output_tokens: int | None = None,
+        accumulated_text: str = "",
+        request_info: RequestInfo | None = None,
+    ) -> dict[str, int] | None:
+        """
+        Build usage dict (prompt_tokens, completion_tokens, total_tokens).
+
+        When request_info is None (non-stream), uses only output token counts.
+        When request_info is set (stream), uses fallback chain via
+        _stream_usage_tokens.
+        """
+        if output is None:
+            return None
+        input_tokens = len(output.prompt_token_ids or [])
+        output_tokens = 0
+
+        if request_info is None:
+            if output.outputs and len(output.outputs) > 0:
+                out = output.outputs[0]
+                if out.token_ids is not None:
+                    output_tokens = len(out.token_ids)
+            return {
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+
+        input_tokens, output_tokens = self._stream_usage_tokens(
+            output, accumulated_output_tokens, accumulated_text, request_info
         )
         return {
             "prompt_tokens": input_tokens,
@@ -518,9 +545,13 @@ class VLLMPythonBackend(Backend):
         openai_format = self._convert_vllm_output_to_openai_format(
             final_output, ctx.mode
         )
-        return response_handler.compile_non_streaming(request, openai_format), request_info
+        return response_handler.compile_non_streaming(
+            request, openai_format
+        ), request_info
 
-    def _extract_text_from_content(self, content: str | list[dict[str, Any]] | Any) -> str:
+    def _extract_text_from_content(
+        self, content: str | list[dict[str, Any]] | Any
+    ) -> str:
         """
         Extract text content from message content field.
 
@@ -547,9 +578,7 @@ class VLLMPythonBackend(Backend):
         # Fallback: convert to string
         return str(content) if content is not None else ""
 
-    def _extract_audio_from_request(
-        self, files: dict[str, Any]
-    ) -> tuple[bytes, str]:
+    def _extract_audio_from_request(self, files: dict[str, Any]) -> tuple[bytes, str]:
         """
         Extract audio file from request files dict.
 
@@ -561,34 +590,115 @@ class VLLMPythonBackend(Backend):
         :raises ValueError: If files is empty or no valid audio file found
         """
         if not files:
-            raise ValueError(
-                "Audio request must include audio file in 'files'."
-            )
+            raise ValueError("Audio request must include audio file in 'files'.")
 
         audio_file = None
         for value in files.values():
-            if isinstance(value, (list, tuple)) and len(value) >= 2:
+            if isinstance(value, list | tuple) and len(value) >= _AUDIO_FILE_MIN_LEN:
                 audio_file = value
                 break
-            elif isinstance(value, bytes):
+            if isinstance(value, bytes):
                 audio_file = ("audio.wav", value, "audio/wav")
                 break
 
         if audio_file is None:
-            raise ValueError(
-                "Audio request must include audio file in 'files'."
-            )
+            raise ValueError("Audio request must include audio file in 'files'.")
 
-        if isinstance(audio_file, (list, tuple)) and len(audio_file) >= 2:
-            audio_data = audio_file[1]
+        is_audio_tuple = (
+            isinstance(audio_file, list | tuple)
+            and len(audio_file) >= _AUDIO_FILE_MIN_LEN
+        )
+        if is_audio_tuple:
+            audio_data = audio_file[_AUDIO_FILE_DATA_INDEX]
             if not isinstance(audio_data, bytes):
                 raise ValueError(
-                    f"Expected bytes for audio data, got {type(audio_data)}: {audio_data}"
+                    f"Expected bytes for audio data, got {type(audio_data)}: "
+                    f"{audio_data}"
                 )
-            mimetype = audio_file[2] if len(audio_file) >= 3 else "audio/wav"
+            mimetype = (
+                audio_file[_AUDIO_FILE_MIMETYPE_INDEX]
+                if len(audio_file) > _AUDIO_FILE_MIMETYPE_INDEX
+                else "audio/wav"
+            )
             return (audio_data, mimetype)
 
         raise ValueError("Invalid audio file format in 'files'.")
+
+    def _extract_prompt_text(self, body: dict[str, Any]) -> str:
+        """Extract prompt for text mode."""
+        if (
+            self._engine is not None
+            and getattr(self._engine, "tokenizer", None) is not None
+        ):
+            logger.warning(
+                "Tokenizer is set (from model) but not used: request has 'prompt' "
+                "so mode was inferred as text; prompt is passed through without "
+                "tokenizer formatting."
+            )
+        prompt = body.get("prompt", "")
+        if not prompt:
+            raise ValueError("Text request must include 'prompt' in body.")
+        return prompt if isinstance(prompt, str) else str(prompt)
+
+    def _extract_prompt_chat_plain(
+        self, formatted_messages: list[dict[str, Any]]
+    ) -> str:
+        """Format messages as plain 'Role: content' lines."""
+        parts = []
+        for msg in formatted_messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role and content:
+                parts.append(f"{role.capitalize()}: {content}")
+        parts.append("Assistant: ")
+        return "\n".join(parts)
+
+    def _extract_prompt_chat_tokenizer(
+        self, formatted_messages: list[dict[str, Any]]
+    ) -> str:
+        """Apply tokenizer chat template to formatted messages."""
+        if self._engine is None:
+            raise RuntimeError("Backend not started up while extracting prompt.")
+        tokenizer = self._engine.tokenizer
+        if tokenizer is None:
+            raise RuntimeError("Backend engine has no tokenizer.")
+        if self.request_format is not None and self.request_format not in (
+            "plain",
+            "default-template",
+        ):
+            template_value = self.request_format
+            path = Path(template_value)
+            if path.exists() and path.is_file():
+                tokenizer.chat_template = path.read_text()  # type: ignore[attr-defined]
+            else:
+                tokenizer.chat_template = template_value  # type: ignore[assignment, attr-defined]
+        prompt = tokenizer.apply_chat_template(
+            formatted_messages,  # type: ignore[arg-type]
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        if isinstance(prompt, str):
+            return prompt
+        raise RuntimeError("Backend received unexpected type from tokenizer.")
+
+    def _extract_prompt_chat(self, body: dict[str, Any]) -> str:
+        """Extract prompt for chat mode (plain or tokenizer)."""
+        messages = body.get("messages", [])
+        if not messages:
+            raise ValueError("Chat request must include 'messages' in body.")
+        formatted_messages = []
+        for msg in messages:
+            if isinstance(msg, dict):
+                raw_content = msg.get("content", "")
+                text_content = self._extract_text_from_content(raw_content)
+                formatted_messages.append(
+                    {"role": msg.get("role", ""), "content": text_content}
+                )
+            else:
+                formatted_messages.append(msg)
+        if self.request_format == "plain":
+            return self._extract_prompt_chat_plain(formatted_messages)
+        return self._extract_prompt_chat_tokenizer(formatted_messages)
 
     def _extract_prompt(
         self,
@@ -598,8 +708,9 @@ class VLLMPythonBackend(Backend):
         """
         Extract prompt text from request body based on mode.
 
-        For chat mode, uses the tokenizer's chat template or plain concat per
-        request_format. For text mode uses body prompt. For audio, prompt is optional.
+        For chat mode, uses tokenizer chat template or plain concat per
+        request_format. For text mode uses body prompt. For audio, prompt
+        is optional.
 
         :param body: Request body dict (prompt or messages)
         :param mode: Inferred mode (audio, chat, text)
@@ -607,80 +718,14 @@ class VLLMPythonBackend(Backend):
         :raises ValueError: If prompt cannot be extracted
         """
         if mode == "text":
-            if (
-                self._engine is not None
-                and getattr(self._engine, "tokenizer", None) is not None
-            ):
-                logger.warning(
-                    "Tokenizer is set (from model) but not used: request has 'prompt' "
-                    "so mode was inferred as text; prompt is passed through without "
-                    "tokenizer formatting."
-                )
-            prompt = body.get("prompt", "")
-            if not prompt:
-                raise ValueError("Text request must include 'prompt' in body.")
-            return prompt if isinstance(prompt, str) else str(prompt)
-
+            return self._extract_prompt_text(body)
         if mode == "chat":
-            messages = body.get("messages", [])
-            if not messages:
-                raise ValueError(
-                    "Chat request must include 'messages' in body."
-                )
-
-            # Convert messages to format expected by chat template or plain concat
-            formatted_messages = []
-            for msg in messages:
-                if isinstance(msg, dict):
-                    raw_content = msg.get("content", "")
-                    text_content = self._extract_text_from_content(raw_content)
-                    formatted_messages.append({
-                        "role": msg.get("role", ""),
-                        "content": text_content,
-                    })
-                else:
-                    formatted_messages.append(msg)
-
-            if self.request_format == "plain":
-                # No chat template: append message content only (e.g. "User: ...\nAssistant: ")
-                parts = []
-                for msg in formatted_messages:
-                    role = msg.get("role", "user")
-                    content = msg.get("content", "")
-                    if role and content:
-                        parts.append(f"{role.capitalize()}: {content}")
-                parts.append("Assistant: ")
-                return "\n".join(parts)
-
-            # default-template, None, or custom template: use tokenizer
-            if self._engine is None:
-                raise RuntimeError("Backend not started up while extracting prompt.")
-            tokenizer = self._engine.tokenizer
-
-            if (
-                self.request_format is not None
-                and self.request_format not in ("plain", "default-template")
-            ):
-                # Custom template: set on tokenizer if not already passed via engine config
-                template_value = self.request_format
-                path = Path(template_value)
-                if path.exists() and path.is_file():
-                    tokenizer.chat_template = path.read_text()
-                else:
-                    tokenizer.chat_template = template_value  # type: ignore[assignment]
-
-            prompt = tokenizer.apply_chat_template(  # type: ignore[misc]
-                formatted_messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-            if isinstance(prompt, str):
-                return prompt
-            raise RuntimeError("Backend received unexpected type from tokenizer.")
-
+            return self._extract_prompt_chat(body)
         if mode == "audio":
             prompt = body.get("prompt", "")
-            return prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
+            return (
+                prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
+            )
         raise ValueError(f"Unsupported mode: {mode!r}.")
 
     def _create_sampling_params(
@@ -692,7 +737,7 @@ class VLLMPythonBackend(Backend):
         Create VLLM SamplingParams from request body.
 
         :param body: Request body dict with sampling parameters
-        :param max_tokens_override: Optional max_tokens from request (e.g. benchmark target)
+        :param max_tokens_override: Optional max_tokens from request (e.g. benchmark)
         :return: Configured SamplingParams instance
         """
         max_tokens = (
@@ -711,7 +756,7 @@ class VLLMPythonBackend(Backend):
             stop: list[str] | None = []
         else:
             ignore_eos = body.get("ignore_eos", False)
-            stop = body.get("stop", None)
+            stop = body.get("stop")
 
         params = {
             "temperature": body.get("temperature", 1.0),
@@ -754,7 +799,161 @@ class VLLMPythonBackend(Backend):
             response_dict["id"] = output.request_id
         return response_dict
 
-    async def resolve(  # type: ignore[override]
+    def _build_audio_generate_input(
+        self, prompt: str, ctx: _RequestContext
+    ) -> dict[str, Any]:
+        """Decode audio from request and build multimodal generate_input dict."""
+        audio_bytes, _mimetype = self._extract_audio_from_request(ctx.files)
+        if not isinstance(audio_bytes, bytes):
+            raise TypeError(
+                f"Expected bytes for audio data, got {type(audio_bytes)}: "
+                f"{audio_bytes}"
+            )
+        if len(audio_bytes) == 0:
+            raise ValueError("Audio data cannot be empty")
+        try:
+            audio_samples = _decode_audio(audio_bytes)
+            if hasattr(audio_samples.data, "numpy"):
+                audio_array = audio_samples.data.numpy()
+            elif hasattr(audio_samples.data, "cpu"):
+                audio_array = audio_samples.data.cpu().numpy()
+            else:
+                audio_array = np.asarray(audio_samples.data)
+            return {
+                "prompt": prompt,
+                "multi_modal_data": {"audio": audio_array},
+            }
+        except (ValueError, TypeError, OSError, RuntimeError) as exc:
+            raise ValueError(
+                f"Failed to decode audio data for vLLM: {exc}"
+            ) from exc
+
+    def _process_streaming_delta(
+        self,
+        request_output: RequestOutput,
+        ctx: _RequestContext,
+        response_handler: VLLMResponseHandler,
+        request_info: RequestInfo,
+        accumulated_text: str,
+        previous_token_count: int,
+        iter_time: float,
+    ) -> tuple[str, int, int]:
+        """Emit one streaming delta; return (accum_text, token_delta, new_prev)."""
+        generated_text = self._text_from_output(request_output)
+        if generated_text == accumulated_text:
+            return (accumulated_text, 0, previous_token_count)
+
+        delta_text = generated_text[len(accumulated_text) :]
+        delta_data = self._openai_payload_for_mode(
+            ctx.mode, delta_text, is_delta=True
+        )
+        if hasattr(request_output, "request_id") and request_output.request_id:
+            delta_data["id"] = request_output.request_id
+        json_str = json.dumps(delta_data)
+        json_str_decoded = (
+            json_str.decode("utf-8") if isinstance(json_str, bytes) else json_str
+        )
+        sse_line = f"data: {json_str_decoded}"
+        iterations = response_handler.add_streaming_line(sse_line)
+
+        total_delta = 0
+        new_prev = previous_token_count
+        if iterations is not None and iterations > 0:
+            out = (
+                request_output.outputs[0]
+                if request_output.outputs
+                else None
+            )
+            if out is not None and out.token_ids is not None:
+                current_count = len(out.token_ids)
+                total_delta = max(0, current_count - previous_token_count)
+                new_prev = current_count
+            else:
+                total_delta = 1
+                new_prev = previous_token_count + 1
+            self._update_token_timing(request_info, iter_time, iterations)
+        return (generated_text, total_delta, new_prev)
+
+    def _raise_generation_error(self, exc: BaseException) -> None:
+        """Re-raise generation failure with context; special case for audio."""
+        error_msg = str(exc)
+        if (
+            "At most 0 audio" in error_msg
+            or "audio(s) may be provided" in error_msg
+        ):
+            raise RuntimeError(
+                f"Generation failed: The model '{self.model}' does not "
+                f"support audio inputs. Use an audio-capable model "
+                f"(e.g. Whisper-based). Original error: {exc}"
+            ) from exc
+        raise RuntimeError(f"Generation failed: {exc}") from exc
+
+    async def _run_generation(
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        ctx: _RequestContext,
+        response_handler: VLLMResponseHandler,
+        generate_input: str | dict[str, Any],
+        sampling_params: SamplingParams,
+        request_id: str,
+        state: dict[str, Any],
+    ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
+        """Run engine.generate loop and yield final (response, request_info)."""
+        state["final_output"] = None
+        state["accumulated_text"] = ""
+        state["total_output_tokens"] = 0
+        previous_token_count = 0
+        stream = ctx.stream
+        engine = self._engine
+        if engine is None:
+            raise RuntimeError("Backend not started up.")
+
+        prompt_arg = cast("Any", generate_input)
+        async for request_output in engine.generate(  # type: ignore[misc]
+            prompt_arg, sampling_params, request_id
+        ):
+            iter_time = time.time()
+            self._update_request_timing(request_info, iter_time)
+            state["final_output"] = request_output
+
+            if (
+                request_output.outputs
+                and len(request_output.outputs) > 0
+                and request_output.outputs[0].finish_reason is not None
+            ):
+                break
+
+            if stream:
+                state["accumulated_text"], token_delta, previous_token_count = (
+                    self._process_streaming_delta(
+                        request_output,
+                        ctx,
+                        response_handler,
+                        request_info,
+                        state["accumulated_text"],
+                        previous_token_count,
+                        iter_time,
+                    )
+                )
+                if token_delta > 0:
+                    state["total_output_tokens"] += token_delta
+
+        request_info.timings.request_end = time.time()
+        result = self._build_final_response(
+            request,
+            request_info,
+            state["final_output"],
+            ctx,
+            response_handler,
+            stream,
+            state["accumulated_text"],
+            state["total_output_tokens"],
+        )
+        if result is not None:
+            yield result
+
+    async def resolve(  # type: ignore[override, misc]
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
@@ -777,17 +976,10 @@ class VLLMPythonBackend(Backend):
         :raises ValueError: If request body/files do not imply a valid mode
         :yields: Single tuple of (response, updated_request_info)
         """
-        # Resolve request context (supports standard pipeline with columns only)
         ctx = self._get_request_context(request)
-
-        # Validate request
         self._validate_backend_initialized()
         self._validate_history(history)
-
-        # Create response handler (no request type; handler infers from response shape)
         response_handler = VLLMResponseHandler()
-
-        # Extract prompt and create sampling parameters
         prompt = self._extract_prompt(ctx.body, ctx.mode)
         sampling_params = self._create_sampling_params(
             ctx.body,
@@ -797,167 +989,45 @@ class VLLMPythonBackend(Backend):
                 else None
             ),
         )
-        stream = ctx.stream
-
-        # For audio requests, construct multimodal input with audio data
+        generate_input: str | dict[str, Any]
         if ctx.mode == "audio":
-            audio_bytes, mimetype = self._extract_audio_from_request(ctx.files)
+            prompt_str = prompt if isinstance(prompt, str) else ""
+            generate_input = self._build_audio_generate_input(prompt_str, ctx)
+        else:
+            generate_input = prompt
 
-            # Validate audio_bytes is actually bytes
-            if not isinstance(audio_bytes, bytes):
-                raise TypeError(
-                    f"Expected bytes for audio data, got {type(audio_bytes)}: {audio_bytes}"
-                )
-            if len(audio_bytes) == 0:
-                raise ValueError("Audio data cannot be empty")
-
-            # Decode audio bytes to numpy array for vLLM
-            # vLLM's _get_audio_with_sr expects decoded audio samples (numpy array, torch tensor, etc.)
-            # not raw encoded bytes
-            try:
-                audio_samples = _decode_audio(audio_bytes)
-                # Convert torch tensor to numpy array (vLLM accepts numpy arrays)
-                if hasattr(audio_samples.data, 'numpy'):
-                    audio_array = audio_samples.data.numpy()
-                elif hasattr(audio_samples.data, 'cpu'):
-                    audio_array = audio_samples.data.cpu().numpy()
-                else:
-                    # Already a numpy array or compatible
-                    audio_array = np.asarray(audio_samples.data)
-                
-                # vLLM can accept either:
-                # 1. Just the numpy array (orig_sr will be None, no resampling)
-                # 2. Tuple (array, sample_rate) - but this triggers resampling which needs target_sr
-                # Since the resampler may not have target_sr configured, pass just the array
-                # The model should handle the sample rate appropriately
-                audio_for_vllm = audio_array
-            except Exception as exc:
-                raise ValueError(
-                    f"Failed to decode audio data for vLLM: {exc}"
-                ) from exc
-
-            # Construct multimodal prompt for vLLM v1 transcription models
-            # vLLM v1's generate method accepts multimodal data in this format
-            # The prompt should be a string, and multimodal data passed as a dict
-            # Note: vLLM's _parse_audio_data automatically wraps single arrays in a list
-            prompt_text = prompt if isinstance(prompt, str) else ""
-            
-            prompt = {
-                "prompt": prompt_text,
-                "multi_modal_data": {
-                    "audio": audio_for_vllm,
-                },
-            }
-
-        # Generate unique request ID for this generation
         request_id = str(uuid.uuid4())
-
         request_info.timings.request_start = time.time()
-        final_output: RequestOutput | None = None
-        accumulated_text = ""
-        total_output_tokens = 0
-        previous_token_count = 0
+        engine = self._engine
+        if engine is None:
+            raise RuntimeError("Backend not started up.")
 
+        gen_state: dict[str, Any] = {}
         try:
-            async for request_output in self._engine.generate(  # type: ignore[misc]
-                prompt, sampling_params, request_id
+            async for result in self._run_generation(
+                request,
+                request_info,
+                ctx,
+                response_handler,
+                generate_input,
+                sampling_params,
+                request_id,
+                gen_state,
             ):
-                # Per-iteration: record timing and keep latest output for final response
-                iter_time = time.time()
-                self._update_request_timing(request_info, iter_time)
-                final_output = request_output
-
-                # Stop when vLLM signals completion (e.g. EOS or max_tokens)
-                if (
-                    request_output.outputs
-                    and len(request_output.outputs) > 0
-                    and request_output.outputs[0].finish_reason is not None
-                ):
-                    break
-
-                # Streaming: emit new text as SSE deltas and accumulate token count
-                if stream:
-                    generated_text = self._text_from_output(request_output)
-
-                    if generated_text != accumulated_text:
-                        # Only the new slice since last iteration (vLLM gives cumulative text)
-                        delta_text = generated_text[len(accumulated_text) :]
-                        # Build OpenAI-style delta: {"text": ...}, choices[].text, or choices[].delta
-                        delta_data = self._openai_payload_for_mode(
-                            ctx.mode, delta_text, is_delta=True
-                        )
-                        if hasattr(request_output, "request_id") and request_output.request_id:
-                            delta_data["id"] = request_output.request_id
-
-                        # Serialize to SSE line and feed to handler (accumulates for compile_streaming)
-                        json_str = json.dumps(delta_data)
-                        if isinstance(json_str, bytes):
-                            json_str = json_str.decode("utf-8")
-                        sse_line = f"data: {json_str}"
-                        iterations = response_handler.add_streaming_line(sse_line)
-
-                        # Update token count (delta from cumulative token_ids) and token timings
-                        if iterations is not None and iterations > 0:
-                            out = (
-                                request_output.outputs[0]
-                                if request_output.outputs
-                                else None
-                            )
-                            # vLLM yields cumulative token_ids; take delta since previous iteration
-                            if out is not None and out.token_ids is not None:
-                                current_count = len(out.token_ids)
-                                chunk_token_count = max(
-                                    0, current_count - previous_token_count
-                                )
-                                previous_token_count = current_count
-                            else:
-                                chunk_token_count = 1
-                                previous_token_count += 1
-                            if chunk_token_count > 0:
-                                total_output_tokens += chunk_token_count
-
-                            self._update_token_timing(request_info, iter_time, iterations)
-
-                        # Track consumed text so next delta is again only the new slice
-                        accumulated_text = generated_text
-
-            request_info.timings.request_end = time.time()
-
-            if (
-                result := self._build_final_response(
-                    request,
-                    request_info,
-                    final_output,
-                    ctx,
-                    response_handler,
-                    stream,
-                    accumulated_text,
-                    total_output_tokens,
-                )
-            ) is not None:
                 yield result
-
         except asyncio.CancelledError as err:
-            if (
-                result := self._build_final_response(
-                    request,
-                    request_info,
-                    final_output,
-                    ctx,
-                    response_handler,
-                    stream,
-                    accumulated_text,
-                    total_output_tokens,
-                )
-            ) is not None:
-                yield result
+            cancel_result = self._build_final_response(
+                request,
+                request_info,
+                gen_state.get("final_output"),
+                ctx,
+                response_handler,
+                ctx.stream,
+                gen_state.get("accumulated_text", ""),
+                gen_state.get("total_output_tokens", 0),
+            )
+            if cancel_result is not None:
+                yield cancel_result
             raise err
-        except Exception as exc:
-            error_msg = str(exc)
-            if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
-                raise RuntimeError(
-                    f"Generation failed: The model '{self.model}' does not support audio inputs. "
-                    f"For audio transcriptions, please use an audio-capable model (e.g., Whisper-based models). "
-                    f"Original error: {exc}"
-                ) from exc
-            raise RuntimeError(f"Generation failed: {exc}") from exc
+        except (RuntimeError, ValueError, TypeError, OSError, KeyError) as exc:
+            self._raise_generation_error(exc)
