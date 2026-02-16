@@ -474,17 +474,21 @@ def run(**kwargs):  # noqa: C901
 
     if uvloop is not None:
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    asyncio.run(
-        benchmark_generative_text(
-            args=args,
-            progress=(
-                GenerativeConsoleBenchmarkerProgress()
-                if not disable_console_interactive
-                else None
-            ),
-            console=console,
+
+    try:
+        asyncio.run(
+            benchmark_generative_text(
+                args=args,
+                progress=(
+                    GenerativeConsoleBenchmarkerProgress()
+                    if not disable_console_interactive
+                    else None
+                ),
+                console=console,
+            )
         )
-    )
+    except (ValidationError, ValueError) as err:
+        raise click.BadParameter(str(err)) from err
 
 
 @benchmark.command(
