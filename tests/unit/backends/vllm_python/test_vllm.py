@@ -1394,7 +1394,7 @@ class TestVLLMResolveAudioError:
             raise ValueError("At most 0 audio(s) may be provided.")
             yield  # makes this an async generator so async for raises
 
-        with patch("guidellm.backends.vllm_python.vllm._decode_audio") as mock_decode:
+        with patch("guidellm.extras.audio._decode_audio") as mock_decode:
             mock_decode.return_value = Mock(data=np.array([0.0]))
             backend._engine = Mock()
             backend._engine.generate = mock_generate_raise
@@ -1447,7 +1447,7 @@ class TestVLLMResolveAudioMode:
             yield req_out
 
         with patch(
-            "guidellm.backends.vllm_python.vllm._decode_audio",
+            "guidellm.extras.audio._decode_audio",
             return_value=mock_decode_result,
         ):
             backend._engine = Mock()
