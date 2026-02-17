@@ -40,6 +40,10 @@ ENV HOME="/home/guidellm" \
 
 WORKDIR $HOME
 
+# Ensure that the user home dir can be used by any user
+# (OpenShift Pods can't use the cache otherwise)
+RUN chgrp -R 0 "$HOME" && chmod -R g=u "$HOME"
+
 VOLUME /results
 
 # Root group for k8s
