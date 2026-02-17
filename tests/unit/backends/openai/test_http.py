@@ -102,7 +102,7 @@ class TestOpenAIHTTPBackend:
         if "timeout" in constructor_args:
             assert instance.timeout == constructor_args["timeout"]
         else:
-            assert instance.timeout == 60.0
+            assert instance.timeout is None
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -154,7 +154,8 @@ class TestOpenAIHTTPBackend:
 
         assert backend.target == "http://localhost:8000"
         assert backend.model == ""
-        assert backend.timeout == 60.0
+        assert backend.timeout is None
+        assert backend.timeout_connect == 5.0
         assert backend.http2 is True
         assert backend.follow_redirects is True
         assert backend.verify is False

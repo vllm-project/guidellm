@@ -64,7 +64,7 @@ class Benchmarker(
         environment: Environment,
         warmup: TransientPhaseConfig,
         cooldown: TransientPhaseConfig,
-        sample_requests: int | None = 20,
+        sample_requests: int | None = None,
         prefer_response_metrics: bool = True,
         progress: (
             BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None

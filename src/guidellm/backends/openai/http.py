@@ -50,6 +50,9 @@ LEGACY_API_ALIASES = {
     "audio_translations": "/v1/audio/translations",
 }
 
+# NOTE: This value is taken from httpx's default
+FALLBACK_TIMEOUT = 5.0
+
 
 @Backend.register("openai_http")
 class OpenAIHTTPBackend(Backend):
@@ -103,7 +106,8 @@ class OpenAIHTTPBackend(Backend):
         api_key: str | None = None,
         api_routes: dict[str, str] | None = None,
         request_handlers: dict[str, Any] | None = None,
-        timeout: float = 60.0,
+        timeout: float | None = None,
+        timeout_connect: float | None = FALLBACK_TIMEOUT,
         http2: bool = True,
         follow_redirects: bool = True,
         verify: bool = False,
@@ -153,6 +157,7 @@ class OpenAIHTTPBackend(Backend):
         self.api_routes = api_routes or DEFAULT_API_PATHS
         self.request_handlers = request_handlers
         self.timeout = timeout
+        self.timeout_connect = timeout_connect
         self.http2 = http2
         self.follow_redirects = follow_redirects
         self.verify = verify
@@ -182,6 +187,7 @@ class OpenAIHTTPBackend(Backend):
             "target": self.target,
             "model": self.model,
             "timeout": self.timeout,
+            "timeout_connect": self.timeout_connect,
             "http2": self.http2,
             "follow_redirects": self.follow_redirects,
             "verify": self.verify,
@@ -202,7 +208,11 @@ class OpenAIHTTPBackend(Backend):
 
         self._async_client = httpx.AsyncClient(
             http2=self.http2,
-            timeout=self.timeout,
+            timeout=httpx.Timeout(
+                FALLBACK_TIMEOUT,
+                read=self.timeout,
+                connect=self.timeout_connect,
+            ),
             follow_redirects=self.follow_redirects,
             verify=self.verify,
             # Allow unlimited connections

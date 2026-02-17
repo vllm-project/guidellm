@@ -788,6 +788,21 @@ class GenerativeBenchmarkAccumulator(
         description="Running metrics for incomplete requests",
     )
 
+    def model_post_init(self, __context):
+        """
+        Initialize child accumulators with config values after model construction.
+
+        Propagates sample_requests from config to child request accumulators to ensure
+        consistent sampling behavior across completed, errored, and incomplete request
+        collections. This ensures the --sample-requests option functions correctly.
+        """
+        super().model_post_init(__context)
+
+        # Propagate sample_requests from config to child accumulators
+        self.completed.sample_requests = self.config.sample_requests
+        self.errored.sample_requests = self.config.sample_requests
+        self.incomplete.sample_requests = self.config.sample_requests
+
     def update_estimate(
         self,
         response: GenerationResponse | None,
