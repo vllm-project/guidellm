@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
+import torch
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
@@ -84,10 +85,13 @@ class VLLMPythonBackend(Backend):
     """
     Python API backend for VLLM inference engine.
 
-    Directly uses VLLM's AsyncLLMEngine for local async inference. VLLM automatically
-    uses CUDA if available, otherwise falls back to CPU. Handles request/response
-    conversion between GuideLLM schemas and VLLM's native API, with async support for
-    finer token-by-token processing and timings.
+    Directly uses VLLM's AsyncLLMEngine for local async inference. When CUDA is not
+    available and ``device`` is not set in vllm_config, the backend sets
+    ``device="cpu"`` so the engine runs on CPU; otherwise vLLM uses CUDA if
+    available. You can pass ``device`` in vllm_config (e.g. ``"cpu"``, ``"cuda"``)
+    and it is passed through to AsyncEngineArgs. Handles request/response conversion
+    between GuideLLM schemas and VLLM's native API, with async support for finer
+    token-by-token processing and timings.
 
     Engine parameters not set in vllm_config use vLLM's AsyncEngineArgs defaults.
     Example (optional overrides):
@@ -137,11 +141,12 @@ class VLLMPythonBackend(Backend):
         :param model: Model identifier or path for VLLM to load
         :param vllm_config: Optional dict of VLLM AsyncEngineArgs parameters.
             Passed through with no GuideLLM defaults; only model (and optionally
-            chat_template) are set by the backend. Unset parameters use vLLM's
-            defaults. Common options include tensor_parallel_size,
-            gpu_memory_utilization, max_model_len, and any other parameter
-            accepted by vllm.AsyncEngineArgs. VLLM uses CUDA if available, else CPU.
-            The 'device' parameter is not supported and will be ignored.
+            chat_template) are set by the backend. When CUDA is not available and
+            ``device`` is not set here, the backend sets ``device="cpu"``. You can
+            pass ``device`` (e.g. ``"cpu"``, ``"cuda"``) and it is passed through.
+            Unset parameters use vLLM's defaults. Common options include
+            tensor_parallel_size, gpu_memory_utilization, max_model_len, and any
+            other parameter accepted by vllm.AsyncEngineArgs.
         :param request_format: "plain" (no chat template), "default-template"
             (use tokenizer default), or a chat template path / single-line string.
         :param target: Target URL (ignored for VLLM Python backend, runs locally)
@@ -193,6 +198,11 @@ class VLLMPythonBackend(Backend):
             "default-template",
         ):
             config["chat_template"] = self.request_format
+
+        # When CUDA is not available, set device to CPU so vLLM does not rely on
+        # auto-detection (which can yield an empty device_type and raise).
+        if "device" not in config and not torch.cuda.is_available():
+            config["device"] = "cpu"
 
         return config
 
