@@ -45,7 +45,10 @@ class MediaEncoder(DatasetPreprocessor):
 
         return encode_video(*args, **kwargs)
 
-    def __call__(self, columns: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    def __call__(self, items: list[dict[str, list[Any]]]) -> list[dict[str, list[Any]]]:
+        return [self.encode_turn(item) for item in items]
+
+    def encode_turn(self, columns: dict[str, list[Any]]) -> dict[str, list[Any]]:
         if columns.get("audio_column"):
             encoded_audio = []
             for audio in columns["audio_column"]:

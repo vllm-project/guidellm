@@ -1,6 +1,7 @@
+from collections.abc import Iterable
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from guidellm.schemas.request import GenerationRequest, UsageMetrics
+from guidellm.schemas import GenerationRequest, UsageMetrics
 from guidellm.utils.registry import RegistryMixin
 
 DataT_co = TypeVar("DataT_co", covariant=True)
@@ -12,7 +13,7 @@ class DatasetFinalizer(Protocol[DataT_co]):
     Protocol for finalizing dataset rows into a desired data type.
     """
 
-    def __call__(self, item: dict[str, Any]) -> DataT_co: ...
+    def __call__(self, items: list[dict[str, Any]]) -> DataT_co: ...
 
 
 class FinalizerRegistry(RegistryMixin[type[DatasetFinalizer]]):
@@ -20,13 +21,16 @@ class FinalizerRegistry(RegistryMixin[type[DatasetFinalizer]]):
 
 
 @FinalizerRegistry.register("generative")
-class GenerativeRequestFinalizer(DatasetFinalizer[GenerationRequest]):
+class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
     """
     Finalizer that converts dataset rows into GenerationRequest objects,
     aggregating usage metrics from the provided columns.
     """
 
-    def __call__(  # noqa: C901 PLR0912
+    def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
+        return [self.finalize_turn(item) for item in items]
+
+    def finalize_turn(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]
     ) -> GenerationRequest:
         input_metrics = UsageMetrics()

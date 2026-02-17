@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator
 from typing import Generic
 
 from guidellm.benchmark.profiles import Profile
@@ -27,8 +27,8 @@ from guidellm.logger import logger
 from guidellm.scheduler import (
     BackendInterface,
     Constraint,
+    DatasetIterT,
     Environment,
-    MultiTurnRequestT,
     RequestT,
     ResponseT,
     Scheduler,
@@ -58,7 +58,7 @@ class Benchmarker(
         self,
         accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         backend: BackendInterface[RequestT, ResponseT],
         profile: Profile,
         environment: Environment,

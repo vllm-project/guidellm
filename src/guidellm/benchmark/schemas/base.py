@@ -20,7 +20,6 @@ from pydantic import Field, NonNegativeFloat, NonNegativeInt
 
 from guidellm.benchmark.profiles import Profile
 from guidellm.scheduler import (
-    MultiTurnRequestT,
     RequestT,
     ResponseT,
     SchedulerState,
@@ -320,7 +319,7 @@ class BenchmarkAccumulator(StandardBaseDict, ABC, Generic[RequestT, ResponseT]):
     def update_estimate(
         self,
         response: ResponseT | None,
-        request: RequestT | MultiTurnRequestT[RequestT],
+        request: RequestT,
         info: RequestInfo,
         scheduler_state: SchedulerState,
     ):

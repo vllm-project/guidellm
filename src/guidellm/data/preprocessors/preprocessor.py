@@ -11,7 +11,9 @@ __all__ = ["DataDependentPreprocessor", "DatasetPreprocessor", "PreprocessorRegi
 
 @runtime_checkable
 class DatasetPreprocessor(Protocol):
-    def __call__(self, item: dict[str, Any]) -> dict[str, Any]: ...
+    def __init__(self, **kwargs: Any) -> None: ...
+
+    def __call__(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]: ...
 
 
 @runtime_checkable
