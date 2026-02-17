@@ -3,10 +3,18 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from guidellm.benchmark.quality.validators import (
-    EmbeddingsQualityValidator,
-    compute_cosine_similarity,
-)
+from guidellm.benchmark.quality.validators import compute_cosine_similarity
+
+# Check for sentence-transformers availability for quality validator tests
+try:
+    import sentence_transformers  # noqa: F401
+
+    EMBEDDINGS_VALIDATOR_AVAILABLE = True
+except ImportError:
+    EMBEDDINGS_VALIDATOR_AVAILABLE = False
+
+if EMBEDDINGS_VALIDATOR_AVAILABLE:
+    from guidellm.benchmark.quality.validators import EmbeddingsQualityValidator
 
 
 class TestComputeCosineSimilarity:
@@ -78,10 +86,9 @@ class TestComputeCosineSimilarity:
         vec1 = np.array([1.0, 2.0, 3.0])
         vec2 = np.array([0.0, 0.0, 0.0])
 
-        # Zero vector should cause division issues
-        # Implementation should handle this gracefully
-        with pytest.raises((ValueError, ZeroDivisionError, RuntimeWarning)):
-            compute_cosine_similarity(vec1, vec2)
+        # Zero vector should return 0.0 (implementation handles gracefully)
+        similarity = compute_cosine_similarity(vec1, vec2)
+        assert similarity == 0.0
 
     @pytest.mark.regression
     def test_single_dimension_vectors(self):
@@ -104,6 +111,10 @@ class TestComputeCosineSimilarity:
         assert isinstance(similarity, float)
 
 
+@pytest.mark.skipif(
+    not EMBEDDINGS_VALIDATOR_AVAILABLE,
+    reason="EmbeddingsQualityValidator requires sentence-transformers",
+)
 class TestEmbeddingsQualityValidator:
     """Tests for EmbeddingsQualityValidator class."""
 

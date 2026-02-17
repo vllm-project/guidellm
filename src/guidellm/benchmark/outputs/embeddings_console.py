@@ -1,11 +1,11 @@
 """
 Console output formatter for embeddings benchmarker results.
 
-Provides console-based output formatting for embeddings benchmark reports, organizing
-metrics into structured tables that display request statistics, latency measurements,
-throughput data, and optional quality validation metrics (cosine similarity, MTEB scores).
-Simplified compared to generative output since embeddings don't have output tokens or
-streaming behavior.
+Provides console-based output formatting for embeddings benchmark reports,
+organizing metrics into structured tables that display request statistics,
+latency measurements, throughput data, and optional quality validation metrics
+(cosine similarity, MTEB scores). Simplified compared to generative output since
+embeddings don't have output tokens or streaming behavior.
 """
 
 from __future__ import annotations
@@ -27,9 +27,10 @@ class EmbeddingsBenchmarkerConsole(EmbeddingsBenchmarkerOutput):
     """
     Console output formatter for embeddings benchmark reports.
 
-    Renders embeddings benchmark results as formatted tables in the terminal, organizing
-    metrics by category (run summary, request counts, latency, throughput, quality validation)
-    with proper alignment and type-specific formatting for readability.
+    Renders embeddings benchmark results as formatted tables in the terminal,
+    organizing metrics by category (run summary, request counts, latency,
+    throughput, quality validation) with proper alignment and type-specific
+    formatting for readability.
     """
 
     @classmethod

@@ -1,10 +1,11 @@
 """
 HTML output formatter for embeddings benchmark results.
 
-Transforms embeddings benchmark data into interactive web-based reports by building
-UI data structures, converting keys to camelCase for JavaScript compatibility, and
-injecting formatted data into HTML templates. Simplified compared to generative output
-since embeddings don't have output tokens, streaming behavior, or multi-modality support.
+Transforms embeddings benchmark data into interactive web-based reports by
+building UI data structures, converting keys to camelCase for JavaScript
+compatibility, and injecting formatted data into HTML templates. Simplified
+compared to generative output since embeddings don't have output tokens,
+streaming behavior, or multi-modality support.
 """
 
 from __future__ import annotations
@@ -32,12 +33,14 @@ class EmbeddingsBenchmarkerHTML(EmbeddingsBenchmarkerOutput):
     """
     HTML output formatter for embeddings benchmark results.
 
-    Generates interactive HTML reports from embeddings benchmark data by transforming
-    results into camelCase JSON structures and injecting them into HTML templates.
-    The formatter processes benchmark metrics, creates distribution visualizations,
-    and embeds all data into a pre-built HTML template for browser-based display.
+    Generates interactive HTML reports from embeddings benchmark data by
+    transforming results into camelCase JSON structures and injecting them into
+    HTML templates. The formatter processes benchmark metrics, creates
+    distribution visualizations, and embeds all data into a pre-built HTML
+    template for browser-based display.
 
-    :cvar DEFAULT_FILE: Default filename for HTML output when a directory is provided
+    :cvar DEFAULT_FILE: Default filename for HTML output when a directory is
+        provided
     """
 
     DEFAULT_FILE: ClassVar[str] = "embeddings_benchmarks.html"
@@ -141,23 +144,25 @@ class EmbeddingsBenchmarkerHTML(EmbeddingsBenchmarkerOutput):
 
         # Build input text statistics
         input_texts = []
-        for req in first_benchmark.requests.successful[:10]:  # Sample first 10
-            if req.input_metrics.text_tokens:
-                input_texts.append(
-                    {
-                        "tokens": req.input_metrics.text_tokens,
-                        "sample": f"Sample request {req.request_id[:8]}...",
-                    }
-                )
+        if first_benchmark.requests.successful is not None:
+            for req in first_benchmark.requests.successful[:10]:  # Sample first 10
+                if req.input_metrics.text_tokens:
+                    input_texts.append(
+                        {
+                            "tokens": req.input_metrics.text_tokens,
+                            "sample": f"Sample request {req.request_id[:8]}...",
+                        }
+                    )
 
+        successful_count = first_benchmark.metrics.request_totals.successful or 0
+        successful_tokens = first_benchmark.metrics.input_tokens_count.successful or 0
         return {
             "prompts": {
                 "samples": input_texts,
                 "token_statistics": {
                     "mean": (
-                        first_benchmark.metrics.input_tokens_count.successful
-                        / first_benchmark.metrics.request_totals.successful
-                        if first_benchmark.metrics.request_totals.successful > 0
+                        successful_tokens / successful_count
+                        if successful_count > 0
                         else 0
                     ),
                 },
@@ -183,12 +188,24 @@ class EmbeddingsBenchmarkerHTML(EmbeddingsBenchmarkerOutput):
         section: dict[str, Any] = {}
 
         # Cosine similarity distribution
-        if quality.baseline_cosine_similarity and quality.baseline_cosine_similarity.successful:
+        if (
+            quality.baseline_cosine_similarity
+            and quality.baseline_cosine_similarity.successful
+        ):
             section["cosine_similarity"] = {
-                "mean": quality.baseline_cosine_similarity.successful.mean,
-                "median": quality.baseline_cosine_similarity.successful.median,
-                "std_dev": quality.baseline_cosine_similarity.successful.std_dev,
-                "p95": quality.baseline_cosine_similarity.successful.percentiles.p95,
+                "mean": (
+                    quality.baseline_cosine_similarity.successful.mean
+                ),
+                "median": (
+                    quality.baseline_cosine_similarity.successful.median
+                ),
+                "std_dev": (
+                    quality.baseline_cosine_similarity.successful.std_dev
+                ),
+                "p95": (
+                    quality.baseline_cosine_similarity.successful
+                    .percentiles.p95
+                ),
             }
 
         # MTEB scores
@@ -245,16 +262,20 @@ class EmbeddingsBenchmarkerHTML(EmbeddingsBenchmarkerOutput):
                     ),
                 },
                 # Quality metrics (if available)
-                "quality": self._build_quality_data(benchmark)
-                if metrics.quality
-                else None,
+                "quality": (
+                    self._build_quality_data(benchmark)
+                    if metrics.quality
+                    else None
+                ),
             }
 
             results.append(benchmark_data)
 
         return results
 
-    def _build_quality_data(self, benchmark: EmbeddingsBenchmark) -> dict[str, Any] | None:
+    def _build_quality_data(
+        self, benchmark: EmbeddingsBenchmark
+    ) -> dict[str, Any] | None:
         """
         Build quality metrics data.
 
@@ -267,7 +288,10 @@ class EmbeddingsBenchmarkerHTML(EmbeddingsBenchmarkerOutput):
         quality = benchmark.metrics.quality
         data: dict[str, Any] = {}
 
-        if quality.baseline_cosine_similarity and quality.baseline_cosine_similarity.successful:
+        if (
+            quality.baseline_cosine_similarity
+            and quality.baseline_cosine_similarity.successful
+        ):
             data["cosine_similarity"] = self._distribution_to_dict(
                 quality.baseline_cosine_similarity.successful
             )
@@ -292,7 +316,8 @@ class EmbeddingsBenchmarkerHTML(EmbeddingsBenchmarkerOutput):
         Convert distribution summary to dictionary.
 
         :param dist: Distribution summary object
-        :return: Dictionary with mean, median, std_dev, and percentiles
+        :return: Dictionary with mean, median, std_dev, and
+            percentiles
         """
         if dist is None:
             return {
@@ -308,7 +333,15 @@ class EmbeddingsBenchmarkerHTML(EmbeddingsBenchmarkerOutput):
             "mean": dist.mean,
             "median": dist.median,
             "std_dev": dist.std_dev,
-            "p50": dist.percentiles.p50 if hasattr(dist, "percentiles") else dist.median,
-            "p95": dist.percentiles.p95 if hasattr(dist, "percentiles") else None,
-            "p99": dist.percentiles.p99 if hasattr(dist, "percentiles") else None,
+            "p50": (
+                dist.percentiles.p50
+                if hasattr(dist, "percentiles")
+                else dist.median
+            ),
+            "p95": (
+                dist.percentiles.p95 if hasattr(dist, "percentiles") else None
+            ),
+            "p99": (
+                dist.percentiles.p99 if hasattr(dist, "percentiles") else None
+            ),
         }

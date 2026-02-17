@@ -621,7 +621,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         """
         metrics = benchmark.scheduler_metrics
 
-        requests_made_fields: list[tuple[str, int]] = [
+        requests_made_fields: list[tuple[str, int | None]] = [
             ("Requests Made Successful", metrics.requests_made.successful),
             ("Requests Made Incomplete", metrics.requests_made.incomplete),
             ("Requests Made Errored", metrics.requests_made.errored),

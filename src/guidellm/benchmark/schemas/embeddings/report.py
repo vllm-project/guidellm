@@ -90,8 +90,10 @@ class EmbeddingsBenchmarksReport(StandardBaseModel):
         """
         Save report to file in JSON or YAML format.
 
-        :param path: File path or directory for saving, defaults to current directory
-        :param type_: File format override ('json' or 'yaml'), auto-detected from extension
+        :param path: File path or directory for saving, defaults to current
+            directory
+        :param type_: File format override ('json' or 'yaml'), auto-detected
+            from extension
         :return: Resolved path to the saved file
         :raises ValueError: If file type is unsupported or cannot be determined
         """

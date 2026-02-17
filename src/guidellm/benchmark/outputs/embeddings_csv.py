@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Annotated, Any, ClassVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 from pydantic import Field
+
+if TYPE_CHECKING:
+    from _csv import _writer
 
 from guidellm.benchmark.outputs.output import EmbeddingsBenchmarkerOutput
 from guidellm.benchmark.schemas.embeddings import (
@@ -35,11 +38,12 @@ class EmbeddingsBenchmarkerCSV(EmbeddingsBenchmarkerOutput):
     """
     CSV output formatter for embeddings benchmark results.
 
-    Exports comprehensive embeddings benchmark data to CSV format with multi-row headers
-    organizing metrics into categories including run information, timing, request counts,
-    latency, throughput, input token data, quality validation metrics, and scheduler state.
-    Each benchmark run becomes a row with statistical distributions represented as mean,
-    median, standard deviation, and percentiles.
+    Exports comprehensive embeddings benchmark data to CSV format with
+    multi-row headers organizing metrics into categories including run
+    information, timing, request counts, latency, throughput, input token
+    data, quality validation metrics, and scheduler state. Each benchmark run
+    becomes a row with statistical distributions represented as mean, median,
+    standard deviation, and percentiles.
 
     :cvar DEFAULT_FILE: Default filename for CSV output
     """
@@ -66,7 +70,10 @@ class EmbeddingsBenchmarkerCSV(EmbeddingsBenchmarkerOutput):
 
     output_path: Path = Field(
         default_factory=lambda: Path.cwd(),
-        description="Path where the CSV file will be saved, defaults to current directory",
+        description=(
+            "Path where the CSV file will be saved, defaults to current "
+            "directory"
+        ),
     )
 
     async def finalize(self, report: EmbeddingsBenchmarksReport) -> Path:
@@ -103,8 +110,12 @@ class EmbeddingsBenchmarkerCSV(EmbeddingsBenchmarkerOutput):
                 self._add_input_token_metrics(
                     benchmark, benchmark_headers, benchmark_values
                 )
-                self._add_quality_metrics(benchmark, benchmark_headers, benchmark_values)
-                self._add_scheduler_info(benchmark, benchmark_headers, benchmark_values)
+                self._add_quality_metrics(
+                    benchmark, benchmark_headers, benchmark_values
+                )
+                self._add_scheduler_info(
+                    benchmark, benchmark_headers, benchmark_values
+                )
                 self._add_runtime_info(report, benchmark_headers, benchmark_values)
 
                 if not headers:
@@ -118,7 +129,7 @@ class EmbeddingsBenchmarkerCSV(EmbeddingsBenchmarkerOutput):
         return output_path
 
     def _write_multirow_header(
-        self, writer: csv.writer, headers: list[list[str]]
+        self, writer: _writer, headers: list[list[str]]
     ) -> None:
         """
         Write multi-row header to CSV file.
@@ -133,7 +144,7 @@ class EmbeddingsBenchmarkerCSV(EmbeddingsBenchmarkerOutput):
             return
 
         num_rows = max(len(header) for header in headers)
-        header_rows = [[] for _ in range(num_rows)]
+        header_rows: list[list[str]] = [[] for _ in range(num_rows)]
 
         for header in headers:
             for i in range(num_rows):
@@ -150,11 +161,19 @@ class EmbeddingsBenchmarkerCSV(EmbeddingsBenchmarkerOutput):
     ) -> None:
         """Add run identification information."""
         headers.append(["Run Info", "Model", ""])
-        model = benchmark.config.requests.get("model", "N/A") if isinstance(benchmark.config.requests, dict) else "N/A"
+        model = (
+            benchmark.config.requests.get("model", "N/A")
+            if isinstance(benchmark.config.requests, dict)
+            else "N/A"
+        )
         values.append(model)
 
         headers.append(["Run Info", "Backend", ""])
-        backend = benchmark.config.backend.get("type", "N/A") if isinstance(benchmark.config.backend, dict) else "N/A"
+        backend = (
+            benchmark.config.backend.get("type", "N/A")
+            if isinstance(benchmark.config.backend, dict)
+            else "N/A"
+        )
         values.append(backend)
 
     def _add_benchmark_info(

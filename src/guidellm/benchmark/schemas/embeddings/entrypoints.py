@@ -305,7 +305,7 @@ class BenchmarkEmbeddingsArgs(StandardBaseModel):
         """Serialize processor to string representation."""
         if value is None:
             return None
-        if isinstance(value, (str, Path)):
+        if isinstance(value, str | Path):
             return str(value)
         # For PreTrainedTokenizer instances, return name_or_path
         return getattr(value, "name_or_path", str(value))

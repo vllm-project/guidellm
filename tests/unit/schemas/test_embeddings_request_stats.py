@@ -113,11 +113,19 @@ class TestEmbeddingsRequestStats:
         )
 
         # Compute expected properties
-        expected_latency = request_end - request_start if request_start is not None else None
+        expected_latency = (
+            request_end - request_start
+            if request_start is not None
+            else None
+        )
 
         expected: dict[str, Any] = {
-            "request_start_time": request_start if request_start is not None else resolve_end,
-            "request_end_time": request_end if request_end is not None else resolve_end,
+            "request_start_time": (
+                request_start if request_start is not None else resolve_end
+            ),
+            "request_end_time": (
+                request_end if request_end is not None else resolve_end
+            ),
             "request_latency": expected_latency,
             "prompt_tokens": prompt_tokens,
             "cosine_similarity": cosine_similarity,

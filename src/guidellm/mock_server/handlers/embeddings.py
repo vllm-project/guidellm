@@ -97,7 +97,9 @@ class EmbeddingsHandler:
         inputs = [req.input] if isinstance(req.input, str) else req.input
 
         # Determine embedding dimensions
-        dimensions = req.dimensions if req.dimensions is not None else 384  # Default dim
+        dimensions = (
+            req.dimensions if req.dimensions is not None else 384
+        )  # Default dim
 
         # Validate encoding format
         encoding_format = req.encoding_format or "float"
@@ -105,7 +107,10 @@ class EmbeddingsHandler:
             return response.json(
                 ErrorResponse(
                     error=ErrorDetail(
-                        message=f"Invalid encoding_format: {encoding_format}. Must be 'float' or 'base64'",
+                        message=(
+                            f"Invalid encoding_format: {encoding_format}. "
+                            "Must be 'float' or 'base64'"
+                        ),
                         type="invalid_request_error",
                         code="invalid_encoding_format",
                     )
@@ -138,11 +143,12 @@ class EmbeddingsHandler:
 
         # Generate embeddings for each input
         embeddings_data = []
-        for index, text in enumerate(inputs):
+        for index, _text in enumerate(inputs):
             # Generate synthetic normalized embedding
             embedding_vector = self._generate_embedding(dimensions)
 
             # Encode based on requested format
+            embedding_encoded: list[float] | str
             if encoding_format == "base64":
                 embedding_encoded = self._encode_to_base64(embedding_vector)
             else:
@@ -220,9 +226,7 @@ class EmbeddingsHandler:
         bytes_data = struct.pack(f"{len(embedding)}f", *embedding)
 
         # Encode as base64
-        encoded = base64.b64encode(bytes_data).decode("utf-8")
-
-        return encoded
+        return base64.b64encode(bytes_data).decode("utf-8")
 
     @staticmethod
     def decode_from_base64(encoded: str, dimensions: int) -> list[float]:
@@ -246,6 +250,4 @@ class EmbeddingsHandler:
         bytes_data = base64.b64decode(encoded)
 
         # Unpack floats
-        embedding = list(struct.unpack(f"{dimensions}f", bytes_data))
-
-        return embedding
+        return list(struct.unpack(f"{dimensions}f", bytes_data))

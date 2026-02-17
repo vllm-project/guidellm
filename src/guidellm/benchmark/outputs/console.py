@@ -265,19 +265,31 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 (benchmark.metrics.output_token_count, "Output Tokens"),
             ]:
                 columns.add_value(
-                    token_metrics.successful.total_sum,
+                    (
+                        token_metrics.successful.total_sum
+                        if token_metrics.successful is not None
+                        else 0.0
+                    ),
                     group=group,
                     name="Comp",
                     units="Tot",
                 )
                 columns.add_value(
-                    token_metrics.incomplete.total_sum,
+                    (
+                        token_metrics.incomplete.total_sum
+                        if token_metrics.incomplete is not None
+                        else 0.0
+                    ),
                     group=group,
                     name="Inc",
                     units="Tot",
                 )
                 columns.add_value(
-                    token_metrics.errored.total_sum,
+                    (
+                        token_metrics.errored.total_sum
+                        if token_metrics.errored is not None
+                        else 0.0
+                    ),
                     group=group,
                     name="Err",
                     units="Tot",

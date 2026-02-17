@@ -61,7 +61,8 @@ class EmbeddingsBenchmarkerSerialized(EmbeddingsBenchmarkerOutput):
 
     async def finalize(self, report: EmbeddingsBenchmarksReport) -> Path:
         """
-        Serialize and save the embeddings benchmark report to the configured output path.
+        Serialize and save the embeddings benchmark report to the configured
+        output path.
 
         :param report: The embeddings benchmarks report to serialize
         :return: Path to the saved report file

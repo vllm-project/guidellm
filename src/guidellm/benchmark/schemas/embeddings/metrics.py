@@ -115,24 +115,32 @@ class SchedulerMetrics(StandardBaseDict):
         num_requests = accumulator.scheduler_metrics.requests_made.total
 
         # Avoid division by zero - use -1.0 to indicate no requests processed
-        if num_requests == 0:
+        if num_requests is None or num_requests == 0:
             queued_time_avg = -1.0
             resolve_start_delay_avg = -1.0
             resolve_targeted_start_delay_avg = -1.0
             request_start_delay_avg = -1.0
             resolve_time_avg = -1.0
         else:
-            queued_time_avg = accumulator.scheduler_metrics.queued_time_sum / num_requests
+            queued_time_avg = (
+                accumulator.scheduler_metrics.queued_time_sum / num_requests
+            )
             resolve_start_delay_avg = (
-                accumulator.scheduler_metrics.resolve_start_delay_sum / num_requests
+                accumulator.scheduler_metrics.resolve_start_delay_sum
+                / num_requests
             )
             resolve_targeted_start_delay_avg = (
-                accumulator.scheduler_metrics.resolve_targeted_start_delay_sum / num_requests
+                accumulator.scheduler_metrics
+                .resolve_targeted_start_delay_sum
+                / num_requests
             )
             request_start_delay_avg = (
-                accumulator.scheduler_metrics.request_start_delay_sum / num_requests
+                accumulator.scheduler_metrics.request_start_delay_sum
+                / num_requests
             )
-            resolve_time_avg = accumulator.scheduler_metrics.resolve_time_sum / num_requests
+            resolve_time_avg = (
+                accumulator.scheduler_metrics.resolve_time_sum / num_requests
+            )
 
         return SchedulerMetrics(
             start_time=scheduler_state.start_time,
@@ -192,10 +200,14 @@ class EmbeddingsMetrics(StandardBaseDict):
         description="Total requests by status: successful, incomplete, errored, total"
     )
     requests_per_second: StatusDistributionSummary = Field(
-        description="Requests per second distribution across measurement period"
+        description=(
+            "Requests per second distribution across measurement period"
+        )
     )
     request_concurrency: StatusDistributionSummary = Field(
-        description="Concurrent requests distribution throughout execution"
+        description=(
+            "Concurrent requests distribution throughout execution"
+        )
     )
     request_latency: StatusDistributionSummary = Field(
         description="Request latency distribution (seconds)"
@@ -203,7 +215,10 @@ class EmbeddingsMetrics(StandardBaseDict):
 
     # Input token metrics (no output tokens for embeddings)
     input_tokens_count: StatusBreakdown[int, int, int, int] = Field(
-        description="Total input tokens by status: successful, incomplete, errored, total"
+        description=(
+            "Total input tokens by status: successful, incomplete, "
+            "errored, total"
+        )
     )
     input_tokens_per_second: StatusDistributionSummary = Field(
         description="Input tokens per second distribution"
@@ -238,14 +253,17 @@ class EmbeddingsMetrics(StandardBaseDict):
     # Encoding format breakdown
     encoding_format_breakdown: dict[str, int] = Field(
         default_factory=dict,
-        description="Request count by encoding format (e.g., {'float': 50, 'base64': 0})",
+        description=(
+            "Request count by encoding format (e.g., "
+            "{'float': 50, 'base64': 0})"
+        ),
     )
 
     @classmethod
     def compile(
         cls,
         accumulator: EmbeddingsBenchmarkAccumulator,
-        scheduler_state: SchedulerState,
+        _scheduler_state: SchedulerState,
     ) -> EmbeddingsMetrics:
         """
         Compile final embeddings metrics from accumulated execution state.
@@ -277,14 +295,15 @@ class EmbeddingsMetrics(StandardBaseDict):
                 for req in accumulator.requests.incomplete
             ),
             errored=sum(
-                req.input_metrics.total_tokens or 0 for req in accumulator.requests.errored
+                req.input_metrics.total_tokens or 0
+                for req in accumulator.requests.errored
             ),
             total=0,  # Will be computed
         )
         input_tokens_count.total = (
-            input_tokens_count.successful
-            + input_tokens_count.incomplete
-            + input_tokens_count.errored
+            (input_tokens_count.successful or 0)
+            + (input_tokens_count.incomplete or 0)
+            + (input_tokens_count.errored or 0)
         )
 
         # Compile distribution metrics from request statistics
@@ -312,35 +331,61 @@ class EmbeddingsMetrics(StandardBaseDict):
             ]
 
         # Compile distribution summaries
-        requests_per_second = StatusDistributionSummary.rate_distribution_from_timings_function(
-            function=lambda req: req.request_end_time,
-            successful=successful,
-            incomplete=incomplete,
-            errored=errored,
-            start_time=start_time,
-            end_time=end_time,
+        requests_per_second = (
+            StatusDistributionSummary
+            .rate_distribution_from_timings_function(
+                function=lambda req: req.request_end_time,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
+            )
         )
 
-        request_concurrency = StatusDistributionSummary.concurrency_distribution_from_timings_function(
-            function=lambda req: (req.request_start_time, req.request_end_time),
-            successful=successful,
-            incomplete=incomplete,
-            errored=errored,
-            start_time=start_time,
-            end_time=end_time,
+        request_concurrency = (
+            StatusDistributionSummary
+            .concurrency_distribution_from_timings_function(
+                function=lambda req: (
+                    (req.request_start_time, req.request_end_time)
+                    if req.request_start_time is not None
+                    and req.request_end_time is not None
+                    else None
+                ),
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
+            )
         )
 
         request_latency = StatusDistributionSummary.from_values(
-            successful=[req.request_latency for req in successful if req.request_latency is not None],
-            incomplete=[req.request_latency for req in incomplete if req.request_latency is not None],
-            errored=[req.request_latency for req in errored if req.request_latency is not None],
+            successful=[
+                req.request_latency
+                for req in successful
+                if req.request_latency is not None
+            ],
+            incomplete=[
+                req.request_latency
+                for req in incomplete
+                if req.request_latency is not None
+            ],
+            errored=[
+                req.request_latency
+                for req in errored
+                if req.request_latency is not None
+            ],
         )
 
-        input_tokens_per_second = StatusDistributionSummary.rate_distribution_from_timings_function(
-            function=lambda req: req.input_tokens_timing,
-            successful=successful,
-            incomplete=incomplete,
-            errored=errored,
+        input_tokens_per_second = (
+            StatusDistributionSummary
+            .rate_distribution_from_timings_function(
+                function=lambda req: req.input_tokens_timing,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
         )
 
         # Compile quality metrics if available

@@ -10,6 +10,7 @@ include = ["*"]
 [tool.setuptools.package-data]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
+"guidellm.benchmark.outputs.html_outputs" = ["*.html"]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

@@ -5,11 +5,11 @@ import struct
 
 import pytest
 
+from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.handlers.embeddings import EmbeddingsHandler
 from guidellm.mock_server.models import (
     EmbeddingsRequest,
     EmbeddingsResponse,
-    MockServerConfig,
 )
 
 
@@ -119,7 +119,7 @@ class TestEmbeddingsHandler:
         try:
             decoded_bytes = base64.b64decode(embedding)
             assert len(decoded_bytes) > 0
-        except Exception:
+        except Exception:  # noqa: BLE001
             pytest.fail("Invalid base64 encoding")
 
     @pytest.mark.regression

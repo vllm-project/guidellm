@@ -1,9 +1,10 @@
 """
 Quality validation for embeddings benchmarks.
 
-Provides tools for validating embedding quality through cosine similarity comparison
-against baseline models. Supports HuggingFace SentenceTransformers models as baselines
-and implements tolerance-based validation following vLLM patterns (1e-2 standard, 5e-4 MTEB).
+Provides tools for validating embedding quality through cosine similarity
+comparison against baseline models. Supports HuggingFace SentenceTransformers
+models as baselines and implements tolerance-based validation following vLLM
+patterns (1e-2 standard, 5e-4 MTEB).
 """
 
 from __future__ import annotations
@@ -111,7 +112,8 @@ class EmbeddingsQualityValidator:
             (e.g., "sentence-transformers/all-MiniLM-L6-v2")
         :param tolerance: Cosine similarity tolerance threshold
             (1e-2 for standard, 5e-4 for MTEB-level validation)
-        :param device: Device for model inference ("cpu", "cuda", "mps", or None for auto)
+        :param device: Device for model inference ("cpu", "cuda", "mps", or
+            None for auto)
         :raises ImportError: If sentence-transformers is not installed
         """
         try:
@@ -225,7 +227,9 @@ class EmbeddingsQualityValidator:
 
         # Compute similarities
         similarities = []
-        for baseline_emb, target_emb in zip(baseline_embeddings, target_array, strict=False):
+        for baseline_emb, target_emb in zip(
+            baseline_embeddings, target_array, strict=False
+        ):
             sim = compute_cosine_similarity(baseline_emb, target_emb)
             similarities.append(sim)
 
@@ -248,7 +252,7 @@ class EmbeddingsQualityValidator:
 
     def check_self_consistency(
         self,
-        text: str,
+        _text: str,
         embeddings: list[NDArray[np.float32] | list[float]],
         tolerance: float | None = None,
     ) -> tuple[float, bool]:
@@ -270,7 +274,7 @@ class EmbeddingsQualityValidator:
             mean_sim, is_consistent = validator.check_self_consistency(text, embeddings)
             # Should be near 1.0 for deterministic models
         """
-        if len(embeddings) < 2:
+        if len(embeddings) < 2:  # noqa: PLR2004
             # Need at least 2 embeddings to compare
             return 1.0, True
 

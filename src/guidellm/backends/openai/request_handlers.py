@@ -733,8 +733,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         :param response: Raw API response data
         :return: GenerationResponse with embeddings data
         """
-        # Extract embeddings data
-        embeddings_data = response.get("data", [])
+        # Extract usage data
         usage = response.get("usage", {})
 
         # Build response (no text output for embeddings)

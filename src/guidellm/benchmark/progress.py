@@ -654,9 +654,21 @@ class _GenerativeProgressTaskState:
             errored_requests=benchmark.metrics.request_totals.errored,
         )
         self._update_request_stats(
-            request_concurrency=benchmark.metrics.request_concurrency.successful.mean,
-            requests_per_second=benchmark.metrics.requests_per_second.successful.mean,
-            request_latency=benchmark.metrics.request_latency.successful.mean,
+            request_concurrency=(
+                benchmark.metrics.request_concurrency.successful.mean
+                if benchmark.metrics.request_concurrency.successful is not None
+                else 0.0
+            ),
+            requests_per_second=(
+                benchmark.metrics.requests_per_second.successful.mean
+                if benchmark.metrics.requests_per_second.successful is not None
+                else 0.0
+            ),
+            request_latency=(
+                benchmark.metrics.request_latency.successful.mean
+                if benchmark.metrics.request_latency.successful is not None
+                else 0.0
+            ),
         )
 
         # Handle token stats differently for embeddings vs generative benchmarks
@@ -664,15 +676,27 @@ class _GenerativeProgressTaskState:
             # Mark as embeddings benchmark
             self.is_embeddings = True
             # For embeddings: output_token_count is StatusBreakdown[int] not stats
+            # Get successful token count
+            prompt_tokens: int
+            if hasattr(benchmark.metrics, "input_tokens_count"):
+                prompt_tokens = benchmark.metrics.input_tokens_count.successful or 0
+            else:
+                prompt_tokens = (
+                    benchmark.metrics.prompt_token_count.successful
+                    if benchmark.metrics.prompt_token_count is not None
+                    and benchmark.metrics.prompt_token_count.successful is not None
+                    else 0
+                )
+
             self._update_token_stats(
                 output_tokens=0.0,  # Embeddings have no output tokens
                 output_tokens_rate=0.0,
-                prompt_tokens=(
-                    benchmark.metrics.input_tokens_count.successful
-                    if hasattr(benchmark.metrics, "input_tokens_count")
-                    else benchmark.metrics.prompt_token_count.successful
+                prompt_tokens=prompt_tokens,
+                total_tokens_rate=(
+                    benchmark.metrics.input_tokens_per_second.successful.mean
+                    if benchmark.metrics.input_tokens_per_second.successful is not None
+                    else 0.0
                 ),
-                total_tokens_rate=benchmark.metrics.input_tokens_per_second.successful.mean,
                 time_to_first_token=0.0,  # No TTFT for embeddings
                 inter_token_latency=0.0,  # No ITL for embeddings
                 converted=True,
@@ -680,15 +704,35 @@ class _GenerativeProgressTaskState:
         else:
             # For generative: output_token_count is StatusDistributionSummary
             self._update_token_stats(
-                output_tokens=benchmark.metrics.output_token_count.successful.mean,
-                output_tokens_rate=benchmark.metrics.output_tokens_per_second.successful.mean,
-                prompt_tokens=benchmark.metrics.prompt_token_count.successful.mean,
-                total_tokens_rate=benchmark.metrics.tokens_per_second.successful.mean,
+                output_tokens=(
+                    benchmark.metrics.output_token_count.successful.mean
+                    if benchmark.metrics.output_token_count.successful is not None
+                    else 0.0
+                ),
+                output_tokens_rate=(
+                    benchmark.metrics.output_tokens_per_second.successful.mean
+                    if benchmark.metrics.output_tokens_per_second.successful is not None
+                    else 0.0
+                ),
+                prompt_tokens=(
+                    benchmark.metrics.prompt_token_count.successful.mean
+                    if benchmark.metrics.prompt_token_count.successful is not None
+                    else 0.0
+                ),
+                total_tokens_rate=(
+                    benchmark.metrics.tokens_per_second.successful.mean
+                    if benchmark.metrics.tokens_per_second.successful is not None
+                    else 0.0
+                ),
                 time_to_first_token=(
                     benchmark.metrics.time_to_first_token_ms.successful.mean
+                    if benchmark.metrics.time_to_first_token_ms.successful is not None
+                    else 0.0
                 ),
                 inter_token_latency=(
                     benchmark.metrics.inter_token_latency_ms.successful.mean
+                    if benchmark.metrics.inter_token_latency_ms.successful is not None
+                    else 0.0
                 ),
                 converted=True,
             )

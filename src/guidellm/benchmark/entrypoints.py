@@ -236,7 +236,7 @@ async def resolve_request_loader(
     data_column_mapper: (
         DatasetPreprocessor
         | dict[str, str | list[str]]
-        | Literal["generative_column_mapper"]
+        | Literal["generative_column_mapper", "embeddings_column_mapper"]
     ),
     data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
     data_preprocessors_kwargs: dict[str, Any],

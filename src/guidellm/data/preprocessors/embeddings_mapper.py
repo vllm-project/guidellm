@@ -105,7 +105,8 @@ class EmbeddingsColumnMapper(DataDependentPreprocessor):
 
         :param datasets: List of datasets to map
         :param input_mappings: User-specified mappings
-        :return: Validated mappings of column types to (dataset_index, column_name) tuples
+        :return: Validated mappings of column types to (dataset_index,
+            column_name) tuples
         """
         mappings: dict[str, list[tuple[int, str]]] = defaultdict(list)
 

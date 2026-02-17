@@ -129,10 +129,14 @@ def sample_benchmark() -> EmbeddingsBenchmark:
             successful=10, incomplete=0, errored=0, total=10
         ),
         requests_per_second=StatusDistributionSummary(
-            successful=create_distribution_summary(mean=20.0, count=10, total_sum=200.0),
+            successful=create_distribution_summary(
+                mean=20.0, count=10, total_sum=200.0
+            ),
             errored=None,
             incomplete=None,
-            total=create_distribution_summary(mean=20.0, count=10, total_sum=200.0),
+            total=create_distribution_summary(
+                mean=20.0, count=10, total_sum=200.0
+            ),
         ),
         request_concurrency=StatusDistributionSummary(
             successful=create_distribution_summary(mean=2.0, count=10, total_sum=20.0),
@@ -262,15 +266,17 @@ class TestEmbeddingsBenchmarkerSerialized:
         """Test validated_kwargs normalizes paths correctly."""
         # Test with string path
         kwargs = EmbeddingsBenchmarkerSerialized.validated_kwargs(
-            output_path="/tmp/test.json"
+            output_path="/tmp/test.json"  # noqa: S108
         )
         assert "output_path" in kwargs
         assert isinstance(kwargs["output_path"], Path)
-        assert str(kwargs["output_path"]) == "/tmp/test.json"
+        assert str(kwargs["output_path"]) == "/tmp/test.json"  # noqa: S108
 
         # Test with Path object
-        path_obj = Path("/tmp/test.json")
-        kwargs = EmbeddingsBenchmarkerSerialized.validated_kwargs(output_path=path_obj)
+        path_obj = Path("/tmp/test.json")  # noqa: S108
+        kwargs = EmbeddingsBenchmarkerSerialized.validated_kwargs(
+            output_path=path_obj
+        )
         assert kwargs["output_path"] == path_obj
 
         # Test with None
@@ -513,7 +519,10 @@ class TestEmbeddingsBenchmarkerHTML:
 
         # Check for embedded data and embeddings-specific content
         assert "uiApiData" in html_content
-        assert "embeddings" in html_content.lower() or "embedding" in html_content.lower()
+        assert (
+            "embeddings" in html_content.lower()
+            or "embedding" in html_content.lower()
+        )
 
     @pytest.mark.sanity
     @pytest.mark.asyncio

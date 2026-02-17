@@ -187,7 +187,8 @@ class TestBenchmarkEmbeddingsArgs:
 
     @pytest.mark.regression
     def test_mteb_tasks_default_none(self):
-        """Test MTEB tasks default to None (will use DEFAULT_MTEB_TASKS in validator)."""
+        """Test MTEB tasks default to None (will use DEFAULT_MTEB_TASKS in
+        validator)."""
         args = BenchmarkEmbeddingsArgs(
             target="http://localhost:8000",
             enable_mteb=True,

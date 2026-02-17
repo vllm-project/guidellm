@@ -52,23 +52,27 @@ class TestEmbeddingsBenchmarkAccumulator:
     @pytest.mark.smoke
     def test_class_signatures(self):
         """Validate public surface and key properties."""
-        # Check that class has expected attributes (will be set during init with config)
+        # Check that class has expected attributes (will be set during init
+        # with config)
         assert hasattr(EmbeddingsBenchmarkAccumulator, "model_fields")
         assert "quality" in EmbeddingsBenchmarkAccumulator.model_fields
-        assert "encoding_format_breakdown" in EmbeddingsBenchmarkAccumulator.model_fields
+        assert (
+            "encoding_format_breakdown"
+            in EmbeddingsBenchmarkAccumulator.model_fields
+        )
 
     @pytest.mark.smoke
     def test_initialization(self):
         """Test accumulator has proper default fields."""
-        # EmbeddingsBenchmarkAccumulator requires a BenchmarkConfig for full instantiation
-        # but we can test that the class has the expected fields
+        # EmbeddingsBenchmarkAccumulator requires a BenchmarkConfig for full
+        # instantiation but we can test that the class has expected fields
         fields = EmbeddingsBenchmarkAccumulator.model_fields
 
         assert "quality_enabled" in fields
         assert "quality" in fields
         assert "encoding_format_breakdown" in fields
         assert "timings" in fields
-        assert "scheduler" in fields
+        assert "scheduler_metrics" in fields
         assert "metrics" in fields
         assert "requests" in fields
 
@@ -102,7 +106,7 @@ class TestEmbeddingsBenchmarkAccumulator:
 
         # Check fields with default factories
         assert "timings" in fields
-        assert "scheduler" in fields
+        assert "scheduler_metrics" in fields
         assert "metrics" in fields
         assert "requests" in fields
 

@@ -281,7 +281,9 @@ def assert_embeddings_request_fields(requests: list) -> None:
 
 @pytest.mark.timeout(30)
 @pytest.mark.sanity
-def test_basic_embeddings_benchmark(embeddings_server: EmbeddingsMockServer, tmp_path: Path):
+def test_basic_embeddings_benchmark(
+    embeddings_server: EmbeddingsMockServer, tmp_path: Path
+):
     """Test basic embeddings benchmark execution."""
     report_name = "basic_embeddings.json"
     report_path = tmp_path / report_name
@@ -293,7 +295,7 @@ def test_basic_embeddings_benchmark(embeddings_server: EmbeddingsMockServer, tmp
     )
 
     client.start_benchmark(
-        data="Test embeddings benchmark",
+        data=["Test embeddings benchmark"],
         max_requests=10,
         processor="gpt2",
     )
@@ -328,7 +330,9 @@ def test_basic_embeddings_benchmark(embeddings_server: EmbeddingsMockServer, tmp
 
 @pytest.mark.timeout(30)
 @pytest.mark.sanity
-def test_embeddings_float_encoding(embeddings_server: EmbeddingsMockServer, tmp_path: Path):
+def test_embeddings_float_encoding(
+    embeddings_server: EmbeddingsMockServer, tmp_path: Path
+):
     """Test embeddings benchmark with float encoding format."""
     report_name = "float_encoding_embeddings.json"
     report_path = tmp_path / report_name
@@ -340,7 +344,7 @@ def test_embeddings_float_encoding(embeddings_server: EmbeddingsMockServer, tmp_
     )
 
     client.start_benchmark(
-        data="Test float encoding",
+        data=["Test float encoding"],
         max_requests=5,
         encoding_format="float",
         processor="gpt2",
@@ -365,7 +369,9 @@ def test_embeddings_float_encoding(embeddings_server: EmbeddingsMockServer, tmp_
 
 @pytest.mark.timeout(30)
 @pytest.mark.sanity
-def test_embeddings_base64_encoding(embeddings_server: EmbeddingsMockServer, tmp_path: Path):
+def test_embeddings_base64_encoding(
+    embeddings_server: EmbeddingsMockServer, tmp_path: Path
+):
     """Test embeddings benchmark with base64 encoding format."""
     report_name = "base64_encoding_embeddings.json"
     report_path = tmp_path / report_name
@@ -377,7 +383,7 @@ def test_embeddings_base64_encoding(embeddings_server: EmbeddingsMockServer, tmp
     )
 
     client.start_benchmark(
-        data="Test base64 encoding",
+        data=["Test base64 encoding"],
         max_requests=5,
         encoding_format="base64",
         processor="gpt2",
@@ -402,10 +408,10 @@ def test_embeddings_base64_encoding(embeddings_server: EmbeddingsMockServer, tmp
 
 @pytest.mark.timeout(60)
 @pytest.mark.sanity
-def test_embeddings_csv_output(embeddings_server: EmbeddingsMockServer, tmp_path: Path):
+def test_embeddings_csv_output(
+    embeddings_server: EmbeddingsMockServer, tmp_path: Path
+):
     """Test embeddings benchmark CSV output generation."""
-    report_name = "embeddings_csv_test"
-
     client = EmbeddingsClient(
         target=embeddings_server.get_url(),
         output_dir=tmp_path,
@@ -413,7 +419,7 @@ def test_embeddings_csv_output(embeddings_server: EmbeddingsMockServer, tmp_path
     )
 
     client.start_benchmark(
-        data="Test CSV output",
+        data=["Test CSV output"],
         max_requests=5,
         processor="gpt2",
     )
@@ -437,7 +443,9 @@ def test_embeddings_csv_output(embeddings_server: EmbeddingsMockServer, tmp_path
 
 @pytest.mark.timeout(60)
 @pytest.mark.sanity
-def test_embeddings_html_output(embeddings_server: EmbeddingsMockServer, tmp_path: Path):
+def test_embeddings_html_output(
+    embeddings_server: EmbeddingsMockServer, tmp_path: Path
+):
     """Test embeddings benchmark HTML output generation."""
     client = EmbeddingsClient(
         target=embeddings_server.get_url(),
@@ -446,7 +454,7 @@ def test_embeddings_html_output(embeddings_server: EmbeddingsMockServer, tmp_pat
     )
 
     client.start_benchmark(
-        data="Test HTML output",
+        data=["Test HTML output"],
         max_requests=5,
         processor="gpt2",
     )
@@ -484,7 +492,7 @@ def test_embeddings_max_duration_constraint(
 
     # Run for 3 seconds at 5 requests/sec
     client.start_benchmark(
-        data="Test max duration",
+        data=["Test max duration"],
         rate=5,
         max_duration=3,
         processor="gpt2",
@@ -519,7 +527,7 @@ def test_embeddings_max_requests_constraint(
     )
 
     client.start_benchmark(
-        data="Test max requests",
+        data=["Test max requests"],
         max_requests=max_requests,
         processor="gpt2",
     )
@@ -553,7 +561,7 @@ def test_embeddings_report_metadata(
     )
 
     client.start_benchmark(
-        data="Test metadata",
+        data=["Test metadata"],
         max_requests=3,
         processor="gpt2",
     )

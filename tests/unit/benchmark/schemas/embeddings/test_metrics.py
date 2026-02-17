@@ -332,17 +332,27 @@ class TestEmbeddingsMetrics:
 
         dumped = metrics.model_dump()
         rebuilt = EmbeddingsMetrics.model_validate(dumped)
-        assert rebuilt.request_totals.successful == metrics.request_totals.successful
-        assert rebuilt.input_tokens_count.successful == metrics.input_tokens_count.successful
-        assert rebuilt.encoding_format_breakdown == metrics.encoding_format_breakdown
+        assert (
+            rebuilt.request_totals.successful
+            == metrics.request_totals.successful
+        )
+        assert (
+            rebuilt.input_tokens_count.successful
+            == metrics.input_tokens_count.successful
+        )
+        assert (
+            rebuilt.encoding_format_breakdown
+            == metrics.encoding_format_breakdown
+        )
 
     @pytest.mark.regression
     def test_no_output_tokens(self):
-        """Verify embeddings metrics do not have output token fields."""
+        """Verify embeddings have dummy output token fields for compatibility."""
         fields = EmbeddingsMetrics.model_fields
-        # Embeddings should NOT have output token metrics
-        assert "output_tokens_count" not in fields
-        assert "output_tokens_per_second" not in fields
+        # Embeddings have dummy output token fields for progress tracker compatibility
+        # They exist but are always zero
+        assert "output_token_count" in fields
+        assert "output_tokens_per_second" in fields
 
     @pytest.mark.regression
     def test_no_streaming_metrics(self):

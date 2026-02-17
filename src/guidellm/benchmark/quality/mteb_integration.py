@@ -54,10 +54,13 @@ class MTEBValidator:
         Initialize MTEB validator with model and task configuration.
 
         :param model_name: HuggingFace model name or path for evaluation
-        :param task_names: List of MTEB tasks to evaluate (uses DEFAULT_MTEB_TASKS if None)
-        :param device: Device for model inference ("cpu", "cuda", "mps", or None for auto)
+        :param task_names: List of MTEB tasks to evaluate (uses
+            DEFAULT_MTEB_TASKS if None)
+        :param device: Device for model inference ("cpu", "cuda", "mps", or
+            None for auto)
         :param batch_size: Batch size for encoding during evaluation
-        :raises ImportError: If mteb or sentence-transformers is not installed
+        :raises ImportError: If mteb or sentence-transformers is not
+            installed
         """
         try:
             from sentence_transformers import SentenceTransformer
@@ -86,7 +89,7 @@ class MTEBValidator:
         # Store mteb module reference
         self.mteb = mteb
 
-    def run_evaluation(
+    def run_evaluation(  # noqa: C901
         self,
         output_folder: str | None = None,
         verbosity: int = 1,
@@ -137,28 +140,37 @@ class MTEBValidator:
                 if isinstance(task_result, dict):
                     # Look for main_score in various possible locations
                     if "main_score" in task_result:
-                        task_scores[task_name] = float(task_result["main_score"])
-                    elif "test" in task_result and isinstance(task_result["test"], dict):
+                        task_scores[task_name] = float(
+                            task_result["main_score"]
+                        )
+                    elif "test" in task_result and isinstance(
+                        task_result["test"], dict
+                    ):
                         # Some tasks have test split with scores
                         test_result = task_result["test"]
                         if "main_score" in test_result:
-                            task_scores[task_name] = float(test_result["main_score"])
+                            task_scores[task_name] = float(
+                                test_result["main_score"]
+                            )
                         elif "cosine_spearman" in test_result:
-                            # STS tasks use cosine_spearman as primary metric
-                            task_scores[task_name] = float(test_result["cosine_spearman"])
+                            # STS tasks use cosine_spearman as primary
+                            task_scores[task_name] = float(
+                                test_result["cosine_spearman"]
+                            )
                     elif "scores" in task_result:
                         # Fallback to scores field
                         scores = task_result["scores"]
                         if isinstance(scores, list) and scores:
                             task_scores[task_name] = float(np.mean(scores))
-                        elif isinstance(scores, (int, float)):
+                        elif isinstance(scores, int | float):
                             task_scores[task_name] = float(scores)
 
         # Compute main score as average across tasks
-        if task_scores:
-            main_score = float(np.mean(list(task_scores.values())))
-        else:
-            main_score = 0.0
+        main_score = (
+            float(np.mean(list(task_scores.values())))
+            if task_scores
+            else 0.0
+        )
 
         return {
             "mteb_main_score": main_score,
@@ -216,7 +228,8 @@ class MTEBValidator:
         """
         Get recommended MTEB tasks for specific evaluation categories.
 
-        :param category: Evaluation category ("sts", "classification", "retrieval", etc.)
+        :param category: Evaluation category ("sts", "classification",
+            "retrieval", etc.)
         :return: List of recommended task names
 
         Example:

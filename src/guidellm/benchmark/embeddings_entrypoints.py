@@ -10,7 +10,7 @@ executing new embeddings benchmarks with comprehensive metric tracking.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.entrypoints import (
@@ -44,15 +44,20 @@ async def resolve_embeddings_output_formats(
     console: Console | None = None,
 ) -> dict[str, EmbeddingsBenchmarkerOutput]:
     """
-    Resolve output format specifications into configured embeddings output handler instances.
+    Resolve output format specifications into configured embeddings output
+    handler instances.
 
     :param outputs: Specification of desired output files/types
-    :param output_dir: Base path for output file generation, or None for default
+    :param output_dir: Base path for output file generation, or None for
+        default
     :param console: Console instance for progress reporting, or None
-    :return: Dictionary mapping format names to configured output handler instances
+    :return: Dictionary mapping format names to configured output handler
+        instances
     """
     console_step = (
-        console.print_update_step(title="Resolving output formats") if console else None
+        console.print_update_step(title="Resolving output formats")
+        if console
+        else None
     )
 
     resolved = EmbeddingsBenchmarkerOutput.resolve(
@@ -69,7 +74,7 @@ async def resolve_embeddings_output_formats(
     return resolved
 
 
-async def benchmark_embeddings(
+async def benchmark_embeddings(  # noqa: C901, PLR0912, PLR0915
     args: BenchmarkEmbeddingsArgs,
     progress: GenerativeConsoleBenchmarkerProgress | None = None,
     console: Console | None = None,
@@ -78,16 +83,22 @@ async def benchmark_embeddings(
     """
     Execute a comprehensive embeddings benchmarking workflow.
 
-    Orchestrates the full embeddings benchmarking pipeline by resolving all components
-    from provided arguments, executing benchmark runs across configured profiles, and
-    finalizing results in specified output formats. Optionally performs quality
-    validation using cosine similarity and MTEB benchmarks.
+    Orchestrates the full embeddings benchmarking pipeline by resolving all
+    components from provided arguments, executing benchmark runs across
+    configured profiles, and finalizing results in specified output formats.
+    Optionally performs quality validation using cosine similarity and MTEB
+    benchmarks.
 
-    :param args: Configuration arguments for the embeddings benchmark execution
-    :param progress: Progress tracker for benchmark execution, or None for no tracking
-    :param console: Console instance for status reporting, or None for silent operation
-    :param constraints: Additional constraint initializers for benchmark limits
-    :return: Tuple of EmbeddingsBenchmarksReport and dictionary of output format results
+    :param args: Configuration arguments for the embeddings benchmark
+        execution
+    :param progress: Progress tracker for benchmark execution, or None for
+        no tracking
+    :param console: Console instance for status reporting, or None for
+        silent operation
+    :param constraints: Additional constraint initializers for benchmark
+        limits
+    :return: Tuple of EmbeddingsBenchmarksReport and dictionary of output
+        format results
 
     Example:
     ::
@@ -171,7 +182,6 @@ async def benchmark_embeddings(
     )
 
     # Initialize quality validation if requested
-    quality_validator = None
     if args.enable_quality_validation:
         if console:
             console.print_update(
@@ -183,7 +193,7 @@ async def benchmark_embeddings(
         try:
             from guidellm.benchmark.quality import EmbeddingsQualityValidator
 
-            quality_validator = EmbeddingsQualityValidator(
+            _ = EmbeddingsQualityValidator(
                 baseline_model=args.baseline_model or model,
                 tolerance=args.quality_tolerance,
             )
@@ -259,7 +269,7 @@ async def benchmark_embeddings(
         backend=backend,
         profile=profile,
         environment=NonDistributedEnvironment(),
-        progress=progress,
+        progress=cast("Any", progress),  # type: ignore[arg-type]
         sample_requests=False,  # Embeddings don't need request sampling
         warmup=warmup,
         cooldown=cooldown,

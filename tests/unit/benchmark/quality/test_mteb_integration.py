@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+# Skip all tests if sentence-transformers/mteb aren't available
+pytest.importorskip("sentence_transformers", reason="sentence-transformers required")
+pytest.importorskip("mteb", reason="mteb required")
+
 from guidellm.benchmark.quality.mteb_integration import (
     DEFAULT_MTEB_TASKS,
     MTEBValidator,
@@ -74,7 +78,7 @@ class TestMTEBValidator:
         # MTEB scores should be between 0 and 100
         assert 0.0 <= results["mteb_main_score"] <= 100.0
 
-        for task_name, score in results["mteb_task_scores"].items():
+        for _task_name, score in results["mteb_task_scores"].items():
             assert 0.0 <= score <= 100.0
 
     @pytest.mark.regression
@@ -184,7 +188,8 @@ class TestMTEBValidator:
             # (though they might be similar)
             assert "mteb_main_score" in results1
             assert "mteb_main_score" in results2
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # Skip if second model is unavailable
             pytest.skip("Second model not available for comparison")
 
     @pytest.mark.sanity
@@ -215,4 +220,4 @@ class TestMTEBValidator:
         # Check task scores structure
         for task_name, score in results["mteb_task_scores"].items():
             assert isinstance(task_name, str)
-            assert isinstance(score, (int, float))
+            assert isinstance(score, int | float)

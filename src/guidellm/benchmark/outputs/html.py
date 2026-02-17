@@ -357,7 +357,12 @@ def _build_workload_details(
     """
     target = args.target
     rate_type = benchmarks[0].config.strategy.type_
-    successful_requests = [req for bm in benchmarks for req in bm.requests.successful]
+    successful_requests = [
+        req
+        for bm in benchmarks
+        if bm.requests.successful is not None
+        for req in bm.requests.successful
+    ]
 
     sample_indices = random.sample(
         range(len(successful_requests)), min(5, len(successful_requests))
@@ -378,11 +383,13 @@ def _build_workload_details(
     prompt_tokens = [
         float(req.prompt_tokens) if req.prompt_tokens is not None else -1
         for bm in benchmarks
+        if bm.requests.successful is not None
         for req in bm.requests.successful
     ]
     output_tokens = [
         float(req.output_tokens) if req.output_tokens is not None else -1
         for bm in benchmarks
+        if bm.requests.successful is not None
         for req in bm.requests.successful
     ]
 
@@ -396,6 +403,7 @@ def _build_workload_details(
     all_req_times = [
         req.info.timings.request_start - min_start_time
         for bm in benchmarks
+        if bm.requests.successful is not None
         for req in bm.requests.successful
         if req.info.timings.request_start is not None
     ]
@@ -451,22 +459,30 @@ def _build_benchmarks(benchmarks: list[GenerativeBenchmark]) -> list[dict[str, A
     """
     result = []
     for bm in benchmarks:
+        # Helper to safely get distribution summary or None
+        def get_dist_summary(dist: DistributionSummary | None) -> dict | None:
+            if dist is not None:
+                return _TabularDistributionSummary.from_distribution_summary(
+                    dist
+                ).model_dump()
+            return None
+
         result.append(
             {
-                "requests_per_second": bm.metrics.requests_per_second.successful.mean,
-                "itl": _TabularDistributionSummary.from_distribution_summary(
-                    bm.metrics.inter_token_latency_ms.successful
-                ).model_dump(),
-                "ttft": _TabularDistributionSummary.from_distribution_summary(
+                "requests_per_second": (
+                    bm.metrics.requests_per_second.successful.mean
+                    if bm.metrics.requests_per_second.successful is not None
+                    else 0.0
+                ),
+                "itl": get_dist_summary(bm.metrics.inter_token_latency_ms.successful),
+                "ttft": get_dist_summary(
                     bm.metrics.time_to_first_token_ms.successful
-                ).model_dump(),
-                "throughput": _TabularDistributionSummary.from_distribution_summary(
+                ),
+                "throughput": get_dist_summary(
                     bm.metrics.output_tokens_per_second.successful
-                ).model_dump(),
-                "time_per_request": (
-                    _TabularDistributionSummary.from_distribution_summary(
-                        bm.metrics.request_latency.successful
-                    ).model_dump()
+                ),
+                "time_per_request": get_dist_summary(
+                    bm.metrics.request_latency.successful
                 ),
             }
         )

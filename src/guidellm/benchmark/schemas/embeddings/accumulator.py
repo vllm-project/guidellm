@@ -292,7 +292,9 @@ class SchedulerMetricsAccumulator(StandardBaseModel):
     measure_start_time: float = Field(
         description="Measurement start timestamp", default=0.0
     )
-    measure_end_time: float = Field(description="Measurement end timestamp", default=0.0)
+    measure_end_time: float = Field(
+        description="Measurement end timestamp", default=0.0
+    )
     request_end_time: float = Field(description="Last request timestamp", default=0.0)
     end_time: float = Field(description="Scheduler end timestamp", default=0.0)
 
@@ -570,7 +572,7 @@ class EmbeddingsBenchmarkAccumulator(
     _sampling_counts: dict[str, int] = {}
     _max_samples: int = 1000
 
-    def update_estimate(
+    def update_estimate(  # noqa: C901, PLR0912
         self,
         response: GenerationResponse | None,
         request: GenerationRequest | MultiTurnRequestT[GenerationRequest],
@@ -611,8 +613,20 @@ class EmbeddingsBenchmarkAccumulator(
         # Build request stats
         # Use response metrics if available (has actual token counts from server),
         # otherwise fall back to request metrics (word/char counts only)
+        if isinstance(request, GenerationRequest):
+            request_input_metrics = request.input_metrics
+        else:
+            # For multi-turn requests, extract the first request
+            first_req = request[0] if isinstance(request, list | tuple) else None
+            if isinstance(first_req, tuple):
+                request_input_metrics = first_req[0].input_metrics
+            elif isinstance(first_req, GenerationRequest):
+                request_input_metrics = first_req.input_metrics
+            else:
+                request_input_metrics = None
+
         input_metrics = (
-            response.input_metrics if response is not None else request.input_metrics
+            response.input_metrics if response is not None else request_input_metrics
         )
         stats = EmbeddingsRequestStats(
             request_id=info.request_id,
@@ -621,7 +635,9 @@ class EmbeddingsBenchmarkAccumulator(
         )
 
         # Track encoding format if available
-        if hasattr(request, "encoding_format"):
+        if isinstance(request, GenerationRequest) and hasattr(
+            request, "encoding_format"
+        ):
             format_key = request.encoding_format or "float"
             self.encoding_format_breakdown[format_key] = (
                 self.encoding_format_breakdown.get(format_key, 0) + 1

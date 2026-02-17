@@ -502,7 +502,10 @@ class EmbeddingsRequest(BaseModel):
     model: str = Field(description="Model identifier to use for embeddings")
     encoding_format: Literal["float", "base64"] | None = Field(
         default="float",
-        description="Format for embedding output (float array or base64-encoded binary)",
+        description=(
+            "Format for embedding output (float array or "
+            "base64-encoded binary)"
+        ),
     )
     dimensions: int | None = Field(
         default=None,
@@ -513,10 +516,14 @@ class EmbeddingsRequest(BaseModel):
     )
     truncate_prompt_tokens: int | None = Field(
         default=None,
-        description="Maximum number of tokens to use from input (truncates if exceeded)",
+        description=(
+            "Maximum number of tokens to use from input "
+            "(truncates if exceeded)"
+        ),
     )
     user: str | None = Field(
-        default=None, description="User identifier for tracking and abuse monitoring"
+        default=None,
+        description="User identifier for tracking and abuse monitoring",
     )
 
 
@@ -548,7 +555,9 @@ class EmbeddingsResponse(BaseModel):
     usage statistics and model metadata.
     """
 
-    object: Literal["list"] = Field(default="list", description="Object type identifier")
+    object: Literal["list"] = Field(
+        default="list", description="Object type identifier"
+    )
     data: list[EmbeddingObject] = Field(
         description="List of embedding objects, one per input text"
     )

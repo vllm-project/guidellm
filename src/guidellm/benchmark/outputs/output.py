@@ -286,10 +286,13 @@ class EmbeddingsBenchmarkerOutput(
     @abstractmethod
     async def finalize(self, report: EmbeddingsBenchmarksReport) -> Any:
         """
-        Process and persist embeddings benchmark report in the formatter's output format.
+        Process and persist embeddings benchmark report in the formatter's
+        output format.
 
-        :param report: Embeddings benchmark report containing results to format
-        :return: Format-specific output result (file path, response object, etc.)
+        :param report: Embeddings benchmark report containing results to
+            format
+        :return: Format-specific output result (file path, response object,
+            etc.)
         :raises NotImplementedError: Must be implemented by subclasses
         """
         ...
