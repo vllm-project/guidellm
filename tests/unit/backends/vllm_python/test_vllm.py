@@ -369,6 +369,72 @@ class TestVLLMRequestFormat:
             assert "gpu_memory_utilization" not in b.vllm_config
 
 
+class TestVLLMMergeConfigDevice:
+    """
+    Test _merge_config device logic: default to CPU when CUDA is unavailable.
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_cuda_unavailable_no_device_sets_cpu(self):
+        """
+        When torch.cuda.is_available() is False and user does not set device,
+        merged config includes device="cpu".
+        ## WRITTEN BY AI ##
+        """
+        with (
+            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
+            patch(
+                "guidellm.backends.vllm_python.vllm.torch.cuda.is_available",
+                return_value=False,
+            ),
+        ):
+            backend = VLLMPythonBackend(model="test-model")
+        assert backend.vllm_config.get("device") == "cpu"
+        assert backend.vllm_config.get("model") == "test-model"
+
+    @pytest.mark.smoke
+    def test_cuda_unavailable_user_sets_device_preserved(self):
+        """
+        When torch.cuda.is_available() is False and user sets device,
+        merged config keeps the user's device (no override).
+        ## WRITTEN BY AI ##
+        """
+        with (
+            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
+            patch(
+                "guidellm.backends.vllm_python.vllm.torch.cuda.is_available",
+                return_value=False,
+            ),
+        ):
+            backend_cpu = VLLMPythonBackend(
+                model="test-model", vllm_config={"device": "cpu"}
+            )
+            backend_cuda = VLLMPythonBackend(
+                model="test-model", vllm_config={"device": "cuda"}
+            )
+        assert backend_cpu.vllm_config.get("device") == "cpu"
+        assert backend_cuda.vllm_config.get("device") == "cuda"
+
+    @pytest.mark.smoke
+    def test_cuda_available_no_device_not_added(self):
+        """
+        When torch.cuda.is_available() is True and user does not set device,
+        merged config does not add device (vLLM auto-detection is used).
+        ## WRITTEN BY AI ##
+        """
+        with (
+            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
+            patch(
+                "guidellm.backends.vllm_python.vllm.torch.cuda.is_available",
+                return_value=True,
+            ),
+        ):
+            backend = VLLMPythonBackend(model="test-model")
+        assert "device" not in backend.vllm_config
+        assert backend.vllm_config.get("model") == "test-model"
+
+
 class TestVLLMExtractPromptTokenizerWarnings:
     """
     Test warnings when tokenizer is set but not used for prompt extraction.
