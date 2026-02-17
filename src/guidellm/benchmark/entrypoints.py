@@ -39,7 +39,6 @@ from guidellm.data import (
     DatasetFinalizer,
     DatasetPreprocessor,
     FinalizerRegistry,
-    GenerativeRequestCollator,
     PreprocessorRegistry,
     ProcessorFactory,
 )
@@ -237,12 +236,12 @@ async def resolve_request_loader(
     data_column_mapper: (
         DatasetPreprocessor
         | dict[str, str | list[str]]
-        | Literal["generative_column_mapper"]
+        | Literal["generative_column_mapper", "embeddings_column_mapper"]
     ),
     data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
     data_preprocessors_kwargs: dict[str, Any],
     data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
-    data_collator: Callable | Literal["generative"] | None,
+    data_collator: Callable | Literal["generative", "embeddings"] | None,
     data_sampler: Sampler[int] | Literal["shuffle"] | None,
     data_num_workers: int | None,
     random_seed: int,
@@ -306,6 +305,16 @@ async def resolve_request_loader(
         data_finalizer,
     )
 
+    # Resolve collator from string or use provided callable
+    if callable(data_collator):
+        collator_instance = data_collator
+    elif data_collator == "embeddings":
+        from guidellm.data import EmbeddingsRequestCollator
+        collator_instance = EmbeddingsRequestCollator()
+    else:  # default to "generative" or None
+        from guidellm.data import GenerativeRequestCollator
+        collator_instance = GenerativeRequestCollator()
+
     request_loader: DataLoader[GenerationRequest] = DataLoader(
         data=data,
         data_args=data_args,
@@ -316,9 +325,7 @@ async def resolve_request_loader(
         ),
         preprocessors=preprocessors_list,
         finalizer=finalizer_instance,
-        collator=(
-            data_collator if callable(data_collator) else GenerativeRequestCollator()
-        ),
+        collator=collator_instance,
         sampler=data_sampler,
         num_workers=data_num_workers,
         random_seed=random_seed,

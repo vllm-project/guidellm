@@ -113,3 +113,50 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerationRequest]):
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
+
+
+@FinalizerRegistry.register("embeddings")
+class EmbeddingsRequestFinalizer(DatasetFinalizer[GenerationRequest]):
+    """
+    Finalizer that converts dataset rows into embeddings GenerationRequest objects.
+
+    Much simpler than GenerativeRequestFinalizer since embeddings only need
+    a text input field. Collects text from 'text_column' and creates a request
+    with basic token/word counting.
+
+    Example:
+    ::
+        finalizer = EmbeddingsRequestFinalizer()
+        row = {"text_column": ["This is a test sentence"]}
+        request = finalizer(row)
+        # request.body["input"] == "This is a test sentence"
+    """
+
+    def __call__(self, columns: dict[str, Any]) -> GenerationRequest:
+        """
+        Convert dataset row to embeddings request.
+
+        :param columns: Dict with 'text_column' containing text strings
+        :return: GenerationRequest configured for embeddings
+        """
+        input_metrics = UsageMetrics()
+        texts = []
+
+        # Collect all text inputs
+        for text in columns.get("text_column", []):
+            if not text:
+                continue
+
+            texts.append(text)
+            input_metrics.add_text_metrics(text)
+
+        # For embeddings, input is a single text or list of texts
+        if not texts:
+            raise ValueError("No text found in dataset row for embeddings")
+
+        # Create GenerationRequest with columns and metrics
+        return GenerationRequest(
+            columns=columns,
+            input_metrics=input_metrics,
+            output_metrics=UsageMetrics(),  # Embeddings have no output
+        )

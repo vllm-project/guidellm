@@ -38,6 +38,8 @@ DEFAULT_API_PATHS = {
     "/v1/chat/completions": "v1/chat/completions",
     "/v1/audio/transcriptions": "v1/audio/transcriptions",
     "/v1/audio/translations": "v1/audio/translations",
+    "/v1/embeddings": "v1/embeddings",
+    "embeddings": "v1/embeddings",  # Alias for convenience
 }
 
 DEFAULT_API = "/v1/chat/completions"

@@ -223,21 +223,21 @@ class StatusBreakdown(BaseModel, Generic[SuccessfulT, ErroredT, IncompleteT, Tot
         )
     """
 
-    successful: SuccessfulT = Field(
+    successful: SuccessfulT | None = Field(
         description="Results or metrics for requests with successful completion status",
-        default=None,  # type: ignore[assignment]
+        default=None,
     )
-    errored: ErroredT = Field(
+    errored: ErroredT | None = Field(
         description="Results or metrics for requests with error completion status",
-        default=None,  # type: ignore[assignment]
+        default=None,
     )
-    incomplete: IncompleteT = Field(
+    incomplete: IncompleteT | None = Field(
         description="Results or metrics for requests with incomplete processing status",
-        default=None,  # type: ignore[assignment]
+        default=None,
     )
-    total: TotalT = Field(
+    total: TotalT | None = Field(
         description="Aggregated results or metrics combining all status categories",
-        default=None,  # type: ignore[assignment]
+        default=None,
     )
 
 

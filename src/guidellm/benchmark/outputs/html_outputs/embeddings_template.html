@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GuideLLM Embeddings Benchmark Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #666;
+            margin-top: 30px;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .metric-card {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #4CAF50;
+        }
+        .metric-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GuideLLM Embeddings Benchmark Report</h1>
+
+        <h2>Summary</h2>
+        <div id="summary"></div>
+
+        <h2>Metrics</h2>
+        <div class="metrics-grid" id="metrics"></div>
+
+        <h2>Details</h2>
+        <div id="details"></div>
+    </div>
+
+    <script>
+        const uiApiData = {};
+
+        // Render the data
+        function renderReport() {
+            if (!uiApiData || !uiApiData.data) return;
+
+            const data = uiApiData.data;
+
+            // Render summary
+            const summaryDiv = document.getElementById('summary');
+            summaryDiv.innerHTML = `
+                <p><strong>GuideLLM Version:</strong> ${uiApiData.guidelLmVersion || 'N/A'}</p>
+                <p><strong>Benchmarks:</strong> ${data.benchmarks ? data.benchmarks.length : 0}</p>
+            `;
+
+            // Render metrics if available
+            if (data.benchmarks && data.benchmarks.length > 0) {
+                const metricsDiv = document.getElementById('metrics');
+                const benchmark = data.benchmarks[0];
+
+                let metricsHTML = '';
+                if (benchmark.metrics) {
+                    const m = benchmark.metrics;
+
+                    if (m.requestTotals) {
+                        metricsHTML += `
+                            <div class="metric-card">
+                                <div class="metric-label">Total Requests</div>
+                                <div class="metric-value">${m.requestTotals.total || 'N/A'}</div>
+                            </div>
+                        `;
+                    }
+
+                    if (m.requestLatency && m.requestLatency.total) {
+                        metricsHTML += `
+                            <div class="metric-card">
+                                <div class="metric-label">Median Latency (s)</div>
+                                <div class="metric-value">${m.requestLatency.total.median ? m.requestLatency.total.median.toFixed(3) : 'N/A'}</div>
+                            </div>
+                        `;
+                    }
+
+                    if (m.quality && m.quality.baselineCosineSimilarity && m.quality.baselineCosineSimilarity.total) {
+                        metricsHTML += `
+                            <div class="metric-card">
+                                <div class="metric-label">Cosine Similarity</div>
+                                <div class="metric-value">${m.quality.baselineCosineSimilarity.total.median ? m.quality.baselineCosineSimilarity.total.median.toFixed(3) : 'N/A'}</div>
+                            </div>
+                        `;
+                    }
+
+                    if (m.quality && m.quality.mtebMainScore !== undefined) {
+                        metricsHTML += `
+                            <div class="metric-card">
+                                <div class="metric-label">MTEB Score</div>
+                                <div class="metric-value">${m.quality.mtebMainScore.toFixed(1)}</div>
+                            </div>
+                        `;
+                    }
+                }
+
+                metricsDiv.innerHTML = metricsHTML;
+            }
+        }
+
+        // Render on load
+        renderReport();
+    </script>
+</body>
+</html>

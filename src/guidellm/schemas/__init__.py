@@ -22,6 +22,7 @@ from .base import (
     SuccessfulT,
     TotalT,
 )
+from .embeddings_request_stats import EmbeddingsRequestStats
 from .info import RequestInfo, RequestTimings
 from .request import (
     GenerationRequest,
@@ -40,6 +41,7 @@ from .statistics import (
 __all__ = [
     "BaseModelT",
     "DistributionSummary",
+    "EmbeddingsRequestStats",
     "ErroredT",
     "FunctionObjT",
     "GenerationRequest",
