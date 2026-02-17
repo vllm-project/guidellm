@@ -75,6 +75,10 @@ ENV HOME="/home/guidellm" \
 # Create the user home dir
 WORKDIR $HOME
 
+# Ensure that the user home dir can be used by any user 
+# (OpenShift Pods can't use the cache otherwise)
+RUN chgrp -R 0 "$HOME" && chmod -R g=u "$HOME"
+
 # Create a volume for results
 VOLUME /results
 
