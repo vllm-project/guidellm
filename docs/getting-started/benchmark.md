@@ -4,7 +4,7 @@ weight: -6
 
 # Run a Benchmark
 
-After [installing GuideLLM](install.md) and [starting a server](server.md), you're ready to run benchmarks to evaluate your LLM deployment's performance.
+After [installing GuideLLM](install.md) and [starting a server](server.md), you're ready to run benchmarks to evaluate your LLM deployment's performance. Alternatively, you can run benchmarks with the vLLM Python backend (`--backend vllm_python`) without a separate server; see [vLLM Python backend](../guides/vllm-python-backend.md).
 
 Running a GuideLLM benchmark is straightforward. The basic command structure is:
 

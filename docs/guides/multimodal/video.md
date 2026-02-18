@@ -92,10 +92,10 @@ For example, to specify a specific system prompt or other body parameter:
 
 #### "stream"
 
-Turn streaming responses on or off (if supported by the server) using a boolean value. By default, streaming is enabled.
+Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Use `--backend-kwargs`:
 
 ```bash
---request-formatter-kwargs '{"stream": false}'
+--backend-kwargs '{"stream": false}'
 ```
 
 ## Expected Results
