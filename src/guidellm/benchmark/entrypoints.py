@@ -352,6 +352,8 @@ async def resolve_profile(
     max_global_error_rate: float | None,
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
+    per_constraints: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> Profile:
     """
     Resolve and configure a benchmark profile with rate and constraint settings.
@@ -373,6 +375,7 @@ async def resolve_profile(
     :param max_global_error_rate: Maximum global error rate threshold before stopping
     :param over_saturation: Over-saturation detection configuration (dict)
     :param console: Console instance for progress reporting, or None
+    :param per_constraints: Per-strategy constraints (sweep profile only)
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile
     """
@@ -394,17 +397,36 @@ async def resolve_profile(
             constraints[key] = val
 
     if not isinstance(profile, Profile):
+        supported_per_constraints = {"sweep"}
+        profile_kwargs = dict(kwargs)
+        if per_constraints:
+            profile_type = profile if isinstance(profile, str) else str(profile)
+            if profile_type not in supported_per_constraints:
+                raise ValueError(
+                    "Per-strategy constraints are only supported with the 'sweep' profile."
+                )
+            # Validate no nulls in per_constraints lists
+            for key, val_list in per_constraints.items():
+                if isinstance(val_list, list) and any(item is None for item in val_list):
+                    raise ValueError(f"Per-strategy constraints for '{key}' contain null values, which are not allowed.")
+            profile_kwargs["per_constraints"] = per_constraints
+
         profile = Profile.create(
             rate_type=profile,
             rate=rate,
             random_seed=random_seed,
             rampup_duration=rampup,
             constraints={**constraints},
+			**profile_kwargs,
         )
     elif constraints:
         raise ValueError(
             "Constraints must be empty when providing a Profile instance. "
             f"Provided constraints: {constraints} ; provided profile: {profile}"
+        )
+    elif per_constraints:
+        raise ValueError(
+			"Per-strategy constraints cannot be applied when providing a Profile instance."
         )
     elif rampup > 0.0:
         raise ValueError(
@@ -535,6 +557,7 @@ async def benchmark_generative_text(
         max_global_error_rate=args.max_global_error_rate,
         over_saturation=args.over_saturation,
         console=console,
+		per_constraints=args.per_constraints,
     )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console

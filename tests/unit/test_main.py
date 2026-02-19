@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import pytest
 from click.testing import CliRunner
@@ -83,3 +83,35 @@ def test_cli_backend_args_header_removal(mock_benchmark_func, tmp_path: Path):
     backend_args = scenario.backend_kwargs
     expected_headers = {"Authorization": None, "Custom-Header": "Custom-Value"}
     assert backend_args["headers"] == expected_headers
+
+@patch("guidellm.__main__.benchmark_generative_text", new_callable=AsyncMock)
+def test_cli_passes_per_constraints(mock_benchmark_func):
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "benchmark",
+            "run",
+            "--target",
+            "http://localhost:9",
+            "--data",
+            "prompt_tokens=1,output_tokens=1",
+            "--profile",
+            "sweep",
+            "--rate",
+            "5",
+            "--max-requests",
+            "1",
+            "--per-constraints",
+            '{"max_seconds":[5,10,15,15,20], "max_requests":[100,200,200,400,400]}',
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_benchmark_func.assert_called_once()
+    args = mock_benchmark_func.call_args.kwargs["args"]
+    assert args.per_constraints == {
+        "max_seconds": [5,10,15,15,20],
+        "max_requests": [100,200,200,400,400],
+    }

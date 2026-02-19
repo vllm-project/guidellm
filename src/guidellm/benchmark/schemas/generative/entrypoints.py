@@ -304,6 +304,31 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             "moe_threshold, etc.)."
         ),
     )
+    per_constraints: dict[str, Any] | None = Field(
+        default=None,
+        description="Specified constraints to apply to the sweep profile",
+    )
+
+    @field_validator("per_constraints", mode="before")
+    @classmethod
+    def validate_per_constraints(cls, value: Any) -> dict[str, Any] | None:
+        """
+        Validate that per_constraints doesn't contain null values in the lists.
+
+        :param value: Input value for per_constraints field
+        :return: Validated per_constraints dictionary
+        """
+        if value is None:
+            return None
+
+        if not isinstance(value, dict):
+            return value
+
+        for key, val_list in value.items():
+            if isinstance(val_list, list) and any(item is None for item in val_list):
+                raise ValueError(f"Per-strategy constraints for '{key}' contain null values, which are not allowed.")
+
+        return value
 
     @field_validator("data", "data_args", "rate", "data_preprocessors", mode="wrap")
     @classmethod
