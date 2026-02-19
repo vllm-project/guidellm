@@ -38,7 +38,6 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
-from guidellm.settings import settings
 from guidellm.utils import (
     InterProcessMessaging,
     wait_for_sync_barrier,
@@ -388,11 +387,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.error = repr(exc)
                 request_info.traceback = traceback.format_exc()
                 request_info.timings.resolve_end = time.time()
-                # Log backend exception if enabled
-                if settings.logging.log_backend_exceptions:
-                    logger.exception(
-                        f"Backend exception for request {request_info.request_id}: {exc}"
-                    )
                 self._send_update("errored", response, request, request_info)
                 logger.opt(exception=True).debug(
                     f"Backend exception for request {request_info.request_id}"
