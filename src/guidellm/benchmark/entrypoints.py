@@ -21,7 +21,6 @@ from typing_extensions import TypeAliasType
 
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark.benchmarker import Benchmarker
-from guidellm.benchmark.schemas.generative.entrypoints import backend_requires_target
 from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,

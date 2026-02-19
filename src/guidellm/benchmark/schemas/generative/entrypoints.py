@@ -42,8 +42,8 @@ from guidellm.schemas import StandardBaseModel
 
 __all__ = [
     "BenchmarkGenerativeTextArgs",
-    "backend_requires_target",
     "backend_requires_model",
+    "backend_requires_target",
 ]
 
 
