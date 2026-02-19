@@ -793,6 +793,40 @@ class GenerativeMetrics(StandardBaseDict):
         incomplete = accumulator.incomplete.get_within_range(start_time, end_time)
         errored = accumulator.errored.get_within_range(start_time, end_time)
 
+        # Compute latency distributions first to derive adaptive threshold
+        request_latency = StatusDistributionSummary.from_values_function(
+            function=lambda req: req.request_latency or 0.0,
+            successful=successful,
+            incomplete=incomplete,
+            errored=errored,
+        )
+        time_to_first_token_ms = StatusDistributionSummary.from_values_function(
+            function=lambda req: req.time_to_first_token_ms or 0.0,
+            successful=successful,
+            incomplete=incomplete,
+            errored=errored,
+        )
+        inter_token_latency_ms = StatusDistributionSummary.from_values_function(
+            function=lambda req: (
+                req.inter_token_latency_ms or 0.0,
+                (req.output_tokens or 1.0) - 1.0,
+            ),
+            successful=successful,
+            incomplete=incomplete,
+            errored=errored,
+        )
+
+        # Calculate adaptive merge threshold from latency distributions
+        request_merge_threshold = cls._calculate_merge_threshold(
+            request_latency.successful.percentiles.p25
+        )
+        input_token_merge_threshold = cls._calculate_merge_threshold(
+            time_to_first_token_ms.successful.percentiles.p25 / 1000.0
+        )
+        output_token_merge_threshold = cls._calculate_merge_threshold(
+            inter_token_latency_ms.successful.percentiles.p25 / 1000.0
+        )
+
         return GenerativeMetrics(
             # Request stats
             request_totals=StatusBreakdown(
@@ -808,6 +842,7 @@ class GenerativeMetrics(StandardBaseDict):
                 errored=errored,
                 start_time=start_time,
                 end_time=end_time,
+                threshold=request_merge_threshold,
             ),
             request_concurrency=StatusDistributionSummary.concurrency_distribution_from_timings_function(
                 function=(
@@ -822,12 +857,7 @@ class GenerativeMetrics(StandardBaseDict):
                 start_time=start_time,
                 end_time=end_time,
             ),
-            request_latency=StatusDistributionSummary.from_values_function(
-                function=lambda req: req.request_latency or 0.0,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
-            ),
+            request_latency=request_latency,
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,
                 successful=successful,
@@ -853,12 +883,7 @@ class GenerativeMetrics(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
-            time_to_first_token_ms=StatusDistributionSummary.from_values_function(
-                function=lambda req: req.time_to_first_token_ms or 0.0,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
-            ),
+            time_to_first_token_ms=time_to_first_token_ms,
             time_per_output_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (
                     req.time_per_output_token_ms or 0.0,
@@ -868,32 +893,27 @@ class GenerativeMetrics(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
-            inter_token_latency_ms=StatusDistributionSummary.from_values_function(
-                function=lambda req: (
-                    req.inter_token_latency_ms or 0.0,
-                    (req.output_tokens or 1.0) - 1.0,
-                ),
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
-            ),
+            inter_token_latency_ms=inter_token_latency_ms,
             prompt_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.prompt_tokens_timing,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                threshold=input_token_merge_threshold,
             ),
             output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.output_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                threshold=output_token_merge_threshold,
             ),
             tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.total_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                threshold=output_token_merge_threshold,
             ),
             output_tokens_per_iteration=StatusDistributionSummary.from_values_function(
                 function=lambda req: [
@@ -924,4 +944,25 @@ class GenerativeMetrics(StandardBaseDict):
             audio=GenerativeAudioMetricsSummary.compile(
                 successful=successful, incomplete=incomplete, errored=errored
             ),
+        )
+
+    @classmethod
+    def _calculate_merge_threshold(cls, value: float) -> float:
+        """
+        Calculate adaptive merge threshold from provided ms latency value.
+
+        :param value: Latency value in seconds (e.g., p25 inter-token latency)
+        :return: Adaptive threshold in seconds, clamped to min/max bounds
+        """
+        merge_fraction = 0.1
+        merge_min = 1e-4
+        merge_max = 1e-1
+
+        # Apply fraction and convert milliseconds to seconds
+        adaptive_threshold = merge_fraction * value
+
+        # Clamp to min/max bounds (handles zero/negative ITL via min clamp)
+        return max(
+            merge_min,
+            min(adaptive_threshold, merge_max),
         )
