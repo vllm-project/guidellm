@@ -127,6 +127,11 @@ class Settings(BaseSettings):
     constraint_error_window_size: float = 30
     constraint_error_min_processed: float = 30
 
+    # Sweep profile settings
+    exclude_throughput_target: bool = False
+    exclude_throughput_result: bool = False
+    saturation_threshold: float = 0.98
+
     # Data settings
     dataset: DatasetSettings = DatasetSettings()
 

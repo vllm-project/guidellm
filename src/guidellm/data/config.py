@@ -48,9 +48,7 @@ def _load_config_file(data: Any, config_class: type[ConfigT]) -> ConfigT | None:
 
     if Path(data).is_file() and data_path.suffix.lower() == ".json":
         try:
-            return config_class.model_validate_json(
-                data_path.read_text()
-            )
+            return config_class.model_validate_json(data_path.read_text())
         except Exception as err:  # noqa: BLE001
             error = err
 
@@ -60,9 +58,7 @@ def _load_config_file(data: Any, config_class: type[ConfigT]) -> ConfigT | None:
         ".config",
     }:
         try:
-            return config_class.model_validate(
-                yaml.safe_load(data_path.read_text())
-            )
+            return config_class.model_validate(yaml.safe_load(data_path.read_text()))
         except Exception as err:  # noqa: BLE001
             error = err
 
@@ -101,9 +97,7 @@ def _load_config_str(data: str, config_class: type[ConfigT]) -> ConfigT | None:
             for item in items:
                 key, value = item.split("=")
                 config_dict[key.strip()] = (
-                    int(value.strip())
-                    if value.strip().isnumeric()
-                    else value.strip()
+                    int(value.strip()) if value.strip().isnumeric() else value.strip()
                 )
 
             return config_class.model_validate(config_dict)

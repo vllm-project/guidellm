@@ -52,60 +52,72 @@ def tokenizer_mock():
 @pytest.fixture
 def sample_dataset_default_columns():
     """Sample dataset with default column names."""
-    return Dataset.from_dict({
-        "prompt": [
-            (
-                "This is a very long prompt that should be sufficient for "
-                "testing purposes. "
-            ) * 10,
-            "Short.",
-            (
-                "Another very long prompt for testing the dataset processing "
-                "functionality. "
-            ) * 10,
-        ],
-    })
+    return Dataset.from_dict(
+        {
+            "prompt": [
+                (
+                    "This is a very long prompt that should be sufficient for "
+                    "testing purposes. "
+                )
+                * 10,
+                "Short.",
+                (
+                    "Another very long prompt for testing the dataset processing "
+                    "functionality. "
+                )
+                * 10,
+            ],
+        }
+    )
 
 
 @pytest.fixture
 def sample_dataset_custom_columns():
     """Sample dataset with custom column names requiring mapping."""
-    return Dataset.from_dict({
-        "question": [
-            (
-                "What is the meaning of life? This is a longer question that "
-                "should work for testing. "
-            ) * 10,
-            (
-                "How does this work? Let me explain in detail how this system "
-                "functions. "
-            ) * 10,
-            (
-                "Tell me about machine learning. Machine learning is a "
-                "fascinating field. "
-            ) * 10,
-        ],
-    })
+    return Dataset.from_dict(
+        {
+            "question": [
+                (
+                    "What is the meaning of life? This is a longer question that "
+                    "should work for testing. "
+                )
+                * 10,
+                (
+                    "How does this work? Let me explain in detail how this system "
+                    "functions. "
+                )
+                * 10,
+                (
+                    "Tell me about machine learning. Machine learning is a "
+                    "fascinating field. "
+                )
+                * 10,
+            ],
+        }
+    )
 
 
 @pytest.fixture
 def sample_dataset_with_prefix():
     """Sample dataset with prefix column."""
-    return Dataset.from_dict({
-        "prompt": [
-            (
-                "This is a long prompt that should be sufficient for testing "
-                "purposes. "
-            ) * 10,
-            "Another long prompt here that will work for testing. " * 10,
-            "Yet another long prompt for testing purposes. " * 10,
-        ],
-        "system_prompt": [
-            "You are a helpful assistant.",
-            "You are a helpful assistant.",
-            "You are a helpful assistant.",
-        ],
-    })
+    return Dataset.from_dict(
+        {
+            "prompt": [
+                (
+                    "This is a long prompt that should be sufficient for testing "
+                    "purposes. "
+                )
+                * 10,
+                "Another long prompt here that will work for testing. " * 10,
+                "Yet another long prompt for testing purposes. " * 10,
+            ],
+            "system_prompt": [
+                "You are a helpful assistant.",
+                "You are a helpful assistant.",
+                "You are a helpful assistant.",
+            ],
+        }
+    )
 
 
 @pytest.fixture
@@ -192,30 +204,32 @@ class TestProcessDatasetShortPromptStrategies:
         # Create a dataset with short prompts that can be concatenated to reach target
         # Use a lower target (15 tokens) so concatenation is achievable
         short_config = '{"prompt_tokens": 15, "output_tokens": 10}'
-        short_prompts_dataset = Dataset.from_dict({
-            "prompt": [
-                "A",  # 1 char = 1 token
-                "B",  # 1 char = 1 token
-                "C",  # 1 char = 1 token
-                "D",  # 1 char = 1 token
-                "E",  # 1 char = 1 token
-                "F",  # 1 char = 1 token
-                "G",  # 1 char = 1 token
-                "H",  # 1 char = 1 token
-                "I",  # 1 char = 1 token
-                "J",  # 1 char = 1 token
-                "K",  # 1 char = 1 token
-                "L",  # 1 char = 1 token
-                "M",  # 1 char = 1 token
-                "N",  # 1 char = 1 token
-                "O",  # 1 char = 1 token
-                "P",  # 1 char = 1 token
-                "Q",  # 1 char = 1 token
-                "R",  # 1 char = 1 token
-                "S",  # 1 char = 1 token
-                "T",  # 1 char = 1 token
-            ],
-        })
+        short_prompts_dataset = Dataset.from_dict(
+            {
+                "prompt": [
+                    "A",  # 1 char = 1 token
+                    "B",  # 1 char = 1 token
+                    "C",  # 1 char = 1 token
+                    "D",  # 1 char = 1 token
+                    "E",  # 1 char = 1 token
+                    "F",  # 1 char = 1 token
+                    "G",  # 1 char = 1 token
+                    "H",  # 1 char = 1 token
+                    "I",  # 1 char = 1 token
+                    "J",  # 1 char = 1 token
+                    "K",  # 1 char = 1 token
+                    "L",  # 1 char = 1 token
+                    "M",  # 1 char = 1 token
+                    "N",  # 1 char = 1 token
+                    "O",  # 1 char = 1 token
+                    "P",  # 1 char = 1 token
+                    "Q",  # 1 char = 1 token
+                    "R",  # 1 char = 1 token
+                    "S",  # 1 char = 1 token
+                    "T",  # 1 char = 1 token
+                ],
+            }
+        )
 
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
@@ -323,8 +337,9 @@ class TestProcessDatasetShortPromptStrategies:
 
             # Verify that prompts meet minimum token count requirements
             actual_tokens = len(tokenizer_mock.encode(row["prompt"]))
-            assert actual_tokens >= 50, \
+            assert actual_tokens >= 50, (
                 f"Padded prompt should have at least 50 tokens, got {actual_tokens}"
+            )
             assert row["prompt_tokens_count"] == actual_tokens
 
             # For the "Short." prompt (index 1), verify it was padded
@@ -527,12 +542,14 @@ class TestProcessDatasetColumnNames:
         """
         # Create dataset with 'instruction' column (one of the default
         # text_column names)
-        dataset = Dataset.from_dict({
-            "instruction": [
-                "Follow these instructions carefully. " * 20,
-                "Complete the task as described. " * 20,
-            ],
-        })
+        dataset = Dataset.from_dict(
+            {
+                "instruction": [
+                    "Follow these instructions carefully. " * 20,
+                    "Complete the task as described. " * 20,
+                ],
+            }
+        )
 
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
@@ -823,10 +840,12 @@ class TestProcessDatasetIntegration:
         ## WRITTEN BY AI ##
         """
         # Create dataset with only very short prompts that will be filtered out
-        dataset = Dataset.from_dict({
-            # Very short prompts (1 char each, less than 50 tokens)
-            "prompt": ["A", "B", "C"],
-        })
+        dataset = Dataset.from_dict(
+            {
+                # Very short prompts (1 char each, less than 50 tokens)
+                "prompt": ["A", "B", "C"],
+            }
+        )
 
         # Setup mocks
         mock_check_processor.return_value = tokenizer_mock
@@ -1462,8 +1481,9 @@ class TestProcessDatasetConfigValidation:
         # Verify all prompts are trimmed to exactly 50 tokens
         for row in saved_dataset:
             actual_tokens = len(tokenizer_mock.encode(row["prompt"]))
-            assert actual_tokens == 50, \
+            assert actual_tokens == 50, (
                 f"Prompt not trimmed correctly: expected 50 tokens, got {actual_tokens}"
+            )
 
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
@@ -1515,8 +1535,9 @@ class TestProcessDatasetConfigValidation:
         for row in saved_dataset:
             prompt_text = row["prompt"]
             actual_tokens = len(tokenizer_mock.encode(prompt_text))
-            assert actual_tokens == 100, \
+            assert actual_tokens == 100, (
                 f"Prompt not padded correctly: expected 100 tokens, got {actual_tokens}"
+            )
             assert row["prompt_tokens_count"] == 100
 
             # Verify that pad_char "X" appears in the padded prompts
@@ -1813,9 +1834,11 @@ class TestProcessDatasetPushToHub:
     ):
         """Test that push_to_hub is called when push_to_hub=True."""
         # Create a dataset with prompts long enough to be processed
-        sample_dataset = Dataset.from_dict({
-            "prompt": ["abc " * 50],  # Long enough
-        })
+        sample_dataset = Dataset.from_dict(
+            {
+                "prompt": ["abc " * 50],  # Long enough
+            }
+        )
 
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = sample_dataset
@@ -1854,9 +1877,11 @@ class TestProcessDatasetPushToHub:
     ):
         """Test that push_to_hub is not called when push_to_hub=False."""
         # Create a dataset with prompts long enough to be processed
-        sample_dataset = Dataset.from_dict({
-            "prompt": ["abc " * 50],  # Long enough
-        })
+        sample_dataset = Dataset.from_dict(
+            {
+                "prompt": ["abc " * 50],  # Long enough
+            }
+        )
 
         mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = sample_dataset
@@ -1918,15 +1943,18 @@ class TestProcessDatasetStrategyHandlerIntegration:
     ):
         """Test that strategy handlers are called during dataset processing."""
         from guidellm.data.builders import STRATEGY_HANDLERS
+
         mock_handler = MagicMock(return_value="processed_prompt")
         with patch.dict(STRATEGY_HANDLERS, {ShortPromptStrategy.IGNORE: mock_handler}):
             # Create a dataset with prompts that need processing
-            sample_dataset = Dataset.from_dict({
-                "prompt": [
-                    "abc" * 20,  # Long enough to pass
-                    "def" * 20,  # Long enough to pass
-                ],
-            })
+            sample_dataset = Dataset.from_dict(
+                {
+                    "prompt": [
+                        "abc" * 20,  # Long enough to pass
+                        "def" * 20,  # Long enough to pass
+                    ],
+                }
+            )
 
             mock_check_processor.return_value = tokenizer_mock
             mock_deserializer_factory_class.deserialize.return_value = sample_dataset
