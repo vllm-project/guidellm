@@ -15,8 +15,6 @@ Environment Variables:
         (default: guidellm.log if log file level set else none)
     - GUIDELLM__LOGGING__LOG_FILE_LEVEL: Log level for file logging
         (default: INFO if log file set else none).
-    - GUIDELLM__LOGGING__LOG_BACKEND_EXCEPTIONS: Enable logging of backend
-        exceptions with stacktraces (default: false).
 
 If logging isn't responding to the environment variables, run the `guidellm config`
 command to validate that the environment variables match and are being set correctly.
