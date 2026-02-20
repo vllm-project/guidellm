@@ -99,14 +99,25 @@ class VLLMResponseHandler:
                         result = 1
         return result
 
-    def compile_streaming(self, request: GenerationRequest) -> GenerationResponse:
+    def compile_streaming(
+        self,
+        request: GenerationRequest,
+        *,
+        text_override: str | None = None,
+    ) -> GenerationResponse:
         """
         Compile accumulated streaming chunks into a final GenerationResponse.
 
         :param request: Original generation request
-        :return: GenerationResponse with concatenated text and metrics
+        :param text_override: If provided, use as response text instead of
+            joining streaming_texts (e.g. when backend supplies final text only).
+        :return: GenerationResponse with text and metrics
         """
-        text = "".join(self.streaming_texts)
+        text = (
+            text_override
+            if text_override is not None
+            else "".join(self.streaming_texts)
+        )
         input_metrics, output_metrics = self._extract_metrics(
             self.streaming_usage, text
         )
