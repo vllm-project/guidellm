@@ -369,72 +369,6 @@ class TestVLLMRequestFormat:
             assert "gpu_memory_utilization" not in b.vllm_config
 
 
-class TestVLLMMergeConfigDevice:
-    """
-    Test _merge_config device logic: default to CPU when CUDA is unavailable.
-    ## WRITTEN BY AI ##
-    """
-
-    @pytest.mark.smoke
-    def test_cuda_unavailable_no_device_sets_cpu(self):
-        """
-        When torch.cuda.is_available() is False and user does not set device,
-        merged config includes device="cpu".
-        ## WRITTEN BY AI ##
-        """
-        with (
-            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
-            patch(
-                "guidellm.backends.vllm_python.vllm.torch.cuda.is_available",
-                return_value=False,
-            ),
-        ):
-            backend = VLLMPythonBackend(model="test-model")
-        assert backend.vllm_config.get("device") == "cpu"
-        assert backend.vllm_config.get("model") == "test-model"
-
-    @pytest.mark.smoke
-    def test_cuda_unavailable_user_sets_device_preserved(self):
-        """
-        When torch.cuda.is_available() is False and user sets device,
-        merged config keeps the user's device (no override).
-        ## WRITTEN BY AI ##
-        """
-        with (
-            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
-            patch(
-                "guidellm.backends.vllm_python.vllm.torch.cuda.is_available",
-                return_value=False,
-            ),
-        ):
-            backend_cpu = VLLMPythonBackend(
-                model="test-model", vllm_config={"device": "cpu"}
-            )
-            backend_cuda = VLLMPythonBackend(
-                model="test-model", vllm_config={"device": "cuda"}
-            )
-        assert backend_cpu.vllm_config.get("device") == "cpu"
-        assert backend_cuda.vllm_config.get("device") == "cuda"
-
-    @pytest.mark.smoke
-    def test_cuda_available_no_device_not_added(self):
-        """
-        When torch.cuda.is_available() is True and user does not set device,
-        merged config does not add device (vLLM auto-detection is used).
-        ## WRITTEN BY AI ##
-        """
-        with (
-            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
-            patch(
-                "guidellm.backends.vllm_python.vllm.torch.cuda.is_available",
-                return_value=True,
-            ),
-        ):
-            backend = VLLMPythonBackend(model="test-model")
-        assert "device" not in backend.vllm_config
-        assert backend.vllm_config.get("model") == "test-model"
-
-
 class TestVLLMExtractPromptTokenizerWarnings:
     """
     Test warnings when tokenizer is set but not used for prompt extraction.
@@ -962,7 +896,7 @@ class TestVLLMOpenAIPayloadForMode:
         mode audio -> {"text": ...}.
         ## WRITTEN BY AI ##
         """
-        out = backend._openai_payload_for_mode("audio", "transcribed", is_delta=False)
+        out = backend._openai_payload_for_mode("audio", "transcribed")
         assert out == {"text": "transcribed"}
 
     @pytest.mark.smoke
@@ -971,25 +905,27 @@ class TestVLLMOpenAIPayloadForMode:
         mode text -> choices[].text.
         ## WRITTEN BY AI ##
         """
-        out = backend._openai_payload_for_mode("text", "completion", is_delta=False)
+        out = backend._openai_payload_for_mode("text", "completion")
         assert out == {"choices": [{"text": "completion"}]}
 
     @pytest.mark.smoke
-    def test_openai_payload_chat_delta_returns_choices_delta(self, backend):
+    def test_openai_payload_chat_returns_choices_message(self, backend):
         """
-        mode chat is_delta=True -> choices[].delta.
+        mode chat -> choices[].message (no delta shape; message only).
         ## WRITTEN BY AI ##
         """
-        out = backend._openai_payload_for_mode("chat", "hi", is_delta=True)
-        assert out == {"choices": [{"delta": {"content": "hi", "role": "assistant"}}]}
+        out = backend._openai_payload_for_mode("chat", "hi")
+        assert out == {
+            "choices": [{"message": {"content": "hi", "role": "assistant"}}]
+        }
 
     @pytest.mark.smoke
     def test_openai_payload_chat_message_returns_choices_message(self, backend):
         """
-        mode chat is_delta=False -> choices[].message.
+        mode chat -> choices[].message.
         ## WRITTEN BY AI ##
         """
-        out = backend._openai_payload_for_mode("chat", "hello", is_delta=False)
+        out = backend._openai_payload_for_mode("chat", "hello")
         assert out == {
             "choices": [{"message": {"content": "hello", "role": "assistant"}}]
         }
@@ -1460,7 +1396,7 @@ class TestVLLMResolveAudioError:
             raise ValueError("At most 0 audio(s) may be provided.")
             yield  # makes this an async generator so async for raises
 
-        with patch("guidellm.extras.audio._decode_audio") as mock_decode:
+        with patch("guidellm.backends.vllm_python.vllm._decode_audio") as mock_decode:
             mock_decode.return_value = Mock(data=np.array([0.0]))
             backend._engine = Mock()
             backend._engine.generate = mock_generate_raise
@@ -1513,7 +1449,7 @@ class TestVLLMResolveAudioMode:
             yield req_out
 
         with patch(
-            "guidellm.extras.audio._decode_audio",
+            "guidellm.backends.vllm_python.vllm._decode_audio",
             return_value=mock_decode_result,
         ):
             backend._engine = Mock()

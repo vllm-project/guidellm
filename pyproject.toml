@@ -91,6 +91,9 @@ vision = [
     "datasets[vision]",
     "pillow",
 ]
+vllm = [
+    "vllm",
+]
 # Dev Tooling
 dev = [
     # Install all optional dependencies

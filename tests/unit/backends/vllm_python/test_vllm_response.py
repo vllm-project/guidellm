@@ -186,6 +186,21 @@ class TestVLLMResponseHandler:
         assert out.request_id == request_without_arguments.request_id
 
     @pytest.mark.smoke
+    def test_compile_streaming_text_override_uses_given_text(
+        self, handler, request_without_arguments
+    ):
+        """
+        compile_streaming with text_override uses that text instead of streaming_texts.
+        ## WRITTEN BY AI ##
+        """
+        handler.add_streaming_line('data: {"choices": [{"text": "ignored"}]}')
+        out = handler.compile_streaming(
+            request_without_arguments, text_override="final text"
+        )
+        assert out.text == "final text"
+        assert out.request_id == request_without_arguments.request_id
+
+    @pytest.mark.smoke
     def test_compile_streaming_stores_response_id(
         self, handler, request_without_arguments
     ):
