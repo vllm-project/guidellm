@@ -21,7 +21,7 @@ __all__ = [
 ]
 
 
-BackendType = Literal["openai_http"]
+BackendType = Literal["openai_http", "vllm_python"]
 
 
 class Backend(
@@ -100,6 +100,24 @@ class Backend(
             None if unlimited
         """
         return None
+
+    @classmethod
+    def requires_target(cls) -> bool:
+        """
+        Indicate whether this backend requires a target parameter.
+
+        :return: True if the backend requires a target parameter, False otherwise
+        """
+        return True  # Default to True for safety (most backends need a target)
+
+    @classmethod
+    def requires_model(cls) -> bool:
+        """
+        Indicate whether this backend requires a model parameter.
+
+        :return: True if the backend requires a model parameter, False otherwise
+        """
+        return False  # Default to False (model is optional by default)
 
     @abstractmethod
     async def default_model(self) -> str:

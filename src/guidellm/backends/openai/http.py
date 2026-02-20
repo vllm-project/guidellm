@@ -78,6 +78,25 @@ class OpenAIHTTPBackend(Backend):
         await backend.process_shutdown()
     """
 
+    @classmethod
+    def requires_target(cls) -> bool:
+        """
+        OpenAI HTTP backend requires a target URL.
+
+        :return: True, as this backend requires a target endpoint URL
+        """
+        return True
+
+    @classmethod
+    def requires_model(cls) -> bool:
+        """
+        OpenAI HTTP backend does not require a model parameter.
+        The model can be optional as we can use the server's default model.
+
+        :return: False, as this backend does not require a model parameter
+        """
+        return False
+
     def __init__(
         self,
         target: str,

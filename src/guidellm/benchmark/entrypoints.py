@@ -78,7 +78,7 @@ ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokeni
 
 async def resolve_backend(
     backend: BackendType | Backend,
-    target: str,
+    target: str | None,
     model: str | None,
     console: Console | None = None,
     **backend_kwargs: Any,
@@ -92,7 +92,7 @@ async def resolve_backend(
     benchmark execution.
 
     :param backend: Backend type identifier or pre-configured Backend instance
-    :param target: Target endpoint URL or connection string for the backend
+    :param target: Target endpoint URL or connection string for the backend, or None
     :param model: Model identifier to use with the backend, or None to use default
     :param console: Console instance for progress reporting, or None
     :param backend_kwargs: Additional keyword arguments passed to backend initialization
@@ -103,8 +103,16 @@ async def resolve_backend(
         if console
         else None
     )
+
+    # Only pass target if it's provided (some backends don't need it)
+    create_kwargs = {**(backend_kwargs or {})}
+    if target is not None:
+        create_kwargs["target"] = target
+    if model is not None:
+        create_kwargs["model"] = model
+
     backend_instance = (
-        Backend.create(backend, target=target, model=model, **(backend_kwargs or {}))
+        Backend.create(backend, **create_kwargs)
         if not isinstance(backend, Backend)
         else backend
     )
