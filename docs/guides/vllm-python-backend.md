@@ -29,7 +29,7 @@ Run a benchmark with the vLLM Python backend (no `--target`):
 ```bash
 guidellm benchmark run \
   --backend vllm_python \
-  --model "ibm-granite/granite-4.0-h-350m" \
+  --model "Qwen/Qwen3-0.6B" \
   --data "prompt_tokens=256,output_tokens=128" \
   --max-seconds 20 \
   --rate 3

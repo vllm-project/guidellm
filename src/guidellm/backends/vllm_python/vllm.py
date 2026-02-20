@@ -17,31 +17,29 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
-import torch
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
+from guidellm.extras.vllm import (
+    HAS_VLLM,
+    AsyncEngineArgs,
+    AsyncLLMEngine,
+    RequestOutput,
+    SamplingParams,
+)
 from guidellm.logger import logger
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
     RequestInfo,
 )
-from guidellm.utils import json
 
 try:
-    from vllm import SamplingParams
-    from vllm.engine.arg_utils import AsyncEngineArgs
-    from vllm.engine.async_llm_engine import AsyncLLMEngine
-    from vllm.outputs import RequestOutput
-
-    HAS_VLLM = True
+    from guidellm.extras.audio import _decode_audio
+    HAS_AUDIO = True
 except ImportError:
-    AsyncLLMEngine = None  # type: ignore[assignment, misc]
-    AsyncEngineArgs = None  # type: ignore[assignment, misc]
-    SamplingParams = None  # type: ignore[assignment, misc]
-    RequestOutput = None  # type: ignore[assignment, misc]
-    HAS_VLLM = False
+    _decode_audio = None  # type: ignore[assignment]
+    HAS_AUDIO = False
 
 _Mode = Literal["audio", "chat", "text"]
 
@@ -198,11 +196,6 @@ class VLLMPythonBackend(Backend):
             "default-template",
         ):
             config["chat_template"] = self.request_format
-
-        # When CUDA is not available, set device to CPU so vLLM does not rely on
-        # auto-detection (which can yield an empty device_type and raise).
-        if "device" not in config and not torch.cuda.is_available():
-            config["device"] = "cpu"
 
         return config
 
@@ -404,24 +397,18 @@ class VLLMPythonBackend(Backend):
             return ""
         return output.outputs[0].text or ""
 
-    def _openai_payload_for_mode(
-        self, mode: _Mode, text: str, *, is_delta: bool = False
-    ) -> dict[str, Any]:
+    def _openai_payload_for_mode(self, mode: _Mode, text: str) -> dict[str, Any]:
         """
         Build OpenAI-style payload (content/choices only, no usage or id) for a mode.
 
         :param mode: Inferred mode (audio, chat, text)
-        :param text: Content text (full or delta)
-        :param is_delta: If True, chat uses delta shape; else uses message shape
+        :param text: Content text
         :return: Dict with "text" (audio) or "choices" (text/chat)
         """
         if mode == "audio":
             return {"text": text}
         if mode == "text":
             return {"choices": [{"text": text}]}
-        # chat
-        if is_delta:
-            return {"choices": [{"delta": {"content": text, "role": "assistant"}}]}
         return {"choices": [{"message": {"content": text, "role": "assistant"}}]}
 
     def _stream_usage_tokens(
@@ -542,15 +529,29 @@ class VLLMPythonBackend(Backend):
         if final_output is None:
             return None
         if stream:
+            # Use provided text (e.g. from cancel) or final vLLM output.
+            final_text = accumulated_text or self._text_from_output(final_output)
             usage = self._usage_from_output(
                 final_output,
                 accumulated_output_tokens=total_output_tokens,
-                accumulated_text=accumulated_text,
+                accumulated_text=final_text,
                 request_info=request_info,
             )
             if usage is not None:
                 response_handler.streaming_usage = usage
-            return response_handler.compile_streaming(request), request_info
+            # We do not send streaming lines during the stream loop, so the handler
+            # never receives an id from the stream. Set it from the final vLLM output
+            # so the response has a usable id.
+            if (
+                response_handler.streaming_response_id is None
+                and hasattr(final_output, "request_id")
+                and final_output.request_id
+            ):
+                response_handler.streaming_response_id = final_output.request_id
+            # Build response with final text only (no streamed chunks).
+            return response_handler.compile_streaming(
+                request, text_override=final_text
+            ), request_info
         openai_format = self._convert_vllm_output_to_openai_format(
             final_output, ctx.mode
         )
@@ -801,7 +802,7 @@ class VLLMPythonBackend(Backend):
         usage = self._usage_from_output(output) or {}
 
         response_dict: dict[str, Any] = {
-            **self._openai_payload_for_mode(mode, generated_text, is_delta=False),
+            **self._openai_payload_for_mode(mode, generated_text),
             "usage": usage,
         }
         if hasattr(output, "request_id") and output.request_id:
@@ -820,13 +821,11 @@ class VLLMPythonBackend(Backend):
             )
         if len(audio_bytes) == 0:
             raise ValueError("Audio data cannot be empty")
-        try:
-            from guidellm.extras.audio import _decode_audio
-        except ImportError as e:
+        if not HAS_AUDIO or _decode_audio is None:
             raise ImportError(
                 "Audio support requires guidellm[audio] (torchcodec). "
                 "Install with: pip install 'guidellm[audio]'"
-            ) from e
+            )
         try:
             audio_samples = _decode_audio(audio_bytes)
             if hasattr(audio_samples.data, "numpy"):
@@ -843,52 +842,6 @@ class VLLMPythonBackend(Backend):
             raise ValueError(
                 f"Failed to decode audio data for vLLM: {exc}"
             ) from exc
-
-    def _process_streaming_delta(
-        self,
-        request_output: RequestOutput,
-        ctx: _RequestContext,
-        response_handler: VLLMResponseHandler,
-        request_info: RequestInfo,
-        accumulated_text: str,
-        previous_token_count: int,
-        iter_time: float,
-    ) -> tuple[str, int, int]:
-        """Emit one streaming delta; return (accum_text, token_delta, new_prev)."""
-        generated_text = self._text_from_output(request_output)
-        if generated_text == accumulated_text:
-            return (accumulated_text, 0, previous_token_count)
-
-        delta_text = generated_text[len(accumulated_text) :]
-        delta_data = self._openai_payload_for_mode(
-            ctx.mode, delta_text, is_delta=True
-        )
-        if hasattr(request_output, "request_id") and request_output.request_id:
-            delta_data["id"] = request_output.request_id
-        json_str = json.dumps(delta_data)
-        json_str_decoded = (
-            json_str.decode("utf-8") if isinstance(json_str, bytes) else json_str
-        )
-        sse_line = f"data: {json_str_decoded}"
-        iterations = response_handler.add_streaming_line(sse_line)
-
-        total_delta = 0
-        new_prev = previous_token_count
-        if iterations is not None and iterations > 0:
-            out = (
-                request_output.outputs[0]
-                if request_output.outputs
-                else None
-            )
-            if out is not None and out.token_ids is not None:
-                current_count = len(out.token_ids)
-                total_delta = max(0, current_count - previous_token_count)
-                new_prev = current_count
-            else:
-                total_delta = 1
-                new_prev = previous_token_count + 1
-            self._update_token_timing(request_info, iter_time, iterations)
-        return (generated_text, total_delta, new_prev)
 
     def _raise_generation_error(self, exc: BaseException) -> None:
         """Re-raise generation failure with context; special case for audio."""
@@ -916,10 +869,7 @@ class VLLMPythonBackend(Backend):
         state: dict[str, Any],
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """Run engine.generate loop and yield final (response, request_info)."""
-        state["final_output"] = None
-        state["accumulated_text"] = ""
-        state["total_output_tokens"] = 0
-        previous_token_count = 0
+        state["final_output"] = None  # Only state we keep; text/usage from final output
         stream = ctx.stream
         engine = self._engine
         if engine is None:
@@ -941,30 +891,22 @@ class VLLMPythonBackend(Backend):
                 break
 
             if stream:
-                state["accumulated_text"], token_delta, previous_token_count = (
-                    self._process_streaming_delta(
-                        request_output,
-                        ctx,
-                        response_handler,
-                        request_info,
-                        state["accumulated_text"],
-                        previous_token_count,
-                        iter_time,
-                    )
-                )
-                if token_delta > 0:
-                    state["total_output_tokens"] += token_delta
+                # The main advantage of streaming is more granular timing information
+                # can be saved here.
+                self._update_token_timing(request_info, iter_time, 1)
 
         request_info.timings.request_end = time.time()
+        final_output = state["final_output"]
+        # Text and usage from final output only; pass 0 for accumulated tokens.
         result = self._build_final_response(
             request,
             request_info,
-            state["final_output"],
+            final_output,
             ctx,
             response_handler,
             stream,
-            state["accumulated_text"],
-            state["total_output_tokens"],
+            self._text_from_output(final_output) if final_output else "",
+            0,
         )
         if result is not None:
             yield result
@@ -1032,15 +974,17 @@ class VLLMPythonBackend(Backend):
             ):
                 yield result
         except asyncio.CancelledError as err:
+            # Yield whatever we have so far (same pattern: text from output, 0 tokens).
+            final_output = gen_state.get("final_output")
             cancel_result = self._build_final_response(
                 request,
                 request_info,
-                gen_state.get("final_output"),
+                final_output,
                 ctx,
                 response_handler,
                 ctx.stream,
-                gen_state.get("accumulated_text", ""),
-                gen_state.get("total_output_tokens", 0),
+                self._text_from_output(final_output) if final_output else "",
+                0,
             )
             if cancel_result is not None:
                 yield cancel_result
