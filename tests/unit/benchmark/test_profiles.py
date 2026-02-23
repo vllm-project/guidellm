@@ -2,6 +2,8 @@
 Tests for cross-rate early exit behavior in AsyncProfile, ConcurrentProfile,
 and SweepProfile.
 
+## WRITTEN BY AI ##
+
 Validates that:
 - AsyncProfile and ConcurrentProfile sort rates/streams ascending
 - Failure constraints (stop_all) stop rate escalation
