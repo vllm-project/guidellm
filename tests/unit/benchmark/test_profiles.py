@@ -30,6 +30,10 @@ from guidellm.scheduler import (
     SynchronousStrategy,
 )
 
+MULTI_PROFILE_FACTORIES = (
+    "_make_async_profile",
+    "_make_concurrent_profile",
+)
 
 # ============================================================================
 # Helpers
@@ -173,24 +177,42 @@ class TestShouldStopEscalating:
 
 
 @pytest.mark.parametrize(
-    "profile_cls, rate_type, unsorted_input, sorted_output, output_key",
+    ("profile_cls", "rate_type", "unsorted_input", "sorted_output", "output_key"),
     [
-        (AsyncProfile, "constant", [50.0, 10.0, 1.0, 25.0], [1.0, 10.0, 25.0, 50.0], "rate"),
+        (
+            AsyncProfile,
+            "constant",
+            [50.0, 10.0, 1.0, 25.0],
+            [1.0, 10.0, 25.0, 50.0],
+            "rate",
+        ),
         (AsyncProfile, "constant", [1.0, 5.0, 10.0], [1.0, 5.0, 10.0], "rate"),
         (AsyncProfile, "constant", [5.0], [5.0], "rate"),
-        (ConcurrentProfile, "concurrent", [16.0, 4.0, 1.0, 8.0], [1, 4, 8, 16], "streams"),
+        (
+            ConcurrentProfile,
+            "concurrent",
+            [16.0, 4.0, 1.0, 8.0],
+            [1, 4, 8, 16],
+            "streams",
+        ),
         (ConcurrentProfile, "concurrent", [2.0, 4.0, 8.0], [2, 4, 8], "streams"),
         (ConcurrentProfile, "concurrent", [4.0], [4], "streams"),
     ],
     ids=[
-        "async-unsorted", "async-sorted", "async-single",
-        "concurrent-unsorted", "concurrent-sorted", "concurrent-single",
+        "async-unsorted",
+        "async-sorted",
+        "async-single",
+        "concurrent-unsorted",
+        "concurrent-sorted",
+        "concurrent-single",
     ],
 )
 class TestRateSorting:
     """Rates and streams should be sorted ascending in resolve_args."""
 
-    def test_sorting(self, profile_cls, rate_type, unsorted_input, sorted_output, output_key):
+    def test_sorting(
+        self, profile_cls, rate_type, unsorted_input, sorted_output, output_key
+    ):
         resolved = profile_cls.resolve_args(
             rate_type=rate_type,
             rate=unsorted_input,
@@ -212,7 +234,11 @@ class TestMultiRateProfileEarlyExit:
 
     @staticmethod
     def _make_async_profile():
-        profile = AsyncProfile(type_="constant", strategy_type="constant", rate=[1.0, 5.0, 10.0])
+        profile = AsyncProfile(
+            type_="constant",
+            strategy_type="constant",
+            rate=[1.0, 5.0, 10.0],
+        )
         first = AsyncConstantStrategy(rate=1.0)
         return profile, first
 
@@ -222,7 +248,7 @@ class TestMultiRateProfileEarlyExit:
         first = ConcurrentStrategy(streams=2)
         return profile, first
 
-    @pytest.mark.parametrize("make_profile", ["_make_async_profile", "_make_concurrent_profile"])
+    @pytest.mark.parametrize("make_profile", MULTI_PROFILE_FACTORIES)
     def test_normal_completion_continues(self, make_profile):
         """After normal completion (stop_local), should advance to next rate."""
         profile, first_strategy = getattr(self, make_profile)()
@@ -232,7 +258,7 @@ class TestMultiRateProfileEarlyExit:
 
         assert next_strat is not None
 
-    @pytest.mark.parametrize("make_profile", ["_make_async_profile", "_make_concurrent_profile"])
+    @pytest.mark.parametrize("make_profile", MULTI_PROFILE_FACTORIES)
     def test_failure_stops(self, make_profile):
         """After failure (stop_all), should return None."""
         profile, first_strategy = getattr(self, make_profile)()
@@ -244,7 +270,7 @@ class TestMultiRateProfileEarlyExit:
 
         assert next_strat is None
 
-    @pytest.mark.parametrize("make_profile", ["_make_async_profile", "_make_concurrent_profile"])
+    @pytest.mark.parametrize("make_profile", MULTI_PROFILE_FACTORIES)
     def test_first_rate_always_runs(self, make_profile):
         """First rate should always run (no previous benchmark)."""
         profile, _ = getattr(self, make_profile)()
@@ -253,7 +279,7 @@ class TestMultiRateProfileEarlyExit:
 
         assert next_strat is not None
 
-    @pytest.mark.parametrize("make_profile", ["_make_async_profile", "_make_concurrent_profile"])
+    @pytest.mark.parametrize("make_profile", MULTI_PROFILE_FACTORIES)
     def test_all_rates_completed_returns_none(self, make_profile):
         """When all rates are done, should return None regardless."""
         profile, first_strategy = getattr(self, make_profile)()
@@ -373,7 +399,9 @@ class TestSweepProfileEarlyExit:
             },
         )
         profile.completed_strategies.append(throughput_strat)
-        first_async_strat = profile.next_strategy(throughput_strat, throughput_benchmark)
+        first_async_strat = profile.next_strategy(
+            throughput_strat, throughput_benchmark
+        )
 
         assert first_async_strat is not None
 

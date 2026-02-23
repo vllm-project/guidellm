@@ -174,13 +174,16 @@ guidellm benchmark \
 **Key parameters:**
 
 - `--profile`: Defines the traffic pattern - options include `synchronous` (sequential requests), `concurrent` (parallel users), `throughput` (maximum capacity), `constant` (fixed requests/sec), `poisson` (randomized requests/sec), or `sweep` (automatic rate exploration)
+
 - `--rate`: The numeric rate value whose meaning depends on profile:
+
   - `constant`/`poisson`: requests per second
   - `concurrent`: number of simultaneous streams
   - `sweep`: number of benchmarks (only first value used)
   - `throughput`: max concurrency (only first value used)
 
   For `constant`, `poisson`, and `concurrent`, multiple values can be specified (e.g., `--rate 1 --rate 5 --rate 10`). Values are sorted ascending, and if a failure constraint (over-saturation, errors) triggers at a given rate, remaining higher rates are skipped.
+
 - `--max-seconds`: Maximum duration in seconds for each benchmark run (can also use `--max-requests` to limit by request count instead)
 
 ### Dataset Sources

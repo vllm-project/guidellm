@@ -427,6 +427,7 @@ class ConcurrentProfile(Profile):
         :return: ConcurrentStrategy with next stream count, or None if complete
             or failure detected
         """
+        _ = prev_strategy
         if len(self.completed_strategies) >= len(self.streams):
             return None
 
@@ -602,6 +603,7 @@ class AsyncProfile(Profile):
             or None if all rates completed or failure detected
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'
         """
+        _ = prev_strategy
         if len(self.completed_strategies) >= len(self.rate):
             return None
 
