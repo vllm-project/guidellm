@@ -24,6 +24,7 @@ from typing import Generic, NamedTuple
 
 from guidellm.logger import logger
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
+from guidellm.scheduler.constraints.saturation import OverSaturationConstraint
 from guidellm.scheduler.schemas import (
     BackendInterface,
     MultiTurnRequestT,
@@ -210,6 +211,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 poll_interval=settings.mp_poll_interval,
             )
 
+        instant_ttft_duration = 0.0
+        for c in self.constraints.values():
+            if isinstance(c, OverSaturationConstraint):
+                instant_ttft_duration = max(instant_ttft_duration, c.minimum_duration)
+
         # Initialize worker processes
         self.processes = []
         self.strategy.init_processes_timings(
@@ -237,6 +243,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 constraint_reached_event=self.constraint_reached_event,
                 shutdown_event=self.shutdown_event,
                 error_event=self.error_event,
+                instant_ttft_duration=instant_ttft_duration,
             )
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()
@@ -643,6 +650,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._state.pending_requests = len(self._pending_request_ids)
             self._processing_request_ids.add(info.request_id)
             self._state.processing_requests = len(self._processing_request_ids)
+        elif info.status == "first_token_arrived":
+            pass
         elif info.status == "completed":
             info.timings.finalized = finalized
             self._processing_request_ids.remove(info.request_id)

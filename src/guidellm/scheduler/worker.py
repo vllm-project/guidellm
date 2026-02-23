@@ -98,6 +98,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         constraint_reached_event: ProcessingEvent,
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
+        instant_ttft_duration: float = 0.0,
     ):
         """
         Initialize worker process instance.
@@ -114,6 +115,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param constraint_reached_event: Event signaling processing constraint reached
         :param shutdown_event: Event signaling graceful shutdown request
         :param error_event: Event signaling error conditions across processes
+        :param instant_ttft_duration: Duration in seconds during which the worker
+            sends early "first_token_arrived" status updates when the first token
+            arrives during streaming, before the request completes. Set to 0.0 to
+            disable. Used to provide TTFT data to the over-saturation constraint
+            before any request finishes.
         """
         self.worker_index = worker_index
         self.messaging = messaging
@@ -126,11 +132,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.constraint_reached_event = constraint_reached_event
         self.shutdown_event = shutdown_event
         self.error_event = error_event
+        self.instant_ttft_duration = instant_ttft_duration
 
         # Internal states
         self.startup_completed = False
         self.backend_started = False
         self.messaging_started = False
+        self._instant_ttft_start: float | None = None
 
     def run(self):
         """
@@ -348,12 +356,16 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
+        When instant TTFT is enabled, a concurrent monitor detects first-token
+        arrival and sends a ``"first_token_arrived"`` status update so constraints
+        receive TTFT data before request completion.
 
         :param target_start: Unix timestamp when request should begin processing
         """
         request: RequestT | MultiTurnRequestT[RequestT] | None = None
         request_info: RequestInfo | None = None
         response: ResponseT | None = None
+        ttft_monitor: asyncio.Task | None = None
 
         try:
             # Pull request from the queue, update state, and send "pending" update
@@ -361,6 +373,14 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
             # Schedule the request and send "in_progress" update
             await self._schedule_request(request, request_info, target_start)
+
+            if self.instant_ttft_duration > 0:
+                if self._instant_ttft_start is None:
+                    self._instant_ttft_start = time.time()
+                if time.time() - self._instant_ttft_start < self.instant_ttft_duration:
+                    ttft_monitor = asyncio.create_task(
+                        self._first_token_monitor(request, request_info)
+                    )
 
             async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
                 request, request_info, None
@@ -370,19 +390,23 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 if request_info is None:
                     raise RuntimeError("Received invalid request info from backend")
 
+            await self._cancel_ttft_monitor(ttft_monitor)
+            ttft_monitor = None
+
             # Complete the request
             request_info.timings.resolve_end = time.time()
             self._send_update("completed", response, request, request_info)
 
             response = request = request_info = None
         except asyncio.CancelledError:
-            # Handle cancellation
+            await self._cancel_ttft_monitor(ttft_monitor)
             if request is not None and request_info is not None:
                 request_info.error = "Request was cancelled"
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", response, request, request_info)
             raise
         except Exception as exc:  # noqa: BLE001
+            await self._cancel_ttft_monitor(ttft_monitor)
             if request is not None and request_info is not None:
                 request_info.error = repr(exc)
                 request_info.traceback = traceback.format_exc()
@@ -395,6 +419,37 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)
+
+    @staticmethod
+    async def _cancel_ttft_monitor(task: asyncio.Task | None) -> None:
+        """Cancel the TTFT monitor task if it is running."""
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    async def _first_token_monitor(
+        self,
+        request: RequestT | MultiTurnRequestT[RequestT],
+        request_info: RequestInfo,
+    ) -> None:
+        """
+        Poll for first-token arrival and send an early TTFT notification.
+
+        Monitors ``request_info.timings.first_token_iteration`` which is set
+        in-place by the backend during streaming. When detected, sends a
+        ``"first_token_arrived"`` status update so that the over-saturation
+        constraint receives TTFT data before the request fully completes.
+
+        :param request: The request being processed
+        :param request_info: Shared request info mutated by the backend
+        """
+        while request_info.timings.first_token_iteration is None:
+            await asyncio.sleep(1.0)
+
+        self._send_update("first_token_arrived", None, request, request_info)
 
     async def _dequeue_next_request(
         self, target_start: float
@@ -428,7 +483,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
     def _send_update(
         self,
         new_status: Literal[
-            "pending", "in_progress", "completed", "errored", "cancelled"
+            "pending",
+            "in_progress",
+            "first_token_arrived",
+            "completed",
+            "errored",
+            "cancelled",
         ],
         response: ResponseT | None,
         request: RequestT | MultiTurnRequestT[RequestT],
