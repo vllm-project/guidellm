@@ -127,6 +127,14 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             | None
         ) = None
 
+    def _resolve_instant_ttft_duration(self) -> float:
+        """Extract instant TTFT duration from over-saturation constraints."""
+        duration = 0.0
+        for c in self.constraints.values():
+            if isinstance(c, OverSaturationConstraint):
+                duration = max(duration, c.minimum_duration)
+        return duration
+
     async def create_processes(self):
         """
         Create and initialize worker processes for distributed request processing.
@@ -211,10 +219,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 poll_interval=settings.mp_poll_interval,
             )
 
-        instant_ttft_duration = 0.0
-        for c in self.constraints.values():
-            if isinstance(c, OverSaturationConstraint):
-                instant_ttft_duration = max(instant_ttft_duration, c.minimum_duration)
+        instant_ttft_duration = self._resolve_instant_ttft_duration()
 
         # Initialize worker processes
         self.processes = []

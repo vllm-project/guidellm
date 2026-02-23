@@ -11,6 +11,7 @@ status updates throughout request processing.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import traceback
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
@@ -374,13 +375,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Schedule the request and send "in_progress" update
             await self._schedule_request(request, request_info, target_start)
 
-            if self.instant_ttft_duration > 0:
-                if self._instant_ttft_start is None:
-                    self._instant_ttft_start = time.time()
-                if time.time() - self._instant_ttft_start < self.instant_ttft_duration:
-                    ttft_monitor = asyncio.create_task(
-                        self._first_token_monitor(request, request_info)
-                    )
+            if self._should_monitor_ttft():
+                ttft_monitor = asyncio.create_task(
+                    self._first_token_monitor(request, request_info)
+                )
 
             async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
                 request, request_info, None
@@ -420,15 +418,21 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             if request_info is not None:
                 self.strategy.request_completed(request_info)
 
+    def _should_monitor_ttft(self) -> bool:
+        """Check whether to start a TTFT monitor for the current request."""
+        if self.instant_ttft_duration <= 0:
+            return False
+        if self._instant_ttft_start is None:
+            self._instant_ttft_start = time.time()
+        return time.time() - self._instant_ttft_start < self.instant_ttft_duration
+
     @staticmethod
     async def _cancel_ttft_monitor(task: asyncio.Task | None) -> None:
         """Cancel the TTFT monitor task if it is running."""
         if task is not None:
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
     async def _first_token_monitor(
         self,
@@ -446,7 +450,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param request: The request being processed
         :param request_info: Shared request info mutated by the backend
         """
-        while request_info.timings.first_token_iteration is None:
+        while request_info.timings.first_token_iteration is None:  # noqa: ASYNC110
             await asyncio.sleep(1.0)
 
         self._send_update("first_token_arrived", None, request, request_info)
