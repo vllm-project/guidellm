@@ -761,7 +761,7 @@ class SweepProfile(Profile):
         # Synchronous never reaches here (returns ThroughputStrategy above).
         if (
             prev_strategy.type_ != "throughput"
-            and self._should_stop_escalating(prev_benchmark)
+            and self._should_stop_escalating(prev_benchmark) # type: ignore[arg-type]
         ):
             return None
 
