@@ -4,7 +4,20 @@ weight: -6
 
 # Run a Benchmark
 
-After [installing GuideLLM](install.md) and [starting a server](server.md), you're ready to run benchmarks to evaluate your LLM deployment's performance. Alternatively, you can run benchmarks with the vLLM Python backend (`--backend vllm_python`) without a separate server; see [vLLM Python backend](../guides/vllm-python-backend.md).
+1. [Install GuideLLM](install.md)
+2. You can run GuideLLM two ways:
+   1. Targeting a running OpenAI-compatible LLM server
+      1. The typical workflow
+   2. Using the vLLM Python backend, with vLLM running in the same process
+      1. Advanced, but all-in-one.
+      2. For more information, see [vLLM Python backend](../guides/vllm-python-backend.md)
+
+> [!NOTE]\
+> Everything in this guide applies to both backends except the backend-specific inputs.
+>
+> This guide assumes you're using the OpenAI HTTP backend with an OpenAI-compatible LLM server.
+
+After [starting a server](server.md), you're ready to run benchmarks to evaluate your LLM deployment's performance.
 
 Running a GuideLLM benchmark is straightforward. The basic command structure is:
 
@@ -45,7 +58,7 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 | Parameter        | Description                                    | Example                                        |
 | ---------------- | ---------------------------------------------- | ---------------------------------------------- |
 | `--target`       | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`             |
-| `--model`        | Model name to benchmark (optional)             | `--model "Meta-Llama-3.1-8B-Instruct"`         |
+| `--model`        | Model name to benchmark                        | `--model "Meta-Llama-3.1-8B-Instruct"`         |
 | `--data`         | Data configuration for benchmarking            | `--data "prompt_tokens=256,output_tokens=128"` |
 | `--profile`      | Type of benchmark profile to run               | `--profile sweep`                              |
 | `--rate`         | Request rate or number of benchmarks for sweep | `--rate 10`                                    |
