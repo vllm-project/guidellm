@@ -183,7 +183,9 @@ module = [
     "transformers.*",
     "setuptools.*",
     "setuptools_git_versioning.*",
-    "torchcodec.*"
+    "torchcodec.*",
+    "vllm",
+    "vllm.*"
 ]
 ignore_missing_imports = true
 
