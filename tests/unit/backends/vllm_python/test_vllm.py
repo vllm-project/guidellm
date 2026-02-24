@@ -23,7 +23,10 @@ from guidellm.schemas import (
 
 
 def _fake_sampling_params(**kwargs):
-    """Fake SamplingParams for tests when vLLM is not installed; returns object with kwargs as attributes."""
+    """
+    Fake SamplingParams for tests when vLLM is not installed
+    returns object with kwargs as attributes.
+    """
     return Mock(**kwargs)
 
 
@@ -32,7 +35,10 @@ def backend():
     """VLLMPythonBackend instance without requiring vllm to be installed."""
     with (
         patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
-        patch("guidellm.backends.vllm_python.vllm.SamplingParams", _fake_sampling_params),
+        patch(
+            "guidellm.backends.vllm_python.vllm.SamplingParams",
+            _fake_sampling_params,
+        ),
     ):
         yield VLLMPythonBackend(model="test-model")
 
