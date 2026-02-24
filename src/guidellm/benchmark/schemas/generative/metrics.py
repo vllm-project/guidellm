@@ -794,18 +794,6 @@ class GenerativeMetrics(StandardBaseDict):
         errored = accumulator.errored.get_within_range(start_time, end_time)
 
         # Compute latency distributions first to derive adaptive threshold
-        request_latency = StatusDistributionSummary.from_values_function(
-            function=lambda req: req.request_latency or 0.0,
-            successful=successful,
-            incomplete=incomplete,
-            errored=errored,
-        )
-        time_to_first_token_ms = StatusDistributionSummary.from_values_function(
-            function=lambda req: req.time_to_first_token_ms or 0.0,
-            successful=successful,
-            incomplete=incomplete,
-            errored=errored,
-        )
         inter_token_latency_ms = StatusDistributionSummary.from_values_function(
             function=lambda req: (
                 req.inter_token_latency_ms or 0.0,
@@ -817,13 +805,7 @@ class GenerativeMetrics(StandardBaseDict):
         )
 
         # Calculate adaptive merge threshold from latency distributions
-        request_merge_threshold = cls._calculate_merge_threshold(
-            request_latency.successful.percentiles.p25
-        )
-        input_token_merge_threshold = cls._calculate_merge_threshold(
-            time_to_first_token_ms.successful.percentiles.p25 / 1000.0
-        )
-        output_token_merge_threshold = cls._calculate_merge_threshold(
+        throughput_merge_threshold = cls._calculate_merge_threshold(
             inter_token_latency_ms.successful.percentiles.p25 / 1000.0
         )
 
@@ -842,7 +824,7 @@ class GenerativeMetrics(StandardBaseDict):
                 errored=errored,
                 start_time=start_time,
                 end_time=end_time,
-                threshold=request_merge_threshold,
+                threshold=throughput_merge_threshold,
             ),
             request_concurrency=StatusDistributionSummary.concurrency_distribution_from_timings_function(
                 function=(
@@ -857,7 +839,12 @@ class GenerativeMetrics(StandardBaseDict):
                 start_time=start_time,
                 end_time=end_time,
             ),
-            request_latency=request_latency,
+            request_latency=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.request_latency or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,
                 successful=successful,
@@ -883,7 +870,12 @@ class GenerativeMetrics(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
-            time_to_first_token_ms=time_to_first_token_ms,
+            time_to_first_token_ms=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.time_to_first_token_ms or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
             time_per_output_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (
                     req.time_per_output_token_ms or 0.0,
@@ -899,21 +891,21 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
-                threshold=input_token_merge_threshold,
+                threshold=throughput_merge_threshold,
             ),
             output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.output_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
-                threshold=output_token_merge_threshold,
+                threshold=throughput_merge_threshold,
             ),
             tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.total_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
-                threshold=output_token_merge_threshold,
+                threshold=throughput_merge_threshold,
             ),
             output_tokens_per_iteration=StatusDistributionSummary.from_values_function(
                 function=lambda req: [
