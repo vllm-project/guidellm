@@ -129,7 +129,7 @@ class RequestInfo(StandardBaseModel):
         "queued",
         "pending",
         "in_progress",
-        "first_token_arrived",
+        "first_token",
         "completed",
         "errored",
         "cancelled",

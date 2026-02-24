@@ -875,14 +875,14 @@ class TestInstantTTFT:
 
     Test the instant TTFT feature for over-saturation detection.
 
-    When instant TTFT is enabled, the worker sends a "first_token_arrived"
+    When instant TTFT is enabled, the worker sends a "first_token"
     status update carrying TTFT timing data before the request completes.
     The constraint extracts TTFT from these updates, deduplicated by request ID.
     """
 
     @pytest.mark.smoke
-    def test_first_token_arrived_provides_ttft_data(self):
-        """## WRITTEN BY AI ## first_token_arrived feeds TTFT data to constraint."""
+    def test_first_token_provides_ttft_data(self):
+        """## WRITTEN BY AI ## first_token feeds TTFT data to constraint."""
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             minimum_window_size=3,
@@ -902,7 +902,7 @@ class TestInstantTTFT:
         )
         request = RequestInfo(
             request_id="ft-1",
-            status="first_token_arrived",
+            status="first_token",
             timings=timings,
         )
 
@@ -911,9 +911,9 @@ class TestInstantTTFT:
         assert action.metadata["ttft_n"] == 1
 
     @pytest.mark.smoke
-    def test_deduplication_between_first_token_arrived_and_completed(self):
+    def test_deduplication_between_first_token_and_completed(self):
         """## WRITTEN BY AI ##
-        TTFT counted once when both first_token_arrived and completed arrive.
+        TTFT counted once when both first_token and completed arrive.
         """
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
@@ -935,7 +935,7 @@ class TestInstantTTFT:
 
         ft_info = RequestInfo(
             request_id="dedup-1",
-            status="first_token_arrived",
+            status="first_token",
             timings=timings,
         )
         constraint(state, ft_info)
@@ -955,7 +955,7 @@ class TestInstantTTFT:
         assert constraint.ttft_slope_checker.n == 1
 
     @pytest.mark.smoke
-    def test_completed_without_prior_first_token_arrived_still_works(self):
+    def test_completed_without_prior_first_token_still_works(self):
         """## WRITTEN BY AI ##
         Completed requests provide TTFT when no early notification sent.
         """
@@ -1006,7 +1006,7 @@ class TestInstantTTFT:
         )
         info = RequestInfo(
             request_id="reset-1",
-            status="first_token_arrived",
+            status="first_token",
             timings=timings,
         )
         constraint(state, info)
@@ -1017,9 +1017,9 @@ class TestInstantTTFT:
         assert len(constraint._ttft_reported_request_ids) == 0
 
     @pytest.mark.sanity
-    def test_multiple_first_token_arrived_updates_feed_slope(self):
+    def test_multiple_first_token_updates_feed_slope(self):
         """## WRITTEN BY AI ##
-        Multiple first_token_arrived updates from different requests
+        Multiple first_token updates from different requests
         build slope.
         """
         constraint = OverSaturationConstraint(
@@ -1043,7 +1043,7 @@ class TestInstantTTFT:
             )
             info = RequestInfo(
                 request_id=f"ft-multi-{i}",
-                status="first_token_arrived",
+                status="first_token",
                 timings=timings,
             )
             constraint(state, info)
@@ -1051,9 +1051,9 @@ class TestInstantTTFT:
         assert constraint.ttft_slope_checker.n == 10
 
     @pytest.mark.smoke
-    def test_first_token_arrived_with_missing_timings_skips_ttft(self):
+    def test_first_token_with_missing_timings_skips_ttft(self):
         """## WRITTEN BY AI ##
-        first_token_arrived without first_token_iteration adds no TTFT.
+        first_token without first_token_iteration adds no TTFT.
         """
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
@@ -1071,7 +1071,7 @@ class TestInstantTTFT:
 
         info_no_fti = RequestInfo(
             request_id="missing-fti",
-            status="first_token_arrived",
+            status="first_token",
             timings=RequestTimings(request_start=start_time + 0.1),
         )
         constraint(state, info_no_fti)
@@ -1079,16 +1079,16 @@ class TestInstantTTFT:
 
         info_no_start = RequestInfo(
             request_id="missing-start",
-            status="first_token_arrived",
+            status="first_token",
             timings=RequestTimings(first_token_iteration=start_time + 0.5),
         )
         constraint(state, info_no_start)
         assert constraint.ttft_slope_checker.n == 0
 
     @pytest.mark.smoke
-    def test_first_token_arrived_does_not_add_concurrent_data(self):
+    def test_first_token_does_not_add_concurrent_data(self):
         """## WRITTEN BY AI ##
-        first_token_arrived does not feed concurrent slope checker.
+        first_token does not feed concurrent slope checker.
         """
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
@@ -1109,7 +1109,7 @@ class TestInstantTTFT:
         )
         info = RequestInfo(
             request_id="no-conc-1",
-            status="first_token_arrived",
+            status="first_token",
             timings=timings,
         )
         constraint(state, info)
@@ -1117,9 +1117,9 @@ class TestInstantTTFT:
         assert constraint.ttft_slope_checker.n == 1
 
     @pytest.mark.sanity
-    def test_first_token_arrived_does_not_stop_when_disabled(self):
+    def test_first_token_does_not_stop_when_disabled(self):
         """## WRITTEN BY AI ##
-        first_token_arrived never triggers stop when enabled=False.
+        first_token never triggers stop when enabled=False.
         """
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
@@ -1147,7 +1147,7 @@ class TestInstantTTFT:
             )
             ft_info = RequestInfo(
                 request_id=f"ft-{i}",
-                status="first_token_arrived",
+                status="first_token",
                 timings=timings,
             )
             action = constraint(state, ft_info)

@@ -520,7 +520,7 @@ class OverSaturationConstraint(Constraint):
             self._add_started(
                 {"concurrent_requests": concurrent_requests, "duration": duration}
             )
-        elif request_info.status in ("first_token_arrived", "completed"):
+        elif request_info.status in ("first_token", "completed"):
             if (
                 request_info.request_id not in self._ttft_reported_request_ids
                 and request_info.timings

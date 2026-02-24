@@ -11,7 +11,6 @@ status updates throughout request processing.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import time
 import traceback
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
@@ -117,7 +116,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param shutdown_event: Event signaling graceful shutdown request
         :param error_event: Event signaling error conditions across processes
         :param instant_ttft_duration: Duration in seconds during which the worker
-            sends early "first_token_arrived" status updates when the first token
+            sends early "first_token" status updates when the first token
             arrives during streaming, before the request completes. Set to 0.0 to
             disable. Used to provide TTFT data to the over-saturation constraint
             before any request finishes.
@@ -357,16 +356,15 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
-        When instant TTFT is enabled, a concurrent monitor detects first-token
-        arrival and sends a ``"first_token_arrived"`` status update so constraints
-        receive TTFT data before request completion.
+        The backend may yield an intermediate update on first token arrival; when
+        instant TTFT is enabled, this triggers a ``"first_token"`` status
+        update so constraints receive TTFT data before request completion.
 
         :param target_start: Unix timestamp when request should begin processing
         """
         request: RequestT | MultiTurnRequestT[RequestT] | None = None
         request_info: RequestInfo | None = None
         response: ResponseT | None = None
-        ttft_monitor: asyncio.Task | None = None
 
         try:
             # Pull request from the queue, update state, and send "pending" update
@@ -375,21 +373,19 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Schedule the request and send "in_progress" update
             await self._schedule_request(request, request_info, target_start)
 
-            if self._should_monitor_ttft():
-                ttft_monitor = asyncio.create_task(
-                    self._first_token_monitor(request, request_info)
-                )
-
             async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
                 request, request_info, None
             ):
-                response = resp
                 request_info = info
                 if request_info is None:
                     raise RuntimeError("Received invalid request info from backend")
 
-            await self._cancel_ttft_monitor(ttft_monitor)
-            ttft_monitor = None
+                if resp is None:
+                    if self._should_send_ttft():
+                        self._send_update("first_token", None, request, request_info)
+                    continue
+
+                response = resp
 
             # Complete the request
             request_info.timings.resolve_end = time.time()
@@ -397,14 +393,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
             response = request = request_info = None
         except asyncio.CancelledError:
-            await self._cancel_ttft_monitor(ttft_monitor)
+            # Handle cancellation
             if request is not None and request_info is not None:
                 request_info.error = "Request was cancelled"
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", response, request, request_info)
             raise
         except Exception as exc:  # noqa: BLE001
-            await self._cancel_ttft_monitor(ttft_monitor)
             if request is not None and request_info is not None:
                 request_info.error = repr(exc)
                 request_info.traceback = traceback.format_exc()
@@ -418,42 +413,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             if request_info is not None:
                 self.strategy.request_completed(request_info)
 
-    def _should_monitor_ttft(self) -> bool:
-        """Check whether to start a TTFT monitor for the current request."""
+    def _should_send_ttft(self) -> bool:
+        """Check whether to send instant TTFT for the current request."""
         if self.instant_ttft_duration <= 0:
             return False
         if self._instant_ttft_start is None:
             self._instant_ttft_start = time.time()
         return time.time() - self._instant_ttft_start < self.instant_ttft_duration
-
-    @staticmethod
-    async def _cancel_ttft_monitor(task: asyncio.Task | None) -> None:
-        """Cancel the TTFT monitor task if it is running."""
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-
-    async def _first_token_monitor(
-        self,
-        request: RequestT | MultiTurnRequestT[RequestT],
-        request_info: RequestInfo,
-    ) -> None:
-        """
-        Poll for first-token arrival and send an early TTFT notification.
-
-        Monitors ``request_info.timings.first_token_iteration`` which is set
-        in-place by the backend during streaming. When detected, sends a
-        ``"first_token_arrived"`` status update so that the over-saturation
-        constraint receives TTFT data before the request fully completes.
-
-        :param request: The request being processed
-        :param request_info: Shared request info mutated by the backend
-        """
-        while request_info.timings.first_token_iteration is None:  # noqa: ASYNC110
-            await asyncio.sleep(1.0)
-
-        self._send_update("first_token_arrived", None, request, request_info)
 
     async def _dequeue_next_request(
         self, target_start: float
@@ -489,7 +455,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         new_status: Literal[
             "pending",
             "in_progress",
-            "first_token_arrived",
+            "first_token",
             "completed",
             "errored",
             "cancelled",
