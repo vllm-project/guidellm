@@ -164,7 +164,7 @@ class Profile(
         return [strat.type_ for strat in self.completed_strategies]
 
     @staticmethod
-    def _should_stop_escalating(prev_benchmark: Benchmark | None) -> bool:
+    def _should_stop_escalating(prev_benchmark: Benchmark) -> bool:
         """
         Check if a benchmark was terminated by a failure constraint.
 
@@ -174,8 +174,7 @@ class Profile(
         Constraints that use "stop_local" (max duration, max requests) are normal
         completions and do not trigger escalation stops.
 
-        :param prev_benchmark: Benchmark instance with a scheduler_state
-            attribute, or None
+        :param prev_benchmark: Benchmark instance with a scheduler_state attribute
         :return: True if a failure constraint was triggered, False otherwise
         """
         scheduler_state = getattr(prev_benchmark, "scheduler_state", None)
