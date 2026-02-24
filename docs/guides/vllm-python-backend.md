@@ -1,6 +1,6 @@
 # vLLM Python Backend
 
-The **vLLM Python backend** (`vllm_python`) runs inference in the **same process** as GuideLLM using vLLM's [AsyncLLMEngine](https://docs.vllm.ai/). No HTTP server is involved, reducing overheat and variables. This is useful for isolating performance bottlenecks or simplifying your benchmark setup. You do **not** pass `--target`; you **must** pass `--model`.
+The **vLLM Python backend** (`vllm_python`) runs inference in the same process as GuideLLM using vLLM's [AsyncLLMEngine](https://docs.vllm.ai/). No HTTP server is involved, eliminating network and IPC overhead. This is useful for isolating performance bottlenecks or simplifying your benchmark setup. You do **not** pass `--target`; you **must** pass `--model`, which will then be downloaded and hosted in vLLM.
 
 For all engine options and supported models, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) and the [vLLM documentation](https://docs.vllm.ai/).
 
@@ -22,7 +22,7 @@ It is also possible to install GuideLLM and vLLM via pip using `pip install guid
 
 ## Basic example
 
-Run a benchmark with the vLLM Python backend (no `--target`):
+Run a benchmark with the vLLM Python backend:
 
 ```bash
 guidellm benchmark run \
