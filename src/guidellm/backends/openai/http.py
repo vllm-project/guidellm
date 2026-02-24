@@ -293,7 +293,7 @@ class OpenAIHTTPBackend(Backend):
         self.model = models[0] if models else ""
         return self.model
 
-    async def resolve(  # type: ignore[override]
+    async def resolve(  # type: ignore[override, misc]
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
