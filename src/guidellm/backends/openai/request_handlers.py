@@ -705,15 +705,13 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
             arguments.model_combine(kwargs["extras"])
 
         # Build pooling request body from text_column (which contains the dict)
-        text_data = data.columns.get("text_column", [])
-        if text_data and isinstance(text_data[0], dict):
+        pooling_data = data.columns.get("pooling_column", [])
+        if pooling_data and isinstance(pooling_data[0], dict):
             # Use the dict directly from text_column
-            pooling_entry = text_data[0]
+            pooling_entry = pooling_data[0]
             if "data" in pooling_entry:
                 arguments.body["data"] = pooling_entry["data"]
             if "priority" in pooling_entry:
                 arguments.body["priority"] = pooling_entry["priority"]
-            if "softmax" in pooling_entry:
-                arguments.body["softmax"] = pooling_entry["softmax"]
 
         return arguments
