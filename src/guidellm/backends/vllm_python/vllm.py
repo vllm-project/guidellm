@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
@@ -38,6 +38,7 @@ from guidellm.schemas import (
 
 try:
     from guidellm.extras.audio import _decode_audio
+
     HAS_AUDIO = True
 except ImportError:
     _decode_audio = None  # type: ignore[assignment]
@@ -50,7 +51,41 @@ _AUDIO_FILE_MIN_LEN = 2
 _AUDIO_FILE_DATA_INDEX = 1
 _AUDIO_FILE_MIMETYPE_INDEX = 2
 
-__all__ = ["VLLMPythonBackend"]
+__all__ = ["VLLMPythonBackend", "VLLMPythonBackendArgs"]
+
+
+class VLLMPythonBackendArgs(BaseModel):
+    """Pydantic model for VLLM Python backend creation arguments."""
+
+    model: str = Field(
+        description="Model identifier or path for VLLM to load",
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' requires a model parameter. "
+                "Please provide --model with a valid model identifier."
+            )
+        },
+    )
+    target: str | None = Field(
+        default=None,
+        description="Target URL (ignored for VLLM Python backend, runs locally)",
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' does not support a target parameter. "
+                "Please remove --target as this backend runs locally."
+            )
+        },
+    )
+
+    @field_validator("target")
+    @classmethod
+    def target_must_be_none(cls, v: str | None) -> str | None:
+        """Reject target to prevent confusion"""
+        if v is not None:
+            raise ValueError(
+                "Target is not supported; this backend runs locally."
+            )
+        return v
 
 
 class _RequestContext(StandardBaseModel):
@@ -98,26 +133,9 @@ class VLLMPythonBackend(Backend):
     """
 
     @classmethod
-    def requires_target(cls) -> bool:
-        """
-        VLLM Python backend does not require a target URL.
-
-        This backend runs locally and does not connect to a remote server.
-
-        :return: False, as this backend does not require a target
-        """
-        return False
-
-    @classmethod
-    def requires_model(cls) -> bool:
-        """
-        VLLM Python backend requires a model parameter.
-
-        The model must be specified to know which model to load for inference.
-
-        :return: True, as this backend requires a model parameter
-        """
-        return True
+    def backend_args(cls) -> type[BaseModel]:
+        """Return the Pydantic model for this backend's creation arguments."""
+        return VLLMPythonBackendArgs
 
     def __init__(
         self,
@@ -727,9 +745,7 @@ class VLLMPythonBackend(Backend):
             return self._extract_prompt_chat(body)
         if mode == "audio":
             prompt = body.get("prompt", "")
-            return (
-                prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
-            )
+            return prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
         raise ValueError(f"Unsupported mode: {mode!r}.")
 
     def _create_sampling_params(
@@ -810,8 +826,7 @@ class VLLMPythonBackend(Backend):
         audio_bytes, _mimetype = self._extract_audio_from_request(ctx.files)
         if not isinstance(audio_bytes, bytes):
             raise TypeError(
-                f"Expected bytes for audio data, got {type(audio_bytes)}: "
-                f"{audio_bytes}"
+                f"Expected bytes for audio data, got {type(audio_bytes)}: {audio_bytes}"
             )
         if len(audio_bytes) == 0:
             raise ValueError("Audio data cannot be empty")
@@ -833,17 +848,12 @@ class VLLMPythonBackend(Backend):
                 "multi_modal_data": {"audio": audio_array},
             }
         except (ValueError, TypeError, OSError, RuntimeError) as exc:
-            raise ValueError(
-                f"Failed to decode audio data for vLLM: {exc}"
-            ) from exc
+            raise ValueError(f"Failed to decode audio data for vLLM: {exc}") from exc
 
     def _raise_generation_error(self, exc: BaseException) -> None:
         """Re-raise generation failure with context; special case for audio."""
         error_msg = str(exc)
-        if (
-            "At most 0 audio" in error_msg
-            or "audio(s) may be provided" in error_msg
-        ):
+        if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
             raise RuntimeError(
                 f"Generation failed: The model '{self.model}' does not "
                 f"support audio inputs. Use an audio-capable model "

@@ -20,6 +20,7 @@ import yaml
 from pydantic import (
     AliasChoices,
     AliasGenerator,
+    BaseModel,
     ConfigDict,
     Field,
     NonNegativeFloat,
@@ -42,55 +43,73 @@ from guidellm.schemas import StandardBaseModel
 
 __all__ = [
     "BenchmarkGenerativeTextArgs",
-    "backend_requires_model",
-    "backend_requires_target",
+    "format_backend_args_error",
+    "get_backend_args",
 ]
 
 
-def backend_requires_target(backend: BackendType | Backend) -> bool:
+def get_backend_args(backend: BackendType | Backend) -> type[BaseModel]:
     """
-    Determine if a backend requires a target parameter.
-
-    Uses the backend's class method to determine if it requires target,
-    making it extensible for new backend implementations.
+    Return the Pydantic model class for the backend's creation arguments.
 
     :param backend: Backend type identifier or Backend instance
-    :return: True if the backend requires target, False otherwise
+    :return: The backend's backend_args model class
+    :raises ValueError: If backend type is not registered
     """
     if isinstance(backend, Backend):
-        # If it's already a Backend instance, use its class method
-        return backend.__class__.requires_target()
-
-    # If it's a BackendType string, get the registered backend class
+        return backend.__class__.backend_args()
     backend_class = Backend.get_registered_object(backend)
     if backend_class is None:
-        # Unknown backend type, default to True for safety
-        return True
+        registry = getattr(Backend, "registry", None) or {}
+        available = list(registry.keys())
+        raise ValueError(
+            f"Backend type '{backend}' is not registered. Available types: {available}"
+        )
+    return backend_class.backend_args()
 
-    return backend_class.requires_target()
 
-
-def backend_requires_model(backend: BackendType | Backend) -> bool:
+def format_backend_args_error(
+    model_class: type[BaseModel],
+    backend_type: str,
+    err: ValidationError,
+) -> tuple[str, str]:
     """
-    Determine if a backend requires a model parameter.
+    Format a backend args ValidationError into (param_hint, message) for CLI/UI.
 
-    Uses the backend's class method to determine if it requires model,
-    making it extensible for new backend implementations.
+    Message is taken from the model field's json_schema_extra["error_message"]
+    (with {backend_type} substituted) if present, otherwise a default template.
 
-    :param backend: Backend type identifier or Backend instance
-    :return: True if the backend requires model, False otherwise
+    :param model_class: The backend args Pydantic model class
+    :param backend_type: Backend type name for the error message
+    :param err: The ValidationError from model_validate
+    :return: Tuple of (param_hint, message), e.g. ("--target", "Backend '...' ...")
     """
-    if isinstance(backend, Backend):
-        # If it's already a Backend instance, use its class method
-        return backend.__class__.requires_model()
-
-    # If it's a BackendType string, get the registered backend class
-    backend_class = Backend.get_registered_object(backend)
-    if backend_class is None:
-        # Unknown backend type, default to False for safety
-        return False
-
-    return backend_class.requires_model()
+    errs = err.errors()
+    if not errs:
+        return ("--unknown", str(err))
+    first = errs[0]
+    loc = first.get("loc", ())
+    field = loc[0] if loc else "unknown"
+    field_key = str(field)
+    param_hint = "--" + field_key.replace("_", "-")
+    default_message = (
+        f"Backend '{backend_type}' requires a {field_key} parameter. "
+        f"Please provide {param_hint}."
+    )
+    field_info = model_class.model_fields.get(field_key) if field_key else None
+    extra = getattr(field_info, "json_schema_extra", None) if field_info else None
+    if isinstance(extra, dict):
+        template = extra.get("error_message")
+        if template:
+            try:
+                message = template.format(backend_type=backend_type)
+            except KeyError:
+                message = default_message
+        else:
+            message = default_message
+    else:
+        message = default_message
+    return (param_hint, message)
 
 
 class BenchmarkGenerativeTextArgs(StandardBaseModel):
@@ -382,47 +401,25 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     @model_validator(mode="after")
     def validate_target_required(self) -> BenchmarkGenerativeTextArgs:
         """
-        Validate target and model parameters based on backend requirements.
-
-        Target validation:
-        - If backend requires target: target must be provided (not None)
-        - If backend does not require target: target must be None (not provided)
-
-        Model validation:
-        - If backend requires model: model must be provided (not None)
-        - If backend does not require model: model can be None or provided
+        Validate target and model parameters using the backend's Pydantic args model.
 
         :return: Self if validation passes
-        :raises ValueError: If target is provided when backend doesn't support it,
-            if target is missing when backend requires it,
-            or if model is missing when backend requires it
+        :raises ValueError: If backend args validation fails (with formatted message)
         """
         backend_type = (
             self.backend.type_ if isinstance(self.backend, Backend) else self.backend
         )
-        requires_target = backend_requires_target(self.backend)
-        requires_model = backend_requires_model(self.backend)
-
-        # Validate target parameter
-        if requires_target and self.target is None:
-            raise ValueError(
-                f"Backend '{backend_type}' requires a target parameter. "
-                "Please provide --target with a valid endpoint URL."
+        try:
+            model_class = get_backend_args(self.backend)
+            inputs = {
+                k: getattr(self, k, None) for k in model_class.model_fields
+            }
+            model_class.model_validate(inputs)
+        except ValidationError as err:
+            _param_hint, message = format_backend_args_error(
+                model_class, backend_type, err
             )
-
-        if not requires_target and self.target is not None:
-            raise ValueError(
-                f"Backend '{backend_type}' does not support a target parameter. "
-                "Please remove --target as this backend runs locally."
-            )
-
-        # Validate model parameter
-        if requires_model and self.model is None:
-            raise ValueError(
-                f"Backend '{backend_type}' requires a model parameter. "
-                "Please provide --model with a valid model identifier."
-            )
-
+            raise ValueError(message) from err
         return self
 
     @field_serializer("backend")
