@@ -46,17 +46,13 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerationRequest]):
 
         # Count words in prefixes
         for prefix in columns.get("prefix_column", []):
-            if not prefix:
-                continue
-
-            input_metrics.add_text_metrics(prefix)
+            if prefix and isinstance(prefix, str):
+                input_metrics.add_text_metrics(prefix)
 
         # Count words in text prompts
         for text in columns.get("text_column", []):
-            if not text:
-                continue
-
-            input_metrics.add_text_metrics(text)
+            if text and isinstance(text, str):
+                input_metrics.add_text_metrics(text)
 
         # Count pixels and bytes in images
         for image in columns.get("image_column", []):

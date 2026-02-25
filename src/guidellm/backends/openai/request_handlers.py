@@ -24,6 +24,7 @@ __all__ = [
     "ChatCompletionsRequestHandler",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "PoolingRequestHandler",
     "TextCompletionsRequestHandler",
 ]
 
@@ -660,3 +661,59 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             text_words=len(text.split()) if text else 0,
             text_characters=len(text) if text else 0,
         )
+
+
+@OpenAIRequestHandlerFactory.register("/pooling")
+class PoolingRequestHandler(ChatCompletionsRequestHandler):
+    """
+    Request handler for vLLM pooling endpoints.
+
+    Inherits from ChatCompletionsRequestHandler and overrides format() to handle
+    pooling-specific request structure with nested data fields.
+    """
+
+    def format(
+        self,
+        data: GenerationRequest,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        """
+        Format the pooling generation request into the appropriate structure.
+
+        :param data: The generation request to format
+        :param **kwargs: Additional keyword arguments for request formatting
+        :return: The formatted request arguments
+        """
+        arguments = GenerationRequestArguments()
+        arguments.body = {}
+
+        # Add model
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        # Configure streaming
+        if kwargs.get("stream"):
+            arguments.stream = True
+            arguments.body["stream"] = True
+            arguments.body["stream_options"] = {
+                "include_usage": True,
+                "continuous_usage_stats": True,
+            }
+
+        # Apply extra arguments
+        if kwargs.get("extras"):
+            arguments.model_combine(kwargs["extras"])
+
+        # Build pooling request body from text_column (which contains the dict)
+        text_data = data.columns.get("text_column", [])
+        if text_data and isinstance(text_data[0], dict):
+            # Use the dict directly from text_column
+            pooling_entry = text_data[0]
+            if "data" in pooling_entry:
+                arguments.body["data"] = pooling_entry["data"]
+            if "priority" in pooling_entry:
+                arguments.body["priority"] = pooling_entry["priority"]
+            if "softmax" in pooling_entry:
+                arguments.body["softmax"] = pooling_entry["softmax"]
+
+        return arguments

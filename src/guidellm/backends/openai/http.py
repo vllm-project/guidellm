@@ -38,6 +38,7 @@ DEFAULT_API_PATHS = {
     "/v1/chat/completions": "v1/chat/completions",
     "/v1/audio/transcriptions": "v1/audio/transcriptions",
     "/v1/audio/translations": "v1/audio/translations",
+    "/pooling": "pooling",
 }
 
 DEFAULT_API = "/v1/chat/completions"
@@ -48,6 +49,7 @@ LEGACY_API_ALIASES = {
     "chat_completions": "/v1/chat/completions",
     "audio_transcriptions": "/v1/audio/transcriptions",
     "audio_translations": "/v1/audio/translations",
+    "pooling": "/pooling",
 }
 
 # NOTE: This value is taken from httpx's default
