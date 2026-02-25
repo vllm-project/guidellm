@@ -9,11 +9,19 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+from pydantic import BaseModel
 
 from guidellm.backends import Backend
 from guidellm.schemas import GenerationRequest, RequestInfo
 from guidellm.utils import RegistryMixin
 from tests.unit.testing_utils import async_timeout
+
+
+class _TestBackendArgs(BaseModel):
+    """Minimal backend args model for test backends."""
+
+    target: str | None = None
+    model: str | None = None
 
 
 class TestBackend:
@@ -30,6 +38,10 @@ class TestBackend:
         constructor_args = request.param
 
         class TestBackendImpl(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BaseModel]:
+                return _TestBackendArgs
+
             @property
             def info(self) -> dict[str, Any]:
                 return {"type": self.type_, "test": "backend"}
@@ -78,8 +90,9 @@ class TestBackend:
         assert hasattr(Backend, "processes_limit")
         assert hasattr(Backend, "requests_limit")
 
-        # Check abstract method exists
+        # Check abstract methods exist
         assert hasattr(Backend, "default_model")
+        assert hasattr(Backend, "backend_args")
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -101,6 +114,10 @@ class TestBackend:
         """Test Backend with invalid field values."""
 
         class TestBackendImpl(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BaseModel]:
+                return _TestBackendArgs
+
             @property
             def info(self) -> dict[str, Any]:
                 return {}
@@ -130,6 +147,10 @@ class TestBackend:
         """Test Backend initialization without required field."""
 
         class TestBackendImpl(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BaseModel]:
+                return _TestBackendArgs
+
             @property
             def info(self) -> dict[str, Any]:
                 return {}
@@ -261,6 +282,10 @@ class TestBackend:
 
         # Test the pattern shown in docstring
         class MyBackend(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BaseModel]:
+                return _TestBackendArgs
+
             def __init__(self, api_key: str):
                 super().__init__("mock_backend")  # type: ignore [arg-type]
                 self.api_key = api_key
@@ -352,6 +377,10 @@ class TestBackend:
         # Create a test backend class
         @Backend.register("test_decorator_backend")
         class TestDecoratorBackend(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BaseModel]:
+                return _TestBackendArgs
+
             def __init__(self, test_param="default"):
                 super().__init__("test_decorator_backend")  # type: ignore
                 self._test_param = test_param

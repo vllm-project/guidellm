@@ -11,6 +11,8 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Literal
 
+from pydantic import BaseModel
+
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import GenerationRequest, GenerationResponse
 from guidellm.utils import RegistryMixin
@@ -102,22 +104,17 @@ class Backend(
         return None
 
     @classmethod
-    def requires_target(cls) -> bool:
+    @abstractmethod
+    def backend_args(cls) -> type[BaseModel]:
         """
-        Indicate whether this backend requires a target parameter.
+        Return the Pydantic model class for this backend's creation arguments.
 
-        :return: True if the backend requires a target parameter, False otherwise
-        """
-        return True  # Default to True for safety (most backends need a target)
+        The model defines the parameters (e.g. target, model) that the CLI/benchmark
+        supply when creating the backend. Used for validation and error messages.
 
-    @classmethod
-    def requires_model(cls) -> bool:
+        :return: A Pydantic BaseModel subclass whose fields are the creation params
         """
-        Indicate whether this backend requires a model parameter.
-
-        :return: True if the backend requires a model parameter, False otherwise
-        """
-        return False  # Default to False (model is optional by default)
+        ...
 
     @abstractmethod
     async def default_model(self) -> str:

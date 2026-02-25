@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from pydantic import BaseModel, Field
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.request_handlers import OpenAIRequestHandlerFactory
@@ -28,7 +29,32 @@ from guidellm.schemas import (
 
 __all__ = [
     "OpenAIHTTPBackend",
+    "OpenAIHttpBackendArgs",
 ]
+
+
+class OpenAIHttpBackendArgs(BaseModel):
+    """Pydantic model for OpenAI HTTP backend creation arguments."""
+
+    target: str = Field(
+        description="Base URL of the OpenAI-compatible server",
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' requires a target parameter. "
+                "Please provide --target with a valid endpoint URL."
+            )
+        },
+    )
+    model: str = Field(
+        default="",
+        description="Model identifier for generation requests",
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' requires a model parameter. "
+                "Please provide --model with a valid model identifier."
+            )
+        },
+    )
 
 
 DEFAULT_API_PATHS = {
@@ -79,23 +105,9 @@ class OpenAIHTTPBackend(Backend):
     """
 
     @classmethod
-    def requires_target(cls) -> bool:
-        """
-        OpenAI HTTP backend requires a target URL.
-
-        :return: True, as this backend requires a target endpoint URL
-        """
-        return True
-
-    @classmethod
-    def requires_model(cls) -> bool:
-        """
-        OpenAI HTTP backend does not require a model parameter.
-        The model can be optional as we can use the server's default model.
-
-        :return: False, as this backend does not require a model parameter
-        """
-        return False
+    def backend_args(cls) -> type[BaseModel]:
+        """Return the Pydantic model for this backend's creation arguments."""
+        return OpenAIHttpBackendArgs
 
     def __init__(
         self,
