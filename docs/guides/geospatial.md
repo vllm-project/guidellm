@@ -30,6 +30,7 @@ guidellm benchmark \
   --backend openai_http \
   --data dataset.jsonl \
   --request-format pooling \
+  --data-column-mapper pooling_column_mapper \
   --max-requests 10 \
   --output-path results.json
 ```
@@ -112,6 +113,7 @@ guidellm benchmark \
   --backend openai_http \
   --data flood_detection_dataset.jsonl \
   --request-format pooling \
+  --data-column-mapper pooling_column_mapper \
   --max-requests 100 \
   --output-path results.json
 ```
@@ -145,6 +147,7 @@ guidellm benchmark \
   --backend openai_http \
   --data dataset.jsonl \
   --request-format pooling \
+  --data-column-mapper pooling_column_mapper \
   --max-requests 10 \
   --output-path results.json
 ```
