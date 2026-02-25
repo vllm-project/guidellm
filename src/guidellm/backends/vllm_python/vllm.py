@@ -68,8 +68,7 @@ def _check_vllm_available() -> None:
     """Check if vllm is available and raise helpful error if not."""
     if not HAS_VLLM:
         raise ImportError(
-            "vllm is not installed. Please install it using "
-            "'pip install guidellm[vllm]' or 'pip install vllm>=0.6.0'"
+            "vllm is not installed. Install vllm to use the vllm python backend."
         )
 
 
