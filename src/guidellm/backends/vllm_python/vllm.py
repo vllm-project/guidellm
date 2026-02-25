@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
+from pydantic import ConfigDict, Field
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
@@ -32,6 +33,7 @@ from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
     RequestInfo,
+    StandardBaseModel,
 )
 
 try:
@@ -51,22 +53,15 @@ _AUDIO_FILE_MIMETYPE_INDEX = 2
 __all__ = ["VLLMPythonBackend"]
 
 
-class _RequestContext:
+class _RequestContext(StandardBaseModel):
     """Resolved mode, body, stream, and files for a generation request."""
 
-    __slots__ = ("mode", "body", "stream", "files")
+    model_config = ConfigDict(frozen=True)
 
-    def __init__(
-        self,
-        mode: _Mode,
-        body: dict[str, Any],
-        stream: bool,
-        files: dict[str, Any],
-    ) -> None:
-        self.mode = mode
-        self.body = body
-        self.stream = stream
-        self.files = files
+    mode: _Mode = Field(description="Inference mode: audio, chat, or text")
+    body: dict[str, Any] = Field(description="Request body payload")
+    stream: bool = Field(description="Whether to stream the response")
+    files: dict[str, Any] = Field(description="Uploaded files (e.g. audio)")
 
 
 def _check_vllm_available() -> None:
