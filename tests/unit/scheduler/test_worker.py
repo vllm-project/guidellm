@@ -18,7 +18,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     WorkerProcess,
 )
-from guidellm.schemas import RequestInfo, RequestTimings
+from guidellm.schemas import GenerationResponse, RequestInfo, RequestTimings, UsageMetrics
 from guidellm.utils import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
 
@@ -50,11 +50,15 @@ class MockBackend(BackendInterface):
         resolve_delay: float = 0.0,
         should_fail: bool = False,
         request_error_rate: float = 0.0,
+        should_yield_response: bool = True,
+        response_payload: Any | None = None,
     ):
         self.lifecycle_delay = lifecycle_delay
         self.resolve_delay = resolve_delay
         self.should_fail = should_fail
         self.request_error_rate = request_error_rate
+        self.should_yield_response = should_yield_response
+        self.response_payload = response_payload
         self.process_startup_called = False
         self.validate_called = False
         self.process_shutdown_called = False
@@ -99,7 +103,13 @@ class MockBackend(BackendInterface):
             raise RuntimeError("Mock resolve failed")
         if self.request_error_rate > 0.0 and random.random() < self.request_error_rate:
             raise RuntimeError("Mock resolve failed")
-        yield f"response_for_{request}", request_info
+        if self.should_yield_response:
+            payload = (
+                self.response_payload
+                if self.response_payload is not None
+                else f"response_for_{request}"
+            )
+            yield payload, request_info
 
 
 class TestWorkerProcess:
@@ -284,6 +294,141 @@ class TestWorkerProcess:
 
             with pytest.raises(TypeError):
                 WorkerProcess(**kwargs)
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_process_next_request_marks_errored_without_terminal_response(
+        self,
+        valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Requests with no terminal backend payload must not be completed."""
+        instance, _, _ = valid_instances
+        instance.backend.should_yield_response = False
+
+        request = "request_no_terminal_payload"
+        request_info = RequestInfo(
+            request_id=request,
+            scheduler_start_time=time.time(),
+            scheduler_process_id=0,
+        )
+        request_info.timings.queued = time.time()
+
+        sent_updates: list[tuple[str, str | None]] = []
+
+        async def _mock_dequeue(_target_start: float):
+            return request, request_info
+
+        async def _mock_schedule(_request, req_info, _target_start: float):
+            req_info.timings.resolve_start = time.time()
+
+        def _capture_send_update(new_status, _response, _request_obj, req_info):
+            req_info.status = new_status
+            sent_updates.append((new_status, req_info.error))
+
+        monkeypatch.setattr(instance, "_dequeue_next_request", _mock_dequeue)
+        monkeypatch.setattr(instance, "_schedule_request", _mock_schedule)
+        monkeypatch.setattr(instance, "_send_update", _capture_send_update)
+        await instance._process_next_request(target_start=time.time())
+
+        statuses = [status for status, _ in sent_updates]
+        assert statuses[-1] == "errored"
+        assert "completed" not in statuses
+        assert sent_updates[-1][1] is not None
+        assert "UNUSABLE_BACKEND_RESPONSE" in sent_updates[-1][1]
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_process_next_request_marks_errored_for_empty_generation_response(
+        self,
+        valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Empty GenerationResponse payload should be treated as unusable."""
+        instance, _, _ = valid_instances
+        request = "request_empty_generation_response"
+        instance.backend.response_payload = GenerationResponse(
+            request_id=request,
+            request_args=None,
+            text="",
+            output_metrics=UsageMetrics(),
+        )
+
+        request_info = RequestInfo(
+            request_id=request,
+            scheduler_start_time=time.time(),
+            scheduler_process_id=0,
+        )
+        request_info.timings.queued = time.time()
+        sent_updates: list[tuple[str, str | None]] = []
+
+        async def _mock_dequeue(_target_start: float):
+            return request, request_info
+
+        async def _mock_schedule(_request, req_info, _target_start: float):
+            req_info.timings.resolve_start = time.time()
+
+        def _capture_send_update(new_status, _response, _request_obj, req_info):
+            req_info.status = new_status
+            sent_updates.append((new_status, req_info.error))
+
+        monkeypatch.setattr(instance, "_dequeue_next_request", _mock_dequeue)
+        monkeypatch.setattr(instance, "_schedule_request", _mock_schedule)
+        monkeypatch.setattr(instance, "_send_update", _capture_send_update)
+        await instance._process_next_request(target_start=time.time())
+
+        statuses = [status for status, _ in sent_updates]
+        assert statuses[-1] == "errored"
+        assert "completed" not in statuses
+        assert sent_updates[-1][1] is not None
+        assert "UNUSABLE_BACKEND_RESPONSE" in sent_updates[-1][1]
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_process_next_request_allows_generation_response_with_tokens(
+        self,
+        valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """GenerationResponse with output tokens should be considered usable."""
+        instance, _, _ = valid_instances
+        request = "request_generation_response_with_tokens"
+        instance.backend.response_payload = GenerationResponse(
+            request_id=request,
+            request_args=None,
+            text="",
+            output_metrics=UsageMetrics(text_tokens=1),
+        )
+
+        request_info = RequestInfo(
+            request_id=request,
+            scheduler_start_time=time.time(),
+            scheduler_process_id=0,
+        )
+        request_info.timings.queued = time.time()
+        sent_updates: list[tuple[str, str | None]] = []
+
+        async def _mock_dequeue(_target_start: float):
+            return request, request_info
+
+        async def _mock_schedule(_request, req_info, _target_start: float):
+            req_info.timings.resolve_start = time.time()
+
+        def _capture_send_update(new_status, _response, _request_obj, req_info):
+            req_info.status = new_status
+            sent_updates.append((new_status, req_info.error))
+
+        monkeypatch.setattr(instance, "_dequeue_next_request", _mock_dequeue)
+        monkeypatch.setattr(instance, "_schedule_request", _mock_schedule)
+        monkeypatch.setattr(instance, "_send_update", _capture_send_update)
+        await instance._process_next_request(target_start=time.time())
+
+        statuses = [status for status, _ in sent_updates]
+        assert statuses[-1] == "completed"
+        assert "errored" not in statuses
 
     @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke

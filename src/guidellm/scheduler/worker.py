@@ -37,7 +37,7 @@ from guidellm.scheduler.schemas import (
     ResponseT,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import GenerationResponse, RequestInfo
 from guidellm.utils import (
     InterProcessMessaging,
     wait_for_sync_barrier,
@@ -370,9 +370,15 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 if request_info is None:
                     raise RuntimeError("Received invalid request info from backend")
 
-            # Complete the request
             request_info.timings.resolve_end = time.time()
-            self._send_update("completed", response, request, request_info)
+            if not self._has_usable_terminal_response(response):
+                request_info.error = (
+                    "[UNUSABLE_BACKEND_RESPONSE] backend resolved without a usable "
+                    "terminal response payload"
+                )
+                self._send_update("errored", None, request, request_info)
+            else:
+                self._send_update("completed", response, request, request_info)
 
             response = request = request_info = None
         except asyncio.CancelledError:
@@ -395,6 +401,21 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)
+
+    def _has_usable_terminal_response(self, response: ResponseT | None) -> bool:
+        """
+        Return whether backend resolve produced a usable terminal response.
+
+        A missing terminal response indicates the backend transport resolved but did
+        not provide result payload data that can be aggregated.
+        """
+
+        if isinstance(response, GenerationResponse):
+            has_text = bool(response.text and response.text.strip())
+            output_tokens = response.output_metrics.total_tokens or 0
+            return has_text or output_tokens > 0
+
+        return bool(response)
 
     async def _dequeue_next_request(
         self, target_start: float
