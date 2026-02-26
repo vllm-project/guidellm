@@ -18,7 +18,12 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     WorkerProcess,
 )
-from guidellm.schemas import GenerationResponse, RequestInfo, RequestTimings, UsageMetrics
+from guidellm.schemas import (
+    GenerationResponse,
+    RequestInfo,
+    RequestTimings,
+    UsageMetrics,
+)
 from guidellm.utils import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
 
@@ -303,7 +308,10 @@ class TestWorkerProcess:
         valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
         monkeypatch: pytest.MonkeyPatch,
     ):
-        """Requests with no terminal backend payload must not be completed."""
+        """Requests with no terminal backend payload must not be completed.
+
+        ## WRITTEN BY AI ##
+        """
         instance, _, _ = valid_instances
         instance.backend.should_yield_response = False
 
@@ -346,7 +354,10 @@ class TestWorkerProcess:
         valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
         monkeypatch: pytest.MonkeyPatch,
     ):
-        """Empty GenerationResponse payload should be treated as unusable."""
+        """Empty GenerationResponse payload should be treated as unusable.
+
+        ## WRITTEN BY AI ##
+        """
         instance, _, _ = valid_instances
         request = "request_empty_generation_response"
         instance.backend.response_payload = GenerationResponse(
@@ -393,7 +404,10 @@ class TestWorkerProcess:
         valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
         monkeypatch: pytest.MonkeyPatch,
     ):
-        """GenerationResponse with output tokens should be considered usable."""
+        """GenerationResponse with output tokens should be considered usable.
+
+        ## WRITTEN BY AI ##
+        """
         instance, _, _ = valid_instances
         request = "request_generation_response_with_tokens"
         instance.backend.response_payload = GenerationResponse(
