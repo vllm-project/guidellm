@@ -98,7 +98,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         constraint_reached_event: ProcessingEvent,
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
-        instant_ttft_duration: float = 0.0,
     ):
         """
         Initialize worker process instance.
@@ -115,11 +114,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param constraint_reached_event: Event signaling processing constraint reached
         :param shutdown_event: Event signaling graceful shutdown request
         :param error_event: Event signaling error conditions across processes
-        :param instant_ttft_duration: Duration in seconds during which the worker
-            sends early "first_token" status updates when the first token
-            arrives during streaming, before the request completes. Set to 0.0 to
-            disable. Used to provide TTFT data to the over-saturation constraint
-            before any request finishes.
         """
         self.worker_index = worker_index
         self.messaging = messaging
@@ -132,13 +126,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.constraint_reached_event = constraint_reached_event
         self.shutdown_event = shutdown_event
         self.error_event = error_event
-        self.instant_ttft_duration = instant_ttft_duration
 
         # Internal states
         self.startup_completed = False
         self.backend_started = False
         self.messaging_started = False
-        self._instant_ttft_start: float | None = None
 
     def run(self):
         """
@@ -356,9 +348,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
-        The backend may yield an intermediate update on first token arrival; when
-        instant TTFT is enabled, this triggers a ``"first_token"`` status
-        update so constraints receive TTFT data before request completion.
 
         :param target_start: Unix timestamp when request should begin processing
         """
@@ -380,9 +369,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 if request_info is None:
                     raise RuntimeError("Received invalid request info from backend")
 
-                if resp is None:
-                    if self._should_send_ttft():
-                        self._send_update("first_token", None, request, request_info)
+                if (
+                    resp is None
+                    and request_info.timings.first_token_iteration is not None
+                ):
+                    self._send_update("first_token", None, request, request_info)
                     continue
 
                 response = resp
@@ -412,14 +403,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)
-
-    def _should_send_ttft(self) -> bool:
-        """Check whether to send instant TTFT for the current request."""
-        if self.instant_ttft_duration <= 0:
-            return False
-        if self._instant_ttft_start is None:
-            self._instant_ttft_start = time.time()
-        return time.time() - self._instant_ttft_start < self.instant_ttft_duration
 
     async def _dequeue_next_request(
         self, target_start: float
