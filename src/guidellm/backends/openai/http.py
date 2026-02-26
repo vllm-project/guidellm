@@ -45,8 +45,8 @@ class OpenAIHttpBackendArgs(BaseModel):
             )
         },
     )
-    model: str = Field(
-        default="",
+    model: str | None = Field(
+        default=None,
         description="Model identifier for generation requests",
         json_schema_extra={
             "error_message": (
