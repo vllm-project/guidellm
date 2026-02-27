@@ -20,6 +20,15 @@ from .base import (
     BenchmarkConfig,
     BenchmarkT,
 )
+from .embeddings import (
+    BenchmarkEmbeddingsArgs,
+    EmbeddingsBenchmark,
+    EmbeddingsBenchmarkAccumulator,
+    EmbeddingsBenchmarkMetadata,
+    EmbeddingsBenchmarksReport,
+    EmbeddingsBenchmarkTimings,
+    EmbeddingsMetrics,
+)
 from .generative import (
     BenchmarkGenerativeTextArgs,
     GenerativeAudioMetricsSummary,
@@ -45,8 +54,15 @@ __all__ = [
     "BenchmarkAccumulator",
     "BenchmarkAccumulatorT",
     "BenchmarkConfig",
+    "BenchmarkEmbeddingsArgs",
     "BenchmarkGenerativeTextArgs",
     "BenchmarkT",
+    "EmbeddingsBenchmark",
+    "EmbeddingsBenchmarkAccumulator",
+    "EmbeddingsBenchmarkMetadata",
+    "EmbeddingsBenchmarkTimings",
+    "EmbeddingsBenchmarksReport",
+    "EmbeddingsMetrics",
     "GenerativeAudioMetricsSummary",
     "GenerativeBenchmark",
     "GenerativeBenchmarkAccumulator",
