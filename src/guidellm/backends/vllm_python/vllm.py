@@ -142,7 +142,6 @@ class VLLMPythonBackend(Backend):
         model: str,
         vllm_config: dict[str, Any] | None = None,
         request_format: str | None = None,
-        target: str | None = None,  # Backend.create API; unused (local)
         stream: bool = True,
     ):
         """
@@ -165,7 +164,6 @@ class VLLMPythonBackend(Backend):
         """
         _check_vllm_available()
         super().__init__(type_="vllm_python")
-        _ = target  # Required by Backend.create(); unused for local backend
 
         self.model = model
         self.request_format = request_format
@@ -200,6 +198,10 @@ class VLLMPythonBackend(Backend):
         config = dict(user_config)
 
         # Ensure model is set in config (required; overrides user if they passed it)
+        if "model" in config:
+            logger.warning("The `model` input was passed to the vllm python backend "
+                           "with the `vllm_config` input. Ignoring and overwriting "
+                           "with the value from the `model` input.")
         config["model"] = self.model
 
         # Pass custom chat template to vLLM engine when applicable
@@ -251,7 +253,6 @@ class VLLMPythonBackend(Backend):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
 
-        # Shutdown the async engine if it has a shutdown method
         if self._engine is not None:
             self._engine.shutdown()
             self._engine = None
@@ -266,6 +267,12 @@ class VLLMPythonBackend(Backend):
         if self._engine is None:
             raise RuntimeError("Backend not started up for process.")
 
+        try:
+            await self._engine.check_health()
+        except BaseException as exc:
+            raise RuntimeError(
+                "Backend validation failed. Health check failed."
+            ) from exc
         # Perform a minimal test generation to verify the model is working
         try:
             test_params = SamplingParams(temperature=0.0, max_tokens=1)  # type: ignore[misc]
@@ -325,32 +332,25 @@ class VLLMPythonBackend(Backend):
         build body from request.columns (always messages) so the standard benchmark
         pipeline works. Mode is inferred from body and files (audio/chat/text).
         """
-        arguments = getattr(request, "arguments", None)
 
-        if arguments is not None:
-            body = getattr(arguments, "body", None) or {}
-            stream_override = getattr(arguments, "stream", None)
-            stream = self.stream if stream_override is None else bool(stream_override)
-            files = getattr(arguments, "files", None) or {}
-        else:
-            columns = getattr(request, "columns", {}) or {}
-            prefix_parts = list(columns.get("prefix_column", []) or [])
-            text_parts = list(columns.get("text_column", []) or [])
-            messages: list[dict[str, Any]] = []
-            for p in prefix_parts:
-                if p:
-                    messages.append({"role": "system", "content": str(p)})
-            for t in text_parts:
-                if t:
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": str(t)}],
-                        }
-                    )
-            body = {"messages": messages}
-            stream = self.stream
-            files = {}
+        columns = request.columns
+        prefix_parts = list(columns.get("prefix_column", []) or [])
+        text_parts = list(columns.get("text_column", []) or [])
+        messages: list[dict[str, Any]] = []
+        for p in prefix_parts:
+            if p:
+                messages.append({"role": "system", "content": str(p)})
+        for t in text_parts:
+            if t:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": str(t)}],
+                    }
+                )
+        body = {"messages": messages}
+        stream = self.stream
+        files = {}
 
         if files:
             mode: _Mode = "audio"
