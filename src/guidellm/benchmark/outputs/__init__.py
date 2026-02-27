@@ -11,11 +11,16 @@ from __future__ import annotations
 
 from .console import GenerativeBenchmarkerConsole
 from .csv import GenerativeBenchmarkerCSV
+from .embeddings_console import EmbeddingsBenchmarkerConsole
+from .embeddings_serialized import EmbeddingsBenchmarkerSerialized
 from .html import GenerativeBenchmarkerHTML
-from .output import GenerativeBenchmarkerOutput
+from .output import EmbeddingsBenchmarkerOutput, GenerativeBenchmarkerOutput
 from .serialized import GenerativeBenchmarkerSerialized
 
 __all__ = [
+    "EmbeddingsBenchmarkerConsole",
+    "EmbeddingsBenchmarkerOutput",
+    "EmbeddingsBenchmarkerSerialized",
     "GenerativeBenchmarkerCSV",
     "GenerativeBenchmarkerConsole",
     "GenerativeBenchmarkerHTML",

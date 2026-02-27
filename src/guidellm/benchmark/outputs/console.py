@@ -26,7 +26,7 @@ from guidellm.utils.functions import safe_format_number, safe_format_timestamp
 __all__ = ["GenerativeBenchmarkerConsole"]
 
 
-StatTypesAlias = Literal["mean", "median", "p95"]
+StatTypesAlias = Literal["mean", "median", "p95", "p99"]
 
 
 @dataclass
@@ -181,6 +181,8 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
             return "Mdn", stats.median if stats else None
         elif stat_type == "p95":
             return "p95", stats.percentiles.p95 if stats else None
+        elif stat_type == "p99":
+            return "p99", stats.percentiles.p99 if stats else None
         else:
             raise ValueError(f"Unsupported stat type: {stat_type}")
 
@@ -267,19 +269,31 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 (benchmark.metrics.output_token_count, "Output Tokens"),
             ]:
                 columns.add_value(
-                    token_metrics.successful.total_sum,
+                    (
+                        token_metrics.successful.total_sum
+                        if token_metrics.successful is not None
+                        else 0.0
+                    ),
                     group=group,
                     name="Comp",
                     units="Tot",
                 )
                 columns.add_value(
-                    token_metrics.incomplete.total_sum,
+                    (
+                        token_metrics.incomplete.total_sum
+                        if token_metrics.incomplete is not None
+                        else 0.0
+                    ),
                     group=group,
                     name="Inc",
                     units="Tot",
                 )
                 columns.add_value(
-                    token_metrics.errored.total_sum,
+                    (
+                        token_metrics.errored.total_sum
+                        if token_metrics.errored is not None
+                        else 0.0
+                    ),
                     group=group,
                     name="Err",
                     units="Tot",

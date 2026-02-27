@@ -19,8 +19,11 @@ from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
-from guidellm.backends import Backend
-from guidellm.benchmark.benchmarker import Benchmarker
+from guidellm.backends import Backend, BackendType
+from guidellm.benchmark.entrypoints_utils import (
+    resolve_output_formats_generic,
+    run_benchmark_workflow,
+)
 from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,
@@ -33,13 +36,11 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
 )
-from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
     DataLoader,
     DatasetFinalizer,
     DatasetPreprocessor,
     FinalizerRegistry,
-    GenerativeRequestCollator,
     PreprocessorRegistry,
     ProcessorFactory,
 )
@@ -78,7 +79,7 @@ ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokeni
 
 
 async def resolve_backend(
-    backend: str | Backend,
+    backend: BackendType | Backend,
     console: Console | None = None,
     **backend_kwargs: Any,
 ) -> tuple[Backend, str]:
@@ -107,8 +108,13 @@ async def resolve_backend(
         else None
     )
 
+    model = backend_kwargs.pop("model", None)
+    create_kwargs = {k: v for k, v in backend_kwargs.items() if v is not None}
+    if model is not None:
+        create_kwargs["model"] = model
+
     backend_instance = (
-        Backend.create(backend, **backend_kwargs)
+        Backend.create(backend, **create_kwargs)
         if not isinstance(backend, Backend)
         else backend
     )
@@ -121,12 +127,13 @@ async def resolve_backend(
     await backend_instance.process_startup()
     await backend_instance.validate()
 
-    if console_step:
-        console_step.update(
-            title="Resolving default model from backend.default_model",
-            status_level="info",
-        )
-    model = await backend_instance.default_model()
+    if model is None:
+        if console_step:
+            console_step.update(
+                title="Resolving default model from backend.default_model",
+                status_level="info",
+            )
+        model = await backend_instance.default_model()
 
     await backend_instance.process_shutdown()
 
@@ -240,12 +247,12 @@ async def resolve_request_loader(
     data_column_mapper: (
         DatasetPreprocessor
         | dict[str, str | list[str]]
-        | Literal["generative_column_mapper", "pooling_column_mapper"]
+        | Literal["generative_column_mapper", "embeddings_column_mapper"]
     ),
     data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
     data_preprocessors_kwargs: dict[str, Any],
     data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
-    data_collator: Callable | Literal["generative"] | None,
+    data_collator: Callable | Literal["generative", "embeddings"] | None,
     data_sampler: Sampler[int] | Literal["shuffle"] | None,
     data_num_workers: int | None,
     random_seed: int,
@@ -309,6 +316,18 @@ async def resolve_request_loader(
         data_finalizer,
     )
 
+    # Resolve collator from string or use provided callable
+    if callable(data_collator):
+        collator_instance = data_collator
+    elif data_collator == "embeddings":
+        from guidellm.data import EmbeddingsRequestCollator
+
+        collator_instance = EmbeddingsRequestCollator()
+    else:  # default to "generative" or None
+        from guidellm.data import GenerativeRequestCollator
+
+        collator_instance = GenerativeRequestCollator()
+
     request_loader: DataLoader[GenerationRequest] = DataLoader(
         data=data,
         data_args=data_args,
@@ -319,9 +338,7 @@ async def resolve_request_loader(
         ),
         preprocessors=preprocessors_list,
         finalizer=finalizer_instance,
-        collator=(
-            data_collator if callable(data_collator) else GenerativeRequestCollator()
-        ),
+        collator=collator_instance,
         sampler=data_sampler,
         num_workers=data_num_workers,
         random_seed=random_seed,
@@ -425,35 +442,8 @@ async def resolve_profile(
     return profile
 
 
-async def resolve_output_formats(
-    outputs: list[str] | tuple[str],
-    output_dir: str | Path | None,
-    console: Console | None = None,
-) -> dict[str, GenerativeBenchmarkerOutput]:
-    """
-    Resolve output format specifications into configured output handler instances.
-
-    :param outputs: Specification of desired output files/types
-    :param output_dir: Base path for output file generation, or None for default
-    :param console: Console instance for progress reporting, or None
-    :return: Dictionary mapping format names to configured output handler instances
-    """
-    console_step = (
-        console.print_update_step(title="Resolving output formats") if console else None
-    )
-
-    resolved = GenerativeBenchmarkerOutput.resolve(
-        outputs=outputs, output_dir=output_dir
-    )
-
-    if console_step:
-        console_step.finish(
-            title="Output formats resolved",
-            details={key: str(val) for key, val in resolved.items()},
-            status_level="success",
-        )
-
-    return resolved
+# resolve_output_formats function removed - now uses
+# resolve_output_formats_generic from entrypoints_utils
 
 
 # Main Entrypoints Functions
@@ -468,124 +458,51 @@ async def benchmark_generative_text(
     """
     Execute a comprehensive generative text benchmarking workflow.
 
-    Orchestrates the full benchmarking pipeline by resolving all components from
-    provided arguments, executing benchmark runs across configured profiles, and
-    finalizing results in specified output formats. Components include backend
-    initialization, data loading, profile configuration, and output generation.
+    Orchestrates the full benchmarking pipeline by resolving all components
+    from provided arguments, executing benchmark runs across configured
+    profiles, and finalizing results in specified output formats. Components
+    include backend initialization, data loading, profile configuration, and
+    output generation.
 
     :param args: Configuration arguments for the benchmark execution
-    :param progress: Progress tracker for benchmark execution, or None for no tracking
-    :param console: Console instance for status reporting, or None for silent operation
-    :param constraints: Additional constraint initializers for benchmark limits
-    :return: Tuple of GenerativeBenchmarksReport and dictionary of output format
-        results
+    :param progress: Progress tracker for benchmark execution, or None for
+        no tracking
+    :param console: Console instance for status reporting, or None for
+        silent operation
+    :param constraints: Additional constraint initializers for benchmark
+        limits
+    :return: Tuple of GenerativeBenchmarksReport and dictionary of output
+        format results
     """
-    backend_params = args.backend_kwargs.model_dump(exclude_defaults=True)
-    backend, model = await resolve_backend(
-        backend=args.backend,
-        console=console,
-        **backend_params,
-    )
-    processor = await resolve_processor(
-        processor=args.processor, model=model, console=console
-    )
-    request_loader = await resolve_request_loader(
-        data=args.data,
-        model=model,
-        data_args=args.data_args,
-        data_samples=args.data_samples,
-        processor=processor,
-        processor_args=args.processor_args,
-        data_column_mapper=args.data_column_mapper,
-        data_preprocessors=args.data_preprocessors,
-        data_preprocessors_kwargs=args.data_preprocessors_kwargs,
-        data_finalizer=args.data_finalizer,
-        data_collator=args.data_collator,
-        data_sampler=args.data_sampler,
-        data_num_workers=args.data_num_workers,
-        random_seed=args.random_seed,
-        console=console,
-        **(args.dataloader_kwargs or {}),
-    )
 
-    warmup = TransientPhaseConfig.create_from_value(args.warmup)
-    cooldown = TransientPhaseConfig.create_from_value(args.cooldown)
-    if console:
-        console.print_update(
-            title="Resolved transient phase configurations",
-            details="\n".join(
-                [
-                    f"Warmup: {warmup}",
-                    f"Cooldown: {cooldown}",
-                    f"Rampup (Throughput/Concurrent): {args.rampup}",
-                ]
-            ),
-            status="success",
-        )
+    def setup_profile_kwargs(
+        profile_kwargs: dict[str, Any],
+        args: BenchmarkGenerativeTextArgs,
+    ) -> dict[str, Any]:
+        """Configure profile kwargs for generative benchmarks."""
+        profile_kwargs["rampup"] = args.rampup
+        profile_kwargs["max_seconds"] = args.max_seconds
+        profile_kwargs["max_error_rate"] = args.max_error_rate
+        profile_kwargs["max_global_error_rate"] = args.max_global_error_rate
+        profile_kwargs["over_saturation"] = args.over_saturation
+        return profile_kwargs
 
-    profile = await resolve_profile(
-        profile=args.profile,
-        rate=args.rate,
-        random_seed=args.random_seed,
-        rampup=args.rampup,
-        constraints=constraints,
-        max_seconds=args.max_seconds,
-        max_requests=args.max_requests,
-        max_errors=args.max_errors,
-        max_error_rate=args.max_error_rate,
-        max_global_error_rate=args.max_global_error_rate,
-        over_saturation=args.over_saturation,
-        console=console,
-    )
-    output_formats = await resolve_output_formats(
-        outputs=args.outputs, output_dir=args.output_dir, console=console
-    )
-
-    report = GenerativeBenchmarksReport(args=args)
-    if console:
-        console.print_update(
-            title="Setup complete, starting benchmarks...", status="success"
-        )
-        console.print("\n\n")
-
-    benchmarker: Benchmarker[
-        GenerativeBenchmark, GenerationRequest, GenerationResponse
-    ] = Benchmarker()
-    async for benchmark in benchmarker.run(
+    return await run_benchmark_workflow(
+        args=args,
         accumulator_class=GenerativeBenchmarkAccumulator,
         benchmark_class=GenerativeBenchmark,
-        requests=request_loader,
-        backend=backend,
-        profile=profile,
-        environment=NonDistributedEnvironment(),
+        benchmarks_report_class=GenerativeBenchmarksReport,
+        output_handler_class=GenerativeBenchmarkerOutput,  # type: ignore[type-abstract]
+        console_handler_class=GenerativeBenchmarkerConsole,
         progress=progress,
-        sample_requests=args.sample_requests,
-        warmup=warmup,
-        cooldown=cooldown,
-        prefer_response_metrics=args.prefer_response_metrics,
-    ):
-        if benchmark:
-            report.benchmarks.append(benchmark)
-
-    output_format_results = {}
-    for key, output in output_formats.items():
-        output_result = await output.finalize(report)
-        output_format_results[key] = output_result
-
-    if console:
-        await GenerativeBenchmarkerConsole(console=console).finalize(report)
-        console.print("\n\n")
-        console.print_update(
-            title=(
-                "Benchmarking complete, generated "
-                f"{len(report.benchmarks)} benchmark(s)"
-            ),
-            status="success",
-        )
-        for key, value in output_format_results.items():
-            console.print_update(title=f"  {key:<8}: {value}", status="debug")
-
-    return report, output_format_results
+        console=console,
+        resolve_profile_kwargs_modifier=setup_profile_kwargs,  # type: ignore[arg-type]
+        benchmarker_kwargs={
+            "sample_requests": args.sample_requests,
+            "prefer_response_metrics": args.prefer_response_metrics,
+        },
+        **constraints,  # type: ignore[arg-type]
+    )
 
 
 async def reimport_benchmarks_report(
@@ -613,9 +530,10 @@ async def reimport_benchmarks_report(
             f" loaded {len(report.benchmarks)} benchmark(s)"
         )
 
-    resolved_output_formats = await resolve_output_formats(
-        output_formats,  # type: ignore[arg-type]
-        output_path,
+    resolved_output_formats = await resolve_output_formats_generic(
+        outputs=output_formats,  # type: ignore[arg-type]
+        output_dir=output_path,
+        output_handler_class=GenerativeBenchmarkerOutput,  # type: ignore[type-abstract]
         console=console,
     )
     output_format_results = {}
