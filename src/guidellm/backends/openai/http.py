@@ -110,6 +110,7 @@ DEFAULT_API_PATHS = {
     "/v1/audio/transcriptions": "v1/audio/transcriptions",
     "/v1/audio/translations": "v1/audio/translations",
     "/pooling": "pooling",
+    "/v1/embeddings": "v1/embeddings",
 }
 
 DEFAULT_API = "/v1/chat/completions"

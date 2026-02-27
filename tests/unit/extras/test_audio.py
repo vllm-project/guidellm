@@ -7,7 +7,14 @@ import numpy as np
 import pytest
 import torch
 
-from guidellm.extras.audio import encode_audio
+# Skip all tests if torchcodec/audio dependencies aren't available
+try:
+    from guidellm.extras.audio import encode_audio
+except (ImportError, RuntimeError) as e:
+    pytest.skip(
+        f"Audio dependencies not available: {e}",
+        allow_module_level=True,
+    )
 
 
 @pytest.fixture
