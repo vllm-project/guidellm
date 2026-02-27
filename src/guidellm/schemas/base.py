@@ -56,6 +56,8 @@ class ReloadableBaseModel(BaseModel):
         use_enum_values=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
     )
 
     @classmethod
@@ -169,6 +171,8 @@ class StandardBaseModel(BaseModel):
         extra="ignore",
         use_enum_values=True,
         from_attributes=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
     )
 
     @classmethod
@@ -198,6 +202,8 @@ class StandardBaseDict(StandardBaseModel):
         use_enum_values=True,
         from_attributes=True,
         arbitrary_types_allowed=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
     )
 
 
