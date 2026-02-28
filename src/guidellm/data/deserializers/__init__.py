@@ -25,6 +25,7 @@ from .synthetic import (
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
+from .trace_synthetic import TraceSyntheticDatasetDeserializer
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
@@ -46,4 +47,5 @@ __all__ = [
     "SyntheticTextDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
+    "TraceSyntheticDatasetDeserializer",
 ]
