@@ -26,6 +26,7 @@ from typing import Annotated, ClassVar, Literal, TypeVar
 
 from pydantic import Field, NonNegativeFloat, NonNegativeInt, PositiveInt, PrivateAttr
 
+from guidellm.data.trace_io import load_relative_timestamps
 from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo
 from guidellm.utils.mixins import InfoMixin
 
@@ -38,11 +39,13 @@ __all__ = [
     "StrategyType",
     "SynchronousStrategy",
     "ThroughputStrategy",
+    "TraceReplayStrategy",
+    "load_relative_timestamps",
 ]
 
 
 StrategyType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "constant", "poisson"],
+    Literal["synchronous", "concurrent", "throughput", "constant", "poisson", "trace"],
     "Valid strategy type identifiers for scheduling request patterns",
 ]
 
@@ -671,3 +674,53 @@ class AsyncPoissonStrategy(SchedulingStrategy):
         :param request_info: Completed request metadata (unused)
         """
         _ = request_info  # request_info unused for async poisson strategy
+
+
+@SchedulingStrategy.register("trace")
+class TraceReplayStrategy(SchedulingStrategy):
+    """
+    Replay scheduling from a trace of timestamps.
+
+    Schedules each request at start_time + time_scale * relative_timestamp[i],
+    so the trace's inter-arrival pattern is reproduced with an optional time scale.
+    """
+
+    type_: Literal["trace"] = "trace"  # type: ignore[assignment]
+    relative_timestamps: list[float] = Field(
+        description="Request start times relative to first event (first = 0)",
+    )
+    time_scale: float = Field(
+        default=1.0,
+        gt=0,
+        description="Scale factor applied to relative timestamps",
+    )
+
+    def __str__(self) -> str:
+        return f"trace@{self.time_scale:.2f}"
+
+    @property
+    def processes_limit(self) -> PositiveInt | None:
+        return None
+
+    @property
+    def requests_limit(self) -> PositiveInt | None:
+        # Cap concurrency to the trace length so workers never hold more
+        # semaphore slots than there are items to process.
+        return len(self.relative_timestamps) if self.relative_timestamps else None
+
+    async def next_request_time(self, worker_index: NonNegativeInt) -> float:
+        _ = worker_index
+        start_time = await self.get_processes_start_time()
+        if not self.relative_timestamps:
+            return start_time
+
+        idx = self.next_request_index()
+        if idx > len(self.relative_timestamps):
+            # Trace exhausted: signal the worker to wait for constraint_reached_event.
+            # math.inf tells the worker the trace is done; it will wait for the
+            # constraint to be reached instead of scheduling more requests.
+            return math.inf
+        return start_time + self.time_scale * self.relative_timestamps[idx - 1]
+
+    def request_completed(self, request_info: RequestInfo):
+        _ = request_info
