@@ -374,7 +374,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     and request_info.timings.first_token_iteration is not None
                 ):
                     self._send_update("first_token", None, request, request_info)
-                    continue
 
                 response = resp
 
