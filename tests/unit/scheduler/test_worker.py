@@ -19,10 +19,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     WorkerProcess,
 )
-from guidellm.schemas import (
-    RequestInfo,
-    RequestTimings,
-)
+from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.utils.messaging import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
 
@@ -54,15 +51,11 @@ class MockBackend(BackendInterface):
         resolve_delay: float = 0.0,
         should_fail: bool = False,
         request_error_rate: float = 0.0,
-        should_yield_response: bool = True,
-        response_payload: Any | None = None,
     ):
         self.lifecycle_delay = lifecycle_delay
         self.resolve_delay = resolve_delay
         self.should_fail = should_fail
         self.request_error_rate = request_error_rate
-        self.should_yield_response = should_yield_response
-        self.response_payload = response_payload
         self.process_startup_called = False
         self.validate_called = False
         self.process_shutdown_called = False
@@ -107,13 +100,7 @@ class MockBackend(BackendInterface):
             raise RuntimeError("Mock resolve failed")
         if self.request_error_rate > 0.0 and random.random() < self.request_error_rate:
             raise RuntimeError("Mock resolve failed")
-        if self.should_yield_response:
-            payload = (
-                self.response_payload
-                if self.response_payload is not None
-                else f"response_for_{request}"
-            )
-            yield payload, request_info
+        yield f"response_for_{request}", request_info
 
 
 class TestWorkerProcess:
