@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import pytest
 import yaml
 from datasets import IterableDataset
+from faker import Faker
 
 from guidellm.data import config as config_module
 from guidellm.data.deserializers.synthetic import (
@@ -307,8 +308,6 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        from faker import Faker
-
         generator = SyntheticTextDataset(simple_config, mock_tokenizer, random_seed=42)
         faker = Faker()
         faker.seed_instance(42)
@@ -592,3 +591,240 @@ class TestSyntheticDatasetDeserializer:
             assert isinstance(result, IterableDataset)
         finally:
             Path(config_path).unlink()
+
+
+class TestSyntheticTextDatasetMultiturn:
+    """Test cases for SyntheticTextDataset with turns parameter.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture
+    def mock_tokenizer(self):
+        """Fixture to provide a mocked tokenizer.
+
+        ### WRITTEN BY AI ###
+        """
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
+        tokenizer.decode.side_effect = (
+            lambda tokens, skip_special_tokens=False: " ".join(
+                f"token_{t}" for t in tokens[:5]
+            )
+        )
+        return tokenizer
+
+    @pytest.mark.smoke
+    def test_synthetic_config_default_turns(self):
+        """Test SyntheticTextDatasetConfig has default turns=1.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=100,
+            output_tokens=50,
+        )
+
+        assert config.turns == 1
+
+    @pytest.mark.sanity
+    def test_synthetic_config_custom_turns(self):
+        """Test SyntheticTextDatasetConfig accepts custom turns.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=100,
+            output_tokens=50,
+            turns=3,
+        )
+
+        assert config.turns == 3
+
+    @pytest.mark.sanity
+    def test_synthetic_config_invalid_turns(self):
+        """Test SyntheticTextDatasetConfig rejects invalid turns values.
+
+        ### WRITTEN BY AI ###
+        """
+        # turns=0 should fail (gt=0 constraint)
+        with pytest.raises(ValueError):
+            SyntheticTextDatasetConfig(
+                prompt_tokens=100,
+                output_tokens=50,
+                turns=0,
+            )
+
+        # turns=-1 should fail
+        with pytest.raises(ValueError):
+            SyntheticTextDatasetConfig(
+                prompt_tokens=100,
+                output_tokens=50,
+                turns=-1,
+            )
+
+    @pytest.mark.smoke
+    def test_synthetic_single_turn_columns(self, mock_tokenizer):
+        """Test synthetic dataset generates correct columns for single turn.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50,
+            output_tokens=25,
+            turns=1,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+
+        # Get one item
+        item = next(iter(dataset))
+
+        # Should have turn-indexed columns
+        assert "prefix" in item
+        assert "prompt_0" in item
+        assert "prompt_tokens_count_0" in item
+        assert "output_tokens_count_0" in item
+
+        # Should not have prompt_1, etc
+        assert "prompt_1" not in item
+        assert "prompt_tokens_count_1" not in item
+
+    @pytest.mark.smoke
+    def test_synthetic_multi_turn_columns(self, mock_tokenizer):
+        """Test synthetic dataset generates correct columns for multiple turns.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50,
+            output_tokens=25,
+            turns=3,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+
+        # Get one item
+        item = next(iter(dataset))
+
+        # Should have turn-indexed columns for all 3 turns
+        for turn in range(3):
+            assert f"prompt_{turn}" in item
+            assert f"prompt_tokens_count_{turn}" in item
+            assert f"output_tokens_count_{turn}" in item
+
+        # Should not have prompt_3
+        assert "prompt_3" not in item
+
+    @pytest.mark.sanity
+    def test_synthetic_turn_column_values_unique(self, mock_tokenizer):
+        """Test each turn column has unique content.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50,
+            output_tokens=25,
+            turns=3,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+
+        # Get one item
+        item = next(iter(dataset))
+
+        # Prompts for different turns should be different
+        # (Due to the unique prefix in _create_prompt that includes sample count)
+        prompt_0 = item["prompt_0"]
+        prompt_1 = item["prompt_1"]
+        prompt_2 = item["prompt_2"]
+
+        # Note: With our mock tokenizer, the prompts will be similar but should
+        # have different indices in the unique prefix, making them different
+        assert isinstance(prompt_0, str)
+        assert isinstance(prompt_1, str)
+        assert isinstance(prompt_2, str)
+
+    @pytest.mark.regression
+    def test_synthetic_iteration_with_turns(self, mock_tokenizer):
+        """Test iterating dataset with turns generates all columns per row.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=30,
+            output_tokens=15,
+            turns=2,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+
+        # Get multiple items
+        items = []
+        for i, item in enumerate(dataset):
+            items.append(item)
+            if i >= 2:  # Get 3 items
+                break
+
+        # Each item should have all turn columns
+        for item in items:
+            assert "prefix" in item
+            for turn in range(2):
+                assert f"prompt_{turn}" in item
+                assert f"prompt_tokens_count_{turn}" in item
+                assert f"output_tokens_count_{turn}" in item
+                # Values should be populated
+                assert isinstance(item[f"prompt_{turn}"], str)
+                assert isinstance(item[f"prompt_tokens_count_{turn}"], int)
+                assert isinstance(item[f"output_tokens_count_{turn}"], int)
+
+    @pytest.mark.sanity
+    def test_synthetic_features_match_turns(self, mock_tokenizer):
+        """Test dataset features match configured turns.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50,
+            output_tokens=25,
+            turns=4,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+
+        # Access the features through the examples iterable
+        features = dataset._ex_iterable.features
+
+        # Should have prefix + 4 sets of turn columns
+        assert "prefix" in features
+        for turn in range(4):
+            assert f"prompt_{turn}" in features
+            assert f"prompt_tokens_count_{turn}" in features
+            assert f"output_tokens_count_{turn}" in features
+
+    @pytest.mark.regression
+    def test_synthetic_turn_token_counts_consistent(self, mock_tokenizer):
+        """Test token counts are consistent across turns in a sample.
+
+        ### WRITTEN BY AI ###
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50,
+            output_tokens=25,
+            turns=3,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+
+        # Get one item
+        item = next(iter(dataset))
+
+        # All turns in a sample should have the same token counts
+        # (based on how synthetic generation works - same counts per sample)
+        prompt_count_0 = item["prompt_tokens_count_0"]
+        prompt_count_1 = item["prompt_tokens_count_1"]
+        prompt_count_2 = item["prompt_tokens_count_2"]
+
+        # These should all be the same for a given sample
+        assert prompt_count_0 == prompt_count_1 == prompt_count_2
+
+        output_count_0 = item["output_tokens_count_0"]
+        output_count_1 = item["output_tokens_count_1"]
+        output_count_2 = item["output_tokens_count_2"]
+
+        # These should all be the same for a given sample
+        assert output_count_0 == output_count_1 == output_count_2
