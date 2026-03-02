@@ -575,9 +575,6 @@ class TestTextCompletionsRequestHandler:
                 10,
                 5,
             ),
-            ({"choices": [{"text": ""}], "usage": {}}, "", None, None),
-            ({"choices": [], "usage": {}}, "", None, None),
-            ({}, "", None, None),
         ],
     )
     def test_non_streaming(
@@ -638,7 +635,6 @@ class TestTextCompletionsRequestHandler:
                 None,
                 None,
             ),
-            (["", "data: [DONE]"], "", None, None),
         ],
     )
     def test_streaming(
@@ -671,6 +667,47 @@ class TestTextCompletionsRequestHandler:
         assert response.output_metrics.text_tokens == expected_output_tokens
         assert response.output_metrics.text_words == len(expected_text.split())
         assert response.output_metrics.text_characters == len(expected_text)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "response",
+        [
+            {"choices": [{"text": ""}], "usage": {}},
+            {"choices": [], "usage": {}},
+            {},
+        ],
+    )
+    def test_non_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request, response
+    ):
+        """Test unusable non-streaming text response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_non_streaming(generation_request, arguments, response)
+
+    @pytest.mark.regression
+    def test_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request
+    ):
+        """Test unusable streaming text response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        for line in ["", "data: [DONE]"]:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_streaming(generation_request, arguments)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -1112,18 +1149,6 @@ class TestChatCompletionsRequestHandler:
                 10,
                 5,
             ),
-            (
-                {"choices": [{"message": {"content": ""}}], "usage": {}},
-                "",
-                None,
-                None,
-            ),
-            (
-                {"choices": [], "usage": {}},
-                "",
-                None,
-                None,
-            ),
         ],
     )
     def test_non_streaming(
@@ -1177,12 +1202,6 @@ class TestChatCompletionsRequestHandler:
                 None,
                 None,
             ),
-            (
-                ["", "data: [DONE]"],
-                "",
-                None,
-                None,
-            ),
         ],
     )
     def test_streaming(
@@ -1214,6 +1233,46 @@ class TestChatCompletionsRequestHandler:
         assert response.input_metrics.text_tokens == expected_input_tokens
         assert response.output_metrics.text_tokens == expected_output_tokens
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "response",
+        [
+            {"choices": [{"message": {"content": ""}}], "usage": {}},
+            {"choices": [], "usage": {}},
+        ],
+    )
+    def test_non_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request, response
+    ):
+        """Test unusable non-streaming chat response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_non_streaming(generation_request, arguments, response)
+
+    @pytest.mark.regression
+    def test_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request
+    ):
+        """Test unusable streaming chat response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        for line in ["", "data: [DONE]"]:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_streaming(generation_request, arguments)
+
     @pytest.mark.sanity
     def test_streaming_reasoning_tokens(self, valid_instances, generation_request):
         """Test that reasoning tokens are properly detected for TTFT measurement.
@@ -1228,15 +1287,12 @@ class TestChatCompletionsRequestHandler:
         arguments = instance.format(generation_request)
 
         lines = [
-            # First chunk has reasoning token
             (
                 'data: {"id": "chatcmpl-123", "choices": '
                 '[{"index": 0, "delta": {"reasoning": "Okay"}}], "usage": {}}'
             ),
-            # More reasoning tokens
             'data: {"choices": [{"delta": {"reasoning": ", let me"}}], "usage": {}}',
             'data: {"choices": [{"delta": {"reasoning": " think..."}}], "usage": {}}',
-            # Finally content tokens
             'data: {"choices": [{"delta": {"content": "Hello"}}], "usage": {}}',
             (
                 'data: {"choices": [{"delta": {"content": " world!"}}], '
@@ -1256,17 +1312,13 @@ class TestChatCompletionsRequestHandler:
             elif result is None:
                 break
 
-        # Verify that the first update happened on the first reasoning token (line 0)
         assert first_update_on_line == 0, (
             f"Expected first token detection on line 0 (reasoning token), "
             f"but got {first_update_on_line}"
         )
-
-        # Verify all chunks with content were counted (5 lines with tokens)
         assert updated_count == 5
 
         response = instance.compile_streaming(generation_request, arguments)
-        # Reasoning tokens should NOT appear in response.text; only content does
         assert "Okay" not in response.text
         assert "let me think..." not in response.text
         assert response.text == "Hello world!"
@@ -1289,7 +1341,6 @@ class TestChatCompletionsRequestHandler:
         arguments = instance.format(generation_request)
 
         lines = [
-            # Chunk with both reasoning and content (edge case)
             (
                 'data: {"choices": [{"delta": '
                 '{"reasoning": "Let me think...", "content": "Answer: "}}], '
@@ -1307,12 +1358,9 @@ class TestChatCompletionsRequestHandler:
             if result > 0:
                 updated_count += 1
 
-        # First chunk has both reasoning and content (counts as 1 iteration)
-        # Second chunk has content only (counts as 1 iteration)
         assert updated_count == 2
 
         response = instance.compile_streaming(generation_request, arguments)
-        # Reasoning text should NOT appear; only content is captured
         assert "Let me think..." not in response.text
         assert response.text == "Answer: 42"
 
@@ -2065,8 +2113,6 @@ class TestChatCompletionsRequestHandler:
 
         assert "tool_choice" not in result.body
         assert "tools" not in result.body
-
-
 class TestAudioRequestHandler:
     """Test cases for AudioRequestHandler.
 

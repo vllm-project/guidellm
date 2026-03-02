@@ -512,7 +512,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         text = choice.get("text", "")
         input_metrics, output_metrics = self.extract_metrics(usage, text)
 
-        return GenerationResponse(
+        compiled = GenerationResponse(
             request_id=request.request_id,
             request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
@@ -520,6 +520,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
+        self._validate_compiled_response(compiled)
+        return compiled
 
     def add_streaming_line(self, line: str) -> int | None:
         """
@@ -562,7 +564,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         text = "".join(self.streaming_texts)
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
 
-        return GenerationResponse(
+        compiled = GenerationResponse(
             request_id=request.request_id,
             request_args=arguments.model_dump_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
@@ -570,6 +572,18 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
+        self._validate_compiled_response(compiled)
+        return compiled
+
+    def _validate_compiled_response(self, response: GenerationResponse) -> None:
+        """Raise when endpoint produced a terminal payload with no usable output."""
+        has_text = bool(response.text and response.text.strip())
+        output_tokens = response.output_metrics.total_tokens or 0
+        if not has_text and output_tokens <= 0:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] backend resolved without a usable "
+                "terminal response payload"
+            )
 
     def extract_line_data(self, line: str) -> dict[str, Any] | None:
         """
@@ -1074,7 +1088,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             output_metrics, len(tool_calls) if tool_calls else 0, text
         )
 
-        return GenerationResponse(
+        compiled = GenerationResponse(
             request_id=request.request_id,
             request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
@@ -1084,6 +1098,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
+        self._validate_compiled_response(compiled)
+        return compiled
 
     def add_streaming_line(self, line: str) -> int | None:
         """
@@ -1175,7 +1191,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
-        return _compile_streaming_response(
+        compiled = _compile_streaming_response(
             request,
             arguments,
             self.streaming_texts,
@@ -1185,6 +1201,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self.extract_metrics,
             streaming_reasoning_texts=self.streaming_reasoning_texts,
         )
+        self._validate_compiled_response(compiled)
+        return compiled
 
 
 @OpenAIRequestHandlerFactory.register(
