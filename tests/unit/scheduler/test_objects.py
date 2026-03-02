@@ -3,7 +3,6 @@ from __future__ import annotations
 import inspect
 import typing
 from collections.abc import AsyncIterator
-from types import UnionType
 from typing import Any, Optional, TypeVar, Union
 
 import pytest
@@ -13,7 +12,7 @@ from typing_extensions import TypeAliasType
 from guidellm.scheduler import (
     BackendInterface,
     BackendT,
-    MultiTurnRequestT,
+    ConversationT,
     RequestT,
     ResponseT,
     SchedulerProgress,
@@ -47,15 +46,12 @@ def test_backend_t():
     assert BackendT.__constraints__ == ()
 
 
-def test_multi_turn_request_t():
-    """Validate MultiTurnRequestT is a TypeAliasType for multi-turn requests."""
-    assert isinstance(MultiTurnRequestT, TypeAliasType)
-    assert MultiTurnRequestT.__name__ == "MultiTurnRequestT"
+def test_conversation_t():
+    """Validate ConversationT is a TypeAliasType for multi-turn conversations."""
+    assert isinstance(ConversationT, TypeAliasType)
+    assert ConversationT.__name__ == "ConversationT"
 
-    value = MultiTurnRequestT.__value__
-    assert isinstance(value, UnionType)
-
-    type_params = getattr(MultiTurnRequestT, "__type_params__", ())
+    type_params = getattr(ConversationT, "__type_params__", ())
     assert len(type_params) == 1
     assert type_params[0].__name__ == "RequestT"
 

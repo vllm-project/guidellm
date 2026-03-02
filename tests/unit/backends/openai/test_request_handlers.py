@@ -243,14 +243,14 @@ class TestTextCompletionsRequestHandler:
         instance = valid_instances
         data = GenerationRequest(
             columns={
-                "prefix_column": ["System: ", "Context: "],
-                "text_column": ["Hello ", "world"],
+                "prefix_column": ["prefix1", "prefix2"],
+                "text_column": ["Hello", "world"],
             },
         )
 
         result = instance.format(data)
 
-        assert result.body["prompt"] == "System: Context: Hello world"
+        assert result.body["prompt"] == "prefix1 prefix2 Hello world"
 
     @pytest.mark.sanity
     def test_format_ignore_eos(self, valid_instances):

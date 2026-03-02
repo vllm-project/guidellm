@@ -290,16 +290,16 @@ class TestSyntheticTextGenerator:
         # Verify we get the expected number of items
         assert len(items) == 5
 
-        # Verify each item has the required keys
+        # Verify each item has the required keys (with turn index suffix for multiturn)
         for item in items:
             assert "prefix" in item
-            assert "prompt" in item
-            assert "prompt_tokens_count" in item
-            assert "output_tokens_count" in item
+            assert "prompt_0" in item
+            assert "prompt_tokens_count_0" in item
+            assert "output_tokens_count_0" in item
             assert isinstance(item["prefix"], str)
-            assert isinstance(item["prompt"], str)
-            assert isinstance(item["prompt_tokens_count"], int)
-            assert isinstance(item["output_tokens_count"], int)
+            assert isinstance(item["prompt_0"], str)
+            assert isinstance(item["prompt_tokens_count_0"], int)
+            assert isinstance(item["output_tokens_count_0"], int)
 
     @pytest.mark.sanity
     def test_create_prompt_method(self, simple_config, mock_tokenizer):
@@ -367,8 +367,8 @@ class TestSyntheticTextGenerator:
         # With same seed and deterministic mocks, results should be identical
         assert len(items1) == len(items2)
         for item1, item2 in zip(items1, items2, strict=False):
-            assert item1["prompt_tokens_count"] == item2["prompt_tokens_count"]
-            assert item1["output_tokens_count"] == item2["output_tokens_count"]
+            assert item1["prompt_tokens_count_0"] == item2["prompt_tokens_count_0"]
+            assert item1["output_tokens_count_0"] == item2["output_tokens_count_0"]
 
 
 class TestSyntheticDatasetDeserializer:
