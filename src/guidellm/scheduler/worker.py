@@ -370,6 +370,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 if request_info is None:
                     raise RuntimeError("Received invalid request info from backend")
 
+            # Complete the request
             request_info.timings.resolve_end = time.time()
             self._send_update("completed", response, request, request_info)
 
