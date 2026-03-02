@@ -4,6 +4,7 @@ Unit tests for OpenAIHTTPBackend implementation.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import Mock, patch
 
 import httpx
@@ -428,14 +429,21 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(10.0)
-    async def test_resolve_not_implemented_history(self, httpx_mock: HTTPXMock):
-        """Test resolve method raises error for conversation history."""
+    async def test_resolve_with_history(self, httpx_mock: HTTPXMock):
+        """Test resolve method handles conversation history."""
         backend = OpenAIHTTPBackend(
             target="http://test", request_format="text_completions"
         )
+
+        # Mock the models endpoint
+        httpx_mock.add_response(
+            url="http://test/v1/models",
+            json={"data": [{"id": "test-model"}]},
+        )
+
         await backend.process_startup()
 
-        request = GenerationRequest()
+        request = GenerationRequest(columns={"text_column": ["world"]})
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",
@@ -445,12 +453,32 @@ class TestOpenAIHTTPBackend:
             timings=RequestTimings(),
         )
         history = [
-            (request, GenerationResponse(request_id="test", request_args="test args"))
+            (
+                GenerationRequest(columns={"text_column": ["hello"]}),
+                GenerationResponse(
+                    request_id="test", request_args="test args", text="hi"
+                ),
+            )
         ]
 
-        with pytest.raises(NotImplementedError, match="Multi-turn requests"):
-            async for _ in backend.resolve(request, request_info, history):
-                pass
+        # Mock the completions endpoint
+        httpx_mock.add_response(
+            url="http://test/v1/completions",
+            json={
+                "choices": [{"text": "response"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+            },
+        )
+
+        results = []
+        async for response, info in backend.resolve(request, request_info, history):
+            results.append((response, info))
+
+        assert len(results) > 0
+        # Verify the prompt includes history
+        last_request = httpx_mock.get_requests()[-1]
+        body = json.loads(last_request.content)
+        assert "hi world" in body["prompt"]
 
     @pytest.mark.regression
     @pytest.mark.asyncio
