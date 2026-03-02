@@ -467,13 +467,6 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 type_="text",
             )
             columns.add_stats(
-                benchmark.metrics.requests_per_second,
-                status="total",
-                group="Requests",
-                name="Per Sec",
-                types=("median", "mean"),
-            )
-            columns.add_stats(
                 benchmark.metrics.request_concurrency,
                 status="total",
                 group="Requests",
@@ -481,25 +474,32 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 types=("median", "mean"),
             )
             columns.add_stats(
+                benchmark.metrics.requests_per_second,
+                status="total",
+                group="Requests",
+                name="Per Sec",
+                types=("mean",),
+            )
+            columns.add_stats(
                 benchmark.metrics.prompt_tokens_per_second,
                 status="total",
                 group="Input Tokens",
                 name="Per Sec",
-                types=("median", "mean"),
+                types=("mean",),
             )
             columns.add_stats(
                 benchmark.metrics.output_tokens_per_second,
                 status="total",
                 group="Output Tokens",
                 name="Per Sec",
-                types=("median", "mean"),
+                types=("mean",),
             )
             columns.add_stats(
                 benchmark.metrics.tokens_per_second,
                 status="total",
                 group="Total Tokens",
                 name="Per Sec",
-                types=("median", "mean"),
+                types=("mean",),
             )
 
         headers, values = columns.get_table_data()
