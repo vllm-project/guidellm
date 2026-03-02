@@ -300,9 +300,6 @@ class TestTextCompletionsRequestHandler:
                 10,
                 5,
             ),
-            ({"choices": [{"text": ""}], "usage": {}}, "", None, None),
-            ({"choices": [], "usage": {}}, "", None, None),
-            ({}, "", None, None),
         ],
     )
     def test_non_streaming(
@@ -363,7 +360,6 @@ class TestTextCompletionsRequestHandler:
                 None,
                 None,
             ),
-            (["", "data: [DONE]"], "", None, None),
         ],
     )
     def test_streaming(
@@ -396,6 +392,47 @@ class TestTextCompletionsRequestHandler:
         assert response.output_metrics.text_tokens == expected_output_tokens
         assert response.output_metrics.text_words == len(expected_text.split())
         assert response.output_metrics.text_characters == len(expected_text)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "response",
+        [
+            {"choices": [{"text": ""}], "usage": {}},
+            {"choices": [], "usage": {}},
+            {},
+        ],
+    )
+    def test_non_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request, response
+    ):
+        """Test unusable non-streaming text response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_non_streaming(generation_request, arguments, response)
+
+    @pytest.mark.regression
+    def test_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request
+    ):
+        """Test unusable streaming text response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        for line in ["", "data: [DONE]"]:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_streaming(generation_request, arguments)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -818,18 +855,6 @@ class TestChatCompletionsRequestHandler:
                 10,
                 5,
             ),
-            (
-                {"choices": [{"message": {"content": ""}}], "usage": {}},
-                "",
-                None,
-                None,
-            ),
-            (
-                {"choices": [], "usage": {}},
-                "",
-                None,
-                None,
-            ),
         ],
     )
     def test_non_streaming(
@@ -883,12 +908,6 @@ class TestChatCompletionsRequestHandler:
                 None,
                 None,
             ),
-            (
-                ["", "data: [DONE]"],
-                "",
-                None,
-                None,
-            ),
         ],
     )
     def test_streaming(
@@ -919,6 +938,46 @@ class TestChatCompletionsRequestHandler:
         assert response.text == expected_text
         assert response.input_metrics.text_tokens == expected_input_tokens
         assert response.output_metrics.text_tokens == expected_output_tokens
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "response",
+        [
+            {"choices": [{"message": {"content": ""}}], "usage": {}},
+            {"choices": [], "usage": {}},
+        ],
+    )
+    def test_non_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request, response
+    ):
+        """Test unusable non-streaming chat response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_non_streaming(generation_request, arguments, response)
+
+    @pytest.mark.regression
+    def test_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request
+    ):
+        """Test unusable streaming chat response raises.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        for line in ["", "data: [DONE]"]:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.compile_streaming(generation_request, arguments)
 
 
 class TestAudioRequestHandler:
