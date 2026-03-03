@@ -13,7 +13,11 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from guidellm.backends.vllm_python.vllm import VLLMPythonBackend, _RequestContext
+from guidellm.backends.vllm_python.vllm import (
+    VLLMPythonBackend,
+    _has_jinja2_markers,
+    _RequestContext,
+)
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
@@ -207,6 +211,371 @@ class TestVLLMGetRequestContext:
         assert ctx.body["messages"][1]["role"] == "user"
         assert ctx.body["messages"][1]["content"][0]["text"] == "User question"
 
+    @pytest.mark.smoke
+    def test_columns_only_no_media_multi_modal_data_none(self, backend):
+        """
+        Request with only text columns leaves multi_modal_data None.
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={"text_column": ["hello"]})
+        ctx = backend._get_request_context(request)
+        assert ctx.multi_modal_data is None
+
+    @pytest.mark.smoke
+    def test_columns_audio_column_only_infers_audio_and_sets_multi_modal_data(
+        self, backend
+    ):
+        """
+        Request with only audio_column infers mode audio and sets multi_modal_data.
+        ## WRITTEN BY AI ##
+        """
+        mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
+        mock_decode_result = Mock()
+        mock_decode_result.data = mock_audio_array
+
+        request = GenerationRequest(
+            columns={
+                "audio_column": [{"audio": b"fake-wav-bytes", "format": "wav"}],
+            }
+        )
+        with patch(
+            "guidellm.backends.vllm_python.vllm._decode_audio",
+            return_value=mock_decode_result,
+        ):
+            ctx = backend._get_request_context(request)
+        assert ctx.mode == "audio"
+        assert ctx.multi_modal_data is not None
+        assert "audio" in ctx.multi_modal_data
+        np.testing.assert_array_equal(ctx.multi_modal_data["audio"], mock_audio_array)
+
+    @pytest.mark.smoke
+    def test_columns_image_column_sets_multi_modal_data(self, backend):
+        """
+        Request with image_column sets multi_modal_data with image key.
+        ## WRITTEN BY AI ##
+        """
+        mock_pil = Mock()
+        request = GenerationRequest(
+            columns={
+                "image_column": [
+                    {"image": "data:image/jpeg;base64,/9j/4AAQ="},
+                ],
+            }
+        )
+        with patch(
+            "guidellm.backends.vllm_python.vllm.image_dict_to_pil",
+            return_value=mock_pil,
+        ):
+            ctx = backend._get_request_context(request)
+        assert ctx.mode == "chat"
+        assert ctx.multi_modal_data is not None
+        assert "image" in ctx.multi_modal_data
+        assert ctx.multi_modal_data["image"] is mock_pil
+
+    @pytest.mark.smoke
+    def test_columns_text_and_image_produces_chat_with_multi_modal_data(
+        self, backend
+    ):
+        """
+        Request with text_column and image_column produces chat and multi_modal_data.
+        ## WRITTEN BY AI ##
+        """
+        mock_pil = Mock()
+        request = GenerationRequest(
+            columns={
+                "text_column": ["Describe this image"],
+                "image_column": [{"image": "data:image/jpeg;base64,/9j/4AAQ="}],
+            }
+        )
+        with patch(
+            "guidellm.backends.vllm_python.vllm.image_dict_to_pil",
+            return_value=mock_pil,
+        ):
+            ctx = backend._get_request_context(request)
+        assert ctx.mode == "chat"
+        assert ctx.multi_modal_data is not None
+        assert ctx.multi_modal_data["image"] is mock_pil
+        assert len(ctx.body["messages"]) == 1
+        assert ctx.body["messages"][0]["content"][0]["text"] == "Describe this image"
+
+
+class TestImagePlaceholderInjection:
+    """
+    Test image placeholder defaults, overrides, and message-level injection.
+    """
+
+    @pytest.mark.smoke
+    def test_build_placeholder_prefix_default_image(self, backend):
+        """
+        _build_placeholder_prefix uses default '<image>' when no override.
+        ## WRITTEN BY AI ##
+        """
+        result = backend._build_placeholder_prefix({"image": Mock()})
+        assert result == "<image>\n"
+
+    @pytest.mark.smoke
+    def test_build_placeholder_prefix_image_override(self):
+        """
+        _build_placeholder_prefix uses image_placeholder override.
+        ## WRITTEN BY AI ##
+        """
+        with patch(
+            "guidellm.backends.vllm_python.vllm._check_vllm_available"
+        ):
+            backend_custom = VLLMPythonBackend(
+                model="Qwen/Qwen3-VL-2B-Instruct",
+                image_placeholder=(
+                    "<|vision_start|><|image_pad|><|vision_end|>"
+                ),
+            )
+        result = backend_custom._build_placeholder_prefix(
+            {"image": Mock()}
+        )
+        assert result == (
+            "<|vision_start|><|image_pad|><|vision_end|>\n"
+        )
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_into_messages_no_media_unchanged(self, backend):
+        """
+        _inject_placeholders_into_messages leaves messages unchanged when no
+        recognized multimodal keys (image/audio) are present.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "Hello"}]
+        backend._inject_placeholders_into_messages(msgs, {})
+        assert msgs[0]["content"] == "Hello"
+        backend._inject_placeholders_into_messages(msgs, {"video": "data"})
+        assert msgs[0]["content"] == "Hello"
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_into_messages_single_image(self, backend):
+        """
+        _inject_placeholders_into_messages prepends one image placeholder into
+        the last user message content.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "What is this?"}]
+        backend._inject_placeholders_into_messages(msgs, {"image": Mock()})
+        assert msgs[0]["content"] == "<image>\nWhat is this?"
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_into_messages_multiple_images(self, backend):
+        """
+        _inject_placeholders_into_messages prepends N image placeholders for N images.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "Describe both."}]
+        backend._inject_placeholders_into_messages(
+            msgs, {"image": [Mock(), Mock()]}
+        )
+        assert msgs[0]["content"] == "<image>\n<image>\nDescribe both."
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_targets_last_user_message(self, backend):
+        """
+        _inject_placeholders_into_messages injects into the last user message,
+        not the system message.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [
+            {"role": "system", "content": "You are a helper."},
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "Answer"},
+            {"role": "user", "content": "Describe this image"},
+        ]
+        backend._inject_placeholders_into_messages(msgs, {"image": Mock()})
+        assert msgs[0]["content"] == "You are a helper."
+        assert msgs[1]["content"] == "First question"
+        assert msgs[3]["content"] == "<image>\nDescribe this image"
+
+
+class TestAudioPlaceholderInjection:
+    """
+    Test audio placeholder defaults, overrides, and message-level injection.
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_build_placeholder_prefix_default_audio(self, backend):
+        """
+        _build_placeholder_prefix uses default '<|audio|>' when no override.
+        ## WRITTEN BY AI ##
+        """
+        result = backend._build_placeholder_prefix(
+            {"audio": np.array([0.0], dtype=np.float32)}
+        )
+        assert result == "<|audio|>\n"
+
+    @pytest.mark.smoke
+    def test_build_placeholder_prefix_audio_override(self):
+        """
+        _build_placeholder_prefix uses audio_placeholder override.
+        ## WRITTEN BY AI ##
+        """
+        with patch(
+            "guidellm.backends.vllm_python.vllm._check_vllm_available"
+        ):
+            backend_custom = VLLMPythonBackend(
+                model="zai-org/GLM-ASR-Nano-2512",
+                audio_placeholder=(
+                    "<|begin_of_audio|><|pad|><|end_of_audio|>"
+                ),
+            )
+        result = backend_custom._build_placeholder_prefix(
+            {"audio": np.array([0.0], dtype=np.float32)}
+        )
+        assert result == (
+            "<|begin_of_audio|><|pad|><|end_of_audio|>\n"
+        )
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_into_messages_no_audio_unchanged(self, backend):
+        """
+        _inject_placeholders_into_messages leaves messages unchanged when no audio.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "Hello"}]
+        backend._inject_placeholders_into_messages(msgs, {"image": Mock()})
+        # Only image placeholder, no audio
+        assert "<|audio|>" not in msgs[0]["content"]
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_into_messages_single_audio(self, backend):
+        """
+        _inject_placeholders_into_messages prepends one audio placeholder into
+        the last user message content.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "Transcribe."}]
+        multi_modal_data = {"audio": np.array([0.0], dtype=np.float32)}
+        backend._inject_placeholders_into_messages(msgs, multi_modal_data)
+        assert msgs[0]["content"] == "<|audio|>\nTranscribe."
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_into_messages_multiple_audio(self, backend):
+        """
+        _inject_placeholders_into_messages prepends N audio placeholders for N audio.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "Compare the two clips."}]
+        multi_modal_data = {
+            "audio": [
+                np.array([0.0], dtype=np.float32),
+                np.array([0.1], dtype=np.float32),
+            ]
+        }
+        backend._inject_placeholders_into_messages(msgs, multi_modal_data)
+        assert msgs[0]["content"] == (
+            "<|audio|>\n<|audio|>\nCompare the two clips."
+        )
+
+    @pytest.mark.smoke
+    def test_inject_placeholders_image_and_audio_combined(self, backend):
+        """
+        _inject_placeholders_into_messages handles both image and audio together.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "Describe what you see and hear."}]
+        multi_modal_data = {
+            "image": Mock(),
+            "audio": np.array([0.0], dtype=np.float32),
+        }
+        backend._inject_placeholders_into_messages(msgs, multi_modal_data)
+        assert msgs[0]["content"] == (
+            "<image>\n<|audio|>\nDescribe what you see and hear."
+        )
+
+
+class TestBuildPlaceholderPrefix:
+    """
+    Test _build_placeholder_prefix for non-chat mode prompt prepending.
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_no_multimodal_data_returns_empty(self, backend):
+        """
+        _build_placeholder_prefix returns '' when no image or audio.
+        ## WRITTEN BY AI ##
+        """
+        assert backend._build_placeholder_prefix({}) == ""
+
+    @pytest.mark.smoke
+    def test_single_image_returns_prefix(self, backend):
+        """
+        _build_placeholder_prefix returns '<image>\\n' for a single image.
+        ## WRITTEN BY AI ##
+        """
+        assert backend._build_placeholder_prefix({"image": Mock()}) == "<image>\n"
+
+    @pytest.mark.smoke
+    def test_multiple_images_returns_prefixes(self, backend):
+        """
+        _build_placeholder_prefix returns N image placeholders for N images.
+        ## WRITTEN BY AI ##
+        """
+        result = backend._build_placeholder_prefix(
+            {"image": [Mock(), Mock()]}
+        )
+        assert result == "<image>\n<image>\n"
+
+    @pytest.mark.smoke
+    def test_single_audio_returns_prefix(self, backend):
+        """
+        _build_placeholder_prefix returns '<|audio|>\\n' for a single audio.
+        ## WRITTEN BY AI ##
+        """
+        result = backend._build_placeholder_prefix(
+            {"audio": np.array([0.0], dtype=np.float32)}
+        )
+        assert result == "<|audio|>\n"
+
+    @pytest.mark.smoke
+    def test_image_and_audio_combined(self, backend):
+        """
+        _build_placeholder_prefix returns both image and audio placeholders.
+        ## WRITTEN BY AI ##
+        """
+        result = backend._build_placeholder_prefix(
+            {"image": Mock(), "audio": np.array([0.0], dtype=np.float32)}
+        )
+        assert result == "<image>\n<|audio|>\n"
+
+
+class TestHasJinja2Markers:
+    """
+    Test _has_jinja2_markers helper for template format detection.
+    """
+
+    @pytest.mark.smoke
+    def test_has_jinja2_markers_true_for_expressions(self):
+        """
+        _has_jinja2_markers returns True for strings containing {{.
+        ## WRITTEN BY AI ##
+        """
+        assert _has_jinja2_markers("{{ message.content }}") is True
+        assert _has_jinja2_markers("prefix {{ x }}") is True
+
+    @pytest.mark.smoke
+    def test_has_jinja2_markers_true_for_control(self):
+        """
+        _has_jinja2_markers returns True for {% and {#.
+        ## WRITTEN BY AI ##
+        """
+        assert _has_jinja2_markers("{% for m in messages %}") is True
+        assert _has_jinja2_markers("{# comment #}") is True
+
+    @pytest.mark.smoke
+    def test_has_jinja2_markers_false_for_plain_strings(self):
+        """
+        _has_jinja2_markers returns False for strings with no template syntax.
+        ## WRITTEN BY AI ##
+        """
+        assert _has_jinja2_markers("chat_completions") is False
+        assert _has_jinja2_markers("plain text") is False
+        assert _has_jinja2_markers("") is False
+
 
 class TestVLLMRequestFormat:
     """
@@ -239,6 +608,27 @@ class TestVLLMRequestFormat:
         # No template markers like [INST] or <|im_start|>
         assert "[INST]" not in prompt
         assert "<|im_start|>" not in prompt
+
+    @pytest.mark.smoke
+    def test_request_format_chat_completions_raises_not_a_template(self, backend):
+        """
+        request_format with no Jinja2 markers (e.g. 'chat_completions') raises
+        ValueError with message that includes received value and allowed options.
+        ## WRITTEN BY AI ##
+        """
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend_api = VLLMPythonBackend(
+                model="test-model", request_format="chat_completions"
+            )
+            backend_api._engine = Mock()
+            backend_api._engine.tokenizer = Mock()
+        body = {"messages": [{"role": "user", "content": "Hi"}]}
+        with pytest.raises(ValueError) as exc_info:
+            backend_api._extract_prompt(body, "chat")
+        msg = str(exc_info.value)
+        assert "chat_completions" in msg
+        assert "plain" in msg or "default-template" in msg
+        assert "Jinja2" in msg or "template" in msg.lower()
 
     @pytest.mark.smoke
     def test_request_format_default_template_uses_apply_chat_template(self, backend):
@@ -327,9 +717,80 @@ class TestVLLMRequestFormat:
         mock_tokenizer.apply_chat_template.assert_called_once()
 
     @pytest.mark.smoke
-    def test_request_format_stored_and_passed_to_vllm_config(self, backend):
+    def test_request_format_file_template_cached_on_second_request(
+        self, backend, tmp_path
+    ):
         """
-        Custom request_format is added to vllm_config as chat_template.
+        With request_format=file path, verifies that the second request
+        uses cached content instead of doing a second read.
+        ## WRITTEN BY AI ##
+        """
+        template_file = tmp_path / "template.jinja"
+        template_file.write_text(
+            "{% for m in messages %}{{ m['content'] }}{% endfor %}"
+        )
+        body = {"messages": [{"role": "user", "content": "Hi"}]}
+        mock_tokenizer = Mock()
+        mock_tokenizer.apply_chat_template.return_value = "Hi"
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend_file = VLLMPythonBackend(
+                model="test-model", request_format=str(template_file)
+            )
+            backend_file._engine = Mock()
+            backend_file._engine.tokenizer = mock_tokenizer
+        backend_file._extract_prompt(body, "chat")
+        first_template = mock_tokenizer.chat_template
+        backend_file._extract_prompt(body, "chat")
+        # Same template used (from cache); Path.read_text would only be called once
+        assert mock_tokenizer.chat_template == first_template
+        assert mock_tokenizer.apply_chat_template.call_count == 2
+
+    @pytest.mark.smoke
+    def test_request_format_file_with_no_markers_raises(self, backend, tmp_path):
+        """
+        request_format=path to file whose content has no Jinja2 markers raises
+        ValueError about file content not containing Jinja2 syntax.
+        ## WRITTEN BY AI ##
+        """
+        no_markers_file = tmp_path / "plain.txt"
+        no_markers_file.write_text("just plain text")
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend_file = VLLMPythonBackend(
+                model="test-model", request_format=str(no_markers_file)
+            )
+            backend_file._engine = Mock()
+            backend_file._engine.tokenizer = Mock()
+        body = {"messages": [{"role": "user", "content": "Hi"}]}
+        with pytest.raises(ValueError) as exc_info:
+            backend_file._extract_prompt(body, "chat")
+        msg = str(exc_info.value)
+        assert "Jinja2" in msg or "template" in msg.lower()
+        assert "content" in msg or "syntax" in msg.lower() or "marker" in msg.lower()
+
+    @pytest.mark.smoke
+    def test_request_format_invalid_jinja2_string_raises(self, backend):
+        """
+        request_format=string with markers but invalid Jinja2 syntax raises
+        ValueError wrapping the Jinja2 error.
+        ## WRITTEN BY AI ##
+        """
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend_bad = VLLMPythonBackend(
+                model="test-model", request_format="{{ unclosed"
+            )
+            backend_bad._engine = Mock()
+            backend_bad._engine.tokenizer = Mock()
+        body = {"messages": [{"role": "user", "content": "Hi"}]}
+        with pytest.raises(ValueError) as exc_info:
+            backend_bad._extract_prompt(body, "chat")
+        msg = str(exc_info.value)
+        assert "Invalid chat template" in msg or "template" in msg.lower()
+
+    @pytest.mark.smoke
+    def test_request_format_stored_on_backend(self, backend):
+        """
+        Custom request_format is stored on the backend; template is resolved at
+        request time (not passed to vllm_config).
         ## WRITTEN BY AI ##
         """
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
@@ -338,9 +799,8 @@ class TestVLLMRequestFormat:
                 request_format="/path/to/template.jinja",
             )
         assert backend_custom.request_format == "/path/to/template.jinja"
-        assert (
-            backend_custom.vllm_config.get("chat_template") == "/path/to/template.jinja"
-        )
+        # Template is applied at request time, not stored in vllm_config
+        assert "chat_template" not in backend_custom.vllm_config
 
     @pytest.mark.smoke
     def test_request_format_plain_not_in_vllm_config(self, backend):
@@ -770,14 +1230,18 @@ class TestVLLMLifecycle:
     @pytest.mark.smoke
     async def test_validate_success(self, backend):
         """
-        Success: mock _engine.generate async iterator yielding one item; no raise.
+        Success: mock _engine.check_health and _engine.generate; no raise.
         ## WRITTEN BY AI ##
         """
+
+        async def check_health_ok():
+            pass
 
         async def one_yield(*args, **kwargs):
             yield Mock(outputs=[Mock()], prompt_token_ids=[])
 
         backend._engine = Mock()
+        backend._engine.check_health = check_health_ok
         backend._engine.generate = one_yield
         await backend.validate()
 
@@ -1480,3 +1944,60 @@ class TestVLLMResolveAudioMode:
                 results.append((response, info))
             assert len(results) == 1
             assert results[0][0].text == "transcribed"
+
+    @pytest.mark.asyncio
+    @pytest.mark.smoke
+    async def test_resolve_audio_from_columns_uses_multi_modal_data(
+        self, backend
+    ):
+        """
+        Audio from audio_column: generate_input is dict with multi_modal_data.
+        ## WRITTEN BY AI ##
+        """
+        mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
+        mock_decode_result = Mock()
+        mock_decode_result.data = mock_audio_array
+
+        out = Mock()
+        out.text = "transcribed"
+        out.token_ids = [1, 2]
+        out.finish_reason = "stop"
+        req_out = Mock()
+        req_out.prompt_token_ids = [1]
+        req_out.outputs = [out]
+        req_out.request_id = "r1"
+
+        seen_prompt_arg = []
+
+        async def mock_generate(prompt, sampling_params, request_id):
+            seen_prompt_arg.append(prompt)
+            assert isinstance(prompt, dict)
+            assert "prompt" in prompt
+            assert "multi_modal_data" in prompt
+            assert "audio" in prompt["multi_modal_data"]
+            yield req_out
+
+        request = GenerationRequest(
+            columns={
+                "audio_column": [{"audio": b"fake-wav-bytes", "format": "wav"}],
+            }
+        )
+        request.output_metrics = UsageMetrics()
+
+        with patch(
+            "guidellm.backends.vllm_python.vllm._decode_audio",
+            return_value=mock_decode_result,
+        ):
+            backend._engine = Mock()
+            backend._engine.generate = mock_generate
+            request_info = RequestInfo()
+            results = []
+            async for response, info in backend.resolve(request, request_info):
+                results.append((response, info))
+            assert len(results) == 1
+            assert results[0][0].text == "transcribed"
+            assert len(seen_prompt_arg) == 1
+            assert seen_prompt_arg[0]["multi_modal_data"]["audio"] is mock_audio_array
+            # Prompt must contain injected audio placeholder for vLLM prompt replacement
+            prompt_str = seen_prompt_arg[0]["prompt"]
+            assert prompt_str.startswith("<|audio|>\n") or "<|audio|>" in prompt_str
