@@ -63,8 +63,6 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         ],
         "messages_column": [
             "messages",
-            "conversations",
-            "conversation",
         ],
     }
 
