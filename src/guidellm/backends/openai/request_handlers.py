@@ -451,7 +451,17 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if kwargs.get("extras"):
             arguments.model_combine(kwargs["extras"])
 
-        # Build messages
+        # Build messages: use multi-turn messages from data if present
+        raw_messages = data.columns.get("messages_column", [])
+        if raw_messages and isinstance(raw_messages[0], list) and raw_messages[0]:
+            first = raw_messages[0]
+            if all(
+                isinstance(m, dict) and "role" in m and "content" in m for m in first
+            ):
+                arguments.body["messages"] = first
+                return arguments
+
+        # Fallback: single-turn from prefix_column + text_column (and media)
         arguments.body["messages"] = []
 
         # Build the system prompt
