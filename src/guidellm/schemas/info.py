@@ -126,7 +126,13 @@ class RequestInfo(StandardBaseModel):
         default_factory=lambda: str(uuid.uuid4()),
     )
     status: Literal[
-        "queued", "pending", "in_progress", "completed", "errored", "cancelled"
+        "queued",
+        "pending",
+        "in_progress",
+        "first_token",
+        "completed",
+        "errored",
+        "cancelled",
     ] = Field(description="Current processing status of the request", default="queued")
     scheduler_node_id: int = Field(
         description="ID/rank of the scheduler node handling the request",

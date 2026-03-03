@@ -367,6 +367,7 @@ class OverSaturationConstraint(Constraint):
         self.ttft_violations_counter = 0
         self.total_finished_ever = 0
         self.total_started_ever = 0
+        self._ttft_reported_request_ids: set[str] = set()
         self.concurrent_slope_checker = SlopeChecker(
             moe_threshold=self.moe_threshold, confidence=self.confidence, eps=self.eps
         )
@@ -519,17 +520,19 @@ class OverSaturationConstraint(Constraint):
             self._add_started(
                 {"concurrent_requests": concurrent_requests, "duration": duration}
             )
-        elif (
-            request_info.status == "completed"
-            and request_info.timings
-            and request_info.timings.first_token_iteration
-            and request_info.timings.request_start
-        ):
-            ttft = (
-                request_info.timings.first_token_iteration
-                - request_info.timings.request_start
-            )
-            self._add_finished({"ttft": ttft, "duration": duration})
+        elif request_info.status in ("first_token", "completed"):
+            if (
+                request_info.request_id not in self._ttft_reported_request_ids
+                and request_info.timings
+                and request_info.timings.first_token_iteration
+                and request_info.timings.request_start
+            ):
+                self._ttft_reported_request_ids.add(request_info.request_id)
+                ttft = (
+                    request_info.timings.first_token_iteration
+                    - request_info.timings.request_start
+                )
+                self._add_finished({"ttft": ttft, "duration": duration})
 
         self._update_duration(duration)
         is_over_saturated = self._check_alert()

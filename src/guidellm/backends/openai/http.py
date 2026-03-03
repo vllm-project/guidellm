@@ -279,7 +279,7 @@ class OpenAIHTTPBackend(Backend):
         request: GenerationRequest,
         request_info: RequestInfo,
         history: list[tuple[GenerationRequest, GenerationResponse]] | None = None,
-    ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
+    ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
         """
         Process generation request and yield progressive responses.
 
@@ -377,6 +377,7 @@ class OpenAIHTTPBackend(Backend):
                     if request_info.timings.first_token_iteration is None:
                         request_info.timings.first_token_iteration = iter_time
                         request_info.timings.token_iterations = 0
+                        yield None, request_info
 
                     request_info.timings.last_token_iteration = iter_time
                     request_info.timings.token_iterations += iterations
