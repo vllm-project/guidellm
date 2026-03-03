@@ -868,3 +868,288 @@ class TestOverSaturationEdgeCasesAndRegression:
             f"Expected {expected_violations} violations, "
             f"got {constraint.ttft_violations_counter}"
         )
+
+
+class TestInstantTTFT:
+    """## WRITTEN BY AI ##
+
+    Test the instant TTFT feature for over-saturation detection.
+
+    When instant TTFT is enabled, the worker sends a "first_token"
+    status update carrying TTFT timing data before the request completes.
+    The constraint extracts TTFT from these updates, deduplicated by request ID.
+    """
+
+    @pytest.mark.smoke
+    def test_first_token_provides_ttft_data(self):
+        """## WRITTEN BY AI ## first_token feeds TTFT data to constraint."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            minimum_window_size=3,
+            maximum_window_ratio=1.0,
+            enabled=True,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=5,
+        )
+        timings = RequestTimings(
+            request_start=start_time + 0.1,
+            first_token_iteration=start_time + 0.5,
+        )
+        request = RequestInfo(
+            request_id="ft-1",
+            status="first_token",
+            timings=timings,
+        )
+
+        action = constraint(state, request)
+        assert isinstance(action, SchedulerUpdateAction)
+        assert action.metadata["ttft_n"] == 1
+
+    @pytest.mark.smoke
+    def test_deduplication_between_first_token_and_completed(self):
+        """## WRITTEN BY AI ##
+        TTFT counted once when both first_token and completed arrive.
+        """
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            minimum_window_size=3,
+            maximum_window_ratio=1.0,
+            enabled=True,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=5,
+        )
+        timings = RequestTimings(
+            request_start=start_time + 0.1,
+            first_token_iteration=start_time + 0.5,
+        )
+
+        ft_info = RequestInfo(
+            request_id="dedup-1",
+            status="first_token",
+            timings=timings,
+        )
+        constraint(state, ft_info)
+        assert constraint.ttft_slope_checker.n == 1
+
+        completed_timings = RequestTimings(
+            request_start=start_time + 0.1,
+            first_token_iteration=start_time + 0.5,
+            request_end=start_time + 2.0,
+        )
+        completed_info = RequestInfo(
+            request_id="dedup-1",
+            status="completed",
+            timings=completed_timings,
+        )
+        constraint(state, completed_info)
+        assert constraint.ttft_slope_checker.n == 1
+
+    @pytest.mark.smoke
+    def test_completed_without_prior_first_token_still_works(self):
+        """## WRITTEN BY AI ##
+        Completed requests provide TTFT when no early notification sent.
+        """
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            minimum_window_size=3,
+            maximum_window_ratio=1.0,
+            enabled=True,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=5,
+        )
+        timings = RequestTimings(
+            request_start=start_time + 0.1,
+            first_token_iteration=start_time + 0.5,
+            request_end=start_time + 2.0,
+        )
+        info = RequestInfo(
+            request_id="no-ft-1",
+            status="completed",
+            timings=timings,
+        )
+        constraint(state, info)
+        assert constraint.ttft_slope_checker.n == 1
+
+    @pytest.mark.sanity
+    def test_reset_clears_dedup_tracking(self):
+        """## WRITTEN BY AI ## reset() clears the deduplication set."""
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            maximum_window_ratio=1.0,
+            enabled=True,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=5,
+        )
+        timings = RequestTimings(
+            request_start=start_time + 0.1,
+            first_token_iteration=start_time + 0.5,
+        )
+        info = RequestInfo(
+            request_id="reset-1",
+            status="first_token",
+            timings=timings,
+        )
+        constraint(state, info)
+        assert constraint.ttft_slope_checker.n == 1
+
+        constraint.reset()
+        assert constraint.ttft_slope_checker.n == 0
+        assert len(constraint._ttft_reported_request_ids) == 0
+
+    @pytest.mark.sanity
+    def test_multiple_first_token_updates_feed_slope(self):
+        """## WRITTEN BY AI ##
+        Multiple first_token updates from different requests
+        build slope.
+        """
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            minimum_window_size=3,
+            maximum_window_ratio=1.0,
+            enabled=True,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=10,
+        )
+
+        for i in range(10):
+            timings = RequestTimings(
+                request_start=start_time + i,
+                first_token_iteration=start_time + i + 0.5,
+            )
+            info = RequestInfo(
+                request_id=f"ft-multi-{i}",
+                status="first_token",
+                timings=timings,
+            )
+            constraint(state, info)
+
+        assert constraint.ttft_slope_checker.n == 10
+
+    @pytest.mark.smoke
+    def test_first_token_with_missing_timings_skips_ttft(self):
+        """## WRITTEN BY AI ##
+        first_token without first_token_iteration adds no TTFT.
+        """
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            minimum_window_size=3,
+            maximum_window_ratio=1.0,
+            enabled=True,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=5,
+        )
+
+        info_no_fti = RequestInfo(
+            request_id="missing-fti",
+            status="first_token",
+            timings=RequestTimings(request_start=start_time + 0.1),
+        )
+        constraint(state, info_no_fti)
+        assert constraint.ttft_slope_checker.n == 0
+
+        info_no_start = RequestInfo(
+            request_id="missing-start",
+            status="first_token",
+            timings=RequestTimings(first_token_iteration=start_time + 0.5),
+        )
+        constraint(state, info_no_start)
+        assert constraint.ttft_slope_checker.n == 0
+
+    @pytest.mark.smoke
+    def test_first_token_does_not_add_concurrent_data(self):
+        """## WRITTEN BY AI ##
+        first_token does not feed concurrent slope checker.
+        """
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            minimum_window_size=3,
+            maximum_window_ratio=1.0,
+            enabled=True,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=5,
+        )
+        timings = RequestTimings(
+            request_start=start_time + 0.1,
+            first_token_iteration=start_time + 0.5,
+        )
+        info = RequestInfo(
+            request_id="no-conc-1",
+            status="first_token",
+            timings=timings,
+        )
+        constraint(state, info)
+        assert constraint.concurrent_slope_checker.n == 0
+        assert constraint.ttft_slope_checker.n == 1
+
+    @pytest.mark.sanity
+    def test_first_token_does_not_stop_when_disabled(self):
+        """## WRITTEN BY AI ##
+        first_token never triggers stop when enabled=False.
+        """
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0,
+            minimum_window_size=3,
+            maximum_window_ratio=1.0,
+            enabled=False,
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=50,
+        )
+
+        for i in range(20):
+            ip_info = RequestInfo(
+                request_id=f"ip-{i}",
+                status="in_progress",
+            )
+            constraint(state, ip_info)
+            timings = RequestTimings(
+                request_start=start_time + i,
+                first_token_iteration=start_time + i + (1.0 + i * 0.5),
+            )
+            ft_info = RequestInfo(
+                request_id=f"ft-{i}",
+                status="first_token",
+                timings=timings,
+            )
+            action = constraint(state, ft_info)
+            assert action.request_queuing == "continue"
+            assert action.request_processing == "continue"

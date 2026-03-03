@@ -643,6 +643,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._state.pending_requests = len(self._pending_request_ids)
             self._processing_request_ids.add(info.request_id)
             self._state.processing_requests = len(self._processing_request_ids)
+        elif info.status == "first_token":
+            pass
         elif info.status == "completed":
             info.timings.finalized = finalized
             self._processing_request_ids.remove(info.request_id)
