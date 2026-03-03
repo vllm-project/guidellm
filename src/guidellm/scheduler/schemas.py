@@ -119,14 +119,15 @@ class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
         request: RequestT,
         request_info: RequestInfo,
         history: list[tuple[RequestT, ResponseT]] | None = None,
-    ) -> AsyncIterator[tuple[ResponseT, RequestInfo]]:
+    ) -> AsyncIterator[tuple[ResponseT | None, RequestInfo]]:
         """
         Process a request and yield incremental response updates.
 
         :param request: The request object to process
         :param request_info: Scheduling metadata and timing information
         :param history: Conversation history for multi-turn requests
-        :yield: Tuples of (response, updated_request_info) for each response chunk
+        :yield: Tuples of (response, updated_request_info) for each response chunk.
+            Response may be None for intermediate updates (e.g., first token arrival).
         :raises Exception: Implementation-specific exceptions for processing failures
         """
 
