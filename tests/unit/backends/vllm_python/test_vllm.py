@@ -1,8 +1,9 @@
 """
 Unit tests for VLLM Python backend.
 
-Tests _get_request_context (mode from body/files; body from columns or arguments)
-and request_format (plain, default-template, custom template) for chat prompts.
+Tests _resolve_request (prompt from columns, multimodal data, placeholders),
+request_format (plain, default-template, custom template), sampling params,
+usage extraction, lifecycle, and resolve() integration.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import pytest
 from guidellm.backends.vllm_python.vllm import (
     VLLMPythonBackend,
     _has_jinja2_markers,
-    _RequestContext,
+    _ResolvedRequest,
 )
 from guidellm.schemas import (
     GenerationRequest,
@@ -47,186 +48,82 @@ def backend():
         yield VLLMPythonBackend(model="test-model")
 
 
-class TestVLLMGetRequestContext:
+class TestResolveRequest:
     """
-    Test _get_request_context: mode inferred from body and files.
+    Test _resolve_request: prompt resolution from columns.
     ## WRITTEN BY AI ##
     """
 
     @pytest.mark.smoke
-    def test_columns_only_infers_chat(self, backend):
+    def test_text_column_resolves_to_prompt(self, backend):
         """
-        Request with only columns (no arguments) builds messages and infers mode chat.
-        ## WRITTEN BY AI ##
-        """
-        request = GenerationRequest(columns={"text_column": ["hello"]})
-        ctx = backend._get_request_context(request)
-        assert ctx.mode == "chat"
-        assert "messages" in ctx.body
-        assert len(ctx.body["messages"]) == 1
-        assert ctx.body["messages"][0]["role"] == "user"
-        assert ctx.stream is True  # backend default stream=True (match HTTP behavior)
-        assert ctx.files == {}
-
-    @pytest.mark.smoke
-    def test_columns_only_uses_backend_stream_false(self):
-        """
-        When backend.stream=False and no arguments, ctx.stream is False.
+        Request with text_column resolves to a prompt string via plain format.
         ## WRITTEN BY AI ##
         """
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend = VLLMPythonBackend(model="test-model", stream=False)
+            backend_plain = VLLMPythonBackend(
+                model="test-model", request_format="plain"
+            )
         request = GenerationRequest(columns={"text_column": ["hello"]})
-        ctx = backend._get_request_context(request)
-        assert ctx.stream is False
+        resolved = backend_plain._resolve_request(request)
+        assert isinstance(resolved, _ResolvedRequest)
+        assert "User: hello" in resolved.prompt
+        assert "Assistant: " in resolved.prompt
+        assert resolved.stream is True
+        assert resolved.multi_modal_data is None
 
     @pytest.mark.smoke
-    def test_arguments_stream_overrides_backend_stream(self):
+    def test_stream_false_propagated(self):
         """
-        When request.arguments.stream is set, it overrides backend.stream.
+        When backend.stream=False, resolved.stream is False.
         ## WRITTEN BY AI ##
         """
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend = VLLMPythonBackend(model="test-model", stream=False)
-        request = Mock(spec=GenerationRequest)
-        request.arguments = Mock()
-        request.arguments.body = {"messages": [{"role": "user", "content": "Hi"}]}
-        request.arguments.stream = True  # override backend's stream=False
-        request.arguments.files = {}
-        ctx = backend._get_request_context(request)
-        assert ctx.stream is True
+            backend = VLLMPythonBackend(
+                model="test-model", stream=False, request_format="plain"
+            )
+        request = GenerationRequest(columns={"text_column": ["hello"]})
+        resolved = backend._resolve_request(request)
+        assert resolved.stream is False
 
     @pytest.mark.smoke
-    def test_arguments_body_prompt_infers_text(self, backend):
+    def test_prefix_and_text_columns_build_messages(self):
         """
-        Request with arguments.body containing only prompt infers mode text.
+        Columns with prefix_column and text_column are formatted into prompt.
         ## WRITTEN BY AI ##
         """
-        request = Mock(spec=GenerationRequest)
-        request.arguments = Mock()
-        request.arguments.body = {"prompt": "Complete this"}
-        request.arguments.stream = False
-        request.arguments.files = {}
-        ctx = backend._get_request_context(request)
-        assert ctx.mode == "text"
-        assert ctx.body == {"prompt": "Complete this"}
-        assert ctx.files == {}
-
-    @pytest.mark.smoke
-    def test_arguments_body_messages_infers_chat(self, backend):
-        """
-        Request with arguments.body containing messages infers mode chat.
-        ## WRITTEN BY AI ##
-        """
-        request = Mock(spec=GenerationRequest)
-        request.arguments = Mock()
-        request.arguments.body = {
-            "messages": [{"role": "user", "content": "Hi"}],
-        }
-        request.arguments.stream = True
-        request.arguments.files = {}
-        ctx = backend._get_request_context(request)
-        assert ctx.mode == "chat"
-        assert ctx.body["messages"] == [{"role": "user", "content": "Hi"}]
-        assert ctx.stream is True
-        assert ctx.files == {}
-
-    @pytest.mark.smoke
-    def test_arguments_non_empty_files_infers_audio(self, backend):
-        """
-        Request with non-empty files infers mode audio.
-        ## WRITTEN BY AI ##
-        """
-        request = Mock(spec=GenerationRequest)
-        request.arguments = Mock()
-        request.arguments.body = {}
-        request.arguments.stream = False
-        request.arguments.files = {"file": (b"audio-data", "audio/wav")}
-        ctx = backend._get_request_context(request)
-        assert ctx.mode == "audio"
-        assert ctx.files == {"file": (b"audio-data", "audio/wav")}
-
-    @pytest.mark.smoke
-    def test_arguments_files_take_precedence_over_body(self, backend):
-        """
-        When files is non-empty, mode is audio even if body has messages.
-        ## WRITTEN BY AI ##
-        """
-        request = Mock(spec=GenerationRequest)
-        request.arguments = Mock()
-        request.arguments.body = {"messages": [{"role": "user", "content": "Hi"}]}
-        request.arguments.stream = False
-        request.arguments.files = {"file": (b"x", "audio/wav")}
-        ctx = backend._get_request_context(request)
-        assert ctx.mode == "audio"
-
-    @pytest.mark.smoke
-    def test_arguments_empty_body_no_files_raises(self, backend):
-        """
-        Request with no prompt, no messages, and no files raises ValueError.
-        ## WRITTEN BY AI ##
-        """
-        request = Mock(spec=GenerationRequest)
-        request.arguments = Mock()
-        request.arguments.body = {}
-        request.arguments.stream = False
-        request.arguments.files = {}
-        with pytest.raises(
-            ValueError, match="Request must include prompt, messages, or audio files"
-        ):
-            backend._get_request_context(request)
-
-    @pytest.mark.smoke
-    def test_arguments_body_prompt_key_empty_string_infers_text(self, backend):
-        """
-        Body with key 'prompt' present (even empty string) infers mode text.
-        ## WRITTEN BY AI ##
-        """
-        request = Mock(spec=GenerationRequest)
-        request.arguments = Mock()
-        request.arguments.body = {"prompt": ""}
-        request.arguments.stream = False
-        request.arguments.files = {}
-        ctx = backend._get_request_context(request)
-        assert ctx.mode == "text"
-        assert ctx.body["prompt"] == ""
-
-    @pytest.mark.smoke
-    def test_columns_prefix_and_text_build_messages(self, backend):
-        """
-        Columns with prefix_column and text_column build multiple messages, mode chat.
-        ## WRITTEN BY AI ##
-        """
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend = VLLMPythonBackend(
+                model="test-model", request_format="plain"
+            )
         request = GenerationRequest(
             columns={
                 "prefix_column": ["System prompt"],
                 "text_column": ["User question"],
             }
         )
-        ctx = backend._get_request_context(request)
-        assert ctx.mode == "chat"
-        assert len(ctx.body["messages"]) == 2
-        assert ctx.body["messages"][0]["role"] == "system"
-        assert ctx.body["messages"][0]["content"] == "System prompt"
-        assert ctx.body["messages"][1]["role"] == "user"
-        assert ctx.body["messages"][1]["content"][0]["text"] == "User question"
+        resolved = backend._resolve_request(request)
+        assert "System: System prompt" in resolved.prompt
+        assert "User: User question" in resolved.prompt
 
     @pytest.mark.smoke
-    def test_columns_only_no_media_multi_modal_data_none(self, backend):
+    def test_text_only_no_media_multi_modal_data_none(self, backend):
         """
         Request with only text columns leaves multi_modal_data None.
         ## WRITTEN BY AI ##
         """
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend_plain = VLLMPythonBackend(
+                model="test-model", request_format="plain"
+            )
         request = GenerationRequest(columns={"text_column": ["hello"]})
-        ctx = backend._get_request_context(request)
-        assert ctx.multi_modal_data is None
+        resolved = backend_plain._resolve_request(request)
+        assert resolved.multi_modal_data is None
 
     @pytest.mark.smoke
-    def test_columns_audio_column_only_infers_audio_and_sets_multi_modal_data(
-        self, backend
-    ):
+    def test_audio_column_only_resolves_with_placeholder_prompt(self, backend):
         """
-        Request with only audio_column infers mode audio and sets multi_modal_data.
+        Request with only audio_column resolves prompt to audio placeholder.
         ## WRITTEN BY AI ##
         """
         mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
@@ -242,21 +139,28 @@ class TestVLLMGetRequestContext:
             "guidellm.backends.vllm_python.vllm._decode_audio",
             return_value=mock_decode_result,
         ):
-            ctx = backend._get_request_context(request)
-        assert ctx.mode == "audio"
-        assert ctx.multi_modal_data is not None
-        assert "audio" in ctx.multi_modal_data
-        np.testing.assert_array_equal(ctx.multi_modal_data["audio"], mock_audio_array)
+            resolved = backend._resolve_request(request)
+        assert resolved.multi_modal_data is not None
+        assert "audio" in resolved.multi_modal_data
+        np.testing.assert_array_equal(
+            resolved.multi_modal_data["audio"], mock_audio_array
+        )
+        assert "<|audio|>" in resolved.prompt
 
     @pytest.mark.smoke
-    def test_columns_image_column_sets_multi_modal_data(self, backend):
+    def test_image_column_resolves_with_multi_modal_data(self):
         """
-        Request with image_column sets multi_modal_data with image key.
+        Request with image_column sets multi_modal_data and injects placeholder.
         ## WRITTEN BY AI ##
         """
         mock_pil = Mock()
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend = VLLMPythonBackend(
+                model="test-model", request_format="plain"
+            )
         request = GenerationRequest(
             columns={
+                "text_column": ["Describe this"],
                 "image_column": [
                     {"image": "data:image/jpeg;base64,/9j/4AAQ="},
                 ],
@@ -266,37 +170,104 @@ class TestVLLMGetRequestContext:
             "guidellm.backends.vllm_python.vllm.image_dict_to_pil",
             return_value=mock_pil,
         ):
-            ctx = backend._get_request_context(request)
-        assert ctx.mode == "chat"
-        assert ctx.multi_modal_data is not None
-        assert "image" in ctx.multi_modal_data
-        assert ctx.multi_modal_data["image"] is mock_pil
+            resolved = backend._resolve_request(request)
+        assert resolved.multi_modal_data is not None
+        assert "image" in resolved.multi_modal_data
+        assert resolved.multi_modal_data["image"] is mock_pil
+        assert "<image>" in resolved.prompt
+        assert "Describe this" in resolved.prompt
 
     @pytest.mark.smoke
-    def test_columns_text_and_image_produces_chat_with_multi_modal_data(
-        self, backend
-    ):
+    def test_empty_columns_raises(self, backend):
         """
-        Request with text_column and image_column produces chat and multi_modal_data.
+        Request with no text or multimodal columns raises ValueError.
         ## WRITTEN BY AI ##
         """
-        mock_pil = Mock()
+        request = GenerationRequest(columns={})
+        with pytest.raises(ValueError, match="text_column or multimodal"):
+            backend._resolve_request(request)
+
+    @pytest.mark.smoke
+    def test_audio_and_text_with_chat_template_uses_content_blocks(self):
+        """
+        With text + audio + chat template, apply_chat_template receives messages
+        with {"type": "audio"} content blocks (not a hardcoded placeholder string).
+        ## WRITTEN BY AI ##
+        """
+        mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
+        mock_decode_result = Mock()
+        mock_decode_result.data = mock_audio_array
+
+        captured_messages = []
+
+        def fake_apply_chat_template(messages, tokenize=False,
+                                     add_generation_prompt=False):
+            captured_messages.append(messages)
+            return "<|user|>\n<|begin_of_audio|><|end_of_audio|>\nHello\n"
+
+        mock_tokenizer = Mock()
+        mock_tokenizer.apply_chat_template = fake_apply_chat_template
+
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend = VLLMPythonBackend(
+                model="test-model", request_format="default-template"
+            )
+        backend._engine = Mock()
+        backend._engine.tokenizer = mock_tokenizer
+
         request = GenerationRequest(
             columns={
-                "text_column": ["Describe this image"],
-                "image_column": [{"image": "data:image/jpeg;base64,/9j/4AAQ="}],
+                "text_column": ["Hello"],
+                "audio_column": [{"audio": b"fake-wav-bytes", "format": "wav"}],
             }
         )
         with patch(
-            "guidellm.backends.vllm_python.vllm.image_dict_to_pil",
-            return_value=mock_pil,
+            "guidellm.backends.vllm_python.vllm._decode_audio",
+            return_value=mock_decode_result,
         ):
-            ctx = backend._get_request_context(request)
-        assert ctx.mode == "chat"
-        assert ctx.multi_modal_data is not None
-        assert ctx.multi_modal_data["image"] is mock_pil
-        assert len(ctx.body["messages"]) == 1
-        assert ctx.body["messages"][0]["content"][0]["text"] == "Describe this image"
+            resolved = backend._resolve_request(request)
+
+        assert len(captured_messages) == 1
+        msgs = captured_messages[0]
+        user_msg = next(m for m in msgs if m["role"] == "user")
+        assert isinstance(user_msg["content"], list)
+        types = [b["type"] for b in user_msg["content"]]
+        assert "audio" in types
+        assert "text" in types
+        assert resolved.multi_modal_data is not None
+        assert "audio" in resolved.multi_modal_data
+
+    @pytest.mark.smoke
+    def test_audio_and_text_plain_format_uses_placeholder_string(self):
+        """
+        With text + audio + plain format, placeholder strings are used (not
+        content blocks), preserving the existing plain-mode behavior.
+        ## WRITTEN BY AI ##
+        """
+        mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
+        mock_decode_result = Mock()
+        mock_decode_result.data = mock_audio_array
+
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend = VLLMPythonBackend(
+                model="test-model", request_format="plain"
+            )
+
+        request = GenerationRequest(
+            columns={
+                "text_column": ["Hello"],
+                "audio_column": [{"audio": b"fake-wav-bytes", "format": "wav"}],
+            }
+        )
+        with patch(
+            "guidellm.backends.vllm_python.vllm._decode_audio",
+            return_value=mock_decode_result,
+        ):
+            resolved = backend._resolve_request(request)
+
+        assert "<|audio|>" in resolved.prompt
+        assert "Hello" in resolved.prompt
+        assert resolved.multi_modal_data is not None
 
 
 class TestImagePlaceholderInjection:
@@ -437,7 +408,6 @@ class TestAudioPlaceholderInjection:
         """
         msgs = [{"role": "user", "content": "Hello"}]
         backend._inject_placeholders_into_messages(msgs, {"image": Mock()})
-        # Only image placeholder, no audio
         assert "<|audio|>" not in msgs[0]["content"]
 
     @pytest.mark.smoke
@@ -487,9 +457,127 @@ class TestAudioPlaceholderInjection:
         )
 
 
+class TestInjectMultimodalContentBlocks:
+    """
+    Test _inject_multimodal_content_blocks: adds typed content blocks to messages.
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_audio_block_added_to_last_user_message(self, backend):
+        """
+        Single audio item adds {"type": "audio"} block before existing content.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": [{"type": "text", "text": "Transcribe."}]}]
+        multi_modal_data = {"audio": np.array([0.0], dtype=np.float32)}
+        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
+        assert msgs[0]["content"] == [
+            {"type": "audio"},
+            {"type": "text", "text": "Transcribe."},
+        ]
+
+    @pytest.mark.smoke
+    def test_image_block_added_to_last_user_message(self, backend):
+        """
+        Single image item adds {"type": "image"} block before existing content.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": [{"type": "text", "text": "Describe."}]}]
+        multi_modal_data = {"image": Mock()}
+        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
+        assert msgs[0]["content"] == [
+            {"type": "image"},
+            {"type": "text", "text": "Describe."},
+        ]
+
+    @pytest.mark.smoke
+    def test_audio_and_image_blocks_combined(self, backend):
+        """
+        Both image and audio produce blocks in order: image first, then audio.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": [{"type": "text", "text": "Both."}]}]
+        multi_modal_data = {
+            "image": Mock(),
+            "audio": np.array([0.0], dtype=np.float32),
+        }
+        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
+        assert msgs[0]["content"] == [
+            {"type": "image"},
+            {"type": "audio"},
+            {"type": "text", "text": "Both."},
+        ]
+
+    @pytest.mark.smoke
+    def test_string_content_converted_to_list(self, backend):
+        """
+        When content is a plain string, it is wrapped in a text block.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": "Hello"}]
+        multi_modal_data = {"audio": np.array([0.0], dtype=np.float32)}
+        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
+        assert msgs[0]["content"] == [
+            {"type": "audio"},
+            {"type": "text", "text": "Hello"},
+        ]
+
+    @pytest.mark.smoke
+    def test_targets_last_user_message(self, backend):
+        """
+        Blocks are added to the last user message, not system or earlier messages.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "Answer"},
+            {"role": "user", "content": [{"type": "text", "text": "Second"}]},
+        ]
+        multi_modal_data = {"audio": np.array([0.0], dtype=np.float32)}
+        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
+        assert msgs[0]["content"] == "System prompt"
+        assert msgs[1]["content"] == "First question"
+        assert msgs[3]["content"] == [
+            {"type": "audio"},
+            {"type": "text", "text": "Second"},
+        ]
+
+    @pytest.mark.smoke
+    def test_empty_multimodal_data_unchanged(self, backend):
+        """
+        No blocks added when multi_modal_data has no image or audio.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": [{"type": "text", "text": "Hello"}]}]
+        backend._inject_multimodal_content_blocks(msgs, {})
+        assert msgs[0]["content"] == [{"type": "text", "text": "Hello"}]
+
+    @pytest.mark.smoke
+    def test_multiple_audio_items(self, backend):
+        """
+        N audio items produce N audio blocks.
+        ## WRITTEN BY AI ##
+        """
+        msgs = [{"role": "user", "content": [{"type": "text", "text": "Compare."}]}]
+        multi_modal_data = {
+            "audio": [
+                np.array([0.0], dtype=np.float32),
+                np.array([0.1], dtype=np.float32),
+            ]
+        }
+        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
+        assert msgs[0]["content"] == [
+            {"type": "audio"},
+            {"type": "audio"},
+            {"type": "text", "text": "Compare."},
+        ]
+
+
 class TestBuildPlaceholderPrefix:
     """
-    Test _build_placeholder_prefix for non-chat mode prompt prepending.
+    Test _build_placeholder_prefix for prompt prepending.
     ## WRITTEN BY AI ##
     """
 
@@ -583,34 +671,28 @@ class TestVLLMRequestFormat:
     """
 
     @pytest.mark.smoke
-    def test_request_format_plain_produces_concatenated_prompt(self, backend):
+    def test_request_format_plain_produces_concatenated_prompt(self):
         """
-        With request_format=plain, chat prompt is plain concatenation (no template).
+        With request_format=plain, _resolve_request produces plain concatenation.
         ## WRITTEN BY AI ##
         """
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
             backend_plain = VLLMPythonBackend(
                 model="test-model", request_format="plain"
             )
-        body = {
-            "messages": [
-                {"role": "user", "content": "Hello"},
-                {"role": "assistant", "content": "Hi"},
-                {"role": "user", "content": "Bye"},
-            ]
-        }
-        # _extract_prompt for chat uses self._engine.tokenizer only when not plain
-        prompt = backend_plain._extract_prompt(body, "chat")
-        assert "User: Hello" in prompt
-        assert "Assistant: Hi" in prompt
-        assert "User: Bye" in prompt
-        assert "Assistant: " in prompt
-        # No template markers like [INST] or <|im_start|>
-        assert "[INST]" not in prompt
-        assert "<|im_start|>" not in prompt
+        request = GenerationRequest(
+            columns={
+                "text_column": ["Hello"],
+            }
+        )
+        resolved = backend_plain._resolve_request(request)
+        assert "User: Hello" in resolved.prompt
+        assert "Assistant: " in resolved.prompt
+        assert "[INST]" not in resolved.prompt
+        assert "<|im_start|>" not in resolved.prompt
 
     @pytest.mark.smoke
-    def test_request_format_chat_completions_raises_not_a_template(self, backend):
+    def test_request_format_chat_completions_raises_not_a_template(self):
         """
         request_format with no Jinja2 markers (e.g. 'chat_completions') raises
         ValueError with message that includes received value and allowed options.
@@ -622,21 +704,20 @@ class TestVLLMRequestFormat:
             )
             backend_api._engine = Mock()
             backend_api._engine.tokenizer = Mock()
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
         with pytest.raises(ValueError) as exc_info:
-            backend_api._extract_prompt(body, "chat")
+            backend_api._resolve_request(request)
         msg = str(exc_info.value)
         assert "chat_completions" in msg
         assert "plain" in msg or "default-template" in msg
         assert "Jinja2" in msg or "template" in msg.lower()
 
     @pytest.mark.smoke
-    def test_request_format_default_template_uses_apply_chat_template(self, backend):
+    def test_request_format_default_template_uses_apply_chat_template(self):
         """
-        With request_format=default-template or None, apply_chat_template is used.
+        With request_format=default-template, apply_chat_template is used.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "formatted_prompt"
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
@@ -645,39 +726,37 @@ class TestVLLMRequestFormat:
             )
             backend_default._engine = Mock()
             backend_default._engine.tokenizer = mock_tokenizer
-        prompt = backend_default._extract_prompt(body, "chat")
-        assert prompt == "formatted_prompt"
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
+        resolved = backend_default._resolve_request(request)
+        assert resolved.prompt == "formatted_prompt"
         mock_tokenizer.apply_chat_template.assert_called_once()
         call_kw = mock_tokenizer.apply_chat_template.call_args[1]
         assert call_kw.get("tokenize") is False
         assert call_kw.get("add_generation_prompt") is True
 
     @pytest.mark.smoke
-    def test_request_format_none_uses_apply_chat_template(self, backend):
+    def test_request_format_none_uses_apply_chat_template(self):
         """
         With request_format=None, tokenizer.apply_chat_template is used.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "default_prompt"
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
             backend_none = VLLMPythonBackend(model="test-model")
             backend_none._engine = Mock()
             backend_none._engine.tokenizer = mock_tokenizer
-        prompt = backend_none._extract_prompt(body, "chat")
-        assert prompt == "default_prompt"
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
+        resolved = backend_none._resolve_request(request)
+        assert resolved.prompt == "default_prompt"
         mock_tokenizer.apply_chat_template.assert_called_once()
 
     @pytest.mark.smoke
-    def test_request_format_custom_template_string_sets_tokenizer_and_applies(
-        self, backend
-    ):
+    def test_request_format_custom_template_string_sets_tokenizer_and_applies(self):
         """
-        With request_format=custom, chat_template is set then apply_chat_template.
+        With request_format=custom template, chat_template is set then applied.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "custom_prompt"
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
@@ -687,22 +766,20 @@ class TestVLLMRequestFormat:
             )
             backend_custom._engine = Mock()
             backend_custom._engine.tokenizer = mock_tokenizer
-        prompt = backend_custom._extract_prompt(body, "chat")
-        assert prompt == "custom_prompt"
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
+        resolved = backend_custom._resolve_request(request)
+        assert resolved.prompt == "custom_prompt"
         assert mock_tokenizer.chat_template == "{{ messages[0]['content'] }}"
         mock_tokenizer.apply_chat_template.assert_called_once()
 
     @pytest.mark.smoke
-    def test_request_format_custom_template_from_file_sets_tokenizer_and_applies(
-        self, backend, tmp_path
-    ):
+    def test_request_format_custom_template_from_file(self, tmp_path):
         """
         With request_format=file path, chat_template is set from file then applied.
         ## WRITTEN BY AI ##
         """
         template_file = tmp_path / "template.jinja"
         template_file.write_text("Custom: {{ messages[0]['content'] }}")
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "Custom: Hi"
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
@@ -711,25 +788,21 @@ class TestVLLMRequestFormat:
             )
             backend_file._engine = Mock()
             backend_file._engine.tokenizer = mock_tokenizer
-        prompt = backend_file._extract_prompt(body, "chat")
-        assert prompt == "Custom: Hi"
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
+        resolved = backend_file._resolve_request(request)
+        assert resolved.prompt == "Custom: Hi"
         assert mock_tokenizer.chat_template == "Custom: {{ messages[0]['content'] }}"
-        mock_tokenizer.apply_chat_template.assert_called_once()
 
     @pytest.mark.smoke
-    def test_request_format_file_template_cached_on_second_request(
-        self, backend, tmp_path
-    ):
+    def test_request_format_file_template_cached_on_second_request(self, tmp_path):
         """
-        With request_format=file path, verifies that the second request
-        uses cached content instead of doing a second read.
+        With request_format=file path, the second request uses cached content.
         ## WRITTEN BY AI ##
         """
         template_file = tmp_path / "template.jinja"
         template_file.write_text(
             "{% for m in messages %}{{ m['content'] }}{% endfor %}"
         )
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "Hi"
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
@@ -738,18 +811,17 @@ class TestVLLMRequestFormat:
             )
             backend_file._engine = Mock()
             backend_file._engine.tokenizer = mock_tokenizer
-        backend_file._extract_prompt(body, "chat")
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
+        backend_file._resolve_request(request)
         first_template = mock_tokenizer.chat_template
-        backend_file._extract_prompt(body, "chat")
-        # Same template used (from cache); Path.read_text would only be called once
+        backend_file._resolve_request(request)
         assert mock_tokenizer.chat_template == first_template
         assert mock_tokenizer.apply_chat_template.call_count == 2
 
     @pytest.mark.smoke
-    def test_request_format_file_with_no_markers_raises(self, backend, tmp_path):
+    def test_request_format_file_with_no_markers_raises(self, tmp_path):
         """
-        request_format=path to file whose content has no Jinja2 markers raises
-        ValueError about file content not containing Jinja2 syntax.
+        request_format=path to file with no Jinja2 markers raises ValueError.
         ## WRITTEN BY AI ##
         """
         no_markers_file = tmp_path / "plain.txt"
@@ -760,18 +832,16 @@ class TestVLLMRequestFormat:
             )
             backend_file._engine = Mock()
             backend_file._engine.tokenizer = Mock()
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
         with pytest.raises(ValueError) as exc_info:
-            backend_file._extract_prompt(body, "chat")
+            backend_file._resolve_request(request)
         msg = str(exc_info.value)
         assert "Jinja2" in msg or "template" in msg.lower()
-        assert "content" in msg or "syntax" in msg.lower() or "marker" in msg.lower()
 
     @pytest.mark.smoke
-    def test_request_format_invalid_jinja2_string_raises(self, backend):
+    def test_request_format_invalid_jinja2_string_raises(self):
         """
-        request_format=string with markers but invalid Jinja2 syntax raises
-        ValueError wrapping the Jinja2 error.
+        request_format with invalid Jinja2 syntax raises ValueError.
         ## WRITTEN BY AI ##
         """
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
@@ -780,17 +850,16 @@ class TestVLLMRequestFormat:
             )
             backend_bad._engine = Mock()
             backend_bad._engine.tokenizer = Mock()
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
         with pytest.raises(ValueError) as exc_info:
-            backend_bad._extract_prompt(body, "chat")
+            backend_bad._resolve_request(request)
         msg = str(exc_info.value)
         assert "Invalid chat template" in msg or "template" in msg.lower()
 
     @pytest.mark.smoke
-    def test_request_format_stored_on_backend(self, backend):
+    def test_request_format_stored_on_backend(self):
         """
-        Custom request_format is stored on the backend; template is resolved at
-        request time (not passed to vllm_config).
+        Custom request_format is stored on the backend, not in vllm_config.
         ## WRITTEN BY AI ##
         """
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
@@ -799,11 +868,10 @@ class TestVLLMRequestFormat:
                 request_format="/path/to/template.jinja",
             )
         assert backend_custom.request_format == "/path/to/template.jinja"
-        # Template is applied at request time, not stored in vllm_config
         assert "chat_template" not in backend_custom.vllm_config
 
     @pytest.mark.smoke
-    def test_request_format_plain_not_in_vllm_config(self, backend):
+    def test_request_format_plain_not_in_vllm_config(self):
         """
         request_format=plain does not add chat_template to vllm_config.
         ## WRITTEN BY AI ##
@@ -816,7 +884,7 @@ class TestVLLMRequestFormat:
         assert "chat_template" not in backend_plain.vllm_config
 
     @pytest.mark.smoke
-    def test_request_format_default_template_not_in_vllm_config(self, backend):
+    def test_request_format_default_template_not_in_vllm_config(self):
         """
         request_format=default-template does not add chat_template to vllm_config.
         ## WRITTEN BY AI ##
@@ -843,97 +911,15 @@ class TestVLLMRequestFormat:
             assert "gpu_memory_utilization" not in b.vllm_config
 
 
-class TestVLLMExtractPromptTokenizerWarnings:
-    """
-    Test warnings when tokenizer is set but not used for prompt extraction.
-    """
-
-    @pytest.mark.smoke
-    def test_text_mode_warns_when_engine_has_tokenizer(self, backend):
-        """
-        With mode=text and engine.tokenizer set, a warning is logged.
-        ## WRITTEN BY AI ##
-        """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend._engine = Mock()
-            backend._engine.tokenizer = Mock()
-        with patch("guidellm.backends.vllm_python.vllm.logger") as mock_logger:
-            result = backend._extract_prompt({"prompt": "Complete this"}, "text")
-        assert result == "Complete this"
-        mock_logger.warning.assert_called_once()
-        call_msg = mock_logger.warning.call_args[0][0]
-        assert "Tokenizer is set" in call_msg
-        assert "mode was inferred as text" in call_msg
-
-    @pytest.mark.smoke
-    def test_text_mode_no_warning_when_engine_has_no_tokenizer(self, backend):
-        """
-        With mode=text and no engine tokenizer, no warning is logged.
-        ## WRITTEN BY AI ##
-        """
-        backend._engine = None
-        with patch("guidellm.backends.vllm_python.vllm.logger") as mock_logger:
-            result = backend._extract_prompt({"prompt": "Complete this"}, "text")
-        assert result == "Complete this"
-        mock_logger.warning.assert_not_called()
-
-    @pytest.mark.smoke
-    def test_chat_plain_no_warning_when_engine_has_no_tokenizer(self, backend):
-        """
-        With request_format=plain and no engine tokenizer, no warning is logged.
-        ## WRITTEN BY AI ##
-        """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend_plain = VLLMPythonBackend(
-                model="test-model", request_format="plain"
-            )
-            backend_plain._engine = None
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
-        with patch("guidellm.backends.vllm_python.vllm.logger") as mock_logger:
-            backend_plain._extract_prompt(body, "chat")
-        mock_logger.warning.assert_not_called()
-
-
 class TestVLLMStreamingUsageFromOutput:
     """
-    Test _usage_from_output (stream path): token_ids vs tokenizer fallback.
+    Test _usage_from_output: token_ids vs token_iterations fallback.
     """
 
     @pytest.mark.smoke
-    def test_streaming_usage_from_output_token_ids_none_uses_tokenizer(self, backend):
+    def test_streaming_usage_uses_token_ids(self, backend):
         """
-        When token_ids is None, output_tokens are derived from tokenizer.encode.
-        ## WRITTEN BY AI ##
-        """
-        mock_out = Mock()
-        mock_out.token_ids = None
-        mock_out.text = "Hello world"
-        mock_final = Mock()
-        mock_final.prompt_token_ids = [1, 2, 3]
-        mock_final.outputs = [mock_out]
-        mock_info = Mock()
-        mock_info.timings.token_iterations = 10
-        mock_tokenizer = Mock()
-        mock_tokenizer.encode.return_value = [10, 20, 30, 40, 50]  # 5 tokens
-        backend._engine = Mock()
-        backend._engine.tokenizer = mock_tokenizer
-        usage = backend._usage_from_output(
-            mock_final,
-            accumulated_text="Hello world",
-            request_info=mock_info,
-        )
-        assert usage is not None
-        assert usage["prompt_tokens"] == 3
-        assert usage["completion_tokens"] == 5
-        assert usage["total_tokens"] == 8
-        mock_tokenizer.encode.assert_called_once_with(
-            "Hello world", add_special_tokens=False
-        )
-
-    @pytest.mark.smoke
-    def test_streaming_usage_from_output_uses_token_ids_when_available(self, backend):
-        """
-        When token_ids is set, it is used and tokenizer is not called.
+        When token_ids is set, it is used for completion_tokens.
         ## WRITTEN BY AI ##
         """
         mock_out = Mock()
@@ -944,23 +930,19 @@ class TestVLLMStreamingUsageFromOutput:
         mock_final.outputs = [mock_out]
         mock_info = Mock()
         mock_info.timings.token_iterations = 1
-        backend._engine = Mock()
-        backend._engine.tokenizer = Mock()
         usage = backend._usage_from_output(
             mock_final,
-            accumulated_text="Hi",
             request_info=mock_info,
         )
         assert usage is not None
         assert usage["prompt_tokens"] == 2
         assert usage["completion_tokens"] == 4
         assert usage["total_tokens"] == 6
-        backend._engine.tokenizer.encode.assert_not_called()
 
     @pytest.mark.smoke
-    def test_streaming_usage_from_output_fallback_to_token_iterations(self, backend):
+    def test_streaming_usage_fallback_to_token_iterations(self, backend):
         """
-        When token_ids is None and tokenizer fails, use token_iterations.
+        When token_ids is None, falls back to token_iterations.
         ## WRITTEN BY AI ##
         """
         mock_out = Mock()
@@ -971,11 +953,8 @@ class TestVLLMStreamingUsageFromOutput:
         mock_final.outputs = [mock_out]
         mock_info = Mock()
         mock_info.timings.token_iterations = 7
-        backend._engine = Mock()
-        backend._engine.tokenizer = Mock(side_effect=RuntimeError("no tokenizer"))
         usage = backend._usage_from_output(
             mock_final,
-            accumulated_text="Hi",
             request_info=mock_info,
         )
         assert usage is not None
@@ -983,19 +962,18 @@ class TestVLLMStreamingUsageFromOutput:
         assert usage["total_tokens"] == 8
 
 
-class TestVLLMStreamingCumulativeTokenCount:
+class TestVLLMStreamingFinalTokenCount:
     """
-    Test that streaming correctly counts tokens when vLLM yields CUMULATIVE token_ids.
+    Test that streaming uses the final output's token_ids for the response.
     """
 
     @pytest.mark.asyncio
     @pytest.mark.smoke
-    async def test_cumulative_token_ids_counted_as_delta(self, backend):
+    async def test_final_output_token_ids_used_for_count(self, backend):
         """
-        vLLM yields cumulative token_ids; we add delta only.
+        vLLM yields cumulative token_ids; final output has 3 token_ids -> 3 tokens.
         ## WRITTEN BY AI ##
         """
-        # Simulate 3 chunks, cumulative token_ids [1],[1,2],[1,2,3] -> 3 tokens
         out1 = Mock()
         out1.text = "A"
         out1.token_ids = [100]
@@ -1011,7 +989,7 @@ class TestVLLMStreamingCumulativeTokenCount:
         req1, req2, req3 = Mock(), Mock(), Mock()
         for req in (req1, req2, req3):
             req.request_id = None
-            req.prompt_token_ids = [1, 2]  # for _usage_from_output
+            req.prompt_token_ids = [1, 2]
         req1.outputs, req2.outputs, req3.outputs = [out1], [out2], [out3]
 
         async def mock_generate(_prompt, _params, _req_id):
@@ -1026,7 +1004,13 @@ class TestVLLMStreamingCumulativeTokenCount:
         )
         request_info = RequestInfo()
 
-        with patch.object(backend, "_extract_prompt", return_value="Hi"):
+        with patch.object(
+            backend,
+            "_resolve_request",
+            return_value=_ResolvedRequest(
+                prompt="Hi", stream=True, multi_modal_data=None
+            ),
+        ):
             final_response = None
             async for response, _ in backend.resolve(request, request_info):
                 final_response = response
@@ -1037,88 +1021,53 @@ class TestVLLMStreamingCumulativeTokenCount:
 
 class TestVLLMCreateSamplingParams:
     """
-    Test _create_sampling_params: max_tokens from body vs request override.
+    Test _create_sampling_params: max_tokens_override and defaults.
     """
 
     @pytest.mark.smoke
-    def test_max_tokens_override_used_when_body_has_no_max_tokens(self, backend):
+    def test_override_used(self, backend):
         """
-        When body has no max_tokens, max_tokens_override is used.
+        max_tokens_override is used as max_tokens.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
-        params = backend._create_sampling_params(body, max_tokens_override=2000)
+        params = backend._create_sampling_params(max_tokens_override=2000)
         assert params.max_tokens == 2000
 
     @pytest.mark.smoke
-    def test_body_max_tokens_takes_precedence_over_override(self, backend):
+    def test_default_max_tokens(self, backend):
         """
-        When body has max_tokens, override is ignored.
+        Without override, default max_tokens is 16.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}], "max_tokens": 64}
-        params = backend._create_sampling_params(body, max_tokens_override=2000)
-        assert params.max_tokens == 64
-
-    @pytest.mark.smoke
-    def test_default_max_tokens_when_no_body_no_override(self, backend):
-        """
-        When body has no max_tokens and no override, default is 16.
-        ## WRITTEN BY AI ##
-        """
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
-        params = backend._create_sampling_params(body)
+        params = backend._create_sampling_params()
         assert params.max_tokens == 16
 
     @pytest.mark.smoke
-    def test_override_used_sets_ignore_eos_and_stop_like_http(self, backend):
+    def test_override_sets_ignore_eos_and_stop(self, backend):
         """
-        When max_tokens_override is used, ignore_eos=True and stop=[] to match HTTP.
+        When override is used, ignore_eos=True and stop=[] to match HTTP behavior.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
-        params = backend._create_sampling_params(body, max_tokens_override=2000)
-        assert params.max_tokens == 2000
+        params = backend._create_sampling_params(max_tokens_override=2000)
         assert params.ignore_eos is True
         assert params.stop == []
 
     @pytest.mark.smoke
-    def test_override_used_with_600_also_sets_ignore_eos_and_stop(self, backend):
+    def test_no_override_uses_defaults(self, backend):
         """
-        When max_tokens_override is used (e.g. 600), same: ignore_eos=True, stop=[].
+        Without override, ignore_eos=False and stop is not set.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}]}
-        params = backend._create_sampling_params(body, max_tokens_override=600)
-        assert params.max_tokens == 600
-        assert params.ignore_eos is True
-        assert params.stop == []
-
-    @pytest.mark.smoke
-    def test_body_max_tokens_uses_body_ignore_eos_and_stop(self, backend):
-        """
-        When body has max_tokens, ignore_eos and stop come from body.
-        ## WRITTEN BY AI ##
-        """
-        body = {
-            "messages": [{"role": "user", "content": "Hi"}],
-            "max_tokens": 64,
-            "ignore_eos": True,
-            "stop": ["</s>"],
-        }
-        params = backend._create_sampling_params(body, max_tokens_override=2000)
-        assert params.max_tokens == 64
-        assert params.ignore_eos is True
-        assert params.stop == ["</s>"]
+        params = backend._create_sampling_params()
+        assert params.ignore_eos is False
 
     @pytest.mark.smoke
     def test_max_tokens_zero_safeguard(self, backend):
         """
-        When body has max_tokens=0, we use 16 so vLLM never receives 0.
+        max_tokens_override=0 is treated as 16 so vLLM never receives 0.
         ## WRITTEN BY AI ##
         """
-        body = {"messages": [{"role": "user", "content": "Hi"}], "max_tokens": 0}
-        params = backend._create_sampling_params(body)
+        params = backend._create_sampling_params(max_tokens_override=0)
         assert params.max_tokens == 16
 
 
@@ -1360,52 +1309,6 @@ class TestVLLMTextFromOutput:
         assert backend._text_from_output(mock_out) == ""
 
 
-class TestVLLMOpenAIPayloadForMode:
-    """
-    _openai_payload_for_mode: audio, text, chat delta/message.
-    """
-
-    @pytest.mark.smoke
-    def test_openai_payload_audio_returns_text_key(self, backend):
-        """
-        mode audio -> {"text": ...}.
-        ## WRITTEN BY AI ##
-        """
-        out = backend._openai_payload_for_mode("audio", "transcribed")
-        assert out == {"text": "transcribed"}
-
-    @pytest.mark.smoke
-    def test_openai_payload_text_returns_choices_text(self, backend):
-        """
-        mode text -> choices[].text.
-        ## WRITTEN BY AI ##
-        """
-        out = backend._openai_payload_for_mode("text", "completion")
-        assert out == {"choices": [{"text": "completion"}]}
-
-    @pytest.mark.smoke
-    def test_openai_payload_chat_returns_choices_message(self, backend):
-        """
-        mode chat -> choices[].message (no delta shape; message only).
-        ## WRITTEN BY AI ##
-        """
-        out = backend._openai_payload_for_mode("chat", "hi")
-        assert out == {
-            "choices": [{"message": {"content": "hi", "role": "assistant"}}]
-        }
-
-    @pytest.mark.smoke
-    def test_openai_payload_chat_message_returns_choices_message(self, backend):
-        """
-        mode chat -> choices[].message.
-        ## WRITTEN BY AI ##
-        """
-        out = backend._openai_payload_for_mode("chat", "hello")
-        assert out == {
-            "choices": [{"message": {"content": "hello", "role": "assistant"}}]
-        }
-
-
 class TestVLLMUsageFromOutputNonStream:
     """
     _usage_from_output with request_info=None (non-stream path).
@@ -1414,7 +1317,7 @@ class TestVLLMUsageFromOutputNonStream:
     @pytest.mark.smoke
     def test_usage_from_output_non_stream_uses_output_token_counts(self, backend):
         """
-        Non-stream: use only output token counts (no tokenizer/request_info).
+        Non-stream: use only output token counts.
         ## WRITTEN BY AI ##
         """
         mock_out = Mock()
@@ -1452,43 +1355,27 @@ class TestVLLMBuildFinalResponse:
         final_output is None -> return None.
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-
         request = GenerationRequest(columns={"text_column": ["x"]})
         request_info = RequestInfo()
-        ctx = _RequestContext(mode="chat", body={}, stream=True, files={})
-        handler = VLLMResponseHandler()
         result = backend._build_final_response(
-            request, request_info, None, ctx, handler, stream=True
+            request, request_info, None, stream=True
         )
         assert result is None
 
     @pytest.mark.smoke
-    def test_build_final_response_stream_returns_compile_streaming(self, backend):
+    def test_build_final_response_stream_returns_response(self, backend):
         """
-        Stream path uses compile_streaming.
+        Stream path builds GenerationResponse with text and usage.
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-
         mock_final = Mock()
         mock_final.prompt_token_ids = [1, 2]
         mock_final.outputs = [Mock(token_ids=[3, 4], text="ab")]
         mock_final.request_id = "req-1"
         request = GenerationRequest(columns={"text_column": ["x"]})
         request_info = RequestInfo()
-        ctx = _RequestContext(mode="chat", body={}, stream=True, files={})
-        handler = VLLMResponseHandler()
-        handler.add_streaming_line('data: {"choices": [{"delta": {"content": "ab"}}]}')
         result = backend._build_final_response(
-            request,
-            request_info,
-            mock_final,
-            ctx,
-            handler,
-            stream=True,
-            accumulated_text="ab",
-            total_output_tokens=2,
+            request, request_info, mock_final, stream=True, text="ab"
         )
         assert result is not None
         resp, info = result
@@ -1497,25 +1384,19 @@ class TestVLLMBuildFinalResponse:
         assert info is request_info
 
     @pytest.mark.smoke
-    def test_build_final_response_non_stream_returns_compile_non_streaming(
-        self, backend
-    ):
+    def test_build_final_response_non_stream_returns_response(self, backend):
         """
-        Non-stream: convert to OpenAI format and compile_non_streaming.
+        Non-stream path builds GenerationResponse with text and usage.
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-
         mock_final = Mock()
         mock_final.prompt_token_ids = [1, 2]
         mock_final.outputs = [Mock(token_ids=[3, 4], text="hello")]
         mock_final.request_id = "req-1"
         request = GenerationRequest(columns={"text_column": ["x"]})
         request_info = RequestInfo()
-        ctx = _RequestContext(mode="text", body={}, stream=False, files={})
-        handler = VLLMResponseHandler()
         result = backend._build_final_response(
-            request, request_info, mock_final, ctx, handler, stream=False
+            request, request_info, mock_final, stream=False
         )
         assert result is not None
         resp, info = result
@@ -1574,205 +1455,6 @@ class TestVLLMExtractTextFromContent:
         ## WRITTEN BY AI ##
         """
         assert backend._extract_text_from_content(None) == ""
-
-
-class TestVLLMExtractAudioFromRequest:
-    """
-    _extract_audio_from_request: empty, no file, tuple, raw bytes, non-bytes, invalid.
-    """
-
-    @pytest.mark.smoke
-    def test_extract_audio_empty_files_raises(self, backend):
-        """
-        Empty files -> ValueError.
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="Audio request must include audio file"):
-            backend._extract_audio_from_request({})
-
-    @pytest.mark.smoke
-    def test_extract_audio_no_valid_file_raises(self, backend):
-        """
-        No tuple/bytes in values -> ValueError.
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="Audio request must include audio file"):
-            backend._extract_audio_from_request({"k": "not-bytes"})
-
-    @pytest.mark.smoke
-    def test_extract_audio_tuple_returns_bytes_and_mimetype(self, backend):
-        """
-        Tuple (name, bytes, mimetype) -> return bytes and mimetype.
-        ## WRITTEN BY AI ##
-        """
-        data = b"audio-bytes"
-        out = backend._extract_audio_from_request({"f": ("x.wav", data, "audio/wav")})
-        assert out == (data, "audio/wav")
-
-    @pytest.mark.smoke
-    def test_extract_audio_tuple_two_elements_default_mimetype(self, backend):
-        """
-        Tuple (name, bytes) -> mimetype default audio/wav.
-        ## WRITTEN BY AI ##
-        """
-        data = b"audio"
-        out = backend._extract_audio_from_request({"f": ("x.wav", data)})
-        assert out == (data, "audio/wav")
-
-    @pytest.mark.smoke
-    def test_extract_audio_raw_bytes_returns_wav_tuple(self, backend):
-        """
-        Raw bytes value -> ("audio.wav", bytes, "audio/wav").
-        ## WRITTEN BY AI ##
-        """
-        data = b"raw"
-        out = backend._extract_audio_from_request({"f": data})
-        assert out == (data, "audio/wav")
-
-    @pytest.mark.smoke
-    def test_extract_audio_tuple_non_bytes_at_index_1_raises(self, backend):
-        """
-        Tuple with non-bytes at index 1 -> ValueError.
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="Expected bytes for audio data"):
-            backend._extract_audio_from_request(
-                {"f": ("x.wav", "not-bytes", "audio/wav")}
-            )
-
-
-class TestVLLMExtractPromptEdgeCases:
-    """
-    _extract_prompt: text/chat empty -> ValueError; audio optional prompt.
-    """
-
-    @pytest.mark.smoke
-    def test_extract_prompt_text_empty_prompt_raises(self, backend):
-        """
-        Text mode: body prompt missing or empty -> ValueError.
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="Text request must include 'prompt'"):
-            backend._extract_prompt({"prompt": ""}, "text")
-        with pytest.raises(ValueError, match="Text request must include 'prompt'"):
-            backend._extract_prompt({}, "text")
-
-    @pytest.mark.smoke
-    def test_extract_prompt_chat_empty_messages_raises(self, backend):
-        """
-        Chat mode: messages empty -> ValueError.
-        ## WRITTEN BY AI ##
-        """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend_plain = VLLMPythonBackend(
-                model="test-model", request_format="plain"
-            )
-            backend_plain._engine = None
-        with pytest.raises(ValueError, match="Chat request must include 'messages'"):
-            backend_plain._extract_prompt({"messages": []}, "chat")
-
-    @pytest.mark.smoke
-    def test_extract_prompt_audio_returns_prompt_or_empty(self, backend):
-        """
-        Audio mode: return body.get("prompt", "") (optional prompt).
-        ## WRITTEN BY AI ##
-        """
-        assert backend._extract_prompt({"prompt": "caption"}, "audio") == "caption"
-        assert backend._extract_prompt({}, "audio") == ""
-        assert backend._extract_prompt({"prompt": ""}, "audio") == ""
-
-
-class TestVLLMConvertVllmOutputToOpenAIFormat:
-    """
-    _convert_vllm_output_to_openai_format: OpenAI-shaped dict with usage and id.
-    """
-
-    @pytest.mark.smoke
-    def test_convert_vllm_output_to_openai_format_includes_usage_and_id(self, backend):
-        """
-        Builds dict with mode-specific payload, usage, and id from output.request_id.
-        ## WRITTEN BY AI ##
-        """
-        mock_out = Mock()
-        mock_out.prompt_token_ids = [1, 2]
-        mock_out.outputs = [Mock(token_ids=[3], text="hi")]
-        mock_out.request_id = "vllm-req-123"
-        result = backend._convert_vllm_output_to_openai_format(mock_out, "chat")
-        assert result["choices"] == [
-            {"message": {"content": "hi", "role": "assistant"}}
-        ]
-        assert result["usage"] == {
-            "prompt_tokens": 2,
-            "completion_tokens": 1,
-            "total_tokens": 3,
-        }
-        assert result["id"] == "vllm-req-123"
-
-    @pytest.mark.smoke
-    def test_convert_vllm_output_to_openai_format_no_request_id_omits_id(self, backend):
-        """
-        When output has no request_id or falsy, id is omitted.
-        ## WRITTEN BY AI ##
-        """
-        mock_out = Mock()
-        mock_out.prompt_token_ids = []
-        mock_out.outputs = [Mock(token_ids=[], text="")]
-        mock_out.request_id = None
-        result = backend._convert_vllm_output_to_openai_format(mock_out, "text")
-        assert "choices" in result
-        assert "usage" in result
-        assert "id" not in result
-
-
-class TestVLLMResolveNonStream:
-    """
-    resolve() with stream=False: one generate yield, compile_non_streaming.
-    """
-
-    @pytest.mark.asyncio
-    @pytest.mark.smoke
-    async def test_resolve_non_stream_yields_one_response(self, backend):
-        """
-        stream=False; mock generate yields once; one response via compile_non_streaming.
-        ## WRITTEN BY AI ##
-        """
-        out = Mock()
-        out.text = "done"
-        out.token_ids = [1, 2, 3]
-        out.finish_reason = "stop"
-        req_out = Mock()
-        req_out.prompt_token_ids = [1, 2]
-        req_out.outputs = [out]
-        req_out.request_id = "r1"
-
-        async def one_yield(prompt, sampling_params, request_id):
-            yield req_out
-
-        backend._engine = Mock()
-        backend._engine.generate = one_yield
-        request = Mock(spec=GenerationRequest)
-        request.columns = None
-        request.arguments = Mock()
-        request.arguments.body = {"messages": [{"role": "user", "content": "Hi"}]}
-        request.arguments.stream = False
-        request.arguments.files = {}
-        request.output_metrics = UsageMetrics()
-        request.request_id = "req-1"
-        request.arguments.model_dump_json = Mock(return_value="{}")
-        request_info = RequestInfo()
-
-        results = []
-        with patch.object(
-            backend, "_extract_prompt", return_value="User: Hi\nAssistant: "
-        ):
-            async for response, info in backend.resolve(request, request_info):
-                results.append((response, info))
-
-        assert len(results) == 1
-        resp, info = results[0]
-        assert isinstance(resp, GenerationResponse)
-        assert resp.text == "done"
-        assert info is request_info
 
 
 class TestVLLMResolveValidation:
@@ -1842,114 +1524,34 @@ class TestVLLMResolveCancelledError:
         request = GenerationRequest(columns={"text_column": ["Hi"]})
         request_info = RequestInfo()
         results = []
+
         async def collect():
             async for response, info in backend.resolve(request, request_info):
                 results.append((response, info))
 
-        with patch.object(
-            backend, "_extract_prompt", return_value="User: Hi\nAssistant: "
-        ), pytest.raises(asyncio.CancelledError):
+        with (
+            patch.object(
+                backend,
+                "_resolve_request",
+                return_value=_ResolvedRequest(
+                    prompt="Hi", stream=True, multi_modal_data=None
+                ),
+            ),
+            pytest.raises(asyncio.CancelledError),
+        ):
             await collect()
         assert len(results) == 1
         assert results[0][0].text == "partial"
 
 
-class TestVLLMResolveAudioError:
+class TestVLLMResolveAudioFromColumns:
     """
-    resolve(): At most 0 audio / audio(s) may be provided -> RuntimeError with guidance.
-    """
-
-    @pytest.mark.asyncio
-    @pytest.mark.smoke
-    async def test_resolve_audio_error_wraps_with_guidance(self, backend):
-        """
-        'At most 0 audio' -> RuntimeError with audio-capable model guidance.
-        ## WRITTEN BY AI ##
-        """
-
-        async def mock_generate_raise(*args, **kwargs):
-            raise ValueError("At most 0 audio(s) may be provided.")
-            yield  # makes this an async generator so async for raises
-
-        with patch("guidellm.backends.vllm_python.vllm._decode_audio") as mock_decode:
-            mock_decode.return_value = Mock(data=np.array([0.0]))
-            backend._engine = Mock()
-            backend._engine.generate = mock_generate_raise
-            request = Mock(spec=GenerationRequest)
-            request.columns = None
-            request.arguments = Mock()
-            request.arguments.body = {}
-            request.arguments.stream = False
-            request.arguments.files = {"f": ("audio.wav", b"audio", "audio/wav")}
-            request.output_metrics = UsageMetrics()
-            request.request_id = "r1"
-            request_info = RequestInfo()
-            with pytest.raises(RuntimeError) as exc_info:
-                async for _ in backend.resolve(request, request_info):
-                    pass
-            assert "does not support audio" in str(exc_info.value)
-            assert "audio-capable model" in str(exc_info.value)
-
-
-class TestVLLMResolveAudioMode:
-    """
-    resolve() audio: mock _decode_audio and generate; one response.
+    resolve() with audio_column: multimodal data passed to engine.generate.
     """
 
     @pytest.mark.asyncio
     @pytest.mark.smoke
-    async def test_resolve_audio_mode_yields_one_response(self, backend):
-        """
-        Mode audio; mock _decode_audio and engine.generate; assert one response.
-        ## WRITTEN BY AI ##
-        """
-        mock_audio_array = np.array([0.0, 0.1])
-        mock_decode_result = Mock()
-        mock_decode_result.data = mock_audio_array
-
-        out = Mock()
-        out.text = "transcribed"
-        out.token_ids = [1, 2]
-        out.finish_reason = "stop"
-        req_out = Mock()
-        req_out.prompt_token_ids = [1]
-        req_out.outputs = [out]
-        req_out.request_id = "r1"
-
-        async def mock_generate(prompt, sampling_params, request_id):
-            assert isinstance(prompt, dict)
-            assert "prompt" in prompt
-            assert "multi_modal_data" in prompt
-            assert "audio" in prompt["multi_modal_data"]
-            yield req_out
-
-        with patch(
-            "guidellm.backends.vllm_python.vllm._decode_audio",
-            return_value=mock_decode_result,
-        ):
-            backend._engine = Mock()
-            backend._engine.generate = mock_generate
-            request = Mock(spec=GenerationRequest)
-            request.columns = None
-            request.arguments = Mock()
-            request.arguments.body = {"prompt": ""}
-            request.arguments.stream = False
-            request.arguments.files = {"f": ("audio.wav", b"audio-bytes", "audio/wav")}
-            request.output_metrics = UsageMetrics()
-            request.request_id = "r1"
-            request.arguments.model_dump_json = Mock(return_value="{}")
-            request_info = RequestInfo()
-            results = []
-            async for response, info in backend.resolve(request, request_info):
-                results.append((response, info))
-            assert len(results) == 1
-            assert results[0][0].text == "transcribed"
-
-    @pytest.mark.asyncio
-    @pytest.mark.smoke
-    async def test_resolve_audio_from_columns_uses_multi_modal_data(
-        self, backend
-    ):
+    async def test_resolve_audio_from_columns_uses_multi_modal_data(self, backend):
         """
         Audio from audio_column: generate_input is dict with multi_modal_data.
         ## WRITTEN BY AI ##
@@ -1998,6 +1600,5 @@ class TestVLLMResolveAudioMode:
             assert results[0][0].text == "transcribed"
             assert len(seen_prompt_arg) == 1
             assert seen_prompt_arg[0]["multi_modal_data"]["audio"] is mock_audio_array
-            # Prompt must contain injected audio placeholder for vLLM prompt replacement
             prompt_str = seen_prompt_arg[0]["prompt"]
-            assert prompt_str.startswith("<|audio|>\n") or "<|audio|>" in prompt_str
+            assert "<|audio|>" in prompt_str

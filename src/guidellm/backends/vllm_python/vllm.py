@@ -14,7 +14,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 import jinja2
 import numpy as np
@@ -53,15 +53,8 @@ except ImportError:
     image_dict_to_pil = None  # type: ignore[assignment]
     HAS_VISION = False
 
-_Mode = Literal["audio", "chat", "text"]
-
 # Sentinel for "chat template not yet resolved" cache.
 _CHAT_TEMPLATE_UNSET: object = object()
-
-# Audio file tuple: (path_or_name, data_bytes) or (path_or_name, data_bytes, mimetype)
-_AUDIO_FILE_MIN_LEN = 2
-_AUDIO_FILE_DATA_INDEX = 1
-_AUDIO_FILE_MIMETYPE_INDEX = 2
 
 __all__ = ["VLLMPythonBackend", "VLLMPythonBackendArgs"]
 
@@ -100,15 +93,15 @@ class VLLMPythonBackendArgs(BaseModel):
         return v
 
 
-class _RequestContext(StandardBaseModel):
-    """Resolved mode, body, stream, files, and optional multi_modal_data."""
+class _ResolvedRequest(StandardBaseModel):
+    """Fully resolved request: prompt already formatted, ready for engine.generate."""
 
     model_config = ConfigDict(frozen=True)
 
-    mode: _Mode = Field(description="Inference mode: audio, chat, or text")
-    body: dict[str, Any] = Field(description="Request body payload")
+    prompt: str = Field(
+        description="Fully resolved prompt string (templated, with placeholders)"
+    )
     stream: bool = Field(description="Whether to stream the response")
-    files: dict[str, Any] = Field(description="Uploaded files (e.g. audio)")
     multi_modal_data: dict[str, Any] | None = Field(
         default=None,
         description="vLLM multi_modal_data from image/audio/video columns.",
@@ -182,17 +175,12 @@ class VLLMPythonBackend(Backend):
             other parameter accepted by vllm.AsyncEngineArgs.
         :param request_format: "plain" (no chat template), "default-template"
             (use tokenizer default), or a chat template path / single-line string.
-            API names like "chat_completions" are treated as default-template.
-        :param target: Target URL (ignored for VLLM Python backend, runs locally)
-        :param stream: Whether to stream responses (default True). Can be overridden per
-            request via request.arguments.stream.
+        :param stream: Whether to stream responses (default True).
         :param image_placeholder: Optional string to use as the image placeholder when
             injecting placeholders for multimodal prompts (e.g. Qwen3-VL may require
-            a model-specific token). If not set, the backend tries the model's
-            get_placeholder_str then falls back to "<image>".
+            a model-specific token). If not set, falls back to "<image>".
         :param audio_placeholder: Optional string to use as the audio placeholder when
-            using audio_column; if unset, the backend tries the model's
-            get_placeholder_str("audio", 0) then falls back to "<|audio|>".
+            using audio_column; if unset, falls back to "<|audio|>".
         :param _kwargs: Additional arguments (e.g. target) ignored by this backend.
         """
         _check_vllm_available()
@@ -225,8 +213,8 @@ class VLLMPythonBackend(Backend):
         No GuideLLM defaults are applied; any parameter not set here or in
         user_config is left to vLLM's AsyncEngineArgs defaults. Custom
         request_format (chat template) is not passed to the engine; it is
-        applied at request time in _extract_prompt_chat_tokenizer to avoid
-        AsyncEngineArgs compatibility issues across vLLM versions.
+        applied at request time in _resolve_request to avoid AsyncEngineArgs
+        compatibility issues across vLLM versions.
 
         :param user_config: User-provided configuration dictionary
         :return: Config dict for AsyncEngineArgs (model set)
@@ -362,6 +350,8 @@ class VLLMPythonBackend(Backend):
         video_column is not yet supported (no frame extraction); it is skipped.
         """
         multi_modal_data: dict[str, Any] = {}
+        # We look specifically for "image_column" and "audio_column" which contain lists
+        # of dicts
         image_items = list(columns.get("image_column", []) or [])
         audio_items = list(columns.get("audio_column", []) or [])
         # video_column: not yet supported; would require frame extraction
@@ -373,10 +363,13 @@ class VLLMPythonBackend(Backend):
                     "Image column support requires guidellm[vision]. "
                     "Install with: pip install 'guidellm[vision]'"
                 )
+            # Convert raw image dicts into PIL Images as required by vLLM's vision
+            # processor
             pil_image = image_dict_to_pil(item)
             if "image" not in multi_modal_data:
                 multi_modal_data["image"] = pil_image
             else:
+                # If multiple images exist, vLLM expects a list of PIL Images
                 existing = multi_modal_data["image"]
                 if isinstance(existing, list):
                     existing.append(pil_image)
@@ -395,7 +388,13 @@ class VLLMPythonBackend(Backend):
                             "Install with: pip install 'guidellm[audio]'"
                         )
                     try:
+                        # Decode raw audio bytes into an array since vLLM audio models
+                        # expect either raw numpy arrays or specific tensor formats
                         audio_samples = _decode_audio(audio_bytes)
+                        # _decode_audio returns torchcodec.AudioSamples whose
+                        # .data is a torch.Tensor.  .numpy() works on CPU
+                        # tensors; GPU tensors need .cpu() first; and non-torch
+                        # data falls back to np.asarray.
                         if hasattr(audio_samples.data, "numpy"):
                             audio_array = audio_samples.data.numpy()
                         elif hasattr(audio_samples.data, "cpu"):
@@ -408,301 +407,6 @@ class VLLMPythonBackend(Backend):
                             f"Failed to decode audio from audio_column for vLLM: {exc}"
                         ) from exc
         return multi_modal_data if multi_modal_data else None
-
-    def _get_request_context(self, request: GenerationRequest) -> _RequestContext:  # noqa: C901, PLR0912
-        """
-        Resolve body, stream, files, and optional multi_modal_data from request.
-
-        When request has arguments (body/stream/files), use those and infer mode.
-        Otherwise build body from request.columns (prefix_column, text_column)
-        and multi_modal_data from image_column, audio_column when present.
-        video_column is not yet supported. Mode is inferred from body, files,
-        and media columns (audio-only -> audio, any media -> chat).
-        """
-        body: dict[str, Any]
-        stream: bool
-        files: dict[str, Any]
-        mode: _Mode
-        multi_modal_data: dict[str, Any] | None
-
-        arguments = getattr(request, "arguments", None)
-        has_args = arguments is not None and (
-            getattr(arguments, "body", None) is not None
-            or getattr(arguments, "files", None)
-        )
-        if has_args:
-            body = getattr(arguments, "body", None) or {}
-            files = getattr(arguments, "files", None) or {}
-            stream = getattr(arguments, "stream", None) or self.stream
-            if files:
-                mode = "audio"
-            elif body.get("messages"):
-                mode = "chat"
-            elif body.get("prompt") is not None or "prompt" in body:
-                mode = "text"
-            else:
-                raise ValueError(
-                    "Request must include prompt, messages, or audio files."
-                )
-            return _RequestContext(
-                mode=mode,
-                body=body,
-                stream=stream,
-                files=files,
-                multi_modal_data=None,
-            )
-
-        columns = request.columns
-        prefix_parts = list(columns.get("prefix_column", []) or [])
-        text_parts = list(columns.get("text_column", []) or [])
-        messages: list[dict[str, Any]] = []
-        for p in prefix_parts:
-            if p:
-                messages.append({"role": "system", "content": str(p)})
-        for t in text_parts:
-            if t:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": [{"type": "text", "text": str(t)}],
-                    }
-                )
-        body = {"messages": messages}
-        stream = self.stream
-        files = {}
-
-        multi_modal_data = self._build_multi_modal_data_from_columns(columns)
-        has_audio_only = (
-            multi_modal_data is not None
-            and set(multi_modal_data.keys()) == {"audio"}
-        )
-
-        if files or has_audio_only:
-            mode = "audio"
-        elif multi_modal_data is not None or body.get("messages"):
-            mode = "chat"
-        elif (
-            body.get("prompt") is not None
-            and body.get("prompt") != ""
-            or "prompt" in body
-        ):
-            mode = "text"
-        else:
-            raise ValueError(
-                "Request must include prompt, messages, or audio files."
-            )
-
-        return _RequestContext(
-            mode=mode,
-            body=body,
-            stream=stream,
-            files=files,
-            multi_modal_data=multi_modal_data,
-        )
-
-    def _update_request_timing(
-        self, request_info: RequestInfo, iter_time: float
-    ) -> None:
-        """
-        Update request iteration timing information.
-
-        :param request_info: Request tracking info to update
-        :param iter_time: Current iteration time
-        """
-        if request_info.timings.first_request_iteration is None:
-            request_info.timings.first_request_iteration = iter_time
-        request_info.timings.last_request_iteration = iter_time
-        request_info.timings.request_iterations += 1
-
-    def _update_token_timing(
-        self, request_info: RequestInfo, iter_time: float, iterations: int = 1
-    ) -> None:
-        """
-        Update token iteration timing information.
-
-        :param request_info: Request tracking info to update
-        :param iter_time: Current iteration time
-        :param iterations: Number of token iterations (default: 1)
-        """
-        if request_info.timings.first_token_iteration is None:
-            request_info.timings.first_token_iteration = iter_time
-            request_info.timings.token_iterations = 0
-
-        request_info.timings.last_token_iteration = iter_time
-        request_info.timings.token_iterations += iterations
-
-    def _text_from_output(self, output: RequestOutput | None) -> str:
-        """
-        Extract generated text from VLLM RequestOutput.
-
-        :param output: VLLM request output (may be None)
-        :return: output.outputs[0].text if present, else ""
-        """
-        if output is None or not output.outputs or len(output.outputs) == 0:
-            return ""
-        return output.outputs[0].text or ""
-
-    def _openai_payload_for_mode(self, mode: _Mode, text: str) -> dict[str, Any]:
-        """
-        Build OpenAI-style payload (content/choices only, no usage or id) for a mode.
-
-        :param mode: Inferred mode (audio, chat, text)
-        :param text: Content text
-        :return: Dict with "text" (audio) or "choices" (text/chat)
-        """
-        if mode == "audio":
-            return {"text": text}
-        if mode == "text":
-            return {"choices": [{"text": text}]}
-        return {"choices": [{"message": {"content": text, "role": "assistant"}}]}
-
-    def _stream_usage_tokens(
-        self,
-        output: RequestOutput,
-        accumulated_output_tokens: int | None,
-        accumulated_text: str,
-        request_info: RequestInfo,
-    ) -> tuple[int, int]:
-        """
-        Stream path: compute output_tokens; return input and output token counts
-        in the form of (input_tokens, output_tokens).
-        """
-        input_tokens = len(output.prompt_token_ids or [])
-        output_tokens = 0
-        source = "unknown"
-        generated_text = accumulated_text
-
-        if accumulated_output_tokens is not None and accumulated_output_tokens > 0:
-            output_tokens = accumulated_output_tokens
-            source = "token_ids"
-        elif output.outputs and len(output.outputs) > 0:
-            out = output.outputs[0]
-            if not generated_text and out.text:
-                generated_text = out.text
-            if out.token_ids is not None:
-                output_tokens = len(out.token_ids)
-                source = "token_ids"
-            else:
-                logger.debug(
-                    "[vllm_python streaming] final_output.outputs[0].token_ids "
-                    "is None, len(generated_text)={}",
-                    len(generated_text or ""),
-                )
-        if output_tokens == 0 and generated_text and self._engine is not None:
-            try:
-                tokenizer = getattr(self._engine, "tokenizer", None)
-                if tokenizer is not None:
-                    ids = tokenizer.encode(  # type: ignore[union-attr]
-                        generated_text, add_special_tokens=False
-                    )
-                    output_tokens = len(ids)
-                    source = "tokenizer"
-                else:
-                    logger.debug(
-                        "[vllm_python streaming] engine has no tokenizer attribute"
-                    )
-            except (TypeError, ValueError, RuntimeError) as exc:
-                logger.debug(
-                    "[vllm_python streaming] tokenizer.encode failed: {}",
-                    exc,
-                )
-        if output_tokens == 0 and request_info.timings.token_iterations:
-            output_tokens = request_info.timings.token_iterations
-            source = "token_iterations"
-        logger.debug(
-            "[vllm_python streaming usage] source={} completion_tokens={} "
-            "prompt_tokens={} token_iterations={}",
-            source,
-            output_tokens,
-            input_tokens,
-            request_info.timings.token_iterations,
-        )
-        return input_tokens, output_tokens
-
-    def _usage_from_output(
-        self,
-        output: RequestOutput | None,
-        *,
-        accumulated_output_tokens: int | None = None,
-        accumulated_text: str = "",
-        request_info: RequestInfo | None = None,
-    ) -> dict[str, int] | None:
-        """
-        Build usage dict (prompt_tokens, completion_tokens, total_tokens).
-
-        When request_info is None (non-stream), uses only output token counts.
-        When request_info is set (stream), uses fallback chain via
-        _stream_usage_tokens.
-        """
-        if output is None:
-            return None
-        input_tokens = len(output.prompt_token_ids or [])
-        output_tokens = 0
-
-        if request_info is None:
-            if output.outputs and len(output.outputs) > 0:
-                out = output.outputs[0]
-                if out.token_ids is not None:
-                    output_tokens = len(out.token_ids)
-            return {
-                "prompt_tokens": input_tokens,
-                "completion_tokens": output_tokens,
-                "total_tokens": input_tokens + output_tokens,
-            }
-
-        input_tokens, output_tokens = self._stream_usage_tokens(
-            output, accumulated_output_tokens, accumulated_text, request_info
-        )
-        return {
-            "prompt_tokens": input_tokens,
-            "completion_tokens": output_tokens,
-            "total_tokens": input_tokens + output_tokens,
-        }
-
-    def _build_final_response(
-        self,
-        request: GenerationRequest,
-        request_info: RequestInfo,
-        final_output: RequestOutput | None,
-        ctx: _RequestContext,
-        response_handler: VLLMResponseHandler,
-        stream: bool,
-        accumulated_text: str = "",
-        total_output_tokens: int = 0,
-    ) -> tuple[GenerationResponse, RequestInfo] | None:
-        """Build and return the final (response, request_info) to yield, or None."""
-        if final_output is None:
-            return None
-        if stream:
-            # Use provided text (e.g. from cancel) or final vLLM output.
-            final_text = accumulated_text or self._text_from_output(final_output)
-            usage = self._usage_from_output(
-                final_output,
-                accumulated_output_tokens=total_output_tokens,
-                accumulated_text=final_text,
-                request_info=request_info,
-            )
-            if usage is not None:
-                response_handler.streaming_usage = usage
-            # We do not send streaming lines during the stream loop, so the handler
-            # never receives an id from the stream. Set it from the final vLLM output
-            # so the response has a usable id.
-            if (
-                response_handler.streaming_response_id is None
-                and hasattr(final_output, "request_id")
-                and final_output.request_id
-            ):
-                response_handler.streaming_response_id = final_output.request_id
-            # Build response with final text only (no streamed chunks).
-            return response_handler.compile_streaming(
-                request, text_override=final_text
-            ), request_info
-        openai_format = self._convert_vllm_output_to_openai_format(
-            final_output, ctx.mode
-        )
-        return response_handler.compile_non_streaming(
-            request, openai_format
-        ), request_info
 
     def _extract_text_from_content(
         self, content: str | list[dict[str, Any]] | Any
@@ -733,67 +437,111 @@ class VLLMPythonBackend(Backend):
         # Fallback: convert to string
         return str(content) if content is not None else ""
 
-    def _extract_audio_from_request(self, files: dict[str, Any]) -> tuple[bytes, str]:
+    def _build_placeholder_prefix(
+        self, multi_modal_data: dict[str, Any]
+    ) -> str:
         """
-        Extract audio file from request files dict.
+        Build the placeholder prefix string for all modalities in
+        multi_modal_data.
 
-        Caller must only call when mode is audio. Audio files are expected in
-        the format (filename, bytes, mimetype) or as raw bytes.
-
-        :param files: Files dict from request context
-        :return: Tuple of (audio_bytes, mimetype)
-        :raises ValueError: If files is empty or no valid audio file found
+        Returns a string like ``"<image>\\n<|audio|>\\n"`` with one
+        placeholder per item, or ``""`` if no multimodal items are
+        present.  Placeholder tokens default to ``<image>`` and
+        ``<|audio|>`` but can be overridden via
+        ``image_placeholder`` / ``audio_placeholder`` at construction.
         """
-        if not files:
-            raise ValueError("Audio request must include audio file in 'files'.")
+        parts: list[str] = []
+        images = multi_modal_data.get("image")
+        if images is not None:
+            num = len(images) if isinstance(images, list | tuple) else 1
+            if num > 0:
+                ph = self._image_placeholder_override or "<image>"
+                parts.extend([ph] * num)
+        audio = multi_modal_data.get("audio")
+        if audio is not None:
+            # Single audio item (numpy array) — not a list of items.
+            num = len(audio) if isinstance(audio, list | tuple) else 1
+            if num > 0:
+                ph = self._audio_placeholder_override or "<|audio|>"
+                parts.extend([ph] * num)
+        if not parts:
+            return ""
+        return "\n".join(parts) + "\n"
 
-        audio_file = None
-        for value in files.values():
-            if isinstance(value, list | tuple) and len(value) >= _AUDIO_FILE_MIN_LEN:
-                audio_file = value
-                break
-            if isinstance(value, bytes):
-                audio_file = ("audio.wav", value, "audio/wav")
-                break
+    def _inject_placeholders_into_messages(
+        self,
+        formatted_messages: list[dict[str, Any]],
+        multi_modal_data: dict[str, Any],
+    ) -> None:
+        """
+        Inject multimodal placeholder tokens into the last user message's content.
 
-        if audio_file is None:
-            raise ValueError("Audio request must include audio file in 'files'.")
-
-        is_audio_tuple = (
-            isinstance(audio_file, list | tuple)
-            and len(audio_file) >= _AUDIO_FILE_MIN_LEN
-        )
-        if is_audio_tuple:
-            audio_data = audio_file[_AUDIO_FILE_DATA_INDEX]
-            if not isinstance(audio_data, bytes):
-                raise ValueError(
-                    f"Expected bytes for audio data, got {type(audio_data)}: "
-                    f"{audio_data}"
-                )
-            mimetype = (
-                audio_file[_AUDIO_FILE_MIMETYPE_INDEX]
-                if len(audio_file) > _AUDIO_FILE_MIMETYPE_INDEX
-                else "audio/wav"
+        vLLM requires one placeholder per multimodal item in the prompt text so its
+        processor can apply prompt replacement. This must happen *before* the chat
+        template is applied so that placeholders end up inside the correct message
+        turn (not prepended to the entire formatted prompt).
+        """
+        prefix = self._build_placeholder_prefix(multi_modal_data)
+        if not prefix:
+            return
+        for msg in reversed(formatted_messages):
+            if msg.get("role") == "user":
+                msg["content"] = prefix + (msg.get("content") or "")
+                return
+        if formatted_messages:
+            formatted_messages[-1]["content"] = (
+                prefix + (formatted_messages[-1].get("content") or "")
             )
-            return (audio_data, mimetype)
 
-        raise ValueError("Invalid audio file format in 'files'.")
+    @staticmethod
+    def _prepend_blocks_to_message(
+        msg: dict[str, Any],
+        blocks: list[dict[str, str]],
+    ) -> None:
+        """Prepend multimodal content blocks to a single message's content."""
+        content = msg.get("content")
+        if isinstance(content, list):
+            msg["content"] = blocks + content
+        elif isinstance(content, str) and content:
+            msg["content"] = blocks + [{"type": "text", "text": content}]
+        else:
+            msg["content"] = list(blocks)
 
-    def _extract_prompt_text(self, body: dict[str, Any]) -> str:
-        """Extract prompt for text mode."""
-        if (
-            self._engine is not None
-            and getattr(self._engine, "tokenizer", None) is not None
-        ):
-            logger.warning(
-                "Tokenizer is set (from model) but not used: request has 'prompt' "
-                "so mode was inferred as text; prompt is passed through without "
-                "tokenizer formatting."
-            )
-        prompt = body.get("prompt", "")
-        if not prompt:
-            raise ValueError("Text request must include 'prompt' in body.")
-        return prompt if isinstance(prompt, str) else str(prompt)
+    def _inject_multimodal_content_blocks(
+        self,
+        formatted_messages: list[dict[str, Any]],
+        multi_modal_data: dict[str, Any],
+    ) -> None:
+        """
+        Add typed content blocks for each multimodal item to the last user message.
+
+        When using a chat template, the template itself emits the correct
+        model-specific placeholder tokens (e.g. GLM-ASR emits
+        ``<|begin_of_audio|><|pad|><|end_of_audio|>`` for ``{"type": "audio"}``
+        blocks). This avoids hardcoding a universal placeholder that may not
+        match what the model's vLLM multimodal processor expects.
+        """
+        blocks: list[dict[str, str]] = []
+        images = multi_modal_data.get("image")
+        if images is not None:
+            num = len(images) if isinstance(images, list | tuple) else 1
+            blocks.extend({"type": "image"} for _ in range(num))
+        audio = multi_modal_data.get("audio")
+        if audio is not None:
+            num = len(audio) if isinstance(audio, list | tuple) else 1
+            blocks.extend({"type": "audio"} for _ in range(num))
+        if not blocks:
+            return
+
+        # Iterate backwards to find the last user message, which is typically where
+        # new media is being referenced. If no user message is found, append to the
+        # very last message.
+        for msg in reversed(formatted_messages):
+            if msg.get("role") == "user":
+                self._prepend_blocks_to_message(msg, blocks)
+                return
+        if formatted_messages:
+            self._prepend_blocks_to_message(formatted_messages[-1], blocks)
 
     def _extract_prompt_chat_plain(
         self, formatted_messages: list[dict[str, Any]]
@@ -804,7 +552,10 @@ class VLLMPythonBackend(Backend):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role and content:
+                # Capitalize role (e.g. 'User:', 'System:') for basic readability
+                # without a true template
                 parts.append(f"{role.capitalize()}: {content}")
+        # Always append an open-ended Assistant prompt for the model to continue from
         parts.append("Assistant: ")
         return "\n".join(parts)
 
@@ -820,9 +571,13 @@ class VLLMPythonBackend(Backend):
             "plain",
             "default-template",
         ):
+            # No custom template provided; 'plain' and 'default-template' are handled
+            # internally
             return None
         value = self.request_format
         path = Path(value)
+        # Treat the request_format string as a file path. If it exists and contains
+        # Jinja2 syntax, read the content as the template.
         if path.exists() and path.is_file():
             content = path.read_text()
             if not _has_jinja2_markers(content):
@@ -880,226 +635,280 @@ class VLLMPythonBackend(Backend):
             return prompt
         raise RuntimeError("Backend received unexpected type from tokenizer.")
 
-    def _extract_prompt_chat(
-        self,
-        body: dict[str, Any],
-        multi_modal_data: dict[str, Any] | None = None,
-    ) -> str:
-        """Extract prompt for chat mode (plain or tokenizer).
-
-        When multi_modal_data is provided, placeholder tokens are injected into the
-        last user message's content *before* the chat template is applied, so that
-        they end up inside the correct message turn in the formatted prompt.
+    def _resolve_request(self, request: GenerationRequest) -> _ResolvedRequest:  # noqa: C901, PLR0912
         """
-        messages = body.get("messages", [])
-        if not messages:
-            raise ValueError("Chat request must include 'messages' in body.")
-        formatted_messages = []
-        for msg in messages:
-            if isinstance(msg, dict):
-                raw_content = msg.get("content", "")
-                text_content = self._extract_text_from_content(raw_content)
-                formatted_messages.append(
-                    {"role": msg.get("role", ""), "content": text_content}
-                )
-            else:
-                formatted_messages.append(msg)
+        Build a fully resolved request from column-based GenerationRequest.
 
-        if multi_modal_data:
-            self._inject_placeholders_into_messages(
-                formatted_messages, multi_modal_data
+        Builds chat messages from prefix_column/text_column, extracts multimodal
+        data from image_column/audio_column, and applies the chat template (or
+        plain formatting). The returned prompt is ready for engine.generate.
+
+        When a chat template is active and multimodal data is present, message
+        content is kept as list-of-blocks with typed entries (e.g.
+        ``{"type": "audio"}``) so the model's own template emits the correct
+        placeholder tokens.  For plain format or text-only requests the content
+        is flattened to strings.
+
+        :param request: Column-based generation request
+        :return: Resolved request with formatted prompt and multimodal data
+        :raises ValueError: If request has no text or multimodal columns
+        """
+        columns = request.columns
+        prefix_parts = list(columns.get("prefix_column", []) or [])
+        text_parts = list(columns.get("text_column", []) or [])
+
+        messages: list[dict[str, Any]] = []
+        for p in prefix_parts:
+            if p:
+                messages.append({"role": "system", "content": str(p)})
+        for t in text_parts:
+            if t:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": str(t)}],
+                    }
+                )
+
+        multi_modal_data = self._build_multi_modal_data_from_columns(columns)
+
+        # We use explicit content blocks (e.g. {"type": "image"}) when applying a chat
+        # template so that the template itself can generate the correct, model-specific
+        # tokens. Otherwise, we default to string injection.
+        use_content_blocks = (
+            multi_modal_data
+            and messages
+            and self.request_format != "plain"
+        )
+
+        if messages:
+            if use_content_blocks and multi_modal_data is not None:
+                formatted_messages = []
+                for msg in messages:
+                    if isinstance(msg, dict):
+                        raw = msg.get("content", "")
+                        role = msg.get("role", "")
+                        if isinstance(raw, list | str):
+                            formatted_messages.append(
+                                {"role": role, "content": raw}
+                            )
+                        else:
+                            formatted_messages.append(
+                                {"role": role, "content": str(raw) if raw else ""}
+                            )
+                    else:
+                        formatted_messages.append(msg)
+                self._inject_multimodal_content_blocks(
+                    formatted_messages, multi_modal_data
+                )
+                prompt = self._extract_prompt_chat_tokenizer(formatted_messages)
+            else:
+                formatted_messages = []
+                for msg in messages:
+                    if isinstance(msg, dict):
+                        raw_content = msg.get("content", "")
+                        text_content = self._extract_text_from_content(raw_content)
+                        formatted_messages.append(
+                            {"role": msg.get("role", ""), "content": text_content}
+                        )
+                    else:
+                        formatted_messages.append(msg)
+
+                if multi_modal_data:
+                    # For chat mode, multi_modal_data is passed through so placeholders
+                    # are injected into messages *before* the chat template is applied.
+                    self._inject_placeholders_into_messages(
+                        formatted_messages, multi_modal_data
+                    )
+
+                if self.request_format == "plain":
+                    prompt = self._extract_prompt_chat_plain(formatted_messages)
+                else:
+                    prompt = self._extract_prompt_chat_tokenizer(formatted_messages)
+        elif multi_modal_data:
+            # For non-chat modes (text/audio), placeholders were not injected
+            # into messages (there are none), so prepend to the raw prompt.
+            prompt = self._build_placeholder_prefix(multi_modal_data)
+        else:
+            raise ValueError(
+                "Request must include text_column or multimodal columns."
             )
 
-        if self.request_format == "plain":
-            return self._extract_prompt_chat_plain(formatted_messages)
-        return self._extract_prompt_chat_tokenizer(formatted_messages)
+        return _ResolvedRequest(
+            prompt=prompt,
+            stream=self.stream,
+            multi_modal_data=multi_modal_data,
+        )
 
-    def _extract_prompt(
+    def _update_request_timing(
+        self, request_info: RequestInfo, iter_time: float
+    ) -> None:
+        """
+        Update request iteration timing information.
+
+        :param request_info: Request tracking info to update
+        :param iter_time: Current iteration time
+        """
+        if request_info.timings.first_request_iteration is None:
+            request_info.timings.first_request_iteration = iter_time
+        request_info.timings.last_request_iteration = iter_time
+        request_info.timings.request_iterations += 1
+
+    def _update_token_timing(
+        self, request_info: RequestInfo, iter_time: float, iterations: int = 1
+    ) -> None:
+        """
+        Update token iteration timing information.
+
+        :param request_info: Request tracking info to update
+        :param iter_time: Current iteration time
+        :param iterations: Number of token iterations (default: 1)
+        """
+        if request_info.timings.first_token_iteration is None:
+            request_info.timings.first_token_iteration = iter_time
+            request_info.timings.token_iterations = 0
+
+        request_info.timings.last_token_iteration = iter_time
+        request_info.timings.token_iterations += iterations
+
+    def _text_from_output(self, output: RequestOutput | None) -> str:
+        """
+        Extract generated text from VLLM RequestOutput.
+
+        :param output: VLLM request output (may be None)
+        :return: output.outputs[0].text if present, else ""
+        """
+        if output is None or not output.outputs:
+            return ""
+        return output.outputs[0].text or ""
+
+    def _stream_usage_tokens(
         self,
-        body: dict[str, Any],
-        mode: _Mode,
-        multi_modal_data: dict[str, Any] | None = None,
-    ) -> str:
+        output: RequestOutput,
+        request_info: RequestInfo,
+    ) -> tuple[int, int]:
         """
-        Extract prompt text from request body based on mode.
+        Compute token counts for the streaming path.
 
-        For chat mode, uses tokenizer chat template or plain concat per
-        request_format. For text mode uses body prompt. For audio, prompt
-        is optional.
+        Primary source is output.outputs[0].token_ids (always populated by vLLM).
+        Falls back to token_iterations if token_ids is unexpectedly absent.
 
-        :param body: Request body dict (prompt or messages)
-        :param mode: Inferred mode (audio, chat, text)
-        :param multi_modal_data: Optional multimodal data; when provided in chat
-            mode, placeholder tokens are injected into the last user message
-            before the chat template is applied.
-        :return: Extracted prompt string
-        :raises ValueError: If prompt cannot be extracted
+        :return: (input_tokens, output_tokens)
         """
-        if mode == "text":
-            return self._extract_prompt_text(body)
-        if mode == "chat":
-            return self._extract_prompt_chat(body, multi_modal_data)
-        if mode == "audio":
-            prompt = body.get("prompt", "")
-            return prompt if isinstance(prompt, str) else str(prompt) if prompt else ""
-        raise ValueError(f"Unsupported mode: {mode!r}.")
+        input_tokens = len(output.prompt_token_ids or [])
+        output_tokens = 0
+
+        if output.outputs:
+            out = output.outputs[0]
+            if out.token_ids is not None:
+                output_tokens = len(out.token_ids)
+
+        if output_tokens == 0 and request_info.timings.token_iterations:
+            output_tokens = request_info.timings.token_iterations
+
+        return input_tokens, output_tokens
+
+    def _usage_from_output(
+        self,
+        output: RequestOutput | None,
+        *,
+        request_info: RequestInfo | None = None,
+    ) -> dict[str, int] | None:
+        """
+        Build usage dict (prompt_tokens, completion_tokens, total_tokens).
+
+        When request_info is None (non-stream), uses only output token counts.
+        When request_info is set (stream), uses _stream_usage_tokens.
+        """
+        if output is None:
+            return None
+        input_tokens = len(output.prompt_token_ids or [])
+        output_tokens = 0
+
+        if request_info is None:
+            if output.outputs:
+                out = output.outputs[0]
+                if out.token_ids is not None:
+                    output_tokens = len(out.token_ids)
+        else:
+            input_tokens, output_tokens = self._stream_usage_tokens(
+                output, request_info
+            )
+
+        return {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        }
+
+    def _build_final_response(
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        final_output: RequestOutput | None,
+        stream: bool,
+        text: str = "",
+    ) -> tuple[GenerationResponse, RequestInfo] | None:
+        """Build and return the final (response, request_info) to yield, or None."""
+        if final_output is None:
+            return None
+        # Use provided text (e.g. from cancel) or final vLLM output.
+        final_text = text or self._text_from_output(final_output)
+        # Text and usage from final output only; pass 0 for accumulated tokens.
+        usage = self._usage_from_output(
+            final_output,
+            request_info=request_info if stream else None,
+        )
+        # We do not send streaming lines during the stream loop, so the handler
+        # never receives an id from the stream. Set it from the final vLLM output
+        # so the response has a usable id.
+        response_id = (
+            final_output.request_id if final_output.request_id else None
+        )
+        # Build response with final text only (no streamed chunks).
+        response = VLLMResponseHandler.build_response(
+            request, final_text, usage, response_id=response_id
+        )
+        return response, request_info
 
     def _create_sampling_params(
         self,
-        body: dict[str, Any],
         max_tokens_override: int | None = None,
     ) -> SamplingParams:
         """
-        Create VLLM SamplingParams from request body.
+        Create VLLM SamplingParams.
 
-        :param body: Request body dict with sampling parameters
+        When max_tokens_override is set (from benchmark output_metrics), it is used
+        as max_tokens and EOS is ignored to match HTTP backend behavior.  Otherwise
+        defaults are used.
+
         :param max_tokens_override: Optional max_tokens from request (e.g. benchmark)
         :return: Configured SamplingParams instance
         """
-        max_tokens = (
-            body.get("max_tokens")
-            if body.get("max_tokens") is not None
-            else (max_tokens_override if max_tokens_override is not None else 16)
-        )
+        max_tokens = max_tokens_override if max_tokens_override is not None else 16
         if max_tokens == 0:
             max_tokens = 16
 
-        using_benchmark_target = (
-            body.get("max_tokens") is None and max_tokens_override is not None
-        )
-        if using_benchmark_target:
+        if max_tokens_override is not None:
             ignore_eos = True
             stop: list[str] | None = []
         else:
-            ignore_eos = body.get("ignore_eos", False)
-            stop = body.get("stop")
+            ignore_eos = False
+            stop = None
 
-        params = {
-            "temperature": body.get("temperature", 1.0),
-            "top_p": body.get("top_p", 1.0),
+        params: dict[str, Any] = {
+            "temperature": 1.0,
+            "top_p": 1.0,
             "max_tokens": max_tokens,
-            "min_tokens": body.get("min_tokens", 0),
-            "stop": stop,
+            "min_tokens": 0,
             "ignore_eos": ignore_eos,
-            "frequency_penalty": body.get("frequency_penalty", 0.0),
-            "presence_penalty": body.get("presence_penalty", 0.0),
+            "frequency_penalty": 0.0,
+            "presence_penalty": 0.0,
         }
-
-        params = {k: v for k, v in params.items() if v is not None}
+        if stop is not None:
+            params["stop"] = stop
 
         return SamplingParams(**params)  # type: ignore[misc]
-
-    def _convert_vllm_output_to_openai_format(
-        self,
-        output: RequestOutput,
-        mode: _Mode,
-    ) -> dict[str, Any]:
-        """
-        Convert VLLM RequestOutput to OpenAI-style dict format.
-
-        Converts VLLM's native output format to the format expected by
-        VLLMResponseHandler, matching OpenAI API response structure.
-
-        :param output: VLLM request output
-        :param mode: Inferred mode (audio, chat, text) for response shape
-        :return: OpenAI-style response dictionary
-        """
-        generated_text = self._text_from_output(output)
-        usage = self._usage_from_output(output) or {}
-
-        response_dict: dict[str, Any] = {
-            **self._openai_payload_for_mode(mode, generated_text),
-            "usage": usage,
-        }
-        if hasattr(output, "request_id") and output.request_id:
-            response_dict["id"] = output.request_id
-        return response_dict
-
-    def _build_placeholder_prefix(
-        self, multi_modal_data: dict[str, Any]
-    ) -> str:
-        """
-        Build the placeholder prefix string for all modalities in
-        multi_modal_data.
-
-        Returns a string like ``"<image>\\n<|audio|>\\n"`` with one
-        placeholder per item, or ``""`` if no multimodal items are
-        present.  Placeholder tokens default to ``<image>`` and
-        ``<|audio|>`` but can be overridden via
-        ``image_placeholder`` / ``audio_placeholder`` at construction.
-        """
-        parts: list[str] = []
-        images = multi_modal_data.get("image")
-        if images is not None:
-            num = len(images) if isinstance(images, list | tuple) else 1
-            if num > 0:
-                ph = self._image_placeholder_override or "<image>"
-                parts.extend([ph] * num)
-        audio = multi_modal_data.get("audio")
-        if audio is not None:
-            num = len(audio) if isinstance(audio, list | tuple) else 1
-            if num > 0:
-                ph = self._audio_placeholder_override or "<|audio|>"
-                parts.extend([ph] * num)
-        if not parts:
-            return ""
-        return "\n".join(parts) + "\n"
-
-    def _inject_placeholders_into_messages(
-        self,
-        formatted_messages: list[dict[str, Any]],
-        multi_modal_data: dict[str, Any],
-    ) -> None:
-        """
-        Inject multimodal placeholder tokens into the last user message's content.
-
-        vLLM requires one placeholder per multimodal item in the prompt text so its
-        processor can apply prompt replacement. This must happen *before* the chat
-        template is applied so that placeholders end up inside the correct message
-        turn (not prepended to the entire formatted prompt).
-        """
-        prefix = self._build_placeholder_prefix(multi_modal_data)
-        if not prefix:
-            return
-        for msg in reversed(formatted_messages):
-            if msg.get("role") == "user":
-                msg["content"] = prefix + (msg.get("content") or "")
-                return
-        if formatted_messages:
-            formatted_messages[-1]["content"] = (
-                prefix + (formatted_messages[-1].get("content") or "")
-            )
-
-    def _build_audio_generate_input(
-        self, prompt: str, ctx: _RequestContext
-    ) -> dict[str, Any]:
-        """Decode audio from request and build multimodal generate_input dict."""
-        audio_bytes, _mimetype = self._extract_audio_from_request(ctx.files)
-        if not isinstance(audio_bytes, bytes):
-            raise TypeError(
-                f"Expected bytes for audio data, got {type(audio_bytes)}: {audio_bytes}"
-            )
-        if len(audio_bytes) == 0:
-            raise ValueError("Audio data cannot be empty")
-        if not HAS_AUDIO or _decode_audio is None:
-            raise ImportError(
-                "Audio support requires guidellm[audio] (torchcodec). "
-                "Install with: pip install 'guidellm[audio]'"
-            )
-        try:
-            audio_samples = _decode_audio(audio_bytes)
-            if hasattr(audio_samples.data, "numpy"):
-                audio_array = audio_samples.data.numpy()
-            elif hasattr(audio_samples.data, "cpu"):
-                audio_array = audio_samples.data.cpu().numpy()
-            else:
-                audio_array = np.asarray(audio_samples.data)
-            return {
-                "prompt": prompt,
-                "multi_modal_data": {"audio": audio_array},
-            }
-        except (ValueError, TypeError, OSError, RuntimeError) as exc:
-            raise ValueError(f"Failed to decode audio data for vLLM: {exc}") from exc
 
     def _raise_generation_error(
         self, exc: BaseException
@@ -1145,16 +954,14 @@ class VLLMPythonBackend(Backend):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        ctx: _RequestContext,
-        response_handler: VLLMResponseHandler,
+        stream: bool,
         generate_input: str | dict[str, Any],
         sampling_params: SamplingParams,
         request_id: str,
         state: dict[str, Any],
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """Run engine.generate loop and yield final (response, request_info)."""
-        state["final_output"] = None  # Only state we keep; text/usage from final output
-        stream = ctx.stream
+        state["final_output"] = None
         engine = self._engine
         if engine is None:
             raise RuntimeError("Backend not started up.")
@@ -1170,7 +977,6 @@ class VLLMPythonBackend(Backend):
 
                 if (
                     request_output.outputs
-                    and len(request_output.outputs) > 0
                     and request_output.outputs[0].finish_reason is not None
                 ):
                     break
@@ -1181,7 +987,7 @@ class VLLMPythonBackend(Backend):
                     self._update_token_timing(request_info, iter_time, 1)
         except Exception as e:
             logger.debug(
-                "vLLM engine.generate() failed: %s: %s",
+                "vLLM engine.generate() failed: {}: {}",
                 type(e).__name__,
                 e,
                 exc_info=True,
@@ -1192,16 +998,12 @@ class VLLMPythonBackend(Backend):
 
         request_info.timings.request_end = time.time()
         final_output = state["final_output"]
-        # Text and usage from final output only; pass 0 for accumulated tokens.
         result = self._build_final_response(
             request,
             request_info,
             final_output,
-            ctx,
-            response_handler,
             stream,
             self._text_from_output(final_output) if final_output else "",
-            0,
         )
         if result is not None:
             yield result
@@ -1215,69 +1017,48 @@ class VLLMPythonBackend(Backend):
         """
         Process generation request and yield a single response.
 
-        Handles both streaming and non-streaming requests using AsyncLLMEngine's
-        native async generation. For streaming, records per-token timings and
-        yields once with a response compiled from the stream. For non-streaming,
-        yields once with the complete response. In both cases the caller receives
-        exactly one (response, request_info) pair.
+        Resolves the request (chat template, placeholders, multimodal data),
+        then runs async generation via AsyncLLMEngine. For streaming, records
+        per-token timings. In both cases the caller receives exactly one
+        (response, request_info) pair.
 
         :param request: Generation request with content and parameters
         :param request_info: Request tracking info updated with timing metadata
         :param history: Conversation history (currently not supported)
         :raises NotImplementedError: If history is provided
         :raises RuntimeError: If backend is not initialized
-        :raises ValueError: If request body/files do not imply a valid mode
         :yields: Single tuple of (response, updated_request_info)
         """
-        ctx = self._get_request_context(request)
         self._validate_backend_initialized()
         self._validate_history(history)
-        response_handler = VLLMResponseHandler()
-        # For chat mode, multi_modal_data is passed through so placeholders are
-        # injected into messages *before* the chat template is applied.
-        prompt = self._extract_prompt(
-            ctx.body, ctx.mode, multi_modal_data=ctx.multi_modal_data
-        )
+
+        resolved = self._resolve_request(request)
         sampling_params = self._create_sampling_params(
-            ctx.body,
             max_tokens_override=(
                 request.output_metrics.text_tokens
                 if request.output_metrics.text_tokens
                 else None
             ),
         )
-        prompt_str = prompt if isinstance(prompt, str) else ""
+
         generate_input: str | dict[str, Any]
-        if ctx.multi_modal_data is not None and len(ctx.multi_modal_data) > 0:
-            # For non-chat modes (text/audio), placeholders were not injected
-            # into messages (there are none), so prepend to the raw prompt.
-            if ctx.mode != "chat":
-                prompt_str = (
-                    self._build_placeholder_prefix(ctx.multi_modal_data)
-                    + prompt_str
-                )
+        if resolved.multi_modal_data:
             generate_input = {
-                "prompt": prompt_str,
-                "multi_modal_data": ctx.multi_modal_data,
+                "prompt": resolved.prompt,
+                "multi_modal_data": resolved.multi_modal_data,
             }
-        elif ctx.mode == "audio" and ctx.files:
-            generate_input = self._build_audio_generate_input(prompt_str, ctx)
         else:
-            generate_input = prompt
+            generate_input = resolved.prompt
 
         request_id = str(uuid.uuid4())
         request_info.timings.request_start = time.time()
-        engine = self._engine
-        if engine is None:
-            raise RuntimeError("Backend not started up.")
 
         gen_state: dict[str, Any] = {}
         try:
             async for result in self._run_generation(
                 request,
                 request_info,
-                ctx,
-                response_handler,
+                resolved.stream,
                 generate_input,
                 sampling_params,
                 request_id,
@@ -1285,17 +1066,13 @@ class VLLMPythonBackend(Backend):
             ):
                 yield result
         except asyncio.CancelledError as err:
-            # Yield whatever we have so far (same pattern: text from output, 0 tokens).
             final_output = gen_state.get("final_output")
             cancel_result = self._build_final_response(
                 request,
                 request_info,
                 final_output,
-                ctx,
-                response_handler,
-                ctx.stream,
+                resolved.stream,
                 self._text_from_output(final_output) if final_output else "",
-                0,
             )
             if cancel_result is not None:
                 yield cancel_result
