@@ -451,9 +451,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if kwargs.get("extras"):
             arguments.model_combine(kwargs["extras"])
 
-        # Build messages: use multi-turn from data if present (full conversation per row)
-        # columns["messages_column"] is a list of length N (one per data source); each
-        # element is the full messages array for this request, e.g. [system, user, asst, user].
+        # Build messages: use multi-turn from data if present (full conversation per
+        # row). columns["messages_column"] is a list of length N (one per data source);
+        # each element is the full messages array for this request,
+        # e.g. [system, user, asst, user].
         raw_messages = data.columns.get("messages_column", [])
         if raw_messages and isinstance(raw_messages[0], list) and raw_messages[0]:
             conversation = raw_messages[0]  # full multi-turn list for this row
