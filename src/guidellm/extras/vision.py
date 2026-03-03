@@ -19,6 +19,7 @@ __all__ = [
     "encode_image",
     "encode_video",
     "get_file_format",
+    "image_dict_to_pil",
     "is_url",
     "resize_image",
 ]
@@ -165,6 +166,42 @@ def resize_image(
         image = image.resize((target_w, target_h), PILImage.Resampling.BILINEAR)
 
     return image
+
+
+def image_dict_to_pil(item: dict[str, Any]) -> PILImage.Image:
+    """
+    Decode an encoded image column item to a PIL Image for vLLM multi_modal_data.
+
+    The item must have an "image" key with either a data URL (data:image/...;base64,...)
+    or an HTTP(S) URL. For data URLs the image is base64-decoded; for URLs the
+    image is fetched with httpx.
+
+    :param item: Dict with "image" key (data URL or URL string)
+    :return: PIL Image in RGB if needed
+    :raises ValueError: If item has no "image" or unsupported format
+    """
+    image_spec = item.get("image")
+    if not image_spec or not isinstance(image_spec, str):
+        raise ValueError(
+            "Encoded image item must have an 'image' key with a data URL or URL string."
+        )
+    if image_spec.startswith("data:image/"):
+        _, encoded = image_spec.split(",", 1)
+        data = base64.b64decode(encoded)
+        decoded_image = PILImage.open(io.BytesIO(data))
+    elif image_spec.startswith(("http://", "https://")):
+        response = httpx.get(image_spec)
+        response.raise_for_status()
+        decoded_image = PILImage.open(io.BytesIO(response.content))
+    else:
+        raise ValueError(
+            "Encoded image 'image' value must be a data:image/... URL or "
+            f"http(s) URL, got: {image_spec[:80]!r}..."
+        )
+    if decoded_image.mode != "RGB":
+        decoded_image = decoded_image.convert("RGB")  # type: ignore[assignment]
+        # convert() returns Image; PILImage.open() may be ImageFile
+    return decoded_image
 
 
 def encode_video(
