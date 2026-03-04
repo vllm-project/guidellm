@@ -18,9 +18,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.benchmark.schemas.embeddings import EmbeddingsBenchmarksReport
 from guidellm.utils import RegistryMixin
 
-__all__ = ["GenerativeBenchmarkerOutput"]
+__all__ = ["EmbeddingsBenchmarkerOutput", "GenerativeBenchmarkerOutput"]
 
 
 class GenerativeBenchmarkerOutput(
@@ -164,6 +165,134 @@ class GenerativeBenchmarkerOutput(
 
         :param report: Benchmark report containing results to format and output
         :return: Format-specific output result (file path, response object, etc.)
+        :raises NotImplementedError: Must be implemented by subclasses
+        """
+        ...
+
+
+class EmbeddingsBenchmarkerOutput(
+    BaseModel, RegistryMixin[type["EmbeddingsBenchmarkerOutput"]], ABC
+):
+    """
+    Abstract base for embeddings benchmark output formatters with registry support.
+
+    Defines the interface for transforming embeddings benchmark reports into various
+    output formats. Similar to GenerativeBenchmarkerOutput but adapted for embeddings
+    which lack output tokens, streaming metrics, and multi-modality support.
+
+    Example:
+        ::
+            # Register and resolve output formats
+            outputs = EmbeddingsBenchmarkerOutput.resolve(
+                output_formats=["json", "csv"],
+                output_path="./results"
+            )
+
+            # Finalize outputs with benchmark report
+            for output in outputs.values():
+                await output.finalize(report)
+    """
+
+    model_config = ConfigDict(
+        extra="ignore",
+        arbitrary_types_allowed=True,
+        validate_assignment=True,
+        from_attributes=True,
+        use_enum_values=True,
+    )
+
+    @classmethod
+    @abstractmethod
+    def validated_kwargs(cls, *args, **kwargs) -> dict[str, Any]:
+        """
+        Validate and normalize initialization arguments for output formatter.
+
+        :param args: Positional arguments for formatter configuration
+        :param kwargs: Keyword arguments for formatter configuration
+        :return: Validated dictionary of parameters for formatter creation
+        :raises NotImplementedError: Must be implemented by subclasses
+        """
+        ...
+
+    @classmethod
+    def resolve(
+        cls,
+        outputs: (
+            Sequence[str | EmbeddingsBenchmarkerOutput]
+            | Mapping[str, str | dict[str, Any] | EmbeddingsBenchmarkerOutput]
+            | None
+        ),
+        output_dir: str | Path | None,
+    ) -> dict[str, EmbeddingsBenchmarkerOutput]:
+        """
+        Resolve output format specifications into formatter instances.
+
+        :param outputs: Format specifications
+        :param output_dir: Default output directory path
+        :return: Dictionary mapping format keys to instantiated formatter instances
+        :raises TypeError: If format specification type is invalid
+        :raises ValueError: If format resolution or validation fails
+        """
+        if not outputs:
+            return {}
+
+        keys: Sequence[str]
+        values: Sequence[dict[str, Any] | EmbeddingsBenchmarkerOutput]
+        if isinstance(outputs, Mapping):
+            keys = list(outputs.keys())
+            values = list(outputs.values())  # type: ignore[arg-type]
+        else:
+            keys = []
+            values = []
+
+            for out in outputs:
+                if isinstance(out, str) and "." in out:
+                    ext = Path(out).suffix[1:].lower()
+                    keys.append(ext)
+                    values.append({"output_path": Path(output_dir or Path.cwd()) / out})
+                elif isinstance(out, str):
+                    keys.append(out)
+                    values.append({})
+                elif isinstance(out, EmbeddingsBenchmarkerOutput):
+                    keys.append(out.__class__.__name__)
+                    values.append(out)
+                else:
+                    raise TypeError(
+                        "output_formats must be a sequence of strings or "
+                        "EmbeddingsBenchmarkerOutput instances, or a mapping."
+                    )
+
+        resolved: dict[str, EmbeddingsBenchmarkerOutput] = {}
+        for key, val in zip(keys, values, strict=True):
+            if isinstance(val, EmbeddingsBenchmarkerOutput):
+                resolved[key] = val
+            else:
+                output_class = cls.get_registered_object(key)
+                if output_class is None:
+                    available_formats = (
+                        list(cls.registry.keys()) if cls.registry else []
+                    )
+                    raise ValueError(
+                        f"Output format '{key}' is not registered. "
+                        f"Available formats: {available_formats}"
+                    )
+                kwargs = output_class.validated_kwargs(
+                    **{"output_path": output_dir, **val}  # type: ignore[dict-item]
+                )
+                resolved[key] = output_class(**kwargs)
+
+        return resolved
+
+    @abstractmethod
+    async def finalize(self, report: EmbeddingsBenchmarksReport) -> Any:
+        """
+        Process and persist embeddings benchmark report in the formatter's
+        output format.
+
+        :param report: Embeddings benchmark report containing results to
+            format
+        :return: Format-specific output result (file path, response object,
+            etc.)
         :raises NotImplementedError: Must be implemented by subclasses
         """
         ...

@@ -233,3 +233,4 @@ src/ui/next-env.d.ts
 
 # e2e tests
 bin/
+embeddings_benchmarks.*
