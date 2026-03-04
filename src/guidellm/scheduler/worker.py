@@ -368,7 +368,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", None, request, request_info)
 
-    async def _process_next_request(
+    async def _process_next_request(  # noqa: C901
         self, target_start: float
     ) -> ProcessRequestT[RequestT, ResponseT]:
         """
