@@ -475,10 +475,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         try:
             if requeue_delay > 0:
                 await asyncio.sleep(requeue_delay)
-        except asyncio.CancelledError:
-            # If we are cancelled, dump straight to queue
-            raise
         finally:
+            # Always requeue so that if we were cancelled during sleep
+            # the whole conversation can be cancelled properly later
             self.turns_queue.append((history, conversation))
 
     async def _schedule_request(

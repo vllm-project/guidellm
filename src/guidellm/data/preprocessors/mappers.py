@@ -14,9 +14,9 @@ from guidellm.data.schemas import GenerativeDatasetColumnType
 
 __all__ = ["GenerativeColumnMapper"]
 
-# (dataset_column_type, turn)  # noqa: ERA001
+# dataset_column_type and turn index
 DatasetColumnKey: TypeAlias = tuple[GenerativeDatasetColumnType, int]
-# (dataset_index, column_name)  # noqa: ERA001
+# dataset index and column_name
 DatasetColumnValue: TypeAlias = tuple[int, str]
 
 

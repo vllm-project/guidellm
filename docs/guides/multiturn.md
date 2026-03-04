@@ -133,7 +133,7 @@ prefix content prompt_0 content response to prompt_0 prompt_1 content response t
 
 ## The TurnPivot Preprocessor
 
-GuideLLM supports passing multiple `--data` argument, each pointing to a separate dataset. Normally this is useful for layering columns from different datasets within the same request. For example adding a text column from one dataset to another with images or combining multiple normally-distributed synthetic datasets into a multimodal distribution. In multiturn we can use the **TurnPivot** preprocessor to transpose each matched dataset with our turn columns.
+GuideLLM supports passing multiple `--data` options, each pointing to a separate dataset. If there are matches for the same column type across multiple datasets, they are treated as separate batches. Normally this is useful for layering columns from different datasets within the same request. For example adding a text column from one dataset to another with images or combining multiple normally-distributed synthetic datasets into a multimodal distribution. We can use the **TurnPivot** preprocessor to transpose turn columns and dataset batches.
 
 For instance, given the following datasets:
 
@@ -374,11 +374,11 @@ Audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/translations`) do not su
 
 ### Column Naming Requirements
 
-Turn-indexed columns must follow the naming convention:
+Turn-indexed columns must follow the naming conventions:
 
-- All turn columns must use the same base name. E.g. `<prompt>_0`, `<prompt>_2`, etc.
-- Turn indices can be in the form of `-0` or `_0`. Exact numbering does not matter, turns will be re-numbered to avoid holes.
 - Column mapping applies to the base name. For example, `--data-column-mapper '{"text_column": "prompt"}'`
+- Turn indices can be in the form of `-0` or `_0`. Exact numbering does not matter, turns will be re-numbered to avoid holes.
+- All turn columns must use the same base name. E.g. `prompt_0`, `prompt_2`, etc.
 
 ### Model Context Considerations
 
@@ -399,7 +399,7 @@ For example, `--data prefix_tokens=50,prompt_tokens=100,output_tokens=200,turns=
 
 ### Additional Considerations
 
-Multi-turn benchmarking has a couple extra characteristics to consider when compared to single-turn:
+Multi-turn benchmarking has additional characteristics to consider when compared to single-turn:
 
 - Expect high request-based metric variance due to the wide distribution of turn sizes
 - Any error will end the entire conversation (if one turn fails the rest of the conversation is canceled)
