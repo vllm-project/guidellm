@@ -74,19 +74,21 @@ guidellm benchmark --profile synchronous
 | ------------------ | ------------ | ------- |
 | `--rate`           | Not allowed. |         |
 | `--random-seed`    | Not used.    |         |
+| `--rampup`         | Not used.    |         |
 
 #### Throughput Profile
 
-Tests maximum throughput by running requests in parallel.
+Attempts to discover the server's maximum throughput by continually making requests in parallel.
 
 ```bash
 guidellm benchmark --profile throughput
 ```
 
-| Strategy parameter | Description                         | Example     |
-| ------------------ | ----------------------------------- | ----------- |
-| `--rate`           | Maximum concurrent requests to run. | `--rate 10` |
-| `--random-seed`    | Not used.                           |             |
+| Strategy parameter | Description                                              | Example       |
+| ------------------ | -------------------------------------------------------- | ------------- |
+| `--rate`           | Number of concurrent request streams.                    | `--rate 10`   |
+| `--random-seed`    | Not used.                                                |               |
+| `--rampup`         | Number of sectonds to ramp up to the maximum throughput. | `--rampup 10` |
 
 #### Concurrent Profile
 
@@ -96,10 +98,11 @@ Runs a fixed number of parallel request streams.
 guidellm benchmark --profile concurrent
 ```
 
-| Strategy parameter | Description                                                                                                          | Example                     |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `--rate`           | Number of concurrent streams to run. May be a single value or a list of values to run successive concurrent streams. | `--rate 10`, `--rate 16,32` |
-| `--random-seed`    | Not used.                                                                                                            |                             |
+| Strategy parameter | Description                                                                                                                | Example                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `--rate`           | Number of concurrent requests to maintain. May be a single value or a list of values to run successive concurrent streams. | `--rate 10`, `--rate 16,32` |
+| `--random-seed`    | Not used.                                                                                                                  |                             |
+| `--rampup`         | Duration in seconds to spread initial requests up to target rate.                                                          | `--rampup 10`               |
 
 #### Constant Profile
 
@@ -111,14 +114,15 @@ Sends asynchronous requests at a fixed rate per second.
 guidellm benchmark --profile constant
 ```
 
-| Strategy parameter | Description                                                                                       | Example                     |
-| ------------------ | ------------------------------------------------------------------------------------------------- | --------------------------- |
-| `--rate`           | Maximum asynchronous requests to run. May be a list of values to run successive constant streams. | `--rate 10`, `--rate 16,32` |
-| `--random-seed`    | Not used.                                                                                         |                             |
+| Strategy parameter | Description                                                                                        | Example                     |
+| ------------------ | -------------------------------------------------------------------------------------------------- | --------------------------- |
+| `--rate`           | Number of requests to send per second. May be a list of values to run successive constant streams. | `--rate 10`, `--rate 16,32` |
+| `--random-seed`    | Not used.                                                                                          |                             |
+| `--rampup`         | Duration in seconds to linearly ramp up from 0 to target rate.                                     | `--rampup 10`               |
 
 #### Poisson Profile
 
-Sends asynchronous requests at varying rates using a Poisson distribution around the specified target rate(s).
+Sends asynchronous requests at varying rates using a Poisson distribution around the specified target rate(s). This probabilistic pattern is useful for simulating more realistic real-world traffic patterns.
 
 ```bash
 guidellm benchmark --profile poisson
@@ -128,6 +132,7 @@ guidellm benchmark --profile poisson
 | ------------------ | ------------------------------------------------------------------------------------------------ | --------------------------- |
 | `--rate`           | Maximum asynchronous requests to run. May be a list of values to run successive Poisson streams. | `--rate 10`, `--rate 16,32` |
 | `--random-seed`    | Used to generate random rates.                                                                   | `--random-seed 42`          |
+| `--rampup`         | Not used.                                                                                        |                             |
 
 #### Sweep Profile
 
@@ -141,10 +146,11 @@ The sweep profile applies a sequence of benchmark strategies to find the optimal
 guidellm benchmark --profile sweep
 ```
 
-| Strategy parameter | Description                                                                      | Example     |
-| ------------------ | -------------------------------------------------------------------------------- | ----------- |
-| `--rate`           | Number of strategies to run in the sweep (including synchronous and throughput). | `--rate 10` |
-| `--random-seed`    | Not used.                                                                        |             |
+| Strategy parameter | Description                                                                      | Example       |
+| ------------------ | -------------------------------------------------------------------------------- | ------------- |
+| `--rate`           | Number of strategies to run in the sweep (including synchronous and throughput). | `--rate 10`   |
+| `--random-seed`    | Not used.                                                                        |               |
+| `--rampup`         | Rate rampup duration in seconds for throughput and constant strategy steps.      | `--rampup 10` |
 
 ### Data Options
 
