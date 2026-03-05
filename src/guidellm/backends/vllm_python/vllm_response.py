@@ -70,22 +70,14 @@ class VLLMResponseHandler:
         )
 
         input_metrics = UsageMetrics(
-            text_tokens=(
-                input_details.get("prompt_tokens")
-                or usage_metrics.get("prompt_tokens")
-                or 0
-            ),
+            text_tokens=usage_metrics.get("prompt_tokens", 0),
             image_tokens=input_details.get("image_tokens"),
             video_tokens=input_details.get("video_tokens"),
             audio_tokens=input_details.get("audio_tokens"),
             audio_seconds=input_details.get("seconds"),
         )
         output_metrics = UsageMetrics(
-            text_tokens=(
-                output_details.get("completion_tokens")
-                or usage_metrics.get("completion_tokens")
-                or 0
-            ),
+            text_tokens=usage_metrics.get("completion_tokens", 0),
             text_words=len(text.split()) if text else 0,
             text_characters=len(text) if text else 0,
             image_tokens=output_details.get("image_tokens"),

@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import jinja2
-import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from guidellm.backends.backend import Backend
@@ -85,7 +84,10 @@ class VLLMPythonBackendArgs(BaseModel):
     @field_validator("target")
     @classmethod
     def target_must_be_none(cls, v: str | None) -> str | None:
-        """Reject target to prevent confusion"""
+        """Reject target to prevent confusion.
+
+        Validated by CLI before Backend.create.
+        """
         if v is not None:
             raise ValueError(
                 "Target is not supported; this backend runs locally."
@@ -117,7 +119,7 @@ def _check_vllm_available() -> None:
 
 
 def _has_jinja2_markers(s: str) -> bool:
-    """Return True if the string contains Jinja2 template syntax ({{, {%}, or {#)."""
+    """Return True if the string contains Jinja2 template syntax ({{, {%, or {#)."""
     return "{{" in s or "{%" in s or "{#" in s
 
 
@@ -159,7 +161,6 @@ class VLLMPythonBackend(Backend):
         stream: bool = True,
         image_placeholder: str | None = None,
         audio_placeholder: str | None = None,
-        **_kwargs: Any,
     ):
         """
         Initialize VLLM Python backend with model and configuration.
@@ -181,7 +182,6 @@ class VLLMPythonBackend(Backend):
             a model-specific token). If not set, falls back to "<image>".
         :param audio_placeholder: Optional string to use as the audio placeholder when
             using audio_column; if unset, falls back to "<|audio|>".
-        :param _kwargs: Additional arguments (e.g. target) ignored by this backend.
         """
         _check_vllm_available()
         super().__init__(type_="vllm_python")
@@ -250,10 +250,7 @@ class VLLMPythonBackend(Backend):
         Initialize VLLM AsyncLLMEngine instance with configured parameters.
 
         :raises RuntimeError: If backend is already initialized
-        :raises ImportError: If vllm is not available
         """
-        _check_vllm_available()
-
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
@@ -281,11 +278,10 @@ class VLLMPythonBackend(Backend):
 
         :raises RuntimeError: If backend cannot generate or is not initialized
         """
-        if self._engine is None:
-            raise RuntimeError("Backend not started up for process.")
+        engine = self._validate_backend_initialized()
 
         try:
-            await self._engine.check_health()
+            await engine.check_health()
         except BaseException as exc:
             raise RuntimeError(
                 "Backend validation failed. Health check failed."
@@ -295,7 +291,7 @@ class VLLMPythonBackend(Backend):
             test_params = SamplingParams(temperature=0.0, max_tokens=1)  # type: ignore[misc]
             request_id = str(uuid.uuid4())
             # Use async generation for validation
-            async for _ in self._engine.generate("test", test_params, request_id):  # type: ignore[misc]
+            async for _ in engine.generate("test", test_params, request_id):  # type: ignore[misc]
                 # Just consume the first output to verify it works
                 break
         except (RuntimeError, ValueError, TypeError, OSError) as exc:
@@ -320,14 +316,16 @@ class VLLMPythonBackend(Backend):
         """
         return self.model
 
-    def _validate_backend_initialized(self) -> None:
+    def _validate_backend_initialized(self) -> AsyncLLMEngine:
         """
-        Validate that the backend is initialized and ready.
+        Validate that the backend is initialized and return the engine.
 
         :raises RuntimeError: If backend is not initialized
+        :return: The initialized AsyncLLMEngine
         """
         if self._engine is None:
             raise RuntimeError("Backend not started up for process.")
+        return self._engine
 
     def _validate_history(
         self, history: list[tuple[GenerationRequest, GenerationResponse]] | None
@@ -376,9 +374,17 @@ class VLLMPythonBackend(Backend):
                 else:
                     multi_modal_data["image"] = [existing, pil_image]
         if audio_items:
-            first = audio_items[0]  # One audio per request
+            if len(audio_items) > 1:
+                logger.warning(
+                    "Only one audio item per request is supported; "
+                    "ignoring {} extra audio item(s).",
+                    len(audio_items) - 1,
+                )
+            first = audio_items[0]
             if not first or not isinstance(first, dict):
-                pass
+                logger.warning(
+                    "audio_column item is empty or not a dict; skipping."
+                )
             else:
                 audio_bytes = first.get("audio")
                 if isinstance(audio_bytes, bytes) and len(audio_bytes) > 0:
@@ -391,16 +397,9 @@ class VLLMPythonBackend(Backend):
                         # Decode raw audio bytes into an array since vLLM audio models
                         # expect either raw numpy arrays or specific tensor formats
                         audio_samples = _decode_audio(audio_bytes)
-                        # _decode_audio returns torchcodec.AudioSamples whose
-                        # .data is a torch.Tensor.  .numpy() works on CPU
-                        # tensors; GPU tensors need .cpu() first; and non-torch
-                        # data falls back to np.asarray.
-                        if hasattr(audio_samples.data, "numpy"):
-                            audio_array = audio_samples.data.numpy()
-                        elif hasattr(audio_samples.data, "cpu"):
-                            audio_array = audio_samples.data.cpu().numpy()
-                        else:
-                            audio_array = np.asarray(audio_samples.data)
+                        # torchcodec decodes audio on CPU, so .data is always
+                        # a CPU torch.Tensor. .cpu() is a no-op on CPU tensors.
+                        audio_array = audio_samples.data.cpu().numpy()
                         multi_modal_data["audio"] = audio_array
                     except (ValueError, TypeError, OSError, RuntimeError) as exc:
                         raise ValueError(
@@ -546,18 +545,15 @@ class VLLMPythonBackend(Backend):
     def _extract_prompt_chat_plain(
         self, formatted_messages: list[dict[str, Any]]
     ) -> str:
-        """Format messages as plain 'Role: content' lines."""
-        parts = []
-        for msg in formatted_messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role and content:
-                # Capitalize role (e.g. 'User:', 'System:') for basic readability
-                # without a true template
-                parts.append(f"{role.capitalize()}: {content}")
-        # Always append an open-ended Assistant prompt for the model to continue from
-        parts.append("Assistant: ")
-        return "\n".join(parts)
+        """Concatenate message content into a single raw prompt string.
+
+        Equivalent to the HTTP /v1/completions behaviour: prefix + text
+        with no role prefixes or trailing generation prompt.
+        """
+        return "".join(
+            msg.get("content", "") for msg in formatted_messages
+            if msg.get("content")
+        )
 
     def _resolve_chat_template(self) -> str | None:
         """
@@ -609,9 +605,8 @@ class VLLMPythonBackend(Backend):
         self, formatted_messages: list[dict[str, Any]]
     ) -> str:
         """Apply tokenizer chat template to formatted messages."""
-        if self._engine is None:
-            raise RuntimeError("Backend not started up while extracting prompt.")
-        tokenizer = self._engine.tokenizer
+        engine = self._validate_backend_initialized()
+        tokenizer = engine.tokenizer
         if tokenizer is None:
             raise RuntimeError("Backend engine has no tokenizer.")
 
@@ -625,6 +620,8 @@ class VLLMPythonBackend(Backend):
                 self._resolved_chat_template = self._resolve_chat_template()
             resolved = cast("str | None", self._resolved_chat_template)
         if resolved is not None:
+            # Safe to mutate: vLLM runs one model per engine and the resolved
+            # template is constant across all requests for this backend instance.
             tokenizer.chat_template = resolved  # type: ignore[attr-defined]
         prompt = tokenizer.apply_chat_template(
             formatted_messages,  # type: ignore[arg-type]
@@ -766,8 +763,6 @@ class VLLMPythonBackend(Backend):
         """
         if request_info.timings.first_token_iteration is None:
             request_info.timings.first_token_iteration = iter_time
-            request_info.timings.token_iterations = 0
-
         request_info.timings.last_token_iteration = iter_time
         request_info.timings.token_iterations += iterations
 
@@ -879,34 +874,18 @@ class VLLMPythonBackend(Backend):
         Create VLLM SamplingParams.
 
         When max_tokens_override is set (from benchmark output_metrics), it is used
-        as max_tokens and EOS is ignored to match HTTP backend behavior.  Otherwise
-        defaults are used.
+        as max_tokens and EOS is ignored to force generation of exactly that many
+        tokens, matching HTTP backend behavior. Otherwise vLLM defaults are used
+        (generate until EOS or model max context).
 
         :param max_tokens_override: Optional max_tokens from request (e.g. benchmark)
         :return: Configured SamplingParams instance
         """
-        max_tokens = max_tokens_override if max_tokens_override is not None else 16
-        if max_tokens == 0:
-            max_tokens = 16
+        params: dict[str, Any] = {}
 
-        if max_tokens_override is not None:
-            ignore_eos = True
-            stop: list[str] | None = []
-        else:
-            ignore_eos = False
-            stop = None
-
-        params: dict[str, Any] = {
-            "temperature": 1.0,
-            "top_p": 1.0,
-            "max_tokens": max_tokens,
-            "min_tokens": 0,
-            "ignore_eos": ignore_eos,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0,
-        }
-        if stop is not None:
-            params["stop"] = stop
+        if max_tokens_override is not None and max_tokens_override > 0:
+            params["max_tokens"] = max_tokens_override
+            params["ignore_eos"] = True
 
         return SamplingParams(**params)  # type: ignore[misc]
 
@@ -962,9 +941,7 @@ class VLLMPythonBackend(Backend):
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """Run engine.generate loop and yield final (response, request_info)."""
         state["final_output"] = None
-        engine = self._engine
-        if engine is None:
-            raise RuntimeError("Backend not started up.")
+        engine = self._validate_backend_initialized()
 
         prompt_arg = cast("Any", generate_input)
         try:

@@ -6,5 +6,6 @@ GenerationResponse from vLLM output.
 """
 
 from .vllm_response import VLLMResponseHandler
+from .vllm import VLLMPythonBackend
 
-__all__ = ["VLLMResponseHandler"]
+__all__ = ["VLLMResponseHandler", "VLLMPythonBackend"]

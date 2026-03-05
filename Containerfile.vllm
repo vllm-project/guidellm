@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 
 ENV GUIDELLM_BUILD_TYPE=$GUIDELLM_BUILD_TYPE
 
-# Copy repository and install GuideLLM from source with pip (no uv, to avoid
+# Copy repository and install GuideLLM from source with pip (without uv, to avoid
 # conflicting with the pre-installed vLLM in the base image)
 COPY / /src
 WORKDIR /src

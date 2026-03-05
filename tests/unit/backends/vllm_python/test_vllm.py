@@ -9,6 +9,7 @@ usage extraction, lifecycle, and resolve() integration.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -29,10 +30,24 @@ from guidellm.schemas import (
 
 def _fake_sampling_params(**kwargs):
     """
-    Fake SamplingParams for tests when vLLM is not installed
-    returns object with kwargs as attributes.
+    Fake SamplingParams for tests when vLLM is not installed.
+    Returns a SimpleNamespace so only explicitly passed kwargs become attributes.
     """
-    return Mock(**kwargs)
+    return SimpleNamespace(**kwargs)
+
+
+def _mock_audio_decode_result(audio_array: np.ndarray) -> Mock:
+    """
+    Build a mock torchcodec AudioSamples whose .data behaves like a CPU
+    torch.Tensor: .data.cpu() returns self, .data.cpu().numpy() returns
+    the given numpy array.
+    """
+    mock_data = Mock()
+    mock_data.cpu.return_value = mock_data
+    mock_data.numpy.return_value = audio_array
+    result = Mock()
+    result.data = mock_data
+    return result
 
 
 @pytest.fixture
@@ -67,12 +82,11 @@ class TestResolveRequest:
         request = GenerationRequest(columns={"text_column": ["hello"]})
         resolved = backend_plain._resolve_request(request)
         assert isinstance(resolved, _ResolvedRequest)
-        assert "User: hello" in resolved.prompt
-        assert "Assistant: " in resolved.prompt
+        assert resolved.prompt == "hello"
         assert resolved.stream is True
         assert resolved.multi_modal_data is None
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_stream_false_propagated(self):
         """
         When backend.stream=False, resolved.stream is False.
@@ -86,7 +100,7 @@ class TestResolveRequest:
         resolved = backend._resolve_request(request)
         assert resolved.stream is False
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_prefix_and_text_columns_build_messages(self):
         """
         Columns with prefix_column and text_column are formatted into prompt.
@@ -103,10 +117,9 @@ class TestResolveRequest:
             }
         )
         resolved = backend._resolve_request(request)
-        assert "System: System prompt" in resolved.prompt
-        assert "User: User question" in resolved.prompt
+        assert resolved.prompt == "System promptUser question"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_text_only_no_media_multi_modal_data_none(self, backend):
         """
         Request with only text columns leaves multi_modal_data None.
@@ -127,8 +140,7 @@ class TestResolveRequest:
         ## WRITTEN BY AI ##
         """
         mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
-        mock_decode_result = Mock()
-        mock_decode_result.data = mock_audio_array
+        mock_decode_result = _mock_audio_decode_result(mock_audio_array)
 
         request = GenerationRequest(
             columns={
@@ -177,7 +189,7 @@ class TestResolveRequest:
         assert "<image>" in resolved.prompt
         assert "Describe this" in resolved.prompt
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_empty_columns_raises(self, backend):
         """
         Request with no text or multimodal columns raises ValueError.
@@ -187,7 +199,7 @@ class TestResolveRequest:
         with pytest.raises(ValueError, match="text_column or multimodal"):
             backend._resolve_request(request)
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_audio_and_text_with_chat_template_uses_content_blocks(self):
         """
         With text + audio + chat template, apply_chat_template receives messages
@@ -195,8 +207,7 @@ class TestResolveRequest:
         ## WRITTEN BY AI ##
         """
         mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
-        mock_decode_result = Mock()
-        mock_decode_result.data = mock_audio_array
+        mock_decode_result = _mock_audio_decode_result(mock_audio_array)
 
         captured_messages = []
 
@@ -237,7 +248,7 @@ class TestResolveRequest:
         assert resolved.multi_modal_data is not None
         assert "audio" in resolved.multi_modal_data
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_audio_and_text_plain_format_uses_placeholder_string(self):
         """
         With text + audio + plain format, placeholder strings are used (not
@@ -245,8 +256,7 @@ class TestResolveRequest:
         ## WRITTEN BY AI ##
         """
         mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
-        mock_decode_result = Mock()
-        mock_decode_result.data = mock_audio_array
+        mock_decode_result = _mock_audio_decode_result(mock_audio_array)
 
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
             backend = VLLMPythonBackend(
@@ -284,7 +294,7 @@ class TestImagePlaceholderInjection:
         result = backend._build_placeholder_prefix({"image": Mock()})
         assert result == "<image>\n"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_placeholder_prefix_image_override(self):
         """
         _build_placeholder_prefix uses image_placeholder override.
@@ -306,7 +316,7 @@ class TestImagePlaceholderInjection:
             "<|vision_start|><|image_pad|><|vision_end|>\n"
         )
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_inject_placeholders_into_messages_no_media_unchanged(self, backend):
         """
         _inject_placeholders_into_messages leaves messages unchanged when no
@@ -330,7 +340,7 @@ class TestImagePlaceholderInjection:
         backend._inject_placeholders_into_messages(msgs, {"image": Mock()})
         assert msgs[0]["content"] == "<image>\nWhat is this?"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_inject_placeholders_into_messages_multiple_images(self, backend):
         """
         _inject_placeholders_into_messages prepends N image placeholders for N images.
@@ -342,7 +352,7 @@ class TestImagePlaceholderInjection:
         )
         assert msgs[0]["content"] == "<image>\n<image>\nDescribe both."
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_inject_placeholders_targets_last_user_message(self, backend):
         """
         _inject_placeholders_into_messages injects into the last user message,
@@ -378,7 +388,7 @@ class TestAudioPlaceholderInjection:
         )
         assert result == "<|audio|>\n"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_placeholder_prefix_audio_override(self):
         """
         _build_placeholder_prefix uses audio_placeholder override.
@@ -400,7 +410,7 @@ class TestAudioPlaceholderInjection:
             "<|begin_of_audio|><|pad|><|end_of_audio|>\n"
         )
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_inject_placeholders_into_messages_no_audio_unchanged(self, backend):
         """
         _inject_placeholders_into_messages leaves messages unchanged when no audio.
@@ -422,7 +432,7 @@ class TestAudioPlaceholderInjection:
         backend._inject_placeholders_into_messages(msgs, multi_modal_data)
         assert msgs[0]["content"] == "<|audio|>\nTranscribe."
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_inject_placeholders_into_messages_multiple_audio(self, backend):
         """
         _inject_placeholders_into_messages prepends N audio placeholders for N audio.
@@ -440,7 +450,7 @@ class TestAudioPlaceholderInjection:
             "<|audio|>\n<|audio|>\nCompare the two clips."
         )
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_inject_placeholders_image_and_audio_combined(self, backend):
         """
         _inject_placeholders_into_messages handles both image and audio together.
@@ -491,7 +501,7 @@ class TestInjectMultimodalContentBlocks:
             {"type": "text", "text": "Describe."},
         ]
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_audio_and_image_blocks_combined(self, backend):
         """
         Both image and audio produce blocks in order: image first, then audio.
@@ -509,7 +519,7 @@ class TestInjectMultimodalContentBlocks:
             {"type": "text", "text": "Both."},
         ]
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_string_content_converted_to_list(self, backend):
         """
         When content is a plain string, it is wrapped in a text block.
@@ -523,7 +533,7 @@ class TestInjectMultimodalContentBlocks:
             {"type": "text", "text": "Hello"},
         ]
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_targets_last_user_message(self, backend):
         """
         Blocks are added to the last user message, not system or earlier messages.
@@ -544,7 +554,7 @@ class TestInjectMultimodalContentBlocks:
             {"type": "text", "text": "Second"},
         ]
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_empty_multimodal_data_unchanged(self, backend):
         """
         No blocks added when multi_modal_data has no image or audio.
@@ -554,7 +564,7 @@ class TestInjectMultimodalContentBlocks:
         backend._inject_multimodal_content_blocks(msgs, {})
         assert msgs[0]["content"] == [{"type": "text", "text": "Hello"}]
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_multiple_audio_items(self, backend):
         """
         N audio items produce N audio blocks.
@@ -581,7 +591,7 @@ class TestBuildPlaceholderPrefix:
     ## WRITTEN BY AI ##
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_no_multimodal_data_returns_empty(self, backend):
         """
         _build_placeholder_prefix returns '' when no image or audio.
@@ -597,7 +607,7 @@ class TestBuildPlaceholderPrefix:
         """
         assert backend._build_placeholder_prefix({"image": Mock()}) == "<image>\n"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_multiple_images_returns_prefixes(self, backend):
         """
         _build_placeholder_prefix returns N image placeholders for N images.
@@ -619,7 +629,7 @@ class TestBuildPlaceholderPrefix:
         )
         assert result == "<|audio|>\n"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_image_and_audio_combined(self, backend):
         """
         _build_placeholder_prefix returns both image and audio placeholders.
@@ -645,7 +655,7 @@ class TestHasJinja2Markers:
         assert _has_jinja2_markers("{{ message.content }}") is True
         assert _has_jinja2_markers("prefix {{ x }}") is True
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_has_jinja2_markers_true_for_control(self):
         """
         _has_jinja2_markers returns True for {% and {#.
@@ -654,7 +664,7 @@ class TestHasJinja2Markers:
         assert _has_jinja2_markers("{% for m in messages %}") is True
         assert _has_jinja2_markers("{# comment #}") is True
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_has_jinja2_markers_false_for_plain_strings(self):
         """
         _has_jinja2_markers returns False for strings with no template syntax.
@@ -686,12 +696,11 @@ class TestVLLMRequestFormat:
             }
         )
         resolved = backend_plain._resolve_request(request)
-        assert "User: Hello" in resolved.prompt
-        assert "Assistant: " in resolved.prompt
-        assert "[INST]" not in resolved.prompt
-        assert "<|im_start|>" not in resolved.prompt
+        assert resolved.prompt == "Hello"
+        assert "User:" not in resolved.prompt
+        assert "Assistant:" not in resolved.prompt
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_chat_completions_raises_not_a_template(self):
         """
         request_format with no Jinja2 markers (e.g. 'chat_completions') raises
@@ -751,7 +760,7 @@ class TestVLLMRequestFormat:
         assert resolved.prompt == "default_prompt"
         mock_tokenizer.apply_chat_template.assert_called_once()
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_custom_template_string_sets_tokenizer_and_applies(self):
         """
         With request_format=custom template, chat_template is set then applied.
@@ -772,7 +781,7 @@ class TestVLLMRequestFormat:
         assert mock_tokenizer.chat_template == "{{ messages[0]['content'] }}"
         mock_tokenizer.apply_chat_template.assert_called_once()
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_custom_template_from_file(self, tmp_path):
         """
         With request_format=file path, chat_template is set from file then applied.
@@ -793,7 +802,7 @@ class TestVLLMRequestFormat:
         assert resolved.prompt == "Custom: Hi"
         assert mock_tokenizer.chat_template == "Custom: {{ messages[0]['content'] }}"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_file_template_cached_on_second_request(self, tmp_path):
         """
         With request_format=file path, the second request uses cached content.
@@ -818,7 +827,7 @@ class TestVLLMRequestFormat:
         assert mock_tokenizer.chat_template == first_template
         assert mock_tokenizer.apply_chat_template.call_count == 2
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_file_with_no_markers_raises(self, tmp_path):
         """
         request_format=path to file with no Jinja2 markers raises ValueError.
@@ -838,7 +847,7 @@ class TestVLLMRequestFormat:
         msg = str(exc_info.value)
         assert "Jinja2" in msg or "template" in msg.lower()
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_invalid_jinja2_string_raises(self):
         """
         request_format with invalid Jinja2 syntax raises ValueError.
@@ -856,7 +865,7 @@ class TestVLLMRequestFormat:
         msg = str(exc_info.value)
         assert "Invalid chat template" in msg or "template" in msg.lower()
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_stored_on_backend(self):
         """
         Custom request_format is stored on the backend, not in vllm_config.
@@ -870,7 +879,7 @@ class TestVLLMRequestFormat:
         assert backend_custom.request_format == "/path/to/template.jinja"
         assert "chat_template" not in backend_custom.vllm_config
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_plain_not_in_vllm_config(self):
         """
         request_format=plain does not add chat_template to vllm_config.
@@ -883,7 +892,7 @@ class TestVLLMRequestFormat:
         assert backend_plain.request_format == "plain"
         assert "chat_template" not in backend_plain.vllm_config
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_request_format_default_template_not_in_vllm_config(self):
         """
         request_format=default-template does not add chat_template to vllm_config.
@@ -896,7 +905,7 @@ class TestVLLMRequestFormat:
         assert backend_def.request_format == "default-template"
         assert "chat_template" not in backend_def.vllm_config
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_vllm_config_empty_uses_vllm_defaults(self):
         """
         With vllm_config empty or None, backend only sets model; no extra keys.
@@ -939,7 +948,7 @@ class TestVLLMStreamingUsageFromOutput:
         assert usage["completion_tokens"] == 4
         assert usage["total_tokens"] == 6
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_streaming_usage_fallback_to_token_iterations(self, backend):
         """
         When token_ids is None, falls back to token_iterations.
@@ -1034,41 +1043,33 @@ class TestVLLMCreateSamplingParams:
         assert params.max_tokens == 2000
 
     @pytest.mark.smoke
-    def test_default_max_tokens(self, backend):
+    def test_default_uses_vllm_defaults(self, backend):
         """
-        Without override, default max_tokens is 16.
+        Without override, no params are set so vLLM defaults are used.
         ## WRITTEN BY AI ##
         """
         params = backend._create_sampling_params()
-        assert params.max_tokens == 16
+        assert not hasattr(params, "max_tokens")
+        assert not hasattr(params, "ignore_eos")
 
-    @pytest.mark.smoke
-    def test_override_sets_ignore_eos_and_stop(self, backend):
+    @pytest.mark.sanity
+    def test_override_sets_ignore_eos(self, backend):
         """
-        When override is used, ignore_eos=True and stop=[] to match HTTP behavior.
+        When override is used, ignore_eos=True to match HTTP backend behavior.
         ## WRITTEN BY AI ##
         """
         params = backend._create_sampling_params(max_tokens_override=2000)
         assert params.ignore_eos is True
-        assert params.stop == []
 
-    @pytest.mark.smoke
-    def test_no_override_uses_defaults(self, backend):
+    @pytest.mark.sanity
+    def test_zero_override_uses_vllm_defaults(self, backend):
         """
-        Without override, ignore_eos=False and stop is not set.
-        ## WRITTEN BY AI ##
-        """
-        params = backend._create_sampling_params()
-        assert params.ignore_eos is False
-
-    @pytest.mark.smoke
-    def test_max_tokens_zero_safeguard(self, backend):
-        """
-        max_tokens_override=0 is treated as 16 so vLLM never receives 0.
+        max_tokens_override=0 is treated as no override (vLLM defaults).
         ## WRITTEN BY AI ##
         """
         params = backend._create_sampling_params(max_tokens_override=0)
-        assert params.max_tokens == 16
+        assert not hasattr(params, "max_tokens")
+        assert not hasattr(params, "ignore_eos")
 
 
 class TestVLLMLifecycle:
@@ -1101,7 +1102,7 @@ class TestVLLMLifecycle:
         assert backend._in_process is True
 
     @pytest.mark.asyncio
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     async def test_process_startup_idempotency_raises(self):
         """
         Idempotency: raise RuntimeError when _in_process already True.
@@ -1151,7 +1152,7 @@ class TestVLLMLifecycle:
         assert backend._in_process is False
 
     @pytest.mark.asyncio
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     async def test_process_shutdown_not_started_raises(self):
         """
         Raise RuntimeError when not started.
@@ -1165,7 +1166,7 @@ class TestVLLMLifecycle:
             await backend.process_shutdown()
 
     @pytest.mark.asyncio
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     async def test_validate_engine_none_raises(self, backend):
         """
         Raise RuntimeError when _engine is None.
@@ -1226,7 +1227,7 @@ class TestVLLMValidateHelpers:
     _validate_backend_initialized and _validate_history.
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_validate_backend_initialized_raises_when_engine_none(self, backend):
         """
         Raises RuntimeError when _engine is None.
@@ -1236,7 +1237,7 @@ class TestVLLMValidateHelpers:
         with pytest.raises(RuntimeError, match="Backend not started up"):
             backend._validate_backend_initialized()
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_validate_backend_initialized_passes_when_engine_set(self, backend):
         """
         Does not raise when _engine is set.
@@ -1245,7 +1246,7 @@ class TestVLLMValidateHelpers:
         backend._engine = Mock()
         backend._validate_backend_initialized()
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_validate_history_raises_when_history_not_none(self, backend):
         """
         Raises NotImplementedError when history is not None.
@@ -1256,7 +1257,7 @@ class TestVLLMValidateHelpers:
         ):
             backend._validate_history([(Mock(), Mock())])
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_validate_history_passes_when_history_none(self, backend):
         """
         Does not raise when history is None.
@@ -1270,7 +1271,7 @@ class TestVLLMTextFromOutput:
     _text_from_output: None, empty outputs, normal.
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_text_from_output_none_returns_empty(self, backend):
         """
         output is None -> "".
@@ -1278,7 +1279,7 @@ class TestVLLMTextFromOutput:
         """
         assert backend._text_from_output(None) == ""
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_text_from_output_empty_outputs_returns_empty(self, backend):
         """
         output.outputs empty -> "".
@@ -1298,7 +1299,7 @@ class TestVLLMTextFromOutput:
         mock_out.outputs = [Mock(text="Hello world")]
         assert backend._text_from_output(mock_out) == "Hello world"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_text_from_output_none_text_returns_empty(self, backend):
         """
         output.outputs[0].text is None -> "".
@@ -1330,7 +1331,7 @@ class TestVLLMUsageFromOutputNonStream:
             "total_tokens": 5,
         }
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_usage_from_output_non_stream_outputs_empty(self, backend):
         """
         Non-stream with no outputs -> completion_tokens 0.
@@ -1349,7 +1350,7 @@ class TestVLLMBuildFinalResponse:
     _build_final_response: final_output None; stream vs non-stream.
     """
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_final_response_none_returns_none(self, backend):
         """
         final_output is None -> return None.
@@ -1383,7 +1384,7 @@ class TestVLLMBuildFinalResponse:
         assert resp.text == "ab"
         assert info is request_info
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_final_response_non_stream_returns_response(self, backend):
         """
         Non-stream path builds GenerationResponse with text and usage.
@@ -1418,7 +1419,7 @@ class TestVLLMExtractTextFromContent:
         """
         assert backend._extract_text_from_content("hello") == "hello"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_extract_text_from_content_list_text_blocks_concatenated(self, backend):
         """
         List of {type:text, text:x} -> concatenated.
@@ -1431,7 +1432,7 @@ class TestVLLMExtractTextFromContent:
         ]
         assert backend._extract_text_from_content(content) == "ab"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_extract_text_from_content_list_no_text_blocks_returns_empty(self, backend):
         """
         List without text blocks -> "".
@@ -1440,7 +1441,7 @@ class TestVLLMExtractTextFromContent:
         content = [{"type": "image_url", "url": "x"}]
         assert backend._extract_text_from_content(content) == ""
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_extract_text_from_content_fallback_str(self, backend):
         """
         Non-str non-list -> str(content).
@@ -1448,7 +1449,7 @@ class TestVLLMExtractTextFromContent:
         """
         assert backend._extract_text_from_content(123) == "123"
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_extract_text_from_content_none_returns_empty(self, backend):
         """
         content None -> "".
@@ -1463,7 +1464,7 @@ class TestVLLMResolveValidation:
     """
 
     @pytest.mark.asyncio
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     async def test_resolve_with_history_raises_not_implemented(self, backend):
         """
         history=[(...)] -> NotImplementedError.
@@ -1480,7 +1481,7 @@ class TestVLLMResolveValidation:
                 pass
 
     @pytest.mark.asyncio
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     async def test_resolve_engine_none_raises_runtime_error(self, backend):
         """
         _engine is None -> RuntimeError.
@@ -1500,7 +1501,7 @@ class TestVLLMResolveCancelledError:
     """
 
     @pytest.mark.asyncio
-    @pytest.mark.smoke
+    @pytest.mark.regression
     async def test_resolve_cancelled_error_yields_then_reraises(self, backend):
         """
         During generate raise CancelledError; assert response yielded then re-raise.
@@ -1557,8 +1558,7 @@ class TestVLLMResolveAudioFromColumns:
         ## WRITTEN BY AI ##
         """
         mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
-        mock_decode_result = Mock()
-        mock_decode_result.data = mock_audio_array
+        mock_decode_result = _mock_audio_decode_result(mock_audio_array)
 
         out = Mock()
         out.text = "transcribed"
