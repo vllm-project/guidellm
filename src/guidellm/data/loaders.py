@@ -104,9 +104,10 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
 
             while max_items is None or gen_count < max_items:
                 try:
-                    row: dict[str, Any] = {
-                        "items": [next(dataset_iter) for dataset_iter in dataset_iters]
-                    }
+                    row: list[dict[str, Any]] = [
+                        {"dataset": next(dataset_iter)}
+                        for dataset_iter in dataset_iters
+                    ]
                     gen_count += 1
 
                     if (

@@ -75,20 +75,18 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
 
-            yield (
-                samples_count,
-                {
-                    "prefix": next(prefix_iter),
-                    "prompt": self._create_prompt(
-                        prompt_tokens_count,
-                        faker,
-                        f"{self.iteration_count} {samples_count} ",
-                    ),
-                    "prompt_tokens_count": prompt_tokens_count,
-                    "output_tokens_count": output_tokens_count,
-                },
-            )
-            samples_count += 1
+            row: dict[str, Any] = {"prefix": next(prefix_iter)}
+            for turn in range(self.config.turns):
+                row[f"prompt_{turn}"] = self._create_prompt(
+                    prompt_tokens_count,
+                    faker,
+                    f"{self.iteration_count} {samples_count} ",
+                )
+                row[f"prompt_tokens_count_{turn}"] = prompt_tokens_count
+                row[f"output_tokens_count_{turn}"] = output_tokens_count
+                samples_count += 1
+
+            yield samples_count, row
 
     @property
     def is_typed(self) -> bool:
@@ -96,14 +94,12 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
     @property
     def features(self) -> Features:
-        return Features(
-            {
-                "prefix": Value("string"),
-                "prompt": Value("string"),
-                "prompt_tokens_count": Value("int32"),
-                "output_tokens_count": Value("int32"),
-            }
-        )
+        features = {"prefix": Value("string")}
+        for i in range(self.config.turns):
+            features[f"prompt_{i}"] = Value("string")
+            features[f"prompt_tokens_count_{i}"] = Value("int32")
+            features[f"output_tokens_count_{i}"] = Value("int32")
+        return Features(features)
 
     @property
     def num_shards(self) -> int:

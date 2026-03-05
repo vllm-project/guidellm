@@ -15,7 +15,7 @@ from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandlerFactory,
     TextCompletionsRequestHandler,
 )
-from guidellm.schemas import GenerationRequest, UsageMetrics
+from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.utils import RegistryMixin
 
 
@@ -243,14 +243,14 @@ class TestTextCompletionsRequestHandler:
         instance = valid_instances
         data = GenerationRequest(
             columns={
-                "prefix_column": ["System: ", "Context: "],
-                "text_column": ["Hello ", "world"],
+                "prefix_column": ["prefix1", "prefix2"],
+                "text_column": ["Hello", "world"],
             },
         )
 
         result = instance.format(data)
 
-        assert result.body["prompt"] == "System: Context: Hello world"
+        assert result.body["prompt"] == "prefix1 prefix2 Hello world"
 
     @pytest.mark.sanity
     def test_format_ignore_eos(self, valid_instances):
@@ -1173,3 +1173,442 @@ class TestAudioRequestHandler:
         assert output_metrics.text_tokens == expected_output_tokens
         assert output_metrics.text_words == (len(text.split()) if text else 0)
         assert output_metrics.text_characters == len(text)
+
+    @pytest.mark.smoke
+    def test_audio_blocks_multiturn_with_history(self, valid_instances):
+        """Test audio handler blocks multiturn with non-empty history.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={
+                "audio_column": [
+                    {
+                        "audio": b"audio_data",
+                        "file_name": "test.mp3",
+                        "mimetype": "audio/mpeg",
+                    }
+                ]
+            },
+        )
+
+        # Create a history with one turn
+        history = [
+            (
+                GenerationRequest(columns={"audio_column": [{"audio": b"prev"}]}),
+                None,
+            )
+        ]
+
+        with pytest.raises(ValueError, match="does not support multiturn"):
+            instance.format(data, history=history)
+
+    @pytest.mark.smoke
+    def test_audio_blocks_multiturn_with_response(self, valid_instances):
+        """Test audio handler blocks multiturn with non-None response.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={
+                "audio_column": [
+                    {
+                        "audio": b"audio_data",
+                        "file_name": "test.mp3",
+                        "mimetype": "audio/mpeg",
+                    }
+                ]
+            },
+        )
+
+        # Mock response
+
+        response = GenerationResponse(request_id="test", request_args=None, text="test")
+
+        with pytest.raises(ValueError, match="does not support multiturn"):
+            instance.format(data, response=response)
+
+    @pytest.mark.sanity
+    def test_audio_allows_single_turn(self, valid_instances):
+        """Test audio handler allows single turn requests.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={
+                "audio_column": [
+                    {
+                        "audio": b"audio_data",
+                        "file_name": "test.mp3",
+                        "mimetype": "audio/mpeg",
+                    }
+                ]
+            },
+        )
+
+        # Should succeed without history or response
+        result = instance.format(data, history=None, response=None)
+
+        assert result is not None
+        assert result.files is not None
+        assert "file" in result.files
+
+
+class TestTextCompletionsRequestHandlerMultiturn:
+    """Test cases for TextCompletionsRequestHandler multiturn support.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture
+    def valid_instances(self):
+        """Create instance of TextCompletionsRequestHandler.
+
+        ### WRITTEN BY AI ###
+        """
+        return TextCompletionsRequestHandler()
+
+    @pytest.mark.smoke
+    def test_text_format_with_empty_history(self, valid_instances):
+        """Test format with empty history.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+
+        result = instance.format(data, history=[])
+
+        assert result.body["prompt"] == "Hello"
+
+    @pytest.mark.sanity
+    def test_text_format_with_single_turn_history(self, valid_instances):
+        """Test format with single turn history builds cumulative prompt.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Previous turn
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="4"
+        )
+
+        # Current turn
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+
+        result = instance.format(data, history=[(prev_request, prev_response)])
+
+        # Should include previous request and response
+        assert "What is 2+2?" in result.body["prompt"]
+        assert "4" in result.body["prompt"]
+        assert "What is 3+3?" in result.body["prompt"]
+
+    @pytest.mark.sanity
+    def test_text_format_with_multi_turn_history(self, valid_instances):
+        """Test format with multiple turns in history.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Build history with 3 turns
+        history = [
+            (
+                GenerationRequest(columns={"text_column": ["Turn 1"]}),
+                GenerationResponse(
+                    request_id="r1", request_args=None, text="Response 1"
+                ),
+            ),
+            (
+                GenerationRequest(columns={"text_column": ["Turn 2"]}),
+                GenerationResponse(
+                    request_id="r2", request_args=None, text="Response 2"
+                ),
+            ),
+            (
+                GenerationRequest(columns={"text_column": ["Turn 3"]}),
+                GenerationResponse(
+                    request_id="r3", request_args=None, text="Response 3"
+                ),
+            ),
+        ]
+
+        # Current turn
+        data = GenerationRequest(
+            columns={"text_column": ["Turn 4"]},
+        )
+
+        result = instance.format(data, history=history)
+
+        # Should include all turns in order
+        prompt = result.body["prompt"]
+        assert "Turn 1" in prompt
+        assert "Response 1" in prompt
+        assert "Turn 2" in prompt
+        assert "Response 2" in prompt
+        assert "Turn 3" in prompt
+        assert "Response 3" in prompt
+        assert "Turn 4" in prompt
+
+    @pytest.mark.regression
+    def test_text_format_prevents_infinite_recursion(self, valid_instances):
+        """Test format doesn't pass history to recursive calls.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Create history
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Previous"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="Response"
+        )
+        history = [(prev_request, prev_response)]
+
+        # Current turn
+        data = GenerationRequest(
+            columns={"text_column": ["Current"]},
+        )
+
+        # This should not cause infinite recursion
+        result = instance.format(data, history=history)
+
+        # Verify it succeeded
+        assert result.body["prompt"] is not None
+
+    @pytest.mark.sanity
+    def test_text_format_with_response_in_history(self, valid_instances):
+        """Test format uses response content in cumulative prompt.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Previous turn with response
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Question"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="The answer is 42"
+        )
+
+        # Current turn
+        data = GenerationRequest(
+            columns={"text_column": ["Follow up"]},
+        )
+
+        result = instance.format(
+            data, response=prev_response, history=[(prev_request, prev_response)]
+        )
+
+        prompt = result.body["prompt"]
+        # Should include the response text
+        assert "The answer is 42" in prompt
+
+
+class TestChatCompletionsRequestHandlerMultiturn:
+    """Test cases for ChatCompletionsRequestHandler multiturn support.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture
+    def valid_instances(self):
+        """Create instance of ChatCompletionsRequestHandler.
+
+        ### WRITTEN BY AI ###
+        """
+        return ChatCompletionsRequestHandler()
+
+    @pytest.mark.smoke
+    def test_chat_format_with_empty_history(self, valid_instances):
+        """Test format with empty history creates single user message.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+
+        result = instance.format(data, history=[])
+
+        messages = result.body["messages"]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+
+    @pytest.mark.sanity
+    def test_chat_format_with_single_turn_history(self, valid_instances):
+        """Test format with single turn creates user/assistant/user sequence.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Previous turn
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="The answer is 4"
+        )
+
+        # Current turn
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+
+        result = instance.format(data, history=[(prev_request, prev_response)])
+
+        messages = result.body["messages"]
+        # Should have: user (prev) + assistant (prev response) + user (current)
+        assert len(messages) == 3
+        assert messages[0]["role"] == "user"
+        assert messages[1]["role"] == "assistant"
+        assert messages[1]["content"] == "The answer is 4"
+        assert messages[2]["role"] == "user"
+
+    @pytest.mark.sanity
+    def test_chat_format_with_multi_turn_history(self, valid_instances):
+        """Test format with multiple turns alternates user/assistant.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Build history with 3 turns
+        history = [
+            (
+                GenerationRequest(columns={"text_column": ["Question 1"]}),
+                GenerationResponse(request_id="r1", request_args=None, text="Answer 1"),
+            ),
+            (
+                GenerationRequest(columns={"text_column": ["Question 2"]}),
+                GenerationResponse(request_id="r2", request_args=None, text="Answer 2"),
+            ),
+            (
+                GenerationRequest(columns={"text_column": ["Question 3"]}),
+                GenerationResponse(request_id="r3", request_args=None, text="Answer 3"),
+            ),
+        ]
+
+        # Current turn
+        data = GenerationRequest(
+            columns={"text_column": ["Question 4"]},
+        )
+
+        result = instance.format(data, history=history)
+
+        messages = result.body["messages"]
+        # Should have: 3 * (user + assistant) + current user = 7 messages
+        assert len(messages) == 7
+
+        # Check alternating pattern
+        for i in range(0, 6, 2):
+            assert messages[i]["role"] == "user"
+            assert messages[i + 1]["role"] == "assistant"
+        assert messages[6]["role"] == "user"
+
+        # Check content
+        assert messages[1]["content"] == "Answer 1"
+        assert messages[3]["content"] == "Answer 2"
+        assert messages[5]["content"] == "Answer 3"
+
+    @pytest.mark.sanity
+    def test_chat_format_with_system_prefix_and_history(self, valid_instances):
+        """Test format with prefix (system) and history maintains order.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Previous turn
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="Hi there!"
+        )
+
+        # Current turn with system prefix
+        data = GenerationRequest(
+            columns={
+                "prefix_column": ["You are a helpful assistant."],
+                "text_column": ["How are you?"],
+            },
+        )
+
+        result = instance.format(data, history=[(prev_request, prev_response)])
+
+        messages = result.body["messages"]
+        # Should have: user (prev) + assistant (prev) + system + user (current)
+        # (History is added first, then system prefix, then current user)
+        assert len(messages) == 4
+        assert messages[0]["role"] == "user"
+        assert messages[1]["role"] == "assistant"
+        assert messages[1]["content"] == "Hi there!"
+        assert messages[2]["role"] == "system"
+        assert messages[2]["content"] == "You are a helpful assistant."
+        assert messages[3]["role"] == "user"
+
+    @pytest.mark.regression
+    def test_chat_format_multimodal_with_history(self, valid_instances):
+        """Test format with multimodal content (images) and history.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        # Previous turn with image
+        prev_request = GenerationRequest(
+            columns={
+                "text_column": ["Describe this"],
+                "image_column": [{"image": "https://example.com/img1.jpg"}],
+            },
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="It's a cat"
+        )
+
+        # Current turn with different image
+        data = GenerationRequest(
+            columns={
+                "text_column": ["And this one?"],
+                "image_column": [{"image": "https://example.com/img2.jpg"}],
+            },
+        )
+
+        result = instance.format(data, history=[(prev_request, prev_response)])
+
+        messages = result.body["messages"]
+        # Should have: user (prev with image) + assistant + user (current with image)
+        assert len(messages) == 3
+
+        # Check first user message has both text and image
+        assert messages[0]["role"] == "user"
+        assert isinstance(messages[0]["content"], list)
+        assert any(item["type"] == "text" for item in messages[0]["content"])
+        assert any(item["type"] == "image_url" for item in messages[0]["content"])
+
+        # Check assistant message
+        assert messages[1]["role"] == "assistant"
+        assert messages[1]["content"] == "It's a cat"
+
+        # Check second user message has both text and image
+        assert messages[2]["role"] == "user"
+        assert isinstance(messages[2]["content"], list)
+        assert any(item["type"] == "text" for item in messages[2]["content"])
+        assert any(item["type"] == "image_url" for item in messages[2]["content"])

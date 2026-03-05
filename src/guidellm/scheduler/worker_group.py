@@ -22,11 +22,15 @@ from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Barrier, Event
 from typing import Generic, NamedTuple
 
+from typing_extensions import TypeAliasType
+
 from guidellm.logger import logger
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
 from guidellm.scheduler.schemas import (
     BackendInterface,
-    MultiTurnRequestT,
+    ConversationT,
+    DatasetIterT,
+    RequestDataT,
     RequestT,
     ResponseT,
     SchedulerState,
@@ -45,6 +49,20 @@ from guidellm.utils import (
 )
 
 __all__ = ["WorkerGroupState", "WorkerProcessGroup"]
+
+WorkGroupMessengerT = TypeAliasType(
+    "WorkGroupMessengerT",
+    InterProcessMessaging[
+        ConversationT[RequestT],
+        tuple[
+            ResponseT | None,
+            RequestT,
+            RequestInfo,
+            SchedulerState,
+        ],
+    ],
+    type_params=(RequestT, ResponseT),
+)
 
 
 class WorkerProcessGroup(Generic[RequestT, ResponseT]):
@@ -80,7 +98,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
     def __init__(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         **constraints: Constraint,
@@ -110,21 +128,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         # Scheduler and messaging state, created in start
         self.state: WorkerGroupState[RequestT, ResponseT] | None = None
-        self.messaging: (
-            InterProcessMessaging[
-                tuple[
-                    RequestT | MultiTurnRequestT[RequestT],
-                    RequestInfo,
-                ],
-                tuple[
-                    ResponseT | None,
-                    RequestT | MultiTurnRequestT[RequestT],
-                    RequestInfo,
-                    SchedulerState,
-                ],
-            ]
-            | None
-        ) = None
+        self.messaging: WorkGroupMessengerT[RequestT, ResponseT] | None = None
 
     async def create_processes(self):
         """
@@ -314,7 +318,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
     ) -> AsyncIterator[
         tuple[
             ResponseT | None,
-            RequestT | MultiTurnRequestT[RequestT],
+            RequestT,
             RequestInfo,
             SchedulerState,
         ]
@@ -433,15 +437,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         constraint_reached_event: Event,
         shutdown_event: Event,
         error_event: Event,
-        messaging: InterProcessMessaging[
-            tuple[RequestT | MultiTurnRequestT[RequestT], RequestInfo],
-            tuple[
-                ResponseT | None,
-                RequestT | MultiTurnRequestT[RequestT],
-                RequestInfo,
-                SchedulerState,
-            ],
-        ],
+        messaging: WorkGroupMessengerT[RequestT, ResponseT],
     ):
         """
         Initialize worker group state management.
@@ -478,10 +474,9 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self._processing_request_ids: set[str] = set()
 
     def requests_generator(
-        self, requests: Iterable[RequestT | MultiTurnRequestT[RequestT]]
-    ) -> Generator[
-        tuple[RequestT | MultiTurnRequestT[RequestT], RequestInfo], None, None
-    ]:
+        self,
+        requests: DatasetIterT[RequestT],
+    ) -> Generator[ConversationT[RequestT], None, None]:
         """
         Generate request-info pairs for worker processing with constraint evaluation.
 
@@ -495,32 +490,46 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         try:
             count = 0
-            for request in requests:
-                count += 1
+            stop_queueing: bool = False
 
-                if hasattr(request, "request_id"):
-                    request_id = request.request_id
-                elif hasattr(request, "id"):
-                    request_id = request.id
-                else:
-                    request_id = str(uuid.uuid4())
-                request_info: RequestInfo = RequestInfo(
-                    request_id=request_id,
-                    status="queued",
-                    scheduler_process_id=0,
-                    scheduler_start_time=self.start_time,
-                )
-                state_update = self._locked_update(request_info)
-                request_info.timings.queued = time.time()
-                if self.messaging.buffer_receive_queue is None:
-                    raise RuntimeError("buffer receive queue is None")
-                self.messaging.buffer_receive_queue.sync_put(
-                    (None, request, request_info, state_update.state)
-                )
+            def _turn_iter(
+                requests_chain: Iterable[RequestT],
+            ) -> Generator[RequestDataT[RequestT], None, None]:
+                nonlocal count, stop_queueing
+                for request in requests_chain:
+                    count += 1
 
-                yield request, request_info
+                    request_id: str
+                    if hasattr(request, "request_id"):
+                        request_id = str(request.request_id)
+                    elif hasattr(request, "id"):
+                        request_id = str(request.id)
+                    else:
+                        request_id = str(uuid.uuid4())
+                    request_info: RequestInfo = RequestInfo(
+                        request_id=request_id,
+                        status="queued",
+                        scheduler_process_id=0,
+                        scheduler_start_time=self.start_time,
+                    )
+                    state_update = self._locked_update(request_info)
+                    request_info.timings.queued = time.time()
+                    if self.messaging.buffer_receive_queue is None:
+                        raise RuntimeError("buffer receive queue is None")
+                    self.messaging.buffer_receive_queue.sync_put(
+                        (None, request, request_info, state_update.state)
+                    )
 
-                if state_update.stop_queueing:
+                    yield request, request_info
+
+                    if state_update.stop_queueing:
+                        stop_queueing = True
+                        return
+
+            for request_chain in requests:
+                yield list(_turn_iter(request_chain))
+
+                if stop_queueing:
                     self.stop_send_requests_event.set()
                     return
 
@@ -528,7 +537,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._locked_update(
                 info=None,
                 add_constraints={
-                    "requests_exhausted": RequestsExhaustedConstraint(  # type: ignore[dict-item]
+                    "requests_exhausted": RequestsExhaustedConstraint(
                         num_requests=count
                     )
                 },
@@ -543,12 +552,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self,
         update: tuple[
             ResponseT | None,
-            RequestT | MultiTurnRequestT,
+            RequestT,
             RequestInfo,
         ],
     ) -> tuple[
         ResponseT | None,
-        RequestT | MultiTurnRequestT,
+        RequestT,
         RequestInfo,
         SchedulerState,
     ]:

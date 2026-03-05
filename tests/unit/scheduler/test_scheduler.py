@@ -152,7 +152,7 @@ class TestScheduler:
     ):
         """Test Scheduler.run basic functionality with various parameters."""
         instance, _ = valid_instances
-        requests = [MockRequest(payload=f"req_{i}") for i in range(num_requests)]
+        requests = [[MockRequest(payload=f"req_{i}")] for i in range(num_requests)]
         backend = MockBackend(error_rate=0.0, response_delay=0.001)
         strategy = SynchronousStrategy()
         env = NonDistributedEnvironment()
