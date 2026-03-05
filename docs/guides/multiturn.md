@@ -207,7 +207,8 @@ To use TurnPivot in the CLI, specify it as a data preprocessor:
 --data-preprocessors "encode_media,turn_pivot"
 ```
 
-> [!WARNING] In the current CLI design, setting `--data-preprocessors` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
+> [!WARNING]\
+> In the current CLI design, setting `--data-preprocessors` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
 
 ## Examples
 
@@ -266,7 +267,8 @@ guidellm benchmark run \
 
 In this benchmark, each conversation includes a system message (prefix) at the beginning, followed by 4 turns of user-assistant interaction. In real use-cases the system prompt establishes context or instructions that apply to the entire conversation and is often common to all users.
 
-> [!NOTE] `turns=4` + `--max-requests 100` will result in 25 **or more** conversations. Follow-up turns can only be scheduled when the previous turn completes. When a turn is complete the conversation is placed at the front of the queue for the current worker.
+> [!NOTE]\
+> `turns=4` + `--max-requests 100` will result in 25 **or more** conversations. Follow-up turns can only be scheduled when the previous turn completes. When a turn is complete the conversation is placed at the front of the queue for the current worker.
 
 ### 3. Advanced Prefix Distribution
 
@@ -359,7 +361,8 @@ guidellm benchmark run \
 - `--data`: Specified separately for each dataset; can also be specified once as an array
 - `--data-preprocessors`: Specify `"turn_pivot"` in the preprocessor list to transpose datasets and turn columns
 
-> [!WARNING] In the current CLI design, setting `--data-preprocessors` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
+> [!WARNING]\
+> In the current CLI design, setting `--data-preprocessors` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
 
 ## Limitations and Considerations
 
