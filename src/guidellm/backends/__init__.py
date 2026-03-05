@@ -18,17 +18,14 @@ from .openai import (
     OpenAIRequestHandlerFactory,
     TextCompletionsRequestHandler,
 )
+from guidellm.extras.vllm import HAS_VLLM
 
 # Conditionally import VLLM backend if available
-try:
-    from .vllm_python.vllm import VLLMPythonBackend
-    from .vllm_python.vllm_response import VLLMResponseHandler
-
-    HAS_VLLM_BACKEND = True
-except ImportError:
+if HAS_VLLM:
+    from .vllm_python import VLLMPythonBackend, VLLMResponseHandler
+else:
     VLLMPythonBackend = None  # type: ignore[assignment, misc]
     VLLMResponseHandler = None  # type: ignore[assignment, misc]
-    HAS_VLLM_BACKEND = False
 
 __all__ = [
     "AudioRequestHandler",
@@ -42,5 +39,5 @@ __all__ = [
 ]
 
 # Conditionally add VLLM backend and handler to exports
-if HAS_VLLM_BACKEND:
+if HAS_VLLM:
     __all__.extend(["VLLMPythonBackend", "VLLMResponseHandler"])

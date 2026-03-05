@@ -47,7 +47,7 @@ class TestVLLMResponseHandler:
         assert out.output_metrics.text_words == 2
         assert out.output_metrics.text_characters == 11
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_response_without_usage(self, request_fixture):
         """
         build_response with None usage still fills word/char counts.
@@ -59,7 +59,7 @@ class TestVLLMResponseHandler:
         assert out.output_metrics.text_characters == 2
         assert out.input_metrics.text_tokens is None
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_response_empty_text(self, request_fixture):
         """
         build_response with empty text sets text to None.
@@ -70,7 +70,7 @@ class TestVLLMResponseHandler:
         assert out.output_metrics.text_words == 0
         assert out.output_metrics.text_characters == 0
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_response_no_response_id(self, request_fixture):
         """
         build_response with no response_id defaults to None.
@@ -79,7 +79,7 @@ class TestVLLMResponseHandler:
         out = VLLMResponseHandler.build_response(request_fixture, "hi", None)
         assert out.response_id is None
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_response_with_detailed_usage(self, request_fixture):
         """
         build_response with prompt_tokens_details and completion_tokens_details.
@@ -104,7 +104,7 @@ class TestVLLMResponseHandler:
         assert out.output_metrics.text_tokens == 5
         assert out.output_metrics.audio_tokens == 1
 
-    @pytest.mark.smoke
+    @pytest.mark.sanity
     def test_build_response_request_args_is_none(self, request_fixture):
         """
         build_response always sets request_args to None.
