@@ -7,16 +7,15 @@ weight: -6
 1. [Install GuideLLM](install.md)
 2. You can run GuideLLM two ways:
    1. Targeting a running OpenAI-compatible LLM server
-      * The most common setup.
+      - The most common setup.
    2. Using the vLLM Python backend, with vLLM running in the same process
-      * Requires knowledge on how to setup vLLM in addition to the knowledge on how to run GuideLLM.
-      * Simplifies orchestration due to the lack of need for a separate server.
+      - Requires knowledge on how to setup vLLM in addition to the knowledge on how to run GuideLLM.
+      - Simplifies orchestration due to the lack of need for a separate server.
 
 > [!NOTE]\
 > Everything in this guide applies to both backends except the backend-specific inputs.
 >
-> This guide assumes you're using the OpenAI HTTP backend with an OpenAI-compatible LLM server.
-> For information on using the vLLM Python backend see [vLLM Python backend](../guides/vllm-python-backend.md)
+> This guide assumes you're using the OpenAI HTTP backend with an OpenAI-compatible LLM server. For information on using the vLLM Python backend see [vLLM Python backend](../guides/vllm-python-backend.md)
 
 After [starting a server](server.md), you're ready to run benchmarks to evaluate your LLM deployment's performance.
 
