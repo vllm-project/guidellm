@@ -62,6 +62,88 @@ GuideLLM supports several benchmark profiles and strategies:
 - `poisson`: Sends requests following a Poisson distribution
 - `sweep`: Automatically determines optimal performance points (default)
 
+#### Sweep Profile Configuration
+
+The sweep profile includes advanced configuration options for optimizing benchmarks on CPU-based deployments. These parameters help manage saturation detection and prevent graph artifacts:
+
+**Available Parameters:**
+
+| Parameter                     | Description                                       | Default | Environment Variable                  |
+| ----------------------------- | ------------------------------------------------- | ------- | ------------------------------------- |
+| `--exclude-throughput-target` | Stop constant-rate tests before throughput level  | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_TARGET` |
+| `--exclude-throughput-result` | Exclude throughput benchmark from saved results   | `false` | `GUIDELLM__EXCLUDE_THROUGHPUT_RESULT` |
+| `--saturation-threshold`      | Efficiency threshold for stopping sweep (0.0-1.0) | `0.98`  | `GUIDELLM__SATURATION_THRESHOLD`      |
+
+**When to Use:**
+
+- **CPU based system under test**: Enable `exclude-throughput-target` and `exclude-throughput-result` to prevent anomalous data points in performance graphs (TTFT spikes, inter-token latency anomalies)
+- **GPU based system under test**: Use default settings (all disabled)
+
+**Example for CPU-optimized benchmarking:**
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --profile sweep \
+  --exclude-throughput-target true \
+  --exclude-throughput-result true \
+  --saturation-threshold 0.98 \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --max-seconds 300
+```
+
+**Using Environment Variables:**
+
+```bash
+export GUIDELLM__EXCLUDE_THROUGHPUT_TARGET=true
+export GUIDELLM__EXCLUDE_THROUGHPUT_RESULT=true
+export GUIDELLM__SATURATION_THRESHOLD=0.98
+
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --profile sweep \
+  --data "prompt_tokens=256,output_tokens=128"
+```
+
+**How It Works:**
+
+The sweep profile runs tests in this order:
+
+1. **Synchronous test**: Measures baseline single-request performance
+2. **Throughput test**: Discovers maximum server capacity with parallel requests
+3. **Constant-rate tests**: Tests at interpolated rates between synchronous and throughput
+
+Each parameter optimizes a different aspect:
+
+- **`exclude-throughput-target`**: Prevents generating a constant-rate test at the throughput level itself
+
+  - **Why**: The highest constant-rate test would target the same rate as the throughput test, creating redundant "elbow" artifacts in graphs
+  - **Effect**: Stops constant-rate tests just before reaching throughput rate
+
+- **`exclude-throughput-result`**: Removes the throughput benchmark from saved results
+
+  - **Why**: Throughput tests measure burst capacity with severe queuing (e.g., 23+ second TTFT), creating extreme outliers in graphs
+  - **Effect**: Graphs only show sustainable performance metrics from constant-rate tests
+
+- **`saturation-threshold`**: Stops the sweep when efficiency drops below threshold
+
+  - **Why**: Once saturation is detected (achieved rate < target rate × threshold), further tests provide diminishing returns
+  - **Effect**: Saves time by stopping early when the server can no longer meet target rates
+
+**Why use all three together?**
+
+For CPU based system under test, all three parameters work synergistically:
+
+- `saturation-threshold` stops the sweep efficiently when saturation is detected
+- `exclude-throughput-target` prevents testing at the unsustainable throughput rate
+- `exclude-throughput-result` removes the anomalous throughput spike from graphs
+
+This combination produces clean, efficient benchmarks that focus on sustainable performance ranges.
+
+**Important Note:**
+
+Do not set `--max-concurrency` or `GUIDELLM__MAX_CONCURRENCY` when running sweep tests. The sweep profile uses the throughput test to discover the server's true capacity, and artificially limiting concurrency will result in an underestimated throughput measurement. This causes the constant-rate tests to run at rates far below the actual server capacity, preventing proper saturation detection and producing misleading results where TTFT may decrease instead of increase.
+
 ### Data Options
 
 For synthetic data, some key options include, among others:
