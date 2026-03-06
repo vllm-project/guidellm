@@ -428,9 +428,9 @@ class VLLMPythonBackend(Backend):
             text_parts = []
             for block in content:
                 if isinstance(block, dict):
-                    block_type = block.get("type", "")
+                    block_type = block.get("type")
                     if block_type == "text":
-                        text = block.get("text", "")
+                        text = block.get("text")
                         if text:
                             text_parts.append(text)
             return "".join(text_parts)
