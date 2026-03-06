@@ -235,7 +235,8 @@ guidellm benchmark \
   --rate 16 \
   --warmup 0.1 \
   --cooldown 0.1 \
-  --max-errors 5
+  --max-errors 5 \
+  --data "prompt_tokens=256,output_tokens=128" \
   --detect-saturation
 ```
 
@@ -246,6 +247,7 @@ guidellm benchmark \
 - `--max-seconds`: Maximum duration in seconds for each benchmark before automatic termination
 - `--max-requests`: Maximum number of requests per benchmark before automatic termination
 - `--max-errors`: Maximum number of individual errors before stopping the benchmark entirely
+- `--data`: Data to use for benchmarking - synthetic data with 256 input and 128 output tokens
 - `--detect-saturation`: Enable over-saturation detection to automatically stop benchmarks when the model becomes over-saturated (see also `--over-saturation` for more advanced control)
 
 ## Development and Contribution
