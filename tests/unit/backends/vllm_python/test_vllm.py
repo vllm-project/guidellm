@@ -1,9 +1,10 @@
 """
 Unit tests for VLLM Python backend.
 
-Tests _resolve_request (prompt from columns, multimodal data, placeholders),
-request_format (plain, default-template, custom template), sampling params,
-usage extraction, lifecycle, and resolve() integration.
+Tests _resolve_request (prompt from columns, multimodal data, roundrobin
+content blocks, placeholders), request_format (plain, default-template,
+custom template), sampling params, usage extraction, lifecycle, and
+resolve() integration.
 """
 
 from __future__ import annotations
@@ -465,124 +466,6 @@ class TestAudioPlaceholderInjection:
         assert msgs[0]["content"] == (
             "<image>\n<|audio|>\nDescribe what you see and hear."
         )
-
-
-class TestInjectMultimodalContentBlocks:
-    """
-    Test _inject_multimodal_content_blocks: adds typed content blocks to messages.
-    ## WRITTEN BY AI ##
-    """
-
-    @pytest.mark.smoke
-    def test_audio_block_added_to_last_user_message(self, backend):
-        """
-        Single audio item adds {"type": "audio"} block before existing content.
-        ## WRITTEN BY AI ##
-        """
-        msgs = [{"role": "user", "content": [{"type": "text", "text": "Transcribe."}]}]
-        multi_modal_data = {"audio": np.array([0.0], dtype=np.float32)}
-        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
-        assert msgs[0]["content"] == [
-            {"type": "audio"},
-            {"type": "text", "text": "Transcribe."},
-        ]
-
-    @pytest.mark.smoke
-    def test_image_block_added_to_last_user_message(self, backend):
-        """
-        Single image item adds {"type": "image"} block before existing content.
-        ## WRITTEN BY AI ##
-        """
-        msgs = [{"role": "user", "content": [{"type": "text", "text": "Describe."}]}]
-        multi_modal_data = {"image": Mock()}
-        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
-        assert msgs[0]["content"] == [
-            {"type": "image"},
-            {"type": "text", "text": "Describe."},
-        ]
-
-    @pytest.mark.sanity
-    def test_audio_and_image_blocks_combined(self, backend):
-        """
-        Both image and audio produce blocks in order: image first, then audio.
-        ## WRITTEN BY AI ##
-        """
-        msgs = [{"role": "user", "content": [{"type": "text", "text": "Both."}]}]
-        multi_modal_data = {
-            "image": Mock(),
-            "audio": np.array([0.0], dtype=np.float32),
-        }
-        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
-        assert msgs[0]["content"] == [
-            {"type": "image"},
-            {"type": "audio"},
-            {"type": "text", "text": "Both."},
-        ]
-
-    @pytest.mark.sanity
-    def test_string_content_converted_to_list(self, backend):
-        """
-        When content is a plain string, it is wrapped in a text block.
-        ## WRITTEN BY AI ##
-        """
-        msgs = [{"role": "user", "content": "Hello"}]
-        multi_modal_data = {"audio": np.array([0.0], dtype=np.float32)}
-        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
-        assert msgs[0]["content"] == [
-            {"type": "audio"},
-            {"type": "text", "text": "Hello"},
-        ]
-
-    @pytest.mark.sanity
-    def test_targets_last_user_message(self, backend):
-        """
-        Blocks are added to the last user message, not system or earlier messages.
-        ## WRITTEN BY AI ##
-        """
-        msgs = [
-            {"role": "system", "content": "System prompt"},
-            {"role": "user", "content": "First question"},
-            {"role": "assistant", "content": "Answer"},
-            {"role": "user", "content": [{"type": "text", "text": "Second"}]},
-        ]
-        multi_modal_data = {"audio": np.array([0.0], dtype=np.float32)}
-        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
-        assert msgs[0]["content"] == "System prompt"
-        assert msgs[1]["content"] == "First question"
-        assert msgs[3]["content"] == [
-            {"type": "audio"},
-            {"type": "text", "text": "Second"},
-        ]
-
-    @pytest.mark.sanity
-    def test_empty_multimodal_data_unchanged(self, backend):
-        """
-        No blocks added when multi_modal_data has no image or audio.
-        ## WRITTEN BY AI ##
-        """
-        msgs = [{"role": "user", "content": [{"type": "text", "text": "Hello"}]}]
-        backend._inject_multimodal_content_blocks(msgs, {})
-        assert msgs[0]["content"] == [{"type": "text", "text": "Hello"}]
-
-    @pytest.mark.sanity
-    def test_multiple_audio_items(self, backend):
-        """
-        N audio items produce N audio blocks.
-        ## WRITTEN BY AI ##
-        """
-        msgs = [{"role": "user", "content": [{"type": "text", "text": "Compare."}]}]
-        multi_modal_data = {
-            "audio": [
-                np.array([0.0], dtype=np.float32),
-                np.array([0.1], dtype=np.float32),
-            ]
-        }
-        backend._inject_multimodal_content_blocks(msgs, multi_modal_data)
-        assert msgs[0]["content"] == [
-            {"type": "audio"},
-            {"type": "audio"},
-            {"type": "text", "text": "Compare."},
-        ]
 
 
 class TestBuildPlaceholderPrefix:

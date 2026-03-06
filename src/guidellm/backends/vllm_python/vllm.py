@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import jinja2
+from more_itertools import roundrobin
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from guidellm.backends.backend import Backend
@@ -467,6 +468,28 @@ class VLLMPythonBackend(Backend):
             return ""
         return "\n".join(parts) + "\n"
 
+    @staticmethod
+    def _format_column_blocks(
+        column_data: list[Any], column_type: str
+    ) -> list[dict[str, Any]]:
+        """Format data column items into vLLM-compatible content blocks.
+
+        Analogous to the HTTP backend's ``_format_prompts`` but emitting
+        vLLM-specific block types that chat templates can render into the
+        correct model-specific placeholder tokens.
+        """
+        blocks: list[dict[str, Any]] = []
+        for item in column_data:
+            if not item:
+                continue
+            if column_type == "text_column":
+                blocks.append({"type": "text", "text": str(item)})
+            elif column_type == "image_column":
+                blocks.append({"type": "image"})
+            elif column_type == "audio_column":
+                blocks.append({"type": "audio"})
+        return blocks
+
     def _inject_placeholders_into_messages(
         self,
         formatted_messages: list[dict[str, Any]],
@@ -491,56 +514,6 @@ class VLLMPythonBackend(Backend):
             formatted_messages[-1]["content"] = (
                 prefix + (formatted_messages[-1].get("content") or "")
             )
-
-    @staticmethod
-    def _prepend_blocks_to_message(
-        msg: dict[str, Any],
-        blocks: list[dict[str, str]],
-    ) -> None:
-        """Prepend multimodal content blocks to a single message's content."""
-        content = msg.get("content")
-        if isinstance(content, list):
-            msg["content"] = blocks + content
-        elif isinstance(content, str) and content:
-            msg["content"] = blocks + [{"type": "text", "text": content}]
-        else:
-            msg["content"] = list(blocks)
-
-    def _inject_multimodal_content_blocks(
-        self,
-        formatted_messages: list[dict[str, Any]],
-        multi_modal_data: dict[str, Any],
-    ) -> None:
-        """
-        Add typed content blocks for each multimodal item to the last user message.
-
-        When using a chat template, the template itself emits the correct
-        model-specific placeholder tokens (e.g. GLM-ASR emits
-        ``<|begin_of_audio|><|pad|><|end_of_audio|>`` for ``{"type": "audio"}``
-        blocks). This avoids hardcoding a universal placeholder that may not
-        match what the model's vLLM multimodal processor expects.
-        """
-        blocks: list[dict[str, str]] = []
-        images = multi_modal_data.get("image")
-        if images is not None:
-            num = len(images) if isinstance(images, list | tuple) else 1
-            blocks.extend({"type": "image"} for _ in range(num))
-        audio = multi_modal_data.get("audio")
-        if audio is not None:
-            num = len(audio) if isinstance(audio, list | tuple) else 1
-            blocks.extend({"type": "audio"} for _ in range(num))
-        if not blocks:
-            return
-
-        # Iterate backwards to find the last user message, which is typically where
-        # new media is being referenced. If no user message is found, append to the
-        # very last message.
-        for msg in reversed(formatted_messages):
-            if msg.get("role") == "user":
-                self._prepend_blocks_to_message(msg, blocks)
-                return
-        if formatted_messages:
-            self._prepend_blocks_to_message(formatted_messages[-1], blocks)
 
     def _extract_prompt_chat_plain(
         self, formatted_messages: list[dict[str, Any]]
@@ -632,88 +605,86 @@ class VLLMPythonBackend(Backend):
             return prompt
         raise RuntimeError("Backend received unexpected type from tokenizer.")
 
-    def _resolve_request(self, request: GenerationRequest) -> _ResolvedRequest:  # noqa: C901, PLR0912
+    def _resolve_request(self, request: GenerationRequest) -> _ResolvedRequest:
         """
         Build a fully resolved request from column-based GenerationRequest.
 
-        Builds chat messages from prefix_column/text_column, extracts multimodal
-        data from image_column/audio_column, and applies the chat template (or
-        plain formatting). The returned prompt is ready for engine.generate.
+        Mirrors the HTTP backend's ``ChatCompletionsRequestHandler.format``:
+        prefix items are space-joined into one system message and all data
+        columns (text, image, audio) are formatted as typed content blocks
+        then interleaved via ``roundrobin`` into a single user message.
 
-        When a chat template is active and multimodal data is present, message
-        content is kept as list-of-blocks with typed entries (e.g.
-        ``{"type": "audio"}``) so the model's own template emits the correct
-        placeholder tokens.  For plain format or text-only requests the content
-        is flattened to strings.
+        When a chat template is active and multimodal data is present, the
+        list-of-blocks content is passed directly to the tokenizer so the
+        template emits model-specific placeholder tokens.  For plain format
+        or text-only requests the content is flattened to strings.
 
         :param request: Column-based generation request
         :return: Resolved request with formatted prompt and multimodal data
         :raises ValueError: If request has no text or multimodal columns
         """
         columns = request.columns
-        prefix_parts = list(columns.get("prefix_column", []) or [])
-        text_parts = list(columns.get("text_column", []) or [])
 
         messages: list[dict[str, Any]] = []
-        for p in prefix_parts:
-            if p:
-                messages.append({"role": "system", "content": str(p)})
-        for t in text_parts:
-            if t:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": [{"type": "text", "text": str(t)}],
-                    }
-                )
+
+        prefix = " ".join(
+            str(p) for p in (columns.get("prefix_column") or []) if p
+        )
+        if prefix:
+            messages.append({"role": "system", "content": prefix})
+
+        text_blocks = self._format_column_blocks(
+            columns.get("text_column") or [], "text_column"
+        )
 
         multi_modal_data = self._build_multi_modal_data_from_columns(columns)
 
-        # We use explicit content blocks (e.g. {"type": "image"}) when applying a chat
-        # template so that the template itself can generate the correct, model-specific
-        # tokens. Otherwise, we default to string injection.
+        # We use explicit content blocks (e.g. {"type": "image"}) when applying a
+        # chat template so that the template itself can generate the correct,
+        # model-specific tokens.  Otherwise we flatten to strings and fall back
+        # to placeholder-string injection.
         use_content_blocks = (
             multi_modal_data
-            and messages
+            and (text_blocks or prefix)
             and self.request_format != "plain"
         )
 
+        if use_content_blocks:
+            # Interleave text and media blocks into a single content list,
+            # matching the HTTP backend's roundrobin approach.
+            media_lists = [
+                self._format_column_blocks(columns.get(col) or [], col)
+                for col in ("image_column", "audio_column")
+            ]
+            user_content: list[dict[str, Any]] = list(
+                roundrobin(text_blocks, *media_lists)
+            )
+        else:
+            # Text-only or plain mode: media is handled later via placeholder
+            # injection, so only text blocks go into the user message here.
+            user_content = list(text_blocks)
+
+        if user_content:
+            messages.append({"role": "user", "content": user_content})
+
         if messages:
-            if use_content_blocks and multi_modal_data is not None:
-                formatted_messages = []
-                for msg in messages:
-                    if isinstance(msg, dict):
-                        raw = msg.get("content", "")
-                        role = msg.get("role", "")
-                        if isinstance(raw, list | str):
-                            formatted_messages.append(
-                                {"role": role, "content": raw}
-                            )
-                        else:
-                            formatted_messages.append(
-                                {"role": role, "content": str(raw) if raw else ""}
-                            )
-                    else:
-                        formatted_messages.append(msg)
-                self._inject_multimodal_content_blocks(
-                    formatted_messages, multi_modal_data
-                )
-                prompt = self._extract_prompt_chat_tokenizer(formatted_messages)
+            if use_content_blocks:
+                prompt = self._extract_prompt_chat_tokenizer(messages)
             else:
-                formatted_messages = []
-                for msg in messages:
-                    if isinstance(msg, dict):
-                        raw_content = msg.get("content", "")
-                        text_content = self._extract_text_from_content(raw_content)
-                        formatted_messages.append(
-                            {"role": msg.get("role", ""), "content": text_content}
-                        )
-                    else:
-                        formatted_messages.append(msg)
+                formatted_messages = [
+                    {
+                        "role": msg["role"],
+                        "content": self._extract_text_from_content(
+                            msg.get("content", "")
+                        ),
+                    }
+                    for msg in messages
+                ]
 
                 if multi_modal_data:
-                    # For chat mode, multi_modal_data is passed through so placeholders
-                    # are injected into messages *before* the chat template is applied.
+                    # Placeholders must be injected into the message text
+                    # *before* the chat template is applied so they end up
+                    # inside the correct message turn.
                     self._inject_placeholders_into_messages(
                         formatted_messages, multi_modal_data
                     )
@@ -723,8 +694,8 @@ class VLLMPythonBackend(Backend):
                 else:
                     prompt = self._extract_prompt_chat_tokenizer(formatted_messages)
         elif multi_modal_data:
-            # For non-chat modes (text/audio), placeholders were not injected
-            # into messages (there are none), so prepend to the raw prompt.
+            # Multimodal-only (e.g. audio transcription with no text/prefix):
+            # no messages to inject into, so use a raw placeholder prompt.
             prompt = self._build_placeholder_prefix(multi_modal_data)
         else:
             raise ValueError(
