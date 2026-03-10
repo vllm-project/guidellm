@@ -1,11 +1,11 @@
 # Geospatial Model Benchmarking
 
-GuideLLM supports benchmarking geospatial models that process satellite and remote sensing imagery. 
-This guide focuses on benchmarking [TerraTorch]() Geospatial models like IBM-NASA's Prithvi using vLLM's `/pooling` endpoint.
+GuideLLM supports benchmarking geospatial models that process satellite and remote sensing imagery. This guide focuses on benchmarking [TerraTorch](<>) Geospatial models like IBM-NASA's Prithvi using vLLM's `/pooling` endpoint.
 
 ## Overview
 
 Geospatial models in GuideLLM:
+
 - Process satellite imagery (via URLs or base64)
 - Return embeddings or pooled representations for downstream tasks
 - Track image-related metrics instead of text tokens
@@ -34,7 +34,6 @@ guidellm benchmark \
   --max-requests 10 \
   --output-path results.json
 ```
-
 
 ## Dataset Format
 
@@ -66,13 +65,7 @@ Geospatial models served with vLLM expect a specific nested JSON structure in th
 
 ### Band Indices
 
-The selection of the bands depends on the model. [Prithvi](https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11) was trained on the following six bands
-for flood mapping: Blue, Green, Red, Narrow NIR, SWIR, SWIR 2. 
-To use the correct input data at inference time we need to specify which of the bands available in the GeoTIFF vLLM should use.
-The preprocessing of the GeoTIFF is handled by the [terratorch_segmentation](https://terrastackai.github.io/terratorch/stable/guide/vllm/vllm_io_plugins/) 
-plugin component. Consult your model's documentation for the appropriate band configuration.
-
-
+The selection of the bands depends on the model. [Prithvi](https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11) was trained on the following six bands for flood mapping: Blue, Green, Red, Narrow NIR, SWIR, SWIR 2. To use the correct input data at inference time we need to specify which of the bands available in the GeoTIFF vLLM should use. The preprocessing of the GeoTIFF is handled by the [terratorch_segmentation](https://terrastackai.github.io/terratorch/stable/guide/vllm/vllm_io_plugins/) plugin component. Consult your model's documentation for the appropriate band configuration.
 
 ## Complete Example: Flood Detection with Prithvi
 
@@ -80,8 +73,7 @@ Here's a complete example for benchmarking the Prithvi flood detection model:
 
 ### 1. Prepare Dataset
 
-Create `flood_detection_dataset.jsonl` remembering to update the GeoTIFF url reference by `data` with one reachable over the network.
-You can find examples in the [Prithvi repository on HuggingFace](https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11/tree/main/examples).
+Create `flood_detection_dataset.jsonl` remembering to update the GeoTIFF url reference by `data` with one reachable over the network. You can find examples in the [Prithvi repository on HuggingFace](https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11/tree/main/examples).
 
 ```json
 {"prompt":{"data":{"data":"https://example.com/satellite1.tif","data_format":"url","out_data_format":"b64_json","indices":[1,2,3,8,11,12]}}}
@@ -96,8 +88,8 @@ You can find examples in the [Prithvi repository on HuggingFace](https://hugging
 vllm serve \
   ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11 \
   --enforce-eager \
-  --skip-tokenizer-init \ 
-  --enable-mm-embeds \ 
+  --skip-tokenizer-init \
+  --enable-mm-embeds \
   --io-processor-plugin \
   terratorch_segmentation
 ```
@@ -151,7 +143,6 @@ guidellm benchmark \
   --max-requests 10 \
   --output-path results.json
 ```
-
 
 ## See Also
 

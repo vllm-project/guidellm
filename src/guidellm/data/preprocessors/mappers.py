@@ -11,7 +11,7 @@ from guidellm.data.preprocessors.preprocessor import (
 )
 from guidellm.data.schemas import GenerativeDatasetColumnType
 
-__all__ = ["GenerativeColumnMapper","PoolingColumnMapper"]
+__all__ = ["GenerativeColumnMapper", "PoolingColumnMapper"]
 
 
 @PreprocessorRegistry.register("generative_column_mapper")
@@ -60,7 +60,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "speech",
             "wav",
             "mp3",
-        ]
+        ],
     }
 
     @classmethod
@@ -196,10 +196,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             else self.datasets_mappings(datasets, self.input_mappings)
         )
 
+
 @PreprocessorRegistry.register("pooling_column_mapper")
 class PoolingColumnMapper(GenerativeColumnMapper):
-    defaults: ClassVar[dict[str, list[str]]] = {
-        "pooling_column": [
-            "prompt"
-        ]
-    }
+    defaults: ClassVar[dict[str, list[str]]] = {"pooling_column": ["prompt"]}
