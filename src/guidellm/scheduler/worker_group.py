@@ -63,6 +63,10 @@ WorkGroupMessengerT = TypeAliasType(
     ],
     type_params=(RequestT, ResponseT),
 )
+"""
+IPC types from the prespective of the WorkerProcessGroup, which sends Conversations
+and receives (Response, Request, RequestInfo, SchedulerState) tuples.
+"""
 
 
 class WorkerProcessGroup(Generic[RequestT, ResponseT]):

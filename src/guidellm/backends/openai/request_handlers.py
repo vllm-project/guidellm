@@ -171,7 +171,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         """
         prev_requests: list[GenerationRequestArguments] = []
         if history:
-            # NOTE: Don't include history to avoid infinite recursion
+            # NOTE: Does not include history to avoid infinite recursion
             prev_requests = [
                 self.format(req, response=res, **kwargs) for req, res in history
             ]
@@ -448,7 +448,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         prev_requests: list[GenerationRequestArguments] = []
         if history:
-            # NOTE: Don't include history to avoid infinite recursion
+            # NOTE: Does not include history to avoid infinite recursion
             prev_requests = [
                 self.format(req, response=res, **kwargs) for req, res in history
             ]
