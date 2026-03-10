@@ -150,7 +150,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             text = unique + faker.text(max_nb_chars=num_chars)
             prompt_token_ids = self.processor.encode(text)
 
-        return self.processor.decode(
+        return self.processor.decode(  # type: ignore[return-value]
             prompt_token_ids[:prompt_tokens_count], skip_special_tokens=True
         )
 
