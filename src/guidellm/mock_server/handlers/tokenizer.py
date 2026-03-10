@@ -96,6 +96,9 @@ class TokenizerHandler:
 
         tokens = self.tokenizer.tokenize(req_data.text)
         token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
+        # This should never happen in our mock tokenizer, but matches function sig
+        if not isinstance(token_ids, list):
+            token_ids = [token_ids]
 
         return response.json(
             TokenizeResponse(tokens=token_ids, count=len(token_ids)).model_dump()
@@ -139,4 +142,4 @@ class TokenizerHandler:
 
         text = self.tokenizer.decode(req_data.tokens, skip_special_tokens=False)
 
-        return response.json(DetokenizeResponse(text=text).model_dump())
+        return response.json(DetokenizeResponse(text=text).model_dump())  # type: ignore[arg-type]
