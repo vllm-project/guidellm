@@ -13,6 +13,7 @@ from guidellm.backends.openai.request_handlers import (
     ChatCompletionsRequestHandler,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    PoolingRequestHandler,
     TextCompletionsRequestHandler,
 )
 from guidellm.schemas import GenerationRequest, UsageMetrics
@@ -70,6 +71,7 @@ class TestOpenAIRequestHandlerFactory:
             ("/v1/chat/completions", None, ChatCompletionsRequestHandler),
             ("/v1/audio/transcriptions", None, AudioRequestHandler),
             ("/v1/audio/translations", None, AudioRequestHandler),
+            ("/pooling", None, PoolingRequestHandler),
             (
                 "/v1/completions",
                 {"/v1/completions": ChatCompletionsRequestHandler},
@@ -81,6 +83,7 @@ class TestOpenAIRequestHandlerFactory:
             "/v1/chat/completions",
             "/v1/audio/transcriptions",
             "/v1/audio/translations",
+            "/pooling",
             "override_text_completions",
         ],
     )
@@ -1173,3 +1176,204 @@ class TestAudioRequestHandler:
         assert output_metrics.text_tokens == expected_output_tokens
         assert output_metrics.text_words == (len(text.split()) if text else 0)
         assert output_metrics.text_characters == len(text)
+
+
+
+class TestPoolingRequestHandler:
+    """Test cases for PoolingRequestHandler.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture
+    def valid_instances(self):
+        """Create instance of PoolingRequestHandler.
+
+        ### WRITTEN BY AI ###
+        """
+        return PoolingRequestHandler()
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Test PoolingRequestHandler class signatures.
+
+        ### WRITTEN BY AI ###
+        """
+        handler = PoolingRequestHandler()
+        assert issubclass(PoolingRequestHandler, ChatCompletionsRequestHandler)
+        assert hasattr(handler, "format")
+        assert hasattr(handler, "compile_non_streaming")
+        assert hasattr(handler, "add_streaming_line")
+        assert hasattr(handler, "compile_streaming")
+        assert hasattr(handler, "streaming_texts")
+        assert hasattr(handler, "streaming_usage")
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """Test PoolingRequestHandler initialization.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        assert isinstance(instance, PoolingRequestHandler)
+        assert instance.streaming_texts == []
+        assert instance.streaming_usage is None
+
+    # Request formatting tests
+    @pytest.mark.smoke
+    def test_format_minimal(self, valid_instances):
+        """Test format method with minimal data.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data)
+
+        assert result.body is not None
+        assert isinstance(result.body, dict)
+
+    @pytest.mark.sanity
+    def test_format_with_model(self, valid_instances):
+        """Test format method with model parameter.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data, model="ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11")
+
+        assert result.body["model"] == "ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"
+
+    @pytest.mark.sanity
+    def test_format_streaming(self, valid_instances):
+        """Test format method with streaming enabled.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data, stream=True)
+
+        assert result.stream is True
+        assert result.body["stream"] is True
+        assert "stream_options" in result.body
+        assert result.body["stream_options"]["include_usage"] is True
+        assert result.body["stream_options"]["continuous_usage_stats"] is True
+
+    @pytest.mark.sanity
+    def test_format_extras(self, valid_instances):
+        """Test format method with extra parameters.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+        extras = {"body": {"temperature": 0.5, "top_k": 40}}
+
+        result = instance.format(data, extras=extras)
+
+        assert result.body.get("temperature") == 0.5
+        assert result.body.get("top_k") == 40
+
+    @pytest.mark.sanity
+    def test_format_pooling_data(self, valid_instances):
+        """Test format method with pooling column data from real dataset.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={
+                "pooling_column": [
+                    {
+                        "data": {
+                            "data": "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif",
+                            "data_format": "url",
+                            "out_data_format": "b64_json",
+                            "indices": [1, 2, 3, 8, 11, 12],
+                        }
+                    }
+                ]
+            },
+        )
+
+        result = instance.format(data)
+
+        assert "data" in result.body
+        assert result.body["data"]["data"] == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        assert result.body["data"]["data_format"] == "url"
+        assert result.body["data"]["out_data_format"] == "b64_json"
+        assert result.body["data"]["indices"] == [1, 2, 3, 8, 11, 12]
+
+    @pytest.mark.sanity
+    def test_format_pooling_data_with_priority(self, valid_instances):
+        """Test format method with pooling data and priority field.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={
+                "pooling_column": [
+                    {
+                        "data": {
+                            "data": "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif",
+                            "data_format": "url",
+                            "out_data_format": "b64_json",
+                            "indices": [1, 2, 3, 8, 11, 12],
+                        },
+                        "priority": "high",
+                    }
+                ]
+            },
+        )
+
+        result = instance.format(data)
+
+        assert "data" in result.body
+        assert result.body["data"]["data"] == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        assert result.body["data"]["data_format"] == "url"
+        assert result.body["data"]["out_data_format"] == "b64_json"
+        assert result.body["data"]["indices"] == [1, 2, 3, 8, 11, 12]
+        assert result.body["priority"] == "high"
+
+    @pytest.mark.sanity
+    def test_format_pooling_with_model_and_streaming(self, valid_instances):
+        """Test format method with pooling data, model, and streaming.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={
+                "pooling_column": [
+                    {
+                        "data": {
+                            "data": "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif",
+                            "data_format": "url",
+                            "out_data_format": "b64_json",
+                            "indices": [1, 2, 3, 8, 11, 12],
+                        }
+                    }
+                ]
+            },
+        )
+
+        result = instance.format(
+            data,
+            model="ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11",
+            stream=True,
+        )
+
+        assert result.body["model"] == "ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"
+        assert result.stream is True
+        assert result.body["stream"] is True
+        assert "data" in result.body
+        assert result.body["data"]["data"] == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        assert result.body["data"]["data_format"] == "url"
+        assert result.body["data"]["out_data_format"] == "b64_json"
+        assert result.body["data"]["indices"] == [1, 2, 3, 8, 11, 12]
