@@ -161,7 +161,6 @@ For synthetic data, parameters for random data generation are passed as key=valu
 
 - `prompt_tokens`: Average number of tokens for prompts
 - `output_tokens`: Average number of tokens for outputs
-- `samples`: Number of samples to generate (default: 1000)
 
 For example, to generate 1000 samples with a prompt length of 100 tokens and an output length of 50 tokens:
 
