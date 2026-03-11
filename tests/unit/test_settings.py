@@ -11,7 +11,9 @@ from guidellm.settings import (
     settings,
 )
 
-BASE_URL = "https://blog.vllm.ai/guidellm/ui/"
+BASE_URL = (
+    "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/"
+)
 
 
 @pytest.mark.smoke
@@ -47,7 +49,7 @@ def test_report_generation_default_source():
     settings = Settings(env=Environment.DEV)
     assert (
         settings.report_generation.source
-        == "https://blog.vllm.ai/guidellm/ui/dev/index.html"
+        == "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/dev/index.html"
     )
 
     settings = Settings(env=Environment.STAGING)
