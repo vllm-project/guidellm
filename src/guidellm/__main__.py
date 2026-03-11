@@ -37,7 +37,7 @@ try:
 except ImportError:
     uvloop = None  # type: ignore[assignment] # Optional dependency
 
-from guidellm.backends import BackendType
+from guidellm.backends import Backend, BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
@@ -48,7 +48,6 @@ from guidellm.benchmark import (
 )
 from guidellm.benchmark.schemas.generative.entrypoints import (
     format_backend_args_error,
-    get_backend_args,
 )
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
@@ -473,7 +472,7 @@ def run(**kwargs):  # noqa: C901
     backend = kwargs.get("backend", BenchmarkGenerativeTextArgs.get_default("backend"))
     backend_type = backend.type_ if hasattr(backend, "type_") else backend
     try:
-        args_model = get_backend_args(backend)
+        args_model = Backend.get_backend_args(backend_type)
         inputs = {k: kwargs.get(k) for k in args_model.model_fields}
         args_model.model_validate(inputs)
     except ValidationError as err:

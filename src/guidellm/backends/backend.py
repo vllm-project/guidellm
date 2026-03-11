@@ -96,6 +96,25 @@ class Backend(
 
         return backend(**kwargs)
 
+    @classmethod
+    def get_backend_args(cls, type_: BackendType) -> type[BackendArgs]:
+        """
+        Return the Pydantic model class for the backend's creation arguments.
+
+        :param type_: The backend type identifier
+        :return: The backend's BackendArgs subclass
+        :raises ValueError: If the backend type is not registered
+        """
+        backend_class = cls.get_registered_object(type_)
+
+        if backend_class is None:
+            raise ValueError(
+                f"Backend type '{type_}' is not registered. "
+                f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
+            )
+
+        return backend_class.backend_args()
+
     def __init__(self, type_: BackendType):
         """
         Initialize a backend instance.

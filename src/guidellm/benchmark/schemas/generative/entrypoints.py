@@ -43,28 +43,7 @@ from guidellm.schemas import StandardBaseModel
 __all__ = [
     "BenchmarkGenerativeTextArgs",
     "format_backend_args_error",
-    "get_backend_args",
 ]
-
-
-def get_backend_args(backend: BackendType | Backend) -> type[BackendArgs]:
-    """
-    Return the Pydantic model class for the backend's creation arguments.
-
-    :param backend: Backend type identifier or Backend instance
-    :return: The backend's backend_args model class
-    :raises ValueError: If backend type is not registered
-    """
-    if isinstance(backend, Backend):
-        return backend.__class__.backend_args()
-    backend_class = Backend.get_registered_object(backend)
-    if backend_class is None:
-        registry = Backend.registry or {}
-        available = list(registry.keys())
-        raise ValueError(
-            f"Backend type '{backend}' is not registered. Available types: {available}"
-        )
-    return backend_class.backend_args()
 
 
 def format_backend_args_error(
@@ -409,7 +388,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             self.backend.type_ if isinstance(self.backend, Backend) else self.backend
         )
         try:
-            model_class = get_backend_args(self.backend)
+            model_class = Backend.get_backend_args(backend_type)
             inputs = {
                 k: getattr(self, k, None) for k in model_class.model_fields
             }
