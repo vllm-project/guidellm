@@ -1178,7 +1178,6 @@ class TestAudioRequestHandler:
         assert output_metrics.text_characters == len(text)
 
 
-
 class TestPoolingRequestHandler:
     """Test cases for PoolingRequestHandler.
 
@@ -1243,9 +1242,14 @@ class TestPoolingRequestHandler:
         instance = valid_instances
         data = GenerationRequest()
 
-        result = instance.format(data, model="ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11")
+        result = instance.format(
+            data, model="ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"
+        )
 
-        assert result.body["model"] == "ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"
+        assert (
+            result.body["model"]
+            == "ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"
+        )
 
     @pytest.mark.sanity
     def test_format_streaming(self, valid_instances):
@@ -1304,7 +1308,10 @@ class TestPoolingRequestHandler:
         result = instance.format(data)
 
         assert "data" in result.body
-        assert result.body["data"]["data"] == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        assert (
+            result.body["data"]["data"]
+            == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        )
         assert result.body["data"]["data_format"] == "url"
         assert result.body["data"]["out_data_format"] == "b64_json"
         assert result.body["data"]["indices"] == [1, 2, 3, 8, 11, 12]
@@ -1335,7 +1342,10 @@ class TestPoolingRequestHandler:
         result = instance.format(data)
 
         assert "data" in result.body
-        assert result.body["data"]["data"] == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        assert (
+            result.body["data"]["data"]
+            == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        )
         assert result.body["data"]["data_format"] == "url"
         assert result.body["data"]["out_data_format"] == "b64_json"
         assert result.body["data"]["indices"] == [1, 2, 3, 8, 11, 12]
@@ -1369,11 +1379,17 @@ class TestPoolingRequestHandler:
             stream=True,
         )
 
-        assert result.body["model"] == "ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"
+        assert (
+            result.body["model"]
+            == "ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"
+        )
         assert result.stream is True
         assert result.body["stream"] is True
         assert "data" in result.body
-        assert result.body["data"]["data"] == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        assert (
+            result.body["data"]["data"]
+            == "https://huggingface.co/christian-pinto/Prithvi-EO-2.0-300M-TL-VLLM/resolve/main/India_900498_S2Hand.tif"
+        )
         assert result.body["data"]["data_format"] == "url"
         assert result.body["data"]["out_data_format"] == "b64_json"
         assert result.body["data"]["indices"] == [1, 2, 3, 8, 11, 12]
