@@ -302,18 +302,6 @@ class VLLMPythonBackend(Backend):
             raise RuntimeError(
                 "Backend validation failed. Health check failed."
             ) from exc
-        # Perform a minimal test generation to verify the model is working
-        try:
-            test_params = SamplingParams(temperature=0.0, max_tokens=1)  # type: ignore[misc]
-            request_id = str(uuid.uuid4())
-            # Use async generation for validation
-            async for _ in engine.generate("test", test_params, request_id):  # type: ignore[misc]
-                # Just consume the first output to verify it works
-                break
-        except (RuntimeError, ValueError, TypeError, OSError) as exc:
-            raise RuntimeError(
-                "Backend validation failed. VLLM model could not generate text."
-            ) from exc
 
     async def available_models(self) -> list[str]:
         """
@@ -538,8 +526,8 @@ class VLLMPythonBackend(Backend):
         Equivalent to the HTTP /v1/completions behaviour: prefix + text
         with no role prefixes or trailing generation prompt.
         """
-        return "".join(
-            msg.get("content", "") for msg in formatted_messages
+        return " ".join(
+            msg["content"] for msg in formatted_messages
             if msg.get("content")
         )
 
@@ -656,7 +644,7 @@ class VLLMPythonBackend(Backend):
 
         # We use explicit content blocks (e.g. {"type": "image"}) when applying a
         # chat template so that the template itself can generate the correct,
-        # model-specific tokens.  Otherwise we flatten to strings and fall back
+        # model-specific tokens. Otherwise, we flatten to strings and fall back
         # to placeholder-string injection.
         use_content_blocks = (
             multi_modal_data

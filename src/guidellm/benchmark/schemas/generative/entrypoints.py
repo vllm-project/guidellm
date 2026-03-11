@@ -59,7 +59,7 @@ def get_backend_args(backend: BackendType | Backend) -> type[BackendArgs]:
         return backend.__class__.backend_args()
     backend_class = Backend.get_registered_object(backend)
     if backend_class is None:
-        registry = getattr(Backend, "registry", None) or {}
+        registry = Backend.registry or {}
         available = list(registry.keys())
         raise ValueError(
             f"Backend type '{backend}' is not registered. Available types: {available}"
