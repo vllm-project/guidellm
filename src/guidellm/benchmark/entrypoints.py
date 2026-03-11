@@ -557,12 +557,14 @@ async def benchmark_generative_text(
             else args.max_requests
         )
         request_loader = await resolve_request_loader(
-            **loader_kwargs, max_requests=effective_max_requests
-        )  # type: ignore[arg-type]
+            **loader_kwargs,  # type: ignore[arg-type,misc]
+            max_requests=effective_max_requests,  # type: ignore[arg-type]
+        )
     else:
         request_loader = await resolve_request_loader(
-            **loader_kwargs, max_requests=args.max_requests
-        )  # type: ignore[arg-type]
+            **loader_kwargs,  # type: ignore[arg-type,misc]
+            max_requests=args.max_requests,  # type: ignore[arg-type]
+        )
         profile = await resolve_profile(**profile_kwargs, data=None)  # type: ignore[arg-type]
 
     warmup = TransientPhaseConfig.create_from_value(args.warmup)
