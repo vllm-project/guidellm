@@ -18,9 +18,9 @@ from typing import Any, cast
 
 import jinja2
 from more_itertools import roundrobin
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
-from guidellm.backends.backend import Backend
+from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras.vllm import (
     HAS_VLLM,
@@ -59,7 +59,7 @@ _CHAT_TEMPLATE_UNSET: object = object()
 __all__ = ["VLLMPythonBackend", "VLLMPythonBackendArgs"]
 
 
-class VLLMPythonBackendArgs(BaseModel):
+class VLLMPythonBackendArgs(BackendArgs):
     """Pydantic model for VLLM Python backend creation arguments."""
 
     model: str = Field(
@@ -78,6 +78,21 @@ class VLLMPythonBackendArgs(BaseModel):
             "error_message": (
                 "Backend '{backend_type}' does not support a target parameter. "
                 "Please remove --target as this backend runs locally."
+            )
+        },
+    )
+    request_format: str | None = Field(
+        default=None,
+        description=(
+            "Request format for VLLM Python backend. "
+            "Valid values: 'plain' (no chat template), 'default-template' "
+            "(use tokenizer default), or a path to / inline Jinja2 chat template."
+        ),
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' received an invalid --request-format. "
+                "Valid values: 'plain', 'default-template', a path to a Jinja2 "
+                "template file, or an inline Jinja2 template string."
             )
         },
     )
@@ -150,7 +165,7 @@ class VLLMPythonBackend(Backend):
     """
 
     @classmethod
-    def backend_args(cls) -> type[BaseModel]:
+    def backend_args(cls) -> type[BackendArgs]:
         """Return the Pydantic model for this backend's creation arguments."""
         return VLLMPythonBackendArgs
 

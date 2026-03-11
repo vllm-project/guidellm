@@ -16,7 +16,7 @@ For all engine options and supported models, see vLLM's [Engine Arguments](https
 - **Existing vLLM installation**\
   Install vLLM first for your environment (GPU/CPU, CUDA, etc.), then install GuideLLM in the same environment (e.g. `pip install guidellm` or with extras). You avoid a duplicate vLLM install and reuse your existing acceleration setup.
 
-  **Note:** Using [uv](https://github.com/astral-sh/uv) is not recommended for the vLLM Python backend because of potentially incompatible requirements between the two projects. Prefer pip or the container / existing vLLM environment.
+  **Note:** Installing from the lockfile for the vLLM Python backend may not install the correct dependencies for hardware acceleration.
 
 It is also possible to install GuideLLM and vLLM via pip using `pip install guidellm[vllm]`. This method may make **hardware acceleration** (e.g. CUDA) harder to get working. See [vLLM installation](https://docs.vllm.ai/en/latest/getting_started/installation) and GPU/hardware-specific docs there. For production or GPU use, the container or existing-install path is recommended.
 

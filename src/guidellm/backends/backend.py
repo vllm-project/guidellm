@@ -11,7 +11,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import GenerationRequest, GenerationResponse
@@ -19,11 +19,27 @@ from guidellm.utils import RegistryMixin
 
 __all__ = [
     "Backend",
+    "BackendArgs",
     "BackendType",
 ]
 
 
 BackendType = Literal["openai_http", "vllm_python"]
+
+
+class BackendArgs(BaseModel):
+    """Base class for backend creation argument models."""
+
+    request_format: str | None = Field(
+        default=None,
+        description="Request format for backend operations",
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' received an invalid request_format. "
+                "Please check the backend documentation for valid options."
+            )
+        },
+    )
 
 
 class Backend(
@@ -105,14 +121,14 @@ class Backend(
 
     @classmethod
     @abstractmethod
-    def backend_args(cls) -> type[BaseModel]:
+    def backend_args(cls) -> type[BackendArgs]:
         """
         Return the Pydantic model class for this backend's creation arguments.
 
         The model defines the parameters (e.g. target, model) that the CLI/benchmark
         supply when creating the backend. Used for validation and error messages.
 
-        :return: A Pydantic BaseModel subclass whose fields are the creation params
+        :return: A BackendArgs subclass whose fields are the creation params
         """
         ...
 

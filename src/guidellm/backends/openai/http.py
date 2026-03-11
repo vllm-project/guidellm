@@ -16,9 +16,9 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import Field, field_validator
 
-from guidellm.backends.backend import Backend
+from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.openai.request_handlers import OpenAIRequestHandlerFactory
 from guidellm.schemas import (
     GenerationRequest,
@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 
-class OpenAIHttpBackendArgs(BaseModel):
+class OpenAIHttpBackendArgs(BackendArgs):
     """Pydantic model for OpenAI HTTP backend creation arguments."""
 
     target: str = Field(
@@ -55,6 +55,43 @@ class OpenAIHttpBackendArgs(BaseModel):
             )
         },
     )
+    request_format: str | None = Field(
+        default=None,
+        description=(
+            "Request format for OpenAI-compatible server. "
+            "Valid values: /v1/completions, /v1/chat/completions, "
+            "/v1/audio/transcriptions, /v1/audio/translations, "
+            "or legacy aliases: text_completions, chat_completions, "
+            "audio_transcriptions, audio_translations."
+        ),
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' received an invalid --request-format. "
+                "Valid values: /v1/completions, /v1/chat/completions, "
+                "/v1/audio/transcriptions, /v1/audio/translations, "
+                "or legacy aliases: text_completions, chat_completions, "
+                "audio_transcriptions, audio_translations."
+            )
+        },
+    )
+
+    @field_validator("request_format")
+    @classmethod
+    def validate_request_format(cls, v: str | None) -> str | None:
+        """Validate request_format against known handler names and aliases."""
+        if v is None:
+            return v
+        valid = (
+            set(LEGACY_API_ALIASES)
+            | set(DEFAULT_API_PATHS)
+            - {"/health", "/v1/models"}
+        )
+        if v not in valid:
+            raise ValueError(
+                f"Invalid request_format '{v}'. Must be one of: "
+                f"{', '.join(sorted(valid))}"
+            )
+        return v
 
 
 DEFAULT_API_PATHS = {
@@ -105,7 +142,7 @@ class OpenAIHTTPBackend(Backend):
     """
 
     @classmethod
-    def backend_args(cls) -> type[BaseModel]:
+    def backend_args(cls) -> type[BackendArgs]:
         """Return the Pydantic model for this backend's creation arguments."""
         return OpenAIHttpBackendArgs
 

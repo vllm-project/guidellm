@@ -11,7 +11,7 @@ handlers for processing streaming and non-streaming API responses.
 
 from guidellm.extras.vllm import HAS_VLLM
 
-from .backend import Backend, BackendType
+from .backend import Backend, BackendArgs, BackendType
 from .openai import (
     AudioRequestHandler,
     ChatCompletionsRequestHandler,
@@ -31,6 +31,7 @@ else:
 __all__ = [
     "AudioRequestHandler",
     "Backend",
+    "BackendArgs",
     "BackendType",
     "ChatCompletionsRequestHandler",
     "OpenAIHTTPBackend",

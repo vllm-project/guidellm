@@ -9,15 +9,14 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
-from pydantic import BaseModel
 
-from guidellm.backends import Backend
+from guidellm.backends import Backend, BackendArgs
 from guidellm.schemas import GenerationRequest, RequestInfo
 from guidellm.utils import RegistryMixin
 from tests.unit.testing_utils import async_timeout
 
 
-class _TestBackendArgs(BaseModel):
+class _TestBackendArgs(BackendArgs):
     """Minimal backend args model for test backends."""
 
     target: str | None = None
@@ -39,7 +38,7 @@ class TestBackend:
 
         class TestBackendImpl(Backend):
             @classmethod
-            def backend_args(cls) -> type[BaseModel]:
+            def backend_args(cls) -> type[BackendArgs]:
                 return _TestBackendArgs
 
             @property
@@ -115,7 +114,7 @@ class TestBackend:
 
         class TestBackendImpl(Backend):
             @classmethod
-            def backend_args(cls) -> type[BaseModel]:
+            def backend_args(cls) -> type[BackendArgs]:
                 return _TestBackendArgs
 
             @property
@@ -148,7 +147,7 @@ class TestBackend:
 
         class TestBackendImpl(Backend):
             @classmethod
-            def backend_args(cls) -> type[BaseModel]:
+            def backend_args(cls) -> type[BackendArgs]:
                 return _TestBackendArgs
 
             @property
@@ -283,7 +282,7 @@ class TestBackend:
         # Test the pattern shown in docstring
         class MyBackend(Backend):
             @classmethod
-            def backend_args(cls) -> type[BaseModel]:
+            def backend_args(cls) -> type[BackendArgs]:
                 return _TestBackendArgs
 
             def __init__(self, api_key: str):
@@ -378,7 +377,7 @@ class TestBackend:
         @Backend.register("test_decorator_backend")
         class TestDecoratorBackend(Backend):
             @classmethod
-            def backend_args(cls) -> type[BaseModel]:
+            def backend_args(cls) -> type[BackendArgs]:
                 return _TestBackendArgs
 
             def __init__(self, test_param="default"):

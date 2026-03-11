@@ -20,7 +20,6 @@ import yaml
 from pydantic import (
     AliasChoices,
     AliasGenerator,
-    BaseModel,
     ConfigDict,
     Field,
     NonNegativeFloat,
@@ -33,7 +32,7 @@ from pydantic import (
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.backends import Backend, BackendType
+from guidellm.backends import Backend, BackendArgs, BackendType
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
@@ -48,7 +47,7 @@ __all__ = [
 ]
 
 
-def get_backend_args(backend: BackendType | Backend) -> type[BaseModel]:
+def get_backend_args(backend: BackendType | Backend) -> type[BackendArgs]:
     """
     Return the Pydantic model class for the backend's creation arguments.
 
@@ -69,7 +68,7 @@ def get_backend_args(backend: BackendType | Backend) -> type[BaseModel]:
 
 
 def format_backend_args_error(
-    model_class: type[BaseModel],
+    model_class: type[BackendArgs],
     backend_type: str,
     err: ValidationError,
 ) -> tuple[str, str]:
