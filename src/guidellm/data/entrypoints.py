@@ -46,7 +46,18 @@ def process_dataset(
     :raises ValueError: If the output path is invalid or pushing conditions unmet.
     """
     builders.process_dataset(
-        data, output_path, processor, config, processor_args, data_args,
-        data_column_mapper, short_prompt_strategy, pad_char, concat_delimiter,
-        include_prefix_in_token_count, push_to_hub, hub_dataset_id, random_seed,
+        data,
+        output_path,
+        processor,
+        config,
+        processor_args,
+        data_args,
+        data_column_mapper,
+        short_prompt_strategy,
+        pad_char,
+        concat_delimiter,
+        include_prefix_in_token_count,
+        push_to_hub,
+        hub_dataset_id,
+        random_seed,
     )

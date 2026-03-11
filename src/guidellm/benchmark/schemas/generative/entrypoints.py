@@ -238,6 +238,33 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default=None, description="Additional dataloader configuration arguments"
     )
     random_seed: int = Field(default=42, description="Random seed for reproducibility")
+    # Sweep profile configuration
+    exclude_throughput_target: bool | None = Field(
+        default=None,
+        description=(
+            "Exclude constant-rate test at throughput level. "
+            "When True, constant-rate tests stop before reaching throughput rate. "
+            "Recommended for CPU-based deployments."
+        ),
+    )
+    exclude_throughput_result: bool | None = Field(
+        default=None,
+        description=(
+            "Exclude throughput benchmark from saved results. "
+            "When True, throughput benchmark is not saved to the report. "
+            "Recommended for CPU-based deployments when saturation is detected."
+        ),
+    )
+    saturation_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Efficiency threshold for saturation detection (achieved/target rate). "
+            "Sweep stops when efficiency drops below this value. "
+            "Default 0.98 (98%) is recommended for CPU based system under test."
+        ),
+    )
     # Output configuration
     outputs: list[str] | tuple[str] = Field(
         default_factory=lambda: ["json", "csv", "html"],
