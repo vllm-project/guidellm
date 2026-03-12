@@ -50,7 +50,7 @@ To start a llama.cpp server with the gpt-oss-20b model, you can use the followin
 llama-server -hf ggml-org/gpt-oss-20b-GGUF --alias gpt-oss-20b --ctx-size 0 --jinja -ub 2048 -b 2048
 ```
 
-Note that we are providing an alias `gpt-oss-20b` for the model name because `guidellm` is using it to retrieve model metadata in JSON format and such metadata is not included in GGUF model repositories. A simple workaround is to download the metadata files from safetensors repository and place them in a local directory named after the alias:
+Note that we are providing an alias `gpt-oss-20b` for the model name because GuideLLM is using it to retrieve model metadata in JSON format and such metadata is not included in GGUF model repositories. A simple workaround is to download the metadata files from the safetensors repository and place them in a local directory named after the alias:
 
 ```bash
 huggingface-cli download openai/gpt-oss-20b --include "*.json" --local-dir gpt-oss-20b/
@@ -82,8 +82,48 @@ guidellm benchmark \
 
 The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP requests to the backend server.
 
-**Note:** For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend-kwargs`.
+> [!IMPORTANT]\
+> For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend-kwargs`.
+
+## Passing Sampling Parameters
+
+By default, GuideLLM does not set sampling parameters such as `temperature`, `top_p`, or `top_k` in its requests to the backend server. If you need to control these parameters during benchmarking, you can pass them using the `--backend-kwargs` option with the `extras` field.
+
+The `extras` field accepts a `body` key whose values are merged directly into the API request body sent to the backend server. This means any parameter supported by the OpenAI completions or chat completions API (or your backend's extensions) can be passed through.
+
+### Example: Setting temperature, top_p, and top_k
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000/v1" \
+  --model "meta-llama/Meta-Llama-3.1-8B-Instruct" \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --backend-kwargs '{"extras": {"body": {"temperature": 0.6, "top_p": 0.95, "top_k": 20}}}'
+```
+
+This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
+
+### How It Works
+
+The `--backend-kwargs` option accepts a JSON string that is passed as keyword arguments to the backend constructor. The `extras` field within that JSON maps to a `GenerationRequestArguments` object that supports the following sub-fields:
+
+- `body`: A dictionary of key-value pairs merged into the HTTP request body. Use this for sampling parameters like `temperature`, `top_p`, `top_k`, `repetition_penalty`, etc.
+- `headers`: A dictionary of additional HTTP headers to include in requests.
+- `params`: A dictionary of query parameters to append to the request URL.
+
+### Example: Combining sampling parameters with other backend options
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000/v1" \
+  --model "meta-llama/Meta-Llama-3.1-8B-Instruct" \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --backend-kwargs '{"api_key": "sk-...", "extras": {"body": {"temperature": 0.8, "top_p": 0.9}}}'
+```
+
+> [!NOTE]\
+> The `--backend-args` flag is a legacy alias for `--backend-kwargs`. Both are accepted.
 
 ## Expanding Backend Support
 
-GuideLLM is an open platform, and we encourage contributions to extend its backend support. Whether it's adding new server implementations, integrating with Python-based backends, or enhancing existing capabilities, your contributions are welcome. For more details on how to contribute, see the [CONTRIBUTING.md](https://github.com/vllm-project/guidellm/blob/main/CONTRIBUTING.md) file.
+GuideLLM is an open platform, and we encourage contributions to extend its backend support. Whether it's adding new server implementations, integrating with Python-based backends, or enhancing existing capabilities, your contributions are welcome. For more details on how to contribute, see the [CONTRIBUTING.md](../../CONTRIBUTING.md) file.
