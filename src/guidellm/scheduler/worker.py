@@ -395,7 +395,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             await self._schedule_request(request, request_info, target_start)
 
             async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
-                request, request_info, history
+                request, request_info, history or None
             ):
                 request_info = info
                 if request_info is None:
