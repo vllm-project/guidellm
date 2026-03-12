@@ -1,7 +1,8 @@
 from pathlib import Path
 from typing import Any
 
-from transformers import AutoTokenizer, PreTrainedTokenizerBase  # type: ignore[import]
+from transformers import AutoTokenizer
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 __all__ = [
     "check_load_processor",
@@ -16,6 +17,7 @@ def check_load_processor(
     if processor is None:
         raise ValueError(f"Processor/Tokenizer is required for {error_msg}.")
 
+    loaded: PreTrainedTokenizerBase
     try:
         if isinstance(processor, str | Path):
             loaded = AutoTokenizer.from_pretrained(
