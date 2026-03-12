@@ -28,7 +28,7 @@ For a 3-turn conversation, the dataset could contain the following columns:
 - **prefix**: Optional system prompt that becomes a system message (applies to first turn)
 - **prompt_0**, **output_tokens_count_0**: Turn 1 prompt and requested output tokens
 - **prompt_1**, **output_tokens_count_1**: Turn 2 prompt and requested output tokens
-- **prompt_2**, **output_tokens_count_2**: Turn 2 prompt and requested output tokens
+- **prompt_2**, **output_tokens_count_2**: Turn 3 prompt and requested output tokens
 
 ### How Multiturn Orchestration Works
 
