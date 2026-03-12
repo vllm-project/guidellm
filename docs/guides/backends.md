@@ -82,7 +82,8 @@ guidellm benchmark \
 
 The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP requests to the backend server.
 
-> [!IMPORTANT] For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend-kwargs`.
+> [!IMPORTANT]\
+> For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend-kwargs`.
 
 ## Passing Sampling Parameters
 
