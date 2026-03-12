@@ -1,0 +1,99 @@
+pull_request_rules:
+- name: comment-pre-commit-failure
+  description: Comment on PR when pre-commit check fails
+  conditions:
+    - status-failure=pre-commit
+    - -closed
+    - -draft
+  actions:
+    comment:
+      message: |
+        Hi @{{author}}, the pre-commit checks have failed. Please run:
+
+        ```bash
+        uv pip install pre-commit
+        pre-commit install
+        pre-commit run --all-files
+        ```
+
+        Then, commit the changes and push to your branch.
+
+        For future commits, `pre-commit` will run automatically on changed files before each commit.
+
+        > [!TIP]
+        > <details>
+        > <summary>Is <code>mypy</code> failing?</summary>
+        > <br/>
+        > <code>mypy</code> is run differently in CI. If the failure is related to this check, please use the following command to run it locally:
+        >
+        > ```bash
+        > # For mypy (substitute "3.10" with the failing version if needed)
+        > pre-commit run --hook-stage manual mypy-3.10
+        > ```
+        > </details>
+
+- name: comment-dco-failure
+  description: Comment on PR when DCO check fails
+  conditions:
+    - status-failure=dco
+    - -closed
+    - -draft
+  actions:
+    comment:
+      message: |
+        Hi @{{author}}, the DCO check has failed. Please click on DCO in the Checks section for instructions on how to resolve this.
+
+- name: auto-rebase if approved, ready, and 40 commits behind main
+  conditions:
+    - base = main
+    - label=ready
+    - "#approved-reviews-by >= 1"
+    - "#commits-behind >= 40"
+    - -closed
+    - -draft
+    - -conflict
+  actions:
+    rebase: {}
+
+- name: ping author on conflicts and add 'needs-rebase' label
+  conditions:
+    - label != stale
+    - conflict
+    - -closed
+  actions:
+    label:
+      add:
+        - needs-rebase
+    comment:
+      message: |
+       This pull request has merge conflicts that must be resolved before it can be
+       merged. Please rebase the PR, @{{author}}.
+
+       https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork
+
+- name: block PRs containing merge commits
+  conditions:
+    - -linear-history
+    - -closed
+  actions:
+    label:
+      add:
+        - needs-rebase
+    comment:
+      message: |
+        @{{author}}, this project requires a linear history on feature branches.
+        Your PR contains merge commits. Please rebase your branch against `main`
+        and remove them.
+
+        You can do this by running:
+        `git pull --rebase upstream main`
+
+- name: remove 'needs-rebase' label when blockers are resolved
+  conditions:
+    - linear-history
+    - -conflict
+    - -closed
+  actions:
+    label:
+      remove:
+        - needs-rebase
