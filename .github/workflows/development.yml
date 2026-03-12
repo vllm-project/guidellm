@@ -75,7 +75,7 @@ jobs:
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
 
           # Set asset prefix and base path with PR number
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/pr/${PR_NUMBER}
+          ASSET_PREFIX=https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/pr/${PR_NUMBER}
           USE_MOCK_DATA=true
           BASE_PATH=/ui/pr/${PR_NUMBER}
           GIT_SHA=${{ github.sha }}
@@ -102,7 +102,7 @@ jobs:
         if: steps.check-changes.outputs.should_build == 'true'
         id: deploy
         run: |
-          DEPLOY_URL=https://blog.vllm.ai/guidellm/ui/pr/${{ steps.build.outputs.pr_number }}
+          DEPLOY_URL=https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/pr/${{ steps.build.outputs.pr_number }}
           echo "url=${DEPLOY_URL}" >> $GITHUB_OUTPUT
 
       - name: Find PR comment

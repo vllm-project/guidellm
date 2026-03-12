@@ -53,7 +53,7 @@ jobs:
           export $(grep -v '^#' .env.development | xargs)
 
           # Set asset prefix and base path with PR number
-          ASSET_PREFIX=https://blog.vllm.ai/guidellm/ui/dev
+          ASSET_PREFIX=https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/dev
           BASE_PATH=/ui/dev
           GIT_SHA=${{ github.sha }}
           export ASSET_PREFIX=${ASSET_PREFIX}
