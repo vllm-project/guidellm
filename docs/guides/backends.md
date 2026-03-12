@@ -120,7 +120,8 @@ guidellm benchmark \
   --backend-kwargs '{"api_key": "sk-...", "extras": {"body": {"temperature": 0.8, "top_p": 0.9}}}'
 ```
 
-> [!NOTE] The `--backend-args` flag is a legacy alias for `--backend-kwargs`. Both are accepted.
+> [!NOTE]\
+> The `--backend-args` flag is a legacy alias for `--backend-kwargs`. Both are accepted.
 
 ## Expanding Backend Support
 
