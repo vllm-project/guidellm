@@ -624,12 +624,8 @@ class TestAsyncConstantStrategy:
             await strategy.next_request_time(0)
 
         time_last_rampup = await strategy.next_request_time(0)
-        expected_last_rampup = start_time + math.sqrt(
-            2.0 * 10 * rampup_duration / rate
-        )
-        assert time_last_rampup == pytest.approx(
-            expected_last_rampup, rel=1e-6
-        ), (
+        expected_last_rampup = start_time + math.sqrt(2.0 * 10 * rampup_duration / rate)
+        assert time_last_rampup == pytest.approx(expected_last_rampup, rel=1e-6), (
             f"Last rampup request: expected {expected_last_rampup}, "
             f"got {time_last_rampup}"
         )
@@ -637,9 +633,7 @@ class TestAsyncConstantStrategy:
         # First request after rampup (index 11)
         time_first_after = await strategy.next_request_time(0)
         expected_first_after = start_time + rampup_duration + (11 - n_rampup) / rate
-        assert time_first_after == pytest.approx(
-            expected_first_after, rel=1e-6
-        ), (
+        assert time_first_after == pytest.approx(expected_first_after, rel=1e-6), (
             f"First after rampup: expected {expected_first_after}, "
             f"got {time_first_after}"
         )
