@@ -31,9 +31,9 @@ class Environment(str, Enum):
 
 
 ENV_REPORT_MAPPING = {
-    Environment.PROD: "https://blog.vllm.ai/guidellm/ui/v0.5.0/index.html",
-    Environment.STAGING: "https://blog.vllm.ai/guidellm/ui/release/v0.4.0/index.html",
-    Environment.DEV: "https://blog.vllm.ai/guidellm/ui/dev/index.html",
+    Environment.PROD: "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/v0.6.0/index.html",
+    Environment.STAGING: "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/release/v0.6.0/index.html",
+    Environment.DEV: "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/dev/index.html",
     Environment.LOCAL: "http://localhost:3000/index.html",
 }
 
