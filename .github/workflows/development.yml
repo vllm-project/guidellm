@@ -124,7 +124,7 @@ jobs:
           edit-mode: replace
           body: |
             <!-- pr-preview-comment -->
-            🎉 **Live Preview:** [Click here to view the live version](${{ steps.deploy.outputs.url }})
+            🎉 **Live Preview:** [Click here to view the live version](${{ steps.deploy.outputs.url }}/index.html)
             *Last updated: ${{ github.sha }}*
 
       - name: Skip build notification
