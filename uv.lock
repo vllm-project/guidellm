@@ -809,6 +809,7 @@ dependencies = [
     { name = "faker" },
     { name = "ftfy" },
     { name = "httpx", extra = ["http2"] },
+    { name = "lazy-loader" },
     { name = "loguru" },
     { name = "more-itertools" },
     { name = "msgpack" },
@@ -936,6 +937,7 @@ requires-dist = [
     { name = "guidellm", extras = ["audio", "perf", "tokenizers", "vision"], marker = "extra == 'all'" },
     { name = "guidellm", extras = ["perf", "tokenizers"], marker = "extra == 'recommended'" },
     { name = "httpx", extras = ["http2"], specifier = "<1.0.0" },
+    { name = "lazy-loader", specifier = ">=0.5" },
     { name = "loguru" },
     { name = "lorem", marker = "extra == 'dev'", specifier = "~=0.1.1" },
     { name = "mdformat", marker = "extra == 'dev'", specifier = "~=1.0.0" },
@@ -1253,6 +1255,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/74/a633ee74eb36c44aa6d1095e7cc5569bebf04342ee146178e2d36600708b/jsonschema_specifications-2025.9.1.tar.gz", hash = "sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d", size = 32855, upload-time = "2025-09-08T01:34:59.186Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8cedb3c1902296743db0bbc66608a0db2814f/jsonschema_specifications-2025.9.1-py3-none-any.whl", hash = "sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe", size = 18437, upload-time = "2025-09-08T01:34:57.871Z" },
+]
+
+[[package]]
+name = "lazy-loader"
+version = "0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/49/ac/21a1f8aa3777f5658576777ea76bfb124b702c520bbe90edf4ae9915eafa/lazy_loader-0.5.tar.gz", hash = "sha256:717f9179a0dbed357012ddad50a5ad3d5e4d9a0b8712680d4e687f5e6e6ed9b3", size = 15294, upload-time = "2026-03-06T15:45:09.054Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/a1/8d812e53a5da1687abb10445275d41a8b13adb781bbf7196ddbcf8d88505/lazy_loader-0.5-py3-none-any.whl", hash = "sha256:ab0ea149e9c554d4ffeeb21105ac60bed7f3b4fd69b1d2360a4add51b170b005", size = 8044, upload-time = "2026-03-06T15:45:07.668Z" },
 ]
 
 [[package]]
