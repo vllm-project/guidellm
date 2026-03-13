@@ -18,8 +18,6 @@ For all engine options and supported models, see vLLM's [Engine Arguments](https
 
   **Note:** Installing from the lockfile for the vLLM Python backend may not install the correct dependencies for hardware acceleration.
 
-It is also possible to install GuideLLM and vLLM via pip using `pip install guidellm[vllm]`. This method may make **hardware acceleration** (e.g. CUDA) harder to get working. See [vLLM installation](https://docs.vllm.ai/en/latest/getting_started/installation) and GPU/hardware-specific docs there. For production or GPU use, the container or existing-install path is recommended.
-
 ## Basic example
 
 Run a benchmark with the vLLM Python backend:
