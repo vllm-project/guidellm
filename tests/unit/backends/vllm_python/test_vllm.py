@@ -116,7 +116,7 @@ class TestResolveRequest:
             }
         )
         resolved = backend._resolve_request(request)
-        assert resolved.prompt == "System promptUser question"
+        assert resolved.prompt == "System prompt User question"
 
     @pytest.mark.sanity
     def test_text_only_no_media_multi_modal_data_none(self, backend):
