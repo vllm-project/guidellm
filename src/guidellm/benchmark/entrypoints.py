@@ -78,8 +78,6 @@ ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokeni
 
 async def resolve_backend(
     backend: BackendType | Backend,
-    target: str,
-    model: str | None,
     console: Console | None = None,
     **backend_kwargs: Any,
 ) -> tuple[Backend, str]:
@@ -91,11 +89,15 @@ async def resolve_backend(
     The backend is shut down after validation to ensure clean state for subsequent
     benchmark execution.
 
+    All backend-specific options (target, model, request_format, etc.) are passed
+    through ``backend_kwargs``. Options with a ``None`` value are filtered out so
+    that backends which do not accept a given parameter are not sent unexpected
+    keyword arguments.
+
     :param backend: Backend type identifier or pre-configured Backend instance
-    :param target: Target endpoint URL or connection string for the backend
-    :param model: Model identifier to use with the backend, or None to use default
     :param console: Console instance for progress reporting, or None
-    :param backend_kwargs: Additional keyword arguments passed to backend initialization
+    :param backend_kwargs: Keyword arguments passed to backend initialization
+        (e.g. target, model, request_format)
     :return: Tuple of initialized Backend instance and resolved model identifier
     """
     console_step = (
@@ -103,8 +105,14 @@ async def resolve_backend(
         if console
         else None
     )
+
+    model = backend_kwargs.pop("model", None)
+    create_kwargs = {k: v for k, v in backend_kwargs.items() if v is not None}
+    if model is not None:
+        create_kwargs["model"] = model
+
     backend_instance = (
-        Backend.create(backend, target=target, model=model, **(backend_kwargs or {}))
+        Backend.create(backend, **create_kwargs)
         if not isinstance(backend, Backend)
         else backend
     )

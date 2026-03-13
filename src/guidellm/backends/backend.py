@@ -11,17 +11,35 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Literal
 
+from pydantic import BaseModel, Field
+
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import GenerationRequest, GenerationResponse
 from guidellm.utils import RegistryMixin
 
 __all__ = [
     "Backend",
+    "BackendArgs",
     "BackendType",
 ]
 
 
-BackendType = Literal["openai_http"]
+BackendType = Literal["openai_http", "vllm_python"]
+
+
+class BackendArgs(BaseModel):
+    """Base class for backend creation argument models."""
+
+    request_format: str | None = Field(
+        default=None,
+        description="Request format for backend operations",
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' received an invalid request_format. "
+                "Please check the backend documentation for valid options."
+            )
+        },
+    )
 
 
 class Backend(
@@ -78,6 +96,25 @@ class Backend(
 
         return backend(**kwargs)
 
+    @classmethod
+    def get_backend_args(cls, type_: BackendType) -> type[BackendArgs]:
+        """
+        Return the Pydantic model class for the backend's creation arguments.
+
+        :param type_: The backend type identifier
+        :return: The backend's BackendArgs subclass
+        :raises ValueError: If the backend type is not registered
+        """
+        backend_class = cls.get_registered_object(type_)
+
+        if backend_class is None:
+            raise ValueError(
+                f"Backend type '{type_}' is not registered. "
+                f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
+            )
+
+        return backend_class.backend_args()
+
     def __init__(self, type_: BackendType):
         """
         Initialize a backend instance.
@@ -100,6 +137,19 @@ class Backend(
             None if unlimited
         """
         return None
+
+    @classmethod
+    @abstractmethod
+    def backend_args(cls) -> type[BackendArgs]:
+        """
+        Return the Pydantic model class for this backend's creation arguments.
+
+        The model defines the parameters (e.g. target, model) that the CLI/benchmark
+        supply when creating the backend. Used for validation and error messages.
+
+        :return: A BackendArgs subclass whose fields are the creation params
+        """
+        ...
 
     @abstractmethod
     async def default_model(self) -> str:

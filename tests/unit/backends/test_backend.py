@@ -10,10 +10,17 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from guidellm.backends import Backend
+from guidellm.backends import Backend, BackendArgs
 from guidellm.schemas import GenerationRequest, RequestInfo
 from guidellm.utils import RegistryMixin
 from tests.unit.testing_utils import async_timeout
+
+
+class _TestBackendArgs(BackendArgs):
+    """Minimal backend args model for test backends."""
+
+    target: str | None = None
+    model: str | None = None
 
 
 class TestBackend:
@@ -30,6 +37,10 @@ class TestBackend:
         constructor_args = request.param
 
         class TestBackendImpl(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BackendArgs]:
+                return _TestBackendArgs
+
             @property
             def info(self) -> dict[str, Any]:
                 return {"type": self.type_, "test": "backend"}
@@ -78,8 +89,9 @@ class TestBackend:
         assert hasattr(Backend, "processes_limit")
         assert hasattr(Backend, "requests_limit")
 
-        # Check abstract method exists
+        # Check abstract methods exist
         assert hasattr(Backend, "default_model")
+        assert hasattr(Backend, "backend_args")
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -101,6 +113,10 @@ class TestBackend:
         """Test Backend with invalid field values."""
 
         class TestBackendImpl(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BackendArgs]:
+                return _TestBackendArgs
+
             @property
             def info(self) -> dict[str, Any]:
                 return {}
@@ -130,6 +146,10 @@ class TestBackend:
         """Test Backend initialization without required field."""
 
         class TestBackendImpl(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BackendArgs]:
+                return _TestBackendArgs
+
             @property
             def info(self) -> dict[str, Any]:
                 return {}
@@ -261,6 +281,10 @@ class TestBackend:
 
         # Test the pattern shown in docstring
         class MyBackend(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BackendArgs]:
+                return _TestBackendArgs
+
             def __init__(self, api_key: str):
                 super().__init__("mock_backend")  # type: ignore [arg-type]
                 self.api_key = api_key
@@ -304,6 +328,23 @@ class TestBackend:
         assert backend.type_ == "openai_http"
 
     @pytest.mark.smoke
+    def test_vllm_python_backend_registered(self):
+        """
+        Test that vllm_python backend is registered and createable.
+        ## WRITTEN BY AI ##
+        """
+        from unittest.mock import patch
+
+        from guidellm.backends.vllm_python.vllm import VLLMPythonBackend
+
+        assert Backend.is_registered("vllm_python")
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+            backend = Backend.create("vllm_python", model="test-model")
+        assert isinstance(backend, VLLMPythonBackend)
+        assert backend.model == "test-model"
+        assert backend.type_ == "vllm_python"
+
+    @pytest.mark.smoke
     def test_backend_registry_functionality(self):
         """Test that backend registry functions work."""
         from guidellm.backends.openai import OpenAIHTTPBackend
@@ -335,6 +376,10 @@ class TestBackend:
         # Create a test backend class
         @Backend.register("test_decorator_backend")
         class TestDecoratorBackend(Backend):
+            @classmethod
+            def backend_args(cls) -> type[BackendArgs]:
+                return _TestBackendArgs
+
             def __init__(self, test_param="default"):
                 super().__init__("test_decorator_backend")  # type: ignore
                 self._test_param = test_param

@@ -37,7 +37,7 @@ try:
 except ImportError:
     uvloop = None  # type: ignore[assignment] # Optional dependency
 
-from guidellm.backends import BackendType
+from guidellm.backends import Backend, BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
@@ -45,6 +45,9 @@ from guidellm.benchmark import (
     benchmark_generative_text,
     get_builtin_scenarios,
     reimport_benchmarks_report,
+)
+from guidellm.benchmark.schemas.generative.entrypoints import (
+    format_backend_args_error,
 )
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
@@ -186,7 +189,12 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("request_format"),
     help=(
         "Format to use for requests. Options depend on backend. "
-        "If not provided, uses backend default."
+        "For vLLM backend: plain (no chat template, text appending only), "
+        "default-template (use tokenizer default), or a file path / single-line "
+        "template per vLLM docs. Default: default-template"
+        "For openai backend: http endpoint path (/v1/chat/completions, "
+        "/v1/completions, /v1/audio/transcriptions, /v1/audio/translations) or "
+        "alias (e.g. chat_completions); default /v1/chat/completions."
     ),
 )
 @click.option(
@@ -459,6 +467,21 @@ def run(**kwargs):  # noqa: C901
             details=", ".join(envs),
             status="warning",
         )
+
+    # Early validation: backend args via Pydantic (only fields the backend expects)
+    backend = kwargs.get("backend", BenchmarkGenerativeTextArgs.get_default("backend"))
+    backend_type = backend.type_ if hasattr(backend, "type_") else backend
+    try:
+        args_model = Backend.get_backend_args(backend_type)
+        inputs = {k: kwargs.get(k) for k in args_model.model_fields}
+        args_model.model_validate(inputs)
+    except ValidationError as err:
+        param_hint, message = format_backend_args_error(args_model, backend_type, err)
+        raise click.BadParameter(
+            message,
+            ctx=click.get_current_context(),
+            param_hint=param_hint,
+        ) from err
 
     try:
         args = BenchmarkGenerativeTextArgs.create(

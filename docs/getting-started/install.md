@@ -86,6 +86,8 @@ guidellm --help
 
 This should display the installed version of GuideLLM.
 
+To use the vLLM Python backend (in-process inference), see [vLLM Python backend](../guides/vllm-python-backend.md) for recommended installation (container or existing vLLM environment) and pip installation notes.
+
 ## Troubleshooting
 
 If you encounter any issues during installation, ensure that your Python and pip versions meet the prerequisites. For further assistance, please refer to the [GitHub Issues](https://github.com/vllm-project/guidellm/issues) page or consult the [Documentation](https://github.com/vllm-project/guidellm/tree/main/docs).
