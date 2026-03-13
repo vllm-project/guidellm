@@ -3,19 +3,31 @@ from __future__ import annotations
 import base64
 import io
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 import numpy as np
 
-try:
+if TYPE_CHECKING:
     from PIL import Image as PILImage
-except ImportError as e:
-    raise ImportError(
-        "Please install guidellm[vision] to use image/video features"
-    ) from e
+
+    HAS_VISION = True
+else:
+    from guidellm.utils import ExtrasImporter
+
+    _vision_importer = ExtrasImporter(
+        {
+            "PILImage": "PIL.Image",
+        },
+        extras_group="vision",
+    )
+
+    # Make imports available at module level for runtime use
+    PILImage = _vision_importer.PILImage
+    HAS_VISION = _vision_importer.is_available
 
 __all__ = [
+    "HAS_VISION",
     "encode_image",
     "encode_video",
     "get_file_format",
