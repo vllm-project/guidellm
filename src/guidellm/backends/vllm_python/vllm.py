@@ -354,8 +354,8 @@ class VLLMPythonBackend(Backend):
         multi_modal_data: dict[str, Any] = {}
         # We look specifically for "image_column" and "audio_column" which contain lists
         # of dicts
-        image_items = list(columns.get("image_column", []) or [])
-        audio_items = list(columns.get("audio_column", []) or [])
+        image_items = columns.get("image_column", [])
+        audio_items = columns.get("audio_column", [])
         # video_column: not yet supported; would require frame extraction
         for item in image_items:
             if not item or not isinstance(item, dict):
@@ -625,12 +625,12 @@ class VLLMPythonBackend(Backend):
 
         messages: list[dict[str, Any]] = []
 
-        prefix = " ".join(str(p) for p in (columns.get("prefix_column") or []) if p)
+        prefix = " ".join(str(p) for p in columns.get("prefix_column", []) if p)
         if prefix:
             messages.append({"role": "system", "content": prefix})
 
         text_blocks = self._format_column_blocks(
-            columns.get("text_column") or [], "text_column"
+            columns.get("text_column", []), "text_column"
         )
 
         multi_modal_data = self._build_multi_modal_data_from_columns(columns)
@@ -649,7 +649,7 @@ class VLLMPythonBackend(Backend):
             # Interleave text and media blocks into a single content list,
             # matching the HTTP backend's roundrobin approach.
             media_lists = [
-                self._format_column_blocks(columns.get(col) or [], col)
+                self._format_column_blocks(columns.get(col, []), col)
                 for col in ("image_column", "audio_column")
             ]
             user_content: list[dict[str, Any]] = list(
