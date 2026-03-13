@@ -61,6 +61,9 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "wav",
             "mp3",
         ],
+        "messages_column": [
+            "messages",
+        ],
     }
 
     @classmethod
