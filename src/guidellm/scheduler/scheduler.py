@@ -9,14 +9,14 @@ various scenarios including LLM inference benchmarking.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator
 from typing import Any, Generic
 
 from guidellm.scheduler.constraints import Constraint, ConstraintsInitializerFactory
 from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
 from guidellm.scheduler.schemas import (
     BackendInterface,
-    MultiTurnRequestT,
+    DatasetIterT,
     RequestT,
     ResponseT,
     SchedulerState,
@@ -60,7 +60,7 @@ class Scheduler(
 
     async def run(
         self,
-        requests: Iterable[RequestT | MultiTurnRequestT[RequestT]],
+        requests: DatasetIterT[RequestT],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         env: Environment[RequestT, ResponseT] | None,
@@ -68,7 +68,7 @@ class Scheduler(
     ) -> AsyncIterator[
         tuple[
             ResponseT | None,
-            RequestT | MultiTurnRequestT[RequestT],
+            RequestT,
             RequestInfo,
             SchedulerState,
         ]

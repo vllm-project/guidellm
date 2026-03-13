@@ -144,6 +144,11 @@ class SyntheticTextDatasetConfig(DataConfig):
         gt=0,
         default=None,
     )
+    turns: int = Field(
+        description="The number of turns in the conversation.",
+        gt=0,
+        default=1,
+    )
 
     model_config = ConfigDict(
         extra="allow",

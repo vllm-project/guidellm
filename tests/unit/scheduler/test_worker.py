@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import random
 import time
@@ -647,3 +648,350 @@ class TestWorkerProcess:
             assert process.exitcode <= 0, (
                 f"Process exited with error code: {process.exitcode}"
             )
+
+
+class MockMessaging:
+    """Mock messaging queue for testing worker multiturn functionality.
+
+    ### WRITTEN BY AI ###
+    """
+
+    def __init__(self, worker_index=1):
+        self.worker_index = worker_index
+        self.poll_interval = 0.01
+        self._queue = []
+        self._sent_items = []
+
+    async def get(self, timeout=None):
+        """Mock get from queue."""
+        if not self._queue:
+            raise asyncio.TimeoutError("Mock queue empty")
+        return self._queue.pop(0)
+
+    async def put(self, item, timeout=None):
+        """Mock put to queue."""
+        self._queue.append(item)
+
+    def put_sync(self, item, timeout=None):
+        """Mock synchronous put."""
+        self._sent_items.append(item)
+
+
+class TestWorkerProcessMultiturn:
+    """Test cases for Worker multiturn conversation handling.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture
+    def mock_messaging(self):
+        """Create mock messaging queue.
+
+        ### WRITTEN BY AI ###
+        """
+        return MockMessaging()
+
+    @pytest.fixture
+    def worker_instance(self, mock_messaging):
+        """Create worker instance with mock messaging.
+
+        ### WRITTEN BY AI ###
+        """
+        return WorkerProcess(
+            worker_index=1,
+            messaging=mock_messaging,
+            backend=MockBackend(),
+            strategy=SynchronousStrategy(),
+            async_limit=5,
+            fut_scheduling_time_limit=10.0,
+            startup_barrier=Barrier(2),
+            requests_generated_event=Event(),
+            constraint_reached_event=Event(),
+            shutdown_event=Event(),
+            error_event=Event(),
+        )
+
+    @pytest.mark.smoke
+    def test_turns_queue_initialization(self, worker_instance):
+        """Test that turns_queue is initialized as empty list.
+
+        ### WRITTEN BY AI ###
+        """
+        assert hasattr(worker_instance, "turns_queue")
+        assert worker_instance.turns_queue == []
+        assert isinstance(worker_instance.turns_queue, list)
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_dequeue_from_empty_turns_queue(
+        self, worker_instance, mock_messaging
+    ):
+        """Test dequeuing when turns_queue is empty fetches from messaging queue.
+
+        ### WRITTEN BY AI ###
+        """
+        # Ensure turns_queue is empty
+        assert worker_instance.turns_queue == []
+
+        # Put a conversation in the messaging queue
+        start_time = time.time()
+        request = "test_request"
+        request_info = RequestInfo(
+            request_id=request,
+            scheduler_start_time=start_time,
+            scheduler_process_id=0,
+        )
+
+        await mock_messaging.put([(request, request_info)])
+
+        # Dequeue should fetch from messaging queue
+        target_start = time.time() + 1.0
+        history, conversation = await worker_instance._dequeue_next_conversation(
+            target_start
+        )
+
+        assert history == []  # New conversation has no history
+        assert len(conversation) == 1
+        assert conversation[0][0] == request
+        assert conversation[0][1].request_id == request
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_dequeue_from_populated_turns_queue(
+        self, worker_instance, mock_messaging
+    ):
+        """Test dequeuing from populated turns_queue without fetching from messaging.
+
+        ### WRITTEN BY AI ###
+        """
+        # Populate turns_queue with a conversation
+        request1 = "request_1"
+        history = [(request1, f"response_for_{request1}")]
+        conversation = [("request_2", RequestInfo(request_id="request_2"))]
+
+        worker_instance.turns_queue.append((history, conversation))
+
+        # Dequeue should pop from turns_queue
+        target_start = time.time() + 1.0
+        (
+            returned_history,
+            returned_conversation,
+        ) = await worker_instance._dequeue_next_conversation(target_start)
+
+        assert returned_history == history
+        assert returned_conversation == conversation
+        assert worker_instance.turns_queue == []  # Queue should be empty after pop
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_dequeue_sets_timing_metadata(self, worker_instance, mock_messaging):
+        """Test dequeuing sets timing metadata correctly.
+
+        ### WRITTEN BY AI ###
+        """
+        # Put a conversation in the messaging queue
+        start_time = time.time()
+        request = "test_request"
+        request_info = RequestInfo(
+            request_id=request,
+            scheduler_start_time=start_time,
+            scheduler_process_id=0,
+        )
+
+        await mock_messaging.put([(request, request_info)])
+
+        # Dequeue the conversation
+        target_start = time.time() + 0.5
+        before_dequeue = time.time()
+        history, conversation = await worker_instance._dequeue_next_conversation(
+            target_start
+        )
+        after_dequeue = time.time()
+
+        req, req_info = conversation[0]
+
+        # Check timing metadata
+        assert req_info.timings.dequeued is not None
+        assert before_dequeue <= req_info.timings.dequeued <= after_dequeue
+        assert req_info.scheduler_node_id == 1  # From mock_messaging.worker_index
+        assert req_info.timings.targeted_start == target_start
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_dequeue_with_none_request_raises_error(
+        self, worker_instance, mock_messaging
+    ):
+        """Test dequeuing with None request raises RuntimeError.
+
+        ### WRITTEN BY AI ###
+        """
+        # Put an invalid conversation with None request
+        await mock_messaging.put([(None, None)])
+
+        # Should raise RuntimeError
+        with pytest.raises(RuntimeError, match="Received invalid request"):
+            await worker_instance._dequeue_next_conversation(time.time())
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_dequeue_sends_pending_status(self, worker_instance, mock_messaging):
+        """Test dequeuing sends pending status update.
+
+        ### WRITTEN BY AI ###
+        """
+        # Put a conversation in the messaging queue
+        start_time = time.time()
+        request = "test_request"
+        request_info = RequestInfo(
+            request_id=request,
+            scheduler_start_time=start_time,
+            scheduler_process_id=0,
+        )
+
+        await mock_messaging.put([(request, request_info)])
+
+        # Dequeue the conversation
+        await worker_instance._dequeue_next_conversation(time.time())
+
+        # Should have sent a pending status update
+        assert len(mock_messaging._sent_items) == 1
+        response, req, req_info = mock_messaging._sent_items[0]
+        assert req_info.status == "pending"
+        assert req == request
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_requeue_with_positive_delay(self, worker_instance):
+        """Test requeueing with positive delay sleeps then appends to turns_queue.
+
+        ### WRITTEN BY AI ###
+        """
+        history = [("req1", "resp1")]
+        conversation = [("req2", RequestInfo(request_id="req2"))]
+        delay = 0.1
+
+        start = time.time()
+        await worker_instance._wait_then_requeue(history, conversation, delay)
+        elapsed = time.time() - start
+
+        # Should have slept for approximately the delay time
+        assert elapsed >= delay
+        assert elapsed < delay + 0.5  # Allow some tolerance
+
+        # Should have appended to turns_queue
+        assert len(worker_instance.turns_queue) == 1
+        assert worker_instance.turns_queue[0] == (history, conversation)
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_requeue_with_zero_delay(self, worker_instance):
+        """Test requeueing with zero delay appends immediately without sleep.
+
+        ### WRITTEN BY AI ###
+        """
+        history = [("req1", "resp1")]
+        conversation = [("req2", RequestInfo(request_id="req2"))]
+        delay = 0
+
+        start = time.time()
+        await worker_instance._wait_then_requeue(history, conversation, delay)
+        elapsed = time.time() - start
+
+        # Should not have slept (very quick)
+        assert elapsed < 0.1
+
+        # Should have appended to turns_queue
+        assert len(worker_instance.turns_queue) == 1
+        assert worker_instance.turns_queue[0] == (history, conversation)
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_requeue_during_cancellation(self, worker_instance):
+        """Test requeueing still appends to turns_queue even when cancelled.
+
+        ### WRITTEN BY AI ###
+        """
+        history = [("req1", "resp1")]
+        conversation = [("req2", RequestInfo(request_id="req2"))]
+        delay = 1.0  # Long delay
+
+        # Create the requeue task
+        requeue_task = asyncio.create_task(
+            worker_instance._wait_then_requeue(history, conversation, delay)
+        )
+
+        # Cancel it immediately
+        await asyncio.sleep(0.05)
+        requeue_task.cancel()
+
+        with contextlib.suppress(asyncio.CancelledError):
+            await requeue_task
+
+        # Should still have appended to turns_queue in finally block
+        assert len(worker_instance.turns_queue) == 1
+        assert worker_instance.turns_queue[0] == (history, conversation)
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_requeue_maintains_history(self, worker_instance):
+        """Test requeueing preserves history tuple intact.
+
+        ### WRITTEN BY AI ###
+        """
+        # Create history with multiple turns
+        history = [
+            ("req1", "resp1"),
+            ("req2", "resp2"),
+            ("req3", "resp3"),
+        ]
+        conversation = [("req4", RequestInfo(request_id="req4"))]
+
+        await worker_instance._wait_then_requeue(history, conversation, 0)
+
+        # History should be preserved exactly
+        assert worker_instance.turns_queue[0][0] == history
+        assert worker_instance.turns_queue[0][0][0] == ("req1", "resp1")
+        assert worker_instance.turns_queue[0][0][1] == ("req2", "resp2")
+        assert worker_instance.turns_queue[0][0][2] == ("req3", "resp3")
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(15)
+    async def test_turns_queue_fifo_ordering(self, worker_instance):
+        """Test turns_queue maintains FIFO ordering.
+
+        ### WRITTEN BY AI ###
+        """
+        # Add multiple conversations to turns_queue
+        conv1 = ([], [("req1", RequestInfo(request_id="req1"))])
+        conv2 = ([], [("req2", RequestInfo(request_id="req2"))])
+        conv3 = ([], [("req3", RequestInfo(request_id="req3"))])
+
+        await worker_instance._wait_then_requeue(*conv1, 0)
+        await worker_instance._wait_then_requeue(*conv2, 0)
+        await worker_instance._wait_then_requeue(*conv3, 0)
+
+        # Should maintain FIFO order
+        assert len(worker_instance.turns_queue) == 3
+        assert worker_instance.turns_queue[0][1][0][1].request_id == "req1"
+        assert worker_instance.turns_queue[1][1][0][1].request_id == "req2"
+        assert worker_instance.turns_queue[2][1][0][1].request_id == "req3"
+
+        # Pop should return in FIFO order
+        first = worker_instance.turns_queue.pop(0)
+        assert first[1][0][1].request_id == "req1"
+
+        second = worker_instance.turns_queue.pop(0)
+        assert second[1][0][1].request_id == "req2"
+
+        third = worker_instance.turns_queue.pop(0)
+        assert third[1][0][1].request_id == "req3"
