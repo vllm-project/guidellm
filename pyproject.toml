@@ -11,14 +11,6 @@ include = ["*"]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
 
-[tool.uv]
-# vllm hard-pins specific torch versions in its metadata, but is compatible
-# with newer versions at runtime. Override to allow a single torch resolution.
-override-dependencies = [
-    "torch",
-    "transformers"
-]
-
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -98,9 +90,6 @@ audio = [
 vision = [
     "datasets[vision]",
     "pillow",
-]
-vllm = [
-    "vllm"
 ]
 # Dev Tooling
 dev = [
