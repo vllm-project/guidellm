@@ -2,7 +2,7 @@ pull_request_rules:
 - name: comment-pre-commit-failure
   description: Comment on PR when pre-commit check fails
   conditions:
-    - status-failure=pre-commit
+    - status-failure = precommit-checks
     - -closed
     - -draft
   actions:
@@ -20,22 +20,10 @@ pull_request_rules:
 
         For future commits, `pre-commit` will run automatically on changed files before each commit.
 
-        > [!TIP]
-        > <details>
-        > <summary>Is <code>mypy</code> failing?</summary>
-        > <br/>
-        > <code>mypy</code> is run differently in CI. If the failure is related to this check, please use the following command to run it locally:
-        >
-        > ```bash
-        > # For mypy (substitute "3.10" with the failing version if needed)
-        > pre-commit run --hook-stage manual mypy-3.10
-        > ```
-        > </details>
-
 - name: comment-dco-failure
   description: Comment on PR when DCO check fails
   conditions:
-    - status-failure=dco
+    - status-failure = dco
     - -closed
     - -draft
   actions:
@@ -43,21 +31,8 @@ pull_request_rules:
       message: |
         Hi @{{author}}, the DCO check has failed. Please click on DCO in the Checks section for instructions on how to resolve this.
 
-- name: auto-rebase if approved, ready, and 40 commits behind main
-  conditions:
-    - base = main
-    - label=ready
-    - "#approved-reviews-by >= 1"
-    - "#commits-behind >= 40"
-    - -closed
-    - -draft
-    - -conflict
-  actions:
-    rebase: {}
-
 - name: ping author on conflicts and add 'needs-rebase' label
   conditions:
-    - label != stale
     - conflict
     - -closed
   actions:
