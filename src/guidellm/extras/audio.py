@@ -1,20 +1,38 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 import numpy as np
 import torch
 
-try:
+if TYPE_CHECKING:
     from torchcodec import AudioSamples
     from torchcodec.decoders import AudioDecoder
     from torchcodec.encoders import AudioEncoder
-except ImportError as e:
-    raise ImportError("Please install guidellm[audio] to use audio features") from e
+
+    HAS_AUDIO = True
+else:
+    from guidellm.utils import ExtrasImporter
+
+    _audio_importer = ExtrasImporter(
+        {
+            "AudioSamples": "torchcodec.AudioSamples",
+            "AudioDecoder": "torchcodec.decoders.AudioDecoder",
+            "AudioEncoder": "torchcodec.encoders.AudioEncoder",
+        },
+        extras_group="audio",
+    )
+
+    # Make imports available at module level for runtime use
+    AudioSamples = _audio_importer.AudioSamples
+    AudioDecoder = _audio_importer.AudioDecoder
+    AudioEncoder = _audio_importer.AudioEncoder
+    HAS_AUDIO = _audio_importer.is_available
 
 __all__ = [
+    "HAS_AUDIO",
     "encode_audio",
     "is_url",
 ]

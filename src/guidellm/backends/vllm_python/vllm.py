@@ -22,6 +22,8 @@ from pydantic import ConfigDict, Field, field_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
+from guidellm.extras.audio import HAS_AUDIO, _decode_audio
+from guidellm.extras.vision import HAS_VISION, image_dict_to_pil
 from guidellm.extras.vllm import (
     HAS_VLLM,
     AsyncEngineArgs,
@@ -36,22 +38,6 @@ from guidellm.schemas import (
     RequestInfo,
     StandardBaseModel,
 )
-
-try:
-    from guidellm.extras.audio import _decode_audio
-
-    HAS_AUDIO = True
-except ImportError:
-    _decode_audio = None  # type: ignore[assignment]
-    HAS_AUDIO = False
-
-try:
-    from guidellm.extras.vision import image_dict_to_pil
-
-    HAS_VISION = True
-except ImportError:
-    image_dict_to_pil = None  # type: ignore[assignment]
-    HAS_VISION = False
 
 # Sentinel for "chat template not yet resolved" cache.
 _CHAT_TEMPLATE_UNSET: object = object()
