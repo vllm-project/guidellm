@@ -14,6 +14,71 @@ import threading
 from typing import Any
 
 
+class _LazyImportProxy:
+    """
+    Lazy import proxy that defers the actual import until the object is used.
+
+    This allows module-level assignments without triggering imports immediately.
+    The real import only happens when the proxy is called or has attributes accessed.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        import_path: str,
+        extras_group: str | list[str],
+    ) -> None:
+        """Initialize lazy import proxy."""
+        self._proxy_name = name
+        self._proxy_import_path = import_path
+        self._proxy_extras_group = extras_group
+        self._proxy_target: Any = None
+        self._proxy_lock = threading.Lock()
+
+    def _ensure_imported(self) -> Any:
+        """Import the target object if not already imported."""
+        if self._proxy_target is None:
+            with self._proxy_lock:
+                if self._proxy_target is None:
+                    module_path, attr_name = self._parse_import_path()
+                    try:
+                        module = importlib.import_module(module_path)
+                        self._proxy_target = (
+                            getattr(module, attr_name) if attr_name else module
+                        )
+                    except (ImportError, AttributeError):
+                        # Create stub on import failure
+                        self._proxy_target = _ImportStub(
+                            self._proxy_name,
+                            self._proxy_import_path,
+                            self._proxy_extras_group,
+                        )
+        return self._proxy_target
+
+    def _parse_import_path(self) -> tuple[str, str | None]:
+        """Parse import path into module and optional attribute."""
+        if "." not in self._proxy_import_path:
+            return self._proxy_import_path, None
+        parts = self._proxy_import_path.rsplit(".", 1)
+        return parts[0], parts[1]
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ARG002
+        """Forward calls to the imported object."""
+        return self._ensure_imported()(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the imported object."""
+        if name.startswith("_proxy_"):
+            raise AttributeError(name)
+        return getattr(self._ensure_imported(), name)
+
+    def __repr__(self) -> str:
+        """Return representation."""
+        if self._proxy_target is None:
+            return f"<LazyImportProxy for '{self._proxy_name}' (not yet imported)>"
+        return repr(self._proxy_target)
+
+
 class _ImportStub:
     """
     Placeholder object that raises ImportError when called or accessed.
@@ -209,6 +274,25 @@ class ExtrasImporter:
             if importlib.util.find_spec(module_path) is None:
                 return False
         return True
+
+    def get_proxy(self, name: str) -> Any:
+        """
+        Get a lazy import proxy for the named attribute.
+
+        The proxy defers the actual import until the object is used,
+        allowing module-level assignments without eager importing.
+
+        Args:
+            name: The attribute name to get a proxy for
+
+        Returns:
+            A lazy import proxy that will import on first use
+        """
+        if name not in self._imports:
+            raise AttributeError(f"No import registered for '{name}'")
+
+        import_path = self._imports[name]
+        return _LazyImportProxy(name, import_path, self._extras_group)
 
     def _parse_import_path(self, import_path: str) -> tuple[str, str | None]:
         """

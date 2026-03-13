@@ -23,12 +23,15 @@ else:
         eager=False,
     )
 
-    # Make imports available at module level for runtime use
-    SamplingParams = _vllm_importer.SamplingParams
-    AsyncEngineArgs = _vllm_importer.AsyncEngineArgs
-    AsyncLLMEngine = _vllm_importer.AsyncLLMEngine
-    RequestOutput = _vllm_importer.RequestOutput
+    # Create lazy proxies - these don't trigger imports until used
+    SamplingParams = _vllm_importer.get_proxy("SamplingParams")
+    AsyncEngineArgs = _vllm_importer.get_proxy("AsyncEngineArgs")
+    AsyncLLMEngine = _vllm_importer.get_proxy("AsyncLLMEngine")
+    RequestOutput = _vllm_importer.get_proxy("RequestOutput")
+
+    # HAS_VLLM can be set directly - is_available uses find_spec, doesn't import
     HAS_VLLM = _vllm_importer.is_available
+
 
 __all__ = [
     "HAS_VLLM",
