@@ -9,6 +9,7 @@ from .encoding import (
     SerializationTypesAlias,
     Serializer,
 )
+from .extras_importer import ExtrasImporter
 from .functions import (
     all_defined,
     safe_add,
@@ -60,6 +61,7 @@ __all__ = [
     "Encoder",
     "EncodingTypesAlias",
     "EndlessTextCreator",
+    "ExtrasImporter",
     "InfoMixin",
     "IntegerRangeSampler",
     "InterProcessMessaging",
