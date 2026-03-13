@@ -389,9 +389,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         )
         try:
             model_class = Backend.get_backend_args(backend_type)
-            inputs = {
-                k: getattr(self, k, None) for k in model_class.model_fields
-            }
+            inputs = {k: getattr(self, k, None) for k in model_class.model_fields}
             model_class.model_validate(inputs)
         except ValidationError as err:
             _param_hint, message = format_backend_args_error(

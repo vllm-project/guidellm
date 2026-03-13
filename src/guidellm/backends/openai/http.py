@@ -81,11 +81,10 @@ class OpenAIHttpBackendArgs(BackendArgs):
         """Validate request_format against known handler names and aliases."""
         if v is None:
             return v
-        valid = (
-            set(LEGACY_API_ALIASES)
-            | set(DEFAULT_API_PATHS)
-            - {"/health", "/v1/models"}
-        )
+        valid = set(LEGACY_API_ALIASES) | set(DEFAULT_API_PATHS) - {
+            "/health",
+            "/v1/models",
+        }
         if v not in valid:
             raise ValueError(
                 f"Invalid request_format '{v}'. Must be one of: "

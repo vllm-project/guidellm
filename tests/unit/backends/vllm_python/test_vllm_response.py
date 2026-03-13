@@ -96,9 +96,7 @@ class TestVLLMResponseHandler:
                 "audio_tokens": 1,
             },
         }
-        out = VLLMResponseHandler.build_response(
-            request_fixture, "result", usage
-        )
+        out = VLLMResponseHandler.build_response(request_fixture, "result", usage)
         assert out.input_metrics.text_tokens == 10
         assert out.input_metrics.image_tokens == 3
         assert out.output_metrics.text_tokens == 5

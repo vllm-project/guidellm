@@ -108,9 +108,7 @@ class TestResolveRequest:
         ## WRITTEN BY AI ##
         """
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend = VLLMPythonBackend(
-                model="test-model", request_format="plain"
-            )
+            backend = VLLMPythonBackend(model="test-model", request_format="plain")
         request = GenerationRequest(
             columns={
                 "prefix_column": ["System prompt"],
@@ -168,9 +166,7 @@ class TestResolveRequest:
         """
         mock_pil = Mock()
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend = VLLMPythonBackend(
-                model="test-model", request_format="plain"
-            )
+            backend = VLLMPythonBackend(model="test-model", request_format="plain")
         request = GenerationRequest(
             columns={
                 "text_column": ["Describe this"],
@@ -212,8 +208,9 @@ class TestResolveRequest:
 
         captured_messages = []
 
-        def fake_apply_chat_template(messages, tokenize=False,
-                                     add_generation_prompt=False):
+        def fake_apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=False
+        ):
             captured_messages.append(messages)
             return "<|user|>\n<|begin_of_audio|><|end_of_audio|>\nHello\n"
 
@@ -260,9 +257,7 @@ class TestResolveRequest:
         mock_decode_result = _mock_audio_decode_result(mock_audio_array)
 
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend = VLLMPythonBackend(
-                model="test-model", request_format="plain"
-            )
+            backend = VLLMPythonBackend(model="test-model", request_format="plain")
 
         request = GenerationRequest(
             columns={
@@ -301,21 +296,13 @@ class TestImagePlaceholderInjection:
         _build_placeholder_prefix uses image_placeholder override.
         ## WRITTEN BY AI ##
         """
-        with patch(
-            "guidellm.backends.vllm_python.vllm._check_vllm_available"
-        ):
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
             backend_custom = VLLMPythonBackend(
                 model="Qwen/Qwen3-VL-2B-Instruct",
-                image_placeholder=(
-                    "<|vision_start|><|image_pad|><|vision_end|>"
-                ),
+                image_placeholder=("<|vision_start|><|image_pad|><|vision_end|>"),
             )
-        result = backend_custom._build_placeholder_prefix(
-            {"image": Mock()}
-        )
-        assert result == (
-            "<|vision_start|><|image_pad|><|vision_end|>\n"
-        )
+        result = backend_custom._build_placeholder_prefix({"image": Mock()})
+        assert result == ("<|vision_start|><|image_pad|><|vision_end|>\n")
 
     @pytest.mark.sanity
     def test_inject_placeholders_into_messages_no_media_unchanged(self, backend):
@@ -348,9 +335,7 @@ class TestImagePlaceholderInjection:
         ## WRITTEN BY AI ##
         """
         msgs = [{"role": "user", "content": "Describe both."}]
-        backend._inject_placeholders_into_messages(
-            msgs, {"image": [Mock(), Mock()]}
-        )
+        backend._inject_placeholders_into_messages(msgs, {"image": [Mock(), Mock()]})
         assert msgs[0]["content"] == "<image>\n<image>\nDescribe both."
 
     @pytest.mark.sanity
@@ -395,21 +380,15 @@ class TestAudioPlaceholderInjection:
         _build_placeholder_prefix uses audio_placeholder override.
         ## WRITTEN BY AI ##
         """
-        with patch(
-            "guidellm.backends.vllm_python.vllm._check_vllm_available"
-        ):
+        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
             backend_custom = VLLMPythonBackend(
                 model="zai-org/GLM-ASR-Nano-2512",
-                audio_placeholder=(
-                    "<|begin_of_audio|><|pad|><|end_of_audio|>"
-                ),
+                audio_placeholder=("<|begin_of_audio|><|pad|><|end_of_audio|>"),
             )
         result = backend_custom._build_placeholder_prefix(
             {"audio": np.array([0.0], dtype=np.float32)}
         )
-        assert result == (
-            "<|begin_of_audio|><|pad|><|end_of_audio|>\n"
-        )
+        assert result == ("<|begin_of_audio|><|pad|><|end_of_audio|>\n")
 
     @pytest.mark.sanity
     def test_inject_placeholders_into_messages_no_audio_unchanged(self, backend):
@@ -447,9 +426,7 @@ class TestAudioPlaceholderInjection:
             ]
         }
         backend._inject_placeholders_into_messages(msgs, multi_modal_data)
-        assert msgs[0]["content"] == (
-            "<|audio|>\n<|audio|>\nCompare the two clips."
-        )
+        assert msgs[0]["content"] == ("<|audio|>\n<|audio|>\nCompare the two clips.")
 
     @pytest.mark.sanity
     def test_inject_placeholders_image_and_audio_combined(self, backend):
@@ -496,9 +473,7 @@ class TestBuildPlaceholderPrefix:
         _build_placeholder_prefix returns N image placeholders for N images.
         ## WRITTEN BY AI ##
         """
-        result = backend._build_placeholder_prefix(
-            {"image": [Mock(), Mock()]}
-        )
+        result = backend._build_placeholder_prefix({"image": [Mock(), Mock()]})
         assert result == "<image>\n<image>\n"
 
     @pytest.mark.smoke
@@ -1241,9 +1216,7 @@ class TestVLLMBuildFinalResponse:
         """
         request = GenerationRequest(columns={"text_column": ["x"]})
         request_info = RequestInfo()
-        result = backend._build_final_response(
-            request, request_info, None, stream=True
-        )
+        result = backend._build_final_response(request, request_info, None, stream=True)
         assert result is None
 
     @pytest.mark.smoke

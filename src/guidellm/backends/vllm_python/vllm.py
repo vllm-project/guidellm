@@ -105,9 +105,7 @@ class VLLMPythonBackendArgs(BackendArgs):
         Validated by CLI before Backend.create.
         """
         if v is not None:
-            raise ValueError(
-                "Target is not supported; this backend runs locally."
-            )
+            raise ValueError("Target is not supported; this backend runs locally.")
         return v
 
 
@@ -239,9 +237,11 @@ class VLLMPythonBackend(Backend):
 
         # Ensure model is set in config (required; overrides user if they passed it)
         if "model" in config:
-            logger.warning("The `model` input was passed to the vllm python backend "
-                           "with the `vllm_config` input. Ignoring and overwriting "
-                           "with the value from the `model` input.")
+            logger.warning(
+                "The `model` input was passed to the vllm python backend "
+                "with the `vllm_config` input. Ignoring and overwriting "
+                "with the value from the `model` input."
+            )
         config["model"] = self.model
 
         return config
@@ -386,9 +386,7 @@ class VLLMPythonBackend(Backend):
                 )
             first = audio_items[0]
             if not first or not isinstance(first, dict):
-                logger.warning(
-                    "audio_column item is empty or not a dict; skipping."
-                )
+                logger.warning("audio_column item is empty or not a dict; skipping.")
             else:
                 audio_bytes = first.get("audio")
                 if isinstance(audio_bytes, bytes) and len(audio_bytes) > 0:
@@ -440,9 +438,7 @@ class VLLMPythonBackend(Backend):
         # Fallback: convert to string
         return str(content) if content is not None else ""
 
-    def _build_placeholder_prefix(
-        self, multi_modal_data: dict[str, Any]
-    ) -> str:
+    def _build_placeholder_prefix(self, multi_modal_data: dict[str, Any]) -> str:
         """
         Build the placeholder prefix string for all modalities in
         multi_modal_data.
@@ -514,8 +510,8 @@ class VLLMPythonBackend(Backend):
                 msg["content"] = prefix + (msg.get("content") or "")
                 return
         if formatted_messages:
-            formatted_messages[-1]["content"] = (
-                prefix + (formatted_messages[-1].get("content") or "")
+            formatted_messages[-1]["content"] = prefix + (
+                formatted_messages[-1].get("content") or ""
             )
 
     def _extract_prompt_chat_plain(
@@ -527,8 +523,7 @@ class VLLMPythonBackend(Backend):
         with no role prefixes or trailing generation prompt.
         """
         return " ".join(
-            msg["content"] for msg in formatted_messages
-            if msg.get("content")
+            msg["content"] for msg in formatted_messages if msg.get("content")
         )
 
     def _resolve_chat_template(self) -> str | None:
@@ -630,9 +625,7 @@ class VLLMPythonBackend(Backend):
 
         messages: list[dict[str, Any]] = []
 
-        prefix = " ".join(
-            str(p) for p in (columns.get("prefix_column") or []) if p
-        )
+        prefix = " ".join(str(p) for p in (columns.get("prefix_column") or []) if p)
         if prefix:
             messages.append({"role": "system", "content": prefix})
 
@@ -701,9 +694,7 @@ class VLLMPythonBackend(Backend):
             # no messages to inject into, so use a raw placeholder prompt.
             prompt = self._build_placeholder_prefix(multi_modal_data)
         else:
-            raise ValueError(
-                "Request must include text_column or multimodal columns."
-            )
+            raise ValueError("Request must include text_column or multimodal columns.")
 
         return _ResolvedRequest(
             prompt=prompt,
@@ -831,9 +822,7 @@ class VLLMPythonBackend(Backend):
         # We do not send streaming lines during the stream loop, so the handler
         # never receives an id from the stream. Set it from the final vLLM output
         # so the response has a usable id.
-        response_id = (
-            final_output.request_id if final_output.request_id else None
-        )
+        response_id = final_output.request_id if final_output.request_id else None
         # Build response with final text only (no streamed chunks).
         response = VLLMResponseHandler.build_response(
             request, final_text, usage, response_id=response_id
@@ -863,9 +852,7 @@ class VLLMPythonBackend(Backend):
 
         return SamplingParams(**params)  # type: ignore[misc]
 
-    def _raise_generation_error(
-        self, exc: BaseException
-    ) -> None:
+    def _raise_generation_error(self, exc: BaseException) -> None:
         """Re-raise generation failure with context.
 
         Special-cases audio and engine-death errors.
@@ -875,8 +862,7 @@ class VLLMPythonBackend(Backend):
         # (root cause is usually earlier in logs)
         if "EngineCore encountered an issue" in error_msg or (
             exc.__cause__ is not None
-            and "EngineCore encountered an issue"
-            in str(exc.__cause__)
+            and "EngineCore encountered an issue" in str(exc.__cause__)
         ):
             raise RuntimeError(
                 "Generation failed: The vLLM engine core process "
