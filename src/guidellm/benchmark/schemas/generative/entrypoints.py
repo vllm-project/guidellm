@@ -291,7 +291,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     random_seed: int = Field(default=42, description="Random seed for reproducibility")
     # Output configuration
     outputs: list[str] | tuple[str] = Field(
-        default_factory=lambda: ["json", "csv", "html"],
+        default_factory=lambda: ["json", "csv"],
         description=(
             "The aliases of the output types to create with their default filenames "
             "the file names and extensions of the output types to create"
