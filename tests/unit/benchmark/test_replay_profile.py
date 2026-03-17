@@ -57,8 +57,7 @@ class TestReplayProfile:
                 [
                     '{"timestamp": 0, "input_length": 8192, "output_length": 1024}',
                     '{"timestamp": 0.5, "input_length": 32768, "output_length": 4096}',
-                    '{"timestamp": 1.0, "input_length": 131072,'
-                    '"output_length": 16384}',
+                    '{"timestamp": 1.0, "input_length": 131072,"output_length": 16384}',
                 ],
                 [1.0],
                 [0.0, 0.5, 1.0],
