@@ -212,6 +212,21 @@ class TestMockServerEndpoints:
                 },
                 ["choices", "usage", "model", "object"],
             ),
+            (
+                {
+                    "model": "test-model",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Hello from list format!"}
+                            ],
+                        }
+                    ],
+                    "max_tokens": 10,
+                },
+                ["choices", "usage", "model", "object"],
+            ),
         ],
     )
     async def test_chat_completions_endpoint(
@@ -286,6 +301,58 @@ class TestMockServerEndpoints:
 
             assert len(chunks) > 0
             # Verify chunk structure
+            for chunk in chunks:
+                assert "choices" in chunk
+                assert len(chunk["choices"]) > 0
+                assert "delta" in chunk["choices"][0]
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    async def test_streaming_chat_completions_list_content(self, mock_server_instance):
+        """
+        Test streaming chat completions with list-of-content-parts message format.
+
+        ## WRITTEN BY AI ##
+        """
+        server_url, _ = mock_server_instance
+
+        payload = {
+            "model": "test-model",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Hi!"}],
+                }
+            ],
+            "max_tokens": 5,
+            "stream": True,
+        }
+
+        async with (
+            httpx.AsyncClient() as client,
+            client.stream(
+                "POST",
+                f"{server_url}/v1/chat/completions",
+                json=payload,
+                timeout=10.0,
+            ) as response,
+        ):
+            assert response.status_code == 200
+            assert "text/event-stream" in response.headers.get("content-type", "")
+
+            chunks = []
+            async for line in response.aiter_lines():
+                if line and line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk_data = json.loads(data_str)
+                        chunks.append(chunk_data)
+                    except json.JSONDecodeError:
+                        continue
+
+            assert len(chunks) > 0
             for chunk in chunks:
                 assert "choices" in chunk
                 assert len(chunk["choices"]) > 0
