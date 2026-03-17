@@ -424,7 +424,8 @@ class ReplayProfile(Profile):
             "relative_timestamps": relative_timestamps,
             "time_scale": time_scale,
             "constraints": constraints,
-            "max_seconds_filter": max_seconds if max_seconds and max_seconds > 0
+            "max_seconds_filter": max_seconds
+            if max_seconds and max_seconds > 0
             else None,
         }
 
