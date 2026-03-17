@@ -22,13 +22,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-from guidellm.extras.vllm import (
-    HAS_VLLM,
-    AsyncEngineArgs,
-    AsyncLLMEngine,
-    RequestOutput,
-    SamplingParams,
-)
+from guidellm.extras import audio, vision, vllm
 from guidellm.logger import logger
 from guidellm.schemas import (
     GenerationRequest,
@@ -36,22 +30,6 @@ from guidellm.schemas import (
     RequestInfo,
     StandardBaseModel,
 )
-
-try:
-    from guidellm.extras.audio import _decode_audio
-
-    HAS_AUDIO = True
-except ImportError:
-    _decode_audio = None  # type: ignore[assignment]
-    HAS_AUDIO = False
-
-try:
-    from guidellm.extras.vision import image_dict_to_pil
-
-    HAS_VISION = True
-except ImportError:
-    image_dict_to_pil = None  # type: ignore[assignment]
-    HAS_VISION = False
 
 # Sentinel for "chat template not yet resolved" cache.
 _CHAT_TEMPLATE_UNSET: object = object()
@@ -137,14 +115,6 @@ class _ResolvedRequest(StandardBaseModel):
     )
 
 
-def _check_vllm_available() -> None:
-    """Check if vllm is available and raise helpful error if not."""
-    if not HAS_VLLM:
-        raise ImportError(
-            "vllm is not installed. Install vllm to use the vllm python backend."
-        )
-
-
 def _has_jinja2_markers(s: str) -> bool:
     """Return True if the string contains Jinja2 template syntax ({{, {%, or {#)."""
     return "{{" in s or "{%" in s or "{#" in s
@@ -179,13 +149,12 @@ class VLLMPythonBackend(Backend):
         """
         Initialize VLLM Python backend with model and configuration.
         """
-        _check_vllm_available()
         super().__init__(arguments)
         self._args = arguments
 
         # Runtime state
         self._in_process = False
-        self._engine: AsyncLLMEngine | None = None
+        self._engine: vllm.AsyncLLMEngine | None = None
         self._resolved_chat_template: str | None | object = _CHAT_TEMPLATE_UNSET
 
     @property
@@ -214,8 +183,8 @@ class VLLMPythonBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
-        engine_args = AsyncEngineArgs(**self._args.vllm_config)  # type: ignore[misc]
-        self._engine = AsyncLLMEngine.from_engine_args(engine_args)  # type: ignore[misc]
+        engine_args = vllm.AsyncEngineArgs(**self._args.vllm_config)
+        self._engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self._in_process = True
 
     async def process_shutdown(self):
@@ -264,7 +233,7 @@ class VLLMPythonBackend(Backend):
         """
         return self._args.model
 
-    def _validate_backend_initialized(self) -> AsyncLLMEngine:
+    def _validate_backend_initialized(self) -> vllm.AsyncLLMEngine:
         """
         Validate that the backend is initialized and return the engine.
 
@@ -304,14 +273,9 @@ class VLLMPythonBackend(Backend):
         for item in image_items:
             if not item or not isinstance(item, dict):
                 continue
-            if not HAS_VISION or image_dict_to_pil is None:
-                raise ImportError(
-                    "Image column support requires guidellm[vision]. "
-                    "Install with: pip install 'guidellm[vision]'"
-                )
             # Convert raw image dicts into PIL Images as required by vLLM's vision
             # processor
-            pil_image = image_dict_to_pil(item)
+            pil_image = vision.image_dict_to_pil(item)
             if "image" not in multi_modal_data:
                 multi_modal_data["image"] = pil_image
             else:
@@ -334,15 +298,10 @@ class VLLMPythonBackend(Backend):
             else:
                 audio_bytes = first.get("audio")
                 if isinstance(audio_bytes, bytes) and len(audio_bytes) > 0:
-                    if not HAS_AUDIO or _decode_audio is None:
-                        raise ImportError(
-                            "Audio column support requires guidellm[audio]. "
-                            "Install with: pip install 'guidellm[audio]'"
-                        )
                     try:
                         # Decode raw audio bytes into an array since vLLM audio models
                         # expect either raw numpy arrays or specific tensor formats
-                        audio_samples = _decode_audio(audio_bytes)
+                        audio_samples = audio._decode_audio(audio_bytes)  # noqa: SLF001
                         # torchcodec decodes audio on CPU, so .data is always
                         # a CPU torch.Tensor. .cpu() is a no-op on CPU tensors.
                         audio_array = audio_samples.data.cpu().numpy()
@@ -675,7 +634,7 @@ class VLLMPythonBackend(Backend):
         request_info.timings.last_token_iteration = iter_time
         request_info.timings.token_iterations += iterations
 
-    def _text_from_output(self, output: RequestOutput | None) -> str:
+    def _text_from_output(self, output: vllm.RequestOutput | None) -> str:
         """
         Extract generated text from VLLM RequestOutput.
 
@@ -688,7 +647,7 @@ class VLLMPythonBackend(Backend):
 
     def _stream_usage_tokens(
         self,
-        output: RequestOutput,
+        output: vllm.RequestOutput,
         request_info: RequestInfo,
     ) -> tuple[int, int]:
         """
@@ -714,7 +673,7 @@ class VLLMPythonBackend(Backend):
 
     def _usage_from_output(
         self,
-        output: RequestOutput | None,
+        output: vllm.RequestOutput | None,
         *,
         request_info: RequestInfo | None = None,
     ) -> dict[str, int] | None:
@@ -749,7 +708,7 @@ class VLLMPythonBackend(Backend):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        final_output: RequestOutput | None,
+        final_output: vllm.RequestOutput | None,
         stream: bool,
         text: str = "",
     ) -> tuple[GenerationResponse, RequestInfo] | None:
@@ -776,7 +735,7 @@ class VLLMPythonBackend(Backend):
     def _create_sampling_params(
         self,
         max_tokens_override: int | None = None,
-    ) -> SamplingParams:
+    ) -> vllm.SamplingParams:
         """
         Create VLLM SamplingParams.
 
@@ -794,7 +753,7 @@ class VLLMPythonBackend(Backend):
             params["max_tokens"] = max_tokens_override
             params["ignore_eos"] = True
 
-        return SamplingParams(**params)  # type: ignore[misc]
+        return vllm.SamplingParams(**params)
 
     def _raise_generation_error(self, exc: BaseException) -> None:
         """Re-raise generation failure with context.
@@ -839,7 +798,7 @@ class VLLMPythonBackend(Backend):
         request_info: RequestInfo,
         stream: bool,
         generate_input: str | dict[str, Any],
-        sampling_params: SamplingParams,
+        sampling_params: vllm.SamplingParams,
         request_id: str,
         state: dict[str, Any],
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
