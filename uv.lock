@@ -937,7 +937,7 @@ requires-dist = [
     { name = "guidellm", extras = ["audio", "perf", "tokenizers", "vision"], marker = "extra == 'all'" },
     { name = "guidellm", extras = ["perf", "tokenizers"], marker = "extra == 'recommended'" },
     { name = "httpx", extras = ["http2"], specifier = "<1.0.0" },
-    { name = "lazy-loader", specifier = ">=0.5" },
+    { name = "lazy-loader", git = "https://github.com/sjmonson/lazy-loader.git?rev=feat%2Flazy_submodules" },
     { name = "loguru" },
     { name = "lorem", marker = "extra == 'dev'", specifier = "~=0.1.1" },
     { name = "mdformat", marker = "extra == 'dev'", specifier = "~=1.0.0" },
@@ -1259,14 +1259,10 @@ wheels = [
 
 [[package]]
 name = "lazy-loader"
-version = "0.5"
-source = { registry = "https://pypi.org/simple" }
+version = "0.6rc0.dev0"
+source = { git = "https://github.com/sjmonson/lazy-loader.git?rev=feat%2Flazy_submodules#a7f66864e86aee5bed7bf5ce1a5ba98b81e80598" }
 dependencies = [
     { name = "packaging" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/49/ac/21a1f8aa3777f5658576777ea76bfb124b702c520bbe90edf4ae9915eafa/lazy_loader-0.5.tar.gz", hash = "sha256:717f9179a0dbed357012ddad50a5ad3d5e4d9a0b8712680d4e687f5e6e6ed9b3", size = 15294, upload-time = "2026-03-06T15:45:09.054Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/a1/8d812e53a5da1687abb10445275d41a8b13adb781bbf7196ddbcf8d88505/lazy_loader-0.5-py3-none-any.whl", hash = "sha256:ab0ea149e9c554d4ffeeb21105ac60bed7f3b4fd69b1d2360a4add51b170b005", size = 8044, upload-time = "2026-03-06T15:45:07.668Z" },
 ]
 
 [[package]]

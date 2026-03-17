@@ -71,7 +71,7 @@ dependencies = [
     "uvloop>=0.18",
     "torch",
     "more-itertools>=10.8.0",
-    "lazy-loader>=0.5",
+    "lazy-loader @ git+https://github.com/sjmonson/lazy-loader.git@feat/lazy_submodules",
 ]
 
 [project.optional-dependencies]
