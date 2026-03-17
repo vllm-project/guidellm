@@ -1,13 +1,15 @@
-try:
-    from vllm import SamplingParams
-    from vllm.engine.arg_utils import AsyncEngineArgs
-    from vllm.engine.async_llm_engine import AsyncLLMEngine
-    from vllm.outputs import RequestOutput
+"""
+vLLM wrapper with same interface as vLLM.
+"""
 
-    HAS_VLLM = True
-except ImportError:
-    AsyncLLMEngine = None  # type: ignore[assignment, misc]
-    AsyncEngineArgs = None  # type: ignore[assignment, misc]
-    SamplingParams = None  # type: ignore[assignment, misc]
-    RequestOutput = None  # type: ignore[assignment, misc]
-    HAS_VLLM = False
+try:
+    import vllm
+except ImportError as e:
+    raise ImportError("Please install vllm to use vLLM features") from e
+
+
+def __getattr__(name: str):
+    return getattr(vllm, name)
+
+
+__all__ = vllm.__all__
