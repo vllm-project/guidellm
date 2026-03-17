@@ -234,5 +234,5 @@ class MockServer:
             debug=False,
             single_process=True,
             access_log=True,
-            register_sys_signals=False,  # Disable signal handlers for threading
+            register_sys_signals=True,
         )

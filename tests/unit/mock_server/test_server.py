@@ -55,18 +55,20 @@ async def mock_server_instance():
     try:
         await asyncio.wait_for(wait_for_startup(), timeout)
     except TimeoutError:
-        # Server failed to start within timeout
         server_process.terminate()
-        server_process.kill()
         server_process.join(timeout=5)
+        if server_process.is_alive():
+            server_process.kill()
+            server_process.join(timeout=5)
         pytest.fail(f"Server failed to start within {timeout} seconds")
 
     yield base_url, config
 
-    # Cleanup: terminate the server process
     server_process.terminate()
-    server_process.kill()
     server_process.join(timeout=5)
+    if server_process.is_alive():
+        server_process.kill()
+        server_process.join(timeout=5)
 
 
 class TestMockServerConfig:
