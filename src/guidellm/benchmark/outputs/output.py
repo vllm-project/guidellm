@@ -147,7 +147,7 @@ class GenerativeBenchmarkerOutput(
                         f"Available formats: {available_formats}"
                     )
                 kwargs = output_class.validated_kwargs(
-                    **{"output_path": output_dir, **val}  # type: ignore[dict-item]
+                    **{"output_path": output_dir, "format_key": key, **val}  # type: ignore[dict-item]
                 )
                 resolved[key] = output_class(**kwargs)
 

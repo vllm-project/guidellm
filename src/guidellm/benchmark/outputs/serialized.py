@@ -10,7 +10,7 @@ explicit file path specifications for report serialization.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -40,15 +40,23 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
         default_factory=lambda: Path.cwd(),
         description="Directory or file path for saving the serialized report",
     )
+    format_type: Literal["json", "yaml"] = Field(
+        default="json",
+        description="Serialization format, used to determine the default filename",
+    )
 
     @classmethod
     def validated_kwargs(
-        cls, output_path: str | Path | None, **_kwargs
+        cls,
+        output_path: str | Path | None,
+        format_key: str | None = None,
+        **_kwargs,
     ) -> dict[str, Any]:
         """
         Validate and normalize output path keyword arguments.
 
         :param output_path: Directory or file path for serialization output
+        :param format_key: The registry key used to resolve this output type
         :param _kwargs: Additional keyword arguments (ignored)
         :return: Dictionary of validated keyword arguments for class initialization
         """
@@ -57,6 +65,8 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
             validated["output_path"] = (
                 Path(output_path) if not isinstance(output_path, Path) else output_path
             )
+        if format_key in ("json", "yaml"):
+            validated["format_type"] = format_key
         return validated
 
     async def finalize(self, report: GenerativeBenchmarksReport) -> Path:
@@ -66,4 +76,7 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
         :param report: The generative benchmarks report to serialize
         :return: Path to the saved report file
         """
-        return report.save_file(self.output_path)
+        output_path = self.output_path
+        if output_path.is_dir():
+            output_path = output_path / f"benchmarks.{self.format_type}"
+        return report.save_file(output_path)
