@@ -103,6 +103,10 @@ class TestFinalizeFormats:
         assert result_path.exists()
 
         content = result_path.read_text()
+        # JSON is valid YAML, so verify the output is not JSON
+        # to confirm YAML was actually written
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(content)
         parsed = yaml.safe_load(content)
         assert isinstance(parsed, dict)
         assert "args" in parsed
@@ -149,6 +153,10 @@ class TestFinalizeFormats:
         assert result_path.exists()
 
         content = result_path.read_text()
+        # JSON is valid YAML, so verify the output is not JSON
+        # to confirm YAML was actually written
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(content)
         parsed = yaml.safe_load(content)
         assert isinstance(parsed, dict)
         assert "args" in parsed
