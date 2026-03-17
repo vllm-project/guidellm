@@ -53,7 +53,7 @@ class MockServer:
             timing parameters
         """
         self.config = config
-        self.app = Sanic("guidellm-mock-server")
+        self.app = Sanic("guidellm-mock-server", configure_logging=False)
         self.chat_handler = ChatCompletionsHandler(config)
         self.completions_handler = CompletionsHandler(config)
         self.tokenizer_handler = TokenizerHandler(config)
