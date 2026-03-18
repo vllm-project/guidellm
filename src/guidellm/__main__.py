@@ -30,12 +30,7 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 
-from guidellm.data import ShortPromptStrategy, process_dataset
-
-try:
-    import uvloop
-except ImportError:
-    uvloop = None  # type: ignore[assignment] # Optional dependency
+from guidellm.data import ShortPromptStrategy, process_dataset  # isort: skip
 
 import guidellm.utils.cli as cli_tools
 from guidellm.backends import Backend, BackendType
@@ -497,8 +492,6 @@ def run(**kwargs):  # noqa: C901
             errs[0]["msg"], ctx=click.get_current_context(), param_hint=param_name
         ) from err
 
-    if uvloop is not None:
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     asyncio.run(
         benchmark_generative_text(
             args=args,
