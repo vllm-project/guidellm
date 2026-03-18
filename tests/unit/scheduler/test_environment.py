@@ -16,7 +16,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
 )
 from guidellm.schemas import RequestInfo
-from guidellm.utils import InfoMixin
+from guidellm.utils.mixins import InfoMixin
 
 
 class TestEnvironment:

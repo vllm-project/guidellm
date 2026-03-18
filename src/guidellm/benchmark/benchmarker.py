@@ -34,8 +34,8 @@ from guidellm.scheduler import (
     Scheduler,
     SchedulingStrategy,
 )
-from guidellm.utils import ThreadSafeSingletonMixin
 from guidellm.utils.mixins import InfoMixin
+from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
 __all__ = ["Benchmarker"]
 

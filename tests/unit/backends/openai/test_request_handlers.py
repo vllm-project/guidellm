@@ -16,7 +16,7 @@ from guidellm.backends.openai.request_handlers import (
     TextCompletionsRequestHandler,
 )
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
-from guidellm.utils import RegistryMixin
+from guidellm.utils.registry import RegistryMixin
 
 
 @pytest.fixture

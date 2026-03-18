@@ -26,7 +26,7 @@ from guidellm.scheduler import (
 )
 from guidellm.scheduler.worker_group import WorkerGroupState
 from guidellm.schemas import RequestInfo, RequestTimings
-from guidellm.utils import InterProcessMessaging
+from guidellm.utils.messaging import InterProcessMessaging
 from tests.unit.testing_utils import async_timeout
 
 

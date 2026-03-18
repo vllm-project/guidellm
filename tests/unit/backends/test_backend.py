@@ -12,7 +12,7 @@ import pytest
 
 from guidellm.backends import Backend, BackendArgs
 from guidellm.schemas import GenerationRequest, RequestInfo
-from guidellm.utils import RegistryMixin
+from guidellm.utils.registry import RegistryMixin
 from tests.unit.testing_utils import async_timeout
 
 

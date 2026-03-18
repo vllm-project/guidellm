@@ -10,8 +10,7 @@ from unittest import mock
 
 import pytest
 
-from guidellm.utils import RegistryMixin
-from guidellm.utils.registry import RegisterT, RegistryObjT
+from guidellm.utils.registry import RegisterT, RegistryMixin, RegistryObjT
 
 
 def test_registry_obj_type():

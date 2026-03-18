@@ -37,6 +37,7 @@ try:
 except ImportError:
     uvloop = None  # type: ignore[assignment] # Optional dependency
 
+import guidellm.utils.cli as cli_tools
 from guidellm.backends import Backend, BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
@@ -52,8 +53,9 @@ from guidellm.benchmark.schemas.generative.entrypoints import (
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
 from guidellm.settings import print_config
-from guidellm.utils import Console, DefaultGroupHandler, get_literal_vals
-from guidellm.utils import cli as cli_tools
+from guidellm.utils.console import Console
+from guidellm.utils.default_group import DefaultGroupHandler
+from guidellm.utils.typing import get_literal_vals
 
 STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
 """Available strategy and profile type choices for benchmark execution."""

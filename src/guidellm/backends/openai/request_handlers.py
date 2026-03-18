@@ -18,7 +18,8 @@ from more_itertools import roundrobin
 from guidellm.scheduler import HistoryT
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.request import GenerationRequestArguments
-from guidellm.utils import RegistryMixin, json
+from guidellm.utils.imports import json
+from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "AudioRequestHandler",

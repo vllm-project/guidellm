@@ -18,7 +18,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import SyntheticTextDatasetConfig
-from guidellm.utils import IntegerRangeSampler
+from guidellm.utils.random import IntegerRangeSampler
 
 __all__ = [
     "SyntheticTextDataset",

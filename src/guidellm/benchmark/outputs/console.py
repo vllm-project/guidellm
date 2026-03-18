@@ -20,7 +20,8 @@ from pydantic import Field
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
-from guidellm.utils import Console, safe_format_number, safe_format_timestamp
+from guidellm.utils.console import Console
+from guidellm.utils.functions import safe_format_number, safe_format_timestamp
 
 __all__ = ["GenerativeBenchmarkerConsole"]
 

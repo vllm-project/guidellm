@@ -33,7 +33,7 @@ from guidellm.scheduler.schemas import (
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
-from guidellm.utils import InfoMixin
+from guidellm.utils.mixins import InfoMixin
 
 __all__ = ["Environment", "NonDistributedEnvironment"]
 

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from datasets import Dataset
 
-from guidellm.utils import save_dataset_to_file
+from guidellm.utils.hf_datasets import save_dataset_to_file
 
 
 @pytest.mark.regression

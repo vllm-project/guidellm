@@ -49,7 +49,8 @@ from guidellm.scheduler import (
     StrategyType,
 )
 from guidellm.schemas import GenerationRequest, GenerationResponse
-from guidellm.utils import Console, InfoMixin
+from guidellm.utils.console import Console
+from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [

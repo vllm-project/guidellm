@@ -20,7 +20,7 @@ from pydantic import Field
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import GenerativeBenchmark, GenerativeBenchmarksReport
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
-from guidellm.utils import safe_format_timestamp
+from guidellm.utils.functions import safe_format_timestamp
 
 __all__ = ["GenerativeBenchmarkerCSV"]
 

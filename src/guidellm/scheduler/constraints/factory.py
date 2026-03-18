@@ -16,7 +16,8 @@ from guidellm.scheduler.constraints.constraint import (
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from guidellm.utils import InfoMixin, RegistryMixin
+from guidellm.utils.mixins import InfoMixin
+from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["ConstraintsInitializerFactory"]
 
