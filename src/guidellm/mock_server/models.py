@@ -86,7 +86,9 @@ class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool"] = Field(
         description="Role of the message sender in the conversation"
     )
-    content: str = Field(description="Text content of the message")
+    content: str | list[dict[str, Any]] = Field(
+        description="Text content of the message"
+    )
     name: str | None = Field(
         default=None, description="Optional name identifier for the message sender"
     )

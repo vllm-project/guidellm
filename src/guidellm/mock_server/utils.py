@@ -182,9 +182,17 @@ class MockTokenizer(PreTrainedTokenizerBase):
         texts = []
         for message in conversation:
             if isinstance(message, dict) and "content" in message:
-                texts.append(message["content"])
+                content = message["content"]
             elif hasattr(message, "content"):
-                texts.append(message.content)
+                content = message.content
+            else:
+                continue
+
+            if isinstance(content, list):
+                content = " ".join(
+                    part["text"] for part in content if part.get("type") == "text"
+                )
+            texts.append(content)
 
         formatted_text = " ".join(texts)
 
