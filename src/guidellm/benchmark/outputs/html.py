@@ -31,8 +31,8 @@ from guidellm.benchmark.schemas import (
 )
 from guidellm.schemas import DistributionSummary, Percentiles
 from guidellm.settings import settings
-from guidellm.utils import camelize_str, recursive_key_update
-from guidellm.utils.text import load_text
+from guidellm.utils.dict import recursive_key_update
+from guidellm.utils.text import camelize_str, load_text
 
 __all__ = ["GenerativeBenchmarkerHTML"]
 

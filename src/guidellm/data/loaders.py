@@ -14,7 +14,7 @@ from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.finalizers import DatasetFinalizer
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
 from guidellm.logger import logger
-from guidellm.utils import InfoMixin
+from guidellm.utils.mixins import InfoMixin
 
 __all__ = ["DataLoader", "DatasetsIterator"]
 

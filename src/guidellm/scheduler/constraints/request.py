@@ -24,7 +24,7 @@ from guidellm.scheduler.schemas import (
     SchedulerUpdateAction,
 )
 from guidellm.schemas import RequestInfo, StandardBaseModel
-from guidellm.utils import InfoMixin
+from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
     "MaxDurationConstraint",

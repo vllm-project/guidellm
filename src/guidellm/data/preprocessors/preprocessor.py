@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from datasets import Dataset, IterableDataset
 
-from guidellm.utils import RegistryMixin
+from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["DataDependentPreprocessor", "DatasetPreprocessor", "PreprocessorRegistry"]
 

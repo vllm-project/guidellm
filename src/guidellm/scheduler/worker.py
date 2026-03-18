@@ -41,8 +41,8 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
-from guidellm.utils import (
-    InterProcessMessaging,
+from guidellm.utils.messaging import InterProcessMessaging
+from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
     wait_for_sync_event,
     wait_for_sync_objects,

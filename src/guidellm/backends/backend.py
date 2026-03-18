@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import GenerationRequest, GenerationResponse
-from guidellm.utils import RegistryMixin
+from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "Backend",

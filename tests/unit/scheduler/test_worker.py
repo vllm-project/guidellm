@@ -20,7 +20,7 @@ from guidellm.scheduler import (
     WorkerProcess,
 )
 from guidellm.schemas import RequestInfo, RequestTimings
-from guidellm.utils import InterProcessMessagingQueue
+from guidellm.utils.messaging import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
 
 STANDARD_NUM_REQUESTS: int = 200

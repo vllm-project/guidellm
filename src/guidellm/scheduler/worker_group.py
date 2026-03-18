@@ -40,13 +40,13 @@ from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
 from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
-from guidellm.utils import (
+from guidellm.utils.messaging import (
     InterProcessMessaging,
     InterProcessMessagingManagerQueue,
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
-    wait_for_sync_objects,
 )
+from guidellm.utils.synchronous import wait_for_sync_objects
 
 __all__ = ["WorkerGroupState", "WorkerProcessGroup"]
 

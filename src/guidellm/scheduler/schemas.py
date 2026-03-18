@@ -17,8 +17,7 @@ from pydantic import Field
 from typing_extensions import TypeAliasType
 
 from guidellm.schemas import RequestInfo, StandardBaseModel
-from guidellm.utils import RegistryMixin
-from guidellm.utils.registry import RegistryObjT
+from guidellm.utils.registry import RegistryMixin, RegistryObjT
 
 __all__ = [
     "BackendInterface",

@@ -36,7 +36,9 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarkAccumulator,
 )
 from guidellm.scheduler import SchedulerState, SchedulingStrategy
-from guidellm.utils import Colors, format_value_display, safe_format_timestamp
+from guidellm.utils.console import Colors
+from guidellm.utils.functions import safe_format_timestamp
+from guidellm.utils.text import format_value_display
 
 __all__ = ["BenchmarkerProgress", "GenerativeConsoleBenchmarkerProgress"]
 

@@ -14,13 +14,14 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
 )
-from guidellm.utils import (
+from guidellm.utils.messaging import (
     InterProcessMessaging,
     InterProcessMessagingManagerQueue,
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
+    ReceiveMessageT,
+    SendMessageT,
 )
-from guidellm.utils.messaging import ReceiveMessageT, SendMessageT
 from tests.unit.testing_utils import async_timeout
 
 

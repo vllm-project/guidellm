@@ -18,7 +18,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
-from guidellm.utils import RegistryMixin
+from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["GenerativeBenchmarkerOutput"]
 

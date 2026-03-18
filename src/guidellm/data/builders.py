@@ -14,8 +14,9 @@ from guidellm.data.deserializers import (
 )
 from guidellm.data.preprocessors import GenerativeColumnMapper
 from guidellm.data.schemas import PreprocessDatasetConfig
-from guidellm.utils import IntegerRangeSampler, check_load_processor
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
+from guidellm.utils.hf_transformers import check_load_processor
+from guidellm.utils.random import IntegerRangeSampler
 
 
 class PromptTooShortError(Exception):
