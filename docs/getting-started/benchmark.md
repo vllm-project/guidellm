@@ -82,6 +82,14 @@ For example, setting `--max-requests 1000` with `--profile sweep` will run 1000 
 
 GuideLLM supports several benchmark profiles and strategies, which are described in detail below.
 
+- `synchronous`: Runs requests one at a time (sequential)
+- `throughput`: Tests maximum throughput by running requests in parallel
+- `concurrent`: Runs a fixed number of parallel request streams
+- `constant`: Sends requests at a fixed rate per second
+- `poisson`: Sends requests following a Poisson distribution
+- `sweep`: Automatically determines optimal performance points (default)
+- `replay`: Replays requests from a trace file to reproduce real-world traffic patterns (beta)
+
 #### Synchronous Profile
 
 Runs requests one at a time (sequential).
@@ -186,6 +194,28 @@ guidellm benchmark \
 ```
 
 You can customize synthetic data generation with additional parameters such as standard deviation, minimum, and maximum values. See the [Datasets Synthetic data documentation](../guides/datasets.md#synthetic-data) for more details.
+
+### Trace Replay Benchmarking (beta)
+
+For realistic load testing, replay traffic patterns from trace files. Trace files must be JSONL with `timestamp`, `input_length`, and `output_length` fields:
+
+```json
+{"timestamp": 0, "input_length": 256, "output_length": 128}
+{"timestamp": 0.5, "input_length": 512, "output_length": 64}
+```
+
+Run with the `replay` profile:
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --data "path/to/trace.jsonl" \
+  --data-args '{"type_": "trace_synthetic"}' \
+  --profile replay \
+  --rate 1.0
+```
+
+The `rate` parameter acts as a time scale: `1.0` for original speed, `2.0` for 2x faster, `0.5` for half speed.
 
 ### Working with Real Data
 
