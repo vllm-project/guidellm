@@ -5,7 +5,7 @@ vLLM wrapper with same interface as vLLM.
 try:
     import vllm
 except ImportError as e:
-    raise ImportError("Please install vllm to use vLLM features") from e
+    raise AttributeError("Please install vllm to use vLLM features") from e
 
 
 def __getattr__(name: str):

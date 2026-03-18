@@ -11,7 +11,7 @@ import numpy as np
 try:
     from PIL import Image as PILImage
 except ImportError as e:
-    raise ImportError(
+    raise AttributeError(
         "Please install guidellm[vision] to use image/video features"
     ) from e
 
