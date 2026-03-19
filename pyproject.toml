@@ -52,7 +52,7 @@ keywords = [
 dependencies = [
     "click~=8.3.0",
     "culsans~=0.10.0",
-    "datasets",
+    "datasets>=4.1.0",
     "eval_type_backport",
     "faker",
     "ftfy>=6.0.0",
