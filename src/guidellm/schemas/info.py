@@ -125,6 +125,16 @@ class RequestInfo(StandardBaseModel):
         description="Unique identifier for the request",
         default_factory=lambda: str(uuid.uuid4()),
     )
+    conversation_id: str | None = Field(
+        default=None,
+        description=(
+            "Identifier for the conversation this request is part of, if applicable."
+        ),
+    )
+    turn_index: int = Field(
+        default=0,
+        description="Index of the request within the conversation, if applicable.",
+    )
     status: Literal[
         "queued",
         "pending",

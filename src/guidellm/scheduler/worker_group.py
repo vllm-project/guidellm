@@ -477,6 +477,14 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self._pending_request_ids: set[str] = set()
         self._processing_request_ids: set[str] = set()
 
+    def _find_request_id(self, request: RequestT) -> str:
+        if hasattr(request, "request_id"):
+            return str(request.request_id)
+        elif hasattr(request, "id"):
+            return str(request.id)
+        else:
+            return str(uuid.uuid4())
+
     def requests_generator(
         self,
         requests: DatasetIterT[RequestT],
@@ -500,18 +508,16 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 requests_chain: Iterable[RequestT],
             ) -> Generator[RequestDataT[RequestT], None, None]:
                 nonlocal count, stop_queueing
-                for request in requests_chain:
+                # NOTE: This allows users to correlate requests in post-processing
+                conv_id = str(uuid.uuid4())
+                for i, request in enumerate(requests_chain):
                     count += 1
 
-                    request_id: str
-                    if hasattr(request, "request_id"):
-                        request_id = str(request.request_id)
-                    elif hasattr(request, "id"):
-                        request_id = str(request.id)
-                    else:
-                        request_id = str(uuid.uuid4())
+                    request_id = self._find_request_id(request)
                     request_info: RequestInfo = RequestInfo(
                         request_id=request_id,
+                        conversation_id=conv_id,
+                        turn_index=i,
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,
