@@ -508,12 +508,16 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 requests_chain: Iterable[RequestT],
             ) -> Generator[RequestDataT[RequestT], None, None]:
                 nonlocal count, stop_queueing
-                for request in requests_chain:
+                # NOTE: This allows users to correlate requests in post-processing
+                conv_id = str(uuid.uuid4())
+                for i, request in enumerate(requests_chain):
                     count += 1
 
                     request_id = self._find_request_id(request)
                     request_info: RequestInfo = RequestInfo(
                         request_id=request_id,
+                        conversation_id=conv_id,
+                        turn_index=i,
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,
