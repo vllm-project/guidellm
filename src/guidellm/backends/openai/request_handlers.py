@@ -26,6 +26,7 @@ __all__ = [
     "ChatCompletionsRequestHandler",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
 ]
 
@@ -711,3 +712,207 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             text_words=len(text.split()) if text else 0,
             text_characters=len(text) if text else 0,
         )
+
+
+@OpenAIRequestHandlerFactory.register("/v1/responses")
+class ResponsesRequestHandler(TextCompletionsRequestHandler):
+    """
+    Request handler for the OpenAI Responses API endpoint.
+
+    Handles the /v1/responses format which uses `input` instead of `messages`,
+    `instructions` for system prompts, and a different response/streaming shape
+    than chat completions. Supports both streaming and non-streaming responses.
+    """
+
+    def _format_prompts(
+        self, column_data: list, column_type: str
+    ) -> list[dict[str, Any]]:
+        formatted_data: list[dict[str, Any]] = []
+        for item in column_data:
+            if column_type == "text_column":
+                formatted_data.append({"type": "input_text", "text": item})
+            elif column_type == "image_column":
+                formatted_data.append(
+                    {
+                        "type": "input_image",
+                        "image_url": item.get("image"),
+                    }
+                )
+            elif column_type == "audio_column":
+                formatted_data.append(
+                    {
+                        "type": "input_file",
+                        "file_data": base64.b64encode(item.get("audio", b"")).decode(
+                            "utf-8"
+                        ),
+                    }
+                )
+        return formatted_data
+
+    def _build_input_items(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None,
+        prev_requests: list[GenerationRequestArguments],
+    ) -> list[dict[str, Any]]:
+        """Build the ``input`` array for the Responses API.
+
+        The Responses API uses a flat ``input`` list of role-tagged message
+        dicts (with nested content parts like ``input_text``, ``input_image``)
+        instead of chat completions' ``messages`` array.
+        """
+        input_items: list[dict[str, Any]] = []
+
+        for req in prev_requests:
+            if req.body and "input" in req.body:
+                prev_input = req.body["input"]
+                if isinstance(prev_input, list):
+                    input_items.extend(prev_input)
+
+        content_parts: list[dict[str, Any]] = []
+        for col in ("text_column", "image_column", "audio_column"):
+            content_parts.extend(self._format_prompts(data.columns.get(col, []), col))
+        if content_parts:
+            input_items.append({"role": "user", "content": content_parts})
+
+        if response and response.text:
+            input_items.append({"role": "assistant", "content": response.text})
+
+        return input_items
+
+    def format(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        prev_requests: list[GenerationRequestArguments] = []
+        if history:
+            prev_requests = [
+                self.format(req, response=res, **kwargs) for req, res in history
+            ]
+
+        arguments = GenerationRequestArguments()
+        arguments.body = {}
+
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        if kwargs.get("stream"):
+            arguments.stream = True
+            arguments.body["stream"] = True
+            # NOTE: The Responses API does not support stream_options; usage
+            # data is delivered in the response.completed SSE event instead.
+
+        if data.output_metrics.text_tokens:
+            arguments.body["max_output_tokens"] = data.output_metrics.text_tokens
+            # stop/ignore_eos are vLLM-specific sampling params that force
+            # the model to generate exactly N tokens, matching the behavior
+            # of the chat completions handler for controlled benchmarking.
+            arguments.body["stop"] = None
+            arguments.body["ignore_eos"] = True
+        elif kwargs.get("max_tokens") is not None:
+            arguments.body["max_output_tokens"] = kwargs["max_tokens"]
+
+        if kwargs.get("extras"):
+            arguments.model_combine(kwargs["extras"])
+
+        prefix = " ".join(data.columns.get("prefix_column", []))
+        if prefix:
+            arguments.body["instructions"] = prefix
+
+        arguments.body["input"] = self._build_input_items(data, response, prev_requests)
+
+        return arguments
+
+    def compile_non_streaming(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: dict,
+    ) -> GenerationResponse:
+        text = self._extract_output_text(response)
+        usage = response.get("usage", {})
+        input_metrics, output_metrics = self.extract_metrics(usage, text)
+
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=arguments.model_dump_json(),
+            response_id=response.get("id"),
+            text=text,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )
+
+    def add_streaming_line(self, line: str) -> int | None:
+        # Responses API SSE uses paired "event: <type>" and "data: <json>"
+        # lines (unlike chat completions which only has "data:" lines).
+        # The event type is embedded in the JSON payload's "type" field,
+        # so we ignore the "event:" lines (extract_line_data returns {})
+        # and dispatch on data["type"] below.
+        if not (data := self.extract_line_data(line)):
+            return None if data is None else 0
+
+        event_type = data.get("type", "")
+
+        if "id" in data and self.streaming_response_id is None:
+            resp = data.get("response", {})
+            if isinstance(resp, dict) and "id" in resp:
+                self.streaming_response_id = resp["id"]
+
+        if event_type == "response.output_text.delta":
+            delta = data.get("delta", "")
+            if delta:
+                self.streaming_texts.append(delta)
+                return 1
+            return 0
+
+        if event_type == "response.completed":
+            # response.completed is the terminal SSE event. It carries the
+            # final response object including usage data (input_tokens,
+            # output_tokens). Returning None signals the streaming loop in
+            # http.py to break out of the stream.
+            resp = data.get("response", {})
+            if isinstance(resp, dict):
+                usage = resp.get("usage")
+                if usage:
+                    self.streaming_usage = usage
+                if self.streaming_response_id is None and "id" in resp:
+                    self.streaming_response_id = resp["id"]
+            return None
+
+        return 0
+
+    def extract_metrics(
+        self, usage: dict[str, int | dict[str, int]] | None, text: str
+    ) -> tuple[UsageMetrics, UsageMetrics]:
+        # Responses API uses "input_tokens"/"output_tokens" in its usage
+        # payload, unlike chat completions' "prompt_tokens"/"completion_tokens".
+        if not usage:
+            return UsageMetrics(), UsageMetrics(
+                text_words=len(text.split()) if text else 0,
+                text_characters=len(text) if text else 0,
+            )
+
+        usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
+
+        return UsageMetrics(
+            text_tokens=usage_metrics.get("input_tokens", 0),
+        ), UsageMetrics(
+            text_tokens=usage_metrics.get("output_tokens", 0),
+            text_words=len(text.split()) if text else 0,
+            text_characters=len(text) if text else 0,
+        )
+
+    @staticmethod
+    def _extract_output_text(response: dict) -> str:
+        """Extract generated text from a Responses API response object."""
+        texts: list[str] = []
+        for item in response.get("output", []):
+            if item.get("type") != "message":
+                continue
+            for part in item.get("content", []):
+                if part.get("type") == "output_text":
+                    texts.append(part.get("text", ""))
+        return "".join(texts)

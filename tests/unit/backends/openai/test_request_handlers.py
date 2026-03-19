@@ -13,6 +13,7 @@ from guidellm.backends.openai.request_handlers import (
     ChatCompletionsRequestHandler,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    ResponsesRequestHandler,
     TextCompletionsRequestHandler,
 )
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
@@ -68,6 +69,7 @@ class TestOpenAIRequestHandlerFactory:
         [
             ("/v1/completions", None, TextCompletionsRequestHandler),
             ("/v1/chat/completions", None, ChatCompletionsRequestHandler),
+            ("/v1/responses", None, ResponsesRequestHandler),
             ("/v1/audio/transcriptions", None, AudioRequestHandler),
             ("/v1/audio/translations", None, AudioRequestHandler),
             (
@@ -79,6 +81,7 @@ class TestOpenAIRequestHandlerFactory:
         ids=[
             "/v1/completions",
             "/v1/chat/completions",
+            "/v1/responses",
             "/v1/audio/transcriptions",
             "/v1/audio/translations",
             "override_text_completions",
@@ -1612,3 +1615,484 @@ class TestChatCompletionsRequestHandlerMultiturn:
         assert isinstance(messages[2]["content"], list)
         assert any(item["type"] == "text" for item in messages[2]["content"])
         assert any(item["type"] == "image_url" for item in messages[2]["content"])
+
+
+class TestResponsesRequestHandler:
+    """Test cases for ResponsesRequestHandler.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def valid_instances(self):
+        """
+        Create instance of ResponsesRequestHandler.
+
+        ## WRITTEN BY AI ##
+        """
+        return ResponsesRequestHandler()
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """
+        Test ResponsesRequestHandler class signatures.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = ResponsesRequestHandler()
+        assert issubclass(ResponsesRequestHandler, TextCompletionsRequestHandler)
+        assert hasattr(handler, "format")
+        assert hasattr(handler, "compile_non_streaming")
+        assert hasattr(handler, "add_streaming_line")
+        assert hasattr(handler, "compile_streaming")
+        assert hasattr(handler, "extract_metrics")
+        assert hasattr(handler, "streaming_texts")
+        assert hasattr(handler, "streaming_usage")
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """
+        Test ResponsesRequestHandler initialization.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        assert isinstance(instance, ResponsesRequestHandler)
+        assert instance.streaming_texts == []
+        assert instance.streaming_usage is None
+
+    @pytest.mark.smoke
+    def test_factory_registration(self):
+        """
+        Test that the handler is registered in the factory for /v1/responses.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = OpenAIRequestHandlerFactory.create("/v1/responses")
+        assert isinstance(handler, ResponsesRequestHandler)
+
+    @pytest.mark.smoke
+    def test_format_minimal(self, valid_instances):
+        """
+        Test format method with minimal data.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data)
+
+        assert result.body is not None
+        assert isinstance(result.body, dict)
+        assert "input" in result.body
+
+    @pytest.mark.sanity
+    def test_format_with_model(self, valid_instances):
+        """
+        Test format method with model parameter.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data, model="gpt-4o")
+
+        assert result.body["model"] == "gpt-4o"
+
+    @pytest.mark.sanity
+    def test_format_streaming(self, valid_instances):
+        """
+        Test format method with streaming enabled (no stream_options).
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data, stream=True)
+
+        assert result.stream is True
+        assert result.body["stream"] is True
+        assert "stream_options" not in result.body
+
+    @pytest.mark.sanity
+    def test_format_output_tokens(self, valid_instances):
+        """
+        Test format method uses max_output_tokens with stop/ignore_eos for parity.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            output_metrics=UsageMetrics(text_tokens=100),
+        )
+
+        result = instance.format(data)
+
+        assert result.body["max_output_tokens"] == 100
+        assert result.body["stop"] is None
+        assert result.body["ignore_eos"] is True
+        assert "max_completion_tokens" not in result.body
+        assert "max_tokens" not in result.body
+
+    @pytest.mark.sanity
+    def test_format_max_tokens_kwarg(self, valid_instances):
+        """
+        Test format method with max_tokens keyword maps to max_output_tokens
+        without stop/ignore_eos.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data, max_tokens=50)
+
+        assert result.body["max_output_tokens"] == 50
+        assert "stop" not in result.body
+        assert "ignore_eos" not in result.body
+
+    @pytest.mark.sanity
+    def test_format_instructions_from_prefix(self, valid_instances):
+        """
+        Test format method maps prefix_column to instructions field.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"prefix_column": ["You are a helpful assistant."]},
+        )
+
+        result = instance.format(data)
+
+        assert result.body["instructions"] == "You are a helpful assistant."
+
+    @pytest.mark.sanity
+    def test_format_input_items_text(self, valid_instances):
+        """
+        Test format method creates input items with input_text type.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["Hello", "How are you?"]},
+        )
+
+        result = instance.format(data)
+
+        input_items = result.body["input"]
+        assert len(input_items) == 1
+        assert input_items[0]["role"] == "user"
+        content = input_items[0]["content"]
+        assert len(content) == 2
+        assert content[0]["type"] == "input_text"
+        assert content[0]["text"] == "Hello"
+        assert content[1]["type"] == "input_text"
+        assert content[1]["text"] == "How are you?"
+
+    @pytest.mark.sanity
+    def test_format_input_items_image(self, valid_instances):
+        """
+        Test format method creates input items with input_image type.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={
+                "image_column": [{"image": "https://example.com/img.jpg"}],
+            },
+        )
+
+        result = instance.format(data)
+
+        input_items = result.body["input"]
+        assert len(input_items) == 1
+        content = input_items[0]["content"]
+        assert content[0]["type"] == "input_image"
+        assert content[0]["image_url"] == "https://example.com/img.jpg"
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        (
+            "response",
+            "expected_text",
+            "expected_input_tokens",
+            "expected_output_tokens",
+        ),
+        [
+            (
+                {
+                    "id": "resp_123",
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [
+                                {"type": "output_text", "text": "Hello, world!"}
+                            ],
+                        }
+                    ],
+                    "usage": {"input_tokens": 5, "output_tokens": 3},
+                },
+                "Hello, world!",
+                5,
+                3,
+            ),
+            (
+                {
+                    "id": "resp_456",
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [
+                                {"type": "output_text", "text": "Part 1"},
+                                {"type": "output_text", "text": " Part 2"},
+                            ],
+                        }
+                    ],
+                    "usage": {"input_tokens": 10, "output_tokens": 8},
+                },
+                "Part 1 Part 2",
+                10,
+                8,
+            ),
+            (
+                {"id": "resp_789", "output": [], "usage": {}},
+                "",
+                None,
+                None,
+            ),
+            (
+                {"output": []},
+                "",
+                None,
+                None,
+            ),
+        ],
+    )
+    def test_non_streaming(
+        self,
+        valid_instances,
+        generation_request,
+        response,
+        expected_text,
+        expected_input_tokens,
+        expected_output_tokens,
+    ):
+        """
+        Test compile_non_streaming method for Responses API format.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        result = instance.compile_non_streaming(generation_request, arguments, response)
+
+        assert result.text == expected_text
+        assert result.input_metrics.text_tokens == expected_input_tokens
+        assert result.output_metrics.text_tokens == expected_output_tokens
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("lines", "expected_text", "expected_input_tokens", "expected_output_tokens"),
+        [
+            (
+                [
+                    "event: response.created",
+                    (
+                        "data: {"
+                        '"type":"response.created",'
+                        '"response":{"id":"resp_1"},'
+                        '"sequence_number":0}'
+                    ),
+                    "",
+                    "event: response.output_text.delta",
+                    (
+                        "data: {"
+                        '"type":"response.output_text.delta",'
+                        '"delta":"Hello",'
+                        '"sequence_number":4}'
+                    ),
+                    "",
+                    "event: response.output_text.delta",
+                    (
+                        "data: {"
+                        '"type":"response.output_text.delta",'
+                        '"delta":", world!",'
+                        '"sequence_number":5}'
+                    ),
+                    "",
+                    "event: response.completed",
+                    (
+                        "data: {"
+                        '"type":"response.completed",'
+                        '"response":{"id":"resp_1",'
+                        '"usage":{"input_tokens":5,'
+                        '"output_tokens":3}},'
+                        '"sequence_number":8}'
+                    ),
+                    "data: [DONE]",
+                ],
+                "Hello, world!",
+                5,
+                3,
+            ),
+            (
+                [
+                    "event: response.output_text.delta",
+                    (
+                        "data: {"
+                        '"type":"response.output_text.delta",'
+                        '"delta":"Test",'
+                        '"sequence_number":4}'
+                    ),
+                    "",
+                    "event: response.completed",
+                    (
+                        "data: {"
+                        '"type":"response.completed",'
+                        '"response":{"id":"resp_2","usage":{}},'
+                        '"sequence_number":6}'
+                    ),
+                    "data: [DONE]",
+                ],
+                "Test",
+                None,
+                None,
+            ),
+            (
+                [
+                    "event: response.created",
+                    (
+                        "data: {"
+                        '"type":"response.created",'
+                        '"response":{"id":"resp_3"},'
+                        '"sequence_number":0}'
+                    ),
+                    "",
+                    "event: response.completed",
+                    (
+                        "data: {"
+                        '"type":"response.completed",'
+                        '"response":{"id":"resp_3","usage":{}},'
+                        '"sequence_number":2}'
+                    ),
+                    "data: [DONE]",
+                ],
+                "",
+                None,
+                None,
+            ),
+        ],
+    )
+    def test_streaming(
+        self,
+        valid_instances,
+        generation_request,
+        lines,
+        expected_text,
+        expected_input_tokens,
+        expected_output_tokens,
+    ):
+        """
+        Test streaming with Responses API SSE event format.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+        assert response.text == expected_text
+        assert response.input_metrics.text_tokens == expected_input_tokens
+        assert response.output_metrics.text_tokens == expected_output_tokens
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("usage", "text", "expected_input_tokens", "expected_output_tokens"),
+        [
+            (
+                {"input_tokens": 5, "output_tokens": 3},
+                "Hello world",
+                5,
+                3,
+            ),
+            (
+                {"input_tokens": 0, "output_tokens": 0},
+                "",
+                0,
+                0,
+            ),
+            (
+                None,
+                "Hello world",
+                None,
+                None,
+            ),
+            (
+                {},
+                "",
+                None,
+                None,
+            ),
+        ],
+    )
+    def test_extract_metrics(
+        self,
+        valid_instances,
+        usage,
+        text,
+        expected_input_tokens,
+        expected_output_tokens,
+    ):
+        """
+        Test extract_metrics maps input_tokens/output_tokens correctly.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        input_metrics, output_metrics = instance.extract_metrics(usage, text)
+
+        assert input_metrics.text_tokens == expected_input_tokens
+        assert output_metrics.text_tokens == expected_output_tokens
+        assert output_metrics.text_words == (len(text.split()) if text else 0)
+        assert output_metrics.text_characters == len(text)
+
+    @pytest.mark.sanity
+    def test_format_with_history(self, valid_instances):
+        """
+        Test format builds input with conversation history.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="4"
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+
+        result = instance.format(data, history=[(prev_request, prev_response)])
+
+        input_items = result.body["input"]
+        assert len(input_items) == 3
+        assert input_items[0]["role"] == "user"
+        assert input_items[1]["role"] == "assistant"
+        assert input_items[1]["content"] == "4"
+        assert input_items[2]["role"] == "user"
