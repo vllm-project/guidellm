@@ -2,7 +2,6 @@ import pytest
 
 from guidellm.settings import (
     DatasetSettings,
-    Environment,
     LoggingSettings,
     ReportGenerationSettings,
     Settings,
@@ -19,7 +18,6 @@ BASE_URL = (
 @pytest.mark.smoke
 def test_default_settings():
     settings = Settings()
-    assert settings.env == Environment.PROD
     assert settings.logging == LoggingSettings()
     assert settings.report_generation.source.startswith(BASE_URL)
 
@@ -29,34 +27,14 @@ def test_settings_from_env_variables(mocker):
     mocker.patch.dict(
         "os.environ",
         {
-            "GUIDELLM__env": "dev",
             "GUIDELLM__logging__disabled": "true",
             "GUIDELLM__REPORT_GENERATION__SOURCE": "http://custom.url",
         },
     )
 
     settings = Settings()
-    assert settings.env == Environment.DEV
     assert settings.logging.disabled is True
     assert settings.report_generation.source == "http://custom.url"
-
-
-@pytest.mark.smoke
-def test_report_generation_default_source():
-    settings = Settings(env=Environment.LOCAL)
-    assert settings.report_generation.source == "http://localhost:3000/index.html"
-
-    settings = Settings(env=Environment.DEV)
-    assert (
-        settings.report_generation.source
-        == "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/dev/index.html"
-    )
-
-    settings = Settings(env=Environment.STAGING)
-    assert settings.report_generation.source.startswith(BASE_URL)
-
-    settings = Settings(env=Environment.PROD)
-    assert settings.report_generation.source.startswith(BASE_URL)
 
 
 @pytest.mark.sanity
@@ -90,12 +68,10 @@ def test_reload_settings(mocker):
     mocker.patch.dict(
         "os.environ",
         {
-            "GUIDELLM__env": "staging",
             "GUIDELLM__logging__disabled": "false",
         },
     )
     reload_settings()
-    assert settings.env == Environment.STAGING
     assert settings.logging.disabled is False
 
 
