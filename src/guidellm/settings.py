@@ -2,40 +2,19 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 __all__ = [
     "DatasetSettings",
-    "Environment",
     "LoggingSettings",
     "Settings",
     "print_config",
     "reload_settings",
     "settings",
 ]
-
-
-class Environment(str, Enum):
-    """
-    Enum for the supported environments
-    """
-
-    LOCAL = "local"
-    DEV = "dev"
-    STAGING = "staging"
-    PROD = "prod"
-
-
-ENV_REPORT_MAPPING = {
-    Environment.PROD: "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/v0.5.4/index.html",
-    Environment.STAGING: "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/release/v0.4.0/index.html",
-    Environment.DEV: "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/dev/index.html",
-    Environment.LOCAL: "http://localhost:3000/index.html",
-}
 
 
 class LoggingSettings(BaseModel):
@@ -79,7 +58,7 @@ class ReportGenerationSettings(BaseModel):
     Report generation settings for the application
     """
 
-    source: str = ""
+    source: str = "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/v0.5.4/index.html"
 
 
 class Settings(BaseSettings):
@@ -103,7 +82,6 @@ class Settings(BaseSettings):
     )
 
     # general settings
-    env: Environment = Environment.PROD
     default_async_loop_sleep: float = 10e-5
     logging: LoggingSettings = LoggingSettings()
     default_sweep_number: int = 10
@@ -137,13 +115,6 @@ class Settings(BaseSettings):
     table_border_char: str = "="
     table_headers_border_char: str = "-"
     table_column_separator_char: str = "|"
-
-    @model_validator(mode="after")
-    @classmethod
-    def set_default_source(cls, values):
-        if not values.report_generation.source:
-            values.report_generation.source = ENV_REPORT_MAPPING.get(values.env)
-        return values
 
     def generate_env_file(self) -> str:
         """
