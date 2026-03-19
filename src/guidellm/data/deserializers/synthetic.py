@@ -105,6 +105,11 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
     def num_shards(self) -> int:
         return 1
 
+    @property
+    def n_shards(self) -> int:
+        """Alias for num_shards; required by HuggingFace datasets IterableDataset API."""
+        return self.num_shards
+
     def shuffle_data_sources(
         self,
         generator: np.random.Generator,  # noqa: ARG002
@@ -114,11 +119,10 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
     def shard_data_sources(
         self,
-        num_shards: int,  # noqa: ARG002
-        index: int,  # noqa: ARG002
-        contiguous: bool = True,  # noqa: ARG002
+        worker_id: int,  # noqa: ARG002
+        num_workers: int,  # noqa: ARG002
     ) -> _SyntheticTextExamplesIterable:
-        """Return self since synthetic data generation is infinite and stateless."""
+        """HuggingFace API: return self since synthetic data is infinite and stateless."""
         return self
 
     def load_state_dict(self, state_dict: dict) -> None:
