@@ -20,6 +20,7 @@ from math import ceil
 from pathlib import Path
 from typing import Any, ClassVar
 
+import httpx
 from loguru import logger
 from pydantic import BaseModel, Field, computed_field
 
@@ -333,8 +334,15 @@ def _build_run_info(
     """
     model = args.model or "N/A"
     timestamp = max(bm.start_time for bm in benchmarks if bm.start_time is not None)
+    model_size = 0
+    try:
+        response = httpx.get(f"https://huggingface.co/api/models/{model}")
+        model_size = response.json().get("usedStorage", 0)
+    except (httpx.HTTPError, ValueError):
+        logger.warning("Could not find huggingface model with model size")
+
     return {
-        "model": {"name": model, "size": 0},
+        "model": {"name": model, "size": model_size},
         "task": "N/A",
         "timestamp": timestamp,
         "dataset": {"name": "N/A"},
