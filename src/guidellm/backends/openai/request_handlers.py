@@ -974,8 +974,8 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
     def format(
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,
-        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        response: GenerationResponse | None = None,  # noqa: ARG002
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,  # noqa: ARG002
         **kwargs: Any,
     ) -> GenerationRequestArguments:
         """
