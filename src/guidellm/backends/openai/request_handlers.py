@@ -974,12 +974,16 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
     def format(
         self,
         data: GenerationRequest,
-        **kwargs,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        **kwargs: Any,
     ) -> GenerationRequestArguments:
         """
         Format the pooling generation request into the appropriate structure.
 
         :param data: The generation request to format
+        :param response: Optional previous response (unused for pooling)
+        :param history: Optional request/response history (unused for pooling)
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
