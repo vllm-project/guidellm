@@ -19,7 +19,8 @@ import asyncio
 import math
 import random
 from abc import abstractmethod
-from multiprocessing import Event, Value, synchronize
+from multiprocessing import synchronize
+from multiprocessing.context import BaseContext
 from multiprocessing.sharedctypes import Synchronized
 from typing import Annotated, ClassVar, Literal, TypeVar
 
@@ -103,7 +104,10 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         return None
 
     def init_processes_timings(
-        self, worker_count: PositiveInt, max_concurrency: PositiveInt
+        self,
+        worker_count: PositiveInt,
+        max_concurrency: PositiveInt,
+        mp_context: BaseContext,
     ):
         """
         Initialize shared timing state for multi-process coordination.
@@ -117,9 +121,9 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         self.worker_count = worker_count
         self.max_concurrency = max_concurrency
 
-        self._processes_init_event = Event()
-        self._processes_request_index = Value("i", 0)
-        self._processes_start_time = Value("d", -1.0)
+        self._processes_init_event = mp_context.Event()
+        self._processes_request_index = mp_context.Value("i", 0)
+        self._processes_start_time = mp_context.Value("d", -1.0)
 
     def init_processes_start(self, start_time: float):
         """
@@ -593,7 +597,12 @@ class AsyncPoissonStrategy(SchedulingStrategy):
         """
         return self.max_concurrency
 
-    def init_processes_timings(self, worker_count: int, max_concurrency: int):
+    def init_processes_timings(
+        self,
+        worker_count: PositiveInt,
+        max_concurrency: PositiveInt,
+        mp_context: BaseContext,
+    ):
         """
         Initialize Poisson-specific timing state.
 
@@ -603,10 +612,10 @@ class AsyncPoissonStrategy(SchedulingStrategy):
         :param worker_count: Number of worker processes to coordinate
         :param max_concurrency: Maximum number of concurrent requests allowed
         """
-        self._offset = Value("d", -1.0)
+        self._offset = mp_context.Value("d", -1.0)
         # Call base implementation last to avoid
         # setting Event before offset is ready
-        super().init_processes_timings(worker_count, max_concurrency)
+        super().init_processes_timings(worker_count, max_concurrency, mp_context)
 
     def init_processes_start(self, start_time: float):
         """
