@@ -110,3 +110,4 @@ class TestVLLMResponseHandler:
         """
         out = VLLMResponseHandler.build_response(request_fixture, "hi", None)
         assert out.request_args is None
+

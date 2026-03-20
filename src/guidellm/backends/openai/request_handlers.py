@@ -845,12 +845,29 @@ class ResponsesRequestHandler(TextCompletionsRequestHandler):
             output_metrics=output_metrics,
         )
 
+    def extract_line_data(self, line: str) -> dict[str, Any] | None:
+        """Parse a Responses API SSE line.
+
+        The Responses API streams paired ``event: <type>`` and ``data: <json>``
+        lines, unlike chat completions which only uses ``data:`` lines.  The
+        event type is redundantly embedded in the JSON payload's ``type`` field,
+        so ``event:`` lines are explicitly skipped here rather than relying on
+        the base class's generic "not a data line" fallback.
+        """
+        line = line.strip()
+
+        if not line or line.startswith("event:"):
+            return {}
+
+        if line == "data: [DONE]":
+            return None
+
+        if not line.startswith("data:"):
+            return {}
+
+        return json.loads(line[len("data:") :].strip())
+
     def add_streaming_line(self, line: str) -> int | None:
-        # Responses API SSE uses paired "event: <type>" and "data: <json>"
-        # lines (unlike chat completions which only has "data:" lines).
-        # The event type is embedded in the JSON payload's "type" field,
-        # so we ignore the "event:" lines (extract_line_data returns {})
-        # and dispatch on data["type"] below.
         if not (data := self.extract_line_data(line)):
             return None if data is None else 0
 
@@ -868,11 +885,16 @@ class ResponsesRequestHandler(TextCompletionsRequestHandler):
                 return 1
             return 0
 
-        if event_type == "response.completed":
-            # response.completed is the terminal SSE event. It carries the
-            # final response object including usage data (input_tokens,
-            # output_tokens). Returning None signals the streaming loop in
-            # http.py to break out of the stream.
+        if event_type in (
+            "response.completed",
+            "response.failed",
+            "response.incomplete",
+        ):
+            # All three are terminal SSE events. response.completed is the
+            # normal case; response.failed and response.incomplete may be sent
+            # by some providers instead. Each carries a final response object
+            # with optional usage data. Returning None signals the streaming
+            # loop in http.py to break out of the stream.
             resp = data.get("response", {})
             if isinstance(resp, dict):
                 usage = resp.get("usage")

@@ -507,6 +507,7 @@ class TestTextCompletionsRequestHandler:
         assert output_metrics.text_characters == len(text)
 
 
+
 class TestChatCompletionsRequestHandler:
     """Test cases for ChatCompletionsRequestHandler.
 
@@ -2067,6 +2068,128 @@ class TestResponsesRequestHandler:
         assert output_metrics.text_tokens == expected_output_tokens
         assert output_metrics.text_words == (len(text.split()) if text else 0)
         assert output_metrics.text_characters == len(text)
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("line", "expected_output"),
+        [
+            (
+                'data: {"type":"response.output_text.delta","delta":"Hi"}',
+                {"type": "response.output_text.delta", "delta": "Hi"},
+            ),
+            ("data: [DONE]", None),
+            ("", {}),
+            ("event: response.created", {}),
+            ("event: response.output_text.delta", {}),
+            ("  event: response.completed  ", {}),
+            ("invalid line", {}),
+            ('data: {"test": "value"}', {"test": "value"}),
+        ],
+    )
+    def test_extract_line_data(self, valid_instances, line, expected_output):
+        """
+        Test extract_line_data handles Responses API SSE format.
+
+        Explicitly skips event: lines and parses data: JSON lines.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        result = instance.extract_line_data(line)
+        assert result == expected_output
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("lines", "expected_text", "expected_input_tokens", "expected_output_tokens"),
+        [
+            (
+                [
+                    "event: response.output_text.delta",
+                    (
+                        "data: {"
+                        '"type":"response.output_text.delta",'
+                        '"delta":"Hello",'
+                        '"sequence_number":4}'
+                    ),
+                    "",
+                    "event: response.failed",
+                    (
+                        "data: {"
+                        '"type":"response.failed",'
+                        '"response":{"id":"resp_err",'
+                        '"usage":{"input_tokens":5,"output_tokens":1}},'
+                        '"sequence_number":6}'
+                    ),
+                ],
+                "Hello",
+                5,
+                1,
+            ),
+            (
+                [
+                    "event: response.output_text.delta",
+                    (
+                        "data: {"
+                        '"type":"response.output_text.delta",'
+                        '"delta":"Partial",'
+                        '"sequence_number":4}'
+                    ),
+                    "",
+                    "event: response.incomplete",
+                    (
+                        "data: {"
+                        '"type":"response.incomplete",'
+                        '"response":{"id":"resp_inc",'
+                        '"usage":{"input_tokens":10,"output_tokens":2}},'
+                        '"sequence_number":6}'
+                    ),
+                ],
+                "Partial",
+                10,
+                2,
+            ),
+            (
+                [
+                    "event: response.failed",
+                    (
+                        "data: {"
+                        '"type":"response.failed",'
+                        '"response":{"id":"resp_fail_no_usage"},'
+                        '"sequence_number":1}'
+                    ),
+                ],
+                "",
+                None,
+                None,
+            ),
+        ],
+    )
+    def test_streaming_terminal_events(
+        self,
+        valid_instances,
+        generation_request,
+        lines,
+        expected_text,
+        expected_input_tokens,
+        expected_output_tokens,
+    ):
+        """
+        Test that response.failed and response.incomplete terminate the stream.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+        assert response.text == expected_text
+        assert response.input_metrics.text_tokens == expected_input_tokens
+        assert response.output_metrics.text_tokens == expected_output_tokens
 
     @pytest.mark.sanity
     def test_format_with_history(self, valid_instances):
