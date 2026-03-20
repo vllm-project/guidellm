@@ -221,7 +221,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         # Initialize worker processes
         self.processes = []
         self.strategy.init_processes_timings(
-            worker_count=num_processes, max_concurrency=max_conc
+            worker_count=num_processes,
+            max_concurrency=max_conc,
+            mp_context=self.mp_context,
         )
         for rank in range(num_processes):
             # Distribute any remainder across the first N ranks

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from multiprocessing import get_context
 from typing import Literal, TypeVar
 
 import pytest
@@ -502,7 +503,9 @@ class TestAsyncConstantStrategy:
         ### WRITTEN BY AI ###
         """
         strategy = AsyncConstantStrategy(rate=10.0, rampup_duration=0.0)
-        strategy.init_processes_timings(worker_count=1, max_concurrency=100)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
         start_time = 1000.0
         strategy.init_processes_start(start_time)
 
@@ -525,7 +528,9 @@ class TestAsyncConstantStrategy:
         rate = 10.0
         rampup_duration = 2.0
         strategy = AsyncConstantStrategy(rate=rate, rampup_duration=rampup_duration)
-        strategy.init_processes_timings(worker_count=1, max_concurrency=100)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
         start_time = 1000.0
         strategy.init_processes_start(start_time)
 
@@ -574,7 +579,9 @@ class TestAsyncConstantStrategy:
 
         # Test with very short rampup_duration
         strategy = AsyncConstantStrategy(rate=100.0, rampup_duration=0.01)
-        strategy.init_processes_timings(worker_count=1, max_concurrency=100)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
         start_time = 2000.0
         strategy.init_processes_start(start_time)
 
@@ -584,7 +591,9 @@ class TestAsyncConstantStrategy:
 
         # Test with very long rampup_duration
         strategy2 = AsyncConstantStrategy(rate=1.0, rampup_duration=100.0)
-        strategy2.init_processes_timings(worker_count=1, max_concurrency=100)
+        strategy2.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
         start_time2 = 3000.0
         strategy2.init_processes_start(start_time2)
 
@@ -613,7 +622,9 @@ class TestAsyncConstantStrategy:
         rate = 10.0
         rampup_duration = 2.0
         strategy = AsyncConstantStrategy(rate=rate, rampup_duration=rampup_duration)
-        strategy.init_processes_timings(worker_count=1, max_concurrency=100)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
         start_time = 5000.0
         strategy.init_processes_start(start_time)
 
