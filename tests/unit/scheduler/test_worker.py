@@ -866,6 +866,7 @@ class TestWorkerProcessMultiturn:
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
+    @pytest.mark.xfail(reason="https://github.com/MagicStack/uvloop/issues/739")
     @async_timeout(15)
     async def test_requeue_with_positive_delay(self, worker_instance):
         """Test requeueing with positive delay sleeps then appends to turns_queue.
