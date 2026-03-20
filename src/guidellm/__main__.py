@@ -24,7 +24,6 @@ Example:
 from __future__ import annotations
 
 import asyncio
-import codecs
 from pathlib import Path
 
 import click
@@ -54,27 +53,6 @@ from guidellm.utils.typing import get_literal_vals
 
 STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
 """Available strategy and profile type choices for benchmark execution."""
-
-
-def decode_escaped_str(_ctx, _param, value):
-    """
-    Decode escape sequences in Click option values.
-
-    Click automatically escapes characters converting sequences like "\\n" to
-    "\\\\n". This function decodes these sequences to their intended characters.
-
-    :param _ctx: Click context (unused)
-    :param _param: Click parameter (unused)
-    :param value: String value to decode
-    :return: Decoded string with proper escape sequences, or None if input is None
-    :raises click.BadParameter: When escape sequence decoding fails
-    """
-    if value is None:
-        return None
-    try:
-        return codecs.decode(value, "unicode_escape")
-    except Exception as e:
-        raise click.BadParameter(f"Could not decode escape sequences: {e}") from e
 
 
 @click.group()
@@ -618,7 +596,7 @@ def preprocess():
     "--pad-char",
     type=str,
     default="",
-    callback=decode_escaped_str,
+    callback=cli_tools.decode_escaped_str,
     help="Character to pad short prompts with when using 'pad' strategy.",
 )
 @click.option(
