@@ -27,6 +27,7 @@ import asyncio
 from pathlib import Path
 
 import click
+from more_itertools import partition
 from pydantic import ValidationError
 
 from guidellm.data import ShortPromptStrategy, process_dataset  # isort: skip
@@ -412,8 +413,9 @@ def benchmark():
     help="Enable over-saturation detection with default settings.",
 )
 def run(**kwargs):  # noqa: C901
+    ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
-    kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
+    kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
@@ -432,16 +434,33 @@ def run(**kwargs):  # noqa: C901
         kwargs.pop("disable_console_interactive", False) or disable_console
     )
     console = Console() if not disable_console else None
-    envs = cli_tools.list_set_env()
-    if console and envs:
-        console.print_update(
-            title=(
-                "Note: the following environment variables "
-                "are set and **may** affect configuration"
-            ),
-            details=", ".join(envs),
-            status="warning",
+
+    all_set_envs = cli_tools.list_set_env()
+    if console and all_set_envs:
+        valid_envs = cli_tools.EnvVarValidator.get_valid_env_vars(ctx)
+        invalid_set_envs, valid_set_envs = partition(
+            lambda e: e in valid_envs,
+            all_set_envs,
         )
+
+        if valid_set_envs:
+            console.print_update(
+                title=(
+                    "The following environment variables are set and will be used "
+                    "as GuideLLM defaults (if not overridden by CLI arguments/config)"
+                ),
+                details=", ".join(valid_set_envs),
+                status="info",
+            )
+        if invalid_set_envs:
+            console.print_update(
+                title=(
+                    "Warning: the following environment variables are set "
+                    "but NOT RECOGNIZED by GuideLLM"
+                ),
+                details=", ".join(invalid_set_envs),
+                status="warning",
+            )
 
     # Early validation: backend args via Pydantic (only fields the backend expects)
     backend = kwargs.get("backend", BenchmarkGenerativeTextArgs.get_default("backend"))
@@ -454,7 +473,7 @@ def run(**kwargs):  # noqa: C901
         param_hint, message = format_backend_args_error(args_model, backend_type, err)
         raise click.BadParameter(
             message,
-            ctx=click.get_current_context(),
+            ctx=ctx,
             param_hint=param_hint,
         ) from err
 
@@ -467,7 +486,7 @@ def run(**kwargs):  # noqa: C901
         errs = err.errors(include_url=False, include_context=True, include_input=True)
         param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
         raise click.BadParameter(
-            errs[0]["msg"], ctx=click.get_current_context(), param_hint=param_name
+            errs[0]["msg"], ctx=ctx, param_hint=param_name
         ) from err
 
     asyncio.run(
