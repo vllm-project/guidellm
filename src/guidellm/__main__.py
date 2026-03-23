@@ -32,7 +32,7 @@ from pydantic import ValidationError
 from guidellm.data import ShortPromptStrategy, process_dataset  # isort: skip
 
 import guidellm.utils.cli as cli_tools
-from guidellm.backends import Backend, BackendType
+from guidellm.backends import BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
@@ -40,9 +40,6 @@ from guidellm.benchmark import (
     benchmark_generative_text,
     get_builtin_scenarios,
     reimport_benchmarks_report,
-)
-from guidellm.benchmark.schemas.generative.entrypoints import (
-    format_backend_args_error,
 )
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
@@ -456,21 +453,6 @@ def run(**kwargs):  # noqa: C901
                 details=", ".join(invalid_set_envs),
                 status="warning",
             )
-
-    # Early validation: backend args via Pydantic (only fields the backend expects)
-    backend = kwargs.get("backend", BenchmarkGenerativeTextArgs.get_default("backend"))
-    backend_type = backend.type_ if hasattr(backend, "type_") else backend
-    try:
-        args_model = Backend.get_backend_args(backend_type)
-        inputs = {k: kwargs.get(k) for k in args_model.model_fields}
-        args_model.model_validate(inputs)
-    except ValidationError as err:
-        param_hint, message = format_backend_args_error(args_model, backend_type, err)
-        raise click.BadParameter(
-            message,
-            ctx=ctx,
-            param_hint=param_hint,
-        ) from err
 
     try:
         args = BenchmarkGenerativeTextArgs.create(
