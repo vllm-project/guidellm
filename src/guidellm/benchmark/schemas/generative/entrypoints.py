@@ -182,8 +182,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default="openai_http", description="Backend type or instance for execution"
     )
     backend_kwargs: BackendArgs = Field(
-        # Type coercion is handled in construct_backend_kwargs
-        default_factory=dict,  # type: ignore[arg-type]
         description="Additional backend configuration arguments",
     )
     # Data configuration
@@ -355,9 +353,11 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 ],
             ) from err
 
-        existing_kwargs = data.get("backend_kwargs")
+        existing_kwargs = data.get("backend_kwargs", {})
+        # If we are passed a raw type
         if not isinstance(existing_kwargs, BackendArgs):
             data["backend_kwargs"] = backend_args_class.model_validate(existing_kwargs)
+        # If we are passed the BackendArgs for a different backend type
         elif not isinstance(existing_kwargs, backend_args_class):
             raise ValidationError.from_exception_data(
                 title="Backend Args Validation Error",
