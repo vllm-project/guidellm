@@ -331,7 +331,9 @@ def _build_run_info(
     :param args: Benchmark configuration arguments
     :return: Dictionary with model, task, timestamp, and dataset information
     """
-    model = args.model or "N/A"
+    model = (
+        args.backend_kwargs.model if hasattr(args.backend_kwargs, "model") else "N/A"
+    )
     timestamp = max(bm.start_time for bm in benchmarks if bm.start_time is not None)
     return {
         "model": {"name": model, "size": 0},
@@ -355,7 +357,9 @@ def _build_workload_details(
     :param args: Benchmark configuration arguments
     :return: Dictionary with prompts, generations, request timing, and server info
     """
-    target = args.target
+    target = (
+        args.backend_kwargs.target if hasattr(args.backend_kwargs, "target") else None
+    )
     rate_type = benchmarks[0].config.strategy.type_
     successful_requests = [req for bm in benchmarks for req in bm.requests.successful]
 

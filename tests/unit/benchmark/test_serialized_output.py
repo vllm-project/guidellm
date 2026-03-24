@@ -20,7 +20,10 @@ def minimal_report() -> GenerativeBenchmarksReport:
     ## WRITTEN BY AI ##
     """
     args = BenchmarkGenerativeTextArgs(
-        target="http://localhost:8000/v1",
+        backend_kwargs={
+            "target": "http://localhost:8000/v1",
+            "model": "test-model",
+        },
         data=["test_data.jsonl"],
     )
     return GenerativeBenchmarksReport(args=args)

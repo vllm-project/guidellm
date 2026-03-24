@@ -11,7 +11,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import GenerationRequest, GenerationResponse
@@ -30,16 +30,8 @@ BackendType = Literal["openai_http", "vllm_python"]
 class BackendArgs(BaseModel):
     """Base class for backend creation argument models."""
 
-    request_format: str | None = Field(
-        default=None,
-        description="Request format for backend operations",
-        json_schema_extra={
-            "error_message": (
-                "Backend '{backend_type}' received an invalid request_format. "
-                "Please check the backend documentation for valid options."
-            )
-        },
-    )
+    # Allow for extra fields until we make BackendArgs the sole source of truth
+    model_config: ConfigDict = ConfigDict(extra="allow")
 
 
 class Backend(
@@ -76,7 +68,7 @@ class Backend(
     """
 
     @classmethod
-    def create(cls, type_: BackendType, **kwargs) -> Backend:
+    def create(cls, type_: str, **kwargs) -> Backend:
         """
         Create a backend instance based on the backend type.
 
@@ -97,7 +89,7 @@ class Backend(
         return backend(**kwargs)
 
     @classmethod
-    def get_backend_args(cls, type_: BackendType) -> type[BackendArgs]:
+    def get_backend_args(cls, type_: str) -> type[BackendArgs]:
         """
         Return the Pydantic model class for the backend's creation arguments.
 
@@ -115,7 +107,7 @@ class Backend(
 
         return backend_class.backend_args()
 
-    def __init__(self, type_: BackendType):
+    def __init__(self, type_: str):
         """
         Initialize a backend instance.
 

@@ -24,6 +24,7 @@ Example:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 
 import click
@@ -151,7 +152,6 @@ def benchmark():
 )
 @click.option(
     "--model",
-    default=BenchmarkGenerativeTextArgs.get_default("model"),
     type=str,
     help="Model ID to benchmark. If not provided, uses first available model.",
 )
@@ -159,7 +159,6 @@ def benchmark():
 @click.option(
     "--request-format",
     "--request-type",
-    default=BenchmarkGenerativeTextArgs.get_default("request_format"),
     help=(
         "Format to use for requests. Options depend on backend. "
         "For vLLM backend: plain (no chat template, text appending only), "
@@ -424,6 +423,13 @@ def run(**kwargs):  # noqa: C901
         else:
             kwargs["output_dir"] = path.parent
             kwargs["outputs"] = (path.name,)
+
+    # Map top-level CLI options to backend_kwargs
+    backend_kwargs = kwargs.pop("backend_kwargs", {})
+    with contextlib.suppress(KeyError):
+        for alias in ("target", "model", "request_format"):
+            backend_kwargs[alias] = kwargs.pop(alias)
+    kwargs["backend_kwargs"] = backend_kwargs
 
     # Handle console options
     disable_console = kwargs.pop("disable_console", False)
