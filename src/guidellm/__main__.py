@@ -27,7 +27,6 @@ import asyncio
 from pathlib import Path
 
 import click
-from more_itertools import partition
 from pydantic import ValidationError
 
 from guidellm.data import ShortPromptStrategy, process_dataset  # isort: skip
@@ -50,6 +49,7 @@ from guidellm.scheduler import StrategyType
 from guidellm.settings import print_config
 from guidellm.utils.console import Console
 from guidellm.utils.default_group import DefaultGroupHandler
+from guidellm.utils.env_validator import validate_env_vars
 from guidellm.utils.typing import get_literal_vals
 
 STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
@@ -435,13 +435,8 @@ def run(**kwargs):  # noqa: C901
     )
     console = Console() if not disable_console else None
 
-    all_set_envs = cli_tools.list_set_env()
-    if console and all_set_envs:
-        valid_envs = cli_tools.EnvVarValidator.get_valid_env_vars(ctx)
-        invalid_set_envs, valid_set_envs = partition(
-            lambda e: e in valid_envs,
-            all_set_envs,
-        )
+    if console:
+        invalid_set_envs, valid_set_envs = validate_env_vars(ctx)
 
         if valid_set_envs:
             console.print_update(
