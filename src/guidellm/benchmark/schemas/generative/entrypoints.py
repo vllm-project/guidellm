@@ -142,9 +142,10 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             return field_info.default
 
         # NOTE: Signature inspection is not currently supported for builtin factories
-        if factory in (str, int, float, bool, list, dict):
-            return factory()
-        elif len(inspect.signature(factory).parameters) == 0:
+        if (
+            factory in (str, int, float, bool, list, dict)
+            or len(inspect.signature(factory).parameters) == 0
+        ):
             return factory()  # type: ignore[call-arg]
         else:
             return factory({})  # type: ignore[call-arg]
@@ -181,7 +182,8 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default="openai_http", description="Backend type or instance for execution"
     )
     backend_kwargs: BackendArgs = Field(
-        default_factory=dict,  # Type coercion is handled in model_validator
+        # Type coercion is handled in construct_backend_kwargs
+        default_factory=dict,  # type: ignore[arg-type]
         description="Additional backend configuration arguments",
     )
     # Data configuration
@@ -364,6 +366,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                         "type": "model_type",
                         "loc": ("backend_kwargs",),
                         "input": existing_kwargs,
+                        "ctx": {
+                            "class_name": backend_args_class.__name__,
+                        },
                     }
                 ],
             )

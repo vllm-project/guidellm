@@ -31,7 +31,7 @@ class BackendArgs(BaseModel):
     """Base class for backend creation argument models."""
 
     # Allow for extra fields until we make BackendArgs the sole source of truth
-    model_config: ConfigDict = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow")
 
 
 class Backend(
