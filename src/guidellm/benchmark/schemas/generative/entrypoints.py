@@ -32,7 +32,7 @@ from pydantic import (
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.backends import Backend, BackendArgs, BackendType
+from guidellm.backends import Backend, BackendArgs
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
@@ -42,52 +42,7 @@ from guidellm.schemas import StandardBaseModel
 
 __all__ = [
     "BenchmarkGenerativeTextArgs",
-    "format_backend_args_error",
 ]
-
-
-def format_backend_args_error(
-    model_class: type[BackendArgs],
-    backend_type: str,
-    err: ValidationError,
-) -> tuple[str, str]:
-    """
-    Format a backend args ValidationError into (param_hint, message) for CLI/UI.
-
-    Message is taken from the model field's json_schema_extra["error_message"]
-    (with {backend_type} substituted) if present, otherwise a default template.
-
-    :param model_class: The backend args Pydantic model class
-    :param backend_type: Backend type name for the error message
-    :param err: The ValidationError from model_validate
-    :return: Tuple of (param_hint, message), e.g. ("--target", "Backend '...' ...")
-    """
-    errs = err.errors()
-    if not errs:
-        return ("--unknown", str(err))
-    first = errs[0]
-    loc = first.get("loc", ())
-    field = loc[0] if loc else "unknown"
-    field_key = str(field)
-    param_hint = "--" + field_key.replace("_", "-")
-    default_message = (
-        f"Backend '{backend_type}' requires a {field_key} parameter. "
-        f"Please provide {param_hint}."
-    )
-    field_info = model_class.model_fields.get(field_key) if field_key else None
-    extra = getattr(field_info, "json_schema_extra", None) if field_info else None
-    if isinstance(extra, dict):
-        template = extra.get("error_message")
-        if template:
-            try:
-                message = template.format(backend_type=backend_type)
-            except KeyError:
-                message = default_message
-        else:
-            message = default_message
-    else:
-        message = default_message
-    return (param_hint, message)
 
 
 class BenchmarkGenerativeTextArgs(StandardBaseModel):
@@ -186,7 +141,11 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         if factory is None:
             return field_info.default
 
-        if len(inspect.signature(factory).parameters) == 0:
+        # NOTE: Signature inspection is not currently supported for builtin factories
+        if (
+            factory in (str, int, float, bool, list, dict)
+            or len(inspect.signature(factory).parameters) == 0
+        ):
             return factory()  # type: ignore[call-arg]
         else:
             return factory({})  # type: ignore[call-arg]
@@ -206,10 +165,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         ),
     )
 
-    # Required
-    target: str | None = Field(
-        default=None, description="Target endpoint URL for benchmark execution"
-    )
     data: list[Any] = Field(
         description="List of dataset sources or data files",
         default_factory=list,
@@ -223,21 +178,12 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default=None, description="Request rate(s) for rate-based scheduling"
     )
     # Backend configuration
-    backend: BackendType | Backend = Field(
+    backend: str | Backend = Field(
         default="openai_http", description="Backend type or instance for execution"
     )
-    backend_kwargs: dict[str, Any] | None = Field(
-        default=None, description="Additional backend configuration arguments"
+    backend_kwargs: BackendArgs = Field(
+        description="Additional backend configuration arguments",
     )
-    request_format: str | None = Field(
-        default=None,
-        description=(
-            "Query format for backend operations; shorthand for "
-            "backend_kwargs['request_format']. For vLLM backend: plain, "
-            "default-template, or chat template path/single-line string."
-        ),
-    )
-    model: str | None = Field(default=None, description="Model identifier for backend")
     # Data configuration
     processor: str | Path | PreTrainedTokenizerBase | None = Field(
         default=None, description="Tokenizer path, name, or instance for processing"
@@ -376,32 +322,68 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             else:
                 raise
 
-    @model_validator(mode="after")
-    def validate_target_required(self) -> BenchmarkGenerativeTextArgs:
+    @model_validator(mode="before")
+    @classmethod
+    def construct_backend_kwargs(cls, data: Any) -> Any:
         """
-        Validate target and model parameters using the backend's Pydantic args model.
+        Transform backend configuration into typed BackendArgs instance.
 
-        :return: Self if validation passes
-        :raises ValueError: If backend args validation fails (with formatted message)
+        Extracts top-level target/model/request_format and merges them with
+        backend_kwargs to create the appropriate typed BackendArgs subclass.
         """
-        backend_type = (
-            self.backend.type_ if isinstance(self.backend, Backend) else self.backend
-        )
+        if not isinstance(data, dict):
+            return data
+
+        backend = data.get("backend", cls.get_default("backend"))
+        backend_type = backend.type_ if isinstance(backend, Backend) else backend
+
         try:
-            model_class = Backend.get_backend_args(backend_type)
-            inputs = {k: getattr(self, k, None) for k in model_class.model_fields}
-            model_class.model_validate(inputs)
-        except ValidationError as err:
-            _param_hint, message = format_backend_args_error(
-                model_class, backend_type, err
+            backend_args_class = Backend.get_backend_args(backend_type)
+        # Backend type invalid
+        except ValueError as err:
+            raise ValidationError.from_exception_data(
+                title="Backend Validation Error",
+                line_errors=[
+                    {
+                        "type": "value_error",
+                        "loc": ("backend",),
+                        "input": str(backend_type),
+                        "ctx": {"error": err},
+                    }
+                ],
+            ) from err
+
+        existing_kwargs = data.get("backend_kwargs", {})
+        # If we are passed a raw type
+        if not isinstance(existing_kwargs, BackendArgs):
+            data["backend_kwargs"] = backend_args_class.model_validate(existing_kwargs)
+        # If we are passed the BackendArgs for a different backend type
+        elif not isinstance(existing_kwargs, backend_args_class):
+            raise ValidationError.from_exception_data(
+                title="Backend Args Validation Error",
+                line_errors=[
+                    {
+                        "type": "model_type",
+                        "loc": ("backend_kwargs",),
+                        "input": existing_kwargs,
+                        "ctx": {
+                            "class_name": backend_args_class.__name__,
+                        },
+                    }
+                ],
             )
-            raise ValueError(message) from err
-        return self
+
+        return data
 
     @field_serializer("backend")
-    def serialize_backend(self, backend: BackendType | Backend) -> str:
+    def serialize_backend(self, backend: str | Backend) -> str:
         """Serialize backend to type string."""
         return backend.type_ if isinstance(backend, Backend) else backend
+
+    @field_serializer("backend_kwargs")
+    def serialize_backend_kwargs(self, backend_kwargs: BackendArgs) -> dict[str, Any]:
+        """Serialize BackendArgs instance to dict for storage."""
+        return backend_kwargs.model_dump()
 
     @field_serializer("data")
     def serialize_data(self, data: list[Any]) -> list[str | None]:

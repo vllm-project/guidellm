@@ -1,28 +1,18 @@
+import codecs
 import json
-import os
 from typing import Any
 
 import click
 
 __all__ = [
     "Union",
+    "decode_escaped_str",
     "format_list_arg",
-    "list_set_env",
     "parse_json",
     "parse_list",
     "parse_list_floats",
     "set_if_not_default",
 ]
-
-
-def list_set_env(prefix: str = "GUIDELLM_") -> list[str]:
-    """
-    List all set environment variables prefixed with the given prefix.
-
-    :param prefix: The prefix to filter environment variables.
-    :return: List of environment variable names that are set with the given prefix.
-    """
-    return [key for key in os.environ if key.startswith(prefix)]
 
 
 def parse_list(ctx, param, value) -> list[str] | None:
@@ -190,3 +180,24 @@ class Union(click.ParamType):
 
         # Use square braces to indicate an option or optional argument.
         return f"[{choices_str}]"
+
+
+def decode_escaped_str(_ctx, _param, value):
+    """
+    Decode escape sequences in Click option values.
+
+    Click automatically escapes characters converting sequences like "\\n" to
+    "\\\\n". This function decodes these sequences to their intended characters.
+
+    :param _ctx: Click context (unused)
+    :param _param: Click parameter (unused)
+    :param value: String value to decode
+    :return: Decoded string with proper escape sequences, or None if input is None
+    :raises click.BadParameter: When escape sequence decoding fails
+    """
+    if value is None:
+        return None
+    try:
+        return codecs.decode(value, "unicode_escape")
+    except Exception as e:
+        raise click.BadParameter(f"Could not decode escape sequences: {e}") from e

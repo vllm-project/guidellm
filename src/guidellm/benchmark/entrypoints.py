@@ -19,7 +19,7 @@ from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
-from guidellm.backends import Backend, BackendType
+from guidellm.backends import Backend
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
@@ -78,7 +78,7 @@ ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokeni
 
 
 async def resolve_backend(
-    backend: BackendType | Backend,
+    backend: str | Backend,
     console: Console | None = None,
     **backend_kwargs: Any,
 ) -> tuple[Backend, str]:
@@ -107,13 +107,8 @@ async def resolve_backend(
         else None
     )
 
-    model = backend_kwargs.pop("model", None)
-    create_kwargs = {k: v for k, v in backend_kwargs.items() if v is not None}
-    if model is not None:
-        create_kwargs["model"] = model
-
     backend_instance = (
-        Backend.create(backend, **create_kwargs)
+        Backend.create(backend, **backend_kwargs)
         if not isinstance(backend, Backend)
         else backend
     )
@@ -126,13 +121,12 @@ async def resolve_backend(
     await backend_instance.process_startup()
     await backend_instance.validate()
 
-    if model is None:
-        if console_step:
-            console_step.update(
-                title="Resolving default model from backend.default_model",
-                status_level="info",
-            )
-        model = await backend_instance.default_model()
+    if console_step:
+        console_step.update(
+            title="Resolving default model from backend.default_model",
+            status_level="info",
+        )
+    model = await backend_instance.default_model()
 
     await backend_instance.process_shutdown()
 
@@ -486,13 +480,11 @@ async def benchmark_generative_text(
     :return: Tuple of GenerativeBenchmarksReport and dictionary of output format
         results
     """
+    backend_params = args.backend_kwargs.model_dump(exclude_defaults=True)
     backend, model = await resolve_backend(
         backend=args.backend,
-        target=args.target,
-        model=args.model,
-        request_format=args.request_format,
         console=console,
-        **(args.backend_kwargs or {}),
+        **backend_params,
     )
     processor = await resolve_processor(
         processor=args.processor, model=model, console=console

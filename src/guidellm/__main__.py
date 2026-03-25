@@ -24,7 +24,7 @@ Example:
 from __future__ import annotations
 
 import asyncio
-import codecs
+import contextlib
 from pathlib import Path
 
 import click
@@ -33,7 +33,7 @@ from pydantic import ValidationError
 from guidellm.data import ShortPromptStrategy, process_dataset  # isort: skip
 
 import guidellm.utils.cli as cli_tools
-from guidellm.backends import Backend, BackendType
+from guidellm.backends import BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
@@ -42,39 +42,16 @@ from guidellm.benchmark import (
     get_builtin_scenarios,
     reimport_benchmarks_report,
 )
-from guidellm.benchmark.schemas.generative.entrypoints import (
-    format_backend_args_error,
-)
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
 from guidellm.settings import print_config
 from guidellm.utils.console import Console
 from guidellm.utils.default_group import DefaultGroupHandler
+from guidellm.utils.env_validator import validate_env_vars
 from guidellm.utils.typing import get_literal_vals
 
 STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
 """Available strategy and profile type choices for benchmark execution."""
-
-
-def decode_escaped_str(_ctx, _param, value):
-    """
-    Decode escape sequences in Click option values.
-
-    Click automatically escapes characters converting sequences like "\\n" to
-    "\\\\n". This function decodes these sequences to their intended characters.
-
-    :param _ctx: Click context (unused)
-    :param _param: Click parameter (unused)
-    :param value: String value to decode
-    :return: Decoded string with proper escape sequences, or None if input is None
-    :raises click.BadParameter: When escape sequence decoding fails
-    """
-    if value is None:
-        return None
-    try:
-        return codecs.decode(value, "unicode_escape")
-    except Exception as e:
-        raise click.BadParameter(f"Could not decode escape sequences: {e}") from e
 
 
 @click.group()
@@ -175,7 +152,6 @@ def benchmark():
 )
 @click.option(
     "--model",
-    default=BenchmarkGenerativeTextArgs.get_default("model"),
     type=str,
     help="Model ID to benchmark. If not provided, uses first available model.",
 )
@@ -183,7 +159,6 @@ def benchmark():
 @click.option(
     "--request-format",
     "--request-type",
-    default=BenchmarkGenerativeTextArgs.get_default("request_format"),
     help=(
         "Format to use for requests. Options depend on backend. "
         "For vLLM backend: plain (no chat template, text appending only), "
@@ -434,8 +409,9 @@ def benchmark():
     help="Enable over-saturation detection with default settings.",
 )
 def run(**kwargs):  # noqa: C901
+    ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
-    kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
+    kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:
@@ -448,37 +424,42 @@ def run(**kwargs):  # noqa: C901
             kwargs["output_dir"] = path.parent
             kwargs["outputs"] = (path.name,)
 
+    # Map top-level CLI options to backend_kwargs
+    backend_kwargs = kwargs.pop("backend_kwargs", {})
+    for alias in ("target", "model", "request_format"):
+        with contextlib.suppress(KeyError):
+            backend_kwargs[alias] = kwargs.pop(alias)
+    kwargs["backend_kwargs"] = backend_kwargs
+
     # Handle console options
     disable_console = kwargs.pop("disable_console", False)
     disable_console_interactive = (
         kwargs.pop("disable_console_interactive", False) or disable_console
     )
     console = Console() if not disable_console else None
-    envs = cli_tools.list_set_env()
-    if console and envs:
-        console.print_update(
-            title=(
-                "Note: the following environment variables "
-                "are set and **may** affect configuration"
-            ),
-            details=", ".join(envs),
-            status="warning",
-        )
 
-    # Early validation: backend args via Pydantic (only fields the backend expects)
-    backend = kwargs.get("backend", BenchmarkGenerativeTextArgs.get_default("backend"))
-    backend_type = backend.type_ if hasattr(backend, "type_") else backend
-    try:
-        args_model = Backend.get_backend_args(backend_type)
-        inputs = {k: kwargs.get(k) for k in args_model.model_fields}
-        args_model.model_validate(inputs)
-    except ValidationError as err:
-        param_hint, message = format_backend_args_error(args_model, backend_type, err)
-        raise click.BadParameter(
-            message,
-            ctx=click.get_current_context(),
-            param_hint=param_hint,
-        ) from err
+    if console:
+        invalid_set_envs, valid_set_envs = validate_env_vars(ctx)
+
+        if valid_set_envs:
+            console.print_update(
+                title=(
+                    "The following environment variables are set and will be used "
+                    "by GuideLLM (if not overridden by CLI arguments/config)."
+                ),
+                details=", ".join(valid_set_envs),
+                status="info",
+            )
+        if invalid_set_envs:
+            console.print_update(
+                title=(
+                    "The following environment variables are set "
+                    "but not recognized by GuideLLM. Please verify "
+                    "that the benchmark is configured correctly."
+                ),
+                details=", ".join(invalid_set_envs),
+                status="warning",
+            )
 
     try:
         args = BenchmarkGenerativeTextArgs.create(
@@ -489,7 +470,7 @@ def run(**kwargs):  # noqa: C901
         errs = err.errors(include_url=False, include_context=True, include_input=True)
         param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
         raise click.BadParameter(
-            errs[0]["msg"], ctx=click.get_current_context(), param_hint=param_name
+            errs[0]["msg"], ctx=ctx, param_hint=param_name
         ) from err
 
     asyncio.run(
@@ -618,7 +599,7 @@ def preprocess():
     "--pad-char",
     type=str,
     default="",
-    callback=decode_escaped_str,
+    callback=cli_tools.decode_escaped_str,
     help="Character to pad short prompts with when using 'pad' strategy.",
 )
 @click.option(
