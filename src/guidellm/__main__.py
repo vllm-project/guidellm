@@ -426,8 +426,8 @@ def run(**kwargs):  # noqa: C901
 
     # Map top-level CLI options to backend_kwargs
     backend_kwargs = kwargs.pop("backend_kwargs", {})
-    with contextlib.suppress(KeyError):
-        for alias in ("target", "model", "request_format"):
+    for alias in ("target", "model", "request_format"):
+        with contextlib.suppress(KeyError):
             backend_kwargs[alias] = kwargs.pop(alias)
     kwargs["backend_kwargs"] = backend_kwargs
 
@@ -445,7 +445,7 @@ def run(**kwargs):  # noqa: C901
             console.print_update(
                 title=(
                     "The following environment variables are set and will be used "
-                    "as GuideLLM defaults (if not overridden by CLI arguments/config)"
+                    "by GuideLLM (if not overridden by CLI arguments/config)."
                 ),
                 details=", ".join(valid_set_envs),
                 status="info",
@@ -453,8 +453,9 @@ def run(**kwargs):  # noqa: C901
         if invalid_set_envs:
             console.print_update(
                 title=(
-                    "Warning: the following environment variables are set "
-                    "but NOT RECOGNIZED by GuideLLM"
+                    "The following environment variables are set "
+                    "but not recognized by GuideLLM. Please verify "
+                    "that the benchmark is configured correctly."
                 ),
                 details=", ".join(invalid_set_envs),
                 status="warning",
