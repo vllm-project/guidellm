@@ -1640,7 +1640,7 @@ class TestResponsesRequestHandler:
         ## WRITTEN BY AI ##
         """
         handler = ResponsesRequestHandler()
-        assert not issubclass(ResponsesRequestHandler, TextCompletionsRequestHandler)
+        assert OpenAIRequestHandler in ResponsesRequestHandler.__mro__
         assert hasattr(handler, "format")
         assert hasattr(handler, "compile_non_streaming")
         assert hasattr(handler, "add_streaming_line")

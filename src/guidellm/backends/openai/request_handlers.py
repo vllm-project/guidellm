@@ -715,7 +715,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
 
 @OpenAIRequestHandlerFactory.register("/v1/responses")
-class ResponsesRequestHandler:
+class ResponsesRequestHandler(OpenAIRequestHandler):
     """
     Request handler for the OpenAI Responses API endpoint.
 
