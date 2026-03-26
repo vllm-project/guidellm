@@ -1,5 +1,10 @@
 """Utility functions for working with dictionaries."""
 
+from __future__ import annotations
+
+from collections.abc import Callable, Hashable
+from typing import Any
+
 
 def recursive_key_update(d, key_update_func):
     if not isinstance(d, dict) and not isinstance(d, list):
@@ -26,7 +31,7 @@ def recursive_key_update(d, key_update_func):
     return d
 
 
-def deep_update(dict1, dict2):
+def deep_update(dict1: dict, dict2: dict) -> None:
     """
     Update dict1 with values from dict2 recursively.
 
@@ -38,3 +43,17 @@ def deep_update(dict1, dict2):
             deep_update(dict1[key], val)
         else:
             dict1[key] = val
+
+
+def deep_filter(d: dict, predicate: Callable[[Hashable, Any], bool]) -> None:
+    """
+    Recursively filters a dictionary based on a predicate function.
+
+    Modifies the input dictionary in-place. Does not handle circular references.
+    Does not copy values. Does not filter lists.
+    """
+    for key, value in list(d.items()):
+        if isinstance(value, dict):
+            deep_filter(value, predicate)
+        elif not predicate(key, value):
+            d.pop(key)
