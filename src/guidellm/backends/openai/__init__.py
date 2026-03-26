@@ -4,6 +4,7 @@ from .request_handlers import (
     ChatCompletionsRequestHandler,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    ResponsesRequestHandler,
     TextCompletionsRequestHandler,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "OpenAIHTTPBackend",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
 ]

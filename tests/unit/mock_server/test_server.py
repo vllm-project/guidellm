@@ -550,6 +550,145 @@ class TestMockServerEndpoints:
             assert "Content-Type, Authorization" in headers_header
             assert response.headers.get("Server") == "guidellm-mock-server"
 
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "expected_fields"),
+        [
+            (
+                {
+                    "model": "test-model",
+                    "input": "Hello!",
+                    "max_output_tokens": 10,
+                },
+                ["output", "usage", "model", "object", "status"],
+            ),
+            (
+                {
+                    "model": "test-model",
+                    "input": [{"role": "user", "content": "Hello from list format!"}],
+                    "max_output_tokens": 10,
+                },
+                ["output", "usage", "model", "object", "status"],
+            ),
+            (
+                {
+                    "model": "test-model",
+                    "input": "Test with instructions",
+                    "instructions": "You are a helpful assistant.",
+                    "max_output_tokens": 5,
+                },
+                ["output", "usage", "model", "object", "status"],
+            ),
+        ],
+    )
+    async def test_responses_endpoint(
+        self, mock_server_instance, payload, expected_fields
+    ):
+        """
+        Test the Responses API endpoint with various input formats.
+
+        ## WRITTEN BY AI ##
+        """
+        server_url, _ = mock_server_instance
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{server_url}/v1/responses", json=payload, timeout=10.0
+            )
+            assert resp.status_code == 200
+
+            data = resp.json()
+            for field in expected_fields:
+                assert field in data
+
+            assert data["object"] == "response"
+            assert data["status"] == "completed"
+            assert len(data["output"]) > 0
+
+            msg = data["output"][0]
+            assert msg["type"] == "message"
+            assert msg["role"] == "assistant"
+            assert msg["status"] == "completed"
+            assert len(msg["content"]) > 0
+            assert msg["content"][0]["type"] == "output_text"
+            assert isinstance(msg["content"][0]["text"], str)
+            assert len(msg["content"][0]["text"]) > 0
+
+            assert "input_tokens" in data["usage"]
+            assert "output_tokens" in data["usage"]
+            assert "total_tokens" in data["usage"]
+            assert data["usage"]["total_tokens"] == (
+                data["usage"]["input_tokens"] + data["usage"]["output_tokens"]
+            )
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    async def test_streaming_responses(self, mock_server_instance):
+        """
+        Test streaming Responses API endpoint with SSE event format.
+
+        ## WRITTEN BY AI ##
+        """
+        server_url, _ = mock_server_instance
+
+        payload = {
+            "model": "test-model",
+            "input": "Hi!",
+            "max_output_tokens": 5,
+            "stream": True,
+        }
+
+        async with (
+            httpx.AsyncClient() as client,
+            client.stream(
+                "POST",
+                f"{server_url}/v1/responses",
+                json=payload,
+                timeout=10.0,
+            ) as resp,
+        ):
+            assert resp.status_code == 200
+            assert "text/event-stream" in resp.headers.get("content-type", "")
+
+            events: list[dict] = []
+            event_types: list[str] = []
+            current_event_type: str | None = None
+            async for line in resp.aiter_lines():
+                if not line:
+                    current_event_type = None
+                    continue
+                if line.startswith("event: "):
+                    current_event_type = line[7:]
+                elif line.startswith("data: "):
+                    data = json.loads(line[6:])
+                    events.append(data)
+                    if current_event_type:
+                        event_types.append(current_event_type)
+
+            assert "response.created" in event_types
+            assert "response.in_progress" in event_types
+            assert "response.output_item.added" in event_types
+            assert "response.content_part.added" in event_types
+            assert "response.output_text.delta" in event_types
+            assert "response.output_text.done" in event_types
+            assert "response.output_item.done" in event_types
+            assert "response.completed" in event_types
+
+            deltas = [
+                e for e in events if e.get("type") == "response.output_text.delta"
+            ]
+            assert len(deltas) > 0
+            for d in deltas:
+                assert "delta" in d
+
+            completed = [e for e in events if e.get("type") == "response.completed"]
+            assert len(completed) == 1
+            assert "response" in completed[0]
+            assert completed[0]["response"]["usage"] is not None
+            assert "input_tokens" in completed[0]["response"]["usage"]
+            assert "output_tokens" in completed[0]["response"]["usage"]
+
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -557,6 +696,7 @@ class TestMockServerEndpoints:
         [
             ("/v1/chat/completions", "POST", {"invalid": "payload"}),
             ("/v1/completions", "POST", {"invalid": "payload"}),
+            ("/v1/responses", "POST", {"invalid": "payload"}),
             ("/tokenize", "POST", {"invalid": "payload"}),
             ("/detokenize", "POST", {"invalid": "payload"}),
         ],

@@ -28,6 +28,9 @@ __all__ = [
     "DetokenizeResponse",
     "ErrorDetail",
     "ErrorResponse",
+    "ResponsesRequest",
+    "ResponsesResponse",
+    "ResponsesUsage",
     "StreamOptions",
     "TokenizeRequest",
     "TokenizeResponse",
@@ -486,6 +489,77 @@ class DetokenizeResponse(BaseModel):
     """
 
     text: str = Field(description="Reconstructed text from tokens")
+
+
+class ResponsesUsage(BaseModel):
+    """Token usage statistics for the Responses API.
+
+    Uses different field names than the Chat Completions API:
+    input_tokens/output_tokens instead of prompt_tokens/completion_tokens.
+    """
+
+    input_tokens: int = Field(description="Number of tokens in the input")
+    output_tokens: int = Field(description="Number of tokens in the generated output")
+    total_tokens: int = Field(description="Total tokens used (input + output)")
+
+    def __init__(self, input_tokens: int = 0, output_tokens: int = 0, **kwargs):
+        super().__init__(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            **kwargs,
+        )
+
+
+class ResponsesRequest(BaseModel):
+    """Request parameters for the OpenAI Responses API endpoint.
+
+    Supports the Responses API format with input items instead of messages,
+    instructions instead of system messages, and max_output_tokens instead of
+    max_completion_tokens.
+    """
+
+    model: str = Field(description="Model identifier to use for generation")
+    input: str | list[dict[str, Any]] = Field(
+        description="Text input or list of input items"
+    )
+    instructions: str | None = Field(
+        default=None, description="System-level instructions for the model"
+    )
+    max_output_tokens: int | None = Field(
+        default=None, description="Maximum number of output tokens to generate"
+    )
+    stream: bool | None = Field(
+        default=False, description="Whether to stream response events"
+    )
+    temperature: float | None = Field(
+        default=1.0, description="Sampling temperature for randomness control"
+    )
+
+
+class ResponsesResponse(BaseModel):
+    """Response from the Responses API endpoint.
+
+    Contains output items, usage statistics, and metadata for
+    non-streaming Responses API requests.
+    """
+
+    id: str = Field(description="Unique identifier for this response")
+    object: Literal["response"] = Field(
+        default="response", description="Object type identifier"
+    )
+    created_at: int = Field(
+        default_factory=lambda: int(time.time()),
+        description="Unix timestamp of creation",
+    )
+    status: Literal["completed", "in_progress", "failed"] = Field(
+        default="completed", description="Status of the response"
+    )
+    model: str = Field(description="Model used for generation")
+    output: list[dict[str, Any]] = Field(description="Generated output items")
+    usage: ResponsesUsage | None = Field(
+        default=None, description="Token usage statistics"
+    )
 
 
 class ErrorDetail(BaseModel):

@@ -60,7 +60,7 @@ class OpenAIHttpBackendArgs(BackendArgs):
         description=(
             "Request format for OpenAI-compatible server. "
             "Valid values: /v1/completions, /v1/chat/completions, "
-            "/v1/audio/transcriptions, /v1/audio/translations, "
+            "/v1/responses, /v1/audio/transcriptions, /v1/audio/translations, "
             "or legacy aliases: text_completions, chat_completions, "
             "audio_transcriptions, audio_translations."
         ),
@@ -68,7 +68,7 @@ class OpenAIHttpBackendArgs(BackendArgs):
             "error_message": (
                 "Backend '{backend_type}' received an invalid --request-format. "
                 "Valid values: /v1/completions, /v1/chat/completions, "
-                "/v1/audio/transcriptions, /v1/audio/translations, "
+                "/v1/responses, /v1/audio/transcriptions, /v1/audio/translations, "
                 "or legacy aliases: text_completions, chat_completions, "
                 "audio_transcriptions, audio_translations."
             )
@@ -98,6 +98,7 @@ DEFAULT_API_PATHS = {
     "/v1/models": "v1/models",
     "/v1/completions": "v1/completions",
     "/v1/chat/completions": "v1/chat/completions",
+    "/v1/responses": "v1/responses",
     "/v1/audio/transcriptions": "v1/audio/transcriptions",
     "/v1/audio/translations": "v1/audio/translations",
 }
@@ -438,6 +439,12 @@ class OpenAIHTTPBackend(Backend):
                     iterations = request_handler.add_streaming_line(chunk)
                     if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
+                        if end_reached:
+                            # Break eagerly once the handler signals completion
+                            # (e.g. "data: [DONE]" or "response.completed").
+                            # Using continue instead would hang on servers that
+                            # keep the HTTP/2 stream open after the last event.
+                            break
                         continue
 
                     if request_info.timings.first_token_iteration is None:
