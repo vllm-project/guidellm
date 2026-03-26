@@ -61,7 +61,7 @@ class OpenAIHttpBackendArgs(BackendArgs):
             "Request format for OpenAI-compatible server. "
             "Valid values: /v1/completions, /v1/chat/completions, "
             "/v1/responses, /v1/audio/transcriptions, /v1/audio/translations, "
-            "or legacy aliases: text_completions, chat_completions, responses, "
+            "or legacy aliases: text_completions, chat_completions, "
             "audio_transcriptions, audio_translations."
         ),
         json_schema_extra={
@@ -69,7 +69,7 @@ class OpenAIHttpBackendArgs(BackendArgs):
                 "Backend '{backend_type}' received an invalid --request-format. "
                 "Valid values: /v1/completions, /v1/chat/completions, "
                 "/v1/responses, /v1/audio/transcriptions, /v1/audio/translations, "
-                "or legacy aliases: text_completions, chat_completions, responses, "
+                "or legacy aliases: text_completions, chat_completions, "
                 "audio_transcriptions, audio_translations."
             )
         },
