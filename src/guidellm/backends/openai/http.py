@@ -113,7 +113,6 @@ LEGACY_API_ALIASES = {
     "chat_completions": "/v1/chat/completions",
     "audio_transcriptions": "/v1/audio/transcriptions",
     "audio_translations": "/v1/audio/translations",
-    "pooling": "/pooling",
 }
 
 # NOTE: This value is taken from httpx's default
