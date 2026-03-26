@@ -654,23 +654,18 @@ class TestMockServerEndpoints:
             events: list[dict] = []
             event_types: list[str] = []
             current_event_type: str | None = None
-            done_received = False
-
             async for line in resp.aiter_lines():
                 if not line:
                     current_event_type = None
                     continue
                 if line.startswith("event: "):
                     current_event_type = line[7:]
-                elif line == "data: [DONE]":
-                    done_received = True
                 elif line.startswith("data: "):
                     data = json.loads(line[6:])
                     events.append(data)
                     if current_event_type:
                         event_types.append(current_event_type)
 
-            assert done_received, "Stream should end with data: [DONE]"
             assert "response.created" in event_types
             assert "response.in_progress" in event_types
             assert "response.output_item.added" in event_types

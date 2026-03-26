@@ -351,11 +351,6 @@ class ResponsesHandler:
                 )
             )
 
-            # Real vLLM does NOT send "data: [DONE]" for the Responses API
-            # (unlike chat completions). We include it here so the mock server
-            # also works with clients that rely on it as a stream terminator.
-            await stream_response.write("data: [DONE]\n\n")
-
         return ResponseStream(  # type: ignore[return-value]
             generate_stream,
             content_type="text/event-stream",
