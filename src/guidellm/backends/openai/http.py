@@ -74,6 +74,13 @@ class OpenAIHttpBackendArgs(BackendArgs):
             )
         },
     )
+    extras: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Optional request arguments to merge into each request (e.g. body fields). "
+            'Use {"body": {"temperature": 0.6, "top_p": 0.95}} to set sampling params.'
+        ),
+    )
 
     @field_validator("request_format")
     @classmethod
