@@ -38,6 +38,13 @@ def _load_config_dict(data: Any, config_class: type[ConfigT]) -> ConfigT | None:
 
 
 def _load_config_file(data: Any, config_class: type[ConfigT]) -> ConfigT | None:
+    # Fail safely if path is invalid
+    try:
+        # NOTE: is_file() is just to make the OS resolve the path
+        Path(data).is_file()
+    except Exception:  # noqa: BLE001
+        return None
+
     if (not isinstance(data, str) and not isinstance(data, Path)) or (
         not Path(data).is_file()
     ):
