@@ -856,14 +856,11 @@ class ResponsesRequestHandler(TextCompletionsRequestHandler):
         """
         line = line.strip()
 
-        if not line or line.startswith("event:"):
+        if not line or not line.startswith("data:"):
             return {}
 
         if line == "data: [DONE]":
             return None
-
-        if not line.startswith("data:"):
-            return {}
 
         return json.loads(line[len("data:") :].strip())
 
