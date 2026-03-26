@@ -507,7 +507,6 @@ class TestTextCompletionsRequestHandler:
         assert output_metrics.text_characters == len(text)
 
 
-
 class TestChatCompletionsRequestHandler:
     """Test cases for ChatCompletionsRequestHandler.
 

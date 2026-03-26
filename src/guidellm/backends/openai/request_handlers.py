@@ -802,8 +802,11 @@ class ResponsesRequestHandler(TextCompletionsRequestHandler):
         if kwargs.get("stream"):
             arguments.stream = True
             arguments.body["stream"] = True
-            # NOTE: The Responses API does not support stream_options; usage
-            # data is delivered in the response.completed SSE event instead.
+            # Unlike chat completions, we don't send stream_options here.
+            # The Responses API's stream_options only controls obfuscation,
+            # not usage reporting. vLLM always includes usage data in the
+            # response.completed SSE event for this endpoint.
+            # Unfortunately, this complicates getting accurate stats when canceled.
 
         if data.output_metrics.text_tokens:
             arguments.body["max_output_tokens"] = data.output_metrics.text_tokens
