@@ -715,7 +715,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
 
 @OpenAIRequestHandlerFactory.register("/v1/responses")
-class ResponsesRequestHandler(TextCompletionsRequestHandler):
+class ResponsesRequestHandler:
     """
     Request handler for the OpenAI Responses API endpoint.
 
@@ -723,6 +723,11 @@ class ResponsesRequestHandler(TextCompletionsRequestHandler):
     `instructions` for system prompts, and a different response/streaming shape
     than chat completions. Supports both streaming and non-streaming responses.
     """
+
+    def __init__(self):
+        self.streaming_texts: list[str] = []
+        self.streaming_usage: dict[str, int | dict[str, int]] | None = None
+        self.streaming_response_id: str | None = None
 
     def _format_prompts(
         self, column_data: list, column_type: str
@@ -850,14 +855,28 @@ class ResponsesRequestHandler(TextCompletionsRequestHandler):
             output_metrics=output_metrics,
         )
 
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        text = "".join(self.streaming_texts)
+        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
+
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=arguments.model_dump_json(),
+            response_id=self.streaming_response_id,
+            text=text,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )
+
     def extract_line_data(self, line: str) -> dict[str, Any] | None:
         """Parse a Responses API SSE line.
 
         The Responses API streams paired ``event: <type>`` and ``data: <json>``
         lines, unlike chat completions which only uses ``data:`` lines.  The
         event type is redundantly embedded in the JSON payload's ``type`` field,
-        so ``event:`` lines are explicitly skipped here rather than relying on
-        the base class's generic "not a data line" fallback.
+        so ``event:`` lines are skipped, keeping only ``data:`` lines.
         """
         line = line.strip()
 
