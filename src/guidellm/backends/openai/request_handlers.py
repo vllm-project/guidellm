@@ -769,9 +769,11 @@ class ResponsesRequestHandler(TextCompletionsRequestHandler):
                 if isinstance(prev_input, list):
                     input_items.extend(prev_input)
 
-        content_parts: list[dict[str, Any]] = []
-        for col in ("text_column", "image_column", "audio_column"):
-            content_parts.extend(self._format_prompts(data.columns.get(col, []), col))
+        prompts = [
+            self._format_prompts(data.columns.get(col, []), col)
+            for col in ("text_column", "image_column", "video_column", "audio_column")
+        ]
+        content_parts = list(roundrobin(*prompts))
         if content_parts:
             input_items.append({"role": "user", "content": content_parts})
 
