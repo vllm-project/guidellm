@@ -1,3 +1,6 @@
+"""Utility functions for working with dictionaries."""
+
+
 def recursive_key_update(d, key_update_func):
     if not isinstance(d, dict) and not isinstance(d, list):
         return d
@@ -21,3 +24,17 @@ def recursive_key_update(d, key_update_func):
     for _, value in d.items():
         recursive_key_update(value, key_update_func)
     return d
+
+
+def deep_update(dict1, dict2):
+    """
+    Update dict1 with values from dict2 recursively.
+
+    Modifies dict1 in-place. Does not handle circular references.
+    Does not copy values. Does not merge lists.
+    """
+    for key, val in dict2.items():
+        if isinstance(val, dict) and key in dict1 and isinstance(dict1[key], dict):
+            deep_update(dict1[key], val)
+        else:
+            dict1[key] = val
