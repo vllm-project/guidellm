@@ -235,6 +235,133 @@ class TestGenerationRequestArguments:
         for key, expected_value in constructor_args.items():
             assert getattr(reconstructed, key) == expected_value
 
+    @pytest.mark.regression
+    def test_model_combine_deep_merge_nested_dicts(self):
+        """
+        Test that nested dicts in headers and body are merged, not replaced.
+
+        This is the PRIMARY REGRESSION TEST for the shallow merge bug fix.
+        Before the fix, merging nested dicts would completely replace them.
+        After the fix using deep_update(), nested values are properly merged.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            headers={"Authorization": "Bearer token1"},
+            body={"model": "gpt-4", "parameters": {"temperature": 0.5, "top_p": 0.9}},
+        )
+        additional = GenerationRequestArguments(
+            headers={"Content-Type": "application/json"},
+            body={"parameters": {"temperature": 0.7, "max_tokens": 100}},
+        )
+
+        result = base.model_combine(additional)
+
+        # Headers should be merged (both keys preserved)
+        assert result.headers == {
+            "Authorization": "Bearer token1",
+            "Content-Type": "application/json",
+        }
+
+        # Body should be merged, with nested parameters also merged
+        assert result.body == {
+            "model": "gpt-4",
+            "parameters": {
+                "temperature": 0.7,  # Overwritten
+                "top_p": 0.9,  # Preserved from base
+                "max_tokens": 100,  # Added from additional
+            },
+        }
+
+    @pytest.mark.regression
+    def test_model_combine_deep_merge_params(self):
+        """
+        Test deep merge for params field.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            params={"page": 1, "filters": {"type": "active", "status": "open"}},
+        )
+        additional = GenerationRequestArguments(
+            params={"limit": 10, "filters": {"type": "archived"}},
+        )
+
+        result = base.model_combine(additional)
+
+        assert result.params == {
+            "page": 1,
+            "limit": 10,
+            "filters": {
+                "type": "archived",  # Overwritten
+                "status": "open",  # Preserved
+            },
+        }
+
+    @pytest.mark.regression
+    def test_model_combine_deep_merge_files(self):
+        """
+        Test deep merge for files field.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            files={"file1": "data1", "config": {"format": "json", "encoding": "utf-8"}},
+        )
+        additional = GenerationRequestArguments(
+            files={"file2": "data2", "config": {"compress": True}},
+        )
+
+        result = base.model_combine(additional)
+
+        assert result.files == {
+            "file1": "data1",
+            "file2": "data2",
+            "config": {
+                "format": "json",  # Preserved
+                "encoding": "utf-8",  # Preserved
+                "compress": True,  # Added
+            },
+        }
+
+    @pytest.mark.regression
+    def test_model_combine_multiple_levels_nesting(self):
+        """
+        Test deep merge with 3+ levels of nesting.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            body={
+                "level1": {
+                    "level2": {
+                        "level3": {"a": 1, "b": 2},
+                        "other": "value",
+                    },
+                },
+            },
+        )
+        additional = GenerationRequestArguments(
+            body={
+                "level1": {
+                    "level2": {
+                        "level3": {"b": 99, "c": 3},
+                    },
+                },
+            },
+        )
+
+        result = base.model_combine(additional)
+
+        assert result.body == {
+            "level1": {
+                "level2": {
+                    "level3": {"a": 1, "b": 99, "c": 3},
+                    "other": "value",
+                },
+            },
+        }
+
 
 class TestUsageMetrics:
     """Test cases for UsageMetrics model."""

@@ -26,6 +26,7 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
 )
+from guidellm.utils.dict import deep_filter
 
 __all__ = [
     "OpenAIHTTPBackend",
@@ -390,6 +391,8 @@ class OpenAIHTTPBackend(Backend):
             if arguments.files
             else None
         )
+        # Omit `None` from output JSON
+        deep_filter(arguments.body or {}, lambda _, v: v is not None)
         request_json = arguments.body if not request_files else None
         request_data = arguments.body if request_files else None
 

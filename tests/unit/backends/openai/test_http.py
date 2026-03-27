@@ -718,3 +718,83 @@ class TestOpenAIHTTPBackend:
         with handler_patch:
             async for _response, _info in backend.resolve(request, request_info):
                 pass
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_resolve_filters_none_from_request_body(
+        self,
+        httpx_mock: HTTPXMock,
+        mock_request_handler,
+    ):
+        """
+        Test that None values are filtered from request body.
+
+        This is a simple integration test confirming the backend works with
+        None filtering. Deep testing of None filtering is covered by test_dict.py.
+
+        ### WRITTEN BY AI ###
+        """
+        # Track the actual request body sent
+        sent_body = None
+
+        def capture_request(request: httpx.Request):
+            nonlocal sent_body
+            sent_body = json.loads(request.content)
+            return httpx.Response(
+                status_code=200,
+                json={"choices": [{"message": {"content": "Response"}}]},
+            )
+
+        httpx_mock.add_callback(capture_request, url="http://test/v1/chat/completions")
+
+        backend = OpenAIHTTPBackend(
+            target="http://test",
+            model="test-model",
+            request_format="chat_completions",
+        )
+        await backend.process_startup()
+
+        request = GenerationRequest()
+        request_info = RequestInfo(
+            request_id="test-id",
+            status="pending",
+            scheduler_node_id=1,
+            scheduler_process_id=1,
+            scheduler_start_time=123.0,
+            timings=RequestTimings(),
+        )
+
+        # Configure mock handler to return body with None values
+        mock_handler, handler_patch = mock_request_handler
+        mock_handler.format.return_value = GenerationRequestArguments(
+            body={
+                "model": "gpt-4",
+                "messages": [{"role": "user", "content": "test"}],
+                "temperature": 0.7,
+                "max_tokens": None,  # Should be filtered out
+                "top_p": None,  # Should be filtered out
+                "stream": None,  # Should be filtered out
+            }
+        )
+        mock_handler.compile_non_streaming.return_value = GenerationResponse(
+            request_id="test-id", request_args="test args"
+        )
+
+        with handler_patch:
+            responses = []
+            async for response, info in backend.resolve(request, request_info):
+                responses.append((response, info))
+
+        # Verify the backend processed the request successfully
+        assert len(responses) == 1
+        assert responses[0][0].request_id == "test-id"
+
+        # Verify that None values were filtered out from the sent body
+        assert sent_body is not None
+        assert "model" in sent_body
+        assert "messages" in sent_body
+        assert "temperature" in sent_body
+        assert "max_tokens" not in sent_body  # None value filtered
+        assert "top_p" not in sent_body  # None value filtered
+        assert "stream" not in sent_body  # None value filtered

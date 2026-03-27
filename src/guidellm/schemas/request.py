@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import Field, computed_field
 
 from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
+from guidellm.utils.dict import deep_update
 
 __all__ = [
     "GenerationRequest",
@@ -82,7 +83,8 @@ class GenerationRequestArguments(StandardBaseDict):
         for combine in ("headers", "params", "body", "files"):
             if (val := additional_dict.get(combine)) is not None:
                 current = getattr(self, combine, None) or {}
-                setattr(self, combine, {**current, **val})
+                deep_update(current, val)
+                setattr(self, combine, current)
 
         return self
 
