@@ -26,6 +26,7 @@ __all__ = [
     "ChatCompletionsRequestHandler",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "PoolingRequestHandler",
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
 ]
@@ -959,3 +960,61 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 if part.get("type") == "output_text":
                     texts.append(part.get("text", ""))
         return "".join(texts)
+
+
+@OpenAIRequestHandlerFactory.register("/pooling")
+class PoolingRequestHandler(ChatCompletionsRequestHandler):
+    """
+    Request handler for vLLM pooling endpoints.
+
+    Inherits from ChatCompletionsRequestHandler and overrides format() to handle
+    pooling-specific request structure with nested data fields.
+    """
+
+    def format(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None = None,  # noqa: ARG002
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,  # noqa: ARG002
+        **kwargs: Any,
+    ) -> GenerationRequestArguments:
+        """
+        Format the pooling generation request into the appropriate structure.
+
+        :param data: The generation request to format
+        :param response: Optional previous response (unused for pooling)
+        :param history: Optional request/response history (unused for pooling)
+        :param **kwargs: Additional keyword arguments for request formatting
+        :return: The formatted request arguments
+        """
+        arguments = GenerationRequestArguments()
+        arguments.body = {}
+
+        # Add model
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        # Configure streaming
+        if kwargs.get("stream"):
+            arguments.stream = True
+            arguments.body["stream"] = True
+            arguments.body["stream_options"] = {
+                "include_usage": True,
+                "continuous_usage_stats": True,
+            }
+
+        # Apply extra arguments
+        if kwargs.get("extras"):
+            arguments.model_combine(kwargs["extras"])
+
+        # Build pooling request body from text_column (which contains the dict)
+        pooling_data = data.columns.get("pooling_column", [])
+        if pooling_data and isinstance(pooling_data[0], dict):
+            # Use the dict directly from text_column
+            pooling_entry = pooling_data[0]
+            if "data" in pooling_entry:
+                arguments.body["data"] = pooling_entry["data"]
+            if "priority" in pooling_entry:
+                arguments.body["priority"] = pooling_entry["priority"]
+
+        return arguments
