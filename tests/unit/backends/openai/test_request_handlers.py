@@ -13,8 +13,8 @@ from guidellm.backends.openai.request_handlers import (
     ChatCompletionsRequestHandler,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
-    ResponsesRequestHandler,
     PoolingRequestHandler,
+    ResponsesRequestHandler,
     TextCompletionsRequestHandler,
 )
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics

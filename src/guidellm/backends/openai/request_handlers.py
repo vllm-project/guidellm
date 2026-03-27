@@ -26,8 +26,8 @@ __all__ = [
     "ChatCompletionsRequestHandler",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
-    "ResponsesRequestHandler",
     "PoolingRequestHandler",
+    "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
 ]
 
