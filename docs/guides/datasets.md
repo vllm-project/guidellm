@@ -131,6 +131,11 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"}
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
+- **Trace files (`.jsonl` with `trace_synthetic` type)**: Specialized JSONL files for replay benchmarking with `timestamp`, `input_length`, and `output_length` fields. Used with `--profile replay` to reproduce production traffic patterns. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+  ```json
+  {"timestamp": 0, "input_length": 256, "output_length": 128}
+  {"timestamp": 0.5, "input_length": 512, "output_length": 64}
+  ```
 - **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```json
   {

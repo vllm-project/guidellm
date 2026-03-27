@@ -250,6 +250,7 @@ async def resolve_request_loader(
     data_num_workers: int | None,
     random_seed: int,
     console: Console | None = None,
+    max_requests: int | None = None,
     **dataloader_kwargs: dict[str, Any] | None,
 ) -> DataLoader[GenerationRequest]:
     """
@@ -273,6 +274,7 @@ async def resolve_request_loader(
     :param data_num_workers: Number of worker processes for data loading
     :param random_seed: Seed for reproducible random operations
     :param console: Console instance for progress reporting, or None
+    :param max_requests: If set, first data source loads at most this many rows.
     :param dataloader_kwargs: Additional arguments passed to DataLoader initialization
     :return: Configured DataLoader instance for GenerationRequest objects
     :raises ValueError: If request formatter type is not registered in
@@ -308,6 +310,17 @@ async def resolve_request_loader(
         FinalizerRegistry,
         data_finalizer,
     )
+
+    # When max_requests is set, limit the first data source to that many rows at load
+    if max_requests is not None and data:
+        if max_requests < 1:
+            raise ValueError(
+                "max_requests must be >= 1 when set for data truncation, "
+                f"got {max_requests}"
+            )
+        data_args = list(data_args) if data_args else [{} for _ in data]
+        if len(data_args) >= 1:
+            data_args[0] = {**data_args[0], "max_rows": max_requests}
 
     request_loader: DataLoader[GenerationRequest] = DataLoader(
         data=data,
@@ -355,6 +368,7 @@ async def resolve_profile(
     max_global_error_rate: float | None,
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
+    data: list[Any] | None = None,
 ) -> Profile:
     """
     Resolve and configure a benchmark profile with rate and constraint settings.
@@ -376,6 +390,7 @@ async def resolve_profile(
     :param max_global_error_rate: Maximum global error rate threshold before stopping
     :param over_saturation: Over-saturation detection configuration (dict)
     :param console: Console instance for progress reporting, or None
+    :param data: Optional list of data sources.
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile
     """
@@ -403,6 +418,7 @@ async def resolve_profile(
             random_seed=random_seed,
             rampup_duration=rampup,
             constraints={**constraints},
+            data=data,
         )
     elif constraints:
         raise ValueError(
@@ -489,24 +505,60 @@ async def benchmark_generative_text(
     processor = await resolve_processor(
         processor=args.processor, model=model, console=console
     )
-    request_loader = await resolve_request_loader(
-        data=args.data,
-        model=model,
-        data_args=args.data_args,
-        data_samples=args.data_samples,
-        processor=processor,
-        processor_args=args.processor_args,
-        data_column_mapper=args.data_column_mapper,
-        data_preprocessors=args.data_preprocessors,
-        data_preprocessors_kwargs=args.data_preprocessors_kwargs,
-        data_finalizer=args.data_finalizer,
-        data_collator=args.data_collator,
-        data_sampler=args.data_sampler,
-        data_num_workers=args.data_num_workers,
-        random_seed=args.random_seed,
-        console=console,
-        **(args.dataloader_kwargs or {}),
-    )
+
+    # Build common kwargs for resolve_profile and resolve_request_loader
+    profile_kwargs = {
+        "profile": args.profile,
+        "rate": args.rate,
+        "random_seed": args.random_seed,
+        "rampup": args.rampup,
+        "constraints": constraints,
+        "max_seconds": args.max_seconds,
+        "max_requests": args.max_requests,
+        "max_errors": args.max_errors,
+        "max_error_rate": args.max_error_rate,
+        "max_global_error_rate": args.max_global_error_rate,
+        "over_saturation": args.over_saturation,
+        "console": console,
+    }
+    loader_kwargs = {
+        "data": args.data,
+        "model": model,
+        "data_args": args.data_args,
+        "data_samples": args.data_samples,
+        "processor": processor,
+        "processor_args": args.processor_args,
+        "data_column_mapper": args.data_column_mapper,
+        "data_preprocessors": args.data_preprocessors,
+        "data_preprocessors_kwargs": args.data_preprocessors_kwargs,
+        "data_finalizer": args.data_finalizer,
+        "data_collator": args.data_collator,
+        "data_sampler": args.data_sampler,
+        "data_num_workers": args.data_num_workers,
+        "random_seed": args.random_seed,
+        "console": console,
+    }
+
+    # For replay profile: resolve profile first to apply max_seconds filtering,
+    # then use the filtered count for the data loader. This ensures the data
+    # loader and scheduler both work with the same filtered request count.
+    if args.profile == "replay":
+        profile = await resolve_profile(**profile_kwargs, data=args.data)  # type: ignore[arg-type]
+        effective_max_requests = (
+            profile.constraints.get("max_requests")
+            if profile.constraints
+            else args.max_requests
+        )
+        request_loader = await resolve_request_loader(
+            **loader_kwargs,  # type: ignore[arg-type,misc]
+            max_requests=effective_max_requests,  # type: ignore[arg-type]
+        )
+    else:
+        request_loader = await resolve_request_loader(
+            **loader_kwargs,  # type: ignore[arg-type,misc]
+            max_requests=args.max_requests,  # type: ignore[arg-type]
+        )
+        profile = await resolve_profile(**profile_kwargs, data=None)  # type: ignore[arg-type]
 
     warmup = TransientPhaseConfig.create_from_value(args.warmup)
     cooldown = TransientPhaseConfig.create_from_value(args.cooldown)
@@ -522,21 +574,6 @@ async def benchmark_generative_text(
             ),
             status="success",
         )
-
-    profile = await resolve_profile(
-        profile=args.profile,
-        rate=args.rate,
-        random_seed=args.random_seed,
-        rampup=args.rampup,
-        constraints=constraints,
-        max_seconds=args.max_seconds,
-        max_requests=args.max_requests,
-        max_errors=args.max_errors,
-        max_error_rate=args.max_error_rate,
-        max_global_error_rate=args.max_global_error_rate,
-        over_saturation=args.over_saturation,
-        console=console,
-    )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console
     )
