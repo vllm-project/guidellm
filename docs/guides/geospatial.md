@@ -50,6 +50,7 @@ Geospatial models served with vLLM expect a specific nested JSON structure in th
       "out_data_format": "b64_json",
       "indices": [1, 2, 3, 8, 11, 12]
     },
+    "priority": 0
   }
 }
 ```
@@ -62,6 +63,7 @@ Geospatial models served with vLLM expect a specific nested JSON structure in th
     - **data_format**: Format of input data (`"url"` or `"base64"`)
     - **out_data_format**: Desired output format (e.g., `"b64_json"`)
     - **indices**: Array of band/channel indices to process (specific to the satellite sensor)
+  - **priority**: (Optional) Request priority for scheduling (default: 0)
 
 ### Band Indices
 
