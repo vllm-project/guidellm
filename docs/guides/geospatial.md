@@ -21,15 +21,15 @@ This guide has been tested with the following geospatial models:
 
 ### Basic Usage
 
-To benchmark a geospatial model, use the `--request-format pooling` parameter:
+To benchmark a geospatial model, use the `--request-format /pooling` parameter:
 
 ```bash
 guidellm benchmark \
   --target http://localhost:8000 \
   --model ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11 \
   --backend openai_http \
-  --data dataset.jsonl \
-  --request-format pooling \
+  --data flood_detection_dataset.jsonl \
+  --request-format /pooling \
   --data-column-mapper pooling_column_mapper \
   --max-requests 10 \
   --output-path results.json
@@ -75,11 +75,10 @@ Here's a complete example for benchmarking the Prithvi flood detection model:
 
 Create `flood_detection_dataset.jsonl` remembering to update the GeoTIFF url reference by `data` with one reachable over the network. You can find examples in the [Prithvi repository on HuggingFace](https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11/tree/main/examples).
 
-```json
-{"prompt":{"data":{"data":"https://example.com/satellite1.tif","data_format":"url","out_data_format":"b64_json","indices":[1,2,3,8,11,12]}}}
-{"prompt":{"data":{"data":"https://example.com/satellite2.tif","data_format":"url","out_data_format":"b64_json","indices":[1,2,3,8,11,12]}}}
-{"prompt":{"data":{"data":"https://example.com/satellite3.tif","data_format":"url","out_data_format":"b64_json","indices":[1,2,3,8,11,12]}}}
-...
+The following command creates a sample dataset with 100 identical entries for benchmarking purposes:
+
+```bash
+printf '{"prompt":{"data": {"data": "https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11/resolve/main/examples/India_900498_S2Hand.tif","data_format": "url","out_data_format": "b64_json","indices": [1, 2, 3, 8, 11, 12]},"priority": 0}}\n%.0s' {1..100} > flood_detection_dataset.jsonl
 ```
 
 ### 2. Start vLLM Server
@@ -104,7 +103,7 @@ guidellm benchmark \
   --model ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11 \
   --backend openai_http \
   --data flood_detection_dataset.jsonl \
-  --request-format pooling \
+  --request-format /pooling \
   --data-column-mapper pooling_column_mapper \
   --max-requests 100 \
   --output-path results.json
@@ -127,7 +126,7 @@ vllm bench serve \
   --percentile-metrics e2el \
   --metric-percentiles 25,75,99 \
   --num-prompts 10 \
-  --dataset-path ./dataset.jsonl
+  --dataset-path flood_detection_dataset.jsonl
 ```
 
 ### Equivalent GuideLLM Command
@@ -137,8 +136,8 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --model ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11 \
   --backend openai_http \
-  --data dataset.jsonl \
-  --request-format pooling \
+  --data flood_detection_dataset.jsonl \
+  --request-format /pooling \
   --data-column-mapper pooling_column_mapper \
   --max-requests 10 \
   --output-path results.json
