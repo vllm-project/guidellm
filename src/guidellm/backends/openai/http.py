@@ -432,7 +432,7 @@ class OpenAIHTTPBackend(Backend):
                 stream.raise_for_status()
                 end_reached = False
 
-                async for chunk in stream.aiter_lines():
+                async for chunk in self._aiter_lines(stream):
                     iter_time = time.time()
 
                     if request_info.timings.first_request_iteration is None:
@@ -465,6 +465,17 @@ class OpenAIHTTPBackend(Backend):
             # Yield current result to store iterative results before propagating
             yield request_handler.compile_streaming(request, arguments), request_info
             raise err
+
+    async def _aiter_lines(self, stream: httpx.Response) -> AsyncIterator[str]:
+        """
+        Asynchronously iterate over lines in an HTTP response stream.
+
+        :param stream: HTTP response object with streaming content
+        :yield: Lines of text from the response stream
+        """
+        async for part in stream.aiter_bytes():
+            for line in part.split(b"\n\n"):
+                yield line.decode("utf-8").strip()
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
