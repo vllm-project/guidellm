@@ -11,6 +11,9 @@ tracking with flexible parameter customization.
 from __future__ import annotations
 
 import asyncio
+import os
+import pickle
+import gzip
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -256,6 +259,7 @@ class OpenAIHTTPBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
+        self._chunk_data = []
         self._async_client = httpx.AsyncClient(
             http2=self.http2,
             timeout=httpx.Timeout(
@@ -284,6 +288,13 @@ class OpenAIHTTPBackend(Backend):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
 
+        # Write chunk data to a file for debugging
+        out_path = os.environ.get("GUIDELLM_OUTPUT_DIR", "./")
+        with gzip.open(os.path.join(out_path, "chunk_data.pkl.gz"), "wb") as f:
+            print(
+                f"Writing chunk data to file: {len(self._chunk_data)} packets\n\n\n\n\n"
+            )
+            pickle.dump(self._chunk_data, f)
         await self._async_client.aclose()  # type: ignore [union-attr]
         self._async_client = None
         self._in_process = False
@@ -473,7 +484,10 @@ class OpenAIHTTPBackend(Backend):
         :param stream: HTTP response object with streaming content
         :yield: Lines of text from the response stream
         """
+        packets = []
+        self._chunk_data.append(packets)
         async for part in stream.aiter_bytes():
+            packets.append(part)
             for line in part.split(b"\n\n"):
                 if not line:
                     continue
