@@ -475,6 +475,8 @@ class OpenAIHTTPBackend(Backend):
         """
         async for part in stream.aiter_bytes():
             for line in part.split(b"\n\n"):
+                if not line:
+                    continue  # Skip blank lines
                 yield line.decode("utf-8").strip()
 
     def _build_headers(
