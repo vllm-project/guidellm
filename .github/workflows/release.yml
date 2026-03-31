@@ -51,13 +51,13 @@ jobs:
         run: |
           echo "Artifacts uploaded to: ${{ steps.artifact-upload.outputs.artifact-url }}"
       - name: Push wheel to PyPI
-        uses: neuralmagic/nm-actions/actions/publish-whl@v1.0.0
+        uses: neuralmagic/nm-actions/actions/publish-whl@5f51a3426881661e49c99068bb967a591338b8a9
         with:
           username: ${{ secrets.PYPI_PUBLIC_USER }}
           password: ${{ secrets.PYPI_PUBLIC_AUTH }}
           whl: $(find dist -name '*.whl')
       - name: Push tar.gz to PyPI
-        uses: neuralmagic/nm-actions/actions/publish-whl@v1.0.0
+        uses: neuralmagic/nm-actions/actions/publish-whl@5f51a3426881661e49c99068bb967a591338b8a9
         with:
           username: ${{ secrets.PYPI_PUBLIC_USER }}
           password: ${{ secrets.PYPI_PUBLIC_AUTH }}
