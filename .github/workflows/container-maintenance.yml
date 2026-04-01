@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Delete PR and untagged images older than 2 weeks
-        uses: snok/container-retention-policy@3b0972b2276b171b212f8c4efbca59ebba26eceb
+        uses: snok/container-retention-policy@3b0972b2276b171b212f8c4efbca59ebba26eceb # v3.0.1
         with:
           account: ${{ github.repository_owner }}
           token: ${{ github.token }}
@@ -32,7 +32,7 @@ jobs:
     if: always() # Run after cleanup even if it fails
     steps:
       - name: Log into ghcr.io
-        uses: redhat-actions/podman-login@4934294ad0449894bcd1e9f191899d7292469603
+        uses: redhat-actions/podman-login@4934294ad0449894bcd1e9f191899d7292469603 # v1.7
         with:
           username: ${{ github.repository_owner }}
           password: ${{ github.token }}
