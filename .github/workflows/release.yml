@@ -24,7 +24,7 @@ jobs:
         python: ["3.10"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
       - name: Setup Python with UV
@@ -40,7 +40,7 @@ jobs:
           tox -e build
       - name: Upload build artifacts
         id: artifact-upload
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: release-artifacts
           path: dist/*
@@ -51,13 +51,13 @@ jobs:
         run: |
           echo "Artifacts uploaded to: ${{ steps.artifact-upload.outputs.artifact-url }}"
       - name: Push wheel to PyPI
-        uses: neuralmagic/nm-actions/actions/publish-whl@5f51a3426881661e49c99068bb967a591338b8a9
+        uses: neuralmagic/nm-actions/actions/publish-whl@1db28bd7b210523049e533d6f14ee3d4b2ff2b32 # v1.24.0
         with:
           username: ${{ secrets.PYPI_PUBLIC_USER }}
           password: ${{ secrets.PYPI_PUBLIC_AUTH }}
           whl: $(find dist -name '*.whl')
       - name: Push tar.gz to PyPI
-        uses: neuralmagic/nm-actions/actions/publish-whl@5f51a3426881661e49c99068bb967a591338b8a9
+        uses: neuralmagic/nm-actions/actions/publish-whl@1db28bd7b210523049e533d6f14ee3d4b2ff2b32 # v1.24.0
         with:
           username: ${{ secrets.PYPI_PUBLIC_USER }}
           password: ${{ secrets.PYPI_PUBLIC_AUTH }}
@@ -71,10 +71,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Node.js 22
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: '22'
 
@@ -106,7 +106,7 @@ jobs:
           npm run build
 
       - name: Deploy versioned build to GitHub Pages
-        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./src/ui/out
@@ -125,10 +125,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Node.js 22
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: '22'
 
@@ -160,7 +160,7 @@ jobs:
           npm run build
 
       - name: Update latest build in GitHub Pages
-        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./src/ui/out
@@ -174,7 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
       - name: Get version from branch
@@ -186,13 +186,13 @@ jobs:
           exit 1
       - name: Store/retrieve build caches
         id: cache-buildah
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: /var/tmp/buildah-cache-*
           key: buildah-mount-cache-${{ runner.os }}-${{ runner.arch }}
       - name: Buildah build
         id: build-image
-        uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056
+        uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2.13
         with:
           image: ${{ github.event.repository.name }}
           build-args: |
@@ -202,7 +202,7 @@ jobs:
             ./Containerfile
       - name: Push To ghcr.io
         id: push-to-ghcr
-        uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c
+        uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # v2.8
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}
