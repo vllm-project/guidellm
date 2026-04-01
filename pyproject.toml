@@ -85,7 +85,7 @@ audio = [
     "datasets[audio]>=4.1.0",
     # Torchcodec needs specific torch version
     "torch==2.10.*",
-    "torchcodec==0.10.*",
+    "torchcodec>=0.10,<0.12",
 ]
 vision = [
     "datasets[vision]",
