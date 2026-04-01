@@ -16,7 +16,7 @@ from typing import Literal
 from pydantic import Field
 
 from guidellm.benchmark.schemas.base import BenchmarkAccumulator, BenchmarkConfig
-from guidellm.scheduler import MultiTurnRequestT, SchedulerState
+from guidellm.scheduler import SchedulerState
 from guidellm.schemas import (
     EmbeddingsRequestStats,
     GenerationRequest,
@@ -25,6 +25,7 @@ from guidellm.schemas import (
     StandardBaseModel,
     StatusBreakdown,
     StatusDistributionSummary,
+    UsageMetrics,
 )
 
 __all__ = [
@@ -530,7 +531,7 @@ class EmbeddingsBenchmarkAccumulator(
     def update_estimate(  # noqa: C901, PLR0912, PLR0915
         self,
         response: GenerationResponse | None,
-        request: GenerationRequest | MultiTurnRequestT[GenerationRequest],
+        request: GenerationRequest,
         info: RequestInfo,
         scheduler_state: SchedulerState,
     ):
@@ -588,7 +589,7 @@ class EmbeddingsBenchmarkAccumulator(
             response_id=response.response_id if response is not None else None,
             request_args=response.request_args if response is not None else None,
             info=info,
-            input_metrics=input_metrics,
+            input_metrics=input_metrics or UsageMetrics(),
         )
 
         # Track encoding format if available

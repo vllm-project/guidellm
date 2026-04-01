@@ -16,7 +16,7 @@ from pydantic import Field
 from guidellm.benchmark.outputs.console import ConsoleTableColumnsCollection
 from guidellm.benchmark.outputs.output import EmbeddingsBenchmarkerOutput
 from guidellm.benchmark.schemas.embeddings import EmbeddingsBenchmarksReport
-from guidellm.utils import Console
+from guidellm.utils.console import Console
 
 __all__ = ["EmbeddingsBenchmarkerConsole"]
 
