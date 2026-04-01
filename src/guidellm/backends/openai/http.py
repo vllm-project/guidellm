@@ -486,12 +486,11 @@ class OpenAIHTTPBackend(Backend):
         """
         packets = []
         self._chunk_data.append(packets)
-        async for part in stream.aiter_bytes():
-            packets.append(part)
-            for line in part.split(b"\n\n"):
-                if not line:
-                    continue
-                yield line.decode("utf-8").strip()
+        async for line in stream.aiter_lines():
+            packets.append(line)
+            if not line.strip():
+                continue
+            yield line
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
