@@ -548,7 +548,7 @@ wheels = [
 
 [[package]]
 name = "datasets"
-version = "4.4.1"
+version = "4.8.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dill" },
@@ -567,9 +567,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/93/bf/0dae295d6d1ba0b1a200a9dd216838464b5bbd05da01407cb1330b377445/datasets-4.4.1.tar.gz", hash = "sha256:80322699aa8c0bbbdb7caa87906da689c3c2e29523cff698775c67f28fdab1fc", size = 585341, upload-time = "2025-11-05T16:00:38.162Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/22/22/73e46ac7a8c25e7ef0b3bd6f10da3465021d90219a32eb0b4d2afea4c56e/datasets-4.8.4.tar.gz", hash = "sha256:a1429ed853275ce7943a01c6d2e25475b4501eb758934362106a280470df3a52", size = 604382, upload-time = "2026-03-23T14:21:17.987Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/5e/6f8d874366788ad5d549e9ba258037d974dda6e004843be1bda794571701/datasets-4.4.1-py3-none-any.whl", hash = "sha256:c1163de5211e42546079ab355cc0250c7e6db16eb209ac5ac6252f801f596c44", size = 511591, upload-time = "2025-11-05T16:00:36.365Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/e5/247d094108e42ac26363ab8dc57f168840cf7c05774b40ffeb0d78868fcc/datasets-4.8.4-py3-none-any.whl", hash = "sha256:cdc8bee4698e549d78bf1fed6aea2eebc760b22b084f07e6fc020c6577a6ce6d", size = 526991, upload-time = "2026-03-23T14:21:15.89Z" },
 ]
 
 [package.optional-dependencies]
