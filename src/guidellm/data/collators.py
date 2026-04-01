@@ -26,16 +26,16 @@ class EmbeddingsRequestCollator:
     """
     Collator for embeddings requests.
 
-    Simple pass-through that enforces batch size of 1. Embeddings requests
-    are already properly formatted by the EmbeddingsRequestFinalizer.
+    Wraps single requests in a list for scheduler compatibility.
+    Embeddings are single-turn, so each conversation contains one request.
     """
 
-    def __call__(self, batch: list) -> GenerationRequest:
+    def __call__(self, batch: list) -> list:
         """
         Collate batch of embeddings requests.
 
         :param batch: List of GenerationRequest objects (should be length 1)
-        :return: Single GenerationRequest
+        :return: List containing single GenerationRequest (for scheduler)
         :raises NotImplementedError: If batch size > 1
         """
         if len(batch) != 1:
@@ -44,4 +44,5 @@ class EmbeddingsRequestCollator:
                 f"Got batch size: {len(batch)}"
             )
 
-        return batch[0]
+        # Return as list for scheduler (expects Iterable[Iterable[Request]])
+        return [batch[0]]
