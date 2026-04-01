@@ -2,9 +2,13 @@ version = 1
 revision = 3
 requires-python = ">=3.10.0, <4.0"
 resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform != 'darwin'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'darwin'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin'",
     "python_full_version < '3.11' and sys_platform != 'darwin'",
     "python_full_version < '3.11' and sys_platform == 'darwin'",
@@ -1576,7 +1580,7 @@ wheels = [
 
 [[package]]
 name = "mistral-common"
-version = "1.8.8"
+version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema" },
@@ -1589,9 +1593,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0a/bb/6fc2e46d9920c80f0d053d58be5b0546c18010ff3a5f9b9d91299226e989/mistral_common-1.8.8.tar.gz", hash = "sha256:8ae28b3f88bce1b9396f5d1107e5ea87e4130486b9f6d811df6d5ac07bff2186", size = 6337014, upload-time = "2025-12-22T10:51:47.245Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/22/f798c1acc3f8cf32b6201b063d96867d79aa39d31dff12478739e1a78979/mistral_common-1.10.0.tar.gz", hash = "sha256:e456ff101edbdfc094039ec6c26f7d0f73356729798d628a6e6e96c3917147bc", size = 6351515, upload-time = "2026-03-13T10:13:46.683Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/02/c1866598c8e94a4d0593b73e6dec0afea722227b9b3223bf6bb8ab269fa7/mistral_common-1.8.8-py3-none-any.whl", hash = "sha256:f63ce79b1867b3fc7c8b66fcaedab3b07966185567558038dc02321c17e4f39f", size = 6518005, upload-time = "2025-12-22T10:51:44.88Z" },
+    { url = "https://files.pythonhosted.org/packages/87/c6/1429a0a3ab40f8530492b62b52eb792266c261b22ed62aa7f25d61d531ae/mistral_common-1.10.0-py3-none-any.whl", hash = "sha256:c594d1a05202b61e8f0d867ec6064df4c5e5d492c2c2bdb6fd8fb4872c6afd8b", size = 6525284, upload-time = "2026-03-13T10:13:44.329Z" },
 ]
 
 [[package]]
@@ -1967,9 +1971,13 @@ name = "networkx"
 version = "3.6"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform != 'darwin'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'darwin'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e8/fc/7b6fd4d22c8c4dc5704430140d8b3f520531d4fe7328b8f8d03f5a7950e8/networkx-3.6.tar.gz", hash = "sha256:285276002ad1f7f7da0f7b42f004bcba70d381e936559166363707fdad3d72ad", size = 2511464, upload-time = "2025-11-24T03:03:47.158Z" }
@@ -2057,9 +2065,13 @@ name = "numpy"
 version = "2.3.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform != 'darwin'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'darwin'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/65/21b3bc86aac7b8f2862db1e808f1ea22b028e30a225a34a5ede9bf8678f2/numpy-2.3.5.tar.gz", hash = "sha256:784db1dcdab56bf0517743e746dfb0f885fc68d948aba86eeec2cba234bdf1c0", size = 20584950, upload-time = "2025-11-16T22:52:42.067Z" }
@@ -3550,9 +3562,13 @@ name = "scipy"
 version = "1.16.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform != 'darwin'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'darwin'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin'",
 ]
 dependencies = [
@@ -3923,7 +3939,9 @@ name = "torch"
 version = "2.10.0"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'darwin'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin'",
     "python_full_version < '3.11' and sys_platform == 'darwin'",
 ]
@@ -3960,7 +3978,9 @@ name = "torch"
 version = "2.10.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform != 'darwin'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin'",
     "python_full_version < '3.11' and sys_platform != 'darwin'",
 ]
