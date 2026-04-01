@@ -104,7 +104,7 @@ dev = [
     # general and configurations
     "pre-commit~=3.5.0",
     "scipy~=1.10",
-    "sphinx~=7.1.2",
+    "sphinx>=7.1.2,<8.2.0",
     "tox~=4.16.0",
 
     # testing
