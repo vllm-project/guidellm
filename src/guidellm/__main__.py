@@ -42,6 +42,8 @@ from guidellm.benchmark import (
     get_builtin_scenarios,
     reimport_benchmarks_report,
 )
+from guidellm.benchmark.embeddings_entrypoints import benchmark_embeddings
+from guidellm.benchmark.schemas.embeddings import BenchmarkEmbeddingsArgs
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
 from guidellm.settings import print_config
@@ -517,6 +519,120 @@ def run(**kwargs):  # noqa: C901
 )
 def from_file(path, output_path, output_formats):
     asyncio.run(reimport_benchmarks_report(path, output_path, output_formats))
+
+
+@benchmark.command(
+    "run-embeddings",
+    help=(
+        "Run an embeddings benchmark against an embedding model. "
+        "Supports OpenAI-compatible embeddings endpoints with flexible "
+        "configuration for rate testing and performance measurement."
+    ),
+    context_settings={"auto_envvar_prefix": "GUIDELLM"},
+)
+@click.option(
+    "--target",
+    required=True,
+    help="Target backend URL (e.g., http://localhost:8000).",
+)
+@click.option(
+    "--data",
+    required=True,
+    multiple=True,
+    help=(
+        "Path to data file (csv/json/jsonl/txt) or HuggingFace dataset ID. "
+        "Can be specified multiple times."
+    ),
+)
+@click.option(
+    "--profile",
+    "--rate-type",
+    default="sweep",
+    type=click.Choice(STRATEGY_PROFILE_CHOICES),
+    help="Benchmark profile type (sweep, constant, async, etc.).",
+)
+@click.option(
+    "--rate",
+    callback=cli_tools.parse_list_floats,
+    help="Request rate(s) to test (comma-separated floats).",
+)
+@click.option(
+    "--backend",
+    "--backend-type",
+    default="openai_http",
+    type=click.Choice(list(get_literal_vals(BackendType))),
+    help="Backend type (default: openai_http).",
+)
+@click.option(
+    "--model",
+    help="Model ID to benchmark.",
+)
+@click.option(
+    "--request-format",
+    "--request-type",
+    default="/v1/embeddings",
+    help="Request format (default: /v1/embeddings).",
+)
+@click.option(
+    "--encoding-format",
+    default="float",
+    type=click.Choice(["float", "base64"]),
+    help="Embedding encoding format (default: float).",
+)
+@click.option(
+    "--max-requests",
+    type=int,
+    help="Maximum number of requests to process.",
+)
+@click.option(
+    "--max-duration",
+    type=float,
+    help="Maximum benchmark duration in seconds.",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    help="Directory to save output files.",
+)
+@click.option(
+    "--outputs",
+    callback=cli_tools.parse_list,
+    multiple=True,
+    default=["json"],
+    help="Output formats (json, yaml). Can specify multiple times.",
+)
+@click.option(
+    "--disable-console",
+    is_flag=True,
+    help="Disable all console outputs.",
+)
+def run_embeddings(**kwargs):
+    """Execute embeddings benchmark with provided configuration."""
+    ctx = click.get_current_context()
+    kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
+
+    # Handle console
+    disable_console = kwargs.pop("disable_console", False)
+    console = Console() if not disable_console else None
+
+    try:
+        args = BenchmarkEmbeddingsArgs.model_validate(kwargs)
+    except ValidationError as err:
+        errs = err.errors(include_url=False, include_context=True, include_input=True)
+        param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
+        raise click.BadParameter(
+            errs[0]["msg"], ctx=ctx, param_hint=param_name
+        ) from err
+
+    asyncio.run(
+        benchmark_embeddings(
+            args=args,
+            progress=(
+                GenerativeConsoleBenchmarkerProgress() if not disable_console else None
+            ),
+            console=console,
+        )
+    )
 
 
 @cli.command(

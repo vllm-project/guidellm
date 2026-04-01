@@ -24,7 +24,7 @@ from guidellm.benchmark.schemas.embeddings import (
     EmbeddingsBenchmarksReport,
 )
 from guidellm.scheduler import ConstraintInitializer
-from guidellm.utils import Console
+from guidellm.utils.console import Console
 
 __all__ = ["benchmark_embeddings"]
 

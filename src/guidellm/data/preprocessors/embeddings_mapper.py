@@ -44,6 +44,7 @@ class EmbeddingsColumnMapper(DataDependentPreprocessor):
             "input",
             "content",
             "prompt",
+            "prompt_0",  # Support synthetic data format
             "sentence",
             "document",
             "passage",
@@ -153,22 +154,23 @@ class EmbeddingsColumnMapper(DataDependentPreprocessor):
 
         return mappings
 
-    def __call__(self, row: dict[str, Any]) -> dict[str, list[Any]]:
+    def __call__(self, items: list[dict[str, Any]]) -> dict[str, list[Any]]:
         """
         Transform a row by extracting text columns based on established mappings.
 
-        :param row: Dictionary containing 'items' key with dataset rows
+        :param items: List of dicts containing 'dataset' key with dataset rows
         :return: Mapped dictionary with 'text_column' key
         """
         if self.datasets_column_mappings is None:
             raise ValueError("EmbeddingsColumnMapper not setup with data.")
 
-        items = cast("dict[int, dict[str, Any]]", row.pop("items"))
+        # Extract dataset items from the list
+        datasets_dict = {i: item["dataset"] for i, item in enumerate(items)}
         mapped: dict[str, Any] = defaultdict(list)
 
         for column_type, column_mappings in self.datasets_column_mappings.items():
             for dataset_index, dataset_column in column_mappings:
-                mapped[column_type].append(items[dataset_index][dataset_column])
+                mapped[column_type].append(datasets_dict[dataset_index][dataset_column])
 
         return dict(mapped)
 

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
-from guidellm.utils import Console
+from guidellm.utils.console import Console
 
 if TYPE_CHECKING:
     from collections.abc import Callable
