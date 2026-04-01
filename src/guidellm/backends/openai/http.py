@@ -473,11 +473,10 @@ class OpenAIHTTPBackend(Backend):
         :param stream: HTTP response object with streaming content
         :yield: Lines of text from the response stream
         """
-        async for part in stream.aiter_bytes():
-            for line in part.split(b"\n\n"):
-                if not line:
-                    continue  # Skip blank lines
-                yield line.decode("utf-8").strip()
+        async for line in stream.aiter_lines():
+            if not line.strip():
+                continue  # Skip blank lines
+            yield line
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
