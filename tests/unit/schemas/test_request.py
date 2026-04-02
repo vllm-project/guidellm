@@ -574,6 +574,24 @@ class TestUsageMetrics:
         assert metrics.text_words == expected_words
 
     @pytest.mark.sanity
+    def test_total_tokens_excludes_tool_call_tokens(self):
+        """
+        Verify tool_call_tokens is not double-counted in total_tokens.
+
+        tool_call_tokens is a subset of text_tokens, so total_tokens should
+        only reflect text_tokens (and other modality tokens), not add
+        tool_call_tokens on top.
+
+        ## WRITTEN BY AI ##
+        """
+        metrics = UsageMetrics(
+            text_tokens=50,
+            tool_call_tokens=50,
+            tool_call_count=2,
+        )
+        assert metrics.total_tokens == 50
+
+    @pytest.mark.sanity
     def test_marshalling(self, valid_instances):
         """Test UsageMetrics serialization and deserialization."""
         instance, constructor_args = valid_instances

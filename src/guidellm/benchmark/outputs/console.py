@@ -224,6 +224,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_image_table(report)
         self.print_video_table(report)
         self.print_audio_table(report)
+        self.print_tool_call_table(report)
         self.print_request_counts_table(report)
         self.print_request_latency_table(report)
         self.print_server_throughput_table(report)
@@ -356,6 +357,22 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 ("samples", "Samples"),
                 ("seconds", "Seconds"),
                 ("bytes", "Bytes"),
+            ],
+        )
+
+    def print_tool_call_table(self, report: GenerativeBenchmarksReport):
+        """
+        Print tool-call-specific metrics table if any tool call data exists.
+
+        :param report: The benchmark report containing tool call metrics
+        """
+        self._print_modality_table(
+            report=report,
+            modality="tool_call",
+            title="Tool Call Metrics Statistics (Completed Requests)",
+            metric_groups=[
+                ("tokens", "Tokens"),
+                ("count", "Count"),
             ],
         )
 
@@ -512,7 +529,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
     def _print_modality_table(
         self,
         report: GenerativeBenchmarksReport,
-        modality: Literal["text", "image", "video", "audio"],
+        modality: Literal["text", "image", "video", "audio", "tool_call"],
         title: str,
         metric_groups: list[tuple[str, str]],
     ):
