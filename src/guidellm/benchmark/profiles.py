@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
 
 import numpy as np
@@ -37,6 +38,8 @@ from guidellm.scheduler import (
     SchedulingStrategy,
     SynchronousStrategy,
     ThroughputStrategy,
+    TraceReplayStrategy,
+    load_relative_timestamps,
 )
 from guidellm.schemas import PydanticClassRegistryMixin
 
@@ -48,13 +51,14 @@ __all__ = [
     "ConcurrentProfile",
     "Profile",
     "ProfileType",
+    "ReplayProfile",
     "SweepProfile",
     "SynchronousProfile",
     "ThroughputProfile",
 ]
 
 ProfileType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "async", "sweep"],
+    Literal["synchronous", "concurrent", "throughput", "async", "sweep", "replay"],
     "Profile type identifiers for polymorphic deserialization",
 ]
 
@@ -326,6 +330,122 @@ class SynchronousProfile(Profile):
             return None
 
         return SynchronousStrategy()
+
+
+@Profile.register("replay")
+class ReplayProfile(Profile):
+    """
+    Replay a trace file:
+    schedule each request at start_time + time_scale * relative_timestamp[i].
+
+    For this profile, the ``rate`` argument is interpreted as time_scale (scale factor
+    applied to relative timestamps), not as requests per second.
+
+    When ``constraints["max_requests"]`` is set, the trace is truncated at load time:
+    only the first max_requests rows are loaded from the file for both timestamps (here)
+    and request data (in the data loader). This keeps timestamps and requests aligned.
+    The trace file is read twice: once by the data pipeline for request payloads, and
+    once here for relative timestamps.
+    """
+
+    type_: Literal["replay"] = "replay"  # type: ignore[assignment]
+    relative_timestamps: list[float] = Field(
+        description="Request start times relative to first event (first = 0)",
+    )
+    time_scale: float = Field(
+        default=1.0,
+        gt=0,
+        description="Scale factor applied to relative timestamps",
+    )
+    max_seconds_filter: float | None = Field(
+        default=None,
+        description=(
+            "Original max_seconds value used as a load-time filter "
+            "(not a runtime constraint)"
+        ),
+    )
+
+    @classmethod
+    def resolve_args(
+        cls,
+        rate_type: str,
+        rate: list[float] | None,
+        random_seed: int,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        _ = (rate_type, random_seed)  # unused
+        data = kwargs.get("data")
+        if not data or not data[0]:
+            raise ValueError("Replay profile requires data (path to trace file)")
+        path = Path(data[0]) if isinstance(data[0], str) else data[0]
+        if not path.exists():
+            raise ValueError(f"Replay trace file not found: {path}")
+        constraints = kwargs.get("constraints") or {}
+        max_requests = constraints.get("max_requests")
+        if max_requests is not None and max_requests < 1:
+            raise ValueError(
+                "max_requests must be >= 1 when set for replay profile, "
+                f"got {max_requests}"
+            )
+
+        # For replay profile, rate is interpreted as time_scale (not requests per
+        # second)
+        time_scale = rate[0] if rate and len(rate) > 0 else 1.0
+
+        # Load all timestamps first (max_requests applied after max_seconds filtering)
+        relative_timestamps = load_relative_timestamps(path)
+
+        # Filter by max_seconds (applied in simulated time via time_scale)
+        max_seconds = constraints.get("max_seconds")
+        if max_seconds is not None and max_seconds > 0:
+            relative_timestamps = [
+                ts for ts in relative_timestamps if ts * time_scale <= max_seconds
+            ]
+
+        # Truncate by max_requests on top of any max_seconds filtering
+        if max_requests is not None:
+            relative_timestamps = relative_timestamps[:max_requests]
+
+        if not relative_timestamps:
+            raise ValueError(
+                "No timestamps remain after applying max_seconds and max_requests "
+                "filters. The trace is empty or all events were filtered out."
+            )
+
+        # Set max_requests to the actual count after filtering to prevent benchmark hang
+        # and eliminate race conditions between request completion and injection.
+        constraints["max_requests"] = len(relative_timestamps)
+
+        # Remove max_seconds to avoid runtime MaxDurationConstraint canceling
+        # in-flight requests
+        constraints.pop("max_seconds", None)
+
+        return {
+            "relative_timestamps": relative_timestamps,
+            "time_scale": time_scale,
+            "constraints": constraints,
+            "max_seconds_filter": max_seconds
+            if max_seconds and max_seconds > 0
+            else None,
+        }
+
+    @property
+    def strategy_types(self) -> list[str]:
+        return ["trace"]
+
+    def next_strategy(
+        self,
+        prev_strategy: SchedulingStrategy | None,
+        prev_benchmark: Benchmark | None,
+    ) -> TraceReplayStrategy | None:
+        _ = prev_benchmark
+        # Replay has a single strategy; return it once, then None
+        if prev_strategy is not None:
+            return None
+        return TraceReplayStrategy(
+            relative_timestamps=self.relative_timestamps,
+            time_scale=self.time_scale,
+        )
 
 
 @Profile.register("concurrent")
