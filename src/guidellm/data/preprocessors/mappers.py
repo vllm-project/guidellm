@@ -67,6 +67,9 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "wav",
             "mp3",
         ],
+        "messages_column": [
+            "messages",
+        ],
     }
     column_name_pattern: str = (
         r"^(?P<full_name>(?P<match_name>({name})(es|s)?)([-_](?P<turn>\d+))?)$"
