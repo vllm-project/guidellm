@@ -76,4 +76,12 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Multimodal Guide](multimodal/index.md)
 
+- :material-vector-arrange-below:{ .lg .middle } Embeddings Benchmarking
+
+  ______________________________________________________________________
+
+  Benchmark embeddings models that process text and return vector representations, including support for float and base64 encoding formats.
+
+  [:octicons-arrow-right-24: Embeddings Guide](embeddings.md)
+
 </div>
