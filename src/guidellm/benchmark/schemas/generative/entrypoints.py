@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field, NonNegativeFloat
+from pydantic import Field, NonNegativeFloat, ValidationError
 
+from guidellm.backends import BackendArgs
 from guidellm.benchmark.schemas.base_args import BaseBenchmarkArgs
 
 __all__ = [
