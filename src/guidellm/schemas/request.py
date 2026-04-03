@@ -151,6 +151,17 @@ class UsageMetrics(StandardBaseDict):
         default=None, description="Number of audio bytes processed/generated."
     )
 
+    # Tool call stats (subset of text stats, not counted separately in total_tokens)
+    tool_call_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Number of output tokens that were tool calls (subset of text_tokens)."
+        ),
+    )
+    tool_call_count: int | None = Field(
+        default=None, description="Number of tool calls generated."
+    )
+
     @computed_field  # type: ignore[misc]
     @property
     def total_tokens(self) -> int | None:

@@ -390,8 +390,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     Extends TextCompletionsResponseHandler to handle chat completion requests where
     generated text is nested within message objects in the choices array. Processes
-    both streaming and non-streaming chat completion responses.
+    both streaming and non-streaming chat completion responses, including tool call
+    responses where the model outputs ``tool_calls`` instead of text content.
     """
+
+    def __init__(self):
+        super().__init__()
+        self.streaming_tool_calls: dict[int, dict] = {}
 
     def _format_prompts(
         self, column_data: list[dict[str, Any]], column_type: str
@@ -520,6 +525,27 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return arguments
 
+    @staticmethod
+    def _tool_calls_to_text(tool_calls: list[dict]) -> str:
+        """Serialize a ``tool_calls`` array to a JSON string."""
+        # orjson.dumps returns bytes; stdlib json.dumps returns str
+        raw = json.dumps(tool_calls)
+        return raw.decode("utf-8") if isinstance(raw, bytes) else raw
+
+    @staticmethod
+    def _add_tool_call_metrics(
+        output_metrics: UsageMetrics, tool_call_count: int
+    ) -> None:
+        """Tag output metrics with tool call info (subset of text metrics).
+
+        Sets ``tool_call_tokens`` equal to ``text_tokens`` (since the server
+        reports all completion tokens together) and records the number of
+        individual tool calls. These fields are additive metadata -- they do
+        not affect ``total_tokens``.
+        """
+        output_metrics.tool_call_tokens = output_metrics.text_tokens
+        output_metrics.tool_call_count = tool_call_count
+
     def compile_non_streaming(
         self,
         request: GenerationRequest,
@@ -530,7 +556,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Process a complete chat completion response.
 
         Extracts content from the message object within choices, handling the nested
-        structure specific to chat completion endpoints.
+        structure specific to chat completion endpoints. When the model returns tool
+        calls instead of text content, the tool calls are serialized as JSON text.
 
         :param request: Original generation request
         :param response: Complete API response containing choices and usage data
@@ -538,8 +565,15 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         choices, usage = self.extract_choices_and_usage(response)
         choice: dict[str, dict] = choices[0] if choices else {}
-        text = choice.get("message", {}).get("content", "")
+        message = choice.get("message", {})
+        text = message.get("content") or ""
+        # Tool call responses set content=null and put output in tool_calls
+        tool_calls = message.get("tool_calls") if not text else None
+        if tool_calls:
+            text = self._tool_calls_to_text(tool_calls)
         input_metrics, output_metrics = self.extract_metrics(usage, text)
+        if tool_calls:
+            self._add_tool_call_metrics(output_metrics, len(tool_calls))
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -555,7 +589,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Process a single line from a chat completion streaming response.
 
         Handles the chat completion specific delta structure where content is nested
-        within delta objects in the streaming response chunks.
+        within delta objects in the streaming response chunks. Also accumulates
+        ``tool_calls`` deltas when the model streams function call output.
 
         :param line: Raw SSE line from the streaming response
         :return: 1 if content was extracted, 0 if line ignored, None if done
@@ -569,9 +604,32 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
         choice: dict[str, dict] = choices[0] if choices else {}
+        delta = choice.get("delta", {}) if choices else {}
 
-        if choices and (content := choice.get("delta", {}).get("content")):
+        if content := delta.get("content"):
             self.streaming_texts.append(content)
+            updated = True
+
+        # Tool call streaming sends incremental chunks via delta.tool_calls.
+        # Each chunk (tc_delta) carries an "index" identifying which tool call
+        # it belongs to (for parallel tool calls), plus partial fragments of
+        # function.name and function.arguments that must be concatenated across
+        # multiple SSE events to reconstruct the complete call.
+        for tc_delta in delta.get("tool_calls", []):
+            idx = tc_delta.get("index", 0)
+            if idx not in self.streaming_tool_calls:
+                # First chunk for this tool call: initialize with id and type
+                self.streaming_tool_calls[idx] = {
+                    "id": tc_delta.get("id", ""),
+                    "type": tc_delta.get("type", "function"),
+                    "function": {"name": "", "arguments": ""},
+                }
+            tc = self.streaming_tool_calls[idx]
+            fn_delta = tc_delta.get("function", {})
+            if fn_name := fn_delta.get("name"):
+                tc["function"]["name"] += fn_name
+            if fn_args := fn_delta.get("arguments"):
+                tc["function"]["arguments"] += fn_args
             updated = True
 
         if usage:
@@ -585,11 +643,23 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         Compile accumulated streaming chat completion content into a final response.
 
+        When no text content was streamed but tool calls were accumulated, the tool
+        calls are serialized as JSON text.
+
         :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
         text = "".join(self.streaming_texts)
+        has_tool_calls = not text and bool(self.streaming_tool_calls)
+        if has_tool_calls:
+            tool_calls_list = [
+                self.streaming_tool_calls[idx]
+                for idx in sorted(self.streaming_tool_calls)
+            ]
+            text = self._tool_calls_to_text(tool_calls_list)
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
+        if has_tool_calls:
+            self._add_tool_call_metrics(output_metrics, len(self.streaming_tool_calls))
 
         return GenerationResponse(
             request_id=request.request_id,

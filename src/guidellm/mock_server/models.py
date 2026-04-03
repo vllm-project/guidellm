@@ -146,6 +146,16 @@ class ChatCompletionsRequest(BaseModel):
     user: str | None = Field(
         default=None, description="User identifier for tracking and abuse monitoring"
     )
+    tools: list[dict[str, Any]] | None = Field(
+        default=None, description="Tool definitions for function calling"
+    )
+    tool_choice: str | dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Controls tool selection: 'auto', 'required', 'none', "
+            "or a specific function"
+        ),
+    )
 
     # vLLM extensions
     use_beam_search: bool | None = Field(
