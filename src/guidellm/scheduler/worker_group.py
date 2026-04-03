@@ -10,6 +10,7 @@ across distributed workers processing concurrent requests.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 import threading
 import time
@@ -129,6 +130,10 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.constraint_reached_event: Event | None = None
         self.shutdown_event: Event | None = None
         self.error_event: Event | None = None
+
+        # Background health monitor, created in create_processes
+        self._health_monitor_task: asyncio.Task | None = None
+        self._worker_error_details: str | None = None
 
         # Scheduler and messaging state, created in start
         self.state: WorkerGroupState[RequestT, ResponseT] | None = None
@@ -252,6 +257,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             proc.start()
             self.processes.append(proc)
 
+        self._health_monitor_task = asyncio.create_task(self._process_health_monitor())
+
         wait_key = await wait_for_sync_objects(
             {
                 "startup_barrier": self.startup_barrier,
@@ -262,9 +269,42 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         )
 
         if wait_key == "error_event":
-            raise RuntimeError(
-                "Worker process group startup failed: error_event is set"
-            )
+            detail = self._worker_error_details or "error_event is set"
+            raise RuntimeError(f"Worker process group startup failed: {detail}")
+
+    async def _process_health_monitor(self):
+        """Detect worker processes killed by OS signals (e.g. SIGSEGV, OOM)
+        that bypass Python exception handling and never set error_event."""
+        while self.processes:
+            await asyncio.sleep(settings.mp_poll_interval)
+            dead: list[str] = []
+            killed_by_signal = False
+            for proc in self.processes:
+                if not proc.is_alive() and proc.exitcode is not None:
+                    if proc.exitcode < 0:
+                        killed_by_signal = True
+                        exit_info = f"signal {-proc.exitcode}"
+                    else:
+                        exit_info = f"exit code {proc.exitcode}"
+                    detail = (
+                        f"Worker process {proc.pid} died unexpectedly ({exit_info})"
+                    )
+                    logger.error(detail)
+                    dead.append(detail)
+
+            if dead:
+                message = "; ".join(dead)
+                if killed_by_signal:
+                    message += (
+                        ". Check system logs for details."
+                        " Consider an alternative multiprocessing start method"
+                        " (spawn, fork, forkserver) via the"
+                        " GUIDELLM__MP_CONTEXT_TYPE environment variable"
+                    )
+                self._worker_error_details = message
+                if self.error_event is not None:
+                    self.error_event.set()
+                return
 
     async def start(self, start_time: float):
         """
@@ -314,10 +354,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         if (wait_time := start_time - time.time()) > 0:
             await asyncio.sleep(wait_time)
         if self.error_event.is_set():
-            raise RuntimeError(
-                "error_event is set in WorkerProcessGroup, "
-                "indicating an error occurred in one of the worker processes."
+            detail = (
+                self._worker_error_details
+                or "an error occurred in one of the worker processes"
             )
+            raise RuntimeError(f"error_event is set in WorkerProcessGroup: {detail}")
 
     async def request_updates(
         self,
@@ -343,9 +384,12 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         while True:
             if self.error_event.is_set():  # type: ignore[union-attr]
                 logger.error("Error event set in WorkerProcessGroup")
+                detail = (
+                    self._worker_error_details
+                    or "an error occurred in one of the worker processes"
+                )
                 raise RuntimeError(
-                    "error_event is set in WorkerProcessGroup, "
-                    "indicating an error occurred in one of the worker processes."
+                    f"error_event is set in WorkerProcessGroup: {detail}"
                 )
 
             try:
@@ -373,6 +417,13 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :return: List of exceptions encountered during shutdown; empty if no errors
         """
         exceptions: list[Exception] = []
+
+        if self._health_monitor_task is not None:
+            self._health_monitor_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._health_monitor_task
+            self._health_monitor_task = None
+
         if self.shutdown_event is not None:
             self.shutdown_event.set()
 
@@ -390,10 +441,15 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             for proc in self.processes:
                 try:
                     await asyncio.to_thread(proc.join, timeout=5.0)
-                    if proc.exitcode is not None and proc.exitcode > 0:
+                    if proc.exitcode is not None and proc.exitcode != 0:
+                        exit_info = (
+                            f"signal {-proc.exitcode}"
+                            if proc.exitcode < 0
+                            else f"exit code {proc.exitcode}"
+                        )
                         exceptions.append(
                             RuntimeError(
-                                f"Worker {proc.pid} exited with code {proc.exitcode}"
+                                f"Worker {proc.pid} exited abnormally ({exit_info})"
                             )
                         )
                 except Exception as err:  # noqa: BLE001
