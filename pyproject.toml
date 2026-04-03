@@ -95,8 +95,6 @@ vision = [
 embeddings = [
     # Quality validation with baseline models
     "sentence-transformers>=2.2.0",
-    # MTEB benchmark integration
-    "mteb>=1.0.0",
 ]
 # Dev Tooling
 dev = [
@@ -191,7 +189,6 @@ module = [
     "vllm",
     "vllm.*",
     "sentence_transformers.*",
-    "mteb.*"
 ]
 ignore_missing_imports = true
 
