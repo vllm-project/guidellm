@@ -10,6 +10,7 @@ include = ["*"]
 [tool.setuptools.package-data]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
+"guidellm.benchmark.outputs.html_outputs" = ["*.html"]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -75,7 +76,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision]"]
+all = ["guidellm[perf,tokenizers,audio,vision,embeddings]"]
 recommended = ["guidellm[perf,tokenizers]"]
 # Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
@@ -90,6 +91,10 @@ audio = [
 vision = [
     "datasets[vision]",
     "pillow",
+]
+embeddings = [
+    # Quality validation with baseline models
+    "sentence-transformers>=2.2.0",
 ]
 # Dev Tooling
 dev = [
@@ -182,7 +187,8 @@ module = [
     "setuptools_git_versioning.*",
     "torchcodec.*",
     "vllm",
-    "vllm.*"
+    "vllm.*",
+    "sentence_transformers.*",
 ]
 ignore_missing_imports = true
 
@@ -289,4 +295,6 @@ markers = [
     "smoke: quick tests to check basic functionality",
     "sanity: detailed tests to ensure major functions work correctly",
     "regression: tests to ensure that new changes do not break existing functionality",
+    "timeout: marks tests with a timeout decorator",
+    "slow: marks tests that are slow to run",
 ]

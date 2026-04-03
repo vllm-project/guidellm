@@ -199,7 +199,7 @@ guidellm benchmark run \
 
 ### Request Types and API Targets
 
-You can benchmark chat completions, text completions, or other supported request types. This example configures the benchmark to test chat completions API using a custom dataset file, with GuideLLM automatically formatting requests to match the chat completions schema.
+You can benchmark chat completions, text completions, embeddings, or other supported request types. This example configures the benchmark to test chat completions API using a custom dataset file, with GuideLLM automatically formatting requests to match the chat completions schema.
 
 ```bash
 guidellm benchmark \
@@ -208,9 +208,20 @@ guidellm benchmark \
   --data path/to/data.json
 ```
 
+For embeddings endpoints, use the dedicated embeddings command:
+
+```bash
+guidellm benchmark run-embeddings \
+  --target http://localhost:8000 \
+  --model text-embedding-3-small \
+  --data "prompt_tokens=256" \
+  --max-requests 100
+```
+
 **Key parameters:**
 
 - `--request-type`: Specifies the API endpoint format - options include `chat_completions` (chat API format), `completions` (text completion format), `audio_transcription` (audio transcription), and `audio_translation` (audio translation).
+- For embeddings: Use `guidellm benchmark run-embeddings` with `--encoding-format` (float or base64) to control output format.
 
 ### Using Scenarios
 

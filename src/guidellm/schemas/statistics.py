@@ -655,14 +655,14 @@ class StatusDistributionSummary(
         """
         :return: Total count of samples across all status categories
         """
-        return self.total.count
+        return self.total.count if self.total is not None else 0
 
     @property
     def total_sum(self) -> float:
         """
         :return: Total sum of values across all status categories
         """
-        return self.total.total_sum
+        return self.total.total_sum if self.total is not None else 0.0
 
     @classmethod
     def from_values(

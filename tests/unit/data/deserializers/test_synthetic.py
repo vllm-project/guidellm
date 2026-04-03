@@ -183,8 +183,9 @@ class TestSyntheticDatasetConfig:
         with pytest.raises(ValueError):
             SyntheticTextDatasetConfig(prompt_tokens=0, output_tokens=20)
 
-        with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(prompt_tokens=20, output_tokens=0)
+        # output_tokens=0 is now allowed for embeddings
+        # This should not raise
+        SyntheticTextDatasetConfig(prompt_tokens=20, output_tokens=0)
 
         # Test negative prefix tokens via PrefixBucketConfig validation
         with pytest.raises(ValueError):
@@ -206,10 +207,11 @@ class TestSyntheticDatasetConfig:
                 prompt_tokens=20, output_tokens=10, prompt_tokens_min=-1
             )
 
-        with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(
-                prompt_tokens=20, output_tokens=10, output_tokens_max=0
-            )
+        # output_tokens_max=0 is now allowed for embeddings
+        # This should not raise
+        SyntheticTextDatasetConfig(
+            prompt_tokens=20, output_tokens=10, output_tokens_max=0
+        )
 
 
 class TestSyntheticTextGenerator:
