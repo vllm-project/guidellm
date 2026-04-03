@@ -1068,9 +1068,6 @@ def embeddings(**kwargs):
             errs[0]["msg"], ctx=click.get_current_context(), param_hint=param_name
         ) from err
 
-    if uvloop is not None:
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
     asyncio.run(
         benchmark_embeddings(
             args=args,  # type: ignore[arg-type]

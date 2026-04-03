@@ -53,7 +53,9 @@ class BenchmarkEmbeddingsArgs(BaseBenchmarkArgs):
     )
     data_num_workers: int | None = Field(
         default=0,
-        description="Number of workers for data loading (set to 0 for macOS compatibility)",
+        description=(
+            "Number of workers for data loading (set to 0 for macOS compatibility)"
+        ),
     )
 
     # Embeddings uses max_duration instead of max_seconds
