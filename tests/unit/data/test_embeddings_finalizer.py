@@ -31,7 +31,7 @@ class TestEmbeddingsRequestFinalizer:
         finalizer = EmbeddingsRequestFinalizer()
         columns = {"text_column": ["Hello world"]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         assert isinstance(request, GenerationRequest)
         assert request.columns == columns
@@ -51,7 +51,7 @@ class TestEmbeddingsRequestFinalizer:
             ]
         }
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         assert isinstance(request, GenerationRequest)
         # Should aggregate metrics from both texts
@@ -65,7 +65,7 @@ class TestEmbeddingsRequestFinalizer:
         columns = {"text_column": []}
 
         with pytest.raises(ValueError, match="No text found in dataset row"):
-            finalizer(columns)
+            finalizer([columns])
 
     @pytest.mark.regression
     def test_missing_text_column_raises(self):
@@ -74,7 +74,7 @@ class TestEmbeddingsRequestFinalizer:
         columns = {"other_column": ["Some text"]}
 
         with pytest.raises(ValueError, match="No text found in dataset row"):
-            finalizer(columns)
+            finalizer([columns])
 
     @pytest.mark.regression
     def test_text_column_with_none_values(self):
@@ -88,7 +88,7 @@ class TestEmbeddingsRequestFinalizer:
             ]
         }
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Should skip None values and only process valid text
         assert request.input_metrics.text_words == 3
@@ -106,7 +106,7 @@ class TestEmbeddingsRequestFinalizer:
             ]
         }
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Should skip empty strings
         assert request.input_metrics.text_words == 2
@@ -120,12 +120,12 @@ class TestEmbeddingsRequestFinalizer:
         # All None
         columns_none = {"text_column": [None, None]}
         with pytest.raises(ValueError, match="No text found in dataset row"):
-            finalizer(columns_none)
+            finalizer([columns_none])
 
         # All empty strings
         columns_empty = {"text_column": ["", ""]}
         with pytest.raises(ValueError, match="No text found in dataset row"):
-            finalizer(columns_empty)
+            finalizer([columns_empty])
 
     @pytest.mark.sanity
     def test_preserves_original_columns(self):
@@ -135,7 +135,7 @@ class TestEmbeddingsRequestFinalizer:
             "text_column": ["Test text"],
         }
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         assert request.columns == columns
         assert "text_column" in request.columns
@@ -146,7 +146,7 @@ class TestEmbeddingsRequestFinalizer:
         finalizer = EmbeddingsRequestFinalizer()
         columns = {"text_column": ["Short", "Long text with many words"]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Embeddings have no output
         assert request.output_metrics.text_tokens is None
@@ -162,7 +162,7 @@ class TestEmbeddingsRequestFinalizer:
         text = "The quick brown fox jumps over the lazy dog"
         columns = {"text_column": [text]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         assert request.input_metrics.text_words == 9
         assert request.input_metrics.text_characters == len(text)
@@ -176,7 +176,7 @@ class TestEmbeddingsRequestFinalizer:
         long_text = " ".join(["word"] * 1000)
         columns = {"text_column": [long_text]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         assert request.input_metrics.text_words == 1000
         assert request.input_metrics.text_characters > 0
@@ -189,7 +189,7 @@ class TestEmbeddingsRequestFinalizer:
         text_with_special = "Hello! @user #hashtag $price €100 50%"
         columns = {"text_column": [text_with_special]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Should handle special characters without error
         assert isinstance(request, GenerationRequest)
@@ -203,7 +203,7 @@ class TestEmbeddingsRequestFinalizer:
         unicode_text = "Hello 世界 مرحبا мир 🌍"
         columns = {"text_column": [unicode_text]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Should handle Unicode without error
         assert isinstance(request, GenerationRequest)
@@ -217,7 +217,7 @@ class TestEmbeddingsRequestFinalizer:
         # Whitespace only should be treated as empty
         columns = {"text_column": ["   ", "\t\n", "Valid text"]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Should only count the valid text
         assert request.input_metrics.text_words == 2
@@ -236,7 +236,7 @@ class TestEmbeddingsRequestFinalizer:
             ]
         }
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Should aggregate all texts
         assert request.input_metrics.text_words == 9  # 3 * 3
@@ -248,7 +248,7 @@ class TestEmbeddingsRequestFinalizer:
         finalizer = EmbeddingsRequestFinalizer()
         columns = {"text_column": ["Test"]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         assert isinstance(request.input_metrics, UsageMetrics)
         assert isinstance(request.output_metrics, UsageMetrics)
@@ -258,8 +258,8 @@ class TestEmbeddingsRequestFinalizer:
         """Test that multiple calls are independent."""
         finalizer = EmbeddingsRequestFinalizer()
 
-        request1 = finalizer({"text_column": ["First"]})
-        request2 = finalizer({"text_column": ["Second call"]})
+        request1 = finalizer([{"text_column": ["First"]}])
+        request2 = finalizer([{"text_column": ["Second call"]}])
 
         # Each call should produce independent results
         assert request1.input_metrics.text_words == 1
@@ -278,7 +278,7 @@ class TestEmbeddingsRequestFinalizer:
 
         columns = {"text_column": [text_with_newlines]}
 
-        request = finalizer(columns)
+        request = finalizer([columns])
 
         # Should handle newlines correctly
         assert isinstance(request, GenerationRequest)

@@ -136,13 +136,16 @@ class EmbeddingsRequestFinalizer(DatasetFinalizer[GenerationRequest]):
         # request.body["input"] == "This is a test sentence"
     """
 
-    def __call__(self, columns: dict[str, Any]) -> GenerationRequest:
+    def __call__(self, items: list[dict[str, Any]]) -> GenerationRequest:
         """
         Convert dataset row to embeddings request.
 
-        :param columns: Dict with 'text_column' containing text strings
+        :param items: List of dicts (turns), embeddings only use first turn
         :return: GenerationRequest configured for embeddings
         """
+        # Embeddings are single-turn, take first item
+        columns = items[0] if items else {}
+
         input_metrics = UsageMetrics()
         texts = []
 

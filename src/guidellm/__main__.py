@@ -1048,17 +1048,6 @@ def embeddings(**kwargs):
     )
     console = Console() if not disable_console else None
 
-    envs = cli_tools.list_set_env()
-    if console and envs:
-        console.print_update(
-            title=(
-                "Note: the following environment variables "
-                "are set and **may** affect configuration"
-            ),
-            details=", ".join(envs),
-            status="warning",
-        )
-
     try:
         args = BenchmarkEmbeddingsArgs.create(scenario=None, **kwargs)
     except ValidationError as err:
