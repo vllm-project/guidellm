@@ -25,6 +25,7 @@ guidellm benchmark run-embeddings \
 ```
 
 This command:
+
 - Targets an embeddings endpoint at `http://localhost:8000`
 - Uses synthetic data with 100 tokens per prompt
 - Runs 50 requests
@@ -340,21 +341,22 @@ open ./results/embeddings_benchmarks.html
 
 ## Comparison with Generative Benchmarks
 
-| Feature | Embeddings | Generative |
-|---------|-----------|------------|
-| Endpoint | `/v1/embeddings` | `/v1/chat/completions`, `/v1/completions` |
-| Output | Vector embeddings | Generated text |
-| Tokens | Input only | Input + output |
-| Streaming | No | Optional |
-| Encoding | Float or base64 | N/A |
-| TTFT | N/A | Measured |
-| ITL | N/A | Measured |
+| Feature   | Embeddings        | Generative                                |
+| --------- | ----------------- | ----------------------------------------- |
+| Endpoint  | `/v1/embeddings`  | `/v1/chat/completions`, `/v1/completions` |
+| Output    | Vector embeddings | Generated text                            |
+| Tokens    | Input only        | Input + output                            |
+| Streaming | No                | Optional                                  |
+| Encoding  | Float or base64   | N/A                                       |
+| TTFT      | N/A               | Measured                                  |
+| ITL       | N/A               | Measured                                  |
 
 ## Troubleshooting
 
 ### "No text found in dataset row"
 
 Ensure your dataset has a recognizable text column:
+
 - `text`, `input`, `content`, `prompt`, `sentence`, `document`, `passage`, `query`
 
 Or specify a custom mapping:

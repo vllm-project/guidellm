@@ -9,7 +9,7 @@ only need a single text input field.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 from datasets import Dataset, IterableDataset
 

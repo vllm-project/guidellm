@@ -46,10 +46,9 @@ from guidellm.data import (
 )
 from guidellm.scheduler import (
     ConstraintInitializer,
-    NonDistributedEnvironment,
     StrategyType,
 )
-from guidellm.schemas import GenerationRequest, GenerationResponse
+from guidellm.schemas import GenerationRequest
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.registry import RegistryMixin
