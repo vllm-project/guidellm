@@ -154,12 +154,12 @@ class EmbeddingsColumnMapper(DataDependentPreprocessor):
 
         return mappings
 
-    def __call__(self, items: list[dict[str, Any]]) -> dict[str, list[Any]]:
+    def __call__(self, items: list[dict[str, Any]]) -> list[dict[str, list[Any]]]:
         """
         Transform a row by extracting text columns based on established mappings.
 
         :param items: List of dicts containing 'dataset' key with dataset rows
-        :return: Mapped dictionary with 'text_column' key
+        :return: List with single dict (single-turn) with 'text_column' key
         """
         if self.datasets_column_mappings is None:
             raise ValueError("EmbeddingsColumnMapper not setup with data.")
@@ -172,7 +172,8 @@ class EmbeddingsColumnMapper(DataDependentPreprocessor):
             for dataset_index, dataset_column in column_mappings:
                 mapped[column_type].append(datasets_dict[dataset_index][dataset_column])
 
-        return dict(mapped)
+        # Return as list of single turn (embeddings are always single-turn)
+        return [dict(mapped)]
 
     def setup_data(
         self,
