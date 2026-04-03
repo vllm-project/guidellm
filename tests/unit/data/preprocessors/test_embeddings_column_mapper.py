@@ -216,8 +216,11 @@ class TestEmbeddingsColumnMapper:
         items = [{"dataset": {"text": "Hello world"}}]
         result = mapper(items)
 
-        assert "text_column" in result
-        assert result["text_column"] == ["Hello world"]
+        # Should return list of turns (single turn for embeddings)
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "text_column" in result[0]
+        assert result[0]["text_column"] == ["Hello world"]
 
     @pytest.mark.sanity
     def test_call_multiple_texts(self):
@@ -236,7 +239,10 @@ class TestEmbeddingsColumnMapper:
         ]
         result = mapper(items)
 
-        assert result["text_column"] == ["First", "Second"]
+        # Should return list with single turn
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["text_column"] == ["First", "Second"]
 
     @pytest.mark.regression
     def test_call_without_setup_raises(self):
@@ -248,8 +254,8 @@ class TestEmbeddingsColumnMapper:
             mapper(items)
 
     @pytest.mark.regression
-    def test_call_returns_dict_not_defaultdict(self):
-        """Test that __call__ returns regular dict, not defaultdict."""
+    def test_call_returns_list_of_dict_not_defaultdict(self):
+        """Test that __call__ returns list of regular dict, not defaultdict."""
         dataset = Dataset.from_dict({"text": ["Hello"]})
         datasets = [dataset]
         mapper = EmbeddingsColumnMapper()
@@ -258,9 +264,11 @@ class TestEmbeddingsColumnMapper:
         items = [{"dataset": {"text": "Hello"}}]
         result = mapper(items)
 
-        # Should be dict, not defaultdict
-        assert type(result) is dict
-        assert result == {"text_column": ["Hello"]}
+        # Should be list of dict, not defaultdict
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert type(result[0]) is dict
+        assert result[0] == {"text_column": ["Hello"]}
 
     @pytest.mark.sanity
     def test_support_for_synthetic_data_format(self):
@@ -295,7 +303,9 @@ class TestEmbeddingsColumnMapper:
         ]
         result = mapper(items)
 
-        assert result["text_column"] == ["Q1", "S1", "T1"]
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["text_column"] == ["Q1", "S1", "T1"]
 
     @pytest.mark.regression
     def test_ignores_global_kwargs(self):
