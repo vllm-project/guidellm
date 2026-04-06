@@ -295,12 +295,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             if dead:
                 message = "; ".join(dead)
                 if killed_by_signal:
-                    message += (
-                        ". Check system logs for details."
-                        " Consider an alternative multiprocessing start method"
-                        " (spawn, fork, forkserver) via the"
-                        " GUIDELLM__MP_CONTEXT_TYPE environment variable"
-                    )
+                    message += ". Check system logs for details"
                 self._worker_error_details = message
                 if self.error_event is not None:
                     self.error_event.set()
