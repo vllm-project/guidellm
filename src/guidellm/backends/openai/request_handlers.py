@@ -406,7 +406,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     def __init__(self):
         super().__init__()
-        self.streaming_tool_calls: dict[int, dict] = {}
+        self.streaming_tool_call_indices: set[int] = set()
 
     def _format_prompts(
         self, column_data: list[dict[str, Any]], column_type: str
@@ -554,10 +554,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choices, usage = self.extract_choices_and_usage(response)
         choice: dict[str, dict] = choices[0] if choices else {}
         message = choice.get("message", {})
-        # content is null for tool-call-only responses (text=None means text
-        # metrics are excluded); empty string for rare edge cases where the
-        # model returns no text (text="" means text metrics are 0).
+        # Per spec, content is null when the model produces tool calls instead
+        # of text. text=None excludes text metrics; text="" means text metrics
+        # are 0 for the rare empty-content edge case.
         text = message.get("content")
+        # Per spec, tool_calls is present when content is null.
         tool_calls = message.get("tool_calls") if text is None else None
         if text is None and not tool_calls:
             text = ""
@@ -601,26 +602,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self.streaming_texts.append(content)
             updated = True
 
-        # Tool call streaming sends incremental chunks via delta.tool_calls.
-        # Each chunk (tc_delta) carries an "index" identifying which tool call
-        # it belongs to (for parallel tool calls), plus partial fragments of
-        # function.name and function.arguments that must be concatenated across
-        # multiple SSE events to reconstruct the complete call.
+        # tool_calls is absent from text-only deltas; empty default is
+        # spec-correct. Each entry carries a required "index" identifying the
+        # tool call; missing index raises KeyError → errored request.
         for tc_delta in delta.get("tool_calls", []):
-            idx = tc_delta.get("index", 0)
-            if idx not in self.streaming_tool_calls:
-                # First chunk for this tool call: initialize with id and type
-                self.streaming_tool_calls[idx] = {
-                    "id": tc_delta.get("id", ""),
-                    "type": tc_delta.get("type", "function"),
-                    "function": {"name": "", "arguments": ""},
-                }
-            tc = self.streaming_tool_calls[idx]
-            fn_delta = tc_delta.get("function", {})
-            if fn_name := fn_delta.get("name"):
-                tc["function"]["name"] += fn_name
-            if fn_args := fn_delta.get("arguments"):
-                tc["function"]["arguments"] += fn_args
+            self.streaming_tool_call_indices.add(tc_delta["index"])
             updated = True
 
         if usage:
@@ -638,13 +624,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
         text = "".join(self.streaming_texts) or None
-        has_tool_calls = text is None and bool(self.streaming_tool_calls)
+        has_tool_calls = text is None and bool(self.streaming_tool_call_indices)
         if text is None and not has_tool_calls:
             text = ""
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
         if has_tool_calls:
             output_metrics.tool_call_tokens = output_metrics.text_tokens
-            output_metrics.tool_call_count = len(self.streaming_tool_calls)
+            output_metrics.tool_call_count = len(self.streaming_tool_call_indices)
 
         return GenerationResponse(
             request_id=request.request_id,

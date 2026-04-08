@@ -1249,15 +1249,15 @@ class TestChatCompletionsRequestHandler:
         assert response.output_metrics.tool_call_count is None
 
     @pytest.mark.smoke
-    def test_initialization_has_streaming_tool_calls(self, valid_instances):
+    def test_initialization_has_streaming_tool_call_indices(self, valid_instances):
         """
-        Test ChatCompletionsRequestHandler initializes streaming_tool_calls.
+        Test ChatCompletionsRequestHandler initializes streaming_tool_call_indices.
 
         ## WRITTEN BY AI ##
         """
         instance = valid_instances
-        assert hasattr(instance, "streaming_tool_calls")
-        assert instance.streaming_tool_calls == {}
+        assert hasattr(instance, "streaming_tool_call_indices")
+        assert instance.streaming_tool_call_indices == set()
 
 
 class TestAudioRequestHandler:
