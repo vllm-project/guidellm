@@ -6,8 +6,6 @@ Unit tests for OpenAI request handlers.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from guidellm.backends.openai.request_handlers import (
@@ -963,9 +961,11 @@ class TestChatCompletionsRequestHandler:
 
         result = instance.compile_non_streaming(generation_request, arguments, response)
 
-        assert json.loads(result.text) == tool_calls
+        assert result.text is None
         assert result.input_metrics.text_tokens == 10
         assert result.output_metrics.text_tokens == 15
+        assert result.output_metrics.text_words is None
+        assert result.output_metrics.text_characters is None
         assert result.output_metrics.tool_call_tokens == 15
         assert result.output_metrics.tool_call_count == 1
 
@@ -1051,11 +1051,10 @@ class TestChatCompletionsRequestHandler:
 
         result = instance.compile_non_streaming(generation_request, arguments, response)
 
-        parsed = json.loads(result.text)
-        assert len(parsed) == 2
-        assert parsed[0]["function"]["name"] == "get_weather"
-        assert parsed[1]["function"]["name"] == "get_time"
+        assert result.text is None
         assert result.output_metrics.text_tokens == 20
+        assert result.output_metrics.text_words is None
+        assert result.output_metrics.text_characters is None
         assert result.output_metrics.tool_call_tokens == 20
         assert result.output_metrics.tool_call_count == 2
 
@@ -1085,7 +1084,7 @@ class TestChatCompletionsRequestHandler:
     @pytest.mark.sanity
     def test_streaming_tool_calls(self, valid_instances, generation_request):
         """
-        Test streaming accumulates tool_calls deltas and serializes them.
+        Test streaming accumulates tool_calls deltas and sets tool call metrics.
 
         ## WRITTEN BY AI ##
         """
@@ -1119,13 +1118,11 @@ class TestChatCompletionsRequestHandler:
 
         response = instance.compile_streaming(generation_request, arguments)
 
-        parsed = json.loads(response.text)
-        assert len(parsed) == 1
-        assert parsed[0]["id"] == "call_abc"
-        assert parsed[0]["function"]["name"] == "get_weather"
-        assert parsed[0]["function"]["arguments"] == '{"location": "SF"}'
+        assert response.text is None
         assert response.input_metrics.text_tokens == 10
         assert response.output_metrics.text_tokens == 12
+        assert response.output_metrics.text_words is None
+        assert response.output_metrics.text_characters is None
         assert response.output_metrics.tool_call_tokens == 12
         assert response.output_metrics.tool_call_count == 1
 
@@ -1170,12 +1167,9 @@ class TestChatCompletionsRequestHandler:
 
         response = instance.compile_streaming(generation_request, arguments)
 
-        parsed = json.loads(response.text)
-        assert len(parsed) == 2
-        assert parsed[0]["function"]["name"] == "fn_a"
-        assert parsed[0]["function"]["arguments"] == '{"x": 1}'
-        assert parsed[1]["function"]["name"] == "fn_b"
-        assert parsed[1]["function"]["arguments"] == '{"y": 2}'
+        assert response.text is None
+        assert response.output_metrics.text_words is None
+        assert response.output_metrics.text_characters is None
         assert response.output_metrics.tool_call_tokens == 18
         assert response.output_metrics.tool_call_count == 2
 

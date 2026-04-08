@@ -335,19 +335,29 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         return response.get("choices", []), response.get("usage", {})
 
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None, text: str
+        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
         """
         Extract input and output usage metrics from API response usage data.
 
         :param usage: Usage data dictionary from API response
-        :param text: Generated text for calculating word and character counts
+        :param text: Generated text for calculating word and character counts.
+            None means text is not applicable (metrics will be None);
+            empty string means text was applicable but empty (metrics will be 0).
         :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
+        if text is None:
+            # text not applicable (e.g. tool-call-only) — exclude from aggregation
+            text_words = None
+            text_chars = None
+        else:
+            text_words = len(text.split())
+            text_chars = len(text)
+
         if not usage:
             return UsageMetrics(), UsageMetrics(
-                text_words=len(text.split()) if text else 0,
-                text_characters=len(text) if text else 0,
+                text_words=text_words,
+                text_characters=text_chars,
             )
 
         input_details: dict[str, int] = cast(
@@ -374,8 +384,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
                 or usage_metrics.get("completion_tokens")
                 or 0
             ),
-            text_words=len(text.split()) if text else 0,
-            text_characters=len(text) if text else 0,
+            text_words=text_words,
+            text_characters=text_chars,
             image_tokens=output_details.get("image_tokens"),
             video_tokens=output_details.get("video_tokens"),
             audio_tokens=output_details.get("audio_tokens"),
@@ -525,27 +535,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return arguments
 
-    @staticmethod
-    def _tool_calls_to_text(tool_calls: list[dict]) -> str:
-        """Serialize a ``tool_calls`` array to a JSON string."""
-        # orjson.dumps returns bytes; stdlib json.dumps returns str
-        raw = json.dumps(tool_calls)
-        return raw.decode("utf-8") if isinstance(raw, bytes) else raw
-
-    @staticmethod
-    def _add_tool_call_metrics(
-        output_metrics: UsageMetrics, tool_call_count: int
-    ) -> None:
-        """Tag output metrics with tool call info (subset of text metrics).
-
-        Sets ``tool_call_tokens`` equal to ``text_tokens`` (since the server
-        reports all completion tokens together) and records the number of
-        individual tool calls. These fields are additive metadata -- they do
-        not affect ``total_tokens``.
-        """
-        output_metrics.tool_call_tokens = output_metrics.text_tokens
-        output_metrics.tool_call_count = tool_call_count
-
     def compile_non_streaming(
         self,
         request: GenerationRequest,
@@ -556,8 +545,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Process a complete chat completion response.
 
         Extracts content from the message object within choices, handling the nested
-        structure specific to chat completion endpoints. When the model returns tool
-        calls instead of text content, the tool calls are serialized as JSON text.
+        structure specific to chat completion endpoints.
 
         :param request: Original generation request
         :param response: Complete API response containing choices and usage data
@@ -566,14 +554,17 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choices, usage = self.extract_choices_and_usage(response)
         choice: dict[str, dict] = choices[0] if choices else {}
         message = choice.get("message", {})
-        text = message.get("content") or ""
-        # Tool call responses set content=null and put output in tool_calls
-        tool_calls = message.get("tool_calls") if not text else None
-        if tool_calls:
-            text = self._tool_calls_to_text(tool_calls)
+        # content is null for tool-call-only responses (text=None means text
+        # metrics are excluded); empty string for rare edge cases where the
+        # model returns no text (text="" means text metrics are 0).
+        text = message.get("content")
+        tool_calls = message.get("tool_calls") if text is None else None
+        if text is None and not tool_calls:
+            text = ""
         input_metrics, output_metrics = self.extract_metrics(usage, text)
         if tool_calls:
-            self._add_tool_call_metrics(output_metrics, len(tool_calls))
+            output_metrics.tool_call_tokens = output_metrics.text_tokens
+            output_metrics.tool_call_count = len(tool_calls)
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -643,23 +634,17 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         Compile accumulated streaming chat completion content into a final response.
 
-        When no text content was streamed but tool calls were accumulated, the tool
-        calls are serialized as JSON text.
-
         :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
-        text = "".join(self.streaming_texts)
-        has_tool_calls = not text and bool(self.streaming_tool_calls)
-        if has_tool_calls:
-            tool_calls_list = [
-                self.streaming_tool_calls[idx]
-                for idx in sorted(self.streaming_tool_calls)
-            ]
-            text = self._tool_calls_to_text(tool_calls_list)
+        text = "".join(self.streaming_texts) or None
+        has_tool_calls = text is None and bool(self.streaming_tool_calls)
+        if text is None and not has_tool_calls:
+            text = ""
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
         if has_tool_calls:
-            self._add_tool_call_metrics(output_metrics, len(self.streaming_tool_calls))
+            output_metrics.tool_call_tokens = output_metrics.text_tokens
+            output_metrics.tool_call_count = len(self.streaming_tool_calls)
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -756,7 +741,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         return arguments
 
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None, text: str
+        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
         """
         Extract input and output usage metrics from audio API response usage data.
@@ -765,13 +750,23 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         in addition to standard text token counts.
 
         :param usage: Usage data dictionary from audio API response
-        :param text: Generated text for calculating word and character counts
+        :param text: Generated text for calculating word and character counts.
+            None means text is not applicable (metrics will be None);
+            empty string means text was applicable but empty (metrics will be 0).
         :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
+        if text is None:
+            # text not applicable (e.g. tool-call-only) — exclude from aggregation
+            text_words = None
+            text_chars = None
+        else:
+            text_words = len(text.split())
+            text_chars = len(text)
+
         if not usage:
             return UsageMetrics(), UsageMetrics(
-                text_words=len(text.split()) if text else 0,
-                text_characters=len(text) if text else 0,
+                text_words=text_words,
+                text_characters=text_chars,
             )
 
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
@@ -780,8 +775,8 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             audio_tokens=(usage_metrics.get("prompt_tokens") or 0),
         ), UsageMetrics(
             text_tokens=(usage_metrics.get("completion_tokens") or 0),
-            text_words=len(text.split()) if text else 0,
-            text_characters=len(text) if text else 0,
+            text_words=text_words,
+            text_characters=text_chars,
         )
 
 
@@ -999,14 +994,22 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         return 0
 
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None, text: str
+        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
         # Responses API uses "input_tokens"/"output_tokens" in its usage
         # payload, unlike chat completions' "prompt_tokens"/"completion_tokens".
+        if text is None:
+            # text not applicable — exclude from aggregation
+            text_words = None
+            text_chars = None
+        else:
+            text_words = len(text.split())
+            text_chars = len(text)
+
         if not usage:
             return UsageMetrics(), UsageMetrics(
-                text_words=len(text.split()) if text else 0,
-                text_characters=len(text) if text else 0,
+                text_words=text_words,
+                text_characters=text_chars,
             )
 
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
@@ -1015,8 +1018,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             text_tokens=usage_metrics.get("input_tokens", 0),
         ), UsageMetrics(
             text_tokens=usage_metrics.get("output_tokens", 0),
-            text_words=len(text.split()) if text else 0,
-            text_characters=len(text) if text else 0,
+            text_words=text_words,
+            text_characters=text_chars,
         )
 
     @staticmethod
