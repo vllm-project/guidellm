@@ -147,7 +147,8 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("backend_kwargs"),
     help=(
         "JSON string of arguments to pass to the backend. E.g., "
-        '\'{"api_key": "apikey-*", "verify": false}\''
+        '\'{"api_key": "apikey-*", "verify": false}\' or '
+        '\'{"extras": {"body": {"temperature": 0.6, "top_p": 0.95}}}\' for sampling params.'
     ),
 )
 @click.option(
