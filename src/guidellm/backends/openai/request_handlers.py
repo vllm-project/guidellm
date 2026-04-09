@@ -555,13 +555,17 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choice: dict[str, dict] = choices[0] if choices else {}
         message = choice.get("message", {})
         text = message.get("content")
-        tool_calls = message.get("tool_calls")
-        if text is None and not tool_calls:
-            text = ""  # Edge case
+        raw_tool_calls = message.get("tool_calls")
+        if text is None and not raw_tool_calls:
+            text = ""  # Edge case: null content and no tools
         input_metrics, output_metrics = self.extract_metrics(usage, text)
-        if tool_calls:
+        # Assistant messages may include both content and tool_calls. Fill tool
+        # metrics whenever tools are present so benchmark tool-modality aggregates
+        # are populated. tool_call_tokens mirrors text_tokens (completion total),
+        # not a separate API breakdown between prose and tool JSON.
+        if raw_tool_calls:
             output_metrics.tool_call_tokens = output_metrics.text_tokens
-            output_metrics.tool_call_count = len(tool_calls)
+            output_metrics.tool_call_count = len(raw_tool_calls)
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -620,10 +624,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
         text = "".join(self.streaming_texts) or None
-        has_tool_calls = text is None and bool(self.streaming_tool_call_indices)
+        has_tool_calls = bool(self.streaming_tool_call_indices)
         if text is None and not has_tool_calls:
             text = ""
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
+        # Same semantics as compile_non_streaming: tool deltas may accompany content.
         if has_tool_calls:
             output_metrics.tool_call_tokens = output_metrics.text_tokens
             output_metrics.tool_call_count = len(self.streaming_tool_call_indices)
