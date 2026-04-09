@@ -554,14 +554,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choices, usage = self.extract_choices_and_usage(response)
         choice: dict[str, dict] = choices[0] if choices else {}
         message = choice.get("message", {})
-        # Per spec, content is null when the model produces tool calls instead
-        # of text. text=None excludes text metrics; text="" means text metrics
-        # are 0 for the rare empty-content edge case.
         text = message.get("content")
-        # Per spec, tool_calls is present when content is null.
-        tool_calls = message.get("tool_calls") if text is None else None
+        tool_calls = message.get("tool_calls")
         if text is None and not tool_calls:
-            text = ""
+            text = ""  # Edge case
         input_metrics, output_metrics = self.extract_metrics(usage, text)
         if tool_calls:
             output_metrics.tool_call_tokens = output_metrics.text_tokens
@@ -602,10 +598,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self.streaming_texts.append(content)
             updated = True
 
-        # tool_calls is absent from text-only deltas; empty default is
-        # spec-correct. Each entry carries a required "index" identifying the
-        # tool call; missing index raises KeyError → errored request.
+        # tool_calls is an optional field for when the server is requesting a tool
         for tc_delta in delta.get("tool_calls", []):
+            # Keep track of the index to properly count tool usage, since a tool call
+            # can be split into multiple chunks when streaming.
             self.streaming_tool_call_indices.add(tc_delta["index"])
             updated = True
 
