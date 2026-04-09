@@ -397,17 +397,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
                 request, request_info, history or None
             ):
+                response = resp
                 request_info = info
                 if request_info is None:
                     raise RuntimeError("Received invalid request info from backend")
-
-                if (
-                    resp is None
-                    and request_info.timings.first_token_iteration is not None
-                ):
-                    self._send_update("first_token", None, request, request_info)
-
-                response = resp
 
             # Complete the request
             request_info.timings.resolve_end = time.time()
