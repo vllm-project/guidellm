@@ -711,9 +711,7 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
         description="Tool call token count metrics and distributions"
     )
     mixed_tokens: GenerativeMetricsSummary | None = Field(
-        description=(
-            "Mixed content + tool call token count metrics and distributions"
-        )
+        description="Mixed content + tool call token count metrics and distributions"
     )
     count: GenerativeMetricsSummary | None = Field(
         description="Tool call count metrics and distributions"
