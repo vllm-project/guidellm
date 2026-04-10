@@ -372,6 +372,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             title="Tool Call Metrics Statistics (Completed Requests)",
             metric_groups=[
                 ("tokens", "Tokens"),
+                ("mixed_tokens", "Mixed Tokens"),
                 ("count", "Count"),
             ],
         )

@@ -56,6 +56,7 @@ MODALITY_METRICS: Annotated[
     ],
     "tool_call": [
         ("tokens", "Tokens"),
+        ("mixed_tokens", "Mixed Tokens"),
         ("count", "Count"),
     ],
 }
