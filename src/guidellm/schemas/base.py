@@ -87,7 +87,10 @@ class ReloadableBaseModel(BaseModel):
         subclasses, so third-party Pydantic models loaded in the same process
         are not visited.
         """
-        potential_parents: set[type[BaseModel]] = {ReloadableBaseModel, StandardBaseModel}
+        potential_parents: set[type[BaseModel]] = {
+            ReloadableBaseModel,
+            StandardBaseModel
+        }
         stack: list[type[BaseModel]] = list(potential_parents)
 
         while stack:
