@@ -974,9 +974,9 @@ class TestChatCompletionsRequestHandler:
         self, valid_instances, generation_request
     ):
         """
-        Test compile_non_streaming with both content and tool_calls (valid assistant
-        message). Text comes from content; tool metrics mirror completion tokens
-        for benchmark tool-modality aggregation.
+        Test compile_non_streaming with both content and tool_calls. Text comes from
+        content; tool_call_count is set but tool_call_tokens is None because the API
+        completion total includes both natural language text and tool output (no split available).
 
         ## WRITTEN BY AI ##
         """
@@ -1008,7 +1008,7 @@ class TestChatCompletionsRequestHandler:
         result = instance.compile_non_streaming(generation_request, arguments, response)
 
         assert result.text == "I will call the function."
-        assert result.output_metrics.tool_call_tokens == 8
+        assert result.output_metrics.tool_call_tokens is None
         assert result.output_metrics.tool_call_count == 1
 
     @pytest.mark.sanity
@@ -1181,8 +1181,8 @@ class TestChatCompletionsRequestHandler:
     ):
         """
         Test streaming when both content and tool_calls deltas appear: final text
-        is concatenated content; tool metrics mirror completion tokens for
-        benchmark tool-modality aggregation.
+        is concatenated content; tool_call_count is set but tool_call_tokens is None
+        because the API completion total includes both natural language text and tool output.
 
         ## WRITTEN BY AI ##
         """
@@ -1211,7 +1211,7 @@ class TestChatCompletionsRequestHandler:
         response = instance.compile_streaming(generation_request, arguments)
 
         assert response.text == "Some text"
-        assert response.output_metrics.tool_call_tokens == 8
+        assert response.output_metrics.tool_call_tokens is None
         assert response.output_metrics.tool_call_count == 1
 
     @pytest.mark.sanity

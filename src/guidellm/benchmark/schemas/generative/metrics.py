@@ -696,9 +696,10 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
     """
     Tool-call-specific metric summaries for generative benchmarks.
 
-    Tracks token and count metrics for tool call outputs. These are a subset
-    of text metrics (tool_call_tokens is a subset of text_tokens) and are only
-    populated for requests where the model produced tool calls.
+    tool_call_tokens is only populated for tool-only turns (content null) where
+    the full completion total is attributable to tool output. tool_call_count is
+    populated for all turns that include tool calls, including mixed content +
+    tool turns. Neither is added to total_tokens.
     """
 
     tokens: GenerativeMetricsSummary | None = Field(
