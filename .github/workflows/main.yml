@@ -71,3 +71,20 @@ jobs:
           user_name: ${{ github.actor }}
           user_email: ${{ github.actor }}@users.noreply.github.com
           publish_branch: gh-pages
+
+  deploy-docs:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Deploy docs to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: false
+          user_name: ${{ github.actor }}
+          user_email: ${{ github.actor }}@users.noreply.github.com
+          publish_branch: gh-pages
