@@ -89,7 +89,7 @@ class ReloadableBaseModel(BaseModel):
         """
         potential_parents: set[type[BaseModel]] = {
             ReloadableBaseModel,
-            StandardBaseModel
+            StandardBaseModel,
         }
         stack: list[type[BaseModel]] = list(potential_parents)
 
