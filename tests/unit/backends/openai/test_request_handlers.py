@@ -967,6 +967,7 @@ class TestChatCompletionsRequestHandler:
         assert result.output_metrics.text_words is None
         assert result.output_metrics.text_characters is None
         assert result.output_metrics.tool_call_tokens == 15
+        assert result.output_metrics.mixed_content_tool_tokens is None
         assert result.output_metrics.tool_call_count == 1
 
     @pytest.mark.sanity
@@ -975,8 +976,9 @@ class TestChatCompletionsRequestHandler:
     ):
         """
         Test compile_non_streaming with both content and tool_calls. Text comes from
-        content; tool_call_count is set but tool_call_tokens is None because the API
-        completion total includes both natural language text and tool output.
+        content; tool_call_count is set, tool_call_tokens is None, and
+        mixed_content_tool_tokens equals the completion total because the API does
+        not split completion_tokens between natural language text and tool JSON.
 
         ## WRITTEN BY AI ##
         """
@@ -1009,6 +1011,7 @@ class TestChatCompletionsRequestHandler:
 
         assert result.text == "I will call the function."
         assert result.output_metrics.tool_call_tokens is None
+        assert result.output_metrics.mixed_content_tool_tokens == 8
         assert result.output_metrics.tool_call_count == 1
 
     @pytest.mark.sanity
@@ -1058,6 +1061,7 @@ class TestChatCompletionsRequestHandler:
         assert result.output_metrics.text_words is None
         assert result.output_metrics.text_characters is None
         assert result.output_metrics.tool_call_tokens == 20
+        assert result.output_metrics.mixed_content_tool_tokens is None
         assert result.output_metrics.tool_call_count == 2
 
     @pytest.mark.sanity
@@ -1081,6 +1085,7 @@ class TestChatCompletionsRequestHandler:
 
         assert result.text == "Hello!"
         assert result.output_metrics.tool_call_tokens is None
+        assert result.output_metrics.mixed_content_tool_tokens is None
         assert result.output_metrics.tool_call_count is None
 
     @pytest.mark.sanity
@@ -1126,6 +1131,7 @@ class TestChatCompletionsRequestHandler:
         assert response.output_metrics.text_words is None
         assert response.output_metrics.text_characters is None
         assert response.output_metrics.tool_call_tokens == 12
+        assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count == 1
 
     @pytest.mark.sanity
@@ -1173,6 +1179,7 @@ class TestChatCompletionsRequestHandler:
         assert response.output_metrics.text_words is None
         assert response.output_metrics.text_characters is None
         assert response.output_metrics.tool_call_tokens == 18
+        assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count == 2
 
     @pytest.mark.sanity
@@ -1181,8 +1188,9 @@ class TestChatCompletionsRequestHandler:
     ):
         """
         Test streaming when both content and tool_calls deltas appear: final text
-        is concatenated content; tool_call_count is set but tool_call_tokens is None
-        because the API completion total includes both text and tool output.
+        is concatenated content; tool_call_count is set, tool_call_tokens is None,
+        and mixed_content_tool_tokens equals the completion total because the API
+        does not split completion_tokens between natural language text and tool JSON.
 
         ## WRITTEN BY AI ##
         """
@@ -1212,6 +1220,7 @@ class TestChatCompletionsRequestHandler:
 
         assert response.text == "Some text"
         assert response.output_metrics.tool_call_tokens is None
+        assert response.output_metrics.mixed_content_tool_tokens == 8
         assert response.output_metrics.tool_call_count == 1
 
     @pytest.mark.sanity
@@ -1250,6 +1259,7 @@ class TestChatCompletionsRequestHandler:
         assert response.input_metrics.text_tokens == 3
         assert response.output_metrics.text_tokens == 2
         assert response.output_metrics.tool_call_tokens is None
+        assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count is None
 
     @pytest.mark.smoke

@@ -696,14 +696,24 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
     """
     Tool-call-specific metric summaries for generative benchmarks.
 
-    tool_call_tokens is only populated for tool-only turns (content null) where
-    the full completion total is attributable to tool output. tool_call_count is
-    populated for all turns that include tool calls, including mixed content +
-    tool turns. Neither is added to total_tokens.
+    tokens: populated for tool-only turns (content null) where the full
+    completion total is attributable to tool output. Subset of text_tokens.
+
+    mixed_tokens: populated for mixed turns (content + tool calls) where the
+    API does not split completion_tokens between natural language text and
+    tool JSON. Subset of text_tokens.
+
+    count: populated for all turns that include tool calls, regardless of
+    whether content is also present.
     """
 
     tokens: GenerativeMetricsSummary | None = Field(
         description="Tool call token count metrics and distributions"
+    )
+    mixed_tokens: GenerativeMetricsSummary | None = Field(
+        description=(
+            "Mixed content + tool call token count metrics and distributions"
+        )
     )
     count: GenerativeMetricsSummary | None = Field(
         description="Tool call count metrics and distributions"
@@ -727,6 +737,12 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
         return GenerativeToolCallMetricsSummary(
             tokens=GenerativeMetricsSummary.compile(
                 property_name="tool_call_tokens",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            mixed_tokens=GenerativeMetricsSummary.compile(
+                property_name="mixed_content_tool_tokens",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,

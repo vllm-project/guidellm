@@ -559,14 +559,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if text is None and not raw_tool_calls:
             text = ""  # Edge case: null content and no tools
         input_metrics, output_metrics = self.extract_metrics(usage, text)
-        # Always record tool_call_count. Only set tool_call_tokens on tool-only
-        # turns (content null) where the full completion total is attributable to
-        # tool output; on mixed turns the API does not split completion_tokens
-        # between natural language text and tool JSON.
         if raw_tool_calls:
             output_metrics.tool_call_count = len(raw_tool_calls)
-            if text is None:
+            if text is None:  # tool-only turn
                 output_metrics.tool_call_tokens = output_metrics.text_tokens
+            else:  # mixed content + tool call turn
+                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -629,12 +627,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if text is None and not has_tool_calls:
             text = ""
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
-        # Same semantics as compile_non_streaming: always record count, only
-        # attribute tokens on tool-only turns.
         if has_tool_calls:
             output_metrics.tool_call_count = len(self.streaming_tool_call_indices)
-            if text is None:
+            if text is None:  # tool-only turn
                 output_metrics.tool_call_tokens = output_metrics.text_tokens
+            else:  # mixed content + tool call turn
+                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
         return GenerationResponse(
             request_id=request.request_id,
