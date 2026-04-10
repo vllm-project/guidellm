@@ -976,7 +976,7 @@ class TestChatCompletionsRequestHandler:
         """
         Test compile_non_streaming with both content and tool_calls. Text comes from
         content; tool_call_count is set but tool_call_tokens is None because the API
-        completion total includes both natural language text and tool output (no split available).
+        completion total includes both natural language text and tool output.
 
         ## WRITTEN BY AI ##
         """
@@ -1182,7 +1182,7 @@ class TestChatCompletionsRequestHandler:
         """
         Test streaming when both content and tool_calls deltas appear: final text
         is concatenated content; tool_call_count is set but tool_call_tokens is None
-        because the API completion total includes both natural language text and tool output.
+        because the API completion total includes both text and tool output.
 
         ## WRITTEN BY AI ##
         """

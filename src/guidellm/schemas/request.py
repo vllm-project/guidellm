@@ -151,7 +151,7 @@ class UsageMetrics(StandardBaseDict):
         default=None, description="Number of audio bytes processed/generated."
     )
 
-    # Tool call stats (already included via text_tokens, not counted again in total_tokens)
+    # Tool call stats (already included in text_tokens)
     tool_call_tokens: int | None = Field(
         default=None,
         description=(
