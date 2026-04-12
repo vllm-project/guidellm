@@ -349,9 +349,9 @@ guidellm benchmark run \
   --profile concurrent \
   --rate 10 \
   --max-requests 150 \
-  --data "prefix_tokens=512,prompt_tokens=128,output_tokens=256" \      # Turn 1
-  --data "prompt_tokens=256,prompt_token_stdev=32,output_tokens=128" \  # Turn 2
-  --data "prompt_tokens=64,output_tokens=128,output_tokens_stdev=16" \  # Turn 3
+  --data '{"prefix_tokens":512,"prompt_tokens":128,"output_tokens":256}' \      # Turn 1
+  --data '{"prompt_tokens":256,"prompt_token_stdev":32,"output_tokens":128}' \  # Turn 2
+  --data '{"prompt_tokens":64,"output_tokens":128,"output_token_stdev":16}' \   # Turn 3
   --data-preprocessors "turn_pivot"
 ```
 
