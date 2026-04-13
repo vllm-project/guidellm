@@ -52,13 +52,25 @@ class VLLMResponseHandler:
 
     @staticmethod
     def _extract_metrics(
-        usage: dict[str, Any] | None, text: str
+        usage: dict[str, Any] | None, text: str | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
-        """Build UsageMetrics from usage dict and text (word/char counts)."""
+        """Build UsageMetrics from usage dict and text (word/char counts).
+
+        text=None means text is not applicable (metrics will be None);
+        text="" means text was applicable but empty (metrics will be 0).
+        """
+        if text is None:
+            # text not applicable (e.g. tool-call-only) — exclude from aggregation
+            text_words = None
+            text_chars = None
+        else:
+            text_words = len(text.split())
+            text_chars = len(text)
+
         if not usage:
             return UsageMetrics(), UsageMetrics(
-                text_words=len(text.split()) if text else 0,
-                text_characters=len(text) if text else 0,
+                text_words=text_words,
+                text_characters=text_chars,
             )
 
         usage_metrics = cast("dict[str, int]", usage)
@@ -78,8 +90,8 @@ class VLLMResponseHandler:
         )
         output_metrics = UsageMetrics(
             text_tokens=usage_metrics.get("completion_tokens", 0),
-            text_words=len(text.split()) if text else 0,
-            text_characters=len(text) if text else 0,
+            text_words=text_words,
+            text_characters=text_chars,
             image_tokens=output_details.get("image_tokens"),
             video_tokens=output_details.get("video_tokens"),
             audio_tokens=output_details.get("audio_tokens"),

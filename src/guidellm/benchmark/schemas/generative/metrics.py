@@ -32,6 +32,7 @@ __all__ = [
     "GenerativeMetrics",
     "GenerativeMetricsSummary",
     "GenerativeTextMetricsSummary",
+    "GenerativeToolCallMetricsSummary",
     "GenerativeVideoMetricsSummary",
     "SchedulerMetrics",
     "StatusTypes",
@@ -691,6 +692,68 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
         )
 
 
+class GenerativeToolCallMetricsSummary(StandardBaseDict):
+    """
+    Tool-call-specific metric summaries for generative benchmarks.
+
+    tokens: populated for tool-only turns (content null) where the full
+    completion total is attributable to tool output. Subset of text_tokens.
+
+    mixed_tokens: populated for mixed turns (content + tool calls) where the
+    API does not split completion_tokens between natural language text and
+    tool JSON. Subset of text_tokens.
+
+    count: populated for all turns that include tool calls, regardless of
+    whether content is also present.
+    """
+
+    tokens: GenerativeMetricsSummary | None = Field(
+        description="Tool call token count metrics and distributions"
+    )
+    mixed_tokens: GenerativeMetricsSummary | None = Field(
+        description="Mixed content + tool call token count metrics and distributions"
+    )
+    count: GenerativeMetricsSummary | None = Field(
+        description="Tool call count metrics and distributions"
+    )
+
+    @classmethod
+    def compile(
+        cls,
+        successful: list[GenerativeRequestStats],
+        incomplete: list[GenerativeRequestStats],
+        errored: list[GenerativeRequestStats],
+    ) -> GenerativeToolCallMetricsSummary:
+        """
+        Compile tool call metrics summary from request statistics.
+
+        :param successful: Successfully completed request statistics
+        :param incomplete: Incomplete/cancelled request statistics
+        :param errored: Failed request statistics
+        :return: Compiled tool call metrics summary
+        """
+        return GenerativeToolCallMetricsSummary(
+            tokens=GenerativeMetricsSummary.compile(
+                property_name="tool_call_tokens",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            mixed_tokens=GenerativeMetricsSummary.compile(
+                property_name="mixed_content_tool_tokens",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            count=GenerativeMetricsSummary.compile(
+                property_name="tool_call_count",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+        )
+
+
 class GenerativeMetrics(StandardBaseDict):
     """
     Comprehensive metrics for generative AI benchmarks.
@@ -769,6 +832,9 @@ class GenerativeMetrics(StandardBaseDict):
     )
     audio: GenerativeAudioMetricsSummary = Field(
         description="Audio-specific metrics for tokens, samples, duration, and bytes"
+    )
+    tool_call: GenerativeToolCallMetricsSummary = Field(
+        description="Tool call metrics for tokens and call counts"
     )
 
     @classmethod
@@ -922,6 +988,9 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful, incomplete=incomplete, errored=errored
             ),
             audio=GenerativeAudioMetricsSummary.compile(
+                successful=successful, incomplete=incomplete, errored=errored
+            ),
+            tool_call=GenerativeToolCallMetricsSummary.compile(
                 successful=successful, incomplete=incomplete, errored=errored
             ),
         )

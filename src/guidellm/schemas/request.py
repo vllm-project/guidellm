@@ -151,6 +151,33 @@ class UsageMetrics(StandardBaseDict):
         default=None, description="Number of audio bytes processed/generated."
     )
 
+    # Tool call stats (subset of text_tokens)
+    tool_call_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Output completion token total for tool-only turns (content null). "
+            "Equal to text_tokens when the entire completion is tool output; "
+            "None on mixed or text-only turns. Subset of text_tokens. "
+            "See mixed_content_tool_tokens for the mixed case."
+        ),
+    )
+    mixed_content_tool_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Output completion token total for mixed content + tool call turns. "
+            "Equal to text_tokens when both natural language text and tool calls "
+            "are present; None on text-only or tool-only turns. Subset of "
+            "text_tokens."
+        ),
+    )
+    tool_call_count: int | None = Field(
+        default=None,
+        description=(
+            "Number of tool calls generated. Set whenever the response includes "
+            "tool calls, regardless of whether content is also present."
+        ),
+    )
+
     @computed_field  # type: ignore[misc]
     @property
     def total_tokens(self) -> int | None:
