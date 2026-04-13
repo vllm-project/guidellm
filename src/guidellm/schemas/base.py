@@ -79,14 +79,19 @@ class ReloadableBaseModel(BaseModel):
     @classmethod
     def reload_parent_schemas(cls):
         """
-        Recursively reload schemas for all parent Pydantic models.
+        Recursively reload schemas for all Pydantic models that reference this
+        class in their field annotations.
 
-        Traverses the inheritance hierarchy to find all parent classes that
-        are Pydantic models and triggers schema rebuilding on each to ensure
-        that any changes in child models are reflected in parent schemas.
+        Walks the subclass trees of guidellm's own model roots
+        (ReloadableBaseModel and StandardBaseModel) rather than all BaseModel
+        subclasses, so third-party Pydantic models loaded in the same process
+        are not visited.
         """
-        potential_parents: set[type[BaseModel]] = {BaseModel}
-        stack: list[type[BaseModel]] = [BaseModel]
+        potential_parents: set[type[BaseModel]] = {
+            ReloadableBaseModel,
+            StandardBaseModel,
+        }
+        stack: list[type[BaseModel]] = list(potential_parents)
 
         while stack:
             current = stack.pop()
