@@ -2569,6 +2569,355 @@ class TestResponsesRequestHandler:
         assert input_items[1]["content"] == "4"
         assert input_items[2]["role"] == "user"
 
+    # Tool call response handling tests
+
+    @pytest.mark.sanity
+    def test_non_streaming_tool_calls(self, valid_instances, generation_request):
+        """
+        Test compile_non_streaming extracts function_call items when no text present.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        response = {
+            "id": "resp_tc1",
+            "output": [
+                {
+                    "type": "function_call",
+                    "name": "get_weather",
+                    "arguments": '{"location": "SF"}',
+                    "call_id": "call_abc123",
+                }
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 15},
+        }
+
+        result = instance.compile_non_streaming(generation_request, arguments, response)
+
+        assert result.text is None
+        assert result.input_metrics.text_tokens == 10
+        assert result.output_metrics.text_tokens == 15
+        assert result.output_metrics.text_words is None
+        assert result.output_metrics.text_characters is None
+        assert result.output_metrics.tool_call_tokens == 15
+        assert result.output_metrics.mixed_content_tool_tokens is None
+        assert result.output_metrics.tool_call_count == 1
+
+    @pytest.mark.sanity
+    def test_non_streaming_tool_calls_content_preferred(
+        self, valid_instances, generation_request
+    ):
+        """
+        Test compile_non_streaming with both message and function_call output items.
+        Text comes from message content; tool_call_count is set, tool_call_tokens is
+        None, and mixed_content_tool_tokens equals the completion total because the
+        API does not split completion_tokens between natural language text and tool
+        JSON.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        response = {
+            "id": "resp_tc2",
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        {"type": "output_text", "text": "I will call the function."}
+                    ],
+                },
+                {
+                    "type": "function_call",
+                    "name": "get_weather",
+                    "arguments": '{"location": "SF"}',
+                    "call_id": "call_1",
+                },
+            ],
+            "usage": {"input_tokens": 5, "output_tokens": 8},
+        }
+
+        result = instance.compile_non_streaming(generation_request, arguments, response)
+
+        assert result.text == "I will call the function."
+        assert result.output_metrics.tool_call_tokens is None
+        assert result.output_metrics.mixed_content_tool_tokens == 8
+        assert result.output_metrics.tool_call_count == 1
+
+    @pytest.mark.sanity
+    def test_non_streaming_multiple_tool_calls(
+        self, valid_instances, generation_request
+    ):
+        """
+        Test compile_non_streaming counts multiple function_call items.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        response = {
+            "id": "resp_tc3",
+            "output": [
+                {
+                    "type": "function_call",
+                    "name": "get_weather",
+                    "arguments": '{"location": "SF"}',
+                    "call_id": "call_1",
+                },
+                {
+                    "type": "function_call",
+                    "name": "get_time",
+                    "arguments": '{"timezone": "PST"}',
+                    "call_id": "call_2",
+                },
+            ],
+            "usage": {"input_tokens": 12, "output_tokens": 20},
+        }
+
+        result = instance.compile_non_streaming(generation_request, arguments, response)
+
+        assert result.text is None
+        assert result.output_metrics.text_tokens == 20
+        assert result.output_metrics.text_words is None
+        assert result.output_metrics.text_characters is None
+        assert result.output_metrics.tool_call_tokens == 20
+        assert result.output_metrics.mixed_content_tool_tokens is None
+        assert result.output_metrics.tool_call_count == 2
+
+    @pytest.mark.sanity
+    def test_non_streaming_no_tool_calls_unchanged(
+        self, valid_instances, generation_request
+    ):
+        """
+        Test compile_non_streaming leaves tool_call fields None for normal text.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        response = {
+            "id": "resp_tc4",
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "Hello!"}],
+                }
+            ],
+            "usage": {"input_tokens": 3, "output_tokens": 2},
+        }
+
+        result = instance.compile_non_streaming(generation_request, arguments, response)
+
+        assert result.text == "Hello!"
+        assert result.output_metrics.tool_call_tokens is None
+        assert result.output_metrics.mixed_content_tool_tokens is None
+        assert result.output_metrics.tool_call_count is None
+
+    @pytest.mark.sanity
+    def test_streaming_tool_calls(self, valid_instances, generation_request):
+        """
+        Test streaming accumulates function_call output items and sets metrics.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            "event: response.output_item.added",
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":0,'
+                '"item":{"type":"function_call","name":"get_weather",'
+                '"call_id":"call_abc","arguments":""}}'
+            ),
+            "",
+            "event: response.function_call_arguments.delta",
+            (
+                'data: {"type":"response.function_call_arguments.delta",'
+                '"output_index":0,"delta":"{\\"loc\\""}'
+            ),
+            "",
+            "event: response.function_call_arguments.done",
+            (
+                'data: {"type":"response.function_call_arguments.done",'
+                '"output_index":0,"arguments":"{\\"loc\\":\\"SF\\"}"}'
+            ),
+            "",
+            "event: response.completed",
+            (
+                'data: {"type":"response.completed",'
+                '"response":{"id":"resp_s1",'
+                '"usage":{"input_tokens":10,"output_tokens":12}}}'
+            ),
+        ]
+
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+
+        assert response.text is None
+        assert response.output_metrics.text_tokens == 12
+        assert response.output_metrics.text_words is None
+        assert response.output_metrics.text_characters is None
+        assert response.output_metrics.tool_call_tokens == 12
+        assert response.output_metrics.mixed_content_tool_tokens is None
+        assert response.output_metrics.tool_call_count == 1
+
+    @pytest.mark.sanity
+    def test_streaming_multiple_tool_calls(self, valid_instances, generation_request):
+        """
+        Test streaming with multiple parallel function calls on different indices.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            "event: response.output_item.added",
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":0,'
+                '"item":{"type":"function_call","name":"fn_a",'
+                '"call_id":"call_1","arguments":""}}'
+            ),
+            "",
+            "event: response.output_item.added",
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":1,'
+                '"item":{"type":"function_call","name":"fn_b",'
+                '"call_id":"call_2","arguments":""}}'
+            ),
+            "",
+            "event: response.completed",
+            (
+                'data: {"type":"response.completed",'
+                '"response":{"id":"resp_s2",'
+                '"usage":{"input_tokens":8,"output_tokens":18}}}'
+            ),
+        ]
+
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+
+        assert response.text is None
+        assert response.output_metrics.text_words is None
+        assert response.output_metrics.text_characters is None
+        assert response.output_metrics.tool_call_tokens == 18
+        assert response.output_metrics.mixed_content_tool_tokens is None
+        assert response.output_metrics.tool_call_count == 2
+
+    @pytest.mark.sanity
+    def test_streaming_text_preferred_over_tool_calls(
+        self, valid_instances, generation_request
+    ):
+        """
+        Test streaming when both text deltas and function_call items appear: final
+        text is concatenated content; tool_call_count is set, tool_call_tokens is
+        None, and mixed_content_tool_tokens equals the completion total because the
+        API does not split completion_tokens between natural language text and tool
+        JSON.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            "event: response.output_text.delta",
+            ('data: {"type":"response.output_text.delta","delta":"Some text"}'),
+            "",
+            "event: response.output_item.added",
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":1,'
+                '"item":{"type":"function_call","name":"fn",'
+                '"call_id":"call_x","arguments":"{}"}}'
+            ),
+            "",
+            "event: response.completed",
+            (
+                'data: {"type":"response.completed",'
+                '"response":{"id":"resp_s3",'
+                '"usage":{"input_tokens":5,"output_tokens":4}}}'
+            ),
+        ]
+
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+
+        assert response.text == "Some text"
+        assert response.output_metrics.tool_call_tokens is None
+        assert response.output_metrics.mixed_content_tool_tokens == 4
+        assert response.output_metrics.tool_call_count == 1
+
+    @pytest.mark.sanity
+    def test_streaming_no_tool_calls_unchanged(
+        self, valid_instances, generation_request
+    ):
+        """
+        Test normal streaming text response has no tool_call metrics.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            "event: response.output_text.delta",
+            ('data: {"type":"response.output_text.delta","delta":"Hi there"}'),
+            "",
+            "event: response.completed",
+            (
+                'data: {"type":"response.completed",'
+                '"response":{"id":"resp_s4",'
+                '"usage":{"input_tokens":3,"output_tokens":2}}}'
+            ),
+        ]
+
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+
+        assert response.text == "Hi there"
+        assert response.input_metrics.text_tokens == 3
+        assert response.output_metrics.text_tokens == 2
+        assert response.output_metrics.tool_call_tokens is None
+        assert response.output_metrics.mixed_content_tool_tokens is None
+        assert response.output_metrics.tool_call_count is None
+
+    @pytest.mark.smoke
+    def test_initialization_has_streaming_tool_call_indices(self, valid_instances):
+        """
+        Test ResponsesRequestHandler initializes streaming_tool_call_indices.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        assert hasattr(instance, "streaming_tool_call_indices")
+        assert instance.streaming_tool_call_indices == set()
+
 
 class TestPoolingRequestHandler:
     """Test cases for PoolingRequestHandler.
