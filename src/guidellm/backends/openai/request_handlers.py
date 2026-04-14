@@ -782,6 +782,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
+        self.streaming_tool_call_indices: set[int] = set()
 
     def _format_prompts(
         self, column_data: list, column_type: str
@@ -897,8 +898,21 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         response: dict,
     ) -> GenerationResponse:
         text = self._extract_output_text(response)
+        tool_call_count = sum(
+            1
+            for item in response.get("output", [])
+            if item.get("type") == "function_call"
+        )
+        if text is None and not tool_call_count:
+            text = ""
         usage = response.get("usage", {})
         input_metrics, output_metrics = self.extract_metrics(usage, text)
+        if tool_call_count:
+            output_metrics.tool_call_count = tool_call_count
+            if text is None:  # tool-only turn
+                output_metrics.tool_call_tokens = output_metrics.text_tokens
+            else:  # mixed content + tool call turn
+                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -912,8 +926,17 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
     def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
     ) -> GenerationResponse:
-        text = "".join(self.streaming_texts)
+        text = "".join(self.streaming_texts) or None
+        has_tool_calls = bool(self.streaming_tool_call_indices)
+        if text is None and not has_tool_calls:
+            text = ""
         input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
+        if has_tool_calls:
+            output_metrics.tool_call_count = len(self.streaming_tool_call_indices)
+            if text is None:  # tool-only turn
+                output_metrics.tool_call_tokens = output_metrics.text_tokens
+            else:  # mixed content + tool call turn
+                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -950,7 +973,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         if "id" in data and self.streaming_response_id is None:
             resp = data.get("response", {})
-            if isinstance(resp, dict) and "id" in resp:
+            if "id" in resp:
                 self.streaming_response_id = resp["id"]
 
         if event_type == "response.output_text.delta":
@@ -959,6 +982,13 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 self.streaming_texts.append(delta)
                 return 1
             return 0
+
+        if (
+            event_type == "response.output_item.added"
+            and data.get("item", {}).get("type") == "function_call"
+        ):
+            self.streaming_tool_call_indices.add(data["output_index"])
+            return 1
 
         if event_type in (
             "response.completed",
@@ -970,13 +1000,12 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             # by some providers instead. Each carries a final response object
             # with optional usage data. Returning None signals the streaming
             # loop in http.py to break out of the stream.
-            resp = data.get("response", {})
-            if isinstance(resp, dict):
-                usage = resp.get("usage")
-                if usage:
-                    self.streaming_usage = usage
-                if self.streaming_response_id is None and "id" in resp:
-                    self.streaming_response_id = resp["id"]
+            resp = data.get("response") or {}
+            usage = resp.get("usage")
+            if usage:
+                self.streaming_usage = usage
+            if self.streaming_response_id is None and "id" in resp:
+                self.streaming_response_id = resp["id"]
             return None
 
         return 0
@@ -1011,8 +1040,12 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         )
 
     @staticmethod
-    def _extract_output_text(response: dict) -> str:
-        """Extract generated text from a Responses API response object."""
+    def _extract_output_text(response: dict) -> str | None:
+        """Extract generated text from a Responses API response object.
+
+        :returns: ``None`` when no message/output_text items exist (e.g. tool-call-
+        only responses), so callers can distinguish "no text" from "empty text".
+        """
         texts: list[str] = []
         for item in response.get("output", []):
             if item.get("type") != "message":
@@ -1020,7 +1053,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             for part in item.get("content", []):
                 if part.get("type") == "output_text":
                     texts.append(part.get("text", ""))
-        return "".join(texts)
+        return "".join(texts) if texts else None
 
 
 @OpenAIRequestHandlerFactory.register("/pooling")
