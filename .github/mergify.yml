@@ -1,74 +1,76 @@
 pull_request_rules:
-- name: comment-pre-commit-failure
-  description: Comment on PR when pre-commit check fails
-  conditions:
-    - status-failure = precommit-checks
-    - -closed
-    - -draft
-  actions:
-    comment:
-      message: |
-        Hi @{{author}}, the pre-commit checks have failed. Please run:
+  - name: comment-pre-commit-failure
+    description: Comment on PR when pre-commit check fails
+    conditions:
+      - status-failure = precommit-checks
+      - -closed
+      - -draft
+    actions:
+      comment:
+        message: |
+          Hi @{{author}}, the pre-commit checks have failed. Please run:
 
-        ```bash
-        uv pip install pre-commit
-        pre-commit install
-        pre-commit run --all-files
-        ```
+          ```bash
+          uv pip install pre-commit
+          pre-commit install
+          pre-commit run --all-files
+          ```
 
-        Then, commit the changes and push to your branch.
+          Then, commit the changes and push to your branch.
 
-        For future commits, `pre-commit` will run automatically on changed files before each commit.
+          For future commits, `pre-commit` will run automatically on changed files before each commit.
 
-- name: comment-dco-failure
-  description: Comment on PR when DCO check fails
-  conditions:
-    - status-failure = dco
-    - -closed
-    - -draft
-  actions:
-    comment:
-      message: |
-        Hi @{{author}}, the DCO check has failed. Please click on DCO in the Checks section for instructions on how to resolve this.
+  - name: comment-dco-failure
+    description: Comment on PR when DCO check fails
+    conditions:
+      - status-failure = dco
+      - -closed
+      - -draft
+    actions:
+      comment:
+        message: |
+          Hi @{{author}}, the DCO check has failed. Please click on DCO in the Checks section for instructions on how to resolve this.
 
-- name: ping author on conflicts and add 'needs-rebase' label
-  conditions:
-    - conflict
-    - -closed
-  actions:
-    label:
-      add:
-        - needs-rebase
-    comment:
-      message: |
-       This pull request has merge conflicts that must be resolved before it can be
-       merged. Please rebase the PR, @{{author}}.
+  - name: ping author on conflicts and add 'needs-rebase' label
+    conditions:
+      - conflict
+      - -closed
+    actions:
+      label:
+        add:
+          - needs-rebase
+      comment:
+        message: |
+          This pull request has merge conflicts that must be resolved before it can be
+          merged. Please rebase the PR, @{{author}}.
 
-       https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork
+          https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork
 
-- name: block PRs containing merge commits
-  conditions:
-    - -linear-history
-    - -closed
-  actions:
-    label:
-      add:
-        - needs-rebase
-    comment:
-      message: |
-        @{{author}}, this project requires a linear history on feature branches.
-        Your PR contains merge commits. Please rebase your branch against `main`
-        and remove them.
+  - name: block PRs containing merge commits
+    conditions:
+      - -linear-history
+      - -closed
+    actions:
+      label:
+        add:
+          - needs-rebase
+      comment:
+        message: |
+          @{{author}}, this project requires a linear history on feature branches.
+          Your PR contains merge commits. Please rebase your branch against `main`
+          and remove them.
 
-        You can do this by running:
-        `git pull --rebase upstream main`
+          You can do this by running:
+          `git pull --rebase upstream main`
 
-- name: remove 'needs-rebase' label when blockers are resolved
-  conditions:
-    - linear-history
-    - -conflict
-    - -closed
-  actions:
-    label:
-      remove:
-        - needs-rebase
+  - name: remove 'needs-rebase' label when blockers are resolved
+    conditions:
+      - linear-history
+      - -conflict
+      - -closed
+    actions:
+      label:
+        remove:
+          - needs-rebase
+merge_protections_settings:
+  reporting_method: check-runs
