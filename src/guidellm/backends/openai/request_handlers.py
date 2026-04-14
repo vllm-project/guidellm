@@ -898,7 +898,11 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         response: dict,
     ) -> GenerationResponse:
         text = self._extract_output_text(response)
-        tool_call_count = self._count_function_calls(response)
+        tool_call_count = sum(
+            1
+            for item in response.get("output", [])
+            if item.get("type") == "function_call"
+        )
         if text is None and not tool_call_count:
             text = ""
         usage = response.get("usage", {})
@@ -1039,7 +1043,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
     def _extract_output_text(response: dict) -> str | None:
         """Extract generated text from a Responses API response object.
 
-        Returns ``None`` when no message/output_text items exist (e.g. tool-call-
+        :returns: ``None`` when no message/output_text items exist (e.g. tool-call-
         only responses), so callers can distinguish "no text" from "empty text".
         """
         texts: list[str] = []
@@ -1050,15 +1054,6 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 if part.get("type") == "output_text":
                     texts.append(part.get("text", ""))
         return "".join(texts) if texts else None
-
-    @staticmethod
-    def _count_function_calls(response: dict) -> int:
-        """Count ``function_call`` output items in a Responses API response."""
-        return sum(
-            1
-            for item in response.get("output", [])
-            if item.get("type") == "function_call"
-        )
 
 
 @OpenAIRequestHandlerFactory.register("/pooling")
