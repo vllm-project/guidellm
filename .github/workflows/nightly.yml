@@ -15,61 +15,6 @@ jobs:
       python: ${{ matrix.python }}
       args: -m "smoke or sanity"
 
-  build-and-publish:
-    needs: [tests]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.10"]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup Python with UV
-        uses: ./.github/actions/python-uv
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          uv pip install --system tox tox-pdm
-      - name: Build the package
-        run: |
-          export GUIDELLM_BUILD_TYPE=nightly
-          tox -e build
-      - name: Find wheel artifact
-        id: find-asset-whl
-        run: |
-          echo "::set-output name=asset::$(find dist -name '*.whl')"
-      - name: Find tar.gz artifact
-        id: find-asset-targz
-        run: |
-          echo "::set-output name=asset::$(find dist -name '*.tar.gz')"
-      - name: Push wheel to PyPI
-        uses: neuralmagic/nm-actions/actions/publish-whl@v1.0.0
-        with:
-          username: ${{ secrets.PYPI_PUBLIC_USER }}
-          password: ${{ secrets.PYPI_PUBLIC_AUTH }}
-          whl: ${{ steps.find-asset-whl.outputs.asset }}
-      - name: Push tar.gz to PyPI
-        uses: neuralmagic/nm-actions/actions/publish-whl@v1.0.0
-        with:
-          username: ${{ secrets.PYPI_PUBLIC_USER }}
-          password: ${{ secrets.PYPI_PUBLIC_AUTH }}
-          whl: ${{ steps.find-asset-targz.outputs.asset }}
-      - name: Upload build artifacts
-        id: artifact-upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: nightly-build-artifacts
-          path: dist/*
-          compression-level: 6
-          if-no-files-found: error
-          retention-days: 30
-      - name: Log artifact location
-        run: |
-          echo "Artifacts uploaded to: ${{ steps.artifact-upload.outputs.artifact-url }}"
-
   build-and-push-container:
     needs: [tests]
     runs-on: ubuntu-latest
