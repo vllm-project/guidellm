@@ -40,13 +40,16 @@ When executing a multiturn benchmark, GuideLLM:
 4. **Sends the next turn** (prompt_i) along with the conversation history
 5. **Repeat from (2)** for the `n` given turns
 
-For `/v1/chat/completions`, the conversation history is passed as a messages array with alternating user and assistant roles. For `/v1/completions`, the history is concatenated as a single prompt string.
+For `/v1/chat/completions`, the conversation history is passed as a messages array with alternating user and assistant roles. For `/v1/responses`, the history is either passed as alternating user and assistant roles, or as a previous request ID. For `/v1/completions`, the history is concatenated as a single prompt string.
+
+For more information see [Request Formatting](#request-formatting) and [Server-Side Conversation History](#server-side-conversation-history-v1responses-only).
 
 ### Prefix Columns and System Prompts
 
 Prefix columns (if present) are treated specially:
 
 - In `/v1/chat/completions`, the prefix becomes a system message in the conversation array
+- In `/v1/responses`, the prefix becomes the `instructions` field
 - In `/v1/completions`, the prefix is prepended to the turn's prompt
 - Prefixes can be specified with a turn index if desired; however the recommended use-case is a single prefix for the first turn
 - Synthetic data only supports a prefix on the first turn
@@ -108,7 +111,7 @@ Multiturn conversations are formatted differently depending on the request forma
 
 #### Chat Completions (`/v1/chat/completions`)
 
-For chat completions, GuideLLM creates a messages array with the conversation history:
+For chat completions, GuideLLM creates a `messages` array with the conversation history:
 
 ```json
 {
@@ -123,6 +126,23 @@ For chat completions, GuideLLM creates a messages array with the conversation hi
 }
 ```
 
+#### Responses API (`/v1/responses`)
+
+For the Responses API with `server_history` disabled, GuideLLM creates an `input` array with the conversation history and sets the prefix as `instructions`:
+
+```json
+{
+  "instructions": "prefix content",
+  "input": [
+    {"role": "user", "content": [{"type": "input_text", "text": "prompt_0 content"}]},
+    {"role": "assistant", "content": "response to prompt_0"},
+    {"role": "user", "content": [{"type": "input_text", "text": "prompt_1 content"}]},
+    {"role": "assistant", "content": "response to prompt_1"},
+    {"role": "user", "content": [{"type": "input_text", "text": "prompt_2 content"}]}
+  ]
+}
+```
+
 #### Text Completions (`/v1/completions`)
 
 For text completions, the conversation history is concatenated:
@@ -130,6 +150,28 @@ For text completions, the conversation history is concatenated:
 ```text
 prefix content prompt_0 content response to prompt_0 prompt_1 content response to prompt_1 prompt_2 content
 ```
+
+### Server-Side Conversation History (`/v1/responses` only)
+
+By default, GuideLLM replays the full conversation history in each request (client-side history). For the Responses API, you can instead use **server-side history** via the `previous_response_id` field, where the server stores and manages conversation context.
+
+Enable it with `--backend-kwargs`:
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --request-format /v1/responses \
+  --backend-kwargs '{"server_history": true}' \
+  --data "prompt_tokens=200,output_tokens=100,turns=3"
+```
+
+When enabled, GuideLLM sends only the current turn's input and references the previous response by ID. The server reconstructs the full conversation context internally.
+
+**Requirements:**
+
+- The server must support `previous_response_id` with response storage enabled. For vLLM, set the `VLLM_ENABLE_RESPONSES_API_STORE=1` environment variable when starting the server.
+- If the server does not support response storage, requests on turn 2+ will fail with an error (typically a 404).
+- This option is only valid with `/v1/responses`. Using it with other request formats raises an error at startup.
 
 ## The TurnPivot Preprocessor
 
@@ -371,7 +413,8 @@ guidellm benchmark run \
 Multiturn benchmarking is currently supported for:
 
 - `/v1/chat/completions` - Utilizing chat template formatting
-- `/v1/completions` - with basic concatenated history
+- `/v1/responses` - Using the OpenAI Responses API input format
+- `/v1/completions` - With basic concatenated history
 
 Audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/translations`) do not support multiturn benchmarking.
 

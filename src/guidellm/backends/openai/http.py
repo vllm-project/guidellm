@@ -75,6 +75,13 @@ class OpenAIHttpBackendArgs(BackendArgs):
             )
         },
     )
+    server_history: bool = Field(
+        default=False,
+        description=(
+            "Use server-side conversation history (previous_response_id) for "
+            "multi-turn requests. Only supported with /v1/responses."
+        ),
+    )
 
     @field_validator("request_format")
     @classmethod
@@ -166,6 +173,7 @@ class OpenAIHTTPBackend(Backend):
         extras: dict[str, Any] | GenerationRequestArguments | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        server_history: bool = False,
     ):
         """
         Initialize OpenAI HTTP backend with server configuration.
@@ -180,6 +188,8 @@ class OpenAIHTTPBackend(Backend):
         :param follow_redirects: Follow HTTP redirects automatically
         :param verify: Enable SSL certificate verification
         :param validate_backend: Backend validation configuration
+        :param server_history: Use server-side conversation history
+            (previous_response_id) for multi-turn. Only with /v1/responses.
         """
         super().__init__(type_="openai_http")
 
@@ -202,6 +212,14 @@ class OpenAIHTTPBackend(Backend):
                 f"{', '.join(valid_formats)}"
             )
         self.request_type = request_format
+        self.server_history = server_history
+
+        if self.server_history and self.request_type != "/v1/responses":
+            raise ValueError(
+                "server_history=True is only supported with the Responses API "
+                "(/v1/responses). Current request format: "
+                f"'{self.request_type}'"
+            )
 
         # Store configuration
         self.api_routes = api_routes or DEFAULT_API_PATHS
@@ -381,6 +399,7 @@ class OpenAIHTTPBackend(Backend):
             stream=self.stream,
             extras=self.extras,
             max_tokens=self.max_tokens,
+            server_history=self.server_history,
         )
 
         request_url = f"{self.target}/{request_path}"
