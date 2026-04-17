@@ -2569,6 +2569,57 @@ class TestResponsesRequestHandler:
         assert input_items[1]["content"] == "4"
         assert input_items[2]["role"] == "user"
 
+    @pytest.mark.sanity
+    def test_format_with_server_history(self, valid_instances):
+        """
+        Test format uses previous_response_id instead of replaying history
+        when server_history is enabled.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev", request_args=None, text="4", response_id="resp_abc123"
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+
+        result = instance.format(
+            data, history=[(prev_request, prev_response)], server_history=True
+        )
+
+        assert result.body["previous_response_id"] == "resp_abc123"
+        input_items = result.body["input"]
+        assert len(input_items) == 1
+        assert input_items[0]["role"] == "user"
+
+    @pytest.mark.sanity
+    def test_format_with_server_history_first_turn(self, valid_instances):
+        """
+        Test format does not set previous_response_id on the first turn
+        (no history) even when server_history is enabled.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        data = GenerationRequest(
+            columns={"text_column": ["Hello!"]},
+        )
+
+        result = instance.format(data, server_history=True)
+
+        assert "previous_response_id" not in result.body
+        input_items = result.body["input"]
+        assert len(input_items) == 1
+        assert input_items[0]["role"] == "user"
+
     # Tool call response handling tests
 
     @pytest.mark.sanity

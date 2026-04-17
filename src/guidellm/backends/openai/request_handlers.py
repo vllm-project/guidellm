@@ -849,14 +849,21 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
+        use_server_history = kwargs.get("server_history") and history
+
         prev_requests: list[GenerationRequestArguments] = []
-        if history:
+        if history and not use_server_history:
             prev_requests = [
                 self.format(req, response=res, **kwargs) for req, res in history
             ]
 
         arguments = GenerationRequestArguments()
         arguments.body = {}
+
+        if use_server_history:
+            _, last_response = history[-1]  # type: ignore[index]
+            if last_response and last_response.response_id:
+                arguments.body["previous_response_id"] = last_response.response_id
 
         if kwargs.get("model") is not None:
             arguments.body["model"] = kwargs["model"]

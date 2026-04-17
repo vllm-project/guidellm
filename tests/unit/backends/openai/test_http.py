@@ -140,6 +140,34 @@ class TestOpenAIHTTPBackend:
                 validate_backend=123,  # type: ignore[arg-type]
             )
 
+    @pytest.mark.sanity
+    def test_server_history_requires_responses_api(self):
+        """
+        Test server_history=True raises ValueError for non-responses request formats.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="server_history.*only supported"):
+            OpenAIHTTPBackend(
+                target="http://localhost:8000",
+                request_format="/v1/chat/completions",
+                server_history=True,
+            )
+
+    @pytest.mark.sanity
+    def test_server_history_with_responses_api(self):
+        """
+        Test server_history=True is accepted with /v1/responses.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = OpenAIHTTPBackend(
+            target="http://localhost:8000",
+            request_format="/v1/responses",
+            server_history=True,
+        )
+        assert backend.server_history is True
+
     @pytest.mark.smoke
     def test_factory_registration(self):
         """Test that OpenAIHTTPBackend is registered with Backend factory."""
