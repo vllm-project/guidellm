@@ -24,11 +24,12 @@ from pydantic import (
     ValidatorFunctionWrapHandler,
     field_serializer,
     field_validator,
+    model_validator,
 )
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.backends import Backend, BackendType
+from guidellm.backends import Backend, BackendArgs, BackendType
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
@@ -109,10 +110,20 @@ class BaseBenchmarkArgs(StandardBaseModel):
         if factory is None:
             return field_info.default
 
-        if len(inspect.signature(factory).parameters) == 0:
+        # Handle builtin types that don't have signatures
+        if factory in (str, int, float, bool, list, dict, set, tuple):
             return factory()  # type: ignore[call-arg]
-        else:
-            return factory({})  # type: ignore[call-arg]
+
+        # Handle other callables
+        try:
+            sig = inspect.signature(factory)
+            if len(sig.parameters) == 0:
+                return factory()  # type: ignore[call-arg]
+            else:
+                return factory({})  # type: ignore[call-arg]
+        except (ValueError, TypeError):
+            # If signature inspection fails, try calling with no args
+            return factory()  # type: ignore[call-arg]
 
     model_config = ConfigDict(
         extra="ignore",
@@ -128,8 +139,10 @@ class BaseBenchmarkArgs(StandardBaseModel):
         ),
     )
 
-    # Required
-    target: str = Field(description="Target endpoint URL for benchmark execution")
+    # Required (but optional for some backends like vllm_python)
+    target: str | None = Field(
+        default=None, description="Target endpoint URL for benchmark execution"
+    )
     data: list[Any] = Field(
         description="List of dataset sources or data files",
         default_factory=list,
@@ -151,8 +164,8 @@ class BaseBenchmarkArgs(StandardBaseModel):
         default="openai_http",
         description="Backend type or instance for execution",
     )
-    backend_kwargs: dict[str, Any] | None = Field(
-        default=None,
+    backend_kwargs: BackendArgs = Field(  # type: ignore[assignment]
+        default_factory=dict,  # type: ignore[arg-type]
         description="Additional backend configuration arguments",
     )
     request_format: str | None = Field(
@@ -248,6 +261,89 @@ class BaseBenchmarkArgs(StandardBaseModel):
         description="Cooldown phase configuration",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def construct_backend_kwargs_and_extract_target(cls, data: Any) -> Any:  # noqa: C901
+        """
+        Transform backend config into typed BackendArgs.
+
+        Extracts target/model/request_format from backend_kwargs
+        if present (backwards compatibility) and merges with
+        top-level values to populate target field and create
+        typed BackendArgs instance.
+
+        :param data: Input data dictionary
+        :return: Modified data dictionary with typed backend_kwargs
+        """
+        if not isinstance(data, dict):
+            return data
+
+        # Extract backend type
+        backend = data.get("backend", cls.get_default("backend"))
+        backend_type = backend.type_ if isinstance(backend, Backend) else backend
+
+        # Get the appropriate BackendArgs class
+        try:
+            backend_args_class = Backend.get_backend_args(backend_type)
+        except ValueError as err:
+            raise ValidationError.from_exception_data(
+                title="Backend Validation Error",
+                line_errors=[
+                    {
+                        "type": "value_error",
+                        "loc": ("backend",),
+                        "input": str(backend_type),
+                        "ctx": {"error": err},
+                    }
+                ],
+            ) from err
+
+        # Get existing backend_kwargs or create empty dict
+        existing_kwargs = data.get("backend_kwargs", {})
+        if existing_kwargs is None:
+            existing_kwargs = {}
+
+        # If backend_kwargs is already a BackendArgs instance, keep it
+        if isinstance(existing_kwargs, BackendArgs):
+            if not isinstance(existing_kwargs, backend_args_class):
+                raise ValidationError.from_exception_data(
+                    title="Backend Args Validation Error",
+                    line_errors=[
+                        {
+                            "type": "model_type",
+                            "loc": ("backend_kwargs",),
+                            "input": existing_kwargs,
+                        }
+                    ],
+                )
+            # Extract target if not already set at top level
+            if (
+                ("target" not in data or data["target"] is None)
+                and hasattr(existing_kwargs, "target")
+                and existing_kwargs.target
+            ):
+                data["target"] = existing_kwargs.target
+            # Already correct type, keep as-is
+            return data
+
+        # Merge top-level fields into backend_kwargs for backwards compatibility
+        # Extract target from backend_kwargs (backwards compat) or use top-level
+        merged_kwargs = dict(existing_kwargs)
+        if "target" in merged_kwargs and "target" not in data:
+            data["target"] = merged_kwargs["target"]
+        elif "target" in data:
+            merged_kwargs["target"] = data["target"]
+
+        if "model" in data and data["model"] is not None:
+            merged_kwargs["model"] = data["model"]
+        if "request_format" in data and data["request_format"] is not None:
+            merged_kwargs["request_format"] = data["request_format"]
+
+        # Transform to typed BackendArgs
+        data["backend_kwargs"] = backend_args_class.model_validate(merged_kwargs)
+
+        return data
+
     @field_validator("data", "data_args", "rate", "data_preprocessors", mode="wrap")
     @classmethod
     def single_to_list(
@@ -272,6 +368,11 @@ class BaseBenchmarkArgs(StandardBaseModel):
     def serialize_backend(self, backend: BackendType | Backend) -> str:
         """Serialize backend to type string."""
         return backend.type_ if isinstance(backend, Backend) else backend
+
+    @field_serializer("backend_kwargs")
+    def serialize_backend_kwargs(self, backend_kwargs: BackendArgs) -> dict[str, Any]:
+        """Serialize BackendArgs instance to dict for storage."""
+        return backend_kwargs.model_dump()
 
     @field_serializer("data")
     def serialize_data(self, data: list[Any]) -> list[str | None]:

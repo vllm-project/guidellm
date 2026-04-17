@@ -117,7 +117,7 @@ async def resolve_transient_phases(
     return warmup, cooldown
 
 
-async def run_benchmark_workflow(  # noqa: C901
+async def run_benchmark_workflow(  # noqa: C901,PLR0912
     args: BaseBenchmarkArgs,
     accumulator_class: type,
     benchmark_class: type,
@@ -169,7 +169,19 @@ async def run_benchmark_workflow(  # noqa: C901
     from guidellm.scheduler import NonDistributedEnvironment
 
     # Step 1: Resolve backend
-    backend_kwargs = dict(args.backend_kwargs or {})
+    # Convert BackendArgs to dict, excluding fields passed separately
+    if hasattr(args.backend_kwargs, "model_dump"):
+        # BackendArgs object - serialize and exclude top-level fields
+        backend_kwargs = args.backend_kwargs.model_dump(
+            exclude={"target", "model", "request_format"}
+        )
+    else:
+        # Legacy dict support
+        backend_kwargs = dict(args.backend_kwargs or {})
+        # Remove fields that will be passed separately to avoid conflicts
+        backend_kwargs.pop("target", None)
+        backend_kwargs.pop("model", None)
+
     if args.request_format is not None:
         backend_kwargs["request_format"] = args.request_format
     if backend_extras_modifier:

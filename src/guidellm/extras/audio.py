@@ -11,8 +11,15 @@ try:
     from torchcodec import AudioSamples
     from torchcodec.decoders import AudioDecoder
     from torchcodec.encoders import AudioEncoder
-except ImportError as e:
-    raise ImportError("Please install guidellm[audio] to use audio features") from e
+
+    HAS_TORCHCODEC = True
+except (ImportError, RuntimeError):
+    # ImportError: torchcodec not installed
+    # RuntimeError: torchcodec installed but FFmpeg dependencies missing
+    AudioSamples = None  # type: ignore[assignment, misc]
+    AudioDecoder = None  # type: ignore[assignment, misc]
+    AudioEncoder = None  # type: ignore[assignment, misc]
+    HAS_TORCHCODEC = False
 
 __all__ = [
     "encode_audio",
@@ -53,6 +60,11 @@ def encode_audio(
     str | int | float | bytes | None,
 ]:
     """Decode audio (if necessary) and re-encode to specified format."""
+    if not HAS_TORCHCODEC:
+        raise ImportError(
+            "Audio encoding requires torchcodec. "
+            "Please install guidellm[audio] to use audio features."
+        )
     samples = _decode_audio(audio, sample_rate=sample_rate, max_duration=max_duration)
 
     bitrate_val = (
