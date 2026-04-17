@@ -1128,12 +1128,16 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
     def format(
         self,
         data: GenerationRequest,
+        response: GenerationResponse | None = None,  # noqa: ARG002
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,  # noqa: ARG002
         **kwargs,
     ) -> GenerationRequestArguments:
         """
         Format the embeddings generation request.
 
         :param data: The generation request to format
+        :param response: Previous response (unused for embeddings)
+        :param history: Request/response history (unused for embeddings)
         :param **kwargs: Additional keyword arguments (model, encoding_format, etc.)
         :return: The formatted request arguments
         """
