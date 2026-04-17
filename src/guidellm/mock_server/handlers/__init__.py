@@ -12,12 +12,14 @@ from __future__ import annotations
 
 from .chat_completions import ChatCompletionsHandler
 from .completions import CompletionsHandler
+from .embeddings import EmbeddingsHandler
 from .responses import ResponsesHandler
 from .tokenizer import TokenizerHandler
 
 __all__ = [
     "ChatCompletionsHandler",
     "CompletionsHandler",
+    "EmbeddingsHandler",
     "ResponsesHandler",
     "TokenizerHandler",
 ]

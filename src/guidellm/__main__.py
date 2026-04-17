@@ -42,6 +42,8 @@ from guidellm.benchmark import (
     get_builtin_scenarios,
     reimport_benchmarks_report,
 )
+from guidellm.benchmark.embeddings_entrypoints import benchmark_embeddings
+from guidellm.benchmark.schemas.embeddings import BenchmarkEmbeddingsArgs
 from guidellm.mock_server import MockServer, MockServerConfig
 from guidellm.scheduler import StrategyType
 from guidellm.settings import print_config
@@ -475,7 +477,7 @@ def run(**kwargs):  # noqa: C901
 
     asyncio.run(
         benchmark_generative_text(
-            args=args,
+            args=args,  # type: ignore[arg-type]
             progress=(
                 GenerativeConsoleBenchmarkerProgress()
                 if not disable_console_interactive
@@ -517,6 +519,120 @@ def run(**kwargs):  # noqa: C901
 )
 def from_file(path, output_path, output_formats):
     asyncio.run(reimport_benchmarks_report(path, output_path, output_formats))
+
+
+@benchmark.command(
+    "run-embeddings",
+    help=(
+        "Run an embeddings benchmark against an embedding model. "
+        "Supports OpenAI-compatible embeddings endpoints with flexible "
+        "configuration for rate testing and performance measurement."
+    ),
+    context_settings={"auto_envvar_prefix": "GUIDELLM"},
+)
+@click.option(
+    "--target",
+    required=True,
+    help="Target backend URL (e.g., http://localhost:8000).",
+)
+@click.option(
+    "--data",
+    required=True,
+    multiple=True,
+    help=(
+        "Path to data file (csv/json/jsonl/txt) or HuggingFace dataset ID. "
+        "Can be specified multiple times."
+    ),
+)
+@click.option(
+    "--profile",
+    "--rate-type",
+    default="sweep",
+    type=click.Choice(STRATEGY_PROFILE_CHOICES),
+    help="Benchmark profile type (sweep, constant, async, etc.).",
+)
+@click.option(
+    "--rate",
+    callback=cli_tools.parse_list_floats,
+    help="Request rate(s) to test (comma-separated floats).",
+)
+@click.option(
+    "--backend",
+    "--backend-type",
+    default="openai_http",
+    type=click.Choice(list(get_literal_vals(BackendType))),
+    help="Backend type (default: openai_http).",
+)
+@click.option(
+    "--model",
+    help="Model ID to benchmark.",
+)
+@click.option(
+    "--request-format",
+    "--request-type",
+    default="/v1/embeddings",
+    help="Request format (default: /v1/embeddings).",
+)
+@click.option(
+    "--encoding-format",
+    default="float",
+    type=click.Choice(["float", "base64"]),
+    help="Embedding encoding format (default: float).",
+)
+@click.option(
+    "--max-requests",
+    type=int,
+    help="Maximum number of requests to process.",
+)
+@click.option(
+    "--max-duration",
+    type=float,
+    help="Maximum benchmark duration in seconds.",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    help="Directory to save output files.",
+)
+@click.option(
+    "--outputs",
+    callback=cli_tools.parse_list,
+    multiple=True,
+    default=["json"],
+    help="Output formats (json, yaml). Can specify multiple times.",
+)
+@click.option(
+    "--disable-console",
+    is_flag=True,
+    help="Disable all console outputs.",
+)
+def run_embeddings(**kwargs):
+    """Execute embeddings benchmark with provided configuration."""
+    ctx = click.get_current_context()
+    kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
+
+    # Handle console
+    disable_console = kwargs.pop("disable_console", False)
+    console = Console() if not disable_console else None
+
+    try:
+        args = BenchmarkEmbeddingsArgs.model_validate(kwargs)
+    except ValidationError as err:
+        errs = err.errors(include_url=False, include_context=True, include_input=True)
+        param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
+        raise click.BadParameter(
+            errs[0]["msg"], ctx=ctx, param_hint=param_name
+        ) from err
+
+    asyncio.run(
+        benchmark_embeddings(
+            args=args,
+            progress=(
+                GenerativeConsoleBenchmarkerProgress() if not disable_console else None
+            ),
+            console=console,
+        )
+    )
 
 
 @cli.command(
@@ -789,6 +905,169 @@ def mock_server(
         status="success",
     )
     server.run()
+
+
+@benchmark.command(
+    "embeddings",
+    help="Run embeddings benchmark for performance testing.",
+    context_settings={"auto_envvar_prefix": "GUIDELLM"},
+)
+@click.option(
+    "--target",
+    type=str,
+    required=True,
+    help="Target backend URL (e.g., http://localhost:8000).",
+)
+@click.option(
+    "--data",
+    type=str,
+    multiple=True,
+    required=True,
+    help=(
+        "HuggingFace dataset ID, path to dataset, path to data file "
+        "(csv/json/jsonl/txt), or synthetic data config."
+    ),
+)
+@click.option(
+    "--profile",
+    default="sweep",
+    type=click.Choice(STRATEGY_PROFILE_CHOICES),
+    help=f"Benchmark profile type. Options: {', '.join(STRATEGY_PROFILE_CHOICES)}.",
+)
+@click.option(
+    "--rate",
+    callback=cli_tools.parse_list_floats,
+    multiple=True,
+    default=None,
+    help="Benchmark rate(s) to test. Meaning depends on profile.",
+)
+@click.option(
+    "--backend",
+    type=click.Choice(list(get_literal_vals(BackendType))),
+    default="openai_http",
+    help=f"Backend type. Options: {', '.join(get_literal_vals(BackendType))}.",
+)
+@click.option(
+    "--backend-kwargs",
+    callback=cli_tools.parse_json,
+    default=None,
+    help='JSON string of backend arguments. E.g., \'{"api_key": "key"}\'',
+)
+@click.option(
+    "--model",
+    default=None,
+    type=str,
+    help="Model ID to benchmark. If not provided, uses first available model.",
+)
+@click.option(
+    "--request-format",
+    default="embeddings",
+    help="Format to use for requests (default: embeddings).",
+)
+@click.option(
+    "--processor",
+    default=None,
+    type=str,
+    help="Processor or tokenizer for token counts. If not provided, loads from model.",
+)
+@click.option(
+    "--data-samples",
+    default=-1,
+    type=int,
+    help="Number of samples from dataset. -1 (default) uses all samples.",
+)
+@click.option(
+    "--outputs",
+    default=["json", "csv", "html"],
+    callback=cli_tools.parse_list,
+    help=(
+        "Comma-separated list of output formats: json,csv,html,console. "
+        "Default: json,csv,html"
+    ),
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=Path.cwd(),
+    help="Directory to save output files. Default: current directory.",
+)
+@click.option(
+    "--max-requests",
+    default=None,
+    type=int,
+    help="Maximum number of requests to execute.",
+)
+@click.option(
+    "--max-errors",
+    default=None,
+    type=int,
+    help="Maximum number of errors before stopping benchmark.",
+)
+@click.option(
+    "--max-duration",
+    default=None,
+    type=float,
+    help="Maximum duration in seconds for benchmark execution.",
+)
+@click.option(
+    "--encoding-format",
+    type=click.Choice(["float", "base64"]),
+    default="float",
+    help="Embedding encoding format. Options: float, base64. Default: float.",
+)
+@click.option(
+    "--disable-console",
+    is_flag=True,
+    default=False,
+    help="Disable all console output (including progress display).",
+)
+@click.option(
+    "--disable-console-interactive",
+    is_flag=True,
+    default=False,
+    help="Disable interactive console elements (progress bar, tables).",
+)
+@click.option(
+    "--random-seed",
+    default=42,
+    type=int,
+    help="Random seed for reproducibility. Default: 42.",
+)
+def embeddings(**kwargs):
+    """Run embeddings benchmark for performance testing."""
+    from guidellm.benchmark.embeddings_entrypoints import benchmark_embeddings
+    from guidellm.benchmark.schemas.embeddings import BenchmarkEmbeddingsArgs
+
+    # Only set CLI args that differ from click defaults
+    kwargs = cli_tools.set_if_not_default(click.get_current_context(), **kwargs)
+
+    # Handle console options
+    disable_console = kwargs.pop("disable_console", False)
+    disable_console_interactive = (
+        kwargs.pop("disable_console_interactive", False) or disable_console
+    )
+    console = Console() if not disable_console else None
+
+    try:
+        args = BenchmarkEmbeddingsArgs.create(scenario=None, **kwargs)
+    except ValidationError as err:
+        errs = err.errors(include_url=False, include_context=True, include_input=True)
+        param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
+        raise click.BadParameter(
+            errs[0]["msg"], ctx=click.get_current_context(), param_hint=param_name
+        ) from err
+
+    asyncio.run(
+        benchmark_embeddings(
+            args=args,  # type: ignore[arg-type]
+            progress=(
+                GenerativeConsoleBenchmarkerProgress()
+                if not disable_console_interactive
+                else None
+            ),
+            console=console,
+        )
+    )
 
 
 if __name__ == "__main__":

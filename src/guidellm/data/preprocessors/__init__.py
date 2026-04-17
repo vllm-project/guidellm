@@ -1,3 +1,4 @@
+from .embeddings_mapper import EmbeddingsColumnMapper
 from .encoders import MediaEncoder
 from .mappers import GenerativeColumnMapper
 from .preprocessor import (
@@ -10,6 +11,7 @@ from .turn_pivot import TurnPivot
 __all__ = [
     "DataDependentPreprocessor",
     "DatasetPreprocessor",
+    "EmbeddingsColumnMapper",
     "GenerativeColumnMapper",
     "MediaEncoder",
     "PreprocessorRegistry",
