@@ -97,47 +97,6 @@ guidellm benchmark run-embeddings \
   --max-requests 100
 ```
 
-## Encoding Formats
-
-Embeddings can be returned in two formats:
-
-### Float Format (Default)
-
-Returns embeddings as arrays of floating-point numbers:
-
-```bash
-guidellm benchmark run-embeddings \
-  --target http://localhost:8000 \
-  --model text-embedding-3-small \
-  --data "prompt_tokens=100" \
-  --encoding-format float \
-  --max-requests 50
-```
-
-### Base64 Format
-
-Returns embeddings as base64-encoded strings (more compact):
-
-```bash
-guidellm benchmark run-embeddings \
-  --target http://localhost:8000 \
-  --model text-embedding-3-small \
-  --data "prompt_tokens=100" \
-  --encoding-format base64 \
-  --max-requests 50
-```
-
-The benchmark report includes a breakdown of encoding format usage:
-
-```json
-{
-  "encoding_format_breakdown": {
-    "float": 45,
-    "base64": 5
-  }
-}
-```
-
 ## Load Profiles
 
 Control how requests are sent to the embeddings endpoint:
@@ -239,50 +198,6 @@ Note: Embeddings have **no output tokens** (only input processing).
 }
 ```
 
-## Advanced Usage
-
-### Custom Column Mapping
-
-If your dataset has non-standard column names, specify mappings:
-
-```bash
-guidellm benchmark run-embeddings \
-  --target http://localhost:8000 \
-  --model text-embedding-3-small \
-  --data my_dataset.json \
-  --data-column-mapper '{"text_column": "my_custom_text_field"}' \
-  --max-requests 100
-```
-
-### Multiple Output Formats
-
-Save results in multiple formats:
-
-```bash
-guidellm benchmark run-embeddings \
-  --target http://localhost:8000 \
-  --model text-embedding-3-small \
-  --data "prompt_tokens=100" \
-  --outputs json,yaml,html \
-  --output-dir ./results \
-  --max-requests 50
-```
-
-### Disable Console Output
-
-Run headless for CI/CD integration:
-
-```bash
-guidellm benchmark run-embeddings \
-  --target http://localhost:8000 \
-  --model text-embedding-3-small \
-  --data "prompt_tokens=100" \
-  --disable-console \
-  --outputs json \
-  --output-dir ./results \
-  --max-requests 50
-```
-
 ## Complete Example
 
 Here's a complete example benchmarking an embeddings endpoint:
@@ -350,47 +265,6 @@ open ./results/embeddings_benchmarks.html
 | Encoding  | Float or base64   | N/A                                       |
 | TTFT      | N/A               | Measured                                  |
 | ITL       | N/A               | Measured                                  |
-
-## Troubleshooting
-
-### "No text found in dataset row"
-
-Ensure your dataset has a recognizable text column:
-
-- `text`, `input`, `content`, `prompt`, `sentence`, `document`, `passage`, `query`
-
-Or specify a custom mapping:
-
-```bash
---data-column-mapper '{"text_column": "your_column_name"}'
-```
-
-### High Error Rate
-
-Check that your endpoint supports the `/v1/embeddings` API:
-
-```bash
-curl -X POST http://localhost:8000/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "text-embedding-3-small",
-    "input": "Test text"
-  }'
-```
-
-### Performance Issues
-
-For macOS, ensure `data_num_workers` is set to 0 (default for embeddings):
-
-```bash
-# This is the default for embeddings, but you can explicitly set it:
-guidellm benchmark run-embeddings \
-  --target http://localhost:8000 \
-  --model text-embedding-3-small \
-  --data "prompt_tokens=100" \
-  --data-num-workers 0 \
-  --max-requests 50
-```
 
 ## See Also
 
