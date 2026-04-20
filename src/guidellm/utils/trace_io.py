@@ -8,9 +8,10 @@ Used by the scheduler (load_relative_timestamps) and the trace_synthetic deseria
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
+
+from datasets import Dataset, load_dataset
 
 __all__ = ["load_relative_timestamps", "load_trace_rows"]
 
@@ -19,50 +20,51 @@ def load_trace_rows(
     path: Path | str,
     required_columns: list[str] | None = None,
     max_rows: int | None = None,
-) -> list[dict[str, Any]]:
+    **data_kwargs: Any,
+) -> Dataset:
     """
-    Load trace file rows as a list of dicts.
+    Load trace file rows as a HuggingFace Dataset.
 
     Supports .jsonl only (one JSON object per line).
-    If required_columns is set, every row must contain these keys; otherwise
-    KeyError is raised with a descriptive message.
-    If max_rows is set, only the first max_rows rows are loaded (for replay
+    If required_columns is set, every column must exist in the dataset;
+    otherwise KeyError is raised with a descriptive message.
+    If max_rows is set, only the first max_rows rows are returned (for replay
     with a request limit).
 
     :param path: Path to the trace file.
     :param required_columns: Optional list of column/field names that each row
         must have.
     :param max_rows: Optional maximum number of rows to load; None means load all.
-        If set to a value less than 1, returns an empty list.
-    :return: List of row dicts (keys and values as in the file).
-    :raises KeyError: If a required column is missing in the file or in a row.
+        If set to a value less than 1, returns an empty Dataset.
+    :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
+    :return: HuggingFace Dataset (iterable as dicts, column-accessible).
+    :raises KeyError: If a required column is missing in the dataset.
     :raises ValueError: If the file format is not .jsonl.
     """
     path = Path(path)
-    if max_rows is not None and max_rows < 1:
-        return []
     suffix = path.suffix.lower()
     if suffix != ".jsonl":
         raise ValueError(f"Unsupported trace file format: {suffix}")
+    if path.stat().st_size == 0:
+        raise ValueError(f"Trace file is empty or has no valid rows: {path}")
 
-    rows: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as f:
-        for raw_line in f:
-            if max_rows is not None and len(rows) >= max_rows:
-                break
-            line = raw_line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
-            if not isinstance(row, dict):
-                continue
-            if required_columns:
-                missing = [c for c in required_columns if c not in row]
-                if missing:
-                    raise KeyError(f"Trace row missing required columns: {missing}")
-            rows.append(row)
+    trace_dataset = load_dataset(
+        "json", data_files=str(path), split="train", **data_kwargs
+    )
 
-    return rows
+    if required_columns:
+        missing = [c for c in required_columns if c not in trace_dataset.column_names]
+        if missing:
+            raise KeyError(f"Trace row missing required columns: {missing}")
+
+    if max_rows is not None:
+        if max_rows < 1:
+            return trace_dataset.select([])
+        trace_dataset = trace_dataset.select(
+            range(min(max_rows, len(trace_dataset)))
+        )
+
+    return trace_dataset
 
 
 def load_relative_timestamps(
@@ -81,12 +83,10 @@ def load_relative_timestamps(
     :return: List of relative timestamps in seconds (first is 0.0, always sorted).
     :raises ValueError: If the trace file is empty or has no valid rows.
     """
-    raw = load_trace_rows(
-        path,
-        required_columns=[timestamp_column],
-    )
-    timestamps = sorted([float(row[timestamp_column]) for row in raw])
-    if not timestamps:
-        raise ValueError(f"Trace file has no valid rows: {path}")
+    trace_dataset = load_trace_rows(path, required_columns=[timestamp_column])
+    if len(trace_dataset) == 0:
+        raise ValueError(f"Trace file is empty or has no valid rows: {path}")
+    trace_dataset = trace_dataset.sort(timestamp_column)
+    timestamps = [float(t) for t in trace_dataset[timestamp_column]]
     t0 = timestamps[0]
     return [t - t0 for t in timestamps]
