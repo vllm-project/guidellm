@@ -284,6 +284,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     max_requests: int | None = Field(
         default=None, description="Maximum number of requests to execute"
     )
+    min_requests: int | None = Field(
+        default=None, description="Minimum number of requests to execute"
+    )
     max_errors: int | None = Field(
         default=None, description="Maximum number of errors before stopping"
     )
