@@ -250,7 +250,6 @@ async def resolve_request_loader(
     data_num_workers: int | None,
     random_seed: int,
     console: Console | None = None,
-    max_requests: int | None = None,
     **dataloader_kwargs: dict[str, Any] | None,
 ) -> DataLoader[GenerationRequest]:
     """
@@ -274,7 +273,6 @@ async def resolve_request_loader(
     :param data_num_workers: Number of worker processes for data loading
     :param random_seed: Seed for reproducible random operations
     :param console: Console instance for progress reporting, or None
-    :param max_requests: If set, first data source loads at most this many rows.
     :param dataloader_kwargs: Additional arguments passed to DataLoader initialization
     :return: Configured DataLoader instance for GenerationRequest objects
     :raises ValueError: If request formatter type is not registered in
@@ -310,17 +308,6 @@ async def resolve_request_loader(
         FinalizerRegistry,
         data_finalizer,
     )
-
-    # When max_requests is set, limit the first data source to that many rows at load
-    if max_requests is not None and data:
-        if max_requests < 1:
-            raise ValueError(
-                "max_requests must be >= 1 when set for data truncation, "
-                f"got {max_requests}"
-            )
-        data_args = list(data_args) if data_args else [{} for _ in data]
-        if len(data_args) >= 1:
-            data_args[0] = {**data_args[0], "max_rows": max_requests}
 
     request_loader: DataLoader[GenerationRequest] = DataLoader(
         data=data,
@@ -539,24 +526,14 @@ async def benchmark_generative_text(
         "console": console,
     }
 
-    # For replay profile: resolve profile first to apply max_seconds filtering,
-    # then use the filtered count for the data loader. This ensures the data
-    # loader and scheduler both work with the same filtered request count.
     if args.profile == "replay":
         profile = await resolve_profile(**profile_kwargs, data=args.data)  # type: ignore[arg-type]
-        effective_max_requests = (
-            profile.constraints.get("max_requests")
-            if profile.constraints
-            else args.max_requests
-        )
         request_loader = await resolve_request_loader(
             **loader_kwargs,  # type: ignore[arg-type,misc]
-            max_requests=effective_max_requests,  # type: ignore[arg-type]
         )
     else:
         request_loader = await resolve_request_loader(
             **loader_kwargs,  # type: ignore[arg-type,misc]
-            max_requests=args.max_requests,  # type: ignore[arg-type]
         )
         profile = await resolve_profile(**profile_kwargs, data=None)  # type: ignore[arg-type]
 
