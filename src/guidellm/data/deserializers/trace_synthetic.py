@@ -20,7 +20,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.trace_io import load_trace_rows
+from guidellm.utils.trace_io import load_trace_rows
 
 __all__ = ["TraceSyntheticDatasetDeserializer"]
 

@@ -17,12 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from guidellm.scheduler import (
-    SchedulingStrategy,
-    TraceReplayStrategy,
-    load_relative_timestamps,
-)
+from guidellm.scheduler import SchedulingStrategy, TraceReplayStrategy
 from guidellm.schemas import RequestInfo
+from guidellm.utils.trace_io import load_relative_timestamps
 
 
 def _write_trace(path: Path, content: str) -> Path:

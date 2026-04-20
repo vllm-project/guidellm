@@ -39,9 +39,9 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     ThroughputStrategy,
     TraceReplayStrategy,
-    load_relative_timestamps,
 )
 from guidellm.schemas import PydanticClassRegistryMixin
+from guidellm.utils.trace_io import load_relative_timestamps
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
