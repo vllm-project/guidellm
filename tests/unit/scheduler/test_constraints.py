@@ -16,6 +16,7 @@ from guidellm.scheduler import (
     MaxErrorsConstraint,
     MaxGlobalErrorRateConstraint,
     MaxNumberConstraint,
+    MinNumberConstraint,
     PydanticConstraintInitializer,
     SchedulerProgress,
     SchedulerState,
@@ -471,6 +472,176 @@ class TestMaxNumberConstraint:
         instance = MaxNumberConstraint(max_num=75)
         resolved = ConstraintsInitializerFactory.resolve({"max_requests": instance})
         assert resolved["max_requests"] is instance
+
+
+class TestMinNumberConstraint:
+    """Test the MinNumberConstraint implementation.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture(params=[{"min_num": 100}, {"min_num": 50.5}, {"min_num": 1}])
+    def valid_instances(self, request):
+        constructor_args = request.param
+        instance = MinNumberConstraint(**constructor_args)
+
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_is_constraint_protocol(self, valid_instances):
+        """Test that MinNumberConstraint satisfies the Constraint protocol."""
+        constraint, _ = valid_instances
+        assert isinstance(constraint, Constraint)
+
+    @pytest.mark.smoke
+    def test_is_constraint_initializer_protocol(self, valid_instances):
+        """Test MinNumberConstraint satisfies the ConstraintInitializer protocol."""
+        constraint, _ = valid_instances
+        assert isinstance(constraint, ConstraintInitializer)
+
+    @pytest.mark.smoke
+    def test_initialization_valid(self, valid_instances):
+        """Test that MinNumberConstraint can be initialized with valid parameters."""
+        instance, constructor_args = valid_instances
+
+        for key, value in constructor_args.items():
+            assert hasattr(instance, key)
+            assert getattr(instance, key) == value
+
+    @pytest.mark.sanity
+    def test_initialization_invalid(self):
+        """Test that MinNumberConstraint rejects invalid parameters."""
+        with pytest.raises(ValidationError):
+            MinNumberConstraint()
+        with pytest.raises(ValidationError):
+            MinNumberConstraint(min_num=-1)
+        with pytest.raises(ValidationError):
+            MinNumberConstraint(min_num=0)
+        with pytest.raises(ValidationError):
+            MinNumberConstraint(min_num="invalid")
+
+    @pytest.mark.smoke
+    def test_constraint_functionality(self, valid_instances):
+        """Test constraint returns correct actions and progress"""
+        instance, constructor_args = valid_instances
+        start_time = time.time()
+
+        for num_requests in range(0, int(constructor_args["min_num"]) * 2 + 1, 1):
+            state = SchedulerState(
+                start_time=start_time,
+                created_requests=num_requests,
+                processed_requests=num_requests,
+                errored_requests=0,
+            )
+            request_info = RequestInfo(
+                request_id="test", status="completed", created_at=start_time
+            )
+
+            action = instance(state, request_info)
+            assert isinstance(action, SchedulerUpdateAction)
+
+            processed_exceeded = num_requests >= constructor_args["min_num"]
+
+            if not processed_exceeded:
+                assert action.request_queuing == "continue"
+                assert action.request_processing == "continue"
+            else:
+                assert action.request_queuing == "stop"
+                assert action.request_processing == "stop_local"
+
+    @pytest.mark.smoke
+    def test_marshalling(self, valid_instances):
+        """Test that MinNumberConstraint can be serialized and deserialized."""
+        instance, constructor_args = valid_instances
+
+        data = instance.model_dump()
+        for key, value in constructor_args.items():
+            assert data[key] == value
+
+        reconstructed = MinNumberConstraint.model_validate(data)
+        assert reconstructed.min_num == instance.min_num
+
+        for key, value in constructor_args.items():
+            assert getattr(reconstructed, key) == value
+
+    @pytest.mark.smoke
+    def test_create_constraint_functionality(self, valid_instances):
+        """Test the constraint initializer functionality."""
+        instance, constructor_args = valid_instances
+
+        constraint = instance.create_constraint()
+        assert isinstance(constraint, MinNumberConstraint)
+        assert constraint.min_num == constructor_args["min_num"]
+
+    @pytest.mark.smoke
+    def test_validated_kwargs(self):
+        """Test MinNumberConstraint.validated_kwargs class method."""
+        result = MinNumberConstraint.validated_kwargs(min_num=100)
+        assert result == {"min_num": 100, "current_index": -1}
+
+        result = MinNumberConstraint.validated_kwargs(50.5)
+        assert result == {"min_num": 50.5, "current_index": -1}
+
+    @pytest.mark.smoke
+    def test_create_constraint(self, valid_instances):
+        """Test MinNumberConstraint.create_constraint method."""
+        instance, constructor_args = valid_instances
+        original_index = instance.current_index
+        constraint = instance.create_constraint()
+
+        assert isinstance(constraint, MinNumberConstraint)
+        assert constraint is not instance  # Should return a copy
+        assert constraint.min_num == instance.min_num
+        assert instance.current_index == original_index + 1  # Original is incremented
+        assert constraint.current_index == original_index + 1  # Copy has incremented
+
+    @pytest.mark.smoke
+    def test_factory_registration(self):
+        """Test MinNumberConstraint is properly registered with expected aliases."""
+        expected_aliases = ["min_number", "min_num", "min_requests", "min_req"]
+
+        for alias in expected_aliases:
+            assert ConstraintsInitializerFactory.is_registered(alias)
+            registered_class = ConstraintsInitializerFactory.get_registered_object(
+                alias
+            )
+            assert registered_class == MinNumberConstraint
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "alias", ["min_number", "min_num", "min_requests", "min_req"]
+    )
+    def test_factory_creation_with_aliases(self, alias):
+        """Test factory creation using different aliases."""
+        # Test with dict configuration
+        constraint = ConstraintsInitializerFactory.create_constraint(alias, min_num=100)
+        assert isinstance(constraint, MinNumberConstraint)
+        assert constraint.min_num == 100
+
+        # Test with simple value
+        constraint = ConstraintsInitializerFactory.create_constraint(alias, 50)
+        assert isinstance(constraint, MinNumberConstraint)
+        assert constraint.min_num == 50
+
+    @pytest.mark.smoke
+    def test_factory_resolve_methods(self):
+        """Test factory resolve methods with various input formats."""
+        # Test with dict config
+        resolved = ConstraintsInitializerFactory.resolve(
+            {"min_number": {"min_num": 200}}
+        )
+        assert isinstance(resolved["min_number"], MinNumberConstraint)
+        assert resolved["min_number"].min_num == 200
+
+        # Test with simple value
+        resolved = ConstraintsInitializerFactory.resolve({"min_num": 150})
+        assert isinstance(resolved["min_num"], MinNumberConstraint)
+        assert resolved["min_num"].min_num == 150
+
+        # Test with instance
+        instance = MinNumberConstraint(min_num=75)
+        resolved = ConstraintsInitializerFactory.resolve({"min_requests": instance})
+        assert resolved["min_requests"] is instance
 
 
 class TestMaxDurationConstraint:
