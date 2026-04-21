@@ -77,7 +77,7 @@ tox -e lint-fix
 To run type checks, use:
 
 ```bash
-tox -e types
+tox -e type-check
 ```
 
 ## Submitting Changes

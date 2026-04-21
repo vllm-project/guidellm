@@ -26,7 +26,7 @@ jobs:
         uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-          tox-env: types
+          tox-env: type-check
 
   precommit-checks:
     runs-on: ubuntu-latest

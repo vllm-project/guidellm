@@ -78,7 +78,7 @@ tox -e lint-fix
 To ensure type safety using Mypy:
 
 ```bash
-tox -e types
+tox -e type-check
 ```
 
 ### Link Checking
@@ -86,7 +86,7 @@ tox -e types
 To ensure valid links added to the documentation / Markdown files:
 
 ```bash
-tox -e links
+tox -e link-check
 ```
 
 ### Automating Quality Checks with Pre-Commit Hooks (Optional)
