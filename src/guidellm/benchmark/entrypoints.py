@@ -492,50 +492,24 @@ async def benchmark_generative_text(
     processor = await resolve_processor(
         processor=args.processor, model=model, console=console
     )
-
-    # Build common kwargs for resolve_profile and resolve_request_loader
-    profile_kwargs = {
-        "profile": args.profile,
-        "rate": args.rate,
-        "random_seed": args.random_seed,
-        "rampup": args.rampup,
-        "constraints": constraints,
-        "max_seconds": args.max_seconds,
-        "max_requests": args.max_requests,
-        "max_errors": args.max_errors,
-        "max_error_rate": args.max_error_rate,
-        "max_global_error_rate": args.max_global_error_rate,
-        "over_saturation": args.over_saturation,
-        "console": console,
-    }
-    loader_kwargs = {
-        "data": args.data,
-        "model": model,
-        "data_args": args.data_args,
-        "data_samples": args.data_samples,
-        "processor": processor,
-        "processor_args": args.processor_args,
-        "data_column_mapper": args.data_column_mapper,
-        "data_preprocessors": args.data_preprocessors,
-        "data_preprocessors_kwargs": args.data_preprocessors_kwargs,
-        "data_finalizer": args.data_finalizer,
-        "data_collator": args.data_collator,
-        "data_sampler": args.data_sampler,
-        "data_num_workers": args.data_num_workers,
-        "random_seed": args.random_seed,
-        "console": console,
-    }
-
-    if args.profile == "replay":
-        profile = await resolve_profile(**profile_kwargs, data=args.data)  # type: ignore[arg-type]
-        request_loader = await resolve_request_loader(
-            **loader_kwargs,  # type: ignore[arg-type,misc]
-        )
-    else:
-        request_loader = await resolve_request_loader(
-            **loader_kwargs,  # type: ignore[arg-type,misc]
-        )
-        profile = await resolve_profile(**profile_kwargs, data=None)  # type: ignore[arg-type]
+    request_loader = await resolve_request_loader(
+        data=args.data,
+        model=model,
+        data_args=args.data_args,
+        data_samples=args.data_samples,
+        processor=processor,
+        processor_args=args.processor_args,
+        data_column_mapper=args.data_column_mapper,
+        data_preprocessors=args.data_preprocessors,
+        data_preprocessors_kwargs=args.data_preprocessors_kwargs,
+        data_finalizer=args.data_finalizer,
+        data_collator=args.data_collator,
+        data_sampler=args.data_sampler,
+        data_num_workers=args.data_num_workers,
+        random_seed=args.random_seed,
+        console=console,
+        **(args.dataloader_kwargs or {}),
+    )
 
     warmup = TransientPhaseConfig.create_from_value(args.warmup)
     cooldown = TransientPhaseConfig.create_from_value(args.cooldown)
@@ -551,6 +525,22 @@ async def benchmark_generative_text(
             ),
             status="success",
         )
+
+    profile = await resolve_profile(
+        profile=args.profile,
+        rate=args.rate,
+        random_seed=args.random_seed,
+        rampup=args.rampup,
+        constraints=constraints,
+        max_seconds=args.max_seconds,
+        max_requests=args.max_requests,
+        max_errors=args.max_errors,
+        max_error_rate=args.max_error_rate,
+        max_global_error_rate=args.max_global_error_rate,
+        over_saturation=args.over_saturation,
+        console=console,
+        data=args.data,
+    )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console
     )
