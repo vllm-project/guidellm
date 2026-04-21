@@ -351,6 +351,7 @@ async def resolve_profile(
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
     data: list[Any] | None = None,
+    **profile_kwargs: Any,
 ) -> Profile:
     """
     Resolve and configure a benchmark profile with rate and constraint settings.
@@ -373,6 +374,7 @@ async def resolve_profile(
     :param over_saturation: Over-saturation detection configuration (dict)
     :param console: Console instance for progress reporting, or None
     :param data: Optional list of data sources.
+    :param profile_kwargs: Additional profile-specific arguments.
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile
     """
@@ -401,6 +403,7 @@ async def resolve_profile(
             rampup_duration=rampup,
             constraints={**constraints},
             data=data,
+            **profile_kwargs,
         )
     elif constraints:
         raise ValueError(
@@ -519,6 +522,10 @@ async def benchmark_generative_text(
             status="success",
         )
 
+    profile_kwargs: dict[str, Any] = {}
+    if args.profile == "replay":
+        profile_kwargs["data_samples"] = request_loader.info.get("data_samples", -1)
+
     profile = await resolve_profile(
         profile=args.profile,
         rate=args.rate,
@@ -533,6 +540,7 @@ async def benchmark_generative_text(
         over_saturation=args.over_saturation,
         console=console,
         data=args.data,
+        **profile_kwargs,
     )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console

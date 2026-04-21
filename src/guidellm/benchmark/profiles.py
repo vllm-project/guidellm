@@ -341,11 +341,9 @@ class ReplayProfile(Profile):
     For this profile, the ``rate`` argument is interpreted as time_scale (scale factor
     applied to relative timestamps), not as requests per second.
 
-    When ``constraints["max_requests"]`` is set, the trace is truncated at load time:
-    only the first max_requests rows are loaded from the file for both timestamps (here)
-    and request data (in the data loader). This keeps timestamps and requests aligned.
     The trace file is read twice: once by the data pipeline for request payloads, and
-    once here for relative timestamps.
+    once here for relative timestamps. When ``data_samples`` is set, the replayed
+    timestamps are truncated to match the sampled dataset size.
     """
 
     type_: Literal["replay"] = "replay"  # type: ignore[assignment]
@@ -356,13 +354,6 @@ class ReplayProfile(Profile):
         default=1.0,
         gt=0,
         description="Scale factor applied to relative timestamps",
-    )
-    max_seconds_filter: float | None = Field(
-        default=None,
-        description=(
-            "Original max_seconds value used as a load-time filter "
-            "(not a runtime constraint)"
-        ),
     )
 
     @classmethod
@@ -380,53 +371,26 @@ class ReplayProfile(Profile):
         path = Path(data[0]) if isinstance(data[0], str) else data[0]
         if not path.exists():
             raise ValueError(f"Replay trace file not found: {path}")
-        constraints = kwargs.get("constraints") or {}
-        max_requests = constraints.get("max_requests")
-        if max_requests is not None and max_requests < 1:
-            raise ValueError(
-                "max_requests must be >= 1 when set for replay profile, "
-                f"got {max_requests}"
-            )
 
         # For replay profile, rate is interpreted as time_scale (not requests per
         # second)
         time_scale = rate[0] if rate and len(rate) > 0 else 1.0
 
-        # Load all timestamps first (max_requests applied after max_seconds filtering)
         relative_timestamps = load_relative_timestamps(path)
-
-        # Filter by max_seconds (applied in simulated time via time_scale)
-        max_seconds = constraints.get("max_seconds")
-        if max_seconds is not None and max_seconds > 0:
-            relative_timestamps = [
-                ts for ts in relative_timestamps if ts * time_scale <= max_seconds
-            ]
-
-        # Truncate by max_requests on top of any max_seconds filtering
-        if max_requests is not None:
-            relative_timestamps = relative_timestamps[:max_requests]
+        data_samples = kwargs.get("data_samples", -1)
+        if isinstance(data_samples, int) and data_samples > 0:
+            relative_timestamps = relative_timestamps[:data_samples]
 
         if not relative_timestamps:
             raise ValueError(
-                "No timestamps remain after applying max_seconds and max_requests "
-                "filters. The trace is empty or all events were filtered out."
+                "No timestamps remain after applying data_samples. "
+                "The trace is empty or all events were filtered out."
             )
-
-        # Set max_requests to the actual count after filtering to prevent benchmark hang
-        # and eliminate race conditions between request completion and injection.
-        constraints["max_requests"] = len(relative_timestamps)
-
-        # Remove max_seconds to avoid runtime MaxDurationConstraint canceling
-        # in-flight requests
-        constraints.pop("max_seconds", None)
 
         return {
             "relative_timestamps": relative_timestamps,
             "time_scale": time_scale,
-            "constraints": constraints,
-            "max_seconds_filter": max_seconds
-            if max_seconds and max_seconds > 0
-            else None,
+            "constraints": kwargs.get("constraints"),
         }
 
     @property

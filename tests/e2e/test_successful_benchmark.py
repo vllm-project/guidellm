@@ -234,15 +234,13 @@ def test_replay_profile_max_seconds_stronger_than_max_requests(
 ):
     """
     Test replay profile where max_seconds is the limiting constraint.
-    Trace has 20 requests over 2 seconds, but max_seconds=0.3 limits to ~3 requests.
-    max_requests=10 is not reached because max_seconds triggers first.
+    Trace has 20 requests over 2 seconds, but max_seconds=0.25 stops the replay
+    before max_requests=10 can be reached.
     """
     report_name = "replay_max_seconds_stronger.json"
     report_path = tmp_path / report_name
 
     # Create trace with 20 requests at 0.1s intervals
-    # With time_scale=1.0, timestamps are: 0.0, 0.1, 0.2, 0.3, 0.4, ...
-    # max_seconds=0.25 should include: 0.0, 0.1, 0.2 (3 requests, 0.3 > 0.25)
     trace_file = _create_trace_file(tmp_path, num_requests=20, interval=0.1)
 
     client = GuidellmClient(
@@ -251,8 +249,7 @@ def test_replay_profile_max_seconds_stronger_than_max_requests(
         outputs=report_name,
     )
 
-    # max_seconds=0.25 should be the limiting constraint
-    # Only timestamps <= 0.25 should be kept: 0.0, 0.1, 0.2
+    # max_seconds=0.25 should be the limiting runtime constraint
     client.start_benchmark(
         profile="replay",
         rate=1.0,
@@ -268,15 +265,14 @@ def test_replay_profile_max_seconds_stronger_than_max_requests(
     report = load_benchmark_report(report_path)
     benchmark = report["benchmarks"][0]
 
-    # Should have 3 requests (0.0, 0.1, 0.2 where 0.2 <= 0.25)
     successful_requests = benchmark["requests"]["successful"]
-    assert len(successful_requests) == 3, (
-        f"Expected 3 requests (max_seconds=0.25 filter), got {len(successful_requests)}"
+    assert 0 < len(successful_requests) < 10, (
+        "Expected max_seconds to stop replay before max_requests was reached, "
+        f"got {len(successful_requests)} successful requests"
     )
 
-    # Verify max_requests constraint was triggered
-    # (max_seconds is converted to max_requests internally)
-    assert_constraint_triggered(benchmark, "max_requests", {"processed_exceeded": True})
+    # Verify the runtime max_seconds constraint was triggered
+    assert_constraint_triggered(benchmark, "max_seconds", {"duration_exceeded": True})
 
 
 # Helper functions for trace file creation
