@@ -16,7 +16,7 @@ jobs:
         uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-          tox-env: quality
+          tox-env: lint-check
 
   type-checks:
     runs-on: ubuntu-latest

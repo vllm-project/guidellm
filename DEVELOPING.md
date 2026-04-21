@@ -64,13 +64,13 @@ Additionally, to ensure consistency and quality of the codebase, we use [ruff](h
 To check code quality, including linting and formatting:
 
 ```bash
-tox -e quality
+tox -e lint-check
 ```
 
 To automatically fix style issues:
 
 ```bash
-tox -e style
+tox -e lint-fix
 ```
 
 ### Type Checking
