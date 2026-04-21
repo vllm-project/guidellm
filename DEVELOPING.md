@@ -64,13 +64,13 @@ Additionally, to ensure consistency and quality of the codebase, we use [ruff](h
 To check code quality, including linting and formatting:
 
 ```bash
-tox -e quality
+tox -e lint-check
 ```
 
 To automatically fix style issues:
 
 ```bash
-tox -e style
+tox -e lint-fix
 ```
 
 ### Type Checking
@@ -78,7 +78,7 @@ tox -e style
 To ensure type safety using Mypy:
 
 ```bash
-tox -e types
+tox -e type-check
 ```
 
 ### Link Checking
@@ -86,7 +86,7 @@ tox -e types
 To ensure valid links added to the documentation / Markdown files:
 
 ```bash
-tox -e links
+tox -e link-check
 ```
 
 ### Automating Quality Checks with Pre-Commit Hooks (Optional)

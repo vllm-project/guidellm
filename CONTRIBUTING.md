@@ -65,19 +65,19 @@ We follow strict coding standards to ensure code quality and maintainability. Pl
 To check code quality locally, use the following Tox environment:
 
 ```bash
-tox -e quality
+tox -e lint-check
 ```
 
 To automatically fix style issues, use:
 
 ```bash
-tox -e style
+tox -e lint-fix
 ```
 
 To run type checks, use:
 
 ```bash
-tox -e types
+tox -e type-check
 ```
 
 ## Submitting Changes
