@@ -82,14 +82,6 @@ For example, setting `--max-requests 1000` with `--profile sweep` will run 1000 
 
 GuideLLM supports several benchmark profiles and strategies, which are described in detail below.
 
-- `synchronous`: Runs requests one at a time (sequential)
-- `throughput`: Tests maximum throughput by running requests in parallel
-- `concurrent`: Runs a fixed number of parallel request streams
-- `constant`: Sends requests at a fixed rate per second
-- `poisson`: Sends requests following a Poisson distribution
-- `sweep`: Automatically determines optimal performance points (default)
-- `replay`: Replays requests from a trace file to reproduce real-world traffic patterns (beta)
-
 #### Synchronous Profile
 
 Runs requests one at a time (sequential).
