@@ -60,9 +60,7 @@ def load_trace_rows(
     if max_rows is not None:
         if max_rows < 1:
             return trace_dataset.select([])
-        trace_dataset = trace_dataset.select(
-            range(min(max_rows, len(trace_dataset)))
-        )
+        trace_dataset = trace_dataset.select(range(min(max_rows, len(trace_dataset))))
 
     return trace_dataset
 
