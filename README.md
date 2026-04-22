@@ -283,3 +283,6 @@ If you find GuideLLM helpful in your research or projects, please consider citin
   howpublished={\url{https://github.com/vllm-project/guidellm}},
 }
 ```
+
+
+<!-- PR for #704 -->
