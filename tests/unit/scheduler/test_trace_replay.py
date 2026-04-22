@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+from multiprocessing import get_context
 from pathlib import Path
 
 import pytest
@@ -171,7 +172,11 @@ class TestTraceReplayStrategy:
             relative_timestamps=[0.0, 0.5, 1.0],
             time_scale=2.0,
         )
-        strategy.init_processes_timings(worker_count=1, max_concurrency=10)
+        strategy.init_processes_timings(
+            worker_count=1,
+            max_concurrency=10,
+            mp_context=get_context(),
+        )
         strategy.init_processes_start(1000.0)
         expected = [1000.0, 1001.0, 1002.0]
 
@@ -194,7 +199,11 @@ class TestTraceReplayStrategy:
             relative_timestamps=[0.0, 1.0],
             time_scale=1.0,
         )
-        strategy.init_processes_timings(worker_count=1, max_concurrency=10)
+        strategy.init_processes_timings(
+            worker_count=1,
+            max_concurrency=10,
+            mp_context=get_context(),
+        )
         strategy.init_processes_start(500.0)
 
         async def run():
@@ -239,7 +248,11 @@ class TestTraceReplayStrategy:
             relative_timestamps=timestamps,
             time_scale=1.0,
         )
-        strategy.init_processes_timings(worker_count=3, max_concurrency=10)
+        strategy.init_processes_timings(
+            worker_count=3,
+            max_concurrency=10,
+            mp_context=get_context(),
+        )
         strategy.init_processes_start(1000.0)
 
         async def run():
