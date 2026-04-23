@@ -58,7 +58,6 @@ def _load_trace_rows(
     timestamp_column: str,
     prompt_tokens_column: str,
     output_tokens_column: str,
-    max_rows: int | None = None,
 ) -> list[dict[str, Any]]:
     """Load trace file into list of dicts with timestamp, prompt_tokens,
     output_tokens."""
@@ -70,7 +69,6 @@ def _load_trace_rows(
                 prompt_tokens_column,
                 output_tokens_column,
             ],
-            max_rows=max_rows,
         )
     except (KeyError, ValueError) as e:
         raise DataNotSupportedError(str(e)) from e
@@ -117,16 +115,8 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
         output_tokens_column = str(
             data_kwargs.pop("output_tokens_column", "output_length")
         )
-        max_rows_val = data_kwargs.pop("max_rows", None)
-        max_rows: int | None = None
-        if max_rows_val is not None:
-            if isinstance(max_rows_val, int):
-                max_rows = max_rows_val
-            elif isinstance(max_rows_val, str):
-                max_rows = int(max_rows_val)
-
         rows = _load_trace_rows(
-            path, timestamp_column, prompt_tokens_column, output_tokens_column, max_rows
+            path, timestamp_column, prompt_tokens_column, output_tokens_column
         )
         if not rows:
             raise DataNotSupportedError("Trace file is empty")
