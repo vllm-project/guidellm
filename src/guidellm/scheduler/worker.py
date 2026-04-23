@@ -6,6 +6,10 @@ lifecycle from queue consumption through backend processing and status publicati
 Workers coordinate with other processes through barriers and events, apply timing
 strategies for request scheduling, maintain concurrency limits, and publish real-time
 status updates throughout request processing.
+
+For multi-turn tool calling, the worker detects ``tool_calls`` on completed
+responses and dynamically creates follow-up continuation turns so the model
+can produce a final answer after seeing synthetic tool results.
 """
 
 from __future__ import annotations
@@ -49,6 +53,40 @@ from guidellm.utils.synchronous import (
 )
 
 __all__ = ["WorkerProcess"]
+
+
+def _create_tool_continuation(
+    request: RequestT,
+    request_info: RequestInfo,
+) -> tuple[RequestT, RequestInfo] | None:
+    """Create a follow-up turn for multi-turn tool calling.
+
+    When a model responds with tool_calls, the client must send the tool results
+    back so the model can produce a final text response. This creates an empty
+    continuation request that, combined with history, causes the request handler
+    to build the full message array (original + assistant tool_calls + tool
+    results).
+
+    :returns: None if the request type doesn't support copying.
+    """
+    try:
+        continuation = request.model_copy(  # type: ignore[attr-defined]  # generic RequestT
+            update={"columns": {}},
+        )
+        continuation.request_id = str(__import__("uuid").uuid4())
+    except AttributeError:
+        return None
+
+    continuation_info = RequestInfo(
+        request_id=continuation.request_id,  # type: ignore[union-attr]
+        conversation_id=request_info.conversation_id,
+        turn_index=request_info.turn_index + 1,
+        status="queued",
+        scheduler_process_id=request_info.scheduler_process_id,
+        scheduler_start_time=request_info.scheduler_start_time,
+    )
+    return continuation, continuation_info  # type: ignore[return-value]
+
 
 ProcessRequestT = TypeAliasType(
     "ProcessRequestT",
@@ -368,7 +406,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", None, request, request_info)
 
-    async def _process_next_request(  # noqa: C901
+    async def _process_next_request(  # noqa: C901, PLR0912, PLR0915
         self, target_start: float
     ) -> ProcessRequestT[RequestT, ResponseT]:
         """
@@ -376,6 +414,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
+
+        After a turn completes, if the response contains ``tool_calls`` and no
+        more pre-planned turns remain, a follow-up continuation request is
+        dynamically created so the model can produce a final response after
+        seeing the synthetic tool results.  An optional ``tool_response_delay``
+        (read from the backend) simulates real tool execution latency.
 
         :param target_start: Unix timestamp when request should begin processing
         """
@@ -415,6 +459,29 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
             # Record Turn
             history.append((request, response))
+
+            # If the response contains tool calls and the conversation has no
+            # more pre-planned turns, dynamically create a follow-up turn so
+            # the model can produce a final response after seeing tool results.
+            if (
+                response is not None
+                and not conversation
+                and hasattr(response, "tool_calls")
+                and response.tool_calls
+            ):
+                continuation = _create_tool_continuation(request, request_info)
+                if continuation is not None:
+                    cont_req, cont_info = continuation
+                    # Register the dynamically created request with the
+                    # worker_group so it tracks the new request_id through
+                    # the pending → in_progress → completed lifecycle.
+                    self.messaging.put_sync(
+                        (None, cont_req, cont_info)
+                    )
+                    delay = getattr(self.backend, "tool_response_delay", 0.0)
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    conversation.append(continuation)
 
             response = request = request_info = None
         except asyncio.CancelledError:

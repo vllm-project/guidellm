@@ -173,6 +173,81 @@ When enabled, GuideLLM sends only the current turn's input and references the pr
 - If the server does not support response storage, requests on turn 2+ will fail with an error (typically a 404).
 - This option is only valid with `/v1/responses`. Using it with other request formats raises an error at startup.
 
+## Tool Calling
+
+GuideLLM supports benchmarking multi-turn tool calling workloads. When the model responds with `tool_calls`, GuideLLM automatically sends a synthetic tool result back and creates a follow-up turn so the model can produce a final text response. This simulates the full agentic loop without requiring real tool execution.
+
+### Server Setup
+
+Tool calling requires server-side support. For vLLM, start the server with `--enable-auto-tool-choice` and a `--tool-call-parser` appropriate for your model:
+
+```bash
+vllm serve Qwen/Qwen3-0.6B \
+  --enable-auto-tool-choice \
+  --tool-call-parser hermes
+```
+
+Common parsers include `hermes` (Qwen/Hermes-based models), `llama3_json` (Llama 3.x), and `mistral` (Mistral models). Without these flags, vLLM will reject tool call output with grammar errors.
+
+### CLI Options
+
+| Option | Description |
+| --- | --- |
+| `--tools` | Path to a JSON file or inline JSON array of OpenAI-format tool definitions |
+| `--tool-choice` | Controls when the model may or must call tools (see below) |
+| `--tool-response-delay` | Seconds to wait before sending the synthetic tool result (simulates tool execution time) |
+
+### Tool Choice Modes
+
+- `"auto"` — the model decides whether to call a tool (default when `--tools` is set)
+- `"required"` — the model must call a tool on every turn
+- `"none"` — the model cannot call tools
+- `"required:N"` — the model **must** call a tool for the first N turns, then `"none"` forces a text-only finish
+- `"auto:N"` — the model **may** call a tool for the first N turns, then `"none"`
+
+The `mode:N` variants are useful for predictable multi-turn benchmarks where you want exactly N tool call rounds followed by a clean text response.
+
+### Basic Example
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --model "Qwen/Qwen3-0.6B" \
+  --request-format /v1/chat/completions \
+  --data "prompt_tokens=200,output_tokens=100" \
+  --tools '[{"type": "function", "function": {"name": "get_weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}}}}]' \
+  --tool-choice "required:2" \
+  --tool-response-delay 0.5 \
+  --max-requests 30
+```
+
+This forces 2 tool call turns (turns 0 and 1), waits 0.5s before each synthetic tool response, then the model produces a final text answer on turn 2.
+
+### HuggingFace Datasets
+
+Tool calling datasets that store conversations as OpenAI-format `messages` arrays (e.g. `madroid/glaive-function-calling-openai`) can be used with the `tool_calling_message_extractor` preprocessor:
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --data "madroid/glaive-function-calling-openai" \
+  --data-column-mapper '{"text_column": "messages", "tools_column": "tools"}' \
+  --data-preprocessors "tool_calling_message_extractor,encode_media" \
+  --tool-choice "required:1" \
+  --max-requests 50
+```
+
+The preprocessor extracts user prompts and system messages from the `messages` column, and per-request tool definitions are read from the `tools_column`.
+
+### How It Works
+
+1. GuideLLM sends a request with `tools` and `tool_choice` to the model
+2. The model responds with `tool_calls` (function name + arguments)
+3. GuideLLM waits `tool_response_delay` seconds (if set)
+4. A synthetic tool result (`{"status": "ok"}`) is appended to the conversation
+5. A follow-up request is sent with the full history so the model can respond
+6. Steps 2-5 repeat until the model produces a text-only response or `tool_choice` switches to `"none"`
+
 ## The TurnPivot Preprocessor
 
 GuideLLM supports passing multiple `--data` options, each pointing to a separate dataset. If there are matches for the same column type across multiple datasets, they are treated as separate batches. Normally this is useful for layering columns from different datasets within the same request. For example adding a text column from one dataset to another with images or combining multiple normally-distributed synthetic datasets into a multimodal distribution. We can use the **TurnPivot** preprocessor to transpose turn columns and dataset batches.

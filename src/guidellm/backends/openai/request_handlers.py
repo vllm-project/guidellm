@@ -6,6 +6,10 @@ Provides a pluggable system for handling format differences while supporting
 both streaming and non-streaming responses. Each handler implements the
 GenerationRequestHandler protocol to format json requests, parse API responses,
 extract usage metrics, and convert results into standardized GenerationResponse.
+
+The chat completions handler additionally supports multi-turn tool calling:
+it captures ``tool_calls`` from model responses, reconstructs them from
+streaming deltas, and formats follow-up messages with synthetic tool results.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from guidellm.utils.imports import json
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
+    "DEFAULT_SYNTHETIC_TOOL_RESPONSE",
     "AudioRequestHandler",
     "ChatCompletionsRequestHandler",
     "OpenAIRequestHandler",
@@ -30,6 +35,10 @@ __all__ = [
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
 ]
+
+# Placeholder content returned in synthetic ``role: "tool"`` messages during
+# multi-turn tool calling.  The model sees this as the tool's output.
+DEFAULT_SYNTHETIC_TOOL_RESPONSE = '{"status": "ok"}'
 
 
 class OpenAIRequestHandler(Protocol):
@@ -406,7 +415,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     def __init__(self):
         super().__init__()
+        # Indices seen so far, used to count distinct tool calls
         self.streaming_tool_call_indices: set[int] = set()
+        # Full tool call payloads accumulated across streaming deltas,
+        # keyed by the delta ``index`` field.  Needed for multi-turn tool
+        # calling so the response carries the id/name/arguments of each call.
+        self.streaming_tool_calls: dict[int, dict[str, Any]] = {}
 
     def _format_prompts(
         self, column_data: list[dict[str, Any]], column_type: str
@@ -450,7 +464,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return formatted_data
 
-    def format(  # noqa: C901
+    def format(  # noqa: C901, PLR0912
         self,
         data: GenerationRequest,
         response: GenerationResponse | None = None,
@@ -460,7 +474,16 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         Format the chat completion generation request into the appropriate structure.
 
-        :param request: The generation request to format
+        When ``response`` carries ``tool_calls`` (from a prior turn), the
+        assistant message is emitted with the full tool_calls array and
+        synthetic ``role: "tool"`` result messages are appended so the model
+        sees a complete multi-turn tool-calling exchange.  Per-request tool
+        definitions from ``data.columns["tools_column"]`` are also injected
+        into the body when no global ``tools`` were provided via extras.
+
+        :param data: The generation request to format
+        :param response: Optional prior response for multi-turn history
+        :param history: Prior (request, response) pairs in the conversation
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
@@ -521,17 +544,65 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self._format_prompts(data.columns.get(col, []), col)
             for col in ("text_column", "image_column", "video_column", "audio_column")
         ]
-        if prompts:
-            # Interleave prompt types
+        user_content = list(roundrobin(*prompts))
+        if user_content:
             arguments.body["messages"].append(
-                {"role": "user", "content": list(roundrobin(*prompts))}
+                {"role": "user", "content": user_content}
             )
 
-        # Add the response to the current prompt if available
-        if response and response.text:
+        # Append the prior assistant response to the message history.
+        # For tool call responses, include the assistant's tool_calls and
+        # synthetic tool result messages so the model sees the full
+        # multi-turn exchange.  For plain text responses, just add content.
+        if response and response.tool_calls:
+            arguments.body["messages"].append(
+                {
+                    "role": "assistant",
+                    "content": response.text,
+                    "tool_calls": response.tool_calls,
+                }
+            )
+            for tc in response.tool_calls:
+                arguments.body["messages"].append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", ""),
+                        "content": DEFAULT_SYNTHETIC_TOOL_RESPONSE,
+                    }
+                )
+        elif response and response.text:
             arguments.body["messages"].append(
                 {"role": "assistant", "content": response.text}
             )
+
+        # Include per-request tool definitions from dataset columns, unless
+        # tools were already provided globally via extras.
+        if "tools" not in arguments.body:
+            tools_column = data.columns.get("tools_column", [])
+            if tools_column:
+                tools_value = tools_column[0]
+                if isinstance(tools_value, list):
+                    arguments.body["tools"] = tools_value
+                    arguments.body.setdefault("tool_choice", "auto")
+
+        # Resolve per-turn tool_choice: "required:N" or "auto:N" uses the
+        # given mode for turns 0..N-1, then switches to "none" so the model
+        # produces a plain text response and the conversation terminates.
+        tool_choice = arguments.body.get("tool_choice")
+        if isinstance(tool_choice, str) and ":" in tool_choice:
+            mode, count_str = tool_choice.split(":", 1)
+            if mode in ("required", "auto"):
+                turn = kwargs.get("turn_index", 0)
+                arguments.body["tool_choice"] = (
+                    mode if turn < int(count_str) else "none"
+                )
+
+        # Tool calling requires the model to stop naturally after producing
+        # valid JSON; ignore_eos would force generation past that point and
+        # break the server's constrained decoding grammar.
+        if "tools" in arguments.body:
+            arguments.body.pop("ignore_eos", None)
+            arguments.body.pop("stop", None)
 
         return arguments
 
@@ -545,9 +616,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Process a complete chat completion response.
 
         Extracts content from the message object within choices, handling the nested
-        structure specific to chat completion endpoints.
+        structure specific to chat completion endpoints.  When the model responds
+        with ``tool_calls``, they are captured on the returned
+        :class:`GenerationResponse` so the scheduler can detect them and
+        dynamically create a follow-up turn.
 
         :param request: Original generation request
+        :param arguments: The request arguments that were sent
         :param response: Complete API response containing choices and usage data
         :return: Standardized GenerationResponse with extracted content and metrics
         """
@@ -571,6 +646,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
+            tool_calls=raw_tool_calls,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -601,11 +677,25 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self.streaming_texts.append(content)
             updated = True
 
-        # tool_calls is an optional field for when the server is requesting a tool
+        # Accumulate streamed tool_calls deltas.  Each tool call may be split
+        # across multiple chunks; we reassemble by ``index``.
         for tc_delta in delta.get("tool_calls", []):
-            # Keep track of the index to properly count tool usage, since a tool call
-            # can be split into multiple chunks when streaming.
-            self.streaming_tool_call_indices.add(tc_delta["index"])
+            idx = tc_delta["index"]
+            self.streaming_tool_call_indices.add(idx)
+            if idx not in self.streaming_tool_calls:
+                self.streaming_tool_calls[idx] = {
+                    "id": tc_delta.get("id", ""),
+                    "type": tc_delta.get("type", "function"),
+                    "function": {"name": "", "arguments": ""},
+                }
+            tc = self.streaming_tool_calls[idx]
+            fn_delta = tc_delta.get("function", {})
+            if fn_id := tc_delta.get("id"):
+                tc["id"] = fn_id
+            if fn_name := fn_delta.get("name"):
+                tc["function"]["name"] += fn_name
+            if fn_args := fn_delta.get("arguments"):
+                tc["function"]["arguments"] += fn_args
             updated = True
 
         if usage:
@@ -634,11 +724,20 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             else:  # mixed content + tool call turn
                 output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
+        # Assemble full tool call payloads from the streaming deltas so they
+        # can be stored on GenerationResponse for multi-turn history.
+        raw_tool_calls: list[dict[str, Any]] | None = None
+        if self.streaming_tool_calls:
+            raw_tool_calls = [
+                self.streaming_tool_calls[i] for i in sorted(self.streaming_tool_calls)
+            ]
+
         return GenerationResponse(
             request_id=request.request_id,
             request_args=arguments.model_dump_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
+            tool_calls=raw_tool_calls,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )

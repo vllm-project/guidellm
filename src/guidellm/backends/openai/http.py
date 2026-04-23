@@ -82,6 +82,14 @@ class OpenAIHttpBackendArgs(BackendArgs):
             "multi-turn requests. Only supported with /v1/responses."
         ),
     )
+    tool_response_delay: float = Field(
+        default=0.0,
+        description=(
+            "Seconds to wait before sending the synthetic tool response in "
+            "multi-turn tool calling benchmarks. Simulates real tool execution time."
+        ),
+        ge=0.0,
+    )
 
     @field_validator("request_format")
     @classmethod
@@ -174,6 +182,7 @@ class OpenAIHTTPBackend(Backend):
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
         server_history: bool = False,
+        tool_response_delay: float = 0.0,
     ):
         """
         Initialize OpenAI HTTP backend with server configuration.
@@ -190,6 +199,8 @@ class OpenAIHTTPBackend(Backend):
         :param validate_backend: Backend validation configuration
         :param server_history: Use server-side conversation history
             (previous_response_id) for multi-turn. Only with /v1/responses.
+        :param tool_response_delay: Seconds to wait before sending the synthetic
+            tool response in multi-turn tool calling.
         """
         super().__init__(type_="openai_http")
 
@@ -239,6 +250,7 @@ class OpenAIHTTPBackend(Backend):
             else extras
         )
         self.max_tokens: int | None = max_tokens or max_completion_tokens
+        self.tool_response_delay: float = tool_response_delay
 
         # Runtime state
         self._in_process = False
@@ -400,6 +412,7 @@ class OpenAIHTTPBackend(Backend):
             extras=self.extras,
             max_tokens=self.max_tokens,
             server_history=self.server_history,
+            turn_index=request_info.turn_index,
         )
 
         request_url = f"{self.target}/{request_path}"
