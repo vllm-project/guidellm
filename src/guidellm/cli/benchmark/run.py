@@ -363,6 +363,27 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     flag_value='{"enabled": true}',
     help="Enable over-saturation detection with default settings.",
 )
+# Tool calling configuration
+@click.option(
+    "--tools",
+    type=str,
+    default=None,
+    callback=cli_tools.parse_tools,
+    help=(
+        "Tool definitions for function calling benchmarks. "
+        "Accepts a path to a JSON file or an inline JSON array of "
+        "OpenAI-format tool definitions."
+    ),
+)
+@click.option(
+    "--tool-response-delay",
+    type=float,
+    default=None,
+    help=(
+        "Seconds to wait before sending the synthetic tool response in "
+        "multi-turn tool calling. Simulates real tool execution time. Default: 0."
+    ),
+)
 def run(**kwargs):  # noqa: C901
     ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
@@ -386,6 +407,22 @@ def run(**kwargs):  # noqa: C901
     for alias in ("target", "model", "request_format"):
         with contextlib.suppress(KeyError):
             backend_kwargs[alias] = kwargs.pop(alias)
+
+    # Wire tool calling options into backend extras.
+    # tools go into extras.body so they're injected into every
+    # request payload.  tool_response_delay is a backend-level setting
+    # consumed by the worker between multi-turn calls.
+    tools = kwargs.pop("tools", None)
+    tool_response_delay = kwargs.pop("tool_response_delay", None)
+
+    if tools is not None:
+        extras = backend_kwargs.setdefault("extras", {})
+        body = extras.setdefault("body", {})
+        body["tools"] = tools
+
+    if tool_response_delay is not None:
+        backend_kwargs["tool_response_delay"] = tool_response_delay
+
     kwargs["backend_kwargs"] = backend_kwargs
 
     # Handle console options
