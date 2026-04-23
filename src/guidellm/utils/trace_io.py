@@ -19,7 +19,6 @@ __all__ = ["load_relative_timestamps", "load_trace_rows"]
 def load_trace_rows(
     path: Path | str,
     required_columns: list[str] | None = None,
-    max_rows: int | None = None,
     **data_kwargs: Any,
 ) -> Dataset:
     """
@@ -28,14 +27,10 @@ def load_trace_rows(
     Supports .jsonl only (one JSON object per line).
     If required_columns is set, every column must exist in the dataset;
     otherwise KeyError is raised with a descriptive message.
-    If max_rows is set, only the first max_rows rows are returned (for replay
-    with a request limit).
 
     :param path: Path to the trace file.
     :param required_columns: Optional list of column/field names that each row
         must have.
-    :param max_rows: Optional maximum number of rows to load; None means load all.
-        If set to a value less than 1, returns an empty Dataset.
     :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
     :return: HuggingFace Dataset (iterable as dicts, column-accessible).
     :raises KeyError: If a required column is missing in the dataset.
@@ -56,11 +51,6 @@ def load_trace_rows(
         missing = [c for c in required_columns if c not in trace_dataset.column_names]
         if missing:
             raise KeyError(f"Trace row missing required columns: {missing}")
-
-    if max_rows is not None:
-        if max_rows < 1:
-            return trace_dataset.select([])
-        trace_dataset = trace_dataset.select(range(min(max_rows, len(trace_dataset))))
 
     return trace_dataset
 
