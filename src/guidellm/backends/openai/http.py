@@ -134,6 +134,14 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "multi-turn requests. Only supported with /v1/responses."
         ),
     )
+    tool_response_delay: float = Field(
+        default=0.0,
+        description=(
+            "Seconds to wait before sending the synthetic tool response in "
+            "multi-turn tool calling benchmarks. Simulates real tool execution time."
+        ),
+        ge=0.0,
+    )
 
     @field_validator("target", mode="after")
     @classmethod
