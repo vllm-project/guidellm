@@ -371,6 +371,16 @@ def benchmark():
     ),
 )
 @click.option(
+    "--min-requests",
+    type=int,
+    default=BenchmarkGenerativeTextArgs.get_default("min_requests"),
+    help=(
+        "Minimum requests per benchmark. "
+        "Unlike max_requests, requests will continue "
+        "to run until min_requests complete."
+    ),
+)
+@click.option(
     "--max-errors",
     type=int,
     default=BenchmarkGenerativeTextArgs.get_default("max_errors"),
