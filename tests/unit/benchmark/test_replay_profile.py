@@ -10,6 +10,7 @@ orrect time_scale.
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 from guidellm.benchmark.profiles import Profile, ReplayProfile

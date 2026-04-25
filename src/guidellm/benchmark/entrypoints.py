@@ -529,10 +529,6 @@ async def benchmark_generative_text(
             status="success",
         )
 
-    profile_kwargs: dict[str, Any] = {}
-    if args.profile == "replay":
-        profile_kwargs["data_samples"] = request_loader.info.get("data_samples", -1)
-
     profile = await resolve_profile(
         profile=args.profile,
         rate=args.rate,
@@ -547,7 +543,7 @@ async def benchmark_generative_text(
         over_saturation=args.over_saturation,
         console=console,
         data=args.data,
-        **profile_kwargs,
+        data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console
