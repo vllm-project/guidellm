@@ -45,12 +45,12 @@ class GuidellmClient:
     def start_benchmark(
         self,
         profile: str = "constant",
-        rate: int | float = 10,
-        max_seconds: int | float | None = None,
+        rate: int = 10,
+        max_seconds: int | None = None,
         max_requests: int | None = None,
         max_error_rate: float | None = None,
         over_saturation: dict[str, Any] | None = None,
-        data: str | Path = "prompt_tokens=256,output_tokens=128",
+        data: str = "prompt_tokens=256,output_tokens=128",
         processor: str = "gpt2",
         additional_args: str = "",
         extra_env: dict[str, str] | None = None,
@@ -59,13 +59,13 @@ class GuidellmClient:
         Start a guidellm benchmark command.
 
         :param profile: Type of rate control (constant, etc.)
-        :param rate: Request rate (or time_scale for replay profile)
+        :param rate: Request rate
         :param max_seconds: Maximum duration in seconds
         :param max_requests: Maximum number of requests
         :param max_error_rate: Maximum error rate before stopping
         :param over_saturation: Over-saturation detection configuration (dict).
             Passed as JSON string to --over-saturation CLI argument.
-        :param data: Data configuration string or Path to trace file for replay profile
+        :param data: Data configuration string
         :param processor: Processor/tokenizer to use
         :param additional_args: Additional command line arguments
         :param extra_env: Additional environment variables to set
@@ -109,7 +109,7 @@ class GuidellmClient:
 
         cmd_parts.extend(
             [
-                f'--data "{str(data)}"',
+                f'--data "{data}"',
                 f'--processor "{processor}"',
                 f"--output-dir {self.output_dir}",
                 f"--outputs {self.outputs}",
