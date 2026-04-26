@@ -65,6 +65,7 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 | `--random-seed`  | Random seed for reproducibility                | `--random-seed 42`                             |
 | `--max-seconds`  | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
 | `--max-requests` | Maximum number of requests for each benchmark  | `--max-requests 1000`                          |
+| `--data-samples` | Maximum number of dataset rows to load         | `--data-samples 1000`                          |
 | `--output-dir`   | Directory path to save output files            | `--output-dir results/`                        |
 | `--outputs`      | Output formats to generate                     | `--outputs json csv html`                      |
 
@@ -189,25 +190,29 @@ You can customize synthetic data generation with additional parameters such as s
 
 ### Trace Replay Benchmarking (beta)
 
-For realistic load testing, replay traffic patterns from trace files. Trace files must be JSONL with `timestamp`, `input_length`, and `output_length` fields:
+For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL and are loaded with the `trace_synthetic` data type. By default, each row uses `timestamp`, `input_length`, and `output_length` fields:
 
 ```json
 {"timestamp": 0, "input_length": 256, "output_length": 128}
 {"timestamp": 0.5, "input_length": 512, "output_length": 64}
 ```
 
-Run with the `replay` profile:
+Run with the `replay` profile. This example also maps custom trace column names:
 
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
   --data "path/to/trace.jsonl" \
-  --data-args '{"type_": "trace_synthetic"}' \
+  --data-args '{"type_": "trace_synthetic", "timestamp_column": "ts", "prompt_tokens_column": "input_tokens", "output_tokens_column": "output_tokens"}' \
   --profile replay \
   --rate 1.0
 ```
 
-The `rate` parameter acts as a time scale: `1.0` for original speed, `2.0` for 2x faster, `0.5` for half speed.
+The `--rate` parameter acts as a time scale, not requests per second: `1.0` for original speed, `2.0` to multiply timestamps by 2 and run twice as long, `0.5` to multiply timestamps by 0.5 and run twice as fast.
+
+GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-samples` to limit how many trace rows are loaded and replayed. `--max-requests` remains a runtime completion constraint; it does not truncate the trace dataset.
+
+If your trace uses the default column names shown above, omit `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` from `--data-args`.
 
 ### Working with Real Data
 

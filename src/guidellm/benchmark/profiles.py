@@ -376,7 +376,19 @@ class ReplayProfile(Profile):
         # second)
         time_scale = rate[0] if rate and len(rate) > 0 else 1.0
 
-        relative_timestamps = load_relative_timestamps(path)
+        # Honor a custom timestamp column when configured via --data-args so the
+        # scheduler and the trace_synthetic deserializer use the same field.
+        data_args = kwargs.get("data_args") or []
+        first_args = data_args[0] if data_args else {}
+        timestamp_column = "timestamp"
+        if isinstance(first_args, dict):
+            raw_timestamp_column = first_args.get("timestamp_column")
+            if isinstance(raw_timestamp_column, str) and raw_timestamp_column.strip():
+                timestamp_column = raw_timestamp_column
+
+        relative_timestamps = load_relative_timestamps(
+            path, timestamp_column=timestamp_column
+        )
         data_samples = kwargs.get("data_samples", -1)
         if isinstance(data_samples, int) and data_samples > 0:
             relative_timestamps = relative_timestamps[:data_samples]

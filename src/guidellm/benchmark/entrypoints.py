@@ -543,6 +543,7 @@ async def benchmark_generative_text(
         over_saturation=args.over_saturation,
         console=console,
         data=args.data,
+        data_args=args.data_args,
         data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(

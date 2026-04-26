@@ -218,6 +218,70 @@ class TestReplayProfile:
         assert kwargs["time_scale"] == 2.0
 
     @pytest.mark.smoke
+    def test_custom_timestamp_column_via_data_args(self, tmp_path: Path):
+        """data_args[0]["timestamp_column"] is honored by ReplayProfile."""
+        trace = _trace_path(
+            tmp_path,
+            [
+                '{"ts": 5.0, "input_length": 100, "output_length": 10}',
+                '{"ts": 2.0, "input_length": 200, "output_length": 20}',
+                '{"ts": 8.0, "input_length": 300, "output_length": 30}',
+            ],
+        )
+        kwargs = ReplayProfile.resolve_args(
+            rate_type="replay",
+            rate=[1.0],
+            random_seed=42,
+            data=[str(trace)],
+            data_args=[{"timestamp_column": "ts"}],
+        )
+        assert kwargs["relative_timestamps"] == pytest.approx(
+            [0.0, 3.0, 6.0], abs=1e-9
+        )
+
+    @pytest.mark.sanity
+    def test_default_timestamp_column_when_data_args_missing(self, tmp_path: Path):
+        """Without data_args, replay falls back to the default `timestamp` column."""
+        trace = _trace_path(
+            tmp_path,
+            [
+                '{"timestamp": 0, "input_length": 1, "output_length": 1}',
+                '{"timestamp": 1.0, "input_length": 2, "output_length": 2}',
+            ],
+        )
+        kwargs = ReplayProfile.resolve_args(
+            rate_type="replay",
+            rate=[1.0],
+            random_seed=42,
+            data=[str(trace)],
+        )
+        assert kwargs["relative_timestamps"] == pytest.approx([0.0, 1.0], abs=1e-9)
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("invalid_value", [None, "", "   ", 123, 1.5, False, []])
+    def test_invalid_timestamp_column_falls_back_to_default(
+        self,
+        tmp_path: Path,
+        invalid_value: object,
+    ):
+        """Invalid timestamp_column values fall back to default `timestamp`."""
+        trace = _trace_path(
+            tmp_path,
+            [
+                '{"timestamp": 10.0, "input_length": 1, "output_length": 1}',
+                '{"timestamp": 12.0, "input_length": 2, "output_length": 2}',
+            ],
+        )
+        kwargs = ReplayProfile.resolve_args(
+            rate_type="replay",
+            rate=[1.0],
+            random_seed=42,
+            data=[str(trace)],
+            data_args=[{"timestamp_column": invalid_value}],
+        )
+        assert kwargs["relative_timestamps"] == pytest.approx([0.0, 2.0], abs=1e-9)
+
+    @pytest.mark.smoke
     def test_data_samples_and_constraints_are_independent(self, tmp_path: Path):
         """data_samples truncates timestamps without mutating runtime constraints."""
         trace = _trace_path(
