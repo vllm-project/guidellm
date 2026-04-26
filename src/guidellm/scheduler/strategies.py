@@ -702,9 +702,9 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     @property
     def requests_limit(self) -> PositiveInt | None:
-        # Concurrency is governed by settings.max_concurrency, backend limits, or
-        # user-provided strategy limits; trace length is not a concurrency cap.
-        return None
+        if not self.relative_timestamps:
+            return None
+        return len(self.relative_timestamps)
 
     async def next_request_time(self, worker_index: NonNegativeInt) -> float:
         _ = worker_index
