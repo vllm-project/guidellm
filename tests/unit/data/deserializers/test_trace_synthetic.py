@@ -72,13 +72,13 @@ class TestTraceSyntheticDatasetDeserializer:
                 '{"timestamp": 0.3, "input_length": 131072, "output_length": 32768}\n',
                 [(10, 5), (65536, 16384), (20, 10), (131072, 32768)],
             ),
-            # Unsorted timestamps with duplicates (preserves file order)
+            # Unsorted timestamps with duplicates (sorts by timestamp)
             (
                 '{"timestamp": 5.0, "input_length": 100, "output_length": 10}\n'
                 '{"timestamp": 2.0, "input_length": 200, "output_length": 20}\n'
                 '{"timestamp": 8.0, "input_length": 300, "output_length": 30}\n'
                 '{"timestamp": 2.0, "input_length": 400, "output_length": 40}\n',
-                [(100, 10), (200, 20), (300, 30), (400, 40)],
+                [(200, 20), (400, 40), (100, 10), (300, 30)],
             ),
             # Concurrent burst (5 requests at same timestamp)
             (

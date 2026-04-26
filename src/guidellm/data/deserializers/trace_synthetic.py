@@ -65,10 +65,10 @@ def _load_trace_rows(
         raw = load_trace_rows(
             path,
             required_columns=[
-                timestamp_column,
                 prompt_tokens_column,
                 output_tokens_column,
             ],
+            timestamp_column=timestamp_column,
         )
     except (KeyError, ValueError) as e:
         raise DataNotSupportedError(str(e)) from e
