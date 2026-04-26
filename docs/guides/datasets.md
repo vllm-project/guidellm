@@ -13,6 +13,10 @@ The following arguments can be used to configure datasets and their processing:
   - `prompt_column`: Specifies the column name for the prompt. By default, GuideLLM will try the most common column names (e.g., `prompt`, `text`, `input`).
   - `prompt_tokens_count_column`: Specifies the column name for the prompt token count. These are used to set the request prompt token count for counting metrics. By default, GuideLLM assumes no token count is provided.
   - `output_tokens_count_column`: Specifies the column name for the output token count. These are used to set the request output token count for the request and counting metrics. By default, GuideLLM assumes no token count is provided.
+  - `type_`: Selects a specialized dataset deserializer, such as `trace_synthetic` for trace replay files.
+  - `timestamp_column`: Specifies the timestamp column for `trace_synthetic` data. The default is `timestamp`.
+  - `prompt_tokens_column`: Specifies the prompt token length column for `trace_synthetic` data. The default is `input_length`.
+  - `output_tokens_column`: Specifies the output token length column for `trace_synthetic` data. The default is `output_length`.
   - `split`: Specifies the dataset split to use (e.g., `train`, `val`, `test`). By default, GuideLLM will try the most common split names (e.g., `train`, `validation`, `test`) if the dataset has splits, otherwise it will use the entire dataset.
   - Any remaining arguments are passed directly into the dataset constructor as kwargs.
 - `--data-sampler`: Specifies the sampling strategy for datasets. By default, no sampling is applied. When set to `random`, it enables random shuffling of the dataset, which can be useful for creating diverse batches during benchmarking.
@@ -131,11 +135,23 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"}
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
-- **Trace files (`.jsonl` with `trace_synthetic` type)**: Specialized JSONL files for replay benchmarking with `timestamp`, `input_length`, and `output_length` fields. Used with `--profile replay` to reproduce production traffic patterns. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+- **Trace files (`.jsonl` with `trace_synthetic` type)**: Specialized JSONL files for replay benchmarking with `timestamp`, `input_length`, and `output_length` fields. Used with `--profile replay` to replay trace events using each row's timestamp and token lengths. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
   ```json
   {"timestamp": 0, "input_length": 256, "output_length": 128}
   {"timestamp": 0.5, "input_length": 512, "output_length": 64}
   ```
+  Trace rows are ordered by timestamp before GuideLLM schedules requests and generates synthetic payloads. This keeps each scheduled event aligned with the prompt and output token lengths from the same row.
+
+  Use `--data-args '{"type_": "trace_synthetic"}'` to enable trace loading. If your trace uses different column names, configure them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column`:
+  ```bash
+  guidellm benchmark \
+      --target "http://localhost:8000" \
+      --profile replay \
+      --rate 1.0 \
+      --data "path/to/trace.jsonl" \
+      --data-args '{"type_": "trace_synthetic", "timestamp_column": "ts", "prompt_tokens_column": "input_tokens", "output_tokens_column": "output_tokens"}'
+  ```
+  For replay, `--rate` is a time scale rather than requests per second. Use `--data-samples` to limit how many trace rows are loaded and replayed. Use `--max-requests` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
 - **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```json
   {
