@@ -134,14 +134,26 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "multi-turn requests. Only supported with /v1/responses."
         ),
     )
-    tool_response_delay: float = Field(
-        default=0.0,
+    tool_call_missing_behavior: str = Field(
+        default="error_stop",
         description=(
-            "Seconds to wait before sending the synthetic tool response in "
-            "multi-turn tool calling benchmarks. Simulates real tool execution time."
+            "What the worker does when a tool call is expected but the model "
+            "does not produce one. Options: ignore_continue (continue to next "
+            "turn), ignore_stop (cancel remaining turns), error_stop (error "
+            "and cancel remaining turns)."
         ),
-        ge=0.0,
     )
+
+    @field_validator("tool_call_missing_behavior")
+    @classmethod
+    def validate_tool_call_missing_behavior(cls, v: str) -> str:
+        valid = {"ignore_continue", "ignore_stop", "error_stop"}
+        if v not in valid:
+            raise ValueError(
+                f"Invalid tool_call_missing_behavior '{v}'. "
+                f"Must be one of: {', '.join(sorted(valid))}"
+            )
+        return v
 
     @field_validator("target", mode="after")
     @classmethod

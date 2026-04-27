@@ -10,7 +10,7 @@ analysis of time-to-first-token, inter-token latency, and token generation rates
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import Field, computed_field
@@ -52,6 +52,10 @@ class GenerativeRequestStats(StandardBaseDict):
     )
     output: str | None = Field(
         default=None, description="Generated text output from the request"
+    )
+    tool_calls: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Raw tool call payloads from the model response in OpenAI format",
     )
     info: RequestInfo = Field(description="Request metadata and timing information")
     input_metrics: UsageMetrics = Field(
