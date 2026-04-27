@@ -7,9 +7,10 @@ Workers coordinate with other processes through barriers and events, apply timin
 strategies for request scheduling, maintain concurrency limits, and publish real-time
 status updates throughout request processing.
 
-For multi-turn tool calling, the worker detects ``tool_calls`` on completed
-responses and dynamically creates follow-up continuation turns so the model
-can produce a final answer after seeing synthetic tool results.
+Tool-call turns are pre-planned at data generation time. The worker validates
+whether an expected tool call was produced, and reacts according to the
+configured ``tool_call_missing_behavior`` (ignore_continue / ignore_stop /
+error_stop).
 """
 
 from __future__ import annotations
@@ -53,39 +54,6 @@ from guidellm.utils.synchronous import (
 )
 
 __all__ = ["WorkerProcess"]
-
-
-def _create_tool_continuation(
-    request: RequestT,
-    request_info: RequestInfo,
-) -> tuple[RequestT, RequestInfo] | None:
-    """Create a follow-up turn for multi-turn tool calling.
-
-    When a model responds with tool_calls, the client must send the tool results
-    back so the model can produce a final text response. This creates an empty
-    continuation request that, combined with history, causes the request handler
-    to build the full message array (original + assistant tool_calls + tool
-    results).
-
-    :returns: None if the request type doesn't support copying.
-    """
-    try:
-        continuation = request.model_copy(  # type: ignore[attr-defined]  # generic RequestT
-            update={"columns": {}},
-        )
-        continuation.request_id = str(__import__("uuid").uuid4())
-    except AttributeError:
-        return None
-
-    continuation_info = RequestInfo(
-        request_id=continuation.request_id,  # type: ignore[union-attr]
-        conversation_id=request_info.conversation_id,
-        turn_index=request_info.turn_index + 1,
-        status="queued",
-        scheduler_process_id=request_info.scheduler_process_id,
-        scheduler_start_time=request_info.scheduler_start_time,
-    )
-    return continuation, continuation_info  # type: ignore[return-value]
 
 
 ProcessRequestT = TypeAliasType(
@@ -415,11 +383,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
 
-        After a turn completes, if the response contains ``tool_calls`` and no
-        more pre-planned turns remain, a follow-up continuation request is
-        dynamically created so the model can produce a final response after
-        seeing the synthetic tool results.  An optional ``tool_response_delay``
-        (read from the backend) simulates real tool execution latency.
+        When a completed turn has ``expects_tool_call`` set but the model did
+        not produce one, the worker reacts according to the backend's
+        ``tool_call_missing_behavior`` setting (ignore_continue / ignore_stop /
+        error_stop).
 
         :param target_start: Unix timestamp when request should begin processing
         """
@@ -460,28 +427,17 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Record Turn
             history.append((request, response))
 
-            # If the response contains tool calls and the conversation has no
-            # more pre-planned turns, dynamically create a follow-up turn so
-            # the model can produce a final response after seeing tool results.
-            if (
-                response is not None
-                and not conversation
-                and hasattr(response, "tool_calls")
-                and response.tool_calls
-            ):
-                continuation = _create_tool_continuation(request, request_info)
-                if continuation is not None:
-                    cont_req, cont_info = continuation
-                    # Register the dynamically created request with the
-                    # worker_group so it tracks the new request_id through
-                    # the pending → in_progress → completed lifecycle.
-                    self.messaging.put_sync(
-                        (None, cont_req, cont_info)
+            # Validate tool-call expectations against what the model produced.
+            if request.expects_tool_call:  # type: ignore[attr-defined]  # generic RequestT
+                tool_calls_present = (
+                    response is not None
+                    and response.tool_calls  # type: ignore[attr-defined]  # generic ResponseT
+                )
+
+                if not tool_calls_present:
+                    self._handle_missing_tool_call(
+                        request, request_info, response, conversation
                     )
-                    delay = getattr(self.backend, "tool_response_delay", 0.0)
-                    if delay > 0:
-                        await asyncio.sleep(delay)
-                    conversation.append(continuation)
 
             response = request = request_info = None
         except asyncio.CancelledError:
@@ -609,3 +565,50 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Calling logic can retry after handling error, if possible
             request_info.status = prev_status
             raise exc
+
+    def _handle_missing_tool_call(
+        self,
+        request: RequestT,
+        request_info: RequestInfo,
+        response: ResponseT | None,
+        conversation: ConversationT[RequestT],
+    ):
+        """React when a tool call was expected but the model didn't produce one.
+
+        Behaviour depends on ``self.backend.tool_call_missing_behavior``:
+
+        * ``ignore_continue`` -- do nothing; remaining turns (including future
+          tool turns) proceed normally.
+        * ``ignore_stop`` -- cancel all remaining turns; end conversation.
+        * ``error_stop`` -- mark the current turn as errored, cancel remaining.
+
+        :param request: The request that was expected to produce a tool call
+        :param request_info: Metadata for the current request
+        :param response: The response that lacked tool calls
+        :param conversation: Remaining pre-planned turns (mutated in place)
+        """
+        behavior = self.backend.tool_call_missing_behavior  # type: ignore[attr-defined]  # backend-specific attr
+
+        if behavior == "ignore_continue":
+            # No action -- remaining turns (including future tool turns)
+            # stay in conversation and proceed normally. Each tool turn
+            # succeeds or fails independently.
+            pass
+
+        elif behavior == "ignore_stop":
+            for skip_req, skip_info in conversation:
+                skip_info.error = (
+                    "Cancelled: prior tool-call turn produced no tool call"
+                )
+                skip_info.timings.resolve_end = time.time()
+                self._send_update("cancelled", None, skip_req, skip_info)
+            conversation.clear()
+
+        elif behavior == "error_stop":
+            request_info.error = "Expected tool call but model produced none"
+            self._send_update("errored", response, request, request_info)
+            for skip_req, skip_info in conversation:
+                skip_info.error = "Cancelled: prior tool-call turn errored"
+                skip_info.timings.resolve_end = time.time()
+                self._send_update("cancelled", None, skip_req, skip_info)
+            conversation.clear()

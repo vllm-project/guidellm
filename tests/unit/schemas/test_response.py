@@ -14,6 +14,7 @@ from guidellm.schemas import (
     GenerationResponse,
     GenerativeRequestStats,
     RequestInfo,
+    RequestTimings,
     StandardBaseModel,
     UsageMetrics,
 )
@@ -205,6 +206,52 @@ class TestGenerationResponse:
         assert stats.request_id == "test-123"
         assert stats.info.status == "errored"
 
+    @pytest.mark.smoke
+    def test_compile_stats_persists_tool_calls(self):
+        """
+        compile_stats carries tool_calls from the response to the stats.
+
+        ## WRITTEN BY AI ##
+        """
+        tool_calls = [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "get_weather", "arguments": '{"city": "NYC"}'},
+            }
+        ]
+        response = GenerationResponse(
+            request_id="test-tc",
+            request_args="test_args",
+            text=None,
+            tool_calls=tool_calls,
+        )
+
+        request = GenerationRequest(request_id="test-tc")
+        info = RequestInfo(request_id="test-tc", status="completed")
+
+        stats = response.compile_stats(request, info)
+        assert stats.tool_calls == tool_calls
+
+    @pytest.mark.smoke
+    def test_compile_stats_tool_calls_none_when_absent(self):
+        """
+        compile_stats leaves tool_calls as None for plain-text responses.
+
+        ## WRITTEN BY AI ##
+        """
+        response = GenerationResponse(
+            request_id="test-plain",
+            request_args="test_args",
+            text="Hello world",
+        )
+
+        request = GenerationRequest(request_id="test-plain")
+        info = RequestInfo(request_id="test-plain", status="completed")
+
+        stats = response.compile_stats(request, info)
+        assert stats.tool_calls is None
+
     @pytest.mark.sanity
     def test_compile_stats_mismatched_request_id(self):
         """Test compile_stats with mismatched request IDs."""
@@ -263,3 +310,56 @@ class TestGenerationResponse:
             reconstructed.output_metrics.model_dump()
             == instance.output_metrics.model_dump()
         )
+
+
+class TestGenerativeRequestStatsToolCalls:
+    """
+    Tests for tool_calls field on GenerativeRequestStats.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_tool_calls_round_trips_through_serialization(self):
+        """
+        tool_calls survives model_dump / model_validate.
+
+        ## WRITTEN BY AI ##
+        """
+        tool_calls = [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "fn", "arguments": "{}"},
+            }
+        ]
+        timings = RequestTimings(resolve_start=1.0, resolve_end=2.0)
+        stats = GenerativeRequestStats(
+            request_id="rt-1",
+            info=RequestInfo(
+                request_id="rt-1", status="completed", timings=timings
+            ),
+            input_metrics=UsageMetrics(),
+            output_metrics=UsageMetrics(),
+            tool_calls=tool_calls,
+        )
+        data = stats.model_dump()
+        assert data["tool_calls"] == tool_calls
+
+        restored = GenerativeRequestStats.model_validate(data)
+        assert restored.tool_calls == tool_calls
+
+    @pytest.mark.smoke
+    def test_tool_calls_defaults_to_none(self):
+        """
+        tool_calls is None when not provided.
+
+        ## WRITTEN BY AI ##
+        """
+        stats = GenerativeRequestStats(
+            request_id="rt-2",
+            info=RequestInfo(request_id="rt-2", status="completed"),
+            input_metrics=UsageMetrics(),
+            output_metrics=UsageMetrics(),
+        )
+        assert stats.tool_calls is None

@@ -1,6 +1,5 @@
 import codecs
 import json
-from pathlib import Path
 from typing import Any
 
 import click
@@ -12,11 +11,9 @@ __all__ = [
     "Union",
     "decode_escaped_str",
     "format_list_arg",
-    "parse_arguments",
     "parse_json",
     "parse_list",
     "parse_list_floats",
-    "parse_tools",
     "set_if_not_default",
 ]
 
@@ -151,32 +148,6 @@ def parse_arguments(
         return value_parsed
 
     return value
-
-
-def parse_tools(ctx, param, value):  # noqa: ARG001
-    """Parse --tools value as either a file path or inline JSON array."""
-    if value is None:
-        return None
-
-    path = Path(value)
-    if path.is_file():
-        with path.open() as f:
-            tools = json.load(f)
-    else:
-        try:
-            tools = json.loads(value)
-        except json.JSONDecodeError as err:
-            raise click.BadParameter(
-                f"--tools must be a path to a JSON file or an inline JSON array. "
-                f"Parse error: {err}"
-            ) from err
-
-    if not isinstance(tools, list):
-        raise click.BadParameter(
-            "--tools must resolve to a JSON array of tool definitions."
-        )
-
-    return tools
 
 
 def set_if_not_default(ctx: click.Context, **kwargs) -> dict[str, Any]:
