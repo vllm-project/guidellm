@@ -18,11 +18,32 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import SyntheticTextDatasetConfig
+from guidellm.utils.imports import json
 from guidellm.utils.random import IntegerRangeSampler
 
 __all__ = [
+    "DEFAULT_SYNTHETIC_TOOLS",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
+]
+
+# Placeholder tool definition used when the user doesn't supply their own
+# tools but sets tool_call_turns > 0.
+DEFAULT_SYNTHETIC_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_data",
+            "description": "Retrieve data from the system",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The query"}
+                },
+                "required": ["query"],
+            },
+        },
+    }
 ]
 
 
@@ -71,6 +92,11 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         prefix_iter = self._create_prefix_iter(faker, rand)
         samples_count = 0
 
+        # Resolve tool definitions for tool-call turns
+        tools_defs: list[dict[str, Any]] | None = None
+        if self.config.tool_call_turns > 0:
+            tools_defs = self.config.tools or DEFAULT_SYNTHETIC_TOOLS
+
         while True:
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
@@ -84,6 +110,10 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 )
                 row[f"prompt_tokens_count_{turn}"] = prompt_tokens_count
                 row[f"output_tokens_count_{turn}"] = output_tokens_count
+
+                if tools_defs is not None and turn < self.config.tool_call_turns:
+                    row[f"tools_{turn}"] = json.dumps(tools_defs)
+
                 samples_count += 1
 
             yield samples_count, row
@@ -94,11 +124,17 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
     @property
     def features(self) -> Features:
-        features = {"prefix": Value("string")}
+        features: dict[str, Any] = {"prefix": Value("string")}
         for i in range(self.config.turns):
             features[f"prompt_{i}"] = Value("string")
             features[f"prompt_tokens_count_{i}"] = Value("int32")
             features[f"output_tokens_count_{i}"] = Value("int32")
+
+            if i < self.config.tool_call_turns:
+                # Tools column is a JSON-serialised list; store as string
+                # to keep the HuggingFace Features schema simple.
+                features[f"tools_{i}"] = Value("large_string")
+
         return Features(features)
 
     @property

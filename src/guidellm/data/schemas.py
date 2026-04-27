@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
@@ -150,6 +150,20 @@ class SyntheticTextDatasetConfig(DataConfig):
         gt=0,
         default=1,
     )
+    tool_call_turns: int = Field(
+        description="Number of turns (from the start) that should include tool "
+        "definitions and expect tool-call responses. Must be <= turns. "
+        "When equal to turns, every turn is a tool-call turn and no "
+        "final plain-text response is produced. "
+        "When 0 (default), no tool calling is configured.",
+        ge=0,
+        default=0,
+    )
+    tools: list[dict[str, Any]] | None = Field(
+        description="Tool definitions in OpenAI format. When tool_call_turns > 0 "
+        "and this is None, a static placeholder tool definition is used.",
+        default=None,
+    )
 
     model_config = ConfigDict(
         extra="allow",
@@ -159,6 +173,22 @@ class SyntheticTextDatasetConfig(DataConfig):
         description="Buckets for the prefix tokens distribution.",
         default=None,
     )
+
+    @model_validator(mode="after")
+    def check_tool_call_options(self) -> SyntheticTextDatasetConfig:
+        if self.tool_call_turns > self.turns:
+            raise ValueError(
+                f"tool_call_turns ({self.tool_call_turns}) must be <= "
+                f"turns ({self.turns})."
+            )
+
+        if self.tools is not None and self.tool_call_turns == 0:
+            raise ValueError(
+                "tools were provided but tool_call_turns is 0. "
+                "Set tool_call_turns > 0 to enable tool calling."
+            )
+
+        return self
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:

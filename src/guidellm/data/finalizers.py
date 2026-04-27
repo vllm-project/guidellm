@@ -112,8 +112,14 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
                     input_metrics.audio_bytes or 0
                 ) + audio_bytes
 
+        # A turn expects a tool call if it has tool definitions.
+        # Which turns carry tools_column is controlled by the data pipeline
+        # (synthetic generator or dataset columns).
+        expects_tool_call = bool(columns.get("tools_column"))
+
         return GenerationRequest(
             columns=columns,
+            expects_tool_call=expects_tool_call,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )

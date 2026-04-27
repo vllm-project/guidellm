@@ -7,14 +7,17 @@ both streaming and non-streaming responses. Each handler implements the
 GenerationRequestHandler protocol to format json requests, parse API responses,
 extract usage metrics, and convert results into standardized GenerationResponse.
 
-The chat completions handler additionally supports multi-turn tool calling:
-it captures ``tool_calls`` from model responses, reconstructs them from
+The chat completions handler supports multi-turn tool calling with pre-planned
+turns: it captures ``tool_calls`` from model responses, reconstructs them from
 streaming deltas, and formats follow-up messages with synthetic tool results.
+The ``expects_tool_call`` flag on each request controls per-turn
+``tool_choice`` overrides.
 """
 
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
 from more_itertools import roundrobin
@@ -33,12 +36,49 @@ __all__ = [
     "OpenAIRequestHandlerFactory",
     "PoolingRequestHandler",
     "ResponsesRequestHandler",
+    "StreamingToolCall",
+    "StreamingToolCallFunction",
     "TextCompletionsRequestHandler",
 ]
 
 # Placeholder content returned in synthetic ``role: "tool"`` messages during
 # multi-turn tool calling.  The model sees this as the tool's output.
 DEFAULT_SYNTHETIC_TOOL_RESPONSE = '{"status": "ok"}'
+
+
+@dataclass
+class StreamingToolCallFunction:
+    """Accumulated function name and arguments for a single streamed tool call."""
+
+    name: str = ""
+    arguments: str = ""
+
+
+@dataclass
+class StreamingToolCall:
+    """A single tool call reassembled from streaming deltas.
+
+    Mirrors the OpenAI tool_call shape (``id``, ``type``, ``function``)
+    so it can be converted back to a plain dict for
+    :attr:`GenerationResponse.tool_calls`.
+    """
+
+    id: str = ""
+    type: str = "function"
+    function: StreamingToolCallFunction = field(
+        default_factory=StreamingToolCallFunction
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to the OpenAI tool_call dict format."""
+        return {
+            "id": self.id,
+            "type": self.type,
+            "function": {
+                "name": self.function.name,
+                "arguments": self.function.arguments,
+            },
+        }
 
 
 class OpenAIRequestHandler(Protocol):
@@ -420,7 +460,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Full tool call payloads accumulated across streaming deltas,
         # keyed by the delta ``index`` field.  Needed for multi-turn tool
         # calling so the response carries the id/name/arguments of each call.
-        self.streaming_tool_calls: dict[int, dict[str, Any]] = {}
+        self.streaming_tool_calls: dict[int, StreamingToolCall] = {}
 
     def _format_prompts(
         self, column_data: list[dict[str, Any]], column_type: str
@@ -478,8 +518,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         assistant message is emitted with the full tool_calls array and
         synthetic ``role: "tool"`` result messages are appended so the model
         sees a complete multi-turn tool-calling exchange.  Per-request tool
-        definitions from ``data.columns["tools_column"]`` are also injected
-        into the body when no global ``tools`` were provided via extras.
+        definitions from ``data.columns["tools_column"]`` are injected into
+        the request body.
+
+        On turns where ``data.expects_tool_call`` is ``False``, the
+        ``tool_choice`` API parameter is overridden to ``"none"`` so the model
+        produces a plain text response.
 
         :param data: The generation request to format
         :param response: Optional prior response for multi-turn history
@@ -575,27 +619,24 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 {"role": "assistant", "content": response.text}
             )
 
-        # Include per-request tool definitions from dataset columns, unless
-        # tools were already provided globally via extras.
-        if "tools" not in arguments.body:
-            tools_column = data.columns.get("tools_column", [])
-            if tools_column:
-                tools_value = tools_column[0]
-                if isinstance(tools_value, list):
-                    arguments.body["tools"] = tools_value
-                    arguments.body.setdefault("tool_choice", "auto")
+        # Include per-request tool definitions from dataset columns.
+        tools_column = data.columns.get("tools_column", [])
+        if tools_column:
+            tools_value = tools_column[0]
+            # Handle JSON-serialized tool definitions (e.g. from
+            # synthetic data generators that store tools as strings
+            # for HuggingFace Features compatibility).
+            # orjson.dumps produces bytes; stdlib json produces str.
+            if isinstance(tools_value, str | bytes):
+                tools_value = json.loads(tools_value)
+            if isinstance(tools_value, list):
+                arguments.body["tools"] = tools_value
+                arguments.body.setdefault("tool_choice", "required")
 
-        # Resolve per-turn tool_choice: "required:N" or "auto:N" uses the
-        # given mode for turns 0..N-1, then switches to "none" so the model
-        # produces a plain text response and the conversation terminates.
-        tool_choice = arguments.body.get("tool_choice")
-        if isinstance(tool_choice, str) and ":" in tool_choice:
-            mode, count_str = tool_choice.split(":", 1)
-            if mode in ("required", "auto"):
-                turn = kwargs.get("turn_index", 0)
-                arguments.body["tool_choice"] = (
-                    mode if turn < int(count_str) else "none"
-                )
+        # Override tool_choice to "none" on turns that don't expect tool calls,
+        # so the model produces a plain text response instead.
+        if "tools" in arguments.body and not data.expects_tool_call:
+            arguments.body["tool_choice"] = "none"
 
         # Tool calling requires the model to stop naturally after producing
         # valid JSON; ignore_eos would force generation past that point and
@@ -603,6 +644,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if "tools" in arguments.body:
             arguments.body.pop("ignore_eos", None)
             arguments.body.pop("stop", None)
+            # On tool-call turns, let the model finish valid JSON naturally;
+            # max_completion_tokens would truncate output mid-JSON and corrupt
+            # the arguments sent in conversation history on follow-up turns.
+            if data.expects_tool_call:
+                arguments.body.pop("max_completion_tokens", None)
+                arguments.body.pop("max_tokens", None)
 
         return arguments
 
@@ -683,19 +730,18 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             idx = tc_delta["index"]
             self.streaming_tool_call_indices.add(idx)
             if idx not in self.streaming_tool_calls:
-                self.streaming_tool_calls[idx] = {
-                    "id": tc_delta.get("id", ""),
-                    "type": tc_delta.get("type", "function"),
-                    "function": {"name": "", "arguments": ""},
-                }
+                self.streaming_tool_calls[idx] = StreamingToolCall(
+                    id=tc_delta.get("id", ""),
+                    type=tc_delta.get("type", "function"),
+                )
             tc = self.streaming_tool_calls[idx]
             fn_delta = tc_delta.get("function", {})
             if fn_id := tc_delta.get("id"):
-                tc["id"] = fn_id
+                tc.id = fn_id
             if fn_name := fn_delta.get("name"):
-                tc["function"]["name"] += fn_name
+                tc.function.name += fn_name
             if fn_args := fn_delta.get("arguments"):
-                tc["function"]["arguments"] += fn_args
+                tc.function.arguments += fn_args
             updated = True
 
         if usage:
@@ -729,7 +775,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         raw_tool_calls: list[dict[str, Any]] | None = None
         if self.streaming_tool_calls:
             raw_tool_calls = [
-                self.streaming_tool_calls[i] for i in sorted(self.streaming_tool_calls)
+                self.streaming_tool_calls[i].to_dict()
+                for i in sorted(self.streaming_tool_calls)
             ]
 
         return GenerationResponse(

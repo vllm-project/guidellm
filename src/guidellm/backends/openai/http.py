@@ -82,14 +82,26 @@ class OpenAIHttpBackendArgs(BackendArgs):
             "multi-turn requests. Only supported with /v1/responses."
         ),
     )
-    tool_response_delay: float = Field(
-        default=0.0,
+    tool_call_missing_behavior: str = Field(
+        default="error_stop",
         description=(
-            "Seconds to wait before sending the synthetic tool response in "
-            "multi-turn tool calling benchmarks. Simulates real tool execution time."
+            "What the worker does when a tool call is expected but the model "
+            "does not produce one. Options: ignore_continue (continue to next "
+            "turn), ignore_stop (cancel remaining turns), error_stop (error "
+            "and cancel remaining turns)."
         ),
-        ge=0.0,
     )
+
+    @field_validator("tool_call_missing_behavior")
+    @classmethod
+    def validate_tool_call_missing_behavior(cls, v: str) -> str:
+        valid = {"ignore_continue", "ignore_stop", "error_stop"}
+        if v not in valid:
+            raise ValueError(
+                f"Invalid tool_call_missing_behavior '{v}'. "
+                f"Must be one of: {', '.join(sorted(valid))}"
+            )
+        return v
 
     @field_validator("request_format")
     @classmethod
@@ -182,7 +194,7 @@ class OpenAIHTTPBackend(Backend):
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
         server_history: bool = False,
-        tool_response_delay: float = 0.0,
+        tool_call_missing_behavior: str = "error_stop",
     ):
         """
         Initialize OpenAI HTTP backend with server configuration.
@@ -199,8 +211,9 @@ class OpenAIHTTPBackend(Backend):
         :param validate_backend: Backend validation configuration
         :param server_history: Use server-side conversation history
             (previous_response_id) for multi-turn. Only with /v1/responses.
-        :param tool_response_delay: Seconds to wait before sending the synthetic
-            tool response in multi-turn tool calling.
+        :param tool_call_missing_behavior: What the worker does when a tool call
+            is expected but missing. One of: ignore_continue, ignore_stop,
+            error_stop.
         """
         super().__init__(type_="openai_http")
 
@@ -250,7 +263,7 @@ class OpenAIHTTPBackend(Backend):
             else extras
         )
         self.max_tokens: int | None = max_tokens or max_completion_tokens
-        self.tool_response_delay: float = tool_response_delay
+        self.tool_call_missing_behavior: str = tool_call_missing_behavior
 
         # Runtime state
         self._in_process = False

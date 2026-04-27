@@ -375,6 +375,8 @@ def _build_workload_details(
     sample_outputs = [
         req.output.replace("\n", " ").replace('"', "'")
         if (req := successful_requests[i]).output
+        else json.dumps(req.tool_calls).replace('"', "'")
+        if req.tool_calls
         else ""
         for i in sample_indices
     ]
