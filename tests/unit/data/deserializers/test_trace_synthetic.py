@@ -1,12 +1,3 @@
-## WRITTEN BY AI ##
-
-"""
-Unit tests for TraceSyntheticDatasetDeserializer.
-
-Ensures trace file is loaded and synthetic prompts are generated with exact
-input_length.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,114 +12,142 @@ from guidellm.data.deserializers.trace_synthetic import (
 from guidellm.data.schemas import DataNotSupportedError
 
 
-def _mock_processor():
-    """Tokenizer that returns token count = number of words in text."""
+def _mock_processor() -> Mock:
+    """Tokenizer where each whitespace-delimited word is one token."""
     proc = Mock()
-    proc.encode.side_effect = lambda text: list(range(max(1, len(text.split()))))
+    proc.encode.side_effect = lambda text: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
-        "x" for _ in range(len(tokens))
+        f"tok{i}" for i, _ in enumerate(tokens)
     )
     return proc
 
 
-def _deserialize(deserializer, data, **kwargs):
-    defaults = {
-        "processor_factory": _mock_processor,
-        "random_seed": 42,
-    }
-    return deserializer(**{**defaults, "data": data, **kwargs})
+def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
+    path = tmp_path / f"trace{suffix}"
+    path.write_text(content)
+    return path
 
 
 class TestTraceSyntheticDatasetDeserializer:
-    """Tests for TraceSyntheticDatasetDeserializer."""
-
     @pytest.fixture
-    def deserializer(self):
+    def deserializer(self) -> TraceSyntheticDatasetDeserializer:
         return TraceSyntheticDatasetDeserializer()
 
+    def _deserialize(self, deserializer, data, **kwargs):
+        return deserializer(
+            data=data,
+            processor_factory=_mock_processor,
+            random_seed=42,
+            **kwargs,
+        )
+
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        ("content", "expected"),
-        [
-            # Basic small counts
-            (
-                '{"timestamp": 0, "input_length": 50, "output_length": 20}\n'
-                '{"timestamp": 0.5, "input_length": 100, "output_length": 30}\n',
-                [(50, 20), (100, 30)],
-            ),
-            # Production-scale token counts (4K-128K contexts)
-            (
-                '{"timestamp": 0, "input_length": 4096, "output_length": 512}\n'
-                '{"timestamp": 1.0, "input_length": 8192, "output_length": 1024}\n'
-                '{"timestamp": 2.0, "input_length": 32768, "output_length": 4096}\n'
-                '{"timestamp": 3.0, "input_length": 131072, "output_length": 8192}\n',
-                [(4096, 512), (8192, 1024), (32768, 4096), (131072, 8192)],
-            ),
-            # Mixed high/low alternating (edge cases)
-            (
-                '{"timestamp": 0, "input_length": 10, "output_length": 5}\n'
-                '{"timestamp": 0.1, "input_length": 65536, "output_length": 16384}\n'
-                '{"timestamp": 0.2, "input_length": 20, "output_length": 10}\n'
-                '{"timestamp": 0.3, "input_length": 131072, "output_length": 32768}\n',
-                [(10, 5), (65536, 16384), (20, 10), (131072, 32768)],
-            ),
-            # Unsorted timestamps with duplicates (sorts by timestamp)
-            (
-                '{"timestamp": 5.0, "input_length": 100, "output_length": 10}\n'
-                '{"timestamp": 2.0, "input_length": 200, "output_length": 20}\n'
-                '{"timestamp": 8.0, "input_length": 300, "output_length": 30}\n'
-                '{"timestamp": 2.0, "input_length": 400, "output_length": 40}\n',
-                [(200, 20), (400, 40), (100, 10), (300, 30)],
-            ),
-            # Concurrent burst (5 requests at same timestamp)
-            (
-                '{"timestamp": 1.0, "input_length": 100, "output_length": 10}\n'
-                '{"timestamp": 1.0, "input_length": 200, "output_length": 20}\n'
-                '{"timestamp": 1.0, "input_length": 300, "output_length": 30}\n'
-                '{"timestamp": 1.0, "input_length": 400, "output_length": 40}\n'
-                '{"timestamp": 1.0, "input_length": 500, "output_length": 50}\n',
-                [(100, 10), (200, 20), (300, 30), (400, 40), (500, 50)],
-            ),
-        ],
-    )
-    def test_load_jsonl_various_scenarios(
-        self, tmp_path: Path, deserializer, content, expected
+    def test_loads_sorted_rows_and_keeps_token_columns_aligned(
+        self, tmp_path: Path, deserializer
     ):
-        """Trace JSONL yields exact token counts (small, large, mixed, unsorted,
-        duplicates)."""
-        trace = tmp_path / "trace.jsonl"
-        trace.write_text(content)
-        ds = _deserialize(deserializer, str(trace), type_="trace_synthetic")
+        trace = _write_trace(
+            tmp_path,
+            '{"timestamp": 5.0, "input_length": 3, "output_length": 30}\n'
+            '{"timestamp": 2.0, "input_length": 1, "output_length": 10}\n'
+            '{"timestamp": 2.0, "input_length": 2, "output_length": 20}\n'
+            '{"timestamp": 8.0, "input_length": 0, "output_length": 40}\n',
+        )
+
+        ds = self._deserialize(deserializer, trace, type_="trace_synthetic")
+
         assert isinstance(ds, Dataset)
-        assert len(ds) == len(expected)
-        assert set(ds.column_names) >= {
-            "prompt",
-            "prompt_tokens_count",
-            "output_tokens_count",
-        }
-        for row, (in_len, out_len) in zip(ds, expected, strict=True):
-            assert row["prompt_tokens_count"] == in_len
-            assert row["output_tokens_count"] == out_len
+        assert ds["prompt_tokens_count"] == [1, 2, 3, 0]
+        assert ds["output_tokens_count"] == [10, 20, 30, 40]
+        for prompt, token_count in zip(
+            ds["prompt"], ds["prompt_tokens_count"], strict=True
+        ):
+            assert len(_mock_processor().encode(prompt)) == token_count
+
+    @pytest.mark.smoke
+    def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
+        trace = _write_trace(
+            tmp_path,
+            '{"ts": 3.0, "input_tokens": 4, "generated_tokens": 40}\n'
+            '{"ts": 1.0, "input_tokens": 2, "generated_tokens": 20}\n',
+        )
+
+        ds = self._deserialize(
+            deserializer,
+            trace,
+            type_="trace_synthetic",
+            timestamp_column="ts",
+            prompt_tokens_column="input_tokens",
+            output_tokens_column="generated_tokens",
+        )
+
+        assert ds["prompt_tokens_count"] == [2, 4]
+        assert ds["output_tokens_count"] == [20, 40]
 
     @pytest.mark.smoke
     def test_rejects_invalid_data(self, deserializer):
-        """Non-path data raises DataNotSupportedError."""
         with pytest.raises(DataNotSupportedError, match="path to a trace file"):
-            _deserialize(deserializer, 123)
+            self._deserialize(deserializer, 123)
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        ("content", "match"),
+        ("content", "kwargs", "match"),
         [
-            ("", "empty"),
-            ('{"ts": 0, "input_length": 10, "output_length": 5}\n', "timestamp"),
+            ("", {}, "empty"),
+            (
+                '{"ts": 0, "input_length": 10, "output_length": 5}\n',
+                {},
+                "timestamp",
+            ),
+            (
+                '{"timestamp": 0, "input_length": 10}\n',
+                {},
+                "output_length",
+            ),
+            (
+                '{"timestamp": 0, "prompt_tokens": 10, "output_length": 5}\n',
+                {
+                    "prompt_tokens_column": "prompt_tokens",
+                    "output_tokens_column": "out",
+                },
+                "out",
+            ),
+            (
+                '{"timestamp": "bad", "input_length": 10, "output_length": 5}\n',
+                {},
+                "could not convert",
+            ),
+            (
+                '{"timestamp": 0, "input_length": "bad", "output_length": 5}\n',
+                {},
+                "invalid literal",
+            ),
+            (
+                '{"timestamp": 0, "input_length": 10, "output_length": null}\n',
+                {},
+                "NoneType",
+            ),
+            (
+                '{"timestamp": 0, "input_length": 10, "output_length": 5}\nnot-json\n',
+                {},
+                "generating the dataset",
+            ),
         ],
     )
     def test_trace_validation_raises(
-        self, tmp_path: Path, deserializer, content, match
+        self, tmp_path: Path, deserializer, content, kwargs, match
     ):
-        """Empty trace or missing required column raises DataNotSupportedError."""
-        trace = tmp_path / "trace.jsonl"
-        trace.write_text(content)
+        trace = _write_trace(tmp_path, content)
+
         with pytest.raises(DataNotSupportedError, match=match):
-            _deserialize(deserializer, str(trace))
+            self._deserialize(deserializer, trace, **kwargs)
+
+    @pytest.mark.sanity
+    def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):
+        trace = _write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 5}\n',
+            suffix=".json",
+        )
+
+        with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.json"):
+            self._deserialize(deserializer, trace)

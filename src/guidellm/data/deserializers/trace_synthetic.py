@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from datasets import Dataset
+from datasets.exceptions import DatasetGenerationError
 from faker import Faker
 from transformers import PreTrainedTokenizerBase
 
@@ -70,16 +71,19 @@ def _load_trace_rows(
             ],
             timestamp_column=timestamp_column,
         )
-    except (KeyError, ValueError) as e:
+    except (DatasetGenerationError, KeyError, ValueError) as e:
         raise DataNotSupportedError(str(e)) from e
-    return [
-        {
-            "timestamp": float(row[timestamp_column]),
-            "prompt_tokens": int(row[prompt_tokens_column]),
-            "output_tokens": int(row[output_tokens_column]),
-        }
-        for row in raw
-    ]
+    try:
+        return [
+            {
+                "timestamp": float(row[timestamp_column]),
+                "prompt_tokens": int(row[prompt_tokens_column]),
+                "output_tokens": int(row[output_tokens_column]),
+            }
+            for row in raw
+        ]
+    except (TypeError, ValueError) as e:
+        raise DataNotSupportedError(str(e)) from e
 
 
 @DatasetDeserializerFactory.register("trace_synthetic")
