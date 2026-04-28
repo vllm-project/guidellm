@@ -831,3 +831,510 @@ class TestOpenAIBackendToolCallMissingBehavior:
                 target="http://localhost:8000",
                 tool_call_missing_behavior="invalid_mode",
             )
+
+
+# ---------------------------------------------------------------------------
+# SyntheticTextDatasetConfig: tool_response_tokens validation
+# ---------------------------------------------------------------------------
+
+
+class TestSyntheticTextDatasetConfigToolResponseFields:
+    """Validate tool_response_tokens fields on SyntheticTextDatasetConfig.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_tool_response_tokens_defaults_to_none(self):
+        """Default config has no tool_response_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDatasetConfig(prompt_tokens=50, output_tokens=50)
+        assert config.tool_response_tokens is None
+        assert config.tool_response_tokens_stdev is None
+        assert config.tool_response_tokens_min is None
+        assert config.tool_response_tokens_max is None
+
+    @pytest.mark.smoke
+    def test_tool_response_tokens_accepted_with_tool_call_turns(self):
+        """tool_response_tokens is valid when tool_call_turns > 0.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50,
+            output_tokens=50,
+            turns=3,
+            tool_call_turns=2,
+            tool_response_tokens=50,
+        )
+        assert config.tool_response_tokens == 50
+
+    @pytest.mark.sanity
+    def test_tool_response_tokens_without_tool_call_turns_rejected(self):
+        """tool_response_tokens without tool_call_turns is invalid.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="tool_response_tokens.*tool_call_turns"):
+            SyntheticTextDatasetConfig(
+                prompt_tokens=50,
+                output_tokens=50,
+                tool_response_tokens=50,
+            )
+
+    @pytest.mark.sanity
+    def test_tool_response_tokens_variance_fields(self):
+        """All variance fields are accepted together.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50,
+            output_tokens=50,
+            turns=3,
+            tool_call_turns=2,
+            tool_response_tokens=100,
+            tool_response_tokens_stdev=20,
+            tool_response_tokens_min=50,
+            tool_response_tokens_max=150,
+        )
+        assert config.tool_response_tokens == 100
+        assert config.tool_response_tokens_stdev == 20
+        assert config.tool_response_tokens_min == 50
+        assert config.tool_response_tokens_max == 150
+
+
+# ---------------------------------------------------------------------------
+# Synthetic data: tool_response_{i} columns
+# ---------------------------------------------------------------------------
+
+
+class TestSyntheticDataToolResponseColumns:
+    """Verify synthetic data emits tool_response_{turn} columns.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def processor(self):
+        """Minimal mock processor for token encoding/decoding.
+
+        ## WRITTEN BY AI ##
+        """
+        proc = MagicMock()
+        proc.encode.return_value = list(range(100))
+        proc.decode.return_value = "mock text"
+        return proc
+
+    @pytest.mark.smoke
+    def test_default_tool_response_columns_emitted(self, processor):
+        """When tool_response_tokens is None, placeholder responses are used.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.deserializers.synthetic import (
+            DEFAULT_SYNTHETIC_TOOL_RESPONSE,
+            _SyntheticTextExamplesIterable,
+        )
+
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        assert row["tool_response_0"] == DEFAULT_SYNTHETIC_TOOL_RESPONSE
+        assert row["tool_response_1"] == DEFAULT_SYNTHETIC_TOOL_RESPONSE
+        assert "tool_response_2" not in row
+
+    @pytest.mark.smoke
+    def test_variable_length_tool_response_columns(self, processor):
+        """When tool_response_tokens is set, generated JSON responses are used.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.deserializers.synthetic import (
+            _SyntheticTextExamplesIterable,
+        )
+
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=10,
+            output_tokens=10,
+            turns=3,
+            tool_call_turns=2,
+            tool_response_tokens=30,
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        # Should be valid JSON with a "result" key
+        parsed_0 = json.loads(row["tool_response_0"])
+        parsed_1 = json.loads(row["tool_response_1"])
+        assert "result" in parsed_0
+        assert "result" in parsed_1
+        assert "tool_response_2" not in row
+
+    @pytest.mark.sanity
+    def test_features_include_tool_response_columns(self, processor):
+        """Features property includes tool_response_{i} for tool_call_turns.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.deserializers.synthetic import (
+            _SyntheticTextExamplesIterable,
+        )
+
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        features = iterable.features
+
+        assert "tool_response_0" in features
+        assert "tool_response_1" in features
+        assert "tool_response_2" not in features
+
+
+# ---------------------------------------------------------------------------
+# ToolCallingMessageExtractor: tool response extraction
+# ---------------------------------------------------------------------------
+
+
+class TestToolCallingMessageExtractorToolResponses:
+    """Verify the extractor populates tool_response_column from messages.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_extracts_tool_role_content(self):
+        """Messages with role=tool have their content extracted.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.preprocessors.tool_calling import (
+            ToolCallingMessageExtractor,
+        )
+
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Call the tool."},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_1", "function": {"name": "fn", "arguments": "{}"}}
+                ],
+            },
+            {
+                "role": "tool",
+                "content": '{"status": "success", "data": [1, 2]}',
+                "tool_call_id": "call_1",
+            },
+            {"role": "user", "content": "Thanks!"},
+        ]
+
+        items = [{"text_column": [messages]}]
+        extractor = ToolCallingMessageExtractor()
+        result = extractor(items)
+
+        assert "tool_response_column" in result[0]
+        assert result[0]["tool_response_column"] == [
+            '{"status": "success", "data": [1, 2]}'
+        ]
+
+    @pytest.mark.sanity
+    def test_no_tool_responses_when_absent(self):
+        """When no role=tool messages exist, tool_response_column is not set.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.preprocessors.tool_calling import (
+            ToolCallingMessageExtractor,
+        )
+
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"},
+        ]
+
+        items = [{"text_column": [messages]}]
+        extractor = ToolCallingMessageExtractor()
+        result = extractor(items)
+
+        assert "tool_response_column" not in result[0]
+
+    @pytest.mark.sanity
+    def test_multiple_tool_responses_extracted(self):
+        """Multiple role=tool messages are all extracted in order.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.preprocessors.tool_calling import (
+            ToolCallingMessageExtractor,
+        )
+
+        messages = [
+            {"role": "user", "content": "Do two things."},
+            {"role": "tool", "content": '{"first": true}', "tool_call_id": "c1"},
+            {"role": "tool", "content": '{"second": true}', "tool_call_id": "c2"},
+        ]
+
+        items = [{"text_column": [messages]}]
+        extractor = ToolCallingMessageExtractor()
+        result = extractor(items)
+
+        assert result[0]["tool_response_column"] == [
+            '{"first": true}',
+            '{"second": true}',
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Request handler: tool_response_column usage
+# ---------------------------------------------------------------------------
+
+
+class TestChatCompletionsToolResponseColumn:
+    """Verify request handler uses tool_response_column instead of hardcoded default.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def handler(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        return ChatCompletionsRequestHandler()
+
+    @pytest.mark.smoke
+    def test_uses_tool_response_from_column(self, handler):
+        """Tool response content from tool_response_column is used in history.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas import GenerationResponse
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        prior_request = GenerationRequest(
+            columns={
+                "text_column": ["call the tool"],
+                "tools_column": [json.dumps(tools)],
+                "tool_response_column": ['{"result": "custom data"}'],
+            },
+            expects_tool_call=True,
+        )
+        prior_response = MagicMock(spec=GenerationResponse)
+        prior_response.tool_calls = [
+            {"id": "call_1", "type": "function", "function": {"name": "fn"}}
+        ]
+        prior_response.text = None
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["now respond"]},
+            expects_tool_call=False,
+        )
+
+        result = handler.format(
+            current_request,
+            history=[(prior_request, prior_response)],
+        )
+
+        # Find the tool role message in the history
+        tool_messages = [
+            m for m in result.body["messages"] if m.get("role") == "tool"
+        ]
+        assert len(tool_messages) == 1
+        assert tool_messages[0]["content"] == '{"result": "custom data"}'
+
+    @pytest.mark.sanity
+    def test_falls_back_to_default_without_column(self, handler):
+        """Without tool_response_column, the default placeholder is used.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.backends.openai.request_handlers import (
+            DEFAULT_SYNTHETIC_TOOL_RESPONSE,
+        )
+        from guidellm.schemas import GenerationResponse
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        prior_request = GenerationRequest(
+            columns={
+                "text_column": ["call the tool"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=True,
+        )
+        prior_response = MagicMock(spec=GenerationResponse)
+        prior_response.tool_calls = [
+            {"id": "call_1", "type": "function", "function": {"name": "fn"}}
+        ]
+        prior_response.text = None
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["now respond"]},
+            expects_tool_call=False,
+        )
+
+        result = handler.format(
+            current_request,
+            history=[(prior_request, prior_response)],
+        )
+
+        tool_messages = [
+            m for m in result.body["messages"] if m.get("role") == "tool"
+        ]
+        assert len(tool_messages) == 1
+        assert tool_messages[0]["content"] == DEFAULT_SYNTHETIC_TOOL_RESPONSE
+
+    @pytest.mark.sanity
+    def test_bytes_tool_response_decoded(self, handler):
+        """Tool response content stored as bytes (from orjson) is decoded to str.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas import GenerationResponse
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        prior_request = GenerationRequest(
+            columns={
+                "text_column": ["call the tool"],
+                "tools_column": [json.dumps(tools)],
+                "tool_response_column": [b'{"result": "bytes data"}'],
+            },
+            expects_tool_call=True,
+        )
+        prior_response = MagicMock(spec=GenerationResponse)
+        prior_response.tool_calls = [
+            {"id": "call_1", "type": "function", "function": {"name": "fn"}}
+        ]
+        prior_response.text = None
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["now respond"]},
+            expects_tool_call=False,
+        )
+
+        result = handler.format(
+            current_request,
+            history=[(prior_request, prior_response)],
+        )
+
+        tool_messages = [
+            m for m in result.body["messages"] if m.get("role") == "tool"
+        ]
+        assert len(tool_messages) == 1
+        assert tool_messages[0]["content"] == '{"result": "bytes data"}'
+        assert isinstance(tool_messages[0]["content"], str)
+
+
+# ---------------------------------------------------------------------------
+# JSONL pipeline integration: multi-turn tool call columns
+# ---------------------------------------------------------------------------
+
+
+def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:
+    """Push a single dataset row through the column mapper and finalizer.
+
+    ## WRITTEN BY AI ##
+    """
+    from datasets import Dataset
+
+    from guidellm.data.preprocessors.mappers import GenerativeColumnMapper
+
+    dataset = Dataset.from_dict({k: [v] for k, v in row.items()})
+
+    mapper = GenerativeColumnMapper()
+    mapper.setup_data([dataset], [{}])
+
+    finalizer = GenerativeRequestFinalizer()
+    mapped_turns = mapper([{"dataset": row}])
+    return finalizer(mapped_turns)
+
+
+class TestJsonlMultiTurnToolCallPipeline:
+    """Integration tests: JSONL with turn-indexed tool columns through the
+    full mapper-to-finalizer pipeline.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_consecutive_tool_turns(self):
+        """3-turn JSONL: turns 0-1 are tool calls, turn 2 is plain text.
+
+        ## WRITTEN BY AI ##
+        """
+        row = {
+            "prompt_0": "Call the weather tool",
+            "output_tokens_count_0": 50,
+            "tools_0": '[{"type": "function", "function": {"name": "get_weather"}}]',
+            "tool_response_0": '{"temp": 72}',
+            "prompt_1": "Now call the stock tool",
+            "output_tokens_count_1": 50,
+            "tools_1": '[{"type": "function", "function": {"name": "get_stock"}}]',
+            "tool_response_1": '{"price": 150}',
+            "prompt_2": "Summarize everything",
+            "output_tokens_count_2": 100,
+        }
+
+        requests = _run_row_through_pipeline(row)
+
+        assert len(requests) == 3
+
+        assert requests[0].expects_tool_call is True
+        assert "tools_column" in requests[0].columns
+        assert requests[0].columns["tool_response_column"] == ['{"temp": 72}']
+
+        assert requests[1].expects_tool_call is True
+        assert "tools_column" in requests[1].columns
+        assert requests[1].columns["tool_response_column"] == ['{"price": 150}']
+
+        assert requests[2].expects_tool_call is False
+        assert "tools_column" not in requests[2].columns
+        assert "tool_response_column" not in requests[2].columns
+
+    @pytest.mark.smoke
+    def test_interleaved_tool_turns(self):
+        """4-turn JSONL: tool calls on turns 0 and 3, plain text on 1 and 2.
+
+        ## WRITTEN BY AI ##
+        """
+        row = {
+            "prompt_0": "Look up the weather",
+            "output_tokens_count_0": 50,
+            "tools_0": '[{"type": "function", "function": {"name": "get_weather"}}]',
+            "tool_response_0": '{"temp": 72}',
+            "prompt_1": "Tell me about it",
+            "output_tokens_count_1": 60,
+            "prompt_2": "Any other thoughts?",
+            "output_tokens_count_2": 60,
+            "prompt_3": "Now check stocks",
+            "output_tokens_count_3": 50,
+            "tools_3": '[{"type": "function", "function": {"name": "get_stock"}}]',
+            "tool_response_3": '{"price": 150}',
+        }
+
+        requests = _run_row_through_pipeline(row)
+
+        assert len(requests) == 4
+
+        assert requests[0].expects_tool_call is True
+        assert "tools_column" in requests[0].columns
+        assert "tool_response_column" in requests[0].columns
+
+        assert requests[1].expects_tool_call is False
+        assert "tools_column" not in requests[1].columns
+        assert "tool_response_column" not in requests[1].columns
+
+        assert requests[2].expects_tool_call is False
+        assert "tools_column" not in requests[2].columns
+        assert "tool_response_column" not in requests[2].columns
+
+        assert requests[3].expects_tool_call is True
+        assert "tools_column" in requests[3].columns
+        assert "tool_response_column" in requests[3].columns

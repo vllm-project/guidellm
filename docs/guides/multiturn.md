@@ -175,9 +175,9 @@ When enabled, GuideLLM sends only the current turn's input and references the pr
 
 ## Tool Calling
 
-GuideLLM supports benchmarking multi-turn tool calling workloads. Tool call turns are **pre-anticipated**: the data pipeline decides upfront which turns expect a tool call and which expect plain text. GuideLLM does not dynamically create follow-up turns at runtime. Instead, the full conversation structure is planned during data generation, and the worker executes each turn in order.
+GuideLLM supports benchmarking multi-turn tool calling workloads. Tool call turns are **pre-anticipated**: the data pipeline decides upfront which turns expect a tool call and which expect plain text. GuideLLM does not dynamically create follow-up turns at runtime. Instead, the full conversation structure is planned during data generation, and the worker executes each turn in order, with each tool call being scheduled like any other turn by the profile.
 
-When a tool-call turn completes, GuideLLM appends a synthetic tool result (`{"status": "ok"}`) to the conversation history and proceeds to the next pre-planned turn. The final turn is always a plain-text turn where `tool_choice` is overridden to `"none"`.
+When a tool-call turn completes, GuideLLM appends a tool result to the conversation history and proceeds to the next pre-planned turn. The tool result content comes from one of three sources (in priority order): the dataset's tool response column, synthetic data configured via `tool_response_tokens`, or a short placeholder (`{"status": "ok"}`). All turns where a tool call is not anticipated have `tool_choice` overridden to `"none"` for predictability.
 
 ### Server Setup
 
@@ -208,9 +208,31 @@ guidellm benchmark run \
   --rate 1
 ```
 
-- `tool_call_turns` must be `<= turns`. When `tool_call_turns == turns`, every turn is a tool-call turn and the model never produces a final plain-text response.
-- When `tools` is omitted, a built-in placeholder tool definition is used.
-- Custom tool definitions can be provided inline: `"tools": [{"type": "function", ...}]`.
+Synthetic data configuration fields for tool calling:
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `tool_call_turns` | `int` | `0` | Number of turns (from the start) that include tool definitions and expect tool-call responses. Must be `<= turns`. When equal to `turns`, every turn is a tool-call turn and no final plain-text response is produced. |
+| `tools` | `list` | `None` | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`. |
+| `tool_response_tokens` | `int` | `None` | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used. |
+| `tool_response_tokens_stdev` | `int` | `None` | Standard deviation for tool response token count. |
+| `tool_response_tokens_min` | `int` | `None` | Minimum number of tokens for tool response. |
+| `tool_response_tokens_max` | `int` | `None` | Maximum number of tokens for tool response. |
+
+**Configuring tool response content** -- by default, tool results use a short placeholder (`{"status": "ok"}`). For more realistic benchmarks, set `tool_response_tokens` to generate variable-length JSON responses:
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --model "Qwen/Qwen3-0.6B" \
+  --request-format /v1/chat/completions \
+  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2, "tool_response_tokens": 50}' \
+  --max-requests 30 \
+  --profile constant \
+  --rate 1
+```
+
+The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
 
 **2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
 
@@ -224,6 +246,8 @@ guidellm benchmark run \
   --profile constant \
   --rate 1
 ```
+
+The `tool_calling_message_extractor` preprocessor must be explicitly enabled via `--data-preprocessors` (it is not included by default). It parses each row's `messages` array and extracts prompts, system messages, and tool results into the appropriate columns. If the dataset has no tool result messages, the placeholder (`{"status": "ok"}`) is used as a fallback.
 
 ### Tool Choice and Missing Tool Call Behavior
 

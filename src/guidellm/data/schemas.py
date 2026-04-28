@@ -24,6 +24,7 @@ GenerativeDatasetColumnType = Literal[
     "video_column",
     "audio_column",
     "tools_column",
+    "tool_response_column",
 ]
 
 
@@ -164,6 +165,27 @@ class SyntheticTextDatasetConfig(DataConfig):
         "and this is None, a static placeholder tool definition is used.",
         default=None,
     )
+    tool_response_tokens: int | None = Field(
+        description="Average number of tokens for synthetic tool call responses. "
+        "When None (default), a short placeholder response is used.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_stdev: int | None = Field(
+        description="Standard deviation for tool response token count.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_min: int | None = Field(
+        description="Minimum number of tokens for tool response.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_max: int | None = Field(
+        description="Maximum number of tokens for tool response.",
+        gt=0,
+        default=None,
+    )
 
     model_config = ConfigDict(
         extra="allow",
@@ -185,6 +207,12 @@ class SyntheticTextDatasetConfig(DataConfig):
         if self.tools is not None and self.tool_call_turns == 0:
             raise ValueError(
                 "tools were provided but tool_call_turns is 0. "
+                "Set tool_call_turns > 0 to enable tool calling."
+            )
+
+        if self.tool_response_tokens is not None and self.tool_call_turns == 0:
+            raise ValueError(
+                "tool_response_tokens was set but tool_call_turns is 0. "
                 "Set tool_call_turns > 0 to enable tool calling."
             )
 

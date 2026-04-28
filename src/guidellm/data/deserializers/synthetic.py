@@ -23,9 +23,13 @@ from guidellm.utils.random import IntegerRangeSampler
 
 __all__ = [
     "DEFAULT_SYNTHETIC_TOOLS",
+    "DEFAULT_SYNTHETIC_TOOL_RESPONSE",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
 ]
+
+# Short placeholder used when no tool_response_tokens size is configured.
+DEFAULT_SYNTHETIC_TOOL_RESPONSE = '{"status": "ok"}'
 
 # Placeholder tool definition used when the user doesn't supply their own
 # tools but sets tool_call_turns > 0.
@@ -97,6 +101,19 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         if self.config.tool_call_turns > 0:
             tools_defs = self.config.tools or DEFAULT_SYNTHETIC_TOOLS
 
+        # Optional sampler for variable-length tool responses
+        tool_response_sampler: Iterator[int] | None = None
+        if self.config.tool_response_tokens is not None:
+            tool_response_sampler = iter(
+                IntegerRangeSampler(
+                    average=self.config.tool_response_tokens,
+                    variance=self.config.tool_response_tokens_stdev,
+                    min_value=self.config.tool_response_tokens_min,
+                    max_value=self.config.tool_response_tokens_max,
+                    random_seed=iter_random_seed + 2,
+                )
+            )
+
         while True:
             prompt_tokens_count = next(prompt_tokens_sampler)
             output_tokens_count = next(output_tokens_sampler)
@@ -113,6 +130,17 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
                 if tools_defs is not None and turn < self.config.tool_call_turns:
                     row[f"tools_{turn}"] = json.dumps(tools_defs)
+
+                    if tool_response_sampler is not None:
+                        tr_tokens = next(tool_response_sampler)
+                        body = self._create_prompt(tr_tokens, faker)
+                        row[f"tool_response_{turn}"] = json.dumps(
+                            {"result": body}
+                        )
+                    else:
+                        row[f"tool_response_{turn}"] = (
+                            DEFAULT_SYNTHETIC_TOOL_RESPONSE
+                        )
 
                 samples_count += 1
 
@@ -134,6 +162,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 # Tools column is a JSON-serialised list; store as string
                 # to keep the HuggingFace Features schema simple.
                 features[f"tools_{i}"] = Value("large_string")
+                features[f"tool_response_{i}"] = Value("large_string")
 
         return Features(features)
 

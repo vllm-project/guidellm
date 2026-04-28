@@ -504,7 +504,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return formatted_data
 
-    def format(  # noqa: C901, PLR0912
+    def format(  # noqa: C901, PLR0912, PLR0915
         self,
         data: GenerationRequest,
         response: GenerationResponse | None = None,
@@ -606,12 +606,28 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     "tool_calls": response.tool_calls,
                 }
             )
-            for tc in response.tool_calls:
+            # Use per-request tool response content if available,
+            # otherwise fall back to the default placeholder.
+            tool_response_columns = data.columns.get(
+                "tool_response_column", []
+            )
+            for tc_idx, tc in enumerate(response.tool_calls):
+                raw_content = (
+                    tool_response_columns[tc_idx]
+                    if tc_idx < len(tool_response_columns)
+                    else DEFAULT_SYNTHETIC_TOOL_RESPONSE
+                )
+                # orjson.dumps returns bytes; ensure content is a string.
+                tool_response_content = (
+                    raw_content.decode("utf-8")
+                    if isinstance(raw_content, bytes)
+                    else raw_content
+                )
                 arguments.body["messages"].append(
                     {
                         "role": "tool",
                         "tool_call_id": tc.get("id", ""),
-                        "content": DEFAULT_SYNTHETIC_TOOL_RESPONSE,
+                        "content": tool_response_content,
                     }
                 )
         elif response and response.text:
