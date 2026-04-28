@@ -8,7 +8,7 @@ Automatically converts values to appropriate Python types (int, float, bool, str
 
 Usage:
 ::
-    from guidellm.utils import arg_string
+    import guidellm.utils.arg_string as arg_string
     result = arg_string.loads("prompt_tokens=10,output_tokens=30")
     # {'prompt_tokens': 10, 'output_tokens': 30}
 """
@@ -140,6 +140,59 @@ class ArgStringParser:
             self._value_set_nested(result, segments, parsed_value)
 
         return result
+
+    def set(self, obj: dict, path: str, value: Any) -> None:
+        """
+        Update a nested dictionary with a value at the specified path.
+
+        This method allows updating a nested dictionary structure using a path
+        string that supports dot notation for nested dictionaries and bracket
+        notation for list indices. It creates intermediate dictionaries and lists
+        as needed, filling sparse list gaps with the specified fill value.
+
+        :param obj: The dictionary to update in place
+        :param path: The path string indicating where to set the value, e.g.,
+            "parent.child[0].name"
+        :param value: The value to set at the specified path
+        :raises ArgStringParseError: If the path format is invalid or if overwriting
+            existing values is not allowed based on the parser's configuration
+        """
+        segments = self._parse_key(path)
+        self._value_set_nested(obj, segments, value)
+
+    def get(self, obj: dict, path: str) -> Any:
+        """
+        Retrieve a value from a nested dictionary using a path string.
+
+        This method allows retrieving values from a nested dictionary structure
+        using a path string that supports dot notation for nested dictionaries and
+        bracket notation for list indices.
+
+        :param obj: The dictionary to retrieve the value from
+        :param path: The path string indicating where to get the value, e.g.,
+            "parent.child[0].name"
+        :return: The value at the specified path, or None if the path does not exist
+        :raises ArgStringParseError: If the path format is invalid
+        :raises KeyError: If a dictionary key in the path does not exist
+        :raises IndexError: If a list index in the path is out of range
+        """
+        path_list = path.split(".")
+        segments = self._parse_key(path)
+        current: Any = obj
+
+        for i, (name, index) in enumerate(segments, 1):
+            if not isinstance(current, dict) or name not in current:
+                path_so_far = ".".join(path_list[:i])
+                raise KeyError(f"Key '{name}' not found in '{path_so_far}'")
+            current = current[name]
+
+            if index is not None:
+                if not isinstance(current, list) or index >= len(current):
+                    path_so_far = ".".join(path_list[:i])
+                    raise IndexError(f"Index '{path_so_far}' out of range")
+                current = current[index]
+
+        return current
 
     def _parse_key(self, key: str) -> list[tuple[str, int | None]]:
         """
