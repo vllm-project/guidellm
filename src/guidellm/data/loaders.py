@@ -85,7 +85,9 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
 
-    def generator(
+    _CONSECUTIVE_ERROR_WARN_THRESHOLD = 50
+
+    def generator(  # noqa: C901
         self,
         max_items: int | None = None,
         modulus: int | None = None,
@@ -93,6 +95,9 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         epoch: int = 0,
     ) -> Iterator[DataT]:
         gen_count = 0
+        yield_count = 0
+        error_count = 0
+        consecutive_errors = 0
 
         with contextlib.suppress(StopIteration):
             dataset_iters = []
@@ -121,12 +126,33 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                     for preprocessor in self.preprocessors:
                         row = preprocessor(row)
 
-                    yield self.finalizer(row)
+                    result = self.finalizer(row)
+                    yield result
+                    yield_count += 1
+                    consecutive_errors = 0
                 except StopIteration:
                     raise  # Stop iteration when any dataset is exhausted
                 except Exception as err:  # noqa: BLE001 # Exception logged
+                    error_count += 1
+                    consecutive_errors += 1
                     logger.error(f"Skipping data row due to error: {err}")
+                    if consecutive_errors == self._CONSECUTIVE_ERROR_WARN_THRESHOLD:
+                        logger.warning(
+                            f"{self._CONSECUTIVE_ERROR_WARN_THRESHOLD} "
+                            f"consecutive row errors encountered "
+                            f"({error_count} total errors out of "
+                            f"{gen_count} rows). Check data format and "
+                            f"preprocessor configuration."
+                        )
                     gen_count -= 1
+
+        if gen_count > 0 and yield_count == 0:
+            logger.warning(
+                f"Dataset iterator processed {gen_count} rows but yielded "
+                f"zero results ({error_count} errors). This usually means "
+                f"the column mapper could not match any dataset columns. "
+                f"Check --data-column-mapper and dataset column names."
+            )
 
         if max_items is not None and gen_count < max_items:
             raise ValueError(

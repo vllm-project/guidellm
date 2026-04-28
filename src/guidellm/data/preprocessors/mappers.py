@@ -11,6 +11,7 @@ from guidellm.data.preprocessors.preprocessor import (
     PreprocessorRegistry,
 )
 from guidellm.data.schemas import GenerativeDatasetColumnType
+from guidellm.logger import logger
 
 __all__ = ["GenerativeColumnMapper", "PoolingColumnMapper"]
 
@@ -201,6 +202,27 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         self.datasets_column_mappings = self.datasets_mappings(
             datasets, self.input_mappings
         )
+
+        if not self.datasets_column_mappings:
+            available_cols: list[str] = []
+            for ds in datasets:
+                cols = ds.column_names or list(next(iter(ds)).keys())
+                available_cols.extend(cols)
+            logger.warning(
+                "GenerativeColumnMapper found no matching columns. "
+                f"Available dataset columns: {available_cols}. "
+                f"Requested mappings: {self.input_mappings or self.defaults}. "
+                "Every row will produce an empty result."
+            )
+        elif not any(
+            ct == "text_column" for ct, _turn in self.datasets_column_mappings
+        ):
+            mapped_types = sorted({ct for ct, _ in self.datasets_column_mappings})
+            logger.warning(
+                "GenerativeColumnMapper mapped columns but none resolved to "
+                f"'text_column'. Mapped types: {mapped_types}. "
+                "Requests will have no text content."
+            )
 
 
 @PreprocessorRegistry.register("pooling_column_mapper")
