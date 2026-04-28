@@ -538,7 +538,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         else:
             return str(uuid.uuid4())
 
-    def requests_generator(  # noqa: C901
+    def requests_generator(
         self,
         requests: DatasetIterT[RequestT],
     ) -> Generator[ConversationT[RequestT], None, None]:
@@ -589,31 +589,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         stop_queueing = True
                         return
 
-            empty_count = 0
             for request_chain in requests:
-                conversation = list(_turn_iter(request_chain))
-                if not conversation:
-                    empty_count += 1
-                    if empty_count == 1:
-                        logger.warning(
-                            "requests_generator received an empty conversation "
-                            "from the data pipeline (no turns). This usually "
-                            "means the column mapper could not match dataset "
-                            "columns. Check --data-column-mapper settings."
-                        )
-                    continue
-
-                yield conversation
+                yield list(_turn_iter(request_chain))
 
                 if stop_queueing:
                     self.stop_send_requests_event.set()
                     return
-
-            if count == 0:
-                raise RuntimeError(
-                    "Dataset produced zero valid requests. "
-                    "Check --data-column-mapper and dataset column names."
-                )
 
             # Reached the end, inject a RequestsExhaustedConstraint to record
             self._locked_update(

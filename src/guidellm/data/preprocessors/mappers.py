@@ -210,18 +210,22 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
                 available_cols.extend(cols)
             logger.warning(
                 "GenerativeColumnMapper found no matching columns. "
-                f"Available dataset columns: {available_cols}. "
-                f"Requested mappings: {self.input_mappings or self.defaults}. "
-                "Every row will produce an empty result."
+                "Available dataset columns: {}. "
+                "Requested mappings: {}. "
+                "Every row will produce an empty result.",
+                available_cols,
+                self.input_mappings or self.defaults,
             )
         elif not any(
             ct == "text_column" for ct, _turn in self.datasets_column_mappings
         ):
             mapped_types = sorted({ct for ct, _ in self.datasets_column_mappings})
-            logger.warning(
+            logger.debug(
                 "GenerativeColumnMapper mapped columns but none resolved to "
-                f"'text_column'. Mapped types: {mapped_types}. "
-                "Requests will have no text content."
+                "'text_column'. Mapped types: {}. "
+                "This is expected for non-text datasets (e.g. image, audio, "
+                "geospatial). If text content was intended, check column names.",
+                mapped_types,
             )
 
 

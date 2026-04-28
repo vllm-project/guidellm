@@ -85,8 +85,6 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
 
-    _CONSECUTIVE_ERROR_WARN_THRESHOLD = 50
-
     def generator(  # noqa: C901
         self,
         max_items: int | None = None,
@@ -97,7 +95,6 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         gen_count = 0
         yield_count = 0
         error_count = 0
-        consecutive_errors = 0
 
         with contextlib.suppress(StopIteration):
             dataset_iters = []
@@ -127,27 +124,25 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                         row = preprocessor(row)
 
                     result = self.finalizer(row)
+                    # Filter empty results (e.g. column mapper matched
+                    # no columns, so finalizer returned an empty list)
+                    if not result:
+                        continue
                     yield result
                     yield_count += 1
-                    consecutive_errors = 0
                 except StopIteration:
                     raise  # Stop iteration when any dataset is exhausted
                 except Exception as err:  # noqa: BLE001 # Exception logged
                     error_count += 1
-                    consecutive_errors += 1
-                    logger.error(f"Skipping data row due to error: {err}")
-                    if consecutive_errors == self._CONSECUTIVE_ERROR_WARN_THRESHOLD:
-                        logger.warning(
-                            f"{self._CONSECUTIVE_ERROR_WARN_THRESHOLD} "
-                            f"consecutive row errors encountered "
-                            f"({error_count} total errors out of "
-                            f"{gen_count} rows). Check data format and "
-                            f"preprocessor configuration."
-                        )
+                    logger.error(
+                        "Skipping data row due to error: {}. "
+                        "Check data format and preprocessor configuration.",
+                        err,
+                    )
                     gen_count -= 1
 
         if gen_count > 0 and yield_count == 0:
-            logger.warning(
+            raise ValueError(
                 f"Dataset iterator processed {gen_count} rows but yielded "
                 f"zero results ({error_count} errors). This usually means "
                 f"the column mapper could not match any dataset columns. "
