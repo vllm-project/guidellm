@@ -272,7 +272,7 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("outputs"),
     help=(
         "The filename.ext for each of the outputs to create or the "
-        "alises (json, csv) for the output files to create with "
+        "alises (json, csv, html) for the output files to create with "
         "their default file names (benchmark.[EXT])"
     ),
 )
@@ -512,8 +512,8 @@ def run(**kwargs):  # noqa: C901
     "--output-formats",
     multiple=True,
     type=str,
-    default=("console", "json"),
-    help="Output formats for benchmark results (e.g., console, json, csv).",
+    default=("console", "json"),  # ("console", "json", "html", "csv")
+    help="Output formats for benchmark results (e.g., console, json, html, csv).",
 )
 def from_file(path, output_path, output_formats):
     asyncio.run(reimport_benchmarks_report(path, output_path, output_formats))
