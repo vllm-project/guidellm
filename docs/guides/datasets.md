@@ -120,29 +120,38 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 #### Supported Formats with Examples
 
 - **Text files (`.txt`, `.text`)**: Where each line is a separate prompt to use.
+
   ```
   Hello, how are you?
   What is your name?
   ```
+
 - **CSV files (`.csv`)**: Where each row is a separate dataset entry and the first row contains the column names. The columns should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+
   ```csv
   prompt,output_tokens_count,additional_column,additional_column2
   Hello, how are you?,5,foo,bar
   What is your name?,3,baz,qux
   ```
+
 - **JSON Lines files (`.jsonl`)**: Where each line is a separate JSON object. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-args` argument.
+
   ```json
   {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"}
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
+
 - **Trace files (`.jsonl` with `trace_synthetic` type)**: Specialized JSONL files for replay benchmarking with `timestamp`, `input_length`, and `output_length` fields. Used with `--profile replay` to replay trace events using each row's timestamp and token lengths. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+
   ```json
   {"timestamp": 0, "input_length": 256, "output_length": 128}
   {"timestamp": 0.5, "input_length": 512, "output_length": 64}
   ```
+
   Trace rows are ordered by timestamp before GuideLLM schedules requests and generates synthetic payloads. This keeps each scheduled event aligned with the prompt and output token lengths from the same row.
 
   Use `--data-args '{"type_": "trace_synthetic"}'` to enable trace loading. If your trace uses different column names, configure them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column`:
+
   ```bash
   guidellm benchmark \
       --target "http://localhost:8000" \
@@ -151,8 +160,11 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
       --data "path/to/trace.jsonl" \
       --data-args '{"type_": "trace_synthetic", "timestamp_column": "ts", "prompt_tokens_column": "input_tokens", "output_tokens_column": "output_tokens"}'
   ```
+
   For replay, `--rate` is a time scale rather than requests per second. Use `--data-samples` to limit how many trace rows are loaded and replayed. Use `--max-requests` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
+
 - **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+
   ```json
   {
     "version": "1.0",
@@ -162,8 +174,11 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
     ]
   }
   ```
+
 - **Parquet files (`.parquet`)** Example: A binary columnar storage format for efficient data processing. For more information on the supported formats, see the Hugging Face dataset documentation linked in the [Notes](#notes) section.
+
 - **Arrow files (`.arrow`)** Example: A cross-language development platform for in-memory data. For more information on the supported formats, see the Hugging Face dataset documentation linked in the [Notes](#notes) section.
+
 - **HDF5 files (`.hdf5`)** Example: A hierarchical data format for storing large amounts of data. For more information on the supported formats, see the Hugging Face dataset documentation linked in the [Notes](#notes) section.
 
 #### Example Commands
