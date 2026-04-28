@@ -179,6 +179,10 @@ GuideLLM supports benchmarking multi-turn tool calling workloads. Tool call turn
 
 When a tool-call turn completes, GuideLLM appends a tool result to the conversation history and proceeds to the next pre-planned turn. The tool result content comes from one of three sources (in priority order): the dataset's tool response column, synthetic data configured via `tool_response_tokens`, or a short placeholder (`{"status": "ok"}`). All turns where a tool call is not anticipated have `tool_choice` overridden to `"none"` for predictability.
 
+### Mocked client-side tool calls
+
+GuideLLM currently supports mocked client-side tool calls. This means that the inference server runs the model and may return real `tool_calls`, but GuideLLM **does not execute** those functions against live APIs or other runtimes. The benchmark worker acts as a **mock client**: after each tool-call turn it injects the next `role: "tool"` message into client-side chat history for the following request. This allows measuring LLM throughput with tool-call handling, not external tool latency or side effects.
+
 ### Server Setup
 
 Tool calling requires server-side support. For vLLM, enable auto tool choice and a parser matching your model:
@@ -210,14 +214,14 @@ guidellm benchmark run \
 
 Synthetic data configuration fields for tool calling:
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `tool_call_turns` | `int` | `0` | Number of turns (from the start) that include tool definitions and expect tool-call responses. Must be `<= turns`. When equal to `turns`, every turn is a tool-call turn and no final plain-text response is produced. |
-| `tools` | `list` | `None` | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`. |
-| `tool_response_tokens` | `int` | `None` | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used. |
-| `tool_response_tokens_stdev` | `int` | `None` | Standard deviation for tool response token count. |
-| `tool_response_tokens_min` | `int` | `None` | Minimum number of tokens for tool response. |
-| `tool_response_tokens_max` | `int` | `None` | Maximum number of tokens for tool response. |
+| Field                        | Type   | Default | Description                                                                                                                                                                                                            |
+| ---------------------------- | ------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tool_call_turns`            | `int`  | `0`     | Number of turns (from the start) that include tool definitions and expect tool-call responses. Must be `<= turns`. When equal to `turns`, every turn is a tool-call turn and no final plain-text response is produced. |
+| `tools`                      | `list` | `None`  | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`.                                                |
+| `tool_response_tokens`       | `int`  | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                             |
+| `tool_response_tokens_stdev` | `int`  | `None`  | Standard deviation for tool response token count.                                                                                                                                                                      |
+| `tool_response_tokens_min`   | `int`  | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                            |
+| `tool_response_tokens_max`   | `int`  | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                            |
 
 **Configuring tool response content** -- by default, tool results use a short placeholder (`{"status": "ok"}`). For more realistic benchmarks, set `tool_response_tokens` to generate variable-length JSON responses:
 
@@ -253,10 +257,10 @@ The `tool_calling_message_extractor` preprocessor must be explicitly enabled via
 
 Two CLI options control how tool-call turns are handled at runtime:
 
-| Option | Values | Default | Description |
-| --- | --- | --- | --- |
-| `--tool-choice` | `required`, `auto`, `none` | `required` | Sent as the `tool_choice` API parameter on turns that expect a tool call. On non-tool turns, it is always overridden to `none`. |
-| `--tool-call-missing-behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the worker does when a tool call was expected but the model produced plain text instead. |
+| Option                         | Values                                         | Default      | Description                                                                                                                     |
+| ------------------------------ | ---------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--tool-choice`                | `required`, `auto`, `none`                     | `required`   | Sent as the `tool_choice` API parameter on turns that expect a tool call. On non-tool turns, it is always overridden to `none`. |
+| `--tool-call-missing-behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the worker does when a tool call was expected but the model produced plain text instead.                                   |
 
 **`--tool-choice` implications:**
 
