@@ -57,6 +57,8 @@ class ArgStringParser:
         skip_invalid: bool = False,
         fill_value: Callable[[], Any] | None = None,
         allow_overwrite: bool = False,
+        key_delimiter: str = ".",
+        split_delimiter: str = ",",
     ):
         """
         Initialize the argument string parser.
@@ -70,6 +72,8 @@ class ArgStringParser:
         self.skip_invalid = skip_invalid
         self.fill_value = fill_value() if fill_value is not None else None
         self.allow_overwrite = allow_overwrite
+        self.key_delimiter = key_delimiter
+        self.split_delimiter = split_delimiter
 
     def decode(self, s: str) -> dict[str, Any]:
         """
@@ -110,7 +114,7 @@ class ArgStringParser:
             return result
 
         # Split by commas
-        pairs = s.split(",")
+        pairs = s.split(self.split_delimiter)
 
         for pair_raw in pairs:
             pair_stripped = pair_raw.strip()
@@ -176,19 +180,19 @@ class ArgStringParser:
         :raises KeyError: If a dictionary key in the path does not exist
         :raises IndexError: If a list index in the path is out of range
         """
-        path_list = path.split(".")
+        path_list = path.split(self.key_delimiter)
         segments = self._parse_key(path)
         current: Any = obj
 
         for i, (name, index) in enumerate(segments, 1):
             if not isinstance(current, dict) or name not in current:
-                path_so_far = ".".join(path_list[:i])
+                path_so_far = self.key_delimiter.join(path_list[:i])
                 raise KeyError(f"Key '{name}' not found in '{path_so_far}'")
             current = current[name]
 
             if index is not None:
                 if not isinstance(current, list) or index >= len(current):
-                    path_so_far = ".".join(path_list[:i])
+                    path_so_far = self.key_delimiter.join(path_list[:i])
                     raise IndexError(f"Index '{path_so_far}' out of range")
                 current = current[index]
 
@@ -208,7 +212,7 @@ class ArgStringParser:
         segments: list[tuple[str, int | None]] = []
 
         # Split by dots first
-        parts = key.split(".")
+        parts = key.split(self.key_delimiter)
 
         for part in parts:
             # Check if part has array notation: name[index]
