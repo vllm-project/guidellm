@@ -24,13 +24,16 @@ class IntegerRangeSampler:
         calc_min = self.min_value
         if calc_min is None:
             calc_min = max(
-                1, self.average - 5 * self.variance if self.variance else self.average
+                0, self.average - 5 * self.variance if self.variance else self.average
             )
         calc_max = self.max_value
         if calc_max is None:
             calc_max = (
                 self.average + 5 * self.variance if self.variance else self.average
             )
+
+        # Ensure calc_max >= calc_min
+        calc_max = max(calc_min, calc_max)
 
         while True:
             if calc_min == calc_max:

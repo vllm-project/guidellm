@@ -62,22 +62,23 @@ class PreprocessDatasetConfig(DataConfig):
     )
     output_tokens: int = Field(
         description="The average number of text tokens retained or added to outputs.",
-        gt=0,
+        ge=0,
+        default=0,
     )
     output_tokens_stdev: int | None = Field(
         description="The standard deviation of the number of tokens retained or "
         "added to outputs.",
-        gt=0,
+        ge=0,
         default=None,
     )
     output_tokens_min: int | None = Field(
         description="The minimum number of text tokens retained or added to outputs.",
-        gt=0,
+        ge=0,
         default=None,
     )
     output_tokens_max: int | None = Field(
         description="The maximum number of text tokens retained or added to outputs.",
-        gt=0,
+        ge=0,
         default=None,
     )
     prefix_tokens_max: int | None = Field(
@@ -131,12 +132,12 @@ class SyntheticTextDatasetConfig(DataConfig):
     )
     output_tokens_stdev: int | None = Field(
         description="The standard deviation of the tokens generated for outputs.",
-        gt=0,
+        ge=0,
         default=None,
     )
     output_tokens_min: int | None = Field(
         description="The minimum number of text tokens generated for outputs.",
-        gt=0,
+        ge=0,
         default=None,
     )
     output_tokens_max: int | None = Field(

@@ -11,6 +11,7 @@ import pytest
 from guidellm.backends.openai.request_handlers import (
     AudioRequestHandler,
     ChatCompletionsRequestHandler,
+    EmbeddingsRequestHandler,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
     PoolingRequestHandler,
@@ -74,6 +75,7 @@ class TestOpenAIRequestHandlerFactory:
             ("/v1/audio/transcriptions", None, AudioRequestHandler),
             ("/v1/audio/translations", None, AudioRequestHandler),
             ("/pooling", None, PoolingRequestHandler),
+            ("/v1/embeddings", None, EmbeddingsRequestHandler),
             (
                 "/v1/completions",
                 {"/v1/completions": ChatCompletionsRequestHandler},
@@ -87,6 +89,7 @@ class TestOpenAIRequestHandlerFactory:
             "/v1/audio/transcriptions",
             "/v1/audio/translations",
             "/pooling",
+            "/v1/embeddings",
             "override_text_completions",
         ],
     )
@@ -3185,3 +3188,216 @@ class TestPoolingRequestHandler:
         assert result.body["data"]["data_format"] == "url"
         assert result.body["data"]["out_data_format"] == "b64_json"
         assert result.body["data"]["indices"] == [1, 2, 3, 8, 11, 12]
+
+
+class TestEmbeddingsRequestHandler:
+    """Test cases for EmbeddingsRequestHandler.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture
+    def valid_instances(self):
+        """Create instance of EmbeddingsRequestHandler.
+
+        ### WRITTEN BY AI ###
+        """
+        return EmbeddingsRequestHandler()
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Test EmbeddingsRequestHandler class signatures.
+
+        ### WRITTEN BY AI ###
+        """
+        handler = EmbeddingsRequestHandler()
+        assert hasattr(handler, "format")
+        assert hasattr(handler, "compile_non_streaming")
+        assert hasattr(handler, "add_streaming_line")
+        assert hasattr(handler, "compile_streaming")
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """Test EmbeddingsRequestHandler initialization.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        assert isinstance(instance, EmbeddingsRequestHandler)
+
+    # Request formatting tests
+    @pytest.mark.smoke
+    def test_format_minimal(self, valid_instances):
+        """Test format method with minimal data.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data)
+
+        assert result.body is not None
+        assert isinstance(result.body, dict)
+        assert result.stream is False  # Embeddings never stream
+
+    @pytest.mark.sanity
+    def test_format_with_model(self, valid_instances):
+        """Test format method with model parameter.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+
+        result = instance.format(data, model="BAAI/bge-small-en-v1.5")
+
+        assert result.body["model"] == "BAAI/bge-small-en-v1.5"
+        assert result.stream is False
+
+    @pytest.mark.sanity
+    def test_format_single_text(self, valid_instances):
+        """Test format method with single text input.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["Hello world"]},
+        )
+
+        result = instance.format(data)
+
+        assert result.body["input"] == "Hello world"
+        assert isinstance(result.body["input"], str)
+
+    @pytest.mark.sanity
+    def test_format_multiple_texts(self, valid_instances):
+        """Test format method with multiple text inputs.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["Hello", "How are you?"]},
+        )
+
+        result = instance.format(data)
+
+        assert result.body["input"] == ["Hello", "How are you?"]
+        assert isinstance(result.body["input"], list)
+
+    @pytest.mark.sanity
+    def test_format_with_encoding_format(self, valid_instances):
+        """Test format method with encoding_format parameter.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["test"]},
+        )
+
+        result = instance.format(data, encoding_format="base64")
+
+        assert result.body["encoding_format"] == "base64"
+
+    @pytest.mark.sanity
+    def test_format_with_dimensions(self, valid_instances):
+        """Test format method with dimensions parameter.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["test"]},
+        )
+
+        result = instance.format(data, dimensions=512)
+
+        assert result.body["dimensions"] == 512
+
+    @pytest.mark.sanity
+    def test_format_with_extras(self, valid_instances):
+        """Test format method with extra parameters.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        data = GenerationRequest()
+        extras = {"body": {"user": "test-user"}}
+
+        result = instance.format(data, extras=extras)
+
+        assert result.body.get("user") == "test-user"
+
+    @pytest.mark.sanity
+    def test_compile_non_streaming(self, valid_instances):
+        """Test compile_non_streaming method.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        request = GenerationRequest()
+        arguments = instance.format(request, model="test-model")
+        response_data = {
+            "object": "list",
+            "data": [{"embedding": [0.1, 0.2, 0.3], "index": 0}],
+            "model": "test-model",
+            "usage": {"prompt_tokens": 10, "total_tokens": 10},
+        }
+
+        result = instance.compile_non_streaming(request, arguments, response_data)
+
+        assert isinstance(result, GenerationResponse)
+        assert result.request_id == request.request_id
+        assert result.text == ""  # No text output for embeddings
+        assert result.input_metrics.text_tokens == 10
+        assert result.output_metrics.text_tokens == 0
+
+    @pytest.mark.sanity
+    def test_compile_non_streaming_no_usage(self, valid_instances):
+        """Test compile_non_streaming with missing usage data.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        request = GenerationRequest()
+        arguments = instance.format(request)
+        response_data = {
+            "object": "list",
+            "data": [{"embedding": [0.1, 0.2, 0.3], "index": 0}],
+        }
+
+        result = instance.compile_non_streaming(request, arguments, response_data)
+
+        assert result.input_metrics.text_tokens == 0
+        assert result.output_metrics.text_tokens == 0
+
+    @pytest.mark.sanity
+    def test_add_streaming_line_raises(self, valid_instances):
+        """Test that add_streaming_line raises NotImplementedError.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+
+        with pytest.raises(
+            NotImplementedError, match="Embeddings do not support streaming"
+        ):
+            instance.add_streaming_line("data: test")
+
+    @pytest.mark.sanity
+    def test_compile_streaming_raises(self, valid_instances):
+        """Test that compile_streaming raises NotImplementedError.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        request = GenerationRequest()
+        arguments = instance.format(request)
+
+        with pytest.raises(
+            NotImplementedError, match="Embeddings do not support streaming"
+        ):
+            instance.compile_streaming(request, arguments)

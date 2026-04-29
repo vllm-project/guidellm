@@ -24,6 +24,7 @@ from guidellm.utils.registry import RegistryMixin
 __all__ = [
     "AudioRequestHandler",
     "ChatCompletionsRequestHandler",
+    "EmbeddingsRequestHandler",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
     "PoolingRequestHandler",
@@ -1119,3 +1120,115 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
                 arguments.body["priority"] = pooling_entry["priority"]
 
         return arguments
+
+
+@OpenAIRequestHandlerFactory.register("/v1/embeddings")
+class EmbeddingsRequestHandler(OpenAIRequestHandler):
+    """
+    Request handler for OpenAI-style embeddings endpoints.
+
+    Handles embeddings requests which do not support streaming and return
+    embedding vectors instead of generated text. Processes input text into
+    embeddings for performance benchmarking.
+    """
+
+    def format(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None = None,  # noqa: ARG002
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,  # noqa: ARG002
+        **kwargs: Any,
+    ) -> GenerationRequestArguments:
+        """
+        Format the embeddings generation request.
+
+        :param data: The generation request to format
+        :param response: Previous response (unused for embeddings)
+        :param history: Request/response history (unused for embeddings)
+        :param **kwargs: Additional keyword arguments (model, encoding_format, etc.)
+        :return: The formatted request arguments
+        """
+        arguments = GenerationRequestArguments()
+        arguments.body = {}
+        arguments.stream = False  # Embeddings never stream
+
+        # Add model
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        # Build input from text columns
+        input_texts = []
+        for text in data.columns.get("text_column", []):
+            if text:
+                input_texts.append(text)
+
+        # Use single string if only one text, otherwise list
+        if len(input_texts) == 1:
+            arguments.body["input"] = input_texts[0]
+        else:
+            arguments.body["input"] = input_texts
+
+        # Add optional parameters
+        if kwargs.get("encoding_format"):
+            arguments.body["encoding_format"] = kwargs["encoding_format"]
+        if kwargs.get("dimensions"):
+            arguments.body["dimensions"] = kwargs["dimensions"]
+
+        # Apply extra arguments
+        if kwargs.get("extras"):
+            arguments.model_combine(kwargs["extras"])
+
+        return arguments
+
+    def compile_non_streaming(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: Any,
+    ) -> GenerationResponse:
+        """
+        Process a complete non-streaming embeddings API response.
+
+        :param request: Original generation request
+        :param arguments: Request arguments used
+        :param response: Raw API response data
+        :return: GenerationResponse with embeddings data
+        """
+        # Extract usage data
+        usage = response.get("usage", {})
+
+        # Build response (no text output for embeddings)
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=arguments.model_dump_json(),
+            text="",  # Embeddings don't generate text
+            input_metrics=UsageMetrics(
+                text_tokens=usage.get("prompt_tokens", 0),
+            ),
+            output_metrics=UsageMetrics(
+                text_tokens=0,  # No output tokens for embeddings
+            ),
+        )
+
+    def add_streaming_line(self, line: str) -> int | None:  # noqa: ARG002
+        """
+        Embeddings do not support streaming.
+
+        :param line: Streaming line (unused)
+        :return: None (not supported)
+        :raises NotImplementedError: Embeddings never stream
+        """
+        raise NotImplementedError("Embeddings do not support streaming")
+
+    def compile_streaming(  # noqa: ARG002
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        """
+        Embeddings do not support streaming.
+
+        :param request: Generation request (unused)
+        :param arguments: Request arguments (unused)
+        :return: Never returns
+        :raises NotImplementedError: Embeddings never stream
+        """
+        raise NotImplementedError("Embeddings do not support streaming")

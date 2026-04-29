@@ -209,6 +209,18 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         description="Console utility for rendering formatted tables",
     )
 
+    def _is_embeddings_benchmark(self, report: GenerativeBenchmarksReport) -> bool:
+        """
+        Check if all benchmarks have zero output tokens (embeddings mode).
+
+        :param report: The benchmark report to check
+        :return: True if all benchmarks have zero output tokens
+        """
+        return all(
+            benchmark.metrics.output_token_count.successful.total_sum == 0
+            for benchmark in report.benchmarks
+        )
+
     async def finalize(self, report: GenerativeBenchmarksReport) -> str:
         """
         Print the complete benchmark report to the console.
@@ -219,14 +231,17 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         :param report: The completed benchmark report
         :return: Status message indicating output location
         """
+        is_embeddings = self._is_embeddings_benchmark(report)
+
         self.print_run_summary_table(report)
-        self.print_text_table(report)
+        if not is_embeddings:
+            self.print_text_table(report)
         self.print_image_table(report)
         self.print_video_table(report)
         self.print_audio_table(report)
         self.print_tool_call_table(report)
         self.print_request_counts_table(report)
-        self.print_request_latency_table(report)
+        self.print_request_latency_table(report, hide_streaming_metrics=is_embeddings)
         self.print_server_throughput_table(report)
 
         return "printed to console"
@@ -426,11 +441,16 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             title="Request Token Statistics (Completed Requests)",
         )
 
-    def print_request_latency_table(self, report: GenerativeBenchmarksReport):
+    def print_request_latency_table(
+        self,
+        report: GenerativeBenchmarksReport,
+        hide_streaming_metrics: bool = False,
+    ):
         """
         Print request latency metrics table.
 
         :param report: The benchmark report containing latency metrics
+        :param hide_streaming_metrics: If True, hide TTFT/ITL/TPOT columns
         """
         columns = ConsoleTableColumnsCollection()
 
@@ -446,21 +466,22 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Request Latency",
                 name="Sec",
             )
-            columns.add_stats(
-                benchmark.metrics.time_to_first_token_ms,
-                group="TTFT",
-                name="ms",
-            )
-            columns.add_stats(
-                benchmark.metrics.inter_token_latency_ms,
-                group="ITL",
-                name="ms",
-            )
-            columns.add_stats(
-                benchmark.metrics.time_per_output_token_ms,
-                group="TPOT",
-                name="ms",
-            )
+            if not hide_streaming_metrics:
+                columns.add_stats(
+                    benchmark.metrics.time_to_first_token_ms,
+                    group="TTFT",
+                    name="ms",
+                )
+                columns.add_stats(
+                    benchmark.metrics.inter_token_latency_ms,
+                    group="ITL",
+                    name="ms",
+                )
+                columns.add_stats(
+                    benchmark.metrics.time_per_output_token_ms,
+                    group="TPOT",
+                    name="ms",
+                )
 
         headers, values = columns.get_table_data()
         self.console.print("\n")

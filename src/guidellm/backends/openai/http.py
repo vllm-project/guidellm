@@ -106,6 +106,7 @@ DEFAULT_API_PATHS = {
     "/v1/models": "v1/models",
     "/v1/completions": "v1/completions",
     "/v1/chat/completions": "v1/chat/completions",
+    "/v1/embeddings": "v1/embeddings",
     "/v1/responses": "v1/responses",
     "/v1/audio/transcriptions": "v1/audio/transcriptions",
     "/v1/audio/translations": "v1/audio/translations",
@@ -118,6 +119,7 @@ DEFAULT_API = "/v1/chat/completions"
 LEGACY_API_ALIASES = {
     "text_completions": "/v1/completions",
     "chat_completions": "/v1/chat/completions",
+    "embeddings": "/v1/embeddings",
     "audio_transcriptions": "/v1/audio/transcriptions",
     "audio_translations": "/v1/audio/translations",
 }
