@@ -459,7 +459,13 @@ class TestChatCompletionsToolChoiceOverride:
 
 
 class _MockToolBackend:
-    """Mock backend that returns configurable tool_calls on responses."""
+    """Mock backend that signals outcomes via request_info fields.
+
+    Mimics what OpenAIHTTPBackend._check_tool_call_expectations does:
+    sets request_info.error or request_info.stop_conversation during
+    resolve based on tool_call_missing_behavior, so the worker reacts
+    generically.
+    """
 
     def __init__(
         self,
@@ -500,6 +506,16 @@ class _MockToolBackend:
             if self.has_tool_calls
             else None
         )
+
+        # Replicate what the real backend does in
+        # _check_tool_call_expectations: set request_info fields when a
+        # tool call was expected but not produced.
+        if request.expects_tool_call and not self.has_tool_calls:
+            if self.tool_call_missing_behavior == "ignore_stop":
+                request_info.stop_conversation = True
+            elif self.tool_call_missing_behavior == "error_stop":
+                request_info.error = "Expected tool call but model produced none"
+
         yield response, request_info
 
 
@@ -831,6 +847,131 @@ class TestOpenAIBackendToolCallMissingBehavior:
                 target="http://localhost:8000",
                 tool_call_missing_behavior="invalid_mode",
             )
+
+
+# ---------------------------------------------------------------------------
+# Backend: check tool call expectations
+# ---------------------------------------------------------------------------
+
+
+class TestCheckToolCallExpectations:
+    """Verify _check_tool_call_expectations sets the right request_info fields.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def _make_backend(self, behavior: str):
+        """
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.backends.openai.http import OpenAIHTTPBackend
+
+        return OpenAIHTTPBackend(
+            target="http://localhost:8000",
+            tool_call_missing_behavior=behavior,
+        )
+
+    def _make_request(self, expects_tool_call: bool) -> GenerationRequest:
+        """
+        ## WRITTEN BY AI ##
+        """
+        return GenerationRequest(
+            columns={"text_column": ["test"]},
+            expects_tool_call=expects_tool_call,
+        )
+
+    def _make_response(self, has_tool_calls: bool):
+        """
+        ## WRITTEN BY AI ##
+        """
+        resp = MagicMock()
+        resp.tool_calls = (
+            [{"id": "call_1", "type": "function", "function": {"name": "fn"}}]
+            if has_tool_calls
+            else None
+        )
+        return resp
+
+    @pytest.mark.smoke
+    def test_no_op_when_tool_call_present(self):
+        """No fields are set when the model produced a tool call.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("error_stop")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=True)
+        info = RequestInfo()
+
+        backend._check_tool_call_expectations(req, resp, info)
+
+        assert info.error is None
+        assert info.stop_conversation is False
+
+    @pytest.mark.smoke
+    def test_no_op_when_not_expecting_tool_call(self):
+        """No fields are set when the turn doesn't expect a tool call.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("error_stop")
+        req = self._make_request(expects_tool_call=False)
+        resp = self._make_response(has_tool_calls=False)
+        info = RequestInfo()
+
+        backend._check_tool_call_expectations(req, resp, info)
+
+        assert info.error is None
+        assert info.stop_conversation is False
+
+    @pytest.mark.smoke
+    def test_ignore_continue_sets_nothing(self):
+        """ignore_continue: no fields set even when tool call is missing.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("ignore_continue")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=False)
+        info = RequestInfo()
+
+        backend._check_tool_call_expectations(req, resp, info)
+
+        assert info.error is None
+        assert info.stop_conversation is False
+
+    @pytest.mark.smoke
+    def test_ignore_stop_sets_stop_conversation(self):
+        """ignore_stop: sets stop_conversation but not error.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("ignore_stop")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=False)
+        info = RequestInfo()
+
+        backend._check_tool_call_expectations(req, resp, info)
+
+        assert info.error is None
+        assert info.stop_conversation is True
+
+    @pytest.mark.smoke
+    def test_error_stop_sets_error(self):
+        """error_stop: sets error on request_info.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("error_stop")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=False)
+        info = RequestInfo()
+
+        backend._check_tool_call_expectations(req, resp, info)
+
+        assert info.error is not None
+        assert "tool call" in info.error.lower()
+        assert info.stop_conversation is False
 
 
 # ---------------------------------------------------------------------------
