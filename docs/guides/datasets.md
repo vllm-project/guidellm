@@ -27,7 +27,7 @@ guidellm benchmark \
     --profile "throughput" \
     --max-requests 1000 \
     --data "path/to/dataset|dataset_id" \
-    --data-column-mapper '{"text_column": "prompt"}' \
+    --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}' \
     --data-args '{"split": "train"}' \
     --processor "path/to/processor" \
     --processor-args '{"arg1": "value1"}' \
@@ -153,7 +153,7 @@ guidellm benchmark \
     --profile "throughput" \
     --max-requests 1000 \
     --data "path/to/dataset.ext" \
-    --data-column-mapper '{"text_column": "prompt"}' \
+    --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}' \
     --data-args '{"split": "train"}'
 ```
 
@@ -336,7 +336,7 @@ guidellm preprocess dataset \
     "processed.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
-    --data-column-mapper '{"text_column": "user_query", "prefix_column": "system_message"}'
+    --data-column-mapper '{"column_mappings": {"text_column": "user_query", "prefix_column": "system_message"}}'
 ```
 
 **Example: Multiple datasets**
@@ -344,7 +344,7 @@ guidellm preprocess dataset \
 If you're working with multiple datasets and need to specify which dataset's columns to use, you can use the format `<dataset_index>.<column_name>` or `<dataset_name>.<column_name>`:
 
 ```bash
---data-column-mapper '{"text_column": "0.prompt", "prefix_column": "1.system"}'
+--data-column-mapper '{"column_mappings": {"text_column": "0.prompt", "prefix_column": "1.system"}}'
 ```
 
 ### Handling Short Prompts
@@ -402,7 +402,7 @@ guidellm preprocess dataset \
     "processed_dataset.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
-    --data-column-mapper '{"text_column": "user_question", "prefix_column": "system_instruction"}'
+    --data-column-mapper '{"column_mappings": {"text_column": "user_question", "prefix_column": "system_instruction"}}'
 ```
 
 **Example 2: Preprocessing with distribution and short prompt handling**

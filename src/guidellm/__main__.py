@@ -206,8 +206,8 @@ def benchmark():
     callback=cli_tools.parse_json,
     help=(
         "JSON string of column mappings to apply to the dataset. "
-        'E.g., \'{"text_column": "article", '
-        '"output_tokens_count_column" :"output_tokens"}\''
+        'E.g., \'{"column_mappings": {"text_column": "article", '
+        '"output_tokens_count_column": "output_tokens"}}\''
     ),
 )
 @click.option(

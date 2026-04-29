@@ -186,7 +186,7 @@ guidellm benchmark run \
   --target http://localhost:8000 \
   --data "abisee/cnn_dailymail" \
   --data-args '{"name": "3.0.0"}' \
-  --data-column-mapper '{"text_column":"article"}'
+  --data-column-mapper '{"column_mappings": {"text_column": "article"}}'
 ```
 
 **Key parameters:**
