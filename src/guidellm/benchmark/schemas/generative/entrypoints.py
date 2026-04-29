@@ -200,7 +200,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     )
     data_column_mapper: (
         DatasetPreprocessor
-        | dict[str, str | list[str]]
+        | dict[str, Any]
         | Literal["generative_column_mapper", "pooling_column_mapper"]
     ) = Field(
         default="generative_column_mapper",
