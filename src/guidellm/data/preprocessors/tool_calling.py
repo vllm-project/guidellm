@@ -53,9 +53,7 @@ class ToolCallingMessageExtractor(DatasetPreprocessor):
 
             for value in text_values:
                 if isinstance(value, list):
-                    user_parts, system_parts, tool_parts = (
-                        _extract_from_messages(value)
-                    )
+                    user_parts, system_parts, tool_parts = _extract_from_messages(value)
                     if user_parts:
                         new_texts.append(" ".join(user_parts))
                     if system_parts:
@@ -69,9 +67,7 @@ class ToolCallingMessageExtractor(DatasetPreprocessor):
             if prefixes:
                 item.setdefault("prefix_column", []).extend(prefixes)
             if tool_responses:
-                item.setdefault("tool_response_column", []).extend(
-                    tool_responses
-                )
+                item.setdefault("tool_response_column", []).extend(tool_responses)
 
         return items
 
