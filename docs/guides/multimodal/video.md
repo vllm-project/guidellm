@@ -42,13 +42,13 @@ When specifying the dataset, generally, you will want to map the specific video 
 To specify the mapping, use the `--data-column-mapper` argument with a JSON string that specifies an existing column name for `video_column`. For example, if your dataset has a video column named `url`, you would use:
 
 ```bash
---data-column-mapper '{"video_column": "url"}'
+--data-column-mapper '{"column_mappings": {"video_column": "url"}}'
 ```
 
 If you are combining multiple datasets (e.g., for prompts and video), prepend the column name with the dataset index (starting at 0) or the dataset alias followed by a dot. For example, if the video column is in the second dataset (index 1):
 
 ```bash
---data-column-mapper '{"1.video_column": "url"}'
+--data-column-mapper '{"column_mappings": {"1.video_column": "url"}}'
 ```
 
 ### Request Formatting
@@ -145,7 +145,7 @@ guidellm benchmark \
   --max-requests 50 \
   --data "lmms-lab/Video-MME" \
   --data-args "{\"split\": \"test\"}" \
-  --data-column-mapper '{"video_column": "url", "text_column": "question"}'
+  --data-column-mapper '{"column_mappings": {"video_column": "url", "text_column": "question"}}'
 ```
 
 **Key Parameters**
@@ -172,7 +172,7 @@ guidellm benchmark \
   --max-requests 50 \
   --data "lmms-lab/Video-MME" \
   --data-args "{\"split\": \"test\"}" \
-  --data-column-mapper '{"video_column": "url"}'
+  --data-column-mapper '{"column_mappings": {"video_column": "url"}}'
 ```
 
 **Key Parameters:**

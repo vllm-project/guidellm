@@ -422,7 +422,7 @@ Audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/translations`) do not su
 
 Turn-indexed columns must follow the naming conventions:
 
-- Column mapping applies to the base name. For example, `--data-column-mapper '{"text_column": "prompt"}'`
+- Column mapping applies to the base name. For example, `--data-column-mapper '{"column_mappings": {"text_column": "prompt"}}'`
 - Turn indices can be in the form of `-0` or `_0`. Exact numbering does not matter, turns will be re-numbered to avoid holes.
 - All turn columns must use the same base name. E.g. `prompt_0`, `prompt_2`, etc.
 

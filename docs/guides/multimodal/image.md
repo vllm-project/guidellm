@@ -42,13 +42,13 @@ When specifying the dataset, generally, you will want to map the specific image 
 To specify the mapping, use the `--data-column-mapper` argument with a JSON string that specifies an existing column name for `image_column`. For example, if your dataset has an image column named `photo`, you would use:
 
 ```bash
---data-column-mapper '{"image_column": "photo"}'
+--data-column-mapper '{"column_mappings": {"image_column": "photo"}}'
 ```
 
 If you are combining multiple datasets (e.g., for prompts and images), prepend the column name with the dataset index (starting at 0) or the dataset alias followed by a dot. For example, if the image column is in the second dataset (index 1):
 
 ```bash
---data-column-mapper '{"1.image_column": "photo"}'
+--data-column-mapper '{"column_mappings": {"1.image_column": "photo"}}'
 ```
 
 ### Request Formatting
@@ -150,7 +150,7 @@ guidellm benchmark \
   --max-requests 20 \
   --data "lmms-lab/MMBench_EN" \
   --data-args "{\"split\": \"test\"}" \
-  --data-column-mapper '{"image_column": "image", "text_column": "question"}'
+  --data-column-mapper '{"column_mappings": {"image_column": "image", "text_column": "question"}}'
 ```
 
 **Key Parameters**
@@ -208,7 +208,7 @@ guidellm benchmark \
   --max-requests 20 \
   --data "lmms-lab/MMBench_EN" \
   --data-args "{\"split\": \"test\"}" \
-  --data-column-mapper '{"image_column": "image"}'
+  --data-column-mapper '{"column_mappings": {"image_column": "image"}}'
 ```
 
 **Key Parameters:**

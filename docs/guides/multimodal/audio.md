@@ -45,13 +45,13 @@ When specifying the dataset, generally, you will want to map the specific audio 
 To specify the mapping, use the `--data-column-mapper` argument with a JSON string that specifies an existing column name for audio_column. For example, if your dataset has an audio column named speech_data, you would use:
 
 ```bash
---data-column-mapper '{"audio_column": "speech_data"}'
+--data-column-mapper '{"column_mappings": {"audio_column": "speech_data"}}'
 ```
 
 If you are combining multiple datasets (e.g., for prompts and audio), prepend the column name with the dataset index (starting at 0) or the dataset alias followed by a dot. For example, if the audio column is in the second dataset (index 1):
 
 ```bash
---data-column-mapper '{"1.audio_column": "speech_data"}'
+--data-column-mapper '{"column_mappings": {"1.audio_column": "speech_data"}}'
 ```
 
 ### Request Formatting
@@ -158,7 +158,7 @@ guidellm benchmark \
   --max-requests 20 \
   --data openslr/librispeech_asr \
   --data-args "{\"name\": \"clean\", \"split\": \"test\"}" \
-  --data-column-mapper "{\"audio_column\": \"audio\"}"
+  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
 ```
 
 **Key Parameters**
@@ -216,7 +216,7 @@ guidellm benchmark \
   --max-requests 20 \
   --data openslr/librispeech_asr \
   --data-args "{\"name\": \"clean\", \"split\": \"test\"}" \
-  --data-column-mapper "{\"audio_column\": \"audio\"}"
+  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
 ```
 
 **Key Parameters:**
@@ -277,7 +277,7 @@ guidellm benchmark \
   --data-args "{}" \
   --data openslr/librispeech_asr \
   --data-args "{\"name\": \"clean\", \"split\": \"test\"}" \
-  --data-column-mapper "{\"audio_column\": \"1.audio\", \"text_column\": \"0.prompt\"}"
+  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"1.audio\", \"text_column\": \"0.prompt\"}}"
 ```
 
 **Key Parameters**
