@@ -336,9 +336,7 @@ class TestGenerativeRequestStatsToolCalls:
         timings = RequestTimings(resolve_start=1.0, resolve_end=2.0)
         stats = GenerativeRequestStats(
             request_id="rt-1",
-            info=RequestInfo(
-                request_id="rt-1", status="completed", timings=timings
-            ),
+            info=RequestInfo(request_id="rt-1", status="completed", timings=timings),
             input_metrics=UsageMetrics(),
             output_metrics=UsageMetrics(),
             tool_calls=tool_calls,

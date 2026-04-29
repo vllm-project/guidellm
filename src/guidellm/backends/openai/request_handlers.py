@@ -590,9 +590,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         ]
         user_content = list(roundrobin(*prompts))
         if user_content:
-            arguments.body["messages"].append(
-                {"role": "user", "content": user_content}
-            )
+            arguments.body["messages"].append({"role": "user", "content": user_content})
 
         # Append the prior assistant response to the message history.
         # For tool call responses, include the assistant's tool_calls and
@@ -608,9 +606,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             )
             # Use per-request tool response content if available,
             # otherwise fall back to the default placeholder.
-            tool_response_columns = data.columns.get(
-                "tool_response_column", []
-            )
+            tool_response_columns = data.columns.get("tool_response_column", [])
             for tc_idx, tc in enumerate(response.tool_calls):
                 raw_content = (
                     tool_response_columns[tc_idx]

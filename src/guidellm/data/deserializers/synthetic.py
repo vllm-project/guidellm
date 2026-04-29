@@ -41,9 +41,7 @@ DEFAULT_SYNTHETIC_TOOLS: list[dict[str, Any]] = [
             "description": "Retrieve data from the system",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The query"}
-                },
+                "properties": {"query": {"type": "string", "description": "The query"}},
                 "required": ["query"],
             },
         },
@@ -134,13 +132,9 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                     if tool_response_sampler is not None:
                         tr_tokens = next(tool_response_sampler)
                         body = self._create_prompt(tr_tokens, faker)
-                        row[f"tool_response_{turn}"] = json.dumps(
-                            {"result": body}
-                        )
+                        row[f"tool_response_{turn}"] = json.dumps({"result": body})
                     else:
-                        row[f"tool_response_{turn}"] = (
-                            DEFAULT_SYNTHETIC_TOOL_RESPONSE
-                        )
+                        row[f"tool_response_{turn}"] = DEFAULT_SYNTHETIC_TOOL_RESPONSE
 
                 samples_count += 1
 

@@ -676,11 +676,9 @@ class TestChatCompletionsRequestHandler:
 
         result = instance.format(data)
 
-        assert len(result.body["messages"]) == 2
+        assert len(result.body["messages"]) == 1
         assert result.body["messages"][0]["role"] == "system"
         assert result.body["messages"][0]["content"] == "You are a helpful assistant."
-        assert result.body["messages"][1]["role"] == "user"
-        assert result.body["messages"][1]["content"] == []
 
     @pytest.mark.sanity
     def test_format_messages_image(self, valid_instances):

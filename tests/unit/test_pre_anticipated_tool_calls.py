@@ -148,9 +148,7 @@ class TestSyntheticDataToolColumns:
             _SyntheticTextExamplesIterable,
         )
 
-        config = SyntheticTextDatasetConfig(
-            prompt_tokens=10, output_tokens=10, turns=3
-        )
+        config = SyntheticTextDatasetConfig(prompt_tokens=10, output_tokens=10, turns=3)
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
 
@@ -1285,9 +1283,7 @@ class TestChatCompletionsToolResponseColumn:
         )
 
         # Find the tool role message in the history
-        tool_messages = [
-            m for m in result.body["messages"] if m.get("role") == "tool"
-        ]
+        tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
         assert len(tool_messages) == 1
         assert tool_messages[0]["content"] == '{"result": "custom data"}'
 
@@ -1326,9 +1322,7 @@ class TestChatCompletionsToolResponseColumn:
             history=[(prior_request, prior_response)],
         )
 
-        tool_messages = [
-            m for m in result.body["messages"] if m.get("role") == "tool"
-        ]
+        tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
         assert len(tool_messages) == 1
         assert tool_messages[0]["content"] == DEFAULT_SYNTHETIC_TOOL_RESPONSE
 
@@ -1365,9 +1359,7 @@ class TestChatCompletionsToolResponseColumn:
             history=[(prior_request, prior_response)],
         )
 
-        tool_messages = [
-            m for m in result.body["messages"] if m.get("role") == "tool"
-        ]
+        tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
         assert len(tool_messages) == 1
         assert tool_messages[0]["content"] == '{"result": "bytes data"}'
         assert isinstance(tool_messages[0]["content"], str)
