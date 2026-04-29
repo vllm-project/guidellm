@@ -137,10 +137,10 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     tool_call_missing_behavior: str = Field(
         default="error_stop",
         description=(
-            "What the worker does when a tool call is expected but the model "
-            "does not produce one. Options: ignore_continue (continue to next "
-            "turn), ignore_stop (cancel remaining turns), error_stop (error "
-            "and cancel remaining turns)."
+            "What happens when a tool call is expected but the model does not "
+            "produce one. Options: ignore_continue (continue to next turn), "
+            "ignore_stop (cancel remaining turns), error_stop (error and "
+            "cancel remaining turns)."
         ),
     )
 
@@ -399,10 +399,11 @@ class OpenAIHTTPBackend(Backend):
             request_info.timings.request_end = time.time()
             response.raise_for_status()
             data = response.json()
-            yield (
-                request_handler.compile_non_streaming(request, arguments, data),
-                request_info,
+            gen_response = request_handler.compile_non_streaming(
+                request, arguments, data
             )
+            yield gen_response, request_info
+            self._check_tool_call_expectations(request, gen_response)
             return
 
         try:
@@ -448,7 +449,9 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.token_iterations += iterations
 
             request_info.timings.request_end = time.time()
-            yield request_handler.compile_streaming(request, arguments), request_info
+            gen_response = request_handler.compile_streaming(request, arguments)
+            self._check_tool_call_expectations(request, gen_response)
+            yield gen_response, request_info
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
             yield request_handler.compile_streaming(request, arguments), request_info
@@ -490,3 +493,36 @@ class OpenAIHTTPBackend(Backend):
             headers = {**headers, **existing_headers}
 
         return headers or None
+
+    def _check_tool_call_expectations(
+        self,
+        request: GenerationRequest,
+        response: GenerationResponse,
+    ) -> None:
+        """Validate that a tool-call turn actually produced tool calls.
+
+        Called before the final yield in ``resolve`` so that any raised
+        exception prevents the normal yield and is instead handled by the
+        ``except`` block (which yields the response once before propagating).
+        When the request expected a tool call but the model didn't produce one,
+        raises an exception according to ``tool_call_missing_behavior``:
+
+        * ``ignore_continue`` -- no-op; the conversation proceeds normally.
+        * ``ignore_stop`` -- raises :class:`asyncio.CancelledError` so the
+          worker cancels remaining turns.
+        * ``error_stop`` -- raises :class:`ValueError` so the worker marks
+          the current turn as errored and cancels remaining turns.
+
+        :param request: The generation request that was resolved.
+        :param response: The compiled response from the model.
+        """
+        if not request.expects_tool_call or response.tool_calls:
+            return
+
+        behavior = self._args.tool_call_missing_behavior
+        if behavior == "ignore_continue":
+            pass
+        elif behavior == "ignore_stop":
+            raise asyncio.CancelledError("Expected tool call but model produced none")
+        elif behavior == "error_stop":
+            raise ValueError("Expected tool call but model produced none")
