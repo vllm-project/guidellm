@@ -223,6 +223,8 @@ Synthetic data configuration fields for tool calling:
 | `tool_response_tokens_min`   | `int`  | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                            |
 | `tool_response_tokens_max`   | `int`  | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                            |
 
+Note: The token count is for the content of a field of the mock tool call response. The JSON structure adds ~5 tokens to the mock tool call response.
+
 **Configuring tool response content** -- by default, tool results use a short placeholder (`{"status": "ok"}`). For more realistic benchmarks, set `tool_response_tokens` to generate variable-length JSON responses:
 
 ```bash
@@ -268,6 +270,8 @@ Two CLI options control how tool-call turns are handled at runtime:
 - `auto` -- the model decides whether to call a tool. Useful for testing how often a model chooses to invoke tools, but increases the chance of missing tool calls (see `--tool-call-missing-behavior`).
 - `none` -- tools are present in the request but the model cannot call them. This is primarily set automatically on the final (plain-text) turn; setting it globally disables tool calling entirely.
 
+Note that `required` vs `auto` can also result in different model behavior. For example, the Qwen models only show their pre-tool-call thinking with `auto`.
+
 **`--tool-call-missing-behavior` implications:**
 
 This setting only matters when `--tool-choice` is `auto` (or `required` and the server doesn't enforce it):
@@ -275,6 +279,14 @@ This setting only matters when `--tool-choice` is `auto` (or `required` and the 
 - `error_stop` (default) -- the current turn is marked as errored and all remaining turns are cancelled. Surfaces problems immediately. Best for validating that the model and server are correctly configured.
 - `ignore_stop` -- the current turn is treated as successful (the response is kept), but all remaining turns are cancelled. Use this when a missing tool call means the conversation can't continue meaningfully but isn't an error per se.
 - `ignore_continue` -- the current turn is treated as successful and the conversation continues to the next turn. Each future tool-call turn is evaluated independently. Use this when you want to measure how many tool calls actually happen under `auto` mode without aborting the conversation.
+
+#### Recommended scenarios
+
+| Tool Choice | Missing Behavior  | Description                                                                                                  |
+| ----------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `required`  | `error_stop`      | (default) Good for consistent and predictable behavior.                                                      |
+| `auto`      | `ignore_continue` | Good for testing `auto` behavior without the model choosing to not use a tool call causing errors.           |
+| `auto`      | `ignore_stop`     | Good for testing `auto` behavior but ends the conversation early once the model creates a non-tool response. |
 
 ### Edge Cases
 
