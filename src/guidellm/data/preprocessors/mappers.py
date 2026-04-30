@@ -11,6 +11,7 @@ from guidellm.data.preprocessors.preprocessor import (
     PreprocessorRegistry,
 )
 from guidellm.data.schemas import GenerativeDatasetColumnType
+from guidellm.logger import logger
 
 __all__ = ["GenerativeColumnMapper", "PoolingColumnMapper"]
 
@@ -112,6 +113,22 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         datasets: list[Dataset | IterableDataset],
         input_mappings: dict[str, str | list[str]] | None = None,
     ) -> dict[DatasetColumnKey, list[DatasetColumnValue]]:
+        """
+        Resolve column mappings across one or more datasets.
+
+        For each dataset, matches actual column names against the requested
+        mapping names (or :attr:`defaults`) using regex patterns that account
+        for pluralisation and turn suffixes (e.g. ``prompt-0``, ``prompt-1``).
+
+        :param datasets: The loaded datasets to inspect for column names.
+        :param input_mappings: Optional explicit column mappings. When ``None``,
+            :attr:`defaults` is used. Values may be a single name or a list of
+            candidate names in priority order.
+        :return: A dict keyed by ``(column_type, turn_index)`` whose values are
+            lists of ``(dataset_index, column_name)`` pairs indicating where
+            each logical column can be found. Categories with no matching
+            columns are silently omitted from the result.
+        """
         mappings: dict[DatasetColumnKey, list[DatasetColumnValue]] = defaultdict(list)
         input_map: dict[str, list[str]] = cls.defaults
         if input_mappings:
@@ -201,6 +218,14 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         self.datasets_column_mappings = self.datasets_mappings(
             datasets, self.input_mappings
         )
+
+        if not self.datasets_column_mappings:
+            logger.warning(
+                "GenerativeColumnMapper found no matching columns. "
+                "Requested mappings: {}. "
+                "Every row will produce an empty result.",
+                self.input_mappings or "default mappings",
+            )
 
 
 @PreprocessorRegistry.register("pooling_column_mapper")
