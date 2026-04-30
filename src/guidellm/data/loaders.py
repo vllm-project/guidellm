@@ -95,7 +95,6 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         gen_count = 0
         yield_count = 0
         error_count = 0
-        empty_count = 0
 
         with contextlib.suppress(StopIteration):
             dataset_iters = []
