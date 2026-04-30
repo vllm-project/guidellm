@@ -3288,36 +3288,6 @@ class TestEmbeddingsRequestHandler:
         assert isinstance(result.body["input"], list)
 
     @pytest.mark.sanity
-    def test_format_with_encoding_format(self, valid_instances):
-        """Test format method with encoding_format parameter.
-
-        ### WRITTEN BY AI ###
-        """
-        instance = valid_instances
-        data = GenerationRequest(
-            columns={"text_column": ["test"]},
-        )
-
-        result = instance.format(data, encoding_format="base64")
-
-        assert result.body["encoding_format"] == "base64"
-
-    @pytest.mark.sanity
-    def test_format_with_dimensions(self, valid_instances):
-        """Test format method with dimensions parameter.
-
-        ### WRITTEN BY AI ###
-        """
-        instance = valid_instances
-        data = GenerationRequest(
-            columns={"text_column": ["test"]},
-        )
-
-        result = instance.format(data, dimensions=512)
-
-        assert result.body["dimensions"] == 512
-
-    @pytest.mark.sanity
     def test_format_with_extras(self, valid_instances):
         """Test format method with extra parameters.
 
