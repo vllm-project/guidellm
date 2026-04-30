@@ -141,7 +141,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
 
-- **Trace files (`.jsonl` with `trace_synthetic` type)**: Specialized JSONL files for replay benchmarking with `timestamp`, `input_length`, and `output_length` fields. Used with `--profile replay` to replay trace events using each row's timestamp and token lengths. Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+- **Trace files (`.jsonl` with `trace_synthetic` type)**: Specialized JSONL files for replay benchmarking with `timestamp`, `input_length`, and `output_length` fields. Used with `--profile replay` to replay trace events using each row's timestamp and token lengths. Timestamps must be numbers expressed in seconds on a shared timeline with any consistent zero point; GuideLLM sorts them and converts them to offsets from the first event before scheduling. Date strings are not parsed yet, so provide timestamps as numbers. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
 
   ```json
   {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -150,18 +150,27 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
   In this example, the second request is scheduled 0.5 seconds after the first request. Trace rows are ordered by timestamp before GuideLLM schedules requests and generates synthetic payloads. This keeps each scheduled event aligned with the prompt and output token lengths from the same row.
 
-  Use `--data-args '{"type_": "trace_synthetic"}'` to enable trace loading:
+  Use `--data-args type_=trace_synthetic` to enable trace loading:
 
   ```bash
   guidellm benchmark \
-      --target "http://localhost:8000" \
+      --target http://localhost:8000 \
       --profile replay \
       --rate 1.0 \
-      --data "path/to/trace.jsonl" \
-      --data-args '{"type_": "trace_synthetic"}'
+      --data path/to/trace.jsonl \
+      --data-args type_=trace_synthetic
   ```
 
-  If your trace uses different column names, configure them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column`.
+  If your trace uses different column names, configure them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column`:
+
+  ```bash
+  guidellm benchmark \
+      --target http://localhost:8000 \
+      --profile replay \
+      --rate 1.0 \
+      --data replay.jsonl \
+      --data-args type_=trace_synthetic,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
+  ```
 
   For replay, `--rate` is a time scale for the intervals between trace events rather than requests per second. Use `--data-samples` to limit how many trace rows are loaded and replayed. Use `--max-requests` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
 
