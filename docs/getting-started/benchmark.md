@@ -204,8 +204,8 @@ Run with the `replay` profile:
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data "path/to/trace.jsonl" \
-  --data-args '{"type_": "trace_synthetic"}' \
+  --data path/to/trace.jsonl \
+  --data-args type_=trace_synthetic \
   --profile replay \
   --rate 1.0
 ```
