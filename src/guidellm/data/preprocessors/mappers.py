@@ -113,6 +113,22 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         datasets: list[Dataset | IterableDataset],
         input_mappings: dict[str, str | list[str]] | None = None,
     ) -> dict[DatasetColumnKey, list[DatasetColumnValue]]:
+        """
+        Resolve column mappings across one or more datasets.
+
+        For each dataset, matches actual column names against the requested
+        mapping names (or :attr:`defaults`) using regex patterns that account
+        for pluralisation and turn suffixes (e.g. ``prompt-0``, ``prompt-1``).
+
+        :param datasets: The loaded datasets to inspect for column names.
+        :param input_mappings: Optional explicit column mappings. When ``None``,
+            :attr:`defaults` is used. Values may be a single name or a list of
+            candidate names in priority order.
+        :return: A dict keyed by ``(column_type, turn_index)`` whose values are
+            lists of ``(dataset_index, column_name)`` pairs indicating where
+            each logical column can be found. Categories with no matching
+            columns are silently omitted from the result.
+        """
         mappings: dict[DatasetColumnKey, list[DatasetColumnValue]] = defaultdict(list)
         input_map: dict[str, list[str]] = cls.defaults
         if input_mappings:
@@ -204,28 +220,11 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         )
 
         if not self.datasets_column_mappings:
-            available_cols: list[str] = []
-            for ds in datasets:
-                cols = ds.column_names or list(next(iter(ds)).keys())
-                available_cols.extend(cols)
             logger.warning(
                 "GenerativeColumnMapper found no matching columns. "
-                "Available dataset columns: {}. "
                 "Requested mappings: {}. "
                 "Every row will produce an empty result.",
-                available_cols,
-                self.input_mappings or self.defaults,
-            )
-        elif not any(
-            ct == "text_column" for ct, _turn in self.datasets_column_mappings
-        ):
-            mapped_types = sorted({ct for ct, _ in self.datasets_column_mappings})
-            logger.debug(
-                "GenerativeColumnMapper mapped columns but none resolved to "
-                "'text_column'. Mapped types: {}. "
-                "This is expected for non-text datasets (e.g. image, audio, "
-                "geospatial). If text content was intended, check column names.",
-                mapped_types,
+                self.input_mappings or "default mappings",
             )
 
 

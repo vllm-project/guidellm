@@ -95,6 +95,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         gen_count = 0
         yield_count = 0
         error_count = 0
+        empty_count = 0
 
         with contextlib.suppress(StopIteration):
             dataset_iters = []
@@ -144,9 +145,8 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         if gen_count > 0 and yield_count == 0:
             raise ValueError(
                 f"Dataset iterator processed {gen_count} rows but yielded "
-                f"zero results ({error_count} errors). This usually means "
-                f"the column mapper could not match any dataset columns. "
-                f"Check --data-column-mapper and dataset column names."
+                f"zero results ({error_count} errors; {gen_count - error_count} "
+                f"empty). Check your data and data arguments."
             )
 
         if max_items is not None and gen_count < max_items:
