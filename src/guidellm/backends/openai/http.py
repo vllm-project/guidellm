@@ -119,7 +119,6 @@ DEFAULT_API = "/v1/chat/completions"
 LEGACY_API_ALIASES = {
     "text_completions": "/v1/completions",
     "chat_completions": "/v1/chat/completions",
-    "embeddings": "/v1/embeddings",
     "audio_transcriptions": "/v1/audio/transcriptions",
     "audio_translations": "/v1/audio/translations",
 }

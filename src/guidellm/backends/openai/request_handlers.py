@@ -1168,12 +1168,6 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         else:
             arguments.body["input"] = input_texts
 
-        # Add optional parameters
-        if kwargs.get("encoding_format"):
-            arguments.body["encoding_format"] = kwargs["encoding_format"]
-        if kwargs.get("dimensions"):
-            arguments.body["dimensions"] = kwargs["dimensions"]
-
         # Apply extra arguments
         if kwargs.get("extras"):
             arguments.model_combine(kwargs["extras"])

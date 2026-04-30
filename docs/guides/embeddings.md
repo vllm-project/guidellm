@@ -19,7 +19,7 @@ Embeddings models convert text into dense vector representations used for semant
 guidellm benchmark \
   --target http://localhost:8000/v1 \
   --model "BAAI/bge-small-en-v1.5" \
-  --request-format embeddings \
+  --request-format /v1/embeddings \
   --data "prompt_tokens=128" \
   --max-requests 100 \
   --rate 10
@@ -31,7 +31,7 @@ guidellm benchmark \
 guidellm benchmark \
   --target http://localhost:8000/v1 \
   --model "sentence-transformers/all-MiniLM-L6-v2" \
-  --request-format embeddings \
+  --request-format /v1/embeddings \
   --data dataset.jsonl \
   --max-requests 50
 ```
@@ -65,10 +65,10 @@ Or use synthetic data generation:
 --model "BAAI/bge-large-en-v1.5"
 
 # Set encoding format (float or base64)
---backend-extra '{"encoding_format": "base64"}'
+--backend-kwargs '{"extras": {"body": {"encoding_format": "base64"}}}'
 
 # Limit embedding dimensions
---backend-extra '{"dimensions": 512}'
+--backend-kwargs '{"extras": {"body": {"dimensions": 512}}}'
 ```
 
 ### Benchmark Profiles
@@ -80,7 +80,7 @@ Embeddings support all standard benchmark profiles:
 --profile constant --rate 10
 
 # Sweep multiple rates
---profile sweep --rate 1 5 10 20
+--profile sweep --rate 1,5,10,20
 
 # Maximum throughput
 --profile throughput
@@ -145,8 +145,8 @@ GuideLLM works with any OpenAI-compatible embeddings API:
 guidellm benchmark \
   --target https://api.openai.com/v1 \
   --model "text-embedding-3-small" \
-  --request-format embeddings \
-  --backend-extra '{"api_key": "sk-..."}'
+  --request-format /v1/embeddings \
+  --backend-kwargs '{"api_key": "sk-..."}'
 ```
 
 ### vLLM
@@ -159,7 +159,7 @@ vllm serve BAAI/bge-small-en-v1.5 --port 8000
 guidellm benchmark \
   --target http://localhost:8000/v1 \
   --model "BAAI/bge-small-en-v1.5" \
-  --request-format embeddings \
+  --request-format /v1/embeddings \
   --data "prompt_tokens=128" \
   --max-requests 100
 ```
@@ -176,7 +176,7 @@ docker run -p 8080:80 \
 guidellm benchmark \
   --target http://localhost:8080/v1 \
   --model "BAAI/bge-small-en-v1.5" \
-  --request-format embeddings
+  --request-format /v1/embeddings
 ```
 
 ## Metrics Explained
@@ -219,7 +219,7 @@ Find maximum sustainable throughput:
 guidellm benchmark \
   --target http://localhost:8000/v1 \
   --model "BAAI/bge-small-en-v1.5" \
-  --request-format embeddings \
+  --request-format /v1/embeddings \
   --profile throughput \
   --max-requests 200
 ```
@@ -232,9 +232,9 @@ Measure latency across different request rates:
 guidellm benchmark \
   --target http://localhost:8000/v1 \
   --model "BAAI/bge-small-en-v1.5" \
-  --request-format embeddings \
+  --request-format /v1/embeddings \
   --profile sweep \
-  --rate 1 5 10 20 50 \
+  --rate 1,5,10,20,50 \
   --max-requests 100
 ```
 
@@ -246,7 +246,7 @@ Simulate realistic production traffic with Poisson distribution:
 guidellm benchmark \
   --target http://localhost:8000/v1 \
   --model "BAAI/bge-small-en-v1.5" \
-  --request-format embeddings \
+  --request-format /v1/embeddings \
   --profile poisson \
   --rate 15 \
   --max-duration 300
@@ -278,7 +278,7 @@ guidellm benchmark \
 Ensure you're using:
 
 ```bash
---request-format embeddings
+--request-format /v1/embeddings
 ```
 
 ### Empty or invalid responses
