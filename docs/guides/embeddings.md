@@ -21,9 +21,10 @@ guidellm benchmark \
   --model "BAAI/bge-small-en-v1.5" \
   --request-format /v1/embeddings \
   --data "prompt_tokens=128" \
-  --max-requests 100 \
-  --rate 10
+  --max-requests 100
 ```
+
+This runs a sweep profile (default) with 5 strategies to find optimal performance points.
 
 ### Using a Dataset
 
@@ -76,20 +77,24 @@ Or use synthetic data generation:
 Embeddings support all standard benchmark profiles:
 
 ```bash
-# Constant rate
---profile constant --rate 10
-
-# Sweep multiple rates
---profile sweep --rate 1,5,10,20
-
-# Maximum throughput
---profile throughput
-
 # Synchronous (one request at a time)
 --profile synchronous
 
-# Poisson distribution
+# Throughput (maximum throughput discovery)
+--profile throughput --rate 10  # Number of concurrent request streams (default: 10)
+
+# Constant (fixed rate per second, accepts list)
+--profile constant --rate 10
+--profile constant --rate 10,20,50  # Run successive constant streams
+
+# Poisson (probabilistic rate distribution, accepts list)
 --profile poisson --rate 10
+
+# Concurrent (fixed parallel streams, accepts list)
+--profile concurrent --rate 10,20,50
+
+# Sweep (runs synchronous, throughput, then interpolated constant strategies)
+--profile sweep --rate 5  # Total number of strategies (default: 5)
 ```
 
 ## Output Formats
@@ -226,7 +231,7 @@ guidellm benchmark \
 
 ### Latency Analysis
 
-Measure latency across different request rates:
+Measure latency across different request rates using sweep profile:
 
 ```bash
 guidellm benchmark \
@@ -234,6 +239,18 @@ guidellm benchmark \
   --model "BAAI/bge-small-en-v1.5" \
   --request-format /v1/embeddings \
   --profile sweep \
+  --rate 10 \
+  --max-requests 100
+```
+
+Or test specific rates using constant profile:
+
+```bash
+guidellm benchmark \
+  --target http://localhost:8000/v1 \
+  --model "BAAI/bge-small-en-v1.5" \
+  --request-format /v1/embeddings \
+  --profile constant \
   --rate 1,5,10,20,50 \
   --max-requests 100
 ```
