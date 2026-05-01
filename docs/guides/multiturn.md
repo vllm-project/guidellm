@@ -173,6 +173,129 @@ When enabled, GuideLLM sends only the current turn's input and references the pr
 - If the server does not support response storage, requests on turn 2+ will fail with an error (typically a 404).
 - This option is only valid with `/v1/responses`. Using it with other request formats raises an error at startup.
 
+## Tool Calling
+
+GuideLLM supports benchmarking multi-turn tool calling workloads. Tool call turns are **pre-anticipated**: the data pipeline decides upfront which turns expect a tool call and which expect plain text. GuideLLM does not dynamically create follow-up turns at runtime. Instead, the full conversation structure is planned during data generation, and the worker executes each turn in order, with each tool call being scheduled like any other turn by the profile.
+
+When a tool-call turn completes, GuideLLM appends a tool result to the conversation history and proceeds to the next pre-planned turn. The tool result content comes from one of three sources (in priority order): the dataset's tool response column, synthetic data configured via `tool_response_tokens`, or a short placeholder (`{"status": "ok"}`). All turns where a tool call is not anticipated have `tool_choice` overridden to `"none"` for predictability.
+
+### Mocked client-side tool calls
+
+GuideLLM currently supports mocked client-side tool calls. This means that the inference server runs the model and may return real `tool_calls`, but GuideLLM **does not execute** those functions against live APIs or other runtimes. The benchmark worker acts as a **mock client**: after each tool-call turn it injects the next `role: "tool"` message into client-side chat history for the following request. This allows measuring LLM throughput with tool-call handling, not external tool latency or side effects.
+
+### Server Setup
+
+Tool calling requires server-side support. For vLLM, enable auto tool choice and a parser matching your model:
+
+```bash
+vllm serve Qwen/Qwen3-0.6B \
+  --enable-auto-tool-choice \
+  --tool-call-parser hermes
+```
+
+Common parsers: `hermes` (Qwen/Hermes), `llama3_json` (Llama 3.x), `mistral` (Mistral). Without these flags, vLLM will reject tool call output with grammar errors.
+
+### Providing Tool Definitions
+
+Tool definitions are always provided through the data pipeline rather than as a global CLI flag. There are three ways to supply them:
+
+**1. Synthetic data** -- set `tool_call_turns` (and optionally `tools`) in the data configuration:
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --model "Qwen/Qwen3-0.6B" \
+  --request-format /v1/chat/completions \
+  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2}' \
+  --max-requests 30 \
+  --profile constant \
+  --rate 1
+```
+
+Synthetic data configuration fields for tool calling:
+
+| Field                        | Type   | Default | Description                                                                                                                                                                                                            |
+| ---------------------------- | ------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tool_call_turns`            | `int`  | `0`     | Number of turns (from the start) that include tool definitions and expect tool-call responses. Must be `<= turns`. When equal to `turns`, every turn is a tool-call turn and no final plain-text response is produced. |
+| `tools`                      | `list` | `None`  | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`.                                                |
+| `tool_response_tokens`       | `int`  | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                             |
+| `tool_response_tokens_stdev` | `int`  | `None`  | Standard deviation for tool response token count.                                                                                                                                                                      |
+| `tool_response_tokens_min`   | `int`  | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                            |
+| `tool_response_tokens_max`   | `int`  | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                            |
+
+Note: The token count is for the content of a field of the mock tool call response. The JSON structure adds ~5 tokens to the mock tool call response.
+
+**Configuring tool response content** -- by default, tool results use a short placeholder (`{"status": "ok"}`). For more realistic benchmarks, set `tool_response_tokens` to generate variable-length JSON responses:
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --model "Qwen/Qwen3-0.6B" \
+  --request-format /v1/chat/completions \
+  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2, "tool_response_tokens": 50}' \
+  --max-requests 30 \
+  --profile constant \
+  --rate 1
+```
+
+The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
+
+**2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --data "madroid/glaive-function-calling-openai" \
+  --data-column-mapper '{"text_column": "messages", "tools_column": "tools"}' \
+  --data-preprocessors "tool_calling_message_extractor,encode_media" \
+  --max-requests 50 \
+  --profile constant \
+  --rate 1
+```
+
+The `tool_calling_message_extractor` preprocessor must be explicitly enabled via `--data-preprocessors` (it is not included by default). It parses each row's `messages` array and extracts prompts, system messages, and tool results into the appropriate columns. If the dataset has no tool result messages, the placeholder (`{"status": "ok"}`) is used as a fallback.
+
+### Tool Choice and Missing Tool Call Behavior
+
+Two CLI options control how tool-call turns are handled at runtime:
+
+| Option                         | Values                                         | Default      | Description                                                                                                                     |
+| ------------------------------ | ---------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--tool-choice`                | `required`, `auto`, `none`                     | `required`   | Sent as the `tool_choice` API parameter on turns that expect a tool call. On non-tool turns, it is always overridden to `none`. |
+| `--tool-call-missing-behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the worker does when a tool call was expected but the model produced plain text instead.                                   |
+
+**`--tool-choice` implications:**
+
+- `required` (default) -- the model **must** produce a tool call. This gives the most predictable benchmarks and the fewest errors, since the server constrains the output to valid tool call JSON. Use this unless you specifically want to test the model's autonomous tool-use decisions.
+- `auto` -- the model decides whether to call a tool. Useful for testing how often a model chooses to invoke tools, but increases the chance of missing tool calls (see `--tool-call-missing-behavior`).
+- `none` -- tools are present in the request but the model cannot call them. This is primarily set automatically on the final (plain-text) turn; setting it globally disables tool calling entirely.
+
+Note that `required` vs `auto` can also result in different model behavior. For example, the Qwen models only show their pre-tool-call thinking with `auto`.
+
+**`--tool-call-missing-behavior` implications:**
+
+This setting only matters when `--tool-choice` is `auto` (or `required` and the server doesn't enforce it):
+
+- `error_stop` (default) -- the current turn is marked as errored and all remaining turns are cancelled. Surfaces problems immediately. Best for validating that the model and server are correctly configured.
+- `ignore_stop` -- the current turn is treated as successful (the response is kept), but all remaining turns are cancelled. Use this when a missing tool call means the conversation can't continue meaningfully but isn't an error per se.
+- `ignore_continue` -- the current turn is treated as successful and the conversation continues to the next turn. Each future tool-call turn is evaluated independently. Use this when you want to measure how many tool calls actually happen under `auto` mode without aborting the conversation.
+
+#### Recommended scenarios
+
+| Tool Choice | Missing Behavior  | Description                                                                                                  |
+| ----------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `required`  | `error_stop`      | (default) Good for consistent and predictable behavior.                                                      |
+| `auto`      | `ignore_continue` | Good for testing `auto` behavior without the model choosing to not use a tool call causing errors.           |
+| `auto`      | `ignore_stop`     | Good for testing `auto` behavior but ends the conversation early once the model creates a non-tool response. |
+
+### Edge Cases
+
+- **Single-turn tool calling** (`turns=1, tool_call_turns=1`) is supported. The conversation has one turn that expects a tool call and no plain-text response.
+- **All-tool conversations** (`tool_call_turns == turns`) are supported. Every turn is a tool-call turn and the model never produces a final plain-text response. The `output` field in `benchmarks.json` will be `None` for every request; use the `tool_calls` field to inspect model output.
+- **Tool definitions on non-tool turns** are still sent in the request (they're part of the data), but `tool_choice` is forced to `none` so the model produces text. This matches real-world agentic patterns where the tools remain available but the model is instructed to respond in natural language.
+- **Mixed datasets** where only some rows have a `tools_column` work correctly. Rows without tools are treated as plain text conversations; rows with tools follow the tool-call flow.
+- **Rate-limited profiles** (e.g. `--profile constant --rate 1`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.
+
 ## The TurnPivot Preprocessor
 
 GuideLLM supports passing multiple `--data` options, each pointing to a separate dataset. If there are matches for the same column type across multiple datasets, they are treated as separate batches. Normally this is useful for layering columns from different datasets within the same request. For example adding a text column from one dataset to another with images or combining multiple normally-distributed synthetic datasets into a multimodal distribution. We can use the **TurnPivot** preprocessor to transpose turn columns and dataset batches.

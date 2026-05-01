@@ -9,6 +9,8 @@ implementations.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from guidellm.schemas.base import StandardBaseModel
@@ -24,8 +26,12 @@ class GenerationResponse(StandardBaseModel):
     Response model for backend generation operations.
 
     Captures the output and metrics from a generation request, providing structured
-    data for text output, token usage statistics, and compilation of detailed
-    request statistics for analysis and monitoring purposes.
+    data for text output, tool call payloads, token usage statistics, and compilation
+    of detailed request statistics for analysis and monitoring purposes.
+
+    When the model responds with tool calls instead of (or in addition to) plain
+    text, the ``tool_calls`` field carries the raw payloads so the scheduler can
+    dynamically create follow-up turns for multi-turn tool calling benchmarks.
 
     Example:
     ::
@@ -51,6 +57,16 @@ class GenerationResponse(StandardBaseModel):
     text: str | None = Field(
         default=None,
         description="The generated response text.",
+    )
+    tool_calls: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Raw tool call payloads from the model response, each containing "
+            "id, type, and function (name + arguments) in OpenAI format. "
+            "Populated for both streaming and non-streaming chat completions. "
+            "Used by the scheduler to detect tool call turns and dynamically "
+            "create follow-up requests in multi-turn conversations."
+        ),
     )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
@@ -115,6 +131,7 @@ class GenerationResponse(StandardBaseModel):
             response_id=self.response_id,
             request_args=self.request_args,
             output=self.text,
+            tool_calls=self.tool_calls,
             info=info,
             input_metrics=UsageMetrics(**input_metrics_dict),
             output_metrics=UsageMetrics(**output_metrics_dict),

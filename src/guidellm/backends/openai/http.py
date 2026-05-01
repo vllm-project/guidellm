@@ -82,6 +82,26 @@ class OpenAIHttpBackendArgs(BackendArgs):
             "multi-turn requests. Only supported with /v1/responses."
         ),
     )
+    tool_call_missing_behavior: str = Field(
+        default="error_stop",
+        description=(
+            "What happens when a tool call is expected but the model does not "
+            "produce one. Options: ignore_continue (continue to next turn), "
+            "ignore_stop (cancel remaining turns), error_stop (error and "
+            "cancel remaining turns)."
+        ),
+    )
+
+    @field_validator("tool_call_missing_behavior")
+    @classmethod
+    def validate_tool_call_missing_behavior(cls, v: str) -> str:
+        valid = {"ignore_continue", "ignore_stop", "error_stop"}
+        if v not in valid:
+            raise ValueError(
+                f"Invalid tool_call_missing_behavior '{v}'. "
+                f"Must be one of: {', '.join(sorted(valid))}"
+            )
+        return v
 
     @field_validator("request_format")
     @classmethod
@@ -174,6 +194,7 @@ class OpenAIHTTPBackend(Backend):
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
         server_history: bool = False,
+        tool_call_missing_behavior: str = "error_stop",
     ):
         """
         Initialize OpenAI HTTP backend with server configuration.
@@ -190,6 +211,9 @@ class OpenAIHTTPBackend(Backend):
         :param validate_backend: Backend validation configuration
         :param server_history: Use server-side conversation history
             (previous_response_id) for multi-turn. Only with /v1/responses.
+        :param tool_call_missing_behavior: What happens when a tool call is
+            expected but missing. One of: ignore_continue, ignore_stop,
+            error_stop.
         """
         super().__init__(type_="openai_http")
 
@@ -239,6 +263,7 @@ class OpenAIHTTPBackend(Backend):
             else extras
         )
         self.max_tokens: int | None = max_tokens or max_completion_tokens
+        self.tool_call_missing_behavior: str = tool_call_missing_behavior
 
         # Runtime state
         self._in_process = False
@@ -400,6 +425,7 @@ class OpenAIHTTPBackend(Backend):
             extras=self.extras,
             max_tokens=self.max_tokens,
             server_history=self.server_history,
+            turn_index=request_info.turn_index,
         )
 
         request_url = f"{self.target}/{request_path}"
@@ -430,10 +456,11 @@ class OpenAIHTTPBackend(Backend):
             request_info.timings.request_end = time.time()
             response.raise_for_status()
             data = response.json()
-            yield (
-                request_handler.compile_non_streaming(request, arguments, data),
-                request_info,
+            gen_response = request_handler.compile_non_streaming(
+                request, arguments, data
             )
+            self._check_tool_call_expectations(request, gen_response, request_info)
+            yield gen_response, request_info
             return
 
         try:
@@ -479,7 +506,9 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.token_iterations += iterations
 
             request_info.timings.request_end = time.time()
-            yield request_handler.compile_streaming(request, arguments), request_info
+            gen_response = request_handler.compile_streaming(request, arguments)
+            self._check_tool_call_expectations(request, gen_response, request_info)
+            yield gen_response, request_info
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
             yield request_handler.compile_streaming(request, arguments), request_info
@@ -520,6 +549,38 @@ class OpenAIHTTPBackend(Backend):
             headers = {**headers, **existing_headers}
 
         return headers or None
+
+    def _check_tool_call_expectations(
+        self,
+        request: GenerationRequest,
+        response: GenerationResponse,
+        request_info: RequestInfo,
+    ) -> None:
+        """Validate that a tool-call turn actually produced tool calls.
+
+        Called before the final yield in `resolve`. When the request
+        expected a tool call but the model didn't produce one, this mutates
+        *request_info* according to `tool_call_missing_behavior`:
+
+        * ``ignore_continue`` -- no-op; the conversation proceeds normally.
+        * ``ignore_stop`` -- sets ``request_info.stop_conversation`` so the
+          worker cancels remaining turns (current turn stays completed).
+        * ``error_stop`` -- sets ``request_info.error`` so the worker marks
+          the current turn as errored and cancels remaining turns.
+
+        :param request: The generation request that was resolved.
+        :param response: The compiled response from the model.
+        :param request_info: Mutable request metadata; fields may be set.
+        """
+        if not request.expects_tool_call or response.tool_calls:
+            return
+
+        if self.tool_call_missing_behavior == "ignore_continue":
+            pass
+        elif self.tool_call_missing_behavior == "ignore_stop":
+            request_info.stop_conversation = True
+        elif self.tool_call_missing_behavior == "error_stop":
+            request_info.error = "Expected tool call but model produced none"
 
     def _resolve_validate_kwargs(
         self, validate_backend: bool | str | dict[str, Any]

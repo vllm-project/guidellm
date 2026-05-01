@@ -50,6 +50,7 @@ from guidellm.utils.synchronous import (
 
 __all__ = ["WorkerProcess"]
 
+
 ProcessRequestT = TypeAliasType(
     "ProcessRequestT",
     tuple[
@@ -368,7 +369,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", None, request, request_info)
 
-    async def _process_next_request(  # noqa: C901
+    async def _process_next_request(  # noqa: C901, PLR0912, PLR0915
         self, target_start: float
     ) -> ProcessRequestT[RequestT, ResponseT]:
         """
@@ -376,6 +377,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
+
+        After resolve completes the worker inspects ``request_info.error`` and
+        ``request_info.stop_conversation`` (set by the backend during resolve)
+        to decide whether to continue with remaining conversation turns, cancel
+        them, or mark the current turn as errored.
 
         :param target_start: Unix timestamp when request should begin processing
         """
@@ -409,12 +415,26 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
                 response = resp
 
-            # Complete the request
+            # Complete the request -- the backend may have set error or
+            # stop_conversation on request_info during resolve.
             request_info.timings.resolve_end = time.time()
-            self._send_update("completed", response, request, request_info)
 
-            # Record Turn
+            if request_info.error:
+                self._send_update("errored", response, request, request_info)
+            else:
+                self._send_update("completed", response, request, request_info)
+
             history.append((request, response))
+
+            # Cancel remaining conversation turns when the backend signals
+            # an error or that the conversation should stop early.
+            if request_info.error or request_info.stop_conversation:
+                reason = request_info.error or "Conversation stopped by backend"
+                for skip_req, skip_info in conversation:
+                    skip_info.error = f"Cancelled: {reason}"
+                    skip_info.timings.resolve_end = time.time()
+                    self._send_update("cancelled", None, skip_req, skip_info)
+                conversation.clear()
 
             response = request = request_info = None
         except asyncio.CancelledError:

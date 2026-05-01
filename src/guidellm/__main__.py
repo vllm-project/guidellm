@@ -408,6 +408,29 @@ def benchmark():
     flag_value='{"enabled": true}',
     help="Enable over-saturation detection with default settings.",
 )
+# Tool calling configuration
+@click.option(
+    "--tool-choice",
+    type=str,
+    default=None,
+    help=(
+        'Tool choice mode: "required", "auto", or "none". '
+        "Controls whether the model is forced to produce tool calls on "
+        "tool-call turns. Overrides the per-request default (required) set "
+        "when tools come from the dataset."
+    ),
+)
+@click.option(
+    "--tool-call-missing-behavior",
+    type=click.Choice(["ignore_continue", "ignore_stop", "error_stop"]),
+    default=None,
+    help=(
+        "What the worker does when a tool call is expected but the model "
+        "does not produce one. ignore_continue: continue to next turn, "
+        "ignore_stop: cancel remaining turns, error_stop: error and "
+        "cancel remaining turns. Default: error_stop."
+    ),
+)
 def run(**kwargs):  # noqa: C901
     ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
@@ -429,6 +452,24 @@ def run(**kwargs):  # noqa: C901
     for alias in ("target", "model", "request_format"):
         with contextlib.suppress(KeyError):
             backend_kwargs[alias] = kwargs.pop(alias)
+
+    # Wire tool calling options.
+    # --tool-choice goes into extras.body as the API parameter; it overrides
+    # the per-request default set by the request handler when tools come from
+    # the dataset's tools_column.
+    # --tool-call-missing-behavior is a backend-level setting consumed by
+    # the worker.
+    tool_choice = kwargs.pop("tool_choice", None)
+    tool_call_missing_behavior = kwargs.pop("tool_call_missing_behavior", None)
+
+    if tool_choice is not None:
+        extras = backend_kwargs.setdefault("extras", {})
+        body = extras.setdefault("body", {})
+        body["tool_choice"] = tool_choice
+
+    if tool_call_missing_behavior is not None:
+        backend_kwargs["tool_call_missing_behavior"] = tool_call_missing_behavior
+
     kwargs["backend_kwargs"] = backend_kwargs
 
     # Handle console options

@@ -238,6 +238,12 @@ class GenerationRequest(StandardBaseModel):
             "where keys are column names and values are lists of column entries."
         ),
     )
+    expects_tool_call: bool = Field(
+        default=False,
+        description="Whether this turn is expected to produce a tool call response. "
+        "Set by the data pipeline for pre-planned tool-call turns. "
+        "Derived from the presence of tools_column in the turn data.",
+    )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
         description="Input statistics including counts, sizes, and durations.",

@@ -67,6 +67,16 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "wav",
             "mp3",
         ],
+        "tools_column": [
+            "tools",
+            "functions",
+            "tool_definitions",
+        ],
+        "tool_response_column": [
+            "tool_response",
+            "tool_result",
+            "tool_output",
+        ],
     }
     column_name_pattern: str = (
         r"^(?P<full_name>(?P<match_name>({name})(es|s)?)([-_](?P<turn>\d+))?)$"
@@ -151,10 +161,12 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
                     dataset_columns_str,
                 )
 
-                # Re-enumerate to ensure we don't have a gap in turns
-                for turn, (_, column_name) in enumerate(sorted(turn_columns)):
+                # Preserve the original turn index from the column name so
+                # that sparse columns (e.g. tools_0, tools_3) stay aligned
+                # with the turns they belong to.
+                for original_turn, column_name in sorted(turn_columns):
                     column_type = cast("GenerativeDatasetColumnType", column_type)
-                    mappings[(column_type, turn)].append((index, column_name))
+                    mappings[(column_type, original_turn)].append((index, column_name))
 
         return mappings
 
