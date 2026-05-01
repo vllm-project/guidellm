@@ -504,6 +504,95 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return formatted_data
 
+    @staticmethod
+    def _build_tool_response_messages(
+        tool_calls: list[dict[str, Any]],
+        tool_response_columns: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Build synthetic ``role: "tool"`` messages for each tool call.
+
+        Uses per-request tool response content from ``tool_response_columns``
+        when available, falling back to :data:`DEFAULT_SYNTHETIC_TOOL_RESPONSE`.
+
+        :param tool_calls: The tool call dicts from the prior assistant response.
+        :param tool_response_columns: Per-tool-call response content from the
+            dataset, which may be ``str`` or ``bytes`` (orjson).
+        :return: List of tool-role message dicts ready to append to messages.
+        """
+        messages: list[dict[str, Any]] = []
+        for idx, tc in enumerate(tool_calls):
+            raw_content = (
+                tool_response_columns[idx]
+                if idx < len(tool_response_columns)
+                else DEFAULT_SYNTHETIC_TOOL_RESPONSE
+            )
+            # orjson.dumps returns bytes; ensure content is a string.
+            content = (
+                raw_content.decode("utf-8")
+                if isinstance(raw_content, bytes)
+                else raw_content
+            )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "content": content,
+                }
+            )
+        return messages
+
+    @staticmethod
+    def _apply_tool_call_overrides(
+        body: dict[str, Any],
+        data: GenerationRequest,
+    ) -> None:
+        """Inject tool definitions and constrain the request body for tool calling.
+
+        Handles three concerns:
+
+        1. Deserializes and injects tool definitions from dataset columns.
+        2. Sets ``tool_choice`` to ``"required"`` or ``"none"`` depending on
+           whether the current turn expects a tool call.
+        3. Removes body keys that are incompatible with tool calling
+           (``ignore_eos``, ``stop``, and token-limit keys on tool-call turns).
+
+        :param body: The mutable request body dict being built.
+        :param data: The current generation request.
+        """
+        tools_column = data.columns.get("tools_column", [])
+        if tools_column:
+            tools_value = tools_column[0]
+            # JSON-serialized tool definitions (e.g. from synthetic data
+            # generators that store tools as strings for HuggingFace
+            # Features compatibility).  orjson produces bytes; stdlib
+            # json produces str.
+            if isinstance(tools_value, str | bytes):
+                tools_value = json.loads(tools_value)
+            if isinstance(tools_value, list):
+                body["tools"] = tools_value
+                body.setdefault("tool_choice", "required")
+
+        if "tools" not in body:
+            return
+
+        # Override tool_choice to "none" on turns that don't expect tool calls,
+        # so the model produces a plain text response instead.
+        if not data.expects_tool_call:
+            body["tool_choice"] = "none"
+
+        # Tool calling requires the model to stop naturally after producing
+        # valid JSON; ignore_eos would force generation past that point and
+        # break the server's constrained decoding grammar.
+        body.pop("ignore_eos", None)
+        body.pop("stop", None)
+
+        # On tool-call turns, let the model finish valid JSON naturally;
+        # max_completion_tokens would truncate output mid-JSON and corrupt
+        # the arguments sent in conversation history on follow-up turns.
+        if data.expects_tool_call:
+            body.pop("max_completion_tokens", None)
+            body.pop("max_tokens", None)
+
     def format(  # noqa: C901, PLR0912, PLR0915
         self,
         data: GenerationRequest,
@@ -604,64 +693,19 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     "tool_calls": response.tool_calls,
                 }
             )
-            # Use per-request tool response content if available,
-            # otherwise fall back to the default placeholder.
             tool_response_columns = data.columns.get("tool_response_column", [])
-            for tc_idx, tc in enumerate(response.tool_calls):
-                raw_content = (
-                    tool_response_columns[tc_idx]
-                    if tc_idx < len(tool_response_columns)
-                    else DEFAULT_SYNTHETIC_TOOL_RESPONSE
+            arguments.body["messages"].extend(
+                self._build_tool_response_messages(
+                    response.tool_calls, tool_response_columns
                 )
-                # orjson.dumps returns bytes; ensure content is a string.
-                tool_response_content = (
-                    raw_content.decode("utf-8")
-                    if isinstance(raw_content, bytes)
-                    else raw_content
-                )
-                arguments.body["messages"].append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.get("id", ""),
-                        "content": tool_response_content,
-                    }
-                )
+            )
         elif response and response.text:
             arguments.body["messages"].append(
                 {"role": "assistant", "content": response.text}
             )
 
-        # Include per-request tool definitions from dataset columns.
-        tools_column = data.columns.get("tools_column", [])
-        if tools_column:
-            tools_value = tools_column[0]
-            # Handle JSON-serialized tool definitions (e.g. from
-            # synthetic data generators that store tools as strings
-            # for HuggingFace Features compatibility).
-            # orjson.dumps produces bytes; stdlib json produces str.
-            if isinstance(tools_value, str | bytes):
-                tools_value = json.loads(tools_value)
-            if isinstance(tools_value, list):
-                arguments.body["tools"] = tools_value
-                arguments.body.setdefault("tool_choice", "required")
-
-        # Override tool_choice to "none" on turns that don't expect tool calls,
-        # so the model produces a plain text response instead.
-        if "tools" in arguments.body and not data.expects_tool_call:
-            arguments.body["tool_choice"] = "none"
-
-        # Tool calling requires the model to stop naturally after producing
-        # valid JSON; ignore_eos would force generation past that point and
-        # break the server's constrained decoding grammar.
-        if "tools" in arguments.body:
-            arguments.body.pop("ignore_eos", None)
-            arguments.body.pop("stop", None)
-            # On tool-call turns, let the model finish valid JSON naturally;
-            # max_completion_tokens would truncate output mid-JSON and corrupt
-            # the arguments sent in conversation history on follow-up turns.
-            if data.expects_tool_call:
-                arguments.body.pop("max_completion_tokens", None)
-                arguments.body.pop("max_tokens", None)
+        # Inject tool definitions and apply tool-call-specific overrides.
+        self._apply_tool_call_overrides(arguments.body, data)
 
         return arguments
 
@@ -739,27 +783,42 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Accumulate streamed tool_calls deltas.  Each tool call may be split
         # across multiple chunks; we reassemble by ``index``.
         for tc_delta in delta.get("tool_calls", []):
-            idx = tc_delta["index"]
-            self.streaming_tool_call_indices.add(idx)
-            if idx not in self.streaming_tool_calls:
-                self.streaming_tool_calls[idx] = StreamingToolCall(
-                    id=tc_delta.get("id", ""),
-                    type=tc_delta.get("type", "function"),
-                )
-            tc = self.streaming_tool_calls[idx]
-            fn_delta = tc_delta.get("function", {})
-            if fn_id := tc_delta.get("id"):
-                tc.id = fn_id
-            if fn_name := fn_delta.get("name"):
-                tc.function.name += fn_name
-            if fn_args := fn_delta.get("arguments"):
-                tc.function.arguments += fn_args
+            self._accumulate_tool_call_delta(tc_delta)
             updated = True
 
         if usage:
             self.streaming_usage = usage
 
         return 1 if updated else 0
+
+    def _accumulate_tool_call_delta(self, tc_delta: dict[str, Any]) -> None:
+        """Merge a single streaming tool_call delta into accumulated state.
+
+        Each tool call is split across multiple SSE chunks.  This method
+        creates or updates the :class:`StreamingToolCall` entry keyed by the
+        delta's ``index`` field.
+
+        :param tc_delta: A single element from the ``tool_calls`` array in a
+            streaming chat completion delta.
+        """
+        idx = tc_delta["index"]
+        self.streaming_tool_call_indices.add(idx)
+
+        if idx not in self.streaming_tool_calls:
+            self.streaming_tool_calls[idx] = StreamingToolCall(
+                id=tc_delta.get("id", ""),
+                type=tc_delta.get("type", "function"),
+            )
+
+        tc = self.streaming_tool_calls[idx]
+        fn_delta = tc_delta.get("function", {})
+
+        if fn_id := tc_delta.get("id"):
+            tc.id = fn_id
+        if fn_name := fn_delta.get("name"):
+            tc.function.name += fn_name
+        if fn_args := fn_delta.get("arguments"):
+            tc.function.arguments += fn_args
 
     def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
