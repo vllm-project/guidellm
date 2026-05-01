@@ -1199,9 +1199,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
             input_metrics=UsageMetrics(
                 text_tokens=usage.get("prompt_tokens", 0),
             ),
-            output_metrics=UsageMetrics(
-                text_tokens=0,  # No output tokens for embeddings
-            ),
+            # output_metrics defaults to UsageMetrics() with all None values
         )
 
     def add_streaming_line(self, line: str) -> int | None:  # noqa: ARG002

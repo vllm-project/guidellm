@@ -3323,7 +3323,7 @@ class TestEmbeddingsRequestHandler:
         assert result.request_id == request.request_id
         assert result.text == ""  # No text output for embeddings
         assert result.input_metrics.text_tokens == 10
-        assert result.output_metrics.text_tokens == 0
+        assert result.output_metrics.text_tokens is None
 
     @pytest.mark.sanity
     def test_compile_non_streaming_no_usage(self, valid_instances):
@@ -3342,7 +3342,7 @@ class TestEmbeddingsRequestHandler:
         result = instance.compile_non_streaming(request, arguments, response_data)
 
         assert result.input_metrics.text_tokens == 0
-        assert result.output_metrics.text_tokens == 0
+        assert result.output_metrics.text_tokens is None
 
     @pytest.mark.sanity
     def test_add_streaming_line_raises(self, valid_instances):
