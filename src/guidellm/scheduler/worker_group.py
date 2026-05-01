@@ -280,7 +280,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             dead: list[str] = []
             killed_by_signal = False
             for proc in self.processes:
-                if not proc.is_alive() and proc.exitcode is not None:
+                if (
+                    not proc.is_alive()
+                    and proc.exitcode is not None
+                    and proc.exitcode != 0
+                ):
                     if proc.exitcode < 0:
                         killed_by_signal = True
                         exit_info = f"signal {-proc.exitcode}"
