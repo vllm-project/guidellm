@@ -1,9 +1,8 @@
 """
 Shared trace file I/O for replay benchmarks.
 
-Reads trace files (.jsonl only for now) and exposes raw rows or relative timestamps.
-Used by the scheduler (load_relative_timestamps) and the trace_synthetic deserializer
-(load_trace_rows with token columns).
+Reads trace files (.jsonl only for now) and exposes rows or relative timestamps.
+Used by replay profiles and the trace_synthetic deserializer.
 """
 
 from __future__ import annotations
@@ -28,11 +27,12 @@ def load_trace_rows(
     Supports .jsonl only (one JSON object per line).
     If required_columns is set, every column must exist in the dataset;
     otherwise KeyError is raised with a descriptive message.
+    If timestamp_column is set, rows are sorted by that column.
 
     :param path: Path to the trace file.
     :param required_columns: Optional list of column/field names that each row
         must have.
-    :param timestamp_column: Optional timestamp column used to order trace rows.
+    :param timestamp_column: Optional timestamp column used to sort trace rows.
     :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
     :return: HuggingFace Dataset (iterable as dicts, column-accessible).
     :raises KeyError: If a required column is missing in the dataset.
@@ -71,13 +71,12 @@ def load_relative_timestamps(
     """
     Load timestamps from a trace file and return times relative to the first event.
 
-    Trace file must be JSONL (one JSON object per line). Timestamps are sorted
-    chronologically before calculating relative times. The earliest timestamp
+    Trace file must be JSONL (one JSON object per line). The first timestamp
     becomes 0.0, and all others are relative to it (always >= 0).
 
     :param path: Path to the trace file.
     :param timestamp_column: Name of the column/field containing the timestamp.
-    :return: List of relative timestamps in seconds (first is 0.0, always sorted).
+    :return: List of relative timestamps in seconds (first is 0.0).
     :raises ValueError: If the trace file is empty or has no valid rows.
     """
     trace_dataset = load_trace_rows(path, timestamp_column=timestamp_column)

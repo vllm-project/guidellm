@@ -341,9 +341,8 @@ class ReplayProfile(Profile):
     For this profile, the ``rate`` argument is interpreted as time_scale (scale factor
     applied to relative timestamps), not as requests per second.
 
-    The trace file is read twice: once by the data pipeline for request payloads, and
-    once here for relative timestamps. When ``data_samples`` is set, the replayed
-    timestamps are truncated to match the sampled dataset size.
+    When ``data_samples`` is set, the replayed timestamps are truncated to match
+    the sampled dataset size.
     """
 
     type_: Literal["replay"] = "replay"  # type: ignore[assignment]
@@ -377,7 +376,7 @@ class ReplayProfile(Profile):
         time_scale = rate[0] if rate and len(rate) > 0 else 1.0
 
         # Honor a custom timestamp column when configured via --data-args so the
-        # scheduler and the trace_synthetic deserializer use the same field.
+        # replay profile and trace_synthetic deserializer use the same field.
         data_args = kwargs.get("data_args") or []
         first_args = data_args[0] if data_args else {}
         timestamp_column = "timestamp"
