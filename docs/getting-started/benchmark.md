@@ -65,6 +65,7 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 | `--random-seed`  | Random seed for reproducibility                | `--random-seed 42`                             |
 | `--max-seconds`  | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
 | `--max-requests` | Maximum number of requests for each benchmark  | `--max-requests 1000`                          |
+| `--data-samples` | Maximum number of dataset rows to load         | `--data-samples 1000`                          |
 | `--output-dir`   | Directory path to save output files            | `--output-dir results/`                        |
 | `--outputs`      | Output formats to generate                     | `--outputs json csv html`                      |
 
@@ -186,6 +187,34 @@ guidellm benchmark \
 ```
 
 You can customize synthetic data generation with additional parameters such as standard deviation, minimum, and maximum values. See the [Datasets Synthetic data documentation](../guides/datasets.md#synthetic-data) for more details.
+
+### Trace Replay Benchmarking (beta)
+
+For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL and are loaded with the `trace_synthetic` data type. By default, each row uses `timestamp`, `input_length`, and `output_length` fields. Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
+
+```json
+{"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
+{"timestamp": 1234500.5, "input_length": 512, "output_length": 64}
+```
+
+In this example, the second request is scheduled 0.5 seconds after the first request.
+
+Run with the `replay` profile:
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --data path/to/trace.jsonl \
+  --data-args type_=trace_synthetic \
+  --profile replay \
+  --rate 1.0
+```
+
+The `--rate` parameter acts as a time scale for the intervals between trace events, not requests per second: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
+
+GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-samples` to limit how many trace rows are loaded and replayed. `--max-requests` remains a runtime completion constraint; it does not truncate the trace dataset.
+
+If your trace uses different column names, map them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in `--data-args`.
 
 ### Working with Real Data
 

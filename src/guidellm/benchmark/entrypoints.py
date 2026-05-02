@@ -355,6 +355,8 @@ async def resolve_profile(
     max_global_error_rate: float | None,
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
+    data: list[Any] | None = None,
+    **profile_kwargs: Any,
 ) -> Profile:
     """
     Resolve and configure a benchmark profile with rate and constraint settings.
@@ -376,6 +378,8 @@ async def resolve_profile(
     :param max_global_error_rate: Maximum global error rate threshold before stopping
     :param over_saturation: Over-saturation detection configuration (dict)
     :param console: Console instance for progress reporting, or None
+    :param data: Optional list of data sources.
+    :param profile_kwargs: Additional profile-specific arguments.
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile
     """
@@ -403,6 +407,8 @@ async def resolve_profile(
             random_seed=random_seed,
             rampup_duration=rampup,
             constraints={**constraints},
+            data=data,
+            **profile_kwargs,
         )
     elif constraints:
         raise ValueError(
@@ -536,6 +542,9 @@ async def benchmark_generative_text(
         max_global_error_rate=args.max_global_error_rate,
         over_saturation=args.over_saturation,
         console=console,
+        data=args.data,
+        data_args=args.data_args,
+        data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console

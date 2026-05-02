@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
 
 import numpy as np
@@ -37,8 +38,10 @@ from guidellm.scheduler import (
     SchedulingStrategy,
     SynchronousStrategy,
     ThroughputStrategy,
+    TraceReplayStrategy,
 )
 from guidellm.schemas import PydanticClassRegistryMixin
+from guidellm.utils.trace_io import load_relative_timestamps
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -48,13 +51,14 @@ __all__ = [
     "ConcurrentProfile",
     "Profile",
     "ProfileType",
+    "ReplayProfile",
     "SweepProfile",
     "SynchronousProfile",
     "ThroughputProfile",
 ]
 
 ProfileType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "async", "sweep"],
+    Literal["synchronous", "concurrent", "throughput", "async", "sweep", "replay"],
     "Profile type identifiers for polymorphic deserialization",
 ]
 
@@ -326,6 +330,97 @@ class SynchronousProfile(Profile):
             return None
 
         return SynchronousStrategy()
+
+
+@Profile.register("replay")
+class ReplayProfile(Profile):
+    """
+    Replay a trace file:
+    schedule each request at start_time + time_scale * relative_timestamp[i].
+
+    For this profile, the ``rate`` argument is interpreted as time_scale (scale factor
+    applied to relative timestamps), not as requests per second.
+
+    When ``data_samples`` is set, the replayed timestamps are truncated to match
+    the sampled dataset size.
+    """
+
+    type_: Literal["replay"] = "replay"  # type: ignore[assignment]
+    relative_timestamps: list[float] = Field(
+        description="Request start times relative to first event (first = 0)",
+    )
+    time_scale: float = Field(
+        default=1.0,
+        gt=0,
+        description="Scale factor applied to relative timestamps",
+    )
+
+    @classmethod
+    def resolve_args(
+        cls,
+        rate_type: str,
+        rate: list[float] | None,
+        random_seed: int,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        _ = (rate_type, random_seed)  # unused
+        data = kwargs.get("data")
+        if not data or not data[0]:
+            raise ValueError("Replay profile requires data (path to trace file)")
+        path = Path(data[0]) if isinstance(data[0], str) else data[0]
+        if not path.exists():
+            raise ValueError(f"Replay trace file not found: {path}")
+
+        # For replay profile, rate is interpreted as time_scale (not requests per
+        # second)
+        time_scale = rate[0] if rate and len(rate) > 0 else 1.0
+
+        # Honor a custom timestamp column when configured via --data-args so the
+        # replay profile and trace_synthetic deserializer use the same field.
+        data_args = kwargs.get("data_args") or []
+        first_args = data_args[0] if data_args else {}
+        timestamp_column = "timestamp"
+        if isinstance(first_args, dict):
+            raw_timestamp_column = first_args.get("timestamp_column")
+            if isinstance(raw_timestamp_column, str) and raw_timestamp_column.strip():
+                timestamp_column = raw_timestamp_column
+
+        relative_timestamps = load_relative_timestamps(
+            path, timestamp_column=timestamp_column
+        )
+        data_samples = kwargs.get("data_samples", -1)
+        if isinstance(data_samples, int) and data_samples > 0:
+            relative_timestamps = relative_timestamps[:data_samples]
+
+        if not relative_timestamps:
+            raise ValueError(
+                "No timestamps remain after applying data_samples. "
+                "The trace is empty or all events were filtered out."
+            )
+
+        return {
+            "relative_timestamps": relative_timestamps,
+            "time_scale": time_scale,
+            "constraints": kwargs.get("constraints"),
+        }
+
+    @property
+    def strategy_types(self) -> list[str]:
+        return ["trace"]
+
+    def next_strategy(
+        self,
+        prev_strategy: SchedulingStrategy | None,
+        prev_benchmark: Benchmark | None,
+    ) -> TraceReplayStrategy | None:
+        _ = prev_benchmark
+        # Replay has a single strategy; return it once, then None
+        if prev_strategy is not None:
+            return None
+        return TraceReplayStrategy(
+            relative_timestamps=self.relative_timestamps,
+            time_scale=self.time_scale,
+        )
 
 
 @Profile.register("concurrent")
