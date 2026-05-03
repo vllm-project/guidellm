@@ -106,6 +106,7 @@ DEFAULT_API_PATHS = {
     "/v1/models": "v1/models",
     "/v1/completions": "v1/completions",
     "/v1/chat/completions": "v1/chat/completions",
+    "/v1/embeddings": "v1/embeddings",
     "/v1/responses": "v1/responses",
     "/v1/audio/transcriptions": "v1/audio/transcriptions",
     "/v1/audio/translations": "v1/audio/translations",

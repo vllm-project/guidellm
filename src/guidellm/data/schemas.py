@@ -125,9 +125,10 @@ class SyntheticTextDatasetConfig(DataConfig):
         gt=0,
         default=None,
     )
-    output_tokens: int = Field(
+    output_tokens: int | None = Field(
         description="The average number of text tokens generated for outputs.",
         gt=0,
+        default=None,
     )
     output_tokens_stdev: int | None = Field(
         description="The standard deviation of the tokens generated for outputs.",

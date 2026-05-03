@@ -56,14 +56,18 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 random_seed=iter_random_seed,
             )
         )
-        output_tokens_sampler = iter(
-            IntegerRangeSampler(
-                average=self.config.output_tokens,
-                variance=self.config.output_tokens_stdev,
-                min_value=self.config.output_tokens_min,
-                max_value=self.config.output_tokens_max,
-                random_seed=iter_random_seed + 1,  # ensure diff dist from prompts
+        output_tokens_sampler = (
+            iter(
+                IntegerRangeSampler(
+                    average=self.config.output_tokens,
+                    variance=self.config.output_tokens_stdev,
+                    min_value=self.config.output_tokens_min,
+                    max_value=self.config.output_tokens_max,
+                    random_seed=iter_random_seed + 1,  # ensure diff dist from prompts
+                )
             )
+            if self.config.output_tokens is not None
+            else None
         )
 
         # Create a shared prefix if specified
@@ -73,7 +77,11 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
         while True:
             prompt_tokens_count = next(prompt_tokens_sampler)
-            output_tokens_count = next(output_tokens_sampler)
+            output_tokens_count = (
+                next(output_tokens_sampler)
+                if output_tokens_sampler is not None
+                else None
+            )
 
             row: dict[str, Any] = {"prefix": next(prefix_iter)}
             for turn in range(self.config.turns):
@@ -83,7 +91,8 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                     f"{self.iteration_count} {samples_count} ",
                 )
                 row[f"prompt_tokens_count_{turn}"] = prompt_tokens_count
-                row[f"output_tokens_count_{turn}"] = output_tokens_count
+                if output_tokens_count is not None:
+                    row[f"output_tokens_count_{turn}"] = output_tokens_count
                 samples_count += 1
 
             yield samples_count, row
@@ -98,7 +107,8 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         for i in range(self.config.turns):
             features[f"prompt_{i}"] = Value("string")
             features[f"prompt_tokens_count_{i}"] = Value("int32")
-            features[f"output_tokens_count_{i}"] = Value("int32")
+            if self.config.output_tokens is not None:
+                features[f"output_tokens_count_{i}"] = Value("int32")
         return Features(features)
 
     @property

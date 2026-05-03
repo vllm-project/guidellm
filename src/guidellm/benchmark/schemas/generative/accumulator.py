@@ -292,8 +292,9 @@ class RunningMetricStats(StandardBaseModel):
         :param duration: Total duration to set, overriding incremental elapsed updates
         :param elapsed: Time elapsed since last update for time-weighted calculations
         """
-        self.count += count
-        self.value_sum += (value or 0.0) * count
+        if value is not None:
+            self.count += count
+            self.value_sum += value * count
 
         if elapsed is not None:
             self.time_weighted_sum += (self.last_value or 0.0) * elapsed
