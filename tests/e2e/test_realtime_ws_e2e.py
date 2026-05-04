@@ -56,9 +56,7 @@ def make_realtime_transcription_stub_handler(
                 if payload.get("final"):
                     break
         assert commits == [False, True]
-        await ws.send(
-            json.dumps({"type": "transcription.delta", "delta": delta_text})
-        )
+        await ws.send(json.dumps({"type": "transcription.delta", "delta": delta_text}))
         await ws.send(
             json.dumps(
                 {

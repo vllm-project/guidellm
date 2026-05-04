@@ -143,8 +143,7 @@ def _ensure_pcm16_append_b64_chunks() -> Any:
     except ImportError as exc:
         raise ImportError(
             "The openai_realtime_ws backend requires the audio extras for PCM "
-            "handling used in realtime transcription. "
-            + _AUDIO_EXTRA_HINT
+            "handling used in realtime transcription. " + _AUDIO_EXTRA_HINT
         ) from exc
     _pcm_imported_fn["fn"] = fn
     return fn
@@ -395,7 +394,7 @@ class OpenAIRealtimeWebSocketBackend(Backend):
         self.model = models[0] if models else ""
         return self.model
 
-    async def resolve(  # noqa: C901, PLR0912, PLR0915  # type: ignore[override, misc]
+    async def resolve(  # type: ignore[override, misc]  # noqa: C901, PLR0912, PLR0915
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
@@ -501,9 +500,7 @@ class OpenAIRealtimeWebSocketBackend(Backend):
                             request_info.timings.token_iterations = 0
                             yield None, request_info
                         request_info.timings.last_token_iteration = iter_time
-                        request_info.timings.token_iterations += (
-                            1 if delta else 0
-                        )
+                        request_info.timings.token_iterations += 1 if delta else 0
 
                     elif et == "transcription.done":
                         iter_time = time.time()
