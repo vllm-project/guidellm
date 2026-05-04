@@ -1,5 +1,4 @@
 from .http import OpenAIHTTPBackend
-from .websocket import OpenAIWebSocketBackend, OpenAIWebSocketBackendArgs
 from .request_handlers import (
     AudioRequestHandler,
     ChatCompletionsRequestHandler,
@@ -8,15 +7,16 @@ from .request_handlers import (
     ResponsesRequestHandler,
     TextCompletionsRequestHandler,
 )
+from .websocket import OpenAIWebSocketBackend, OpenAIWebSocketBackendArgs
 
 __all__ = [
     "AudioRequestHandler",
     "ChatCompletionsRequestHandler",
     "OpenAIHTTPBackend",
-    "OpenAIWebSocketBackend",
-    "OpenAIWebSocketBackendArgs",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "OpenAIWebSocketBackend",
+    "OpenAIWebSocketBackendArgs",
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
 ]
