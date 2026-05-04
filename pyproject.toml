@@ -86,6 +86,8 @@ audio = [
     # Torchcodec needs specific torch version
     "torch==2.10.*",
     "torchcodec==0.10.*",
+    # openai_realtime_ws backend (vLLM /v1/realtime)
+    "websockets>=13.0,<16.0",
 ]
 vision = [
     "datasets[vision]",

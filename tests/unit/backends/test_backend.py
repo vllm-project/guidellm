@@ -460,6 +460,20 @@ class TestBackend:
         assert backend.type_ == "my_backend"
 
     @pytest.mark.smoke
+    def test_openai_realtime_ws_backend_registered(self):
+        """Realtime WebSocket backend is registered and constructible."""
+        from guidellm.backends.openai import (
+            OpenAIRealtimeWebSocketBackend,
+            OpenAIRealtimeWsBackendArgs,
+        )
+
+        assert Backend.is_registered("openai_realtime_ws")
+        realtime_args = Backend.get_backend_args("openai_realtime_ws")
+        assert realtime_args is OpenAIRealtimeWsBackendArgs
+        backend = Backend.create("openai_realtime_ws", target="http://localhost:9000")
+        assert isinstance(backend, OpenAIRealtimeWebSocketBackend)
+        assert backend.type_ == "openai_realtime_ws"
+
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""
         from guidellm.backends.openai import OpenAIHTTPBackend
