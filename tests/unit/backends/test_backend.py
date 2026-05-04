@@ -461,7 +461,10 @@ class TestBackend:
 
     @pytest.mark.smoke
     def test_openai_realtime_ws_backend_registered(self):
-        """Realtime WebSocket backend is registered and constructible."""
+        """Realtime WebSocket backend is registered and constructible.
+
+        ## WRITTEN BY AI ##
+        """
         from guidellm.backends.openai import (
             OpenAIRealtimeWebSocketBackend,
             OpenAIRealtimeWsBackendArgs,

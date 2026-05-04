@@ -54,7 +54,10 @@ class TestBackendArgsTransformation:
         assert args.backend_kwargs.model == "test_model"
 
     def test_openai_realtime_ws_backend_kwargs_validates(self) -> None:
-        """Realtime WS backend is selected explicitly; no request_format shim."""
+        """Realtime WS backend is selected explicitly; no request_format shim.
+
+        ## WRITTEN BY AI ##
+        """
         args = BenchmarkGenerativeTextArgs.model_validate(
             {
                 "backend": "openai_realtime_ws",
