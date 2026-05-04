@@ -466,15 +466,15 @@ class TestBackend:
         ## WRITTEN BY AI ##
         """
         from guidellm.backends.openai import (
-            OpenAIRealtimeWebSocketBackend,
-            OpenAIRealtimeWsBackendArgs,
+            OpenAIWebSocketBackend,
+            OpenAIWebSocketBackendArgs,
         )
 
         assert Backend.is_registered("openai_realtime_ws")
         realtime_args = Backend.get_backend_args("openai_realtime_ws")
-        assert realtime_args is OpenAIRealtimeWsBackendArgs
+        assert realtime_args is OpenAIWebSocketBackendArgs
         backend = Backend.create("openai_realtime_ws", target="http://localhost:9000")
-        assert isinstance(backend, OpenAIRealtimeWebSocketBackend)
+        assert isinstance(backend, OpenAIWebSocketBackend)
         assert backend.type_ == "openai_realtime_ws"
 
     def test_openai_backend_registered(self):
