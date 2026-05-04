@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# NOTE: Matches httpx's default connect timeout; shared by HTTP and WebSocket backends.
+# NOTE: This value is taken from httpx's default
 FALLBACK_TIMEOUT = 5.0
 
 
