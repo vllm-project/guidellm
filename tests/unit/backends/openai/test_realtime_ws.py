@@ -1,4 +1,4 @@
-"""Tests for OpenAIRealtimeWebSocketBackend.
+"""Tests for OpenAIWebSocketBackend.
 
 ## WRITTEN BY AI ##
 """
@@ -20,10 +20,10 @@ except ImportError:
         allow_module_level=True,
     )
 
-from guidellm.backends.openai.realtime_ws import (
+from guidellm.backends.openai.websocket import (
     _DEFAULT_WS_RECV_TIMEOUT,
-    OpenAIRealtimeWebSocketBackend,
-    OpenAIRealtimeWsBackendArgs,
+    OpenAIWebSocketBackend,
+    OpenAIWebSocketBackendArgs,
 )
 from guidellm.schemas import GenerationRequest, RequestInfo, RequestTimings
 
@@ -67,13 +67,13 @@ async def test_resolve_streams_deltas_and_done(monkeypatch: pytest.MonkeyPatch) 
         )
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YWFhYQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="test-model",
             validate_backend=False,
@@ -135,13 +135,13 @@ async def test_transcription_done_without_deltas_sets_first_token_and_prefetch_y
         )
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YWFhYQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="test-model",
             validate_backend=False,
@@ -205,13 +205,13 @@ async def test_transcription_done_usage_string_counts(
         )
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YWFhYQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="test-model",
             validate_backend=False,
@@ -257,13 +257,13 @@ async def test_server_error_event_raises(
                 return
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -285,7 +285,7 @@ async def test_first_message_error_event_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
@@ -294,7 +294,7 @@ async def test_first_message_error_event_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -316,7 +316,7 @@ async def test_first_message_not_session_created_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
@@ -325,7 +325,7 @@ async def test_first_message_not_session_created_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -358,13 +358,13 @@ async def test_invalid_json_from_server_raises(
         await ws.send("{not-json")
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -383,7 +383,7 @@ async def test_invalid_json_from_server_raises(
 
 @pytest.mark.asyncio
 async def test_resolve_requires_process_startup() -> None:
-    be = OpenAIRealtimeWebSocketBackend(
+    be = OpenAIWebSocketBackend(
         target="http://127.0.0.1:9",
         model="m",
         validate_backend=False,
@@ -400,7 +400,7 @@ async def test_resolve_requires_process_startup() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_rejects_history() -> None:
-    be = OpenAIRealtimeWebSocketBackend(
+    be = OpenAIWebSocketBackend(
         target="http://127.0.0.1:9",
         model="m",
         validate_backend=False,
@@ -420,7 +420,7 @@ async def test_resolve_rejects_history() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_rejects_wrong_audio_column_count() -> None:
-    be = OpenAIRealtimeWebSocketBackend(
+    be = OpenAIWebSocketBackend(
         target="http://127.0.0.1:9",
         model="m",
         validate_backend=False,
@@ -463,14 +463,14 @@ async def test_resolve_cancelled_after_delta_yields_partial_then_reraises(
         await _bounded_ws_recv(ws)
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
     results: list = []
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -514,13 +514,13 @@ async def test_non_object_json_after_handshake_raises(
         await ws.send("[]")
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -542,7 +542,7 @@ async def test_excessive_ignored_events_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws._MAX_IGNORED_WS_EVENT_TYPES",
+        "guidellm.backends.openai.websocket._MAX_IGNORED_WS_EVENT_TYPES",
         2,
     )
 
@@ -557,13 +557,13 @@ async def test_excessive_ignored_events_raises(
             await ws.send(json.dumps({"type": "noise.event"}))
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -586,7 +586,7 @@ async def test_available_models_parses_response(httpx_mock: object) -> None:
         url="http://127.0.0.1:9/v1/models",
         json={"data": [{"id": "a"}, {"id": "b"}]},
     )
-    be = OpenAIRealtimeWebSocketBackend(
+    be = OpenAIWebSocketBackend(
         target="http://127.0.0.1:9",
         validate_backend=False,
     )
@@ -601,7 +601,7 @@ async def test_available_models_bad_data_shape_raises(httpx_mock: object) -> Non
         url="http://127.0.0.1:9/v1/models",
         json={"data": "not-a-list"},
     )
-    be = OpenAIRealtimeWebSocketBackend(
+    be = OpenAIWebSocketBackend(
         target="http://127.0.0.1:9",
         validate_backend=False,
     )
@@ -621,10 +621,10 @@ async def test_resolve_raises_when_no_model_and_empty_catalog(
         json={"data": []},
     )
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
-    be = OpenAIRealtimeWebSocketBackend(
+    be = OpenAIWebSocketBackend(
         target="http://127.0.0.1:9",
         model="",
         validate_backend=False,
@@ -646,10 +646,10 @@ async def test_resolve_invalid_ws_target_url_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
-    be = OpenAIRealtimeWebSocketBackend(
+    be = OpenAIWebSocketBackend(
         target="",
         model="m",
         validate_backend=False,
@@ -681,13 +681,13 @@ async def test_error_event_dict_formatted_message(
         )
 
     monkeypatch.setattr(
-        "guidellm.backends.openai.realtime_ws.pcm16_append_b64_chunks",
+        "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIRealtimeWebSocketBackend(
+        be = OpenAIWebSocketBackend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -705,7 +705,7 @@ async def test_error_event_dict_formatted_message(
 
 
 def test_openai_realtime_backend_args_model() -> None:
-    a = OpenAIRealtimeWsBackendArgs(target="http://localhost:8000", model="x")
+    a = OpenAIWebSocketBackendArgs(target="http://localhost:8000", model="x")
     assert a.websocket_path == "/v1/realtime"
     assert a.chunk_samples == 3200
     assert a.timeout == _DEFAULT_WS_RECV_TIMEOUT
