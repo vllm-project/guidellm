@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from guidellm.backends.backend import BackendArgs
 from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+from guidellm.backends.openai.realtime_ws import OpenAIRealtimeWsBackendArgs
 from guidellm.benchmark.schemas.entrypoints import (
     BenchmarkArgs,
 )
@@ -62,6 +63,23 @@ class TestBackendArgsTransformation:
         assert isinstance(args.backend, OpenAIHTTPBackendArgs)
         assert args.backend.target == "http://localhost:9000"
         assert args.backend.model == "test_model"
+
+    def test_openai_realtime_ws_backend_kwargs_validates(self) -> None:
+        """Realtime WS backend is selected explicitly; no request_format shim."""
+        args = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "kind": "openai_realtime_ws",
+                    "target": "http://localhost:8000",
+                    "model": "rt-model",
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+        assert args.backend_kwargs.kind == "openai_realtime_ws"
+        assert isinstance(args.backend_kwargs, OpenAIRealtimeWsBackendArgs)
+        assert args.backend_kwargs.target == "http://localhost:8000"
+        assert args.backend_kwargs.model == "rt-model"
 
     def test_dict_with_request_format(self):
         """
