@@ -8,7 +8,7 @@ from typing import Any
 FALLBACK_TIMEOUT = 5.0
 
 
-def build_openai_headers(
+def build_headers(
     api_key: str | None,
     existing_headers: dict[str, str] | None = None,
 ) -> dict[str, str] | None:
