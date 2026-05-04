@@ -988,7 +988,7 @@ requires-dist = [
     { name = "types-toml", marker = "extra == 'dev'" },
     { name = "uvloop", specifier = ">=0.18" },
     { name = "uvloop", marker = "extra == 'perf'" },
-    { name = "websockets", marker = "extra == 'audio'", specifier = ">=13.0,<16.0" },
+    { name = "websockets", marker = "extra == 'audio'", specifier = ">=13.0" },
 ]
 provides-extras = ["all", "recommended", "perf", "tokenizers", "audio", "vision", "dev"]
 

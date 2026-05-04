@@ -272,7 +272,9 @@ class OpenAIWebSocketBackend(Backend):
         self.timeout_connect = timeout_connect
         self.api_routes = _WS_API_ROUTES
         self.validate_backend: dict[str, Any] | None = resolve_validate_kwargs(
-            validate_backend
+            validate_backend,
+            self.target,
+            self.api_routes,
         )
         self.extras = extras or {}
         self._in_process = False
@@ -313,7 +315,6 @@ class OpenAIWebSocketBackend(Backend):
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
         return ctx
-
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
@@ -369,7 +370,9 @@ class OpenAIWebSocketBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
         target = f"{self.target}/v1/models"
-        response = await self._async_client.get(target, headers=build_headers(self.api_key))
+        response = await self._async_client.get(
+            target, headers=build_headers(self.api_key)
+        )
         response.raise_for_status()
         try:
             payload: Any = response.json()

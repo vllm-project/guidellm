@@ -16,10 +16,10 @@ from .openai import (
     AudioRequestHandler,
     ChatCompletionsRequestHandler,
     OpenAIHTTPBackend,
-    OpenAIWebSocketBackend,
-    OpenAIWebSocketBackendArgs,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    OpenAIWebSocketBackend,
+    OpenAIWebSocketBackendArgs,
     TextCompletionsRequestHandler,
 )
 
@@ -36,10 +36,10 @@ __all__ = [
     "BackendArgs",
     "ChatCompletionsRequestHandler",
     "OpenAIHTTPBackend",
-    "OpenAIWebSocketBackend",
-    "OpenAIWebSocketBackendArgs",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "OpenAIWebSocketBackend",
+    "OpenAIWebSocketBackendArgs",
     "TextCompletionsRequestHandler",
 ]
 
