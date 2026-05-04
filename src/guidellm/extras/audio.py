@@ -301,9 +301,13 @@ def pcm16_append_b64_chunks(
     # Convert float waveform to signed little-endian PCM16 bytes.
     wave = data.squeeze(0)
     pcm_i16 = (
-        wave.clamp(_PCM16_WAVE_CLIP_MIN, _PCM16_WAVE_CLIP_MAX)
-        * _PCM16_FLOAT_TO_INT16_SCALE
-    ).round().to(torch.int16)
+        (
+            wave.clamp(_PCM16_WAVE_CLIP_MIN, _PCM16_WAVE_CLIP_MAX)
+            * _PCM16_FLOAT_TO_INT16_SCALE
+        )
+        .round()
+        .to(torch.int16)
+    )
     buf = pcm_i16.cpu().numpy().tobytes()
 
     # Split PCM bytes into chunk-sized base64 payloads for append events.
