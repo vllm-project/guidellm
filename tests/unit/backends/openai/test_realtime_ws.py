@@ -187,10 +187,7 @@ async def test_transcription_done_usage_string_counts(
         while True:
             msg = await ws.recv()
             data = json.loads(msg if isinstance(msg, str) else msg.decode())
-            if (
-                data.get("type") == "input_audio_buffer.commit"
-                and data.get("final")
-            ):
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
                 break
         await ws.send(json.dumps({"type": "transcription.delta", "delta": "x"}))
         await ws.send(
@@ -250,9 +247,8 @@ async def test_server_error_event_raises(
         while True:
             msg = await ws.recv()
             data = json.loads(msg if isinstance(msg, str) else msg.decode())
-            if (
-                data.get("type") == "input_audio_buffer.commit"
-                and not data.get("final")
+            if data.get("type") == "input_audio_buffer.commit" and not data.get(
+                "final"
             ):
                 await ws.send(
                     json.dumps({"type": "error", "error": "bad", "code": "e1"})
@@ -357,10 +353,7 @@ async def test_invalid_json_from_server_raises(
         while True:
             msg = await ws.recv()
             data = json.loads(msg if isinstance(msg, str) else msg.decode())
-            if (
-                data.get("type") == "input_audio_buffer.commit"
-                and data.get("final")
-            ):
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
                 break
         await ws.send("{not-json")
 
@@ -459,20 +452,13 @@ async def test_resolve_cancelled_after_delta_yields_partial_then_reraises(
     delta_seen = asyncio.Event()
 
     async def handler(ws: object) -> None:
-        await ws.send(
-            json.dumps({"type": "session.created", "id": "s", "created": 0})
-        )
+        await ws.send(json.dumps({"type": "session.created", "id": "s", "created": 0}))
         while True:
             msg = await ws.recv()
             data = json.loads(msg if isinstance(msg, str) else msg.decode())
-            if (
-                data.get("type") == "input_audio_buffer.commit"
-                and data.get("final")
-            ):
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
                 break
-        await ws.send(
-            json.dumps({"type": "transcription.delta", "delta": "partial"})
-        )
+        await ws.send(json.dumps({"type": "transcription.delta", "delta": "partial"}))
         delta_seen.set()
         await _bounded_ws_recv(ws)
 
@@ -519,16 +505,11 @@ async def test_non_object_json_after_handshake_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def handler(ws: object) -> None:
-        await ws.send(
-            json.dumps({"type": "session.created", "id": "s", "created": 0})
-        )
+        await ws.send(json.dumps({"type": "session.created", "id": "s", "created": 0}))
         while True:
             msg = await ws.recv()
             data = json.loads(msg if isinstance(msg, str) else msg.decode())
-            if (
-                data.get("type") == "input_audio_buffer.commit"
-                and data.get("final")
-            ):
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
                 break
         await ws.send("[]")
 
@@ -566,16 +547,11 @@ async def test_excessive_ignored_events_raises(
     )
 
     async def handler(ws: object) -> None:
-        await ws.send(
-            json.dumps({"type": "session.created", "id": "s", "created": 0})
-        )
+        await ws.send(json.dumps({"type": "session.created", "id": "s", "created": 0}))
         while True:
             msg = await ws.recv()
             data = json.loads(msg if isinstance(msg, str) else msg.decode())
-            if (
-                data.get("type") == "input_audio_buffer.commit"
-                and data.get("final")
-            ):
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
                 break
         for _ in range(10):
             await ws.send(json.dumps({"type": "noise.event"}))
