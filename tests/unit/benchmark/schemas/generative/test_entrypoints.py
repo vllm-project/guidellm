@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from guidellm.backends.backend import BackendArgs
 from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-from guidellm.backends.openai.realtime_ws import OpenAIRealtimeWsBackendArgs
+from guidellm.backends.openai.websocket import OpenAIWebSocketBackendArgs
 from guidellm.benchmark.schemas.generative.entrypoints import (
     BenchmarkGenerativeTextArgs,
 )
@@ -63,14 +63,14 @@ class TestBackendArgsTransformation:
         assert args.backend_kwargs.target == "http://localhost:9000"
         assert args.backend_kwargs.model == "test_model"
 
-    def test_openai_realtime_ws_backend_kwargs_validates(self) -> None:
+    def test_openai_websocket_backend_kwargs_validates(self) -> None:
         """Realtime WS backend is selected explicitly; no request_format shim.
 
         ## WRITTEN BY AI ##
         """
         args = BenchmarkGenerativeTextArgs.model_validate(
             {
-                "backend": "openai_realtime_ws",
+                "backend": "openai_websocket",
                 "backend_kwargs": {
                     "target": "http://localhost:8000",
                     "model": "rt-model",
@@ -78,8 +78,8 @@ class TestBackendArgsTransformation:
                 "data": ["prompt_tokens=256,output_tokens=128"],
             }
         )
-        assert args.backend == "openai_realtime_ws"
-        assert isinstance(args.backend_kwargs, OpenAIRealtimeWsBackendArgs)
+        assert args.backend == "openai_websocket"
+        assert isinstance(args.backend_kwargs, OpenAIWebSocketBackendArgs)
         assert args.backend_kwargs.target == "http://localhost:8000"
         assert args.backend_kwargs.model == "rt-model"
 

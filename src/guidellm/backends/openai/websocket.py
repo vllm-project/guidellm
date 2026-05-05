@@ -66,7 +66,7 @@ def _require_ws_connect() -> Any:
         from websockets.asyncio.client import connect as ws_connect
     except ImportError as exc:
         raise ImportError(
-            "The openai_realtime_ws backend requires the 'websockets' package. "
+            "The openai_websocket backend requires the 'websockets' package. "
             + _AUDIO_EXTRA_HINT
         ) from exc
     return ws_connect
@@ -128,7 +128,9 @@ def _load_ws_event(raw: str) -> dict[str, Any]:
     return parsed
 
 
-# Lazy import cache (no ``global``); tests may set ``pcm16_append_b64_chunks`` directly.
+# Module-level hook for ``guidellm.extras.audio.pcm16_append_b64_chunks``: on first
+# realtime encode we assign the imported callable here (see ``_ensure_*``). Unit tests
+# patch this attribute so WS logic can be exercised without ``guidellm[audio]``.
 pcm16_append_b64_chunks: Any = None
 _pcm_imported_fn: dict[str, Any] = {"fn": None}
 
@@ -142,7 +144,7 @@ def _ensure_pcm16_append_b64_chunks() -> Any:
         from guidellm.extras.audio import pcm16_append_b64_chunks as fn
     except ImportError as exc:
         raise ImportError(
-            "The openai_realtime_ws backend requires the audio extras for PCM "
+            "The openai_websocket backend requires the audio extras for PCM "
             "handling used in realtime transcription. " + _AUDIO_EXTRA_HINT
         ) from exc
     _pcm_imported_fn["fn"] = fn
@@ -240,7 +242,7 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
     )
 
 
-@Backend.register("openai_realtime_ws")
+@Backend.register("openai_websocket")
 class OpenAIWebSocketBackend(Backend):
     """WebSocket client for realtime (streaming) audio transcription."""
 
@@ -261,7 +263,7 @@ class OpenAIWebSocketBackend(Backend):
         validate_backend: bool | str | dict[str, Any] = True,
         extras: dict[str, Any] | None = None,
     ):
-        super().__init__(type_="openai_realtime_ws")
+        super().__init__(type_="openai_websocket")
         self.target = target.rstrip("/").removesuffix("/v1")
         self.model = model or ""
         self.websocket_path = websocket_path
@@ -402,7 +404,7 @@ class OpenAIWebSocketBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
         if history:
             raise NotImplementedError(
-                "openai_realtime_ws does not support multiturn/history yet."
+                "openai_websocket does not support multiturn/history yet."
             )
 
         audio_columns = request.columns.get("audio_column", [])
@@ -415,7 +417,7 @@ class OpenAIWebSocketBackend(Backend):
         model_name = await self.default_model()
         if not str(model_name).strip():
             raise RuntimeError(
-                "No model configured for openai_realtime_ws and /v1/models returned "
+                "No model configured for openai_websocket and /v1/models returned "
                 "none. Pass --model or ensure the server lists at least one model."
             )
 
