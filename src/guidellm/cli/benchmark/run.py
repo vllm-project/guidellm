@@ -118,10 +118,12 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
         "Format to use for requests. Options depend on backend. "
         "For vLLM backend: plain (no chat template, text appending only), "
         "default-template (use tokenizer default), or a file path / single-line "
-        "template per vLLM docs. Default: default-template"
+        "template per vLLM docs. Default: default-template. "
         "For openai backend: http endpoint path (/v1/chat/completions, "
         "/v1/completions, /v1/audio/transcriptions, /v1/audio/translations) or "
-        "alias (e.g. chat_completions); default /v1/chat/completions."
+        "alias (e.g. chat_completions); default /v1/chat/completions. "
+        "For openai_websocket backend: WebSocket path /v1/realtime is supported "
+        "and is the default."
     ),
 )
 @click.option(
