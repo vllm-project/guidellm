@@ -469,7 +469,9 @@ class TestBackend:
         ws_args = OpenAIWebSocketBackendArgs
         assert Backend.get_backend_args("openai_websocket") is ws_args
 
-        by_canonical = Backend.create("openai_websocket", target="http://localhost:9000")
+        by_canonical = Backend.create(
+            "openai_websocket", target="http://localhost:9000"
+        )
         assert isinstance(by_canonical, OpenAIWebSocketBackend)
         assert by_canonical.type_ == "openai_websocket"
 
