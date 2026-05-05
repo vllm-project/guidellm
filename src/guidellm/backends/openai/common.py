@@ -42,10 +42,15 @@ def resolve_validate_kwargs(
     api_routes: dict[str, str],
 ) -> dict[str, Any] | None:
     """
-    Normalize ``validate_backend`` into kwargs for ``httpx`` request().
+    Build ``httpx`` request keyword arguments from backend validation settings.
 
-    Accepts the same shapes as
-    :class:`~guidellm.backends.openai.http.OpenAIHTTPBackend`.
+    ``validate_backend`` may be ``False``/equivalent (skip validation), ``True``
+    (default ``GET`` against the ``/health`` route key), a route key present in
+    ``api_routes`` (resolved to ``{target}/{path}``), a full URL string, or a
+    ``dict`` that includes ``url`` and optionally ``method`` (default ``GET``).
+
+    :return: Keyword arguments suitable for ``httpx.AsyncClient.request``, or
+        ``None`` when validation is turned off.
     """
     raw = validate_backend
     if not raw:
