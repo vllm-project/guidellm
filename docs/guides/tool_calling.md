@@ -133,6 +133,18 @@ This setting only matters when `tool_choice` is `auto` (or `required` and the se
 | `auto`      | `ignore_continue` | completed           | Good for testing `auto` behavior without the model choosing to not use a tool call causing errors.           |
 | `auto`      | `ignore_stop`     | cancelled           | Good for testing `auto` behavior but ends the conversation early once the model creates a non-tool response. |
 
+## Output Token Limits on Tool-Call Turns
+
+When `output_tokens` is configured (either via synthetic data or a dataset column), GuideLLM normally sets `ignore_eos=True` and clears stop sequences to force the model to generate exactly N tokens. On tool-call turns, these settings are **automatically removed** because they are incompatible with vLLM's constrained decoding grammar:
+
+- **`ignore_eos`** conflicts with the grammar's terminal state. Constrained decoding guides token selection via a finite-state machine that marks EOS as the only valid token once the JSON is complete. `ignore_eos` masks out EOS, creating an impossible state with no valid tokens — causing server errors or runaway generation.
+- **`stop=None`** removes stop sequences that the tool-call parser may rely on internally (e.g. `<|eot_id|>` for Llama models).
+- **`max_tokens` / `max_completion_tokens`** would truncate mid-JSON, producing invalid tool call arguments that corrupt the conversation history on follow-up turns.
+
+As a result, tool-call turns generate output whose length is determined by the model and tool schema rather than the configured `output_tokens`. The model stops as soon as it produces valid JSON for the function name and arguments. This typically results in shorter output (20–80 tokens) compared to the configured target.
+
+Plain-text turns (where `tool_choice="none"`) are unaffected and continue to respect `output_tokens` / `ignore_eos` as normal, even when tool definitions are present in the request.
+
 ## Edge Cases
 
 - **Single-turn tool calling** (`turns=1, tool_call_turns=1`) is supported. The conversation has one turn that expects a tool call and no plain-text response.
