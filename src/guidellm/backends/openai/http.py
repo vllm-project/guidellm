@@ -134,7 +134,9 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "multi-turn requests. Only supported with /v1/responses."
         ),
     )
-    tool_call_missing_behavior: Literal["ignore_continue", "ignore_stop", "error_stop"] = Field(
+    tool_call_missing_behavior: Literal[
+        "ignore_continue", "ignore_stop", "error_stop"
+    ] = Field(
         default="error_stop",
         description=(
             "What happens when a tool call is expected but the model does not "
@@ -439,8 +441,8 @@ class OpenAIHTTPBackend(Backend):
 
             request_info.timings.request_end = time.time()
             gen_response = request_handler.compile_streaming(request, arguments)
-            self._check_tool_call_expectations(request, gen_response)
             yield gen_response, request_info
+            self._check_tool_call_expectations(request, gen_response)
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
             yield request_handler.compile_streaming(request, arguments), request_info

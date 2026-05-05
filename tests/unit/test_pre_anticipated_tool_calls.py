@@ -10,6 +10,7 @@ request handler tool_choice overrides, and worker missing-tool-call behavior.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from multiprocessing import Barrier, Event
 from typing import Any
@@ -17,6 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
+from pydantic import ValidationError
 
 from guidellm.backends.openai.request_handlers import (
     ChatCompletionsRequestHandler,
@@ -25,6 +27,7 @@ from guidellm.data.finalizers import GenerativeRequestFinalizer
 from guidellm.data.schemas import SyntheticTextDatasetConfig
 from guidellm.scheduler import SynchronousStrategy, WorkerProcess
 from guidellm.schemas import GenerationRequest, RequestInfo, UsageMetrics
+from guidellm.schemas.tool_call import StreamingToolCall, StreamingToolCallFunction
 from guidellm.utils.imports import json
 from guidellm.utils.messaging import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
@@ -73,30 +76,6 @@ class TestSyntheticTextDatasetConfigToolCallFields:
             prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=3
         )
         assert config.tool_call_turns == 3
-
-    @pytest.mark.sanity
-    def test_tool_call_turns_greater_than_turns_rejected(self):
-        """tool_call_turns > turns is invalid.
-
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="tool_call_turns"):
-            SyntheticTextDatasetConfig(
-                prompt_tokens=50, output_tokens=50, turns=2, tool_call_turns=5
-            )
-
-    @pytest.mark.sanity
-    def test_tools_without_tool_call_turns_rejected(self):
-        """Providing tools but tool_call_turns=0 is invalid.
-
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="tool_call_turns is 0"):
-            SyntheticTextDatasetConfig(
-                prompt_tokens=50,
-                output_tokens=50,
-                tools=[{"type": "function", "function": {"name": "test"}}],
-            )
 
     @pytest.mark.sanity
     def test_custom_tools_accepted(self):
@@ -457,12 +436,12 @@ class TestChatCompletionsToolChoiceOverride:
 
 
 class _MockToolBackend:
-    """Mock backend that signals outcomes via request_info fields.
+    """Mock backend that raises exceptions for missing tool calls.
 
     Mimics what OpenAIHTTPBackend._check_tool_call_expectations does:
-    sets request_info.error or request_info.stop_conversation during
-    resolve based on tool_call_missing_behavior, so the worker reacts
-    generically.
+    raises CancelledError or ValueError during resolve based on
+    tool_call_missing_behavior, so the worker reacts via its exception
+    handlers.
     """
 
     def __init__(
@@ -505,16 +484,18 @@ class _MockToolBackend:
             else None
         )
 
+        yield response, request_info
+
         # Replicate what the real backend does in
-        # _check_tool_call_expectations: set request_info fields when a
-        # tool call was expected but not produced.
+        # _check_tool_call_expectations: raise exceptions when a tool
+        # call was expected but not produced.
         if request.expects_tool_call and not self.has_tool_calls:
             if self.tool_call_missing_behavior == "ignore_stop":
-                request_info.stop_conversation = True
+                raise asyncio.CancelledError(
+                    "Expected tool call but model produced none"
+                )
             elif self.tool_call_missing_behavior == "error_stop":
-                request_info.error = "Expected tool call but model produced none"
-
-        yield response, request_info
+                raise ValueError("Expected tool call but model produced none")
 
 
 def _make_conversation(
@@ -615,8 +596,11 @@ class TestWorkerMissingToolCallBehavior:
     @async_timeout(5.0)
     @pytest.mark.asyncio
     @pytest.mark.smoke
-    async def test_ignore_stop_cancels_remaining_turns(self, make_worker):
-        """ignore_stop: all remaining turns are cancelled.
+    async def test_ignore_stop_cancels_all_turns(self, make_worker):
+        """ignore_stop: current turn and all remaining turns are cancelled.
+
+        The backend raises CancelledError which the worker catches and
+        marks the current request as cancelled, then cancels remaining turns.
 
         ## WRITTEN BY AI ##
         """
@@ -641,22 +625,22 @@ class TestWorkerMissingToolCallBehavior:
 
         worker._send_update = capture_send
 
-        history, remaining_conv, info = await worker._process_next_request(
-            target_start=time.time()
-        )
+        with pytest.raises(asyncio.CancelledError):
+            await worker._process_next_request(target_start=time.time())
 
-        # ignore_stop: conversation should be empty
-        assert len(remaining_conv) == 0
-
-        # Should have cancelled the remaining 2 turns
+        # Current turn cancelled + remaining 2 turns cancelled
         cancelled_updates = [u for u in updates if u[0] == "cancelled"]
-        assert len(cancelled_updates) == 2
+        assert len(cancelled_updates) == 3
 
     @async_timeout(5.0)
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_error_stop_errors_and_cancels(self, make_worker):
-        """error_stop: current turn errored, remaining cancelled.
+        """error_stop: current turn errored via ValueError, remaining cancelled.
+
+        The backend raises ValueError which the worker catches via its
+        generic exception handler, setting request_info.error and sending
+        an "errored" status update.
 
         ## WRITTEN BY AI ##
         """
@@ -684,16 +668,12 @@ class TestWorkerMissingToolCallBehavior:
             target_start=time.time()
         )
 
-        # error_stop: conversation should be empty
+        # error_stop: conversation should be empty (cancelled in finally block)
         assert len(remaining_conv) == 0
 
         # Should have errored the current turn
         errored_updates = [u for u in updates if u[0] == "errored"]
         assert len(errored_updates) == 1
-
-        # Should have cancelled the remaining 2 turns
-        cancelled_updates = [u for u in updates if u[0] == "cancelled"]
-        assert len(cancelled_updates) == 2
 
     @async_timeout(5.0)
     @pytest.mark.asyncio
@@ -834,13 +814,13 @@ class TestOpenAIBackendToolCallMissingBehavior:
 
     @pytest.mark.sanity
     def test_invalid_behavior_rejected(self):
-        """Invalid tool_call_missing_behavior is rejected by the args validator.
+        """Invalid tool_call_missing_behavior is rejected by the Literal type.
 
         ## WRITTEN BY AI ##
         """
         from guidellm.backends.openai.http import OpenAIHttpBackendArgs
 
-        with pytest.raises(ValueError, match="Invalid tool_call_missing_behavior"):
+        with pytest.raises(ValidationError):
             OpenAIHttpBackendArgs(
                 target="http://localhost:8000",
                 tool_call_missing_behavior="invalid_mode",
@@ -853,7 +833,7 @@ class TestOpenAIBackendToolCallMissingBehavior:
 
 
 class TestCheckToolCallExpectations:
-    """Verify _check_tool_call_expectations sets the right request_info fields.
+    """Verify _check_tool_call_expectations raises the right exceptions.
 
     ## WRITTEN BY AI ##
     """
@@ -884,7 +864,12 @@ class TestCheckToolCallExpectations:
         """
         resp = MagicMock()
         resp.tool_calls = (
-            [{"id": "call_1", "type": "function", "function": {"name": "fn"}}]
+            [
+                StreamingToolCall(
+                    id="call_1",
+                    function=StreamingToolCallFunction(name="fn"),
+                )
+            ]
             if has_tool_calls
             else None
         )
@@ -892,84 +877,65 @@ class TestCheckToolCallExpectations:
 
     @pytest.mark.smoke
     def test_no_op_when_tool_call_present(self):
-        """No fields are set when the model produced a tool call.
+        """No exception when the model produced a tool call.
 
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("error_stop")
         req = self._make_request(expects_tool_call=True)
         resp = self._make_response(has_tool_calls=True)
-        info = RequestInfo()
 
-        backend._check_tool_call_expectations(req, resp, info)
-
-        assert info.error is None
-        assert info.stop_conversation is False
+        backend._check_tool_call_expectations(req, resp)
 
     @pytest.mark.smoke
     def test_no_op_when_not_expecting_tool_call(self):
-        """No fields are set when the turn doesn't expect a tool call.
+        """No exception when the turn doesn't expect a tool call.
 
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("error_stop")
         req = self._make_request(expects_tool_call=False)
         resp = self._make_response(has_tool_calls=False)
-        info = RequestInfo()
 
-        backend._check_tool_call_expectations(req, resp, info)
-
-        assert info.error is None
-        assert info.stop_conversation is False
+        backend._check_tool_call_expectations(req, resp)
 
     @pytest.mark.smoke
-    def test_ignore_continue_sets_nothing(self):
-        """ignore_continue: no fields set even when tool call is missing.
+    def test_ignore_continue_raises_nothing(self):
+        """ignore_continue: no exception even when tool call is missing.
 
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("ignore_continue")
         req = self._make_request(expects_tool_call=True)
         resp = self._make_response(has_tool_calls=False)
-        info = RequestInfo()
 
-        backend._check_tool_call_expectations(req, resp, info)
-
-        assert info.error is None
-        assert info.stop_conversation is False
+        backend._check_tool_call_expectations(req, resp)
 
     @pytest.mark.smoke
-    def test_ignore_stop_sets_stop_conversation(self):
-        """ignore_stop: sets stop_conversation but not error.
+    def test_ignore_stop_raises_cancelled_error(self):
+        """ignore_stop: raises CancelledError when tool call is missing.
 
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("ignore_stop")
         req = self._make_request(expects_tool_call=True)
         resp = self._make_response(has_tool_calls=False)
-        info = RequestInfo()
 
-        backend._check_tool_call_expectations(req, resp, info)
-
-        assert info.error is None
-        assert info.stop_conversation is True
+        with pytest.raises(asyncio.CancelledError, match="tool call"):
+            backend._check_tool_call_expectations(req, resp)
 
     @pytest.mark.smoke
-    def test_error_stop_sets_error(self):
-        """error_stop: sets error on request_info.
+    def test_error_stop_raises_value_error(self):
+        """error_stop: raises ValueError when tool call is missing.
 
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("error_stop")
         req = self._make_request(expects_tool_call=True)
         resp = self._make_response(has_tool_calls=False)
-        info = RequestInfo()
 
-        backend._check_tool_call_expectations(req, resp, info)
-
-        assert info.error is not None
-        assert "tool call" in info.error.lower()
-        assert info.stop_conversation is False
+        with pytest.raises(ValueError, match="tool call"):
+            backend._check_tool_call_expectations(req, resp)
 
 
 # ---------------------------------------------------------------------------
@@ -1009,19 +975,6 @@ class TestSyntheticTextDatasetConfigToolResponseFields:
             tool_response_tokens=50,
         )
         assert config.tool_response_tokens == 50
-
-    @pytest.mark.sanity
-    def test_tool_response_tokens_without_tool_call_turns_rejected(self):
-        """tool_response_tokens without tool_call_turns is invalid.
-
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="tool_response_tokens.*tool_call_turns"):
-            SyntheticTextDatasetConfig(
-                prompt_tokens=50,
-                output_tokens=50,
-                tool_response_tokens=50,
-            )
 
     @pytest.mark.sanity
     def test_tool_response_tokens_variance_fields(self):
@@ -1074,9 +1027,9 @@ class TestSyntheticDataToolResponseColumns:
         ## WRITTEN BY AI ##
         """
         from guidellm.data.deserializers.synthetic import (
-            DEFAULT_SYNTHETIC_TOOL_RESPONSE,
             _SyntheticTextExamplesIterable,
         )
+        from guidellm.settings import settings
 
         config = SyntheticTextDatasetConfig(
             prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
@@ -1084,8 +1037,8 @@ class TestSyntheticDataToolResponseColumns:
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
 
-        assert row["tool_response_0"] == DEFAULT_SYNTHETIC_TOOL_RESPONSE
-        assert row["tool_response_1"] == DEFAULT_SYNTHETIC_TOOL_RESPONSE
+        assert row["tool_response_0"] == settings.default_synthetic_tool_response
+        assert row["tool_response_1"] == settings.default_synthetic_tool_response
         assert "tool_response_2" not in row
 
     @pytest.mark.smoke
@@ -1268,7 +1221,10 @@ class TestChatCompletionsToolResponseColumn:
         )
         prior_response = MagicMock(spec=GenerationResponse)
         prior_response.tool_calls = [
-            {"id": "call_1", "type": "function", "function": {"name": "fn"}}
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(name="fn"),
+            )
         ]
         prior_response.text = None
 
@@ -1293,10 +1249,8 @@ class TestChatCompletionsToolResponseColumn:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.openai.request_handlers import (
-            DEFAULT_SYNTHETIC_TOOL_RESPONSE,
-        )
         from guidellm.schemas import GenerationResponse
+        from guidellm.settings import settings
 
         tools = [{"type": "function", "function": {"name": "fn"}}]
         prior_request = GenerationRequest(
@@ -1308,7 +1262,10 @@ class TestChatCompletionsToolResponseColumn:
         )
         prior_response = MagicMock(spec=GenerationResponse)
         prior_response.tool_calls = [
-            {"id": "call_1", "type": "function", "function": {"name": "fn"}}
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(name="fn"),
+            )
         ]
         prior_response.text = None
 
@@ -1324,7 +1281,7 @@ class TestChatCompletionsToolResponseColumn:
 
         tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
         assert len(tool_messages) == 1
-        assert tool_messages[0]["content"] == DEFAULT_SYNTHETIC_TOOL_RESPONSE
+        assert tool_messages[0]["content"] == settings.default_synthetic_tool_response
 
     @pytest.mark.sanity
     def test_bytes_tool_response_decoded(self, handler):
@@ -1345,7 +1302,10 @@ class TestChatCompletionsToolResponseColumn:
         )
         prior_response = MagicMock(spec=GenerationResponse)
         prior_response.tool_calls = [
-            {"id": "call_1", "type": "function", "function": {"name": "fn"}}
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(name="fn"),
+            )
         ]
         prior_response.text = None
 

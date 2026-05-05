@@ -10,7 +10,7 @@ analysis of time-to-first-token, inter-token latency, and token generation rates
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 from pydantic import Field, computed_field
@@ -18,6 +18,7 @@ from pydantic import Field, computed_field
 from guidellm.schemas.base import StandardBaseDict
 from guidellm.schemas.info import RequestInfo
 from guidellm.schemas.request import UsageMetrics
+from guidellm.schemas.tool_call import StreamingToolCall
 
 __all__ = ["GenerativeRequestStats"]
 

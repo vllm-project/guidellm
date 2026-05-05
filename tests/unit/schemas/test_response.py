@@ -16,6 +16,8 @@ from guidellm.schemas import (
     RequestInfo,
     RequestTimings,
     StandardBaseModel,
+    StreamingToolCall,
+    StreamingToolCallFunction,
     UsageMetrics,
 )
 
@@ -214,11 +216,12 @@ class TestGenerationResponse:
         ## WRITTEN BY AI ##
         """
         tool_calls = [
-            {
-                "id": "call_1",
-                "type": "function",
-                "function": {"name": "get_weather", "arguments": '{"city": "NYC"}'},
-            }
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(
+                    name="get_weather", arguments='{"city": "NYC"}'
+                ),
+            )
         ]
         response = GenerationResponse(
             request_id="test-tc",
@@ -327,6 +330,12 @@ class TestGenerativeRequestStatsToolCalls:
         ## WRITTEN BY AI ##
         """
         tool_calls = [
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(name="fn", arguments="{}"),
+            )
+        ]
+        tool_calls_dicts = [
             {
                 "id": "call_1",
                 "type": "function",
@@ -342,7 +351,7 @@ class TestGenerativeRequestStatsToolCalls:
             tool_calls=tool_calls,
         )
         data = stats.model_dump()
-        assert data["tool_calls"] == tool_calls
+        assert data["tool_calls"] == tool_calls_dicts
 
         restored = GenerativeRequestStats.model_validate(data)
         assert restored.tool_calls == tool_calls
