@@ -540,13 +540,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Tool calling requires the model to stop naturally after producing
         # valid JSON; ignore_eos would force generation past that point and
         # break the server's constrained decoding grammar.
-        body.pop("ignore_eos", None)
-        body.pop("stop", None)
-
-        # On tool-call turns, let the model finish valid JSON naturally;
         # max_completion_tokens would truncate output mid-JSON and corrupt
         # the arguments sent in conversation history on follow-up turns.
         if data.expects_tool_call:
+            body.pop("ignore_eos", None)
+            body.pop("stop", None)
             body.pop("max_completion_tokens", None)
             body.pop("max_tokens", None)
 
