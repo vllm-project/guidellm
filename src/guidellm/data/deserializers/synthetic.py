@@ -22,8 +22,6 @@ from guidellm.utils.imports import json
 from guidellm.utils.random import IntegerRangeSampler
 
 __all__ = [
-    "DEFAULT_SYNTHETIC_TOOLS",
-    "DEFAULT_SYNTHETIC_TOOL_RESPONSE",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
 ]
