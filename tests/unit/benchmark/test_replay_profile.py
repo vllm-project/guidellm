@@ -77,6 +77,7 @@ class TestReplayProfile:
         assert isinstance(profile, ReplayProfile)
         assert profile.relative_timestamps == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
         assert profile.time_scale == expected_scale
+        assert profile.constraints["max_requests"] == 3
 
     @pytest.mark.sanity
     def test_non_positive_time_scale_is_rejected(self, tmp_path: Path):
@@ -113,6 +114,94 @@ class TestReplayProfile:
         )
 
         assert kwargs["relative_timestamps"] == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
+        assert kwargs["constraints"]["max_requests"] == 3
+
+    @pytest.mark.smoke
+    def test_large_bursty_trace_sets_default_request_constraint(
+        self, tmp_path: Path
+    ):
+        prompt_lengths = [
+            6755,
+            7319,
+            7234,
+            2287,
+            9013,
+            6506,
+            4824,
+            3119,
+            23090,
+            3135,
+            26874,
+            10487,
+            17448,
+            6253,
+            6725,
+            13538,
+            87162,
+            6166,
+            6320,
+            2007,
+            3174,
+            3131,
+            3159,
+            6820,
+            3154,
+            9416,
+            7460,
+        ]
+        timestamps = [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+        ]
+        trace = _trace_path(
+            tmp_path,
+            [
+                (
+                    f'{{"timestamp": {timestamp}, '
+                    f'"input_length": {prompt_length}, "output_length": 1}}'
+                )
+                for timestamp, prompt_length in zip(
+                    timestamps, prompt_lengths, strict=True
+                )
+            ],
+        )
+
+        kwargs = ReplayProfile.resolve_args(
+            rate_type="replay",
+            rate=[1.0],
+            random_seed=42,
+            data=[str(trace)],
+        )
+
+        assert kwargs["relative_timestamps"] == pytest.approx(
+            timestamps, abs=1e-9
+        )
+        assert kwargs["constraints"]["max_requests"] == 27
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("invalid_value", [None, "", "   ", 123, False, []])
@@ -136,6 +225,7 @@ class TestReplayProfile:
         )
 
         assert kwargs["relative_timestamps"] == pytest.approx([0.0, 2.0], abs=1e-9)
+        assert kwargs["constraints"]["max_requests"] == 2
 
     @pytest.mark.smoke
     def test_data_samples_truncates_after_sorting_and_preserves_constraints(
@@ -185,6 +275,7 @@ class TestReplayProfile:
         )
 
         assert kwargs["relative_timestamps"] == pytest.approx([0.0, 1.0], abs=1e-9)
+        assert kwargs["constraints"]["max_requests"] == 2
 
     @pytest.mark.smoke
     def test_resolve_profile_passes_replay_specific_kwargs(self, tmp_path: Path):

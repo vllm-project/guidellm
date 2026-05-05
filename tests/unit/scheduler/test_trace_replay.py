@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import math
 from multiprocessing import get_context
 from pathlib import Path
 
@@ -103,16 +102,15 @@ class TestTraceReplayStrategy:
 
         assert strategy.type_ == "trace"
         assert str(strategy) == "trace@2.00"
-        assert strategy.processes_limit is None
-        assert strategy.requests_limit == 3
-
+        assert strategy.processes_limit == 1
+        assert strategy.requests_limit is None
         restored = SchedulingStrategy.model_validate(strategy.model_dump())
         assert isinstance(restored, TraceReplayStrategy)
         assert restored.relative_timestamps == [0.0, 0.5, 1.0]
         assert restored.time_scale == 2.0
 
     @pytest.mark.smoke
-    def test_next_request_time_scales_timestamps_and_exhausts_trace(self):
+    def test_next_request_time_scales_timestamps(self):
         strategy = TraceReplayStrategy(
             relative_timestamps=[0.0, 0.5, 1.0],
             time_scale=2.0,
@@ -125,11 +123,38 @@ class TestTraceReplayStrategy:
         strategy.init_processes_start(1000.0)
 
         async def run():
-            return [await strategy.next_request_time(0) for _ in range(4)]
+            return [await strategy.next_request_time(0) for _ in range(3)]
 
         assert asyncio.run(run()) == pytest.approx(
-            [1000.0, 1001.0, 1002.0, math.inf], abs=1e-6
+            [1000.0, 1001.0, 1002.0], abs=1e-6
         )
+
+    @pytest.mark.smoke
+    def test_next_request_time_parks_when_trace_exhausted(self):
+        strategy = TraceReplayStrategy(
+            relative_timestamps=[0.0, 0.5],
+            time_scale=1.0,
+        )
+        strategy.init_processes_timings(
+            worker_count=1,
+            max_concurrency=10,
+            mp_context=get_context(),
+        )
+        strategy.init_processes_start(1000.0)
+
+        async def run():
+            # Consume the 2 valid slots
+            await strategy.next_request_time(0)
+            await strategy.next_request_time(0)
+            # The 3rd call parks; should raise CancelledError when cancelled
+            task = asyncio.create_task(strategy.next_request_time(0))
+            await asyncio.sleep(0.05)
+            assert not task.done(), "expected to be parked, not resolved"
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(run())
 
     @pytest.mark.smoke
     def test_empty_trace_has_no_request_limit_and_uses_start_time(self):

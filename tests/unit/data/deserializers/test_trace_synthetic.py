@@ -84,6 +84,127 @@ class TestTraceSyntheticDatasetDeserializer:
         assert ds["output_tokens_count"] == [20, 40]
 
     @pytest.mark.smoke
+    def test_generates_large_trace_prompts_from_reusable_base(
+        self, tmp_path: Path, deserializer
+    ):
+        prompt_lengths = [
+            6755,
+            7319,
+            7234,
+            2287,
+            9013,
+            6506,
+            4824,
+            3119,
+            23090,
+            3135,
+            26874,
+            10487,
+            17448,
+            6253,
+            6725,
+            13538,
+            87162,
+            6166,
+            6320,
+            2007,
+            3174,
+            3131,
+            3159,
+            6820,
+            3154,
+            9416,
+            7460,
+        ]
+        output_lengths = [
+            500,
+            490,
+            794,
+            316,
+            3,
+            3,
+            173,
+            20,
+            453,
+            19,
+            458,
+            402,
+            610,
+            3,
+            32,
+            71,
+            402,
+            24,
+            548,
+            354,
+            19,
+            23,
+            20,
+            26,
+            21,
+            145,
+            3,
+        ]
+        timestamps = [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+        ]
+        trace = _write_trace(
+            tmp_path,
+            "\n".join(
+                (
+                    f'{{"timestamp": {timestamp}, '
+                    f'"input_length": {prompt_length}, '
+                    f'"output_length": {output_length}}}'
+                )
+                for timestamp, prompt_length, output_length in zip(
+                    timestamps, prompt_lengths, output_lengths, strict=True
+                )
+            ),
+        )
+        processor = _mock_processor()
+
+        ds = deserializer(
+            data=trace,
+            processor_factory=lambda: processor,
+            random_seed=42,
+            type_="trace_synthetic",
+        )
+
+        assert ds["prompt_tokens_count"] == prompt_lengths
+        assert ds["output_tokens_count"] == output_lengths
+        assert processor.encode.call_count <= len(prompt_lengths) + 4
+        for prompt, token_count in zip(
+            ds["prompt"], ds["prompt_tokens_count"], strict=True
+        ):
+            assert len(_mock_processor().encode(prompt)) == token_count
+
+    @pytest.mark.smoke
     def test_rejects_invalid_data(self, deserializer):
         with pytest.raises(DataNotSupportedError, match="path to a trace file"):
             self._deserialize(deserializer, 123)

@@ -398,10 +398,17 @@ class ReplayProfile(Profile):
                 "The trace is empty or all events were filtered out."
             )
 
+        constraints = dict(kwargs.get("constraints") or {})
+        if not any(
+            key in constraints
+            for key in ("max_number", "max_num", "max_requests", "max_req")
+        ):
+            constraints["max_requests"] = len(relative_timestamps)
+
         return {
             "relative_timestamps": relative_timestamps,
             "time_scale": time_scale,
-            "constraints": kwargs.get("constraints"),
+            "constraints": constraints,
         }
 
     @property
