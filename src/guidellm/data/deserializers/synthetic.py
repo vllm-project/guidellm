@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 # Placeholder tool definition used when the user doesn't supply their own
-# tools but sets tool_call_turns > 0.
+# tools but configures tool_call_turns with at least one turn.
 DEFAULT_SYNTHETIC_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -95,8 +95,9 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         samples_count = 0
 
         # Resolve tool definitions for tool-call turns
+        tool_call_turns_set = set(self.config.tool_call_turns)
         tools_defs: list[dict[str, Any]] | None = None
-        if self.config.tool_call_turns > 0:
+        if tool_call_turns_set:
             tools_defs = self.config.tools or DEFAULT_SYNTHETIC_TOOLS
 
         # Optional sampler for variable-length tool responses
@@ -131,7 +132,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 if output_tokens_count is not None:
                     row[f"output_tokens_count_{turn}"] = output_tokens_count
 
-                if tools_defs is not None and turn < self.config.tool_call_turns:
+                if tools_defs is not None and turn in tool_call_turns_set:
                     row[f"tools_{turn}"] = json.dumps(tools_defs)
 
                     if tool_response_sampler is not None:
@@ -160,7 +161,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             if self.config.output_tokens is not None:
                 features[f"output_tokens_count_{i}"] = Value("int32")
 
-            if i < self.config.tool_call_turns:
+            if i in set(self.config.tool_call_turns):
                 # Tools column is a JSON-serialised list; store as string
                 # to keep the HuggingFace Features schema simple.
                 features[f"tools_{i}"] = Value("large_string")

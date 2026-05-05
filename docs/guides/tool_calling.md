@@ -37,12 +37,25 @@ guidellm benchmark run \
   --rate 1
 ```
 
+To specify non-contiguous tool-call turns, pass a list of 0-based turn indices:
+
+```bash
+guidellm benchmark run \
+  --target "http://localhost:8000" \
+  --model "Qwen/Qwen3-0.6B" \
+  --request-format /v1/chat/completions \
+  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 4, "tool_call_turns": [0, 2]}' \
+  --max-requests 30 \
+  --profile constant \
+  --rate 1
+```
+
 Synthetic data configuration fields for tool calling:
 
-| Field                        | Type   | Default | Description                                                                                                                                                                                                            |
-| ---------------------------- | ------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tool_call_turns`            | `int`  | `0`     | Number of turns (from the start) that include tool definitions and expect tool-call responses. Must be `<= turns`. When equal to `turns`, every turn is a tool-call turn and no final plain-text response is produced. |
-| `tools`                      | `list` | `None`  | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`.                                                |
+| Field                        | Type             | Default | Description                                                                                                                                                                                                                                                    |
+| ---------------------------- | ---------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tool_call_turns`            | `int \| list[int]` | `0`     | Which turns include tool definitions and expect tool-call responses. An int N means "the first N turns"; a list of ints specifies explicit 0-based turn indices (e.g. `[0, 2]`). Normalized to a sorted list internally. When `0` or `[]`, no tool calling. |
+| `tools`                      | `list`           | `None`  | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`.                                                                                        |
 | `tool_response_tokens`       | `int`  | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                             |
 | `tool_response_tokens_stdev` | `int`  | `None`  | Standard deviation for tool response token count.                                                                                                                                                                      |
 | `tool_response_tokens_min`   | `int`  | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                            |
@@ -147,8 +160,9 @@ Plain-text turns (where `tool_choice="none"`) are unaffected and continue to res
 
 ## Edge Cases
 
-- **Single-turn tool calling** (`turns=1, tool_call_turns=1`) is supported. The conversation has one turn that expects a tool call and no plain-text response.
-- **All-tool conversations** (`tool_call_turns == turns`) are supported. Every turn is a tool-call turn and the model never produces a final plain-text response. The `output` field in `benchmarks.json` will be `None` for every request; use the `tool_calls` field to inspect model output.
+- **Single-turn tool calling** (`turns=1, tool_call_turns=1` or `tool_call_turns=[0]`) is supported. The conversation has one turn that expects a tool call and no plain-text response.
+- **All-tool conversations** (e.g. `tool_call_turns=3` with `turns=3`, or `tool_call_turns=[0,1,2]`) are supported. Every turn is a tool-call turn and the model never produces a final plain-text response. The `output` field in `benchmarks.json` will be `None` for every request; use the `tool_calls` field to inspect model output.
+- **Non-contiguous tool turns** (e.g. `tool_call_turns=[0, 2]` with `turns=4`) are supported. Only the specified turns expect tool calls; other turns produce plain text.
 - **Tool definitions on non-tool turns** are still sent in the request (they're part of the data), but `tool_choice` is forced to `none` so the model produces text. This matches real-world agentic patterns where the tools remain available but the model is instructed to respond in natural language.
 - **Mixed datasets** where only some rows have a `tools_column` work correctly. Rows without tools are treated as plain text conversations; rows with tools follow the tool-call flow.
 - **Rate-limited profiles** (e.g. `--profile constant --rate 1`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.

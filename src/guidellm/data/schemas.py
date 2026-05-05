@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from guidellm.schemas import StandardBaseModel
 
@@ -152,18 +152,17 @@ class SyntheticTextDatasetConfig(DataConfig):
         gt=0,
         default=1,
     )
-    tool_call_turns: int = Field(
-        description="Number of turns (from the start) that should include tool "
-        "definitions and expect tool-call responses. Must be <= turns. "
-        "When equal to turns, every turn is a tool-call turn and no "
-        "final plain-text response is produced. "
-        "When 0 (default), no tool calling is configured.",
-        ge=0,
-        default=0,
+    tool_call_turns: list[int] = Field(
+        description="Which turns should include tool definitions and expect "
+        "tool-call responses. An int N means 'the first N turns'; a list "
+        "of ints specifies explicit 0-based turn indices (e.g. [0, 2]). "
+        "Normalized to a sorted list after validation. "
+        "When 0 or [] (default), no tool calling is configured.",
+        default_factory=list,
     )
     tools: list[dict[str, Any]] | None = Field(
-        description="Tool definitions in OpenAI format. When tool_call_turns > 0 "
-        "and this is None, a static placeholder tool definition is used.",
+        description="Tool definitions in OpenAI format. When tool_call_turns is "
+        "non-empty and this is None, a static placeholder tool definition is used.",
         default=None,
     )
     tool_response_tokens: int | None = Field(
@@ -196,6 +195,29 @@ class SyntheticTextDatasetConfig(DataConfig):
         description="Buckets for the prefix tokens distribution.",
         default=None,
     )
+
+    @field_validator("tool_call_turns", mode="before")
+    @classmethod
+    def _coerce_tool_call_turns(cls, v: int | list[int]) -> list[int]:
+        """Convert an int N to [0, ..., N-1]; pass lists through sorted."""
+        if isinstance(v, int):
+            if v < 0:
+                raise ValueError("tool_call_turns int must be >= 0")
+            return list(range(v))
+        if len(v) != len(set(v)):
+            raise ValueError("tool_call_turns list must not contain duplicates")
+        return sorted(v)
+
+    @model_validator(mode="after")
+    def _validate_tool_call_turn_indices(self) -> SyntheticTextDatasetConfig:
+        """Ensure all tool_call_turns indices are within [0, turns)."""
+        for idx in self.tool_call_turns:
+            if idx < 0 or idx >= self.turns:
+                raise ValueError(
+                    f"tool_call_turns index {idx} out of range "
+                    f"[0, {self.turns})"
+                )
+        return self
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:

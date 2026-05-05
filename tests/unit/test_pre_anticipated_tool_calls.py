@@ -50,19 +50,19 @@ class TestSyntheticTextDatasetConfigToolCallFields:
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDatasetConfig(prompt_tokens=50, output_tokens=50)
-        assert config.tool_call_turns == 0
+        assert config.tool_call_turns == []
         assert config.tools is None
 
     @pytest.mark.smoke
     def test_tool_call_turns_less_than_turns(self):
-        """tool_call_turns must be strictly less than turns.
+        """tool_call_turns int is normalized to a list of indices.
 
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDatasetConfig(
             prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=2
         )
-        assert config.tool_call_turns == 2
+        assert config.tool_call_turns == [0, 1]
 
     @pytest.mark.sanity
     def test_tool_call_turns_equal_to_turns_accepted(self):
@@ -75,7 +75,7 @@ class TestSyntheticTextDatasetConfigToolCallFields:
         config = SyntheticTextDatasetConfig(
             prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=3
         )
-        assert config.tool_call_turns == 3
+        assert config.tool_call_turns == [0, 1, 2]
 
     @pytest.mark.sanity
     def test_custom_tools_accepted(self):
@@ -92,7 +92,51 @@ class TestSyntheticTextDatasetConfigToolCallFields:
             tools=custom_tools,
         )
         assert config.tools == custom_tools
-        assert config.tool_call_turns == 1
+        assert config.tool_call_turns == [0]
+
+    @pytest.mark.smoke
+    def test_list_tool_call_turns_accepted(self):
+        """Explicit list of turn indices is accepted and sorted.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=50, output_tokens=50, turns=4, tool_call_turns=[2, 0]
+        )
+        assert config.tool_call_turns == [0, 2]
+
+    @pytest.mark.sanity
+    def test_list_tool_call_turns_validation_out_of_range(self):
+        """List indices must be within [0, turns).
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="out of range"):
+            SyntheticTextDatasetConfig(
+                prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=[0, 3]
+            )
+
+    @pytest.mark.sanity
+    def test_list_tool_call_turns_validation_duplicates(self):
+        """Duplicate indices in the list are rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="duplicates"):
+            SyntheticTextDatasetConfig(
+                prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=[0, 0]
+            )
+
+    @pytest.mark.sanity
+    def test_int_tool_call_turns_exceeds_turns_rejected(self):
+        """An int greater than turns is rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="out of range"):
+            SyntheticTextDatasetConfig(
+                prompt_tokens=50, output_tokens=50, turns=2, tool_call_turns=3
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +204,31 @@ class TestSyntheticDataToolColumns:
         tools_0 = json.loads(row["tools_0"])
         assert tools_0 == DEFAULT_SYNTHETIC_TOOLS
 
+    @pytest.mark.smoke
+    def test_non_contiguous_tool_call_turns_list(self, processor):
+        """With tool_call_turns=[0, 2] and turns=4, only turns 0 and 2 get tools.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.deserializers.synthetic import (
+            DEFAULT_SYNTHETIC_TOOLS,
+            _SyntheticTextExamplesIterable,
+        )
+
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=10, output_tokens=10, turns=4, tool_call_turns=[0, 2]
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        assert "tools_0" in row
+        assert "tools_1" not in row
+        assert "tools_2" in row
+        assert "tools_3" not in row
+
+        tools_0 = json.loads(row["tools_0"])
+        assert tools_0 == DEFAULT_SYNTHETIC_TOOLS
+
     @pytest.mark.sanity
     def test_custom_tools_used_in_synthetic_data(self, processor):
         """User-provided tools are used instead of the default placeholder.
@@ -203,6 +272,27 @@ class TestSyntheticDataToolColumns:
         assert "tools_0" in features
         assert "tools_1" in features
         assert "tools_2" not in features
+
+    @pytest.mark.sanity
+    def test_features_non_contiguous_tool_call_turns(self, processor):
+        """Features property includes tools_{i} only for listed turn indices.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.data.deserializers.synthetic import (
+            _SyntheticTextExamplesIterable,
+        )
+
+        config = SyntheticTextDatasetConfig(
+            prompt_tokens=10, output_tokens=10, turns=4, tool_call_turns=[1, 3]
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        features = iterable.features
+
+        assert "tools_0" not in features
+        assert "tools_1" in features
+        assert "tools_2" not in features
+        assert "tools_3" in features
 
 
 # ---------------------------------------------------------------------------
