@@ -10,6 +10,7 @@ import contextlib
 import json
 
 import pytest
+from pydantic import ValidationError
 
 try:
     from websockets.asyncio.server import serve
@@ -20,6 +21,7 @@ except ImportError:
         allow_module_level=True,
     )
 
+from guidellm.backends.backend import Backend
 from guidellm.backends.openai.websocket import (
     _DEFAULT_WS_RECV_TIMEOUT,
     OpenAIWebSocketBackend,
@@ -704,8 +706,33 @@ async def test_error_event_dict_formatted_message(
         await be.process_shutdown()
 
 
-def test_openai_realtime_backend_args_model() -> None:
+def test_openai_websocket_backend_args_model() -> None:
     a = OpenAIWebSocketBackendArgs(target="http://localhost:8000", model="x")
-    assert a.websocket_path == "/v1/realtime"
+    assert a.request_format is None
     assert a.chunk_samples == 3200
     assert a.timeout == _DEFAULT_WS_RECV_TIMEOUT
+
+
+def test_openai_websocket_backend_args_normalizes_request_format_alias() -> None:
+    args = OpenAIWebSocketBackendArgs(
+        target="http://localhost:8000",
+        request_format="realtime",
+    )
+    assert args.request_format == "/v1/realtime"
+
+
+def test_openai_websocket_backend_resolves_websocket_path_from_request_format() -> None:
+    backend = Backend.create(
+        "openai_websocket",
+        target="http://127.0.0.1:9",
+        request_format="/custom/ws",
+    )
+    assert backend.websocket_path == "/custom/ws"
+
+
+def test_openai_websocket_backend_args_invalid_request_format_rejected() -> None:
+    with pytest.raises(ValidationError):
+        OpenAIWebSocketBackendArgs(
+            target="http://localhost:8000",
+            request_format="nope",
+        )

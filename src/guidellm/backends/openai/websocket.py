@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import ParseResult, urlparse
 
 import httpx
-from pydantic import Field
+from pydantic import Field, field_validator
 
 if TYPE_CHECKING:
     from websockets.asyncio.client import ClientConnection
@@ -47,6 +47,30 @@ _WS_API_ROUTES = {
     "/health": "health",
     "/v1/models": "v1/models",
 }
+
+# Default WebSocket HTTP path under target (CLI: --request-format / --request-type).
+_DEFAULT_WS_REQUEST_FORMAT = "/v1/realtime"
+_WS_REQUEST_FORMAT_ALIASES: dict[str, str] = {
+    "realtime": _DEFAULT_WS_REQUEST_FORMAT,
+}
+
+
+def _effective_websocket_http_path(request_format: str | None) -> str:
+    """Normalize ``request_format`` to a WebSocket path (``/…`` segment on the host)."""
+    if request_format is None:
+        return _DEFAULT_WS_REQUEST_FORMAT
+    s = request_format.strip()
+    if not s:
+        raise ValueError("request_format must not be empty or whitespace")
+    canonical = _WS_REQUEST_FORMAT_ALIASES.get(s, s)
+    if not canonical.startswith("/"):
+        raise ValueError(
+            "request_format must be a path starting with '/' (for example "
+            f"{_DEFAULT_WS_REQUEST_FORMAT!r}) or alias "
+            f"{', '.join(repr(k) for k in _WS_REQUEST_FORMAT_ALIASES)}"
+        )
+    return canonical
+
 
 # Guard against a misbehaving server that only emits ignored event types.
 _MAX_IGNORED_WS_EVENT_TYPES = 50_000
@@ -207,10 +231,29 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
         default=None,
         description="Model identifier (required unless discoverable from /v1/models).",
     )
-    websocket_path: str = Field(
-        default="/v1/realtime",
-        description="WebSocket path on the server (default /v1/realtime).",
+    request_format: str | None = Field(
+        default=None,
+        description=(
+            "WebSocket path on the HTTP host (default /v1/realtime). "
+            "Use the same top-level CLI flags as ``openai_http``: "
+            "--request-format / --request-type."
+        ),
+        json_schema_extra={
+            "error_message": (
+                "Backend '{backend_type}' received an invalid --request-format / "
+                f"request_format. Use {_DEFAULT_WS_REQUEST_FORMAT!r} or another "
+                "path starting with '/'."
+            )
+        },
     )
+
+    @field_validator("request_format")
+    @classmethod
+    def validate_request_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return _effective_websocket_http_path(v)
+
     chunk_samples: int = Field(
         default=3200,
         ge=1,
@@ -254,7 +297,7 @@ class OpenAIWebSocketBackend(Backend):
         self,
         target: str,
         model: str = "",
-        websocket_path: str = "/v1/realtime",
+        request_format: str | None = None,
         chunk_samples: int = 3200,
         api_key: str | None = None,
         verify: bool = False,
@@ -266,7 +309,7 @@ class OpenAIWebSocketBackend(Backend):
         super().__init__(type_="openai_websocket")
         self.target = target.rstrip("/").removesuffix("/v1")
         self.model = model or ""
-        self.websocket_path = websocket_path
+        self.websocket_path = _effective_websocket_http_path(request_format)
         self.chunk_samples = chunk_samples
         self.api_key = api_key
         self.verify = verify

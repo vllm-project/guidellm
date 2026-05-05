@@ -459,7 +459,7 @@ class TestBackend:
 
     @pytest.mark.smoke
     def test_openai_websocket_backend_registered(self):
-        """WebSocket OpenAI backend is registered; legacy alias remains accepted."""
+        """WebSocket OpenAI backend is registered and constructible."""
         from guidellm.backends.openai import (
             OpenAIWebSocketBackend,
             OpenAIWebSocketBackendArgs,
@@ -469,15 +469,9 @@ class TestBackend:
         ws_args = OpenAIWebSocketBackendArgs
         assert Backend.get_backend_args("openai_websocket") is ws_args
 
-        by_canonical = Backend.create(
-            "openai_websocket", target="http://localhost:9000"
-        )
-        assert isinstance(by_canonical, OpenAIWebSocketBackend)
-        assert by_canonical.type_ == "openai_websocket"
-
-        by_alias = Backend.create("openai_websocket", target="http://localhost:9000")
-        assert isinstance(by_alias, OpenAIWebSocketBackend)
-        assert by_alias.type_ == "openai_websocket"
+        backend = Backend.create("openai_websocket", target="http://localhost:9000")
+        assert isinstance(backend, OpenAIWebSocketBackend)
+        assert backend.type_ == "openai_websocket"
 
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""
