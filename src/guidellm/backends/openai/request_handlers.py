@@ -6,12 +6,6 @@ Provides a pluggable system for handling format differences while supporting
 both streaming and non-streaming responses. Each handler implements the
 GenerationRequestHandler protocol to format json requests, parse API responses,
 extract usage metrics, and convert results into standardized GenerationResponse.
-
-The chat completions handler supports multi-turn tool calling with pre-planned
-turns: it captures ``tool_calls`` from model responses, reconstructs them from
-streaming deltas, and formats follow-up messages with synthetic tool results.
-The ``expects_tool_call`` flag on each request controls per-turn
-``tool_choice`` overrides.
 """
 
 from __future__ import annotations
@@ -47,39 +41,21 @@ __all__ = [
 DEFAULT_SYNTHETIC_TOOL_RESPONSE = '{"status": "ok"}'
 
 
-@dataclass
-class StreamingToolCallFunction:
+class StreamingToolCallFunction(BaseModel):
     """Accumulated function name and arguments for a single streamed tool call."""
 
     name: str = ""
     arguments: str = ""
 
 
-@dataclass
-class StreamingToolCall:
-    """A single tool call reassembled from streaming deltas.
-
-    Mirrors the OpenAI tool_call shape (``id``, ``type``, ``function``)
-    so it can be converted back to a plain dict for
-    :attr:`GenerationResponse.tool_calls`.
-    """
+class StreamingToolCall(BaseModel):
+    """A single tool call reassembled from streaming deltas. """
 
     id: str = ""
     type: str = "function"
-    function: StreamingToolCallFunction = field(
+    function: StreamingToolCallFunction = Field(
         default_factory=StreamingToolCallFunction
     )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to the OpenAI tool_call dict format."""
-        return {
-            "id": self.id,
-            "type": self.type,
-            "function": {
-                "name": self.function.name,
-                "arguments": self.function.arguments,
-            },
-        }
 
 
 class OpenAIRequestHandler(Protocol):
@@ -604,16 +580,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         Format the chat completion generation request into the appropriate structure.
 
-        When ``response`` carries ``tool_calls`` (from a prior turn), the
-        assistant message is emitted with the full tool_calls array and
-        synthetic ``role: "tool"`` result messages are appended so the model
-        sees a complete multi-turn tool-calling exchange.  Per-request tool
-        definitions from ``data.columns["tools_column"]`` are injected into
-        the request body.
-
-        On turns where ``data.expects_tool_call`` is ``False``, the
-        ``tool_choice`` API parameter is overridden to ``"none"`` so the model
-        produces a plain text response.
 
         :param data: The generation request to format
         :param response: Optional prior response for multi-turn history
@@ -720,10 +686,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Process a complete chat completion response.
 
         Extracts content from the message object within choices, handling the nested
-        structure specific to chat completion endpoints.  When the model responds
-        with ``tool_calls``, they are captured on the returned
-        :class:`GenerationResponse` so the scheduler can detect them and
-        dynamically create a follow-up turn.
+        structure specific to chat completion endpoints.
 
         :param request: Original generation request
         :param arguments: The request arguments that were sent
@@ -847,7 +810,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         raw_tool_calls: list[dict[str, Any]] | None = None
         if self.streaming_tool_calls:
             raw_tool_calls = [
-                self.streaming_tool_calls[i].to_dict()
+                self.streaming_tool_calls[i].model_dump()
                 for i in sorted(self.streaming_tool_calls)
             ]
 

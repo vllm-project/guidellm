@@ -134,7 +134,7 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "multi-turn requests. Only supported with /v1/responses."
         ),
     )
-    tool_call_missing_behavior: str = Field(
+    tool_call_missing_behavior: Literal["ignore_continue", "ignore_stop", "error_stop"] = Field(
         default="error_stop",
         description=(
             "What happens when a tool call is expected but the model does not "
@@ -143,17 +143,6 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "cancel remaining turns)."
         ),
     )
-
-    @field_validator("tool_call_missing_behavior")
-    @classmethod
-    def validate_tool_call_missing_behavior(cls, v: str) -> str:
-        valid = {"ignore_continue", "ignore_stop", "error_stop"}
-        if v not in valid:
-            raise ValueError(
-                f"Invalid tool_call_missing_behavior '{v}'. "
-                f"Must be one of: {', '.join(sorted(valid))}"
-            )
-        return v
 
     @field_validator("target", mode="after")
     @classmethod

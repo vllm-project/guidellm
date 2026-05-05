@@ -198,28 +198,6 @@ class SyntheticTextDatasetConfig(DataConfig):
     )
 
     @model_validator(mode="after")
-    def check_tool_call_options(self) -> SyntheticTextDatasetConfig:
-        if self.tool_call_turns > self.turns:
-            raise ValueError(
-                f"tool_call_turns ({self.tool_call_turns}) must be <= "
-                f"turns ({self.turns})."
-            )
-
-        if self.tools is not None and self.tool_call_turns == 0:
-            raise ValueError(
-                "tools were provided but tool_call_turns is 0. "
-                "Set tool_call_turns > 0 to enable tool calling."
-            )
-
-        if self.tool_response_tokens is not None and self.tool_call_turns == 0:
-            raise ValueError(
-                "tool_response_tokens was set but tool_call_turns is 0. "
-                "Set tool_call_turns > 0 to enable tool calling."
-            )
-
-        return self
-
-    @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:
         if self.__pydantic_extra__ is not None:
             prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
