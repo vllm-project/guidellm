@@ -64,14 +64,11 @@ class TestBackendArgsTransformation:
         assert args.backend.target == "http://localhost:9000"
         assert args.backend.model == "test_model"
 
-    def test_openai_websocket_backend_kwargs_validates(self) -> None:
-        """Realtime WS backend is selected explicitly; no request_format shim.
-
-        ## WRITTEN BY AI ##
-        """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+    def test_openai_websocket_backend_validates(self) -> None:
+        """WebSocket backend accepts ``request_format`` (CLI --request-format)."""
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_websocket",
                     "target": "http://localhost:8000",
                     "model": "rt-model",
@@ -79,10 +76,23 @@ class TestBackendArgsTransformation:
                 **_PIPELINE_DEFAULTS,
             }
         )
-        assert args.backend_kwargs.kind == "openai_websocket"
-        assert isinstance(args.backend_kwargs, OpenAIWebSocketBackendArgs)
-        assert args.backend_kwargs.target == "http://localhost:8000"
-        assert args.backend_kwargs.model == "rt-model"
+        assert isinstance(args.backend, OpenAIWebSocketBackendArgs)
+        assert args.backend.target == "http://localhost:8000"
+        assert args.backend.model == "rt-model"
+        assert args.backend.request_format is None
+
+        with_format = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_websocket",
+                    "target": "http://localhost:8000",
+                    "model": "rt-model",
+                    "request_format": "realtime",
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+        assert with_format.backend.request_format == "/v1/realtime"
 
     def test_dict_with_request_format(self):
         """
