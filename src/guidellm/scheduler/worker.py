@@ -378,8 +378,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
 
-        After resolve completes the worker inspects ``request_info.error`` and
-        ``request_info.stop_conversation`` (set by the backend during resolve)
+        After resolve completes the worker inspects ``request_info.error``
         to decide whether to continue with remaining conversation turns, cancel
         them, or mark the current turn as errored.
 
@@ -415,8 +414,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
                 response = resp
 
-            # Complete the request -- the backend may have set error or
-            # stop_conversation on request_info during resolve.
             request_info.timings.resolve_end = time.time()
 
             if request_info.error:
@@ -426,12 +423,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
             history.append((request, response))
 
-            # Cancel remaining conversation turns when the backend signals
-            # an error or that the conversation should stop early.
-            if request_info.error or request_info.stop_conversation:
-                reason = request_info.error or "Conversation stopped by backend"
+            # Cancel remaining conversation turns when the backend signals an error.
+            if request_info.error:
                 for skip_req, skip_info in conversation:
-                    skip_info.error = f"Cancelled: {reason}"
+                    skip_info.error = f"Cancelled: {request_info.error}"
                     skip_info.timings.resolve_end = time.time()
                     self._send_update("cancelled", None, skip_req, skip_info)
                 conversation.clear()
@@ -454,6 +449,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 logger.opt(exception=True).debug(
                     f"Backend exception for request {request_info.request_id}"
                 )
+                # Cancel remaining conversation turns on backend error
+                for skip_req, skip_info in conversation:
+                    skip_info.error = f"Cancelled: {request_info.error}"
+                    skip_info.timings.resolve_end = time.time()
+                    self._send_update("cancelled", None, skip_req, skip_info)
+                conversation.clear()
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)

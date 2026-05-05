@@ -18,6 +18,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import SyntheticTextDatasetConfig
+from guidellm.settings import settings
 from guidellm.utils.imports import json
 from guidellm.utils.random import IntegerRangeSampler
 
@@ -25,9 +26,6 @@ __all__ = [
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
 ]
-
-# Short placeholder used when no tool_response_tokens size is configured.
-DEFAULT_SYNTHETIC_TOOL_RESPONSE = '{"status": "ok"}'
 
 # Placeholder tool definition used when the user doesn't supply their own
 # tools but sets tool_call_turns > 0.
@@ -141,7 +139,9 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                         body = self._create_prompt(tr_tokens, faker)
                         row[f"tool_response_{turn}"] = json.dumps({"result": body})
                     else:
-                        row[f"tool_response_{turn}"] = DEFAULT_SYNTHETIC_TOOL_RESPONSE
+                        row[f"tool_response_{turn}"] = (
+                            settings.default_synthetic_tool_response
+                        )
 
                 samples_count += 1
 

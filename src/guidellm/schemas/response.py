@@ -9,16 +9,19 @@ implementations.
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import Field
 
 from guidellm.schemas.base import StandardBaseModel
 from guidellm.schemas.info import RequestInfo
 from guidellm.schemas.request import GenerationRequest, UsageMetrics
 from guidellm.schemas.request_stats import GenerativeRequestStats
+from guidellm.schemas.tool_call import StreamingToolCall, StreamingToolCallFunction
 
-__all__ = ["GenerationResponse"]
+__all__ = [
+    "GenerationResponse",
+    "StreamingToolCall",
+    "StreamingToolCallFunction",
+]
 
 
 class GenerationResponse(StandardBaseModel):

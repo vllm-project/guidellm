@@ -168,16 +168,6 @@ class RequestInfo(StandardBaseModel):
         default=None,
         description="Full traceback of the error if the request status is 'errored'",
     )
-    stop_conversation: bool = Field(
-        default=False,
-        description=(
-            "When True, the worker cancels all remaining turns in the "
-            "conversation after this request completes successfully. "
-            "Set by the backend when a turn's result means the conversation "
-            "should not continue (e.g. expected tool call not produced)."
-        ),
-    )
-
     @computed_field  # type: ignore[misc]
     @property
     def started_at(self) -> float | None:
