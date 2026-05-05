@@ -698,13 +698,13 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     @property
     def processes_limit(self) -> PositiveInt | None:
-        return None
+        # TODO: Support multi-process trace replay once each scheduled timestamp
+        # is bound to its request before workers compete for queue items.
+        return 1
 
     @property
     def requests_limit(self) -> PositiveInt | None:
-        if not self.relative_timestamps:
-            return None
-        return len(self.relative_timestamps)
+        return None
 
     async def next_request_time(self, worker_index: NonNegativeInt) -> float:
         _ = worker_index
@@ -714,10 +714,11 @@ class TraceReplayStrategy(SchedulingStrategy):
 
         idx = self.next_request_index()
         if idx > len(self.relative_timestamps):
-            # Trace exhausted: signal the worker to wait for constraint_reached_event.
-            # math.inf tells the worker the trace is done; it will wait for the
-            # constraint to be reached instead of scheduling more requests.
-            return math.inf
+            # Trace exhausted: park this worker slot until the scheduler cancels
+            # the processing loop via constraint_reached_event. CancelledError
+            # propagates up cleanly, matching the exit path of all other strategies.
+            await asyncio.Event().wait()
+
         return start_time + self.time_scale * self.relative_timestamps[idx - 1]
 
     def request_completed(self, request_info: RequestInfo):
