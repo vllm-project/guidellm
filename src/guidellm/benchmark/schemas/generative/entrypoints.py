@@ -27,12 +27,11 @@ from pydantic import (
     ValidatorFunctionWrapHandler,
     field_serializer,
     field_validator,
-    model_validator,
 )
 from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.backends import Backend, BackendArgs
+from guidellm.backends import BackendArgs
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
@@ -178,11 +177,8 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default=None, description="Request rate(s) for rate-based scheduling"
     )
     # Backend configuration
-    backend: str | Backend = Field(
-        default="openai_http", description="Backend type or instance for execution"
-    )
     backend_kwargs: BackendArgs = Field(
-        description="Additional backend configuration arguments",
+        description="Backend configuration arguments",
     )
     # Data configuration
     processor: str | Path | PreTrainedTokenizerBase | None = Field(
@@ -321,69 +317,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 return handler([value])
             else:
                 raise
-
-    @model_validator(mode="before")
-    @classmethod
-    def construct_backend_kwargs(cls, data: Any) -> Any:
-        """
-        Transform backend configuration into typed BackendArgs instance.
-
-        Extracts top-level target/model/request_format and merges them with
-        backend_kwargs to create the appropriate typed BackendArgs subclass.
-        """
-        if not isinstance(data, dict):
-            return data
-
-        backend = data.get("backend", cls.get_default("backend"))
-        backend_type = backend.type_ if isinstance(backend, Backend) else backend
-
-        try:
-            backend_args_class = Backend.get_backend_args(backend_type)
-        # Backend type invalid
-        except ValueError as err:
-            raise ValidationError.from_exception_data(
-                title="Backend Validation Error",
-                line_errors=[
-                    {
-                        "type": "value_error",
-                        "loc": ("backend",),
-                        "input": str(backend_type),
-                        "ctx": {"error": err},
-                    }
-                ],
-            ) from err
-
-        existing_kwargs = data.get("backend_kwargs", {})
-        # If we are passed a raw type
-        if not isinstance(existing_kwargs, BackendArgs):
-            data["backend_kwargs"] = backend_args_class.model_validate(existing_kwargs)
-        # If we are passed the BackendArgs for a different backend type
-        elif not isinstance(existing_kwargs, backend_args_class):
-            raise ValidationError.from_exception_data(
-                title="Backend Args Validation Error",
-                line_errors=[
-                    {
-                        "type": "model_type",
-                        "loc": ("backend_kwargs",),
-                        "input": existing_kwargs,
-                        "ctx": {
-                            "class_name": backend_args_class.__name__,
-                        },
-                    }
-                ],
-            )
-
-        return data
-
-    @field_serializer("backend")
-    def serialize_backend(self, backend: str | Backend) -> str:
-        """Serialize backend to type string."""
-        return backend.type_ if isinstance(backend, Backend) else backend
-
-    @field_serializer("backend_kwargs")
-    def serialize_backend_kwargs(self, backend_kwargs: BackendArgs) -> dict[str, Any]:
-        """Serialize BackendArgs instance to dict for storage."""
-        return backend_kwargs.model_dump()
 
     @field_serializer("data")
     def serialize_data(self, data: list[Any]) -> list[str | None]:
