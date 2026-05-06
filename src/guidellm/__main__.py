@@ -126,8 +126,14 @@ def benchmark():
     default=BenchmarkGenerativeTextArgs.get_default("rate"),
     help=(
         "Benchmark rate(s) to test. Meaning depends on profile: "
-        "sweep=number of benchmarks, concurrent=concurrent requests, "
-        "async/constant/poisson=requests per second."
+        "constant/poisson=requests per second, "
+        "concurrent=number of parallel streams, "
+        "sweep=number of benchmarks (only first value used), "
+        "throughput=max concurrency (only first value used). "
+        "For constant, poisson, and concurrent profiles, multiple values "
+        "can be specified (e.g., --rate 1 --rate 5 --rate 10), are sorted "
+        "ascending, and if a failure constraint (over-saturation, errors) "
+        "triggers at a given rate, higher rates are skipped."
     ),
 )
 # Backend configuration
