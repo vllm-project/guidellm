@@ -72,8 +72,8 @@ tox -e tests -- -m regression
 - All tests must pass before committing
 - Markdown files must be properly formatted
 - Public functions in `src/` code must use the reStructuredText docstring format
-- All imports must be done at the top of the file unless necessary for functionality
-- Use of `getattr` should be avoided if possible as it hides incorrect usage of types
+- All imports **SHALL** be done at the top of the file
+- **DO NOT** use `getattr` or `setattr` as it hides incorrect usage of types
 
 ## Common Tasks
 
