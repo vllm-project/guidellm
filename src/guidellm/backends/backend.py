@@ -9,7 +9,7 @@ provide a standard interface for distributed execution across worker processes.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from pydantic import ConfigDict, Field
 
@@ -24,11 +24,7 @@ from guidellm.utils.registry import RegistryMixin
 __all__ = [
     "Backend",
     "BackendArgs",
-    "BackendType",
 ]
-
-
-BackendType = Literal["openai_http", "vllm_python"]
 
 
 class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
@@ -63,7 +59,7 @@ class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
 
         return BackendArgs
 
-    type_: BackendType = Field(
+    type_: str = Field(
         alias="type",
         description="Type identifier for the backend configuration.",
     )

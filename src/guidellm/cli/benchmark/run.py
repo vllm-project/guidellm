@@ -10,7 +10,6 @@ import click
 from pydantic import ValidationError
 
 import guidellm.utils.cli as cli_tools
-from guidellm.backends import BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
@@ -95,9 +94,7 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     "--backend",
     "--backend-type",  # legacy alias
     "backend",
-    type=click.Choice(list(get_literal_vals(BackendType))),
     default=BenchmarkGenerativeTextArgs.get_default("backend"),
-    help=f"Backend type. Options: {', '.join(get_literal_vals(BackendType))}.",
 )
 @click.option(
     "--backend-kwargs",
