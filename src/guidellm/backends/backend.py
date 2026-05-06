@@ -8,13 +8,17 @@ provide a standard interface for distributed execution across worker processes.
 
 from __future__ import annotations
 
-from abc import abstractmethod
-from typing import Literal
+from abc import ABC, abstractmethod
+from typing import ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict, Field
 
 from guidellm.scheduler import BackendInterface
-from guidellm.schemas import GenerationRequest, GenerationResponse
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    PydanticClassRegistryMixin,
+)
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
@@ -27,11 +31,42 @@ __all__ = [
 BackendType = Literal["openai_http", "vllm_python"]
 
 
-class BackendArgs(BaseModel):
-    """Base class for backend creation argument models."""
+class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
+    """
+    Base class for backend creation arguments.
 
-    # Allow for extra fields until we make BackendArgs the sole source of truth
-    model_config = ConfigDict(extra="allow")
+    This class serves as a base for defining argument models used in the creation
+    of backend instances. It inherits from PydanticClassRegistryMixin to enable
+    automatic registration of subclasses, allowing for flexible and extensible
+    backend configurations.
+
+    :cvar schema_discriminator: Field name for polymorphic deserialization
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
+    )
+
+    schema_discriminator: ClassVar[str] = "type"
+
+    @classmethod
+    def __pydantic_schema_base_type__(cls) -> type[BackendArgs]:
+        """
+        Return base type for polymorphic validation hierarchy.
+
+        :return: Base BackendArgs class for schema validation
+        """
+        if cls.__name__ == "BackendArgs":
+            return cls
+
+        return BackendArgs
+
+    type_: BackendType = Field(
+        alias="type",
+        description="Type identifier for the backend configuration.",
+    )
 
 
 class Backend(
@@ -68,7 +103,7 @@ class Backend(
     """
 
     @classmethod
-    def create(cls, type_: str, **kwargs) -> Backend:
+    def create(cls, args: BackendArgs) -> Backend:
         """
         Create a backend instance based on the backend type.
 
@@ -77,6 +112,7 @@ class Backend(
         :return: An instance of a subclass of Backend
         :raises ValueError: If the backend type is not registered
         """
+        type_ = args.type_
 
         backend = cls.get_registered_object(type_)
 
@@ -86,34 +122,15 @@ class Backend(
                 f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
             )
 
-        return backend(**kwargs)
+        return backend(args)
 
-    @classmethod
-    def get_backend_args(cls, type_: str) -> type[BackendArgs]:
-        """
-        Return the Pydantic model class for the backend's creation arguments.
-
-        :param type_: The backend type identifier
-        :return: The backend's BackendArgs subclass
-        :raises ValueError: If the backend type is not registered
-        """
-        backend_class = cls.get_registered_object(type_)
-
-        if backend_class is None:
-            raise ValueError(
-                f"Backend type '{type_}' is not registered. "
-                f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
-            )
-
-        return backend_class.backend_args()
-
-    def __init__(self, type_: str):
+    def __init__(self, args: BackendArgs):
         """
         Initialize a backend instance.
 
         :param type_: The backend type identifier
         """
-        self.type_ = type_
+        self.type_ = args.type_
 
     @property
     def processes_limit(self) -> int | None:
@@ -129,19 +146,6 @@ class Backend(
             None if unlimited
         """
         return None
-
-    @classmethod
-    @abstractmethod
-    def backend_args(cls) -> type[BackendArgs]:
-        """
-        Return the Pydantic model class for this backend's creation arguments.
-
-        The model defines the parameters (e.g. target, model) that the CLI/benchmark
-        supply when creating the backend. Used for validation and error messages.
-
-        :return: A BackendArgs subclass whose fields are the creation params
-        """
-        ...
 
     @abstractmethod
     async def default_model(self) -> str:

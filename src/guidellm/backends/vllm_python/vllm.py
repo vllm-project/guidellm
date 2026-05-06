@@ -14,11 +14,11 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import jinja2
 from more_itertools import roundrobin
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
@@ -59,54 +59,68 @@ _CHAT_TEMPLATE_UNSET: object = object()
 __all__ = ["VLLMPythonBackend", "VLLMPythonBackendArgs"]
 
 
+@BackendArgs.register("vllm_python")
 class VLLMPythonBackendArgs(BackendArgs):
     """Pydantic model for VLLM Python backend creation arguments."""
 
+    type_: Literal["vllm_python"] = Field(
+        alias="type",
+        default="vllm_python",
+        description="Backend type identifier for VLLM Python backend.",
+    )
     model: str = Field(
         description="Model identifier or path for VLLM to load",
-        json_schema_extra={
-            "error_message": (
-                "Backend '{backend_type}' requires a model parameter. "
-                "Please provide --model with a valid model identifier."
-            )
-        },
     )
-    target: str | None = Field(
-        default=None,
-        description="Target URL (ignored for VLLM Python backend, runs locally)",
-        json_schema_extra={
-            "error_message": (
-                "Backend '{backend_type}' does not support a target parameter. "
-                "Please remove --target as this backend runs locally."
-            )
-        },
+    vllm_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Configuration dictionary for vLLM AsyncEngineArgs parameters. Pass "
+            "any valid AsyncEngineArgs parameters here (e.g. tensor_parallel_size, "
+            "gpu_memory_utilization, max_model_len). The 'model' parameter is required "
+            "and can be set here or via the top-level 'model' field; if set in both "
+            "places, the top-level 'model' field takes precedence."
+        ),
     )
-    request_format: str | None = Field(
-        default=None,
+    request_format: Literal["plain", "default-template"] | str = Field(
+        default="default-template",
         description=(
             "Request format for VLLM Python backend. "
             "Valid values: 'plain' (no chat template), 'default-template' "
             "(use tokenizer default), or a path to / inline Jinja2 chat template."
         ),
-        json_schema_extra={
-            "error_message": (
-                "Backend '{backend_type}' received an invalid --request-format. "
-                "Valid values: 'plain', 'default-template', a path to a Jinja2 "
-                "template file, or an inline Jinja2 template string."
-            )
-        },
+    )
+    stream: bool = Field(
+        default=True,
+        description="Whether to stream responses from the backend.",
+    )
+    image_placeholder: str = Field(
+        default="<image>",
+        description=(
+            "Placeholder string for image items in multimodal prompts. "
+            "Used when injecting placeholders for multimodal data."
+        ),
+    )
+    audio_placeholder: str = Field(
+        default="<|audio|>",
+        description=(
+            "Placeholder string for audio items in multimodal prompts. "
+            "Used when injecting placeholders for multimodal data."
+        ),
     )
 
-    @field_validator("target")
-    @classmethod
-    def target_must_be_none(cls, v: str | None) -> str | None:
-        """Reject target to prevent confusion.
+    @model_validator(mode="after")
+    def validate_vllm_config(self):
+        """Set defaults on vllm_config and ensure model is set."""
 
-        Validated by CLI before Backend.create.
-        """
-        if v is not None:
-            raise ValueError("Target is not supported; this backend runs locally.")
-        return v
+        if "model" in self.vllm_config:
+            logger.warning(
+                "The `model` input was passed to the vllm python backend "
+                "with the `vllm_config` input. Ignoring and overwriting "
+                "with the value from the `model` input."
+            )
+        self.vllm_config["model"] = self.model
+
+        return self
 
 
 class _ResolvedRequest(StandardBaseModel):
@@ -142,16 +156,8 @@ class VLLMPythonBackend(Backend):
     """
     Python API backend for VLLM inference engine.
 
-    Directly uses VLLM's AsyncLLMEngine for local async inference. When CUDA is not
-    available and ``device`` is not set in vllm_config, the backend sets
-    ``device="cpu"`` so the engine runs on CPU; otherwise vLLM uses CUDA if
-    available. You can pass ``device`` in vllm_config (e.g. ``"cpu"``, ``"cuda"``)
-    and it is passed through to AsyncEngineArgs. Handles request/response conversion
-    between GuideLLM schemas and VLLM's native API, with async support for finer
-    token-by-token processing and timings.
-
     Engine parameters not set in vllm_config use vLLM's AsyncEngineArgs defaults.
-    Example (optional overrides):
+    Example:
     ::
         backend = VLLMPythonBackend(model="meta-llama/Llama-2-7b-chat-hf")
         # Or: vllm_config={"tensor_parallel_size": 1, "gpu_memory_utilization": 0.9}
@@ -169,43 +175,14 @@ class VLLMPythonBackend(Backend):
 
     def __init__(
         self,
-        model: str,
-        vllm_config: dict[str, Any] | None = None,
-        request_format: str | None = None,
-        stream: bool = True,
-        image_placeholder: str | None = None,
-        audio_placeholder: str | None = None,
+        arguments: VLLMPythonBackendArgs,
     ):
         """
         Initialize VLLM Python backend with model and configuration.
-
-        :param model: Model identifier or path for VLLM to load
-        :param vllm_config: Optional dict of VLLM AsyncEngineArgs parameters.
-            Passed through with no GuideLLM defaults; only model (and optionally
-            chat_template) are set by the backend. When CUDA is not available and
-            ``device`` is not set here, the backend sets ``device="cpu"``. You can
-            pass ``device`` (e.g. ``"cpu"``, ``"cuda"``) and it is passed through.
-            Unset parameters use vLLM's defaults. Common options include
-            tensor_parallel_size, gpu_memory_utilization, max_model_len, and any
-            other parameter accepted by vllm.AsyncEngineArgs.
-        :param request_format: "plain" (no chat template), "default-template"
-            (use tokenizer default), or a chat template path / single-line string.
-        :param stream: Whether to stream responses (default True).
-        :param image_placeholder: Optional string to use as the image placeholder when
-            injecting placeholders for multimodal prompts (e.g. Qwen3-VL may require
-            a model-specific token). If not set, falls back to "<image>".
-        :param audio_placeholder: Optional string to use as the audio placeholder when
-            using audio_column; if unset, falls back to "<|audio|>".
         """
         _check_vllm_available()
         super().__init__(type_="vllm_python")
-
-        self.model = model
-        self.request_format = request_format
-        self.stream = stream
-        self._image_placeholder_override = image_placeholder
-        self._audio_placeholder_override = audio_placeholder
-        self.vllm_config = self._merge_config(vllm_config or {})
+        self._args = arguments
 
         # Runtime state
         self._in_process = False
@@ -220,32 +197,6 @@ class VLLMPythonBackend(Backend):
         """
         return 1
 
-    def _merge_config(self, user_config: dict[str, Any]) -> dict[str, Any]:
-        """
-        Build engine config from user config plus required model.
-
-        No GuideLLM defaults are applied; any parameter not set here or in
-        user_config is left to vLLM's AsyncEngineArgs defaults. Custom
-        request_format (chat template) is not passed to the engine; it is
-        applied at request time in _resolve_request to avoid AsyncEngineArgs
-        compatibility issues across vLLM versions.
-
-        :param user_config: User-provided configuration dictionary
-        :return: Config dict for AsyncEngineArgs (model set)
-        """
-        config = dict(user_config)
-
-        # Ensure model is set in config (required; overrides user if they passed it)
-        if "model" in config:
-            logger.warning(
-                "The `model` input was passed to the vllm python backend "
-                "with the `vllm_config` input. Ignoring and overwriting "
-                "with the value from the `model` input."
-            )
-        config["model"] = self.model
-
-        return config
-
     @property
     def info(self) -> dict[str, Any]:
         """
@@ -253,13 +204,7 @@ class VLLMPythonBackend(Backend):
 
         :return: Dictionary containing backend configuration details
         """
-        return {
-            "model": self.model,
-            "vllm_config": self.vllm_config,
-            "stream": self.stream,
-            "in_process": self._in_process,
-            "engine_initialized": self._engine is not None,
-        }
+        return self._args.model_dump()
 
     async def process_startup(self):
         """
@@ -270,7 +215,7 @@ class VLLMPythonBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
-        engine_args = AsyncEngineArgs(**self.vllm_config)  # type: ignore[misc]
+        engine_args = AsyncEngineArgs(**self._args.vllm_config)  # type: ignore[misc]
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)  # type: ignore[misc]
         self._in_process = True
 
@@ -310,7 +255,7 @@ class VLLMPythonBackend(Backend):
         :return: List containing the configured model identifier
         """
         # VLLM only supports one model per VLLM instance.
-        return [self.model]
+        return [self._args.model]
 
     async def default_model(self) -> str:
         """
@@ -318,7 +263,7 @@ class VLLMPythonBackend(Backend):
 
         :return: Model name or identifier
         """
-        return self.model
+        return self._args.model
 
     def _validate_backend_initialized(self) -> AsyncLLMEngine:
         """
@@ -454,14 +399,14 @@ class VLLMPythonBackend(Backend):
         if images is not None:
             num = len(images) if isinstance(images, list | tuple) else 1
             if num > 0:
-                ph = self._image_placeholder_override or "<image>"
+                ph = self._args.image_placeholder
                 parts.extend([ph] * num)
         audio = multi_modal_data.get("audio")
         if audio is not None:
             # Single audio item (numpy array) — not a list of items.
             num = len(audio) if isinstance(audio, list | tuple) else 1
             if num > 0:
-                ph = self._audio_placeholder_override or "<|audio|>"
+                ph = self._args.audio_placeholder
                 parts.extend([ph] * num)
         if not parts:
             return ""
@@ -534,15 +479,15 @@ class VLLMPythonBackend(Backend):
         when valid. Raises ValueError for invalid input (wrong format, bad path,
         or invalid Jinja2 syntax).
         """
-        if self.request_format is None or self.request_format in (
+        template = self._args.request_format
+        if template in (
             "plain",
             "default-template",
         ):
             # No custom template provided; 'plain' and 'default-template' are handled
             # internally
             return None
-        value = self.request_format
-        path = Path(value)
+        path = Path(template)
         # Treat the request_format string as a file path. If it exists and contains
         # Jinja2 syntax, read the content as the template.
         if path.exists() and path.is_file():
@@ -560,16 +505,16 @@ class VLLMPythonBackend(Backend):
                     f"Invalid chat template in file {path.as_posix()!r}: {e}"
                 ) from e
             return content
-        if _has_jinja2_markers(value):
+        if _has_jinja2_markers(template):
             try:
-                jinja2.Template(value)
+                jinja2.Template(template)
             except jinja2.TemplateSyntaxError as e:
                 raise ValueError(f"Invalid chat template: {e}") from e
-            return value
+            return template
         raise ValueError(
             "request_format must be 'plain', 'default-template', a path to a "
             "Jinja2 template file, or a string containing Jinja2 template "
-            "syntax ({{, {%}, or {#). Got: " + repr(value) + "."
+            "syntax ({{, {%}, or {#). Got: " + repr(template) + "."
         )
 
     def _extract_prompt_chat_tokenizer(
@@ -581,7 +526,7 @@ class VLLMPythonBackend(Backend):
         if tokenizer is None:
             raise RuntimeError("Backend engine has no tokenizer.")
 
-        if self.request_format is None or self.request_format in (
+        if self._args.request_format in (
             "plain",
             "default-template",
         ):
@@ -642,7 +587,7 @@ class VLLMPythonBackend(Backend):
         use_content_blocks = (
             multi_modal_data
             and (text_blocks or prefix)
-            and self.request_format != "plain"
+            and self._args.request_format != "plain"
         )
 
         if use_content_blocks:
@@ -685,7 +630,7 @@ class VLLMPythonBackend(Backend):
                         formatted_messages, multi_modal_data
                     )
 
-                if self.request_format == "plain":
+                if self._args.request_format == "plain":
                     prompt = self._extract_prompt_chat_plain(formatted_messages)
                 else:
                     prompt = self._extract_prompt_chat_tokenizer(formatted_messages)
@@ -698,7 +643,7 @@ class VLLMPythonBackend(Backend):
 
         return _ResolvedRequest(
             prompt=prompt,
-            stream=self.stream,
+            stream=self._args.stream,
             multi_modal_data=multi_modal_data,
         )
 
@@ -883,7 +828,7 @@ class VLLMPythonBackend(Backend):
             ) from exc
         if "At most 0 audio" in error_msg or "audio(s) may be provided" in error_msg:
             raise RuntimeError(
-                f"Generation failed: The model '{self.model}' does not "
+                f"Generation failed: The model '{self._args.model}' does not "
                 f"support audio inputs. Use an audio-capable model "
                 f"(e.g. Whisper-based). Original error: {exc}"
             ) from exc
