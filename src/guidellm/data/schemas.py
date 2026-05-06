@@ -214,8 +214,7 @@ class SyntheticTextDatasetConfig(DataConfig):
         for idx in self.tool_call_turns:
             if idx < 0 or idx >= self.turns:
                 raise ValueError(
-                    f"tool_call_turns index {idx} out of range "
-                    f"[0, {self.turns})"
+                    f"tool_call_turns index {idx} out of range [0, {self.turns})"
                 )
         return self
 
