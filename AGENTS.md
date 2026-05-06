@@ -65,15 +65,23 @@ tox -e tests -- -m regression
 - Use appropriate markers (`smoke`, `sanity`, `regression`)
 - Tests should be placed in files matching the name and path of the file under tests. E.g. `src/guidellm/benchmark/schemas/generative/entrypoints.py` -> `tests/unit/benchmark/schemas/generative/test_entrypoints.py`.
 
-### Style Requirements
+### Quality Requirements
 
 - All Python code must pass linting and formatting
 - All Python code must pass type checking
 - All tests must pass before committing
 - Markdown files must be properly formatted
+
+### Style Requirements
+
 - Public functions in `src/` code must use the reStructuredText docstring format
 - All imports **SHALL** be done at the top of the file
 - **DO NOT** use `getattr` or `setattr` as it hides incorrect usage of types
+
+### Design Requirements
+
+- Only touch sections of code that need to be changed for the given task
+- Prefer solutions that keep non-generic code out of generic pathways
 
 ## Common Tasks
 
