@@ -350,6 +350,7 @@ async def resolve_profile(
     constraints: MutableMapping[str, ConstraintInitializer | Any],
     max_seconds: int | float | None,
     max_requests: int | None,
+    min_requests: int | None,
     max_errors: int | None,
     max_error_rate: float | None,
     max_global_error_rate: float | None,
@@ -371,6 +372,7 @@ async def resolve_profile(
     :param constraints: Dictionary of constraint initializers for benchmark limits
     :param max_seconds: Maximum duration in seconds for the benchmark
     :param max_requests: Maximum number of requests to process
+    :param min_requests: Minimum number of requests to process
     :param max_errors: Maximum number of errors before stopping
     :param max_error_rate: Maximum error rate threshold before stopping
     :param max_global_error_rate: Maximum global error rate threshold before stopping
@@ -388,6 +390,7 @@ async def resolve_profile(
     for key, val in {
         "max_seconds": max_seconds,
         "max_requests": max_requests,
+        "min_requests": min_requests,
         "max_errors": max_errors,
         "max_error_rate": max_error_rate,
         "max_global_error_rate": max_global_error_rate,
@@ -531,6 +534,7 @@ async def benchmark_generative_text(
         constraints=constraints,
         max_seconds=args.max_seconds,
         max_requests=args.max_requests,
+        min_requests=args.min_requests,
         max_errors=args.max_errors,
         max_error_rate=args.max_error_rate,
         max_global_error_rate=args.max_global_error_rate,

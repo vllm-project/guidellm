@@ -24,6 +24,7 @@ from .factory import ConstraintsInitializerFactory
 from .request import (
     MaxDurationConstraint,
     MaxNumberConstraint,
+    MinNumberConstraint,
     RequestsExhaustedConstraint,
 )
 from .saturation import (
@@ -40,6 +41,7 @@ __all__ = [
     "MaxErrorsConstraint",
     "MaxGlobalErrorRateConstraint",
     "MaxNumberConstraint",
+    "MinNumberConstraint",
     "OverSaturationConstraint",
     "OverSaturationConstraintInitializer",
     "PydanticConstraintInitializer",

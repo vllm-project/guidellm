@@ -268,6 +268,117 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
+@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
+    ["min_number", "min_num", "min_requests", "min_req"]
+)
+class MinNumberConstraint(PydanticConstraintInitializer):
+    """
+    Constraint that limits execution based on minimum request counts.
+
+    Like MinNumberConstraint but instead of stopping request generation after reaching
+    a minimum, it ends the benchmark after completing a minimum number of requests.
+    """
+
+    type_: Literal["min_number"] = "min_number"  # type: ignore[assignment]
+    min_num: int | float | list[int | float] = Field(
+        description="Minimum number of requests allowed before triggering constraint",
+    )
+    current_index: int = Field(
+        default=-1, description="Current index for list-based min_num values"
+    )
+
+    @classmethod
+    def validated_kwargs(
+        cls, min_num: int | float | list[int | float], **kwargs
+    ) -> dict[str, Any]:
+        """
+        Validate and process arguments for MinNumberConstraint creation.
+
+        :param min_num: Minimum number of requests to allow
+        :param kwargs: Supports min_num, min_number, min_requests, min_req,
+            and optional type_
+        :return: Validated dictionary with min_num and type_ fields
+        """
+        aliases = ["min_number", "min_num", "min_requests", "min_req"]
+        for alias in aliases:
+            if min_num is None:
+                min_num = kwargs.get(alias)
+
+        return {"min_num": min_num, "current_index": kwargs.get("current_index", -1)}
+
+    def create_constraint(self, **_kwargs) -> Constraint:
+        """
+        Return self as the constraint instance.
+
+        :param kwargs: Additional keyword arguments (unused)
+        :return: Self instance as the constraint
+        """
+        self.current_index += 1
+
+        return cast("Constraint", self.model_copy())
+
+    def __call__(
+        self, state: SchedulerState, request_info: RequestInfo
+    ) -> SchedulerUpdateAction:
+        """
+        Evaluate constraint against current scheduler state and request count.
+
+        :param state: Current scheduler state with request counts
+        :param request_info: Individual request information (unused)
+        :return: Action indicating whether to continue or stop operations
+        """
+        _ = request_info  # Unused parameters
+        current_index = max(0, self.current_index)
+        min_num = (
+            self.min_num
+            if isinstance(self.min_num, int | float)
+            else self.min_num[max(current_index, len(self.min_num) - 1)]
+        )
+
+        processed_exceeded = state.processed_requests >= min_num
+        remaining_requests = min(max(0, min_num - state.processed_requests), min_num)
+        stop_time = (
+            None if remaining_requests > 0 else request_info.completed_at or time.time()
+        )
+
+        return SchedulerUpdateAction(
+            request_queuing="stop" if processed_exceeded else "continue",
+            request_processing="stop_local" if processed_exceeded else "continue",
+            metadata={
+                "min_number": min_num,
+                "processed_exceeded": processed_exceeded,
+                "created_requests": state.created_requests,
+                "processed_requests": state.processed_requests,
+                "remaining_requests": remaining_requests,
+                "stop_time": stop_time,
+            },
+            progress=SchedulerProgress(
+                remaining_requests=remaining_requests,
+                total_requests=min_num,
+                stop_time=stop_time,
+            ),
+        )
+
+    @field_validator("min_num")
+    @classmethod
+    def _validate_min_num(
+        cls, value: int | float | list[int | float]
+    ) -> int | float | list[int | float]:
+        if not isinstance(value, list):
+            value = [value]
+        for val in value:
+            if not val:
+                raise ValueError(
+                    f"min_num must be set and truthful, received {value} ({val} failed)"
+                )
+            if not isinstance(val, int | float) or val <= 0:
+                raise ValueError(
+                    f"min_num must be a positive num, received {value} ({val} failed)"
+                )
+
+        return value[0] if isinstance(value, list) and len(value) == 1 else value
+
+
 class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
     type_: Literal["requests_exhausted"] = "requests_exhausted"  # type: ignore[assignment]
     num_requests: int
