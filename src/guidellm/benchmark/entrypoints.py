@@ -591,7 +591,7 @@ async def benchmark_generative_text(
 async def reimport_benchmarks_report(
     file: Path,
     output_path: Path | None,
-    output_formats: OutputFormatT = ("console", "json", "html", "csv"),
+    output_formats: OutputFormatT = ("console", "json", "csv"),
 ) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
     """
     Load and re-export an existing benchmarks report in specified output formats.
