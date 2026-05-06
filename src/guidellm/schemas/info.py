@@ -168,6 +168,7 @@ class RequestInfo(StandardBaseModel):
         default=None,
         description="Full traceback of the error if the request status is 'errored'",
     )
+
     @computed_field  # type: ignore[misc]
     @property
     def started_at(self) -> float | None:

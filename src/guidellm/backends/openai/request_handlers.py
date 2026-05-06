@@ -634,9 +634,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 {
                     "role": "assistant",
                     "content": response.text,
-                    "tool_calls": [
-                        tc.model_dump() for tc in response.tool_calls
-                    ],
+                    "tool_calls": [tc.model_dump() for tc in response.tool_calls],
                 }
             )
             tool_response_columns = data.columns.get("tool_response_column", [])
@@ -683,9 +681,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         tool_calls: list[StreamingToolCall] | None = None
         if raw_tool_calls:
-            tool_calls = [
-                StreamingToolCall.model_validate(tc) for tc in raw_tool_calls
-            ]
+            tool_calls = [StreamingToolCall.model_validate(tc) for tc in raw_tool_calls]
             output_metrics.tool_call_count = len(raw_tool_calls)
             if text is None:  # tool-only turn
                 output_metrics.tool_call_tokens = output_metrics.text_tokens
@@ -792,8 +788,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         tool_calls: list[StreamingToolCall] | None = None
         if self.streaming_tool_calls:
             tool_calls = [
-                self.streaming_tool_calls[i]
-                for i in sorted(self.streaming_tool_calls)
+                self.streaming_tool_calls[i] for i in sorted(self.streaming_tool_calls)
             ]
 
         return GenerationResponse(

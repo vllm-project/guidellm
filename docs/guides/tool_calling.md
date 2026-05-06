@@ -52,14 +52,14 @@ guidellm benchmark run \
 
 Synthetic data configuration fields for tool calling:
 
-| Field                        | Type             | Default | Description                                                                                                                                                                                                                                                    |
-| ---------------------------- | ---------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Field                        | Type               | Default | Description                                                                                                                                                                                                                                                 |
+| ---------------------------- | ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tool_call_turns`            | `int \| list[int]` | `0`     | Which turns include tool definitions and expect tool-call responses. An int N means "the first N turns"; a list of ints specifies explicit 0-based turn indices (e.g. `[0, 2]`). Normalized to a sorted list internally. When `0` or `[]`, no tool calling. |
-| `tools`                      | `list`           | `None`  | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`.                                                                                        |
-| `tool_response_tokens`       | `int`  | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                             |
-| `tool_response_tokens_stdev` | `int`  | `None`  | Standard deviation for tool response token count.                                                                                                                                                                      |
-| `tool_response_tokens_min`   | `int`  | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                            |
-| `tool_response_tokens_max`   | `int`  | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                            |
+| `tools`                      | `list`             | `None`  | Tool definitions in OpenAI format. When `None`, a built-in placeholder tool is used. Custom definitions can be provided inline: `"tools": [{"type": "function", ...}]`.                                                                                     |
+| `tool_response_tokens`       | `int`              | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                                                                  |
+| `tool_response_tokens_stdev` | `int`              | `None`  | Standard deviation for tool response token count.                                                                                                                                                                                                           |
+| `tool_response_tokens_min`   | `int`              | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                                                                 |
+| `tool_response_tokens_max`   | `int`              | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                                                                 |
 
 Note: The token count is for the content of a field of the mock tool call response. The JSON structure adds ~5 tokens to the mock tool call response.
 
@@ -100,7 +100,7 @@ Two backend settings control how tool-call turns are handled at runtime. Both ar
 | Setting                      | Values                                         | Default      | Description                                                                                                                     |
 | ---------------------------- | ---------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | `extras.body.tool_choice`    | `required`, `auto`, `none`                     | `required`   | Sent as the `tool_choice` API parameter on turns that expect a tool call. On non-tool turns, it is always overridden to `none`. |
-| `tool_call_missing_behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the backend does when a tool call was expected but the model produced plain text instead.                                   |
+| `tool_call_missing_behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the backend does when a tool call was expected but the model produced plain text instead.                                  |
 
 **Setting `tool_choice` via `--backend-kwargs`:**
 
@@ -141,7 +141,7 @@ This setting only matters when `tool_choice` is `auto` (or `required` and the se
 ### Recommended scenarios
 
 | Tool Choice | Missing Behavior  | Current Turn Status | Description                                                                                                  |
-| ----------- | ----------------- | ------------------- |--------------------------------------------------------------------------------------------------------------|
+| ----------- | ----------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `required`  | `error_stop`      | errored             | (default) Good for consistent and predictable behavior with synthetic data. May slow down the server.        |
 | `auto`      | `ignore_continue` | completed           | Good for testing `auto` behavior without the model choosing to not use a tool call causing errors.           |
 | `auto`      | `ignore_stop`     | cancelled           | Good for testing `auto` behavior but ends the conversation early once the model creates a non-tool response. |
