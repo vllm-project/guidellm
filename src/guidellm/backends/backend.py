@@ -88,14 +88,15 @@ class Backend(
     ::
         @Backend.register("my_backend")
         class MyBackend(Backend):
-            def __init__(self, api_key: str):
-                super().__init__("my_backend")
-                self.api_key = api_key
+            def __init__(self, args: MyBackendArgs):
+                super().__init__(args)
+                self.api_key = args.api_key
 
             async def process_startup(self):
                 self.client = MyAPIClient(self.api_key)
 
-        backend = Backend.create("my_backend", api_key="secret")
+        args = MyBackendArgs(api_key="secret")
+        backend = Backend.create(args)
     """
 
     @classmethod

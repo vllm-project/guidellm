@@ -5,10 +5,11 @@ Unit tests for the Backend base class and registry functionality.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import Mock, patch
 
 import pytest
+from pydantic import Field, ValidationError
 
 from guidellm.backends import Backend, BackendArgs
 from guidellm.schemas import GenerationRequest, RequestInfo
@@ -19,7 +20,11 @@ from tests.unit.testing_utils import async_timeout
 class _TestBackendArgs(BackendArgs):
     """Minimal backend args model for test backends."""
 
-    type_: str = "test_backend"
+    type_: Literal["test_backend"] = Field(
+        alias="type",
+        default="test_backend",
+        description="Type identifier for the backend configuration.",
+    )
     target: str | None = None
     model: str | None = None
 
@@ -27,15 +32,10 @@ class _TestBackendArgs(BackendArgs):
 class TestBackend:
     """Test cases for Backend base class."""
 
-    @pytest.fixture(
-        params=[
-            {"type_": "openai_http"},
-        ],
-        ids=["openai_http_type"],
-    )
-    def valid_instances(self, request):
+    @pytest.fixture
+    def valid_instances(self):
         """Fixture providing valid Backend instances."""
-        constructor_args = request.param
+        constructor_args = {"type_": "test_backend"}
 
         class TestBackendImpl(Backend):
             @property
@@ -59,7 +59,8 @@ class TestBackend:
             async def default_model(self) -> str:
                 return "test-model"
 
-        instance = TestBackendImpl(**constructor_args)
+        args = _TestBackendArgs()
+        instance = TestBackendImpl(args)
         return instance, constructor_args
 
     @pytest.mark.smoke
@@ -106,32 +107,9 @@ class TestBackend:
         ],
     )
     def test_invalid_initialization_values(self, field, value):
-        """Test Backend with invalid field values."""
-
-        class TestBackendImpl(Backend):
-            @property
-            def info(self) -> dict[str, Any]:
-                return {}
-
-            async def process_startup(self):
-                pass
-
-            async def process_shutdown(self):
-                pass
-
-            async def validate(self):
-                pass
-
-            async def resolve(self, request, request_info, history=None):
-                yield request, request_info
-
-            async def default_model(self) -> str:
-                return "test-model"
-
-        data = {field: value}
-        # Backend itself doesn't validate types, but we test that it accepts the value
-        backend = TestBackendImpl(**data)
-        assert getattr(backend, field) == value
+        """Test BackendArgs rejects invalid field values via pydantic validation."""
+        with pytest.raises(ValidationError):
+            _TestBackendArgs(**{field: value})
 
     @pytest.mark.sanity
     def test_invalid_initialization_missing(self):
@@ -280,7 +258,7 @@ class TestBackend:
         # Test the pattern shown in docstring
         class MyBackend(Backend):
             def __init__(self, arguments: MyBackendArgs):
-                super().__init__("my_backend")
+                super().__init__(arguments)
                 self.api_key = arguments.api_key
 
             @property
@@ -381,7 +359,7 @@ class TestBackend:
         @Backend.register("test_decorator_backend")
         class TestDecoratorBackend(Backend):
             def __init__(self, arguments: TestDecoratorArgs):
-                super().__init__("test_decorator_backend")  # type: ignore
+                super().__init__(arguments)
                 self._test_param = arguments.test_param
 
             @property
