@@ -190,7 +190,7 @@ class OpenAIHTTPBackend(Backend):
         """
         Initialize OpenAI HTTP backend with server configuration.
         """
-        super().__init__(type_="openai_http")
+        super().__init__(arguments)
         self._args = arguments
 
         # Runtime state
