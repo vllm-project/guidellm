@@ -809,6 +809,7 @@ dependencies = [
     { name = "faker" },
     { name = "ftfy" },
     { name = "httpx", extra = ["http2"] },
+    { name = "lazy-loader" },
     { name = "loguru" },
     { name = "more-itertools" },
     { name = "msgpack" },
@@ -936,6 +937,7 @@ requires-dist = [
     { name = "guidellm", extras = ["audio", "perf", "tokenizers", "vision"], marker = "extra == 'all'" },
     { name = "guidellm", extras = ["perf", "tokenizers"], marker = "extra == 'recommended'" },
     { name = "httpx", extras = ["http2"], specifier = "<1.0.0" },
+    { name = "lazy-loader", git = "https://github.com/sjmonson/lazy-loader.git?rev=feat%2Flazy_submodules" },
     { name = "loguru" },
     { name = "lorem", marker = "extra == 'dev'", specifier = "~=0.1.1" },
     { name = "mdformat", marker = "extra == 'dev'", specifier = "~=1.0.0" },
@@ -1253,6 +1255,14 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/74/a633ee74eb36c44aa6d1095e7cc5569bebf04342ee146178e2d36600708b/jsonschema_specifications-2025.9.1.tar.gz", hash = "sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d", size = 32855, upload-time = "2025-09-08T01:34:59.186Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8cedb3c1902296743db0bbc66608a0db2814f/jsonschema_specifications-2025.9.1-py3-none-any.whl", hash = "sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe", size = 18437, upload-time = "2025-09-08T01:34:57.871Z" },
+]
+
+[[package]]
+name = "lazy-loader"
+version = "0.6rc0.dev0"
+source = { git = "https://github.com/sjmonson/lazy-loader.git?rev=feat%2Flazy_submodules#a7f66864e86aee5bed7bf5ce1a5ba98b81e80598" }
+dependencies = [
+    { name = "packaging" },
 ]
 
 [[package]]

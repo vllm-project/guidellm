@@ -12,7 +12,7 @@ try:
     from torchcodec.decoders import AudioDecoder
     from torchcodec.encoders import AudioEncoder
 except ImportError as e:
-    raise ImportError("Please install guidellm[audio] to use audio features") from e
+    raise AttributeError("Please install guidellm[audio] to use audio features") from e
 
 __all__ = [
     "encode_audio",
