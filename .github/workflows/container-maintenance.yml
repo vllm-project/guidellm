@@ -22,7 +22,7 @@ jobs:
           account: ${{ github.repository_owner }}
           token: ${{ github.token }}
           image-names: ${{ github.event.repository.name }}
-          image-tags: "pr-*"
+          image-tags: "pr-*"  # This will match pr-N, pr-N-amd64, pr-N-arm64
           cut-off: 2w
           dry-run: false
 
