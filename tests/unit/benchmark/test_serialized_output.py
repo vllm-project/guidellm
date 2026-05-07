@@ -21,6 +21,7 @@ def minimal_report() -> GenerativeBenchmarksReport:
     """
     args = BenchmarkGenerativeTextArgs(
         backend_kwargs={
+            "type": "openai_http",
             "target": "http://localhost:8000/v1",
             "model": "test-model",
         },

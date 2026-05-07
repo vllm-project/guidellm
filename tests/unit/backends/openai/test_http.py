@@ -9,10 +9,11 @@ from unittest.mock import Mock, patch
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.openai.http import OpenAIHTTPBackend
+from guidellm.backends.openai.http import OpenAIHTTPBackend, OpenAIHTTPBackendArgs
 from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
@@ -25,6 +26,12 @@ from guidellm.schemas import (
     RequestTimings,
 )
 from tests.unit.testing_utils import async_timeout
+
+
+def _make_backend(**kwargs) -> OpenAIHTTPBackend:
+    """Create an OpenAIHTTPBackend from keyword arguments via BackendArgs."""
+    args = OpenAIHTTPBackendArgs(**kwargs)
+    return OpenAIHTTPBackend(args)
 
 
 class TestOpenAIHTTPBackend:
@@ -51,7 +58,7 @@ class TestOpenAIHTTPBackend:
     def valid_instances(self, request):
         """Fixture providing valid OpenAIHTTPBackend instances."""
         constructor_args = request.param
-        instance = OpenAIHTTPBackend(**constructor_args)
+        instance = _make_backend(**constructor_args)
         return instance, constructor_args
 
     @pytest.fixture
@@ -97,58 +104,57 @@ class TestOpenAIHTTPBackend:
         instance, constructor_args = valid_instances
         assert isinstance(instance, OpenAIHTTPBackend)
         expected_target = constructor_args["target"].rstrip("/").removesuffix("/v1")
-        assert instance.target == expected_target
+        assert instance._args.target == expected_target
         if "model" in constructor_args:
-            assert instance.model == constructor_args["model"]
+            assert instance._args.model == constructor_args["model"]
         if "timeout" in constructor_args:
-            assert instance.timeout == constructor_args["timeout"]
+            assert instance._args.timeout == constructor_args["timeout"]
         else:
-            assert instance.timeout is None
+            assert instance._args.timeout is None
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
         ("field", "value"),
         [
-            ("target", ""),
-            ("timeout", -1.0),
-            ("http2", "invalid"),
-            ("verify", "invalid"),
+            ("http2", "not-a-bool"),
+            ("verify", "not-a-bool"),
         ],
     )
     def test_invalid_initialization_values(self, field, value):
-        """Test OpenAIHTTPBackend with invalid field values."""
+        """Test OpenAIHTTPBackend rejects invalid field types via BackendArgs."""
         base_args = {"target": "http://localhost:8000"}
         base_args[field] = value
-        # OpenAI backend doesn't validate types at init, accepts whatever is passed
-        backend = OpenAIHTTPBackend(**base_args)
-        assert getattr(backend, field) == value
+        with pytest.raises(ValidationError):
+            _make_backend(**base_args)
 
     @pytest.mark.sanity
     def test_invalid_validate_backend_parameter(self):
-        """Test OpenAIHTTPBackend with invalid validate_backend parameter."""
-        # Invalid dict without url
-        with pytest.raises(ValueError, match="validate_backend must be"):
-            OpenAIHTTPBackend(
+        """Test OpenAIHTTPBackend with invalid validate_backend parameter types."""
+        # Dict is not a valid bool — raises ValidationError
+        with pytest.raises(ValidationError):
+            _make_backend(
                 target="http://localhost:8000",
-                validate_backend={"method": "GET"},
+                validate_backend={"method": "GET"},  # type: ignore[arg-type]
             )
 
-        # Invalid type (number)
-        with pytest.raises(ValueError, match="validate_backend must be"):
-            OpenAIHTTPBackend(
+        # Integer is not a valid bool coercion for non-0/1 values — depends on Pydantic
+        # The field is typed as bool, so Pydantic may accept 0/1 as False/True
+        # Test with a non-bool object that can't coerce
+        with pytest.raises((ValidationError, TypeError)):
+            _make_backend(
                 target="http://localhost:8000",
-                validate_backend=123,  # type: ignore[arg-type]
+                validate_backend="not-a-bool",  # type: ignore[arg-type]
             )
 
     @pytest.mark.sanity
     def test_server_history_requires_responses_api(self):
         """
-        Test server_history=True raises ValueError for non-responses request formats.
+        Test server_history=True raises ValidationError for non-responses formats.
 
         ## WRITTEN BY AI ##
         """
-        with pytest.raises(ValueError, match="server_history.*only supported"):
-            OpenAIHTTPBackend(
+        with pytest.raises(ValidationError):
+            _make_backend(
                 target="http://localhost:8000",
                 request_format="/v1/chat/completions",
                 server_history=True,
@@ -161,33 +167,34 @@ class TestOpenAIHTTPBackend:
 
         ## WRITTEN BY AI ##
         """
-        backend = OpenAIHTTPBackend(
+        backend = _make_backend(
             target="http://localhost:8000",
             request_format="/v1/responses",
             server_history=True,
         )
-        assert backend.server_history is True
+        assert backend._args.server_history is True
 
     @pytest.mark.smoke
     def test_factory_registration(self):
         """Test that OpenAIHTTPBackend is registered with Backend factory."""
         assert Backend.is_registered("openai_http")
-        backend = Backend.create("openai_http", target="http://test")
+        args = OpenAIHTTPBackendArgs(target="http://test")
+        backend = Backend.create(args)
         assert isinstance(backend, OpenAIHTTPBackend)
         assert backend.type_ == "openai_http"
 
     @pytest.mark.smoke
     def test_initialization_minimal(self):
         """Test minimal OpenAIHTTPBackend initialization."""
-        backend = OpenAIHTTPBackend(target="http://localhost:8000")
+        backend = _make_backend(target="http://localhost:8000")
 
-        assert backend.target == "http://localhost:8000"
-        assert backend.model == ""
-        assert backend.timeout is None
-        assert backend.timeout_connect == 5.0
-        assert backend.http2 is True
-        assert backend.follow_redirects is True
-        assert backend.verify is False
+        assert backend._args.target == "http://localhost:8000"
+        assert backend._args.model == ""
+        assert backend._args.timeout is None
+        assert backend._args.timeout_connect == 5.0
+        assert backend._args.http2 is True
+        assert backend._args.follow_redirects is True
+        assert backend._args.verify is False
         assert backend._in_process is False
         assert backend._async_client is None
         assert backend.processes_limit is None
@@ -197,13 +204,11 @@ class TestOpenAIHTTPBackend:
     def test_initialization_full(self):
         """Test full OpenAIHTTPBackend initialization."""
         api_routes = {"health": "custom/health", "models": "custom/models"}
-        request_handlers = {"test": "handler"}
 
-        backend = OpenAIHTTPBackend(
+        backend = _make_backend(
             target="https://localhost:8000/v1",
             model="test-model",
             api_routes=api_routes,
-            request_handlers=request_handlers,
             timeout=120.0,
             http2=False,
             follow_redirects=False,
@@ -211,15 +216,14 @@ class TestOpenAIHTTPBackend:
             validate_backend=False,
         )
 
-        assert backend.target == "https://localhost:8000"
-        assert backend.model == "test-model"
-        assert backend.timeout == 120.0
-        assert backend.http2 is False
-        assert backend.follow_redirects is False
-        assert backend.verify is True
-        assert backend.api_routes["health"] == "custom/health"
-        assert backend.api_routes["models"] == "custom/models"
-        assert backend.request_handlers == request_handlers
+        assert backend._args.target == "https://localhost:8000"
+        assert backend._args.model == "test-model"
+        assert backend._args.timeout == 120.0
+        assert backend._args.http2 is False
+        assert backend._args.follow_redirects is False
+        assert backend._args.verify is True
+        assert backend._args.api_routes["health"] == "custom/health"
+        assert backend._args.api_routes["models"] == "custom/models"
         assert backend.processes_limit is None
         assert backend.requests_limit is None
 
@@ -227,79 +231,60 @@ class TestOpenAIHTTPBackend:
     @pytest.mark.parametrize(
         ("validate_backend", "expected_validate_backend"),
         [
-            (True, {"method": "GET", "url": "http://test/health"}),
-            (False, None),
-            ("/health", {"method": "GET", "url": "http://test/health"}),
-            (
-                "http://custom/endpoint",
-                {"method": "GET", "url": "http://custom/endpoint"},
-            ),
-            (
-                {"url": "http://custom/url", "method": "POST"},
-                {"url": "http://custom/url", "method": "POST"},
-            ),
-            (
-                {"url": "http://custom/url"},
-                {"url": "http://custom/url", "method": "GET"},
-            ),
+            (True, True),
+            (False, False),
         ],
         ids=[
             "bool_true",
             "bool_false",
-            "str_api_route",
-            "str_custom_url",
-            "dict_with_method",
-            "dict_without_method",
         ],
     )
     def test_validate_backend_parameter(
         self, validate_backend, expected_validate_backend
     ):
-        """Test validate_backend parameter with various input types."""
-        backend = OpenAIHTTPBackend(
+        """Test validate_backend parameter stores boolean value."""
+        backend = _make_backend(
             target="http://test",
             validate_backend=validate_backend,
         )
-        assert backend.validate_backend == expected_validate_backend
+        assert backend._args.validate_backend == expected_validate_backend
 
     @pytest.mark.sanity
     def test_target_normalization(self):
         """Test target URL normalization."""
         # Remove trailing slashes and /v1
-        backend1 = OpenAIHTTPBackend(target="http://localhost:8000/")
-        assert backend1.target == "http://localhost:8000"
+        backend1 = _make_backend(target="http://localhost:8000/")
+        assert backend1._args.target == "http://localhost:8000"
 
-        backend2 = OpenAIHTTPBackend(target="http://localhost:8000/v1")
-        assert backend2.target == "http://localhost:8000"
+        backend2 = _make_backend(target="http://localhost:8000/v1")
+        assert backend2._args.target == "http://localhost:8000"
 
-        backend3 = OpenAIHTTPBackend(target="http://localhost:8000/v1/")
-        assert backend3.target == "http://localhost:8000"
+        backend3 = _make_backend(target="http://localhost:8000/v1/")
+        assert backend3._args.target == "http://localhost:8000"
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
     async def test_info(self):
         """Test info method."""
-        backend = OpenAIHTTPBackend(
-            target="http://test", model="test-model", timeout=30.0
-        )
+        backend = _make_backend(target="http://test", model="test-model", timeout=30.0)
 
         info = backend.info
 
         assert info["target"] == "http://test"
         assert info["model"] == "test-model"
         assert info["timeout"] == 30.0
-        assert info["openai_paths"]["/health"] == "health"
-        assert info["openai_paths"]["/v1/models"] == "v1/models"
-        assert info["openai_paths"]["/v1/completions"] == "v1/completions"
-        assert info["openai_paths"]["/v1/chat/completions"] == "v1/chat/completions"
+        assert info["api_routes"]["/health"] == "health"
+        assert info["api_routes"]["/v1/models"] == "v1/models"
+        assert info["api_routes"]["/v1/completions"] == "v1/completions"
+        assert info["api_routes"]["/v1/chat/completions"] == "v1/chat/completions"
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
     async def test_process_startup(self):
         """Test process startup."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
 
         assert not backend._in_process
         assert backend._async_client is None
@@ -315,7 +300,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_process_startup_already_started(self):
         """Test process startup when already started."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
         await backend.process_startup()
 
         with pytest.raises(RuntimeError, match="Backend already started up"):
@@ -326,7 +311,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_process_shutdown(self):
         """Test process shutdown."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
         await backend.process_startup()
 
         assert backend._in_process
@@ -342,7 +327,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_process_shutdown_not_started(self):
         """Test process shutdown when not started."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
 
         with pytest.raises(RuntimeError, match="Backend not started up"):
             await backend.process_shutdown()
@@ -357,7 +342,7 @@ class TestOpenAIHTTPBackend:
             json={"data": [{"id": "test-model1"}, {"id": "test-model2"}]},
         )
 
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
         await backend.process_startup()
 
         models = await backend.available_models()
@@ -369,17 +354,17 @@ class TestOpenAIHTTPBackend:
     async def test_default_model(self):
         """Test default_model method."""
         # Test when model is already set
-        backend1 = OpenAIHTTPBackend(target="http://test", model="test-model")
+        backend1 = _make_backend(target="http://test", model="test-model")
         result1 = await backend1.default_model()
         assert result1 == "test-model"
 
         # Test when not in process
-        backend2 = OpenAIHTTPBackend(target="http://test")
+        backend2 = _make_backend(target="http://test")
         result2 = await backend2.default_model()
         assert result2 == ""
 
         # Test when in process but no model set
-        backend3 = OpenAIHTTPBackend(target="http://test")
+        backend3 = _make_backend(target="http://test")
         await backend3.process_startup()
 
         with patch.object(backend3, "available_models", return_value=["test-model2"]):
@@ -397,7 +382,7 @@ class TestOpenAIHTTPBackend:
             headers={},
         )
 
-        backend = OpenAIHTTPBackend(target="http://test", model="test-model")
+        backend = _make_backend(target="http://test", model="test-model")
         await backend.process_startup()
 
         await backend.validate()  # Should not raise
@@ -407,7 +392,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_validate_without_model(self):
         """Test validate method when no model is set."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
         await backend.process_startup()
 
         mock_response = Mock()
@@ -421,7 +406,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_validate_not_in_process(self):
         """Test validate method when backend is not started."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
 
         with pytest.raises(RuntimeError, match="Backend not started up"):
             await backend.validate()
@@ -431,7 +416,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_validate_disabled(self):
         """Test validate method when validation is disabled."""
-        backend = OpenAIHTTPBackend(target="http://test", validate_backend=False)
+        backend = _make_backend(target="http://test", validate_backend=False)
         await backend.process_startup()
 
         # Should not raise and should not make any requests
@@ -442,7 +427,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_validate_failure(self):
         """Test validate method when validation fails."""
-        backend = OpenAIHTTPBackend(target="http://test")
+        backend = _make_backend(target="http://test")
         await backend.process_startup()
 
         def mock_fail(*args, **kwargs):
@@ -459,9 +444,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_resolve_with_history(self, httpx_mock: HTTPXMock):
         """Test resolve method handles conversation history."""
-        backend = OpenAIHTTPBackend(
-            target="http://test", request_format="text_completions"
-        )
+        backend = _make_backend(target="http://test", request_format="/v1/completions")
 
         # Mock the models endpoint
         httpx_mock.add_response(
@@ -513,8 +496,8 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_resolve_invalid_request_format(self, httpx_mock: HTTPXMock):
         """Test resolve method raises error for invalid request type."""
-        with pytest.raises(ValueError, match="Invalid request_format 'invalid_type'."):
-            OpenAIHTTPBackend(
+        with pytest.raises(ValidationError):
+            _make_backend(
                 target="http://test",
                 request_format="invalid_type",  # type: ignore[arg-type]
             )
@@ -524,9 +507,7 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_resolve_not_in_process(self, httpx_mock: HTTPXMock):
         """Test resolve method raises error when backend is not started."""
-        backend = OpenAIHTTPBackend(
-            target="http://test", request_format="text_completions"
-        )
+        backend = _make_backend(target="http://test", request_format="/v1/completions")
 
         request = GenerationRequest()
         request_info = RequestInfo(
@@ -556,10 +537,10 @@ class TestOpenAIHTTPBackend:
             json={"choices": [{"text": "Hello world"}]},
         )
 
-        backend = OpenAIHTTPBackend(
+        backend = _make_backend(
             target="http://test",
             model="test-model",
-            request_format="text_completions",
+            request_format="/v1/completions",
         )
         await backend.process_startup()
 
@@ -605,10 +586,10 @@ class TestOpenAIHTTPBackend:
             json={"choices": [{"message": {"content": "Response"}}]},
         )
 
-        backend = OpenAIHTTPBackend(
+        backend = _make_backend(
             target="http://test",
             model="test-model",
-            request_format="chat_completions",
+            request_format="/v1/chat/completions",
         )
         await backend.process_startup()
 
@@ -657,10 +638,10 @@ class TestOpenAIHTTPBackend:
             json={"choices": [{"message": {"content": "Response"}}]},
         )
 
-        backend = OpenAIHTTPBackend(
+        backend = _make_backend(
             target="http://test",
             model="test-model",
-            request_format="audio_transcriptions",
+            request_format="/v1/audio/transcriptions",
         )
         await backend.process_startup()
 
@@ -710,7 +691,7 @@ class TestOpenAIHTTPBackend:
             ),
         )
 
-        backend = OpenAIHTTPBackend(
+        backend = _make_backend(
             target="http://test",
             model="test-model",
             stream=True,
@@ -776,10 +757,10 @@ class TestOpenAIHTTPBackend:
 
         httpx_mock.add_callback(capture_request, url="http://test/v1/chat/completions")
 
-        backend = OpenAIHTTPBackend(
+        backend = _make_backend(
             target="http://test",
             model="test-model",
-            request_format="chat_completions",
+            request_format="/v1/chat/completions",
         )
         await backend.process_startup()
 
