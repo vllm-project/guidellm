@@ -17,6 +17,8 @@ jobs:
 
   build-and-push-container:
     needs: [tests]
+    permissions:
+      packages: write
     uses: ./.github/workflows/build-multiarch-container.yml
     with:
       build-type: nightly

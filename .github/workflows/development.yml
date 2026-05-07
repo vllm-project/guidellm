@@ -24,6 +24,8 @@ jobs:
   build-and-push-container:
     # Only build if the PR branch is local
     if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      packages: write
     uses: ./.github/workflows/build-multiarch-container.yml
     with:
       build-type: dev
