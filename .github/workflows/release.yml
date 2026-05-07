@@ -77,6 +77,8 @@ jobs:
 
   build-and-push-container:
     needs: extract-version
+    permissions:
+      packages: write
     uses: ./.github/workflows/build-multiarch-container.yml
     with:
       build-type: release
