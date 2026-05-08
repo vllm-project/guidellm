@@ -67,7 +67,7 @@ Generated-by: Cursor
 Assisted-by: GitHub Copilot
 ```
 
-You can optionally add the LLM model name after the name of the AI coding assistant for clarity, separated by a comma or space. (Do not enclose the model name in angle brackets, like `<gpt-4o>`, because GitHub will parse it as an email address.)
+You can optionally add the LLM model name after the name of the AI coding assistant for clarity, separated by a comma or space.
 
 For example:
 
@@ -75,8 +75,6 @@ For example:
 Generated-by: Cursor claude-4.6-sonnet
 Assisted-by: GitHub Copilot gpt-4o
 ```
-
-This rule does not apply to minor changes such as fixing typos, formatting, or isolated AI generated syntax suggestions that do not constitute substantive logic.
 
 Use of the Generated-by and Assisted-by tags in code (comments, docstrings, etc.) is strongly encouraged, to help identify where an AI assistant has generated or substantially modified a function, class, or module. GuideLLM has also recognized the tag `## WRITTEN BY AI ##` in a docstring or comment to indicate that test cases were written by an AI assistant, but `Generated-by <assistant>` or `Assisted-by <assistant>` are preferred for clarity and consistency.
 
