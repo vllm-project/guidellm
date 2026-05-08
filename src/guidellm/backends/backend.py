@@ -41,6 +41,7 @@ class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
 
     model_config = ConfigDict(
         extra="forbid",
+        serialize_by_alias=True,
         ser_json_bytes="base64",
         val_json_bytes="base64",
     )

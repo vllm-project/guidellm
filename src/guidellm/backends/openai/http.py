@@ -72,6 +72,7 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         "/v1/responses",
         "/v1/audio/transcriptions",
         "/v1/audio/translations",
+        "/pooling",
     ] = Field(
         default="/v1/chat/completions",
         description="Request format for OpenAI-compatible server.",
