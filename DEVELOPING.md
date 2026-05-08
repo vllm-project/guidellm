@@ -55,40 +55,30 @@ The `-e` flag installs the package in editable mode, allowing you to make change
 
 ## Tag use of AI coding assistants
 
-When using AI coding assistants to generate any substantive code, you must add the following tag to the commit message:
+When AI coding assistants are used to generate or modify substantive code, the GuideLLM project requires that you add one of the following two tags to the commit message:
 
-```markdown
-Assisted-by: <name of the AI coding assistant>
-```
-
-You can optionally add the LLM model name after the name of the AI coding assistant for clarity.
-
-For example:
-
-```markdown
-Assisted-by: Cursor
-Assisted-by: GitHub Copilot gpt-4o
-Assisted-by: Claude claude-3-5-sonnet-20240620
-Assisted-by: gemini-code-assist gemini-2.5-flash
-Assisted-by: openai-code-assist gpt-4o
-```
-
-This does not apply to minor changes such as fixing typos, formatting, or small AI generated autocompletion suggestions that do not constitute substantive code.
-
-You may instead use the Generated-by tag to clarify that the commit was generated entirely by the AI coding assistant:
-
-```markdown
-Generated-by: <name of the AI coding assistant>
-```
+- `Generated-by: <name of the AI coding assistant>`: when the commit was generated primarily by the AI coding assistant.
+- `Assisted-by: <name of the AI coding assistant>`: when the commit includes substantial code created or modified by the AI coding assistant.
 
 For example:
 
 ```markdown
 Generated-by: Cursor
-Generated-by: GitHub Copilot gpt-4o
+Assisted-by: GitHub Copilot
 ```
 
-Use of the Assisted-by or Generated-by tags in code (comments, docstrings, etc.), where an AI assistant has generated or substantially modified a function, class, or module, is optional but encouraged for clarity and transparency.
+You can optionally add the LLM model name after the name of the AI coding assistant for clarity, separated by a comma or space. (Do not enclose the model name in angle brackets, like `<gpt-4o>`, because GitHub will parse it as an email address.)
+
+For example:
+
+```markdown
+Generated-by: Cursor claude-4.6-sonnet
+Assisted-by: GitHub Copilot gpt-4o
+```
+
+This rule does not apply to minor changes such as fixing typos, formatting, or isolated AI generated syntax suggestions that do not constitute substantive logic.
+
+Use of the Generated-by and Assisted-by tags in code (comments, docstrings, etc.) is strongly encouraged, to help identify where an AI assistant has generated or substantially modified a function, class, or module. GuideLLM has also recognized the tag `## WRITTEN BY AI ##` in a docstring or comment to indicate that test cases were written by an AI assistant, but `Generated-by <assistant>` or `Assisted-by <assistant>` are preferred for clarity and consistency.
 
 ## Running Quality, Style, and Type Checks
 
