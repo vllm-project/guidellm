@@ -29,6 +29,175 @@ class _TestBackendArgs(BackendArgs):
     model: str | None = None
 
 
+class TestBackendArgs:
+    """Test cases for BackendArgs base class."""
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Verify BackendArgs inheritance, discriminator, and available methods.
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.schemas import PydanticClassRegistryMixin
+
+        assert issubclass(BackendArgs, PydanticClassRegistryMixin)
+        assert BackendArgs.schema_discriminator == "type"
+        assert "type_" in BackendArgs.model_fields
+        assert hasattr(BackendArgs, "register")
+        assert hasattr(BackendArgs, "is_registered")
+        assert hasattr(BackendArgs, "model_dump")
+        assert hasattr(BackendArgs, "model_validate")
+        assert hasattr(BackendArgs, "model_validate_json")
+
+    @pytest.mark.smoke
+    def test_cannot_instantiate_base(self):
+        """BackendArgs raises TypeError on direct instantiation.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(TypeError):
+            BackendArgs(type="test")  # type: ignore
+
+    @pytest.mark.smoke
+    def test_default_instantiation(self):
+        """_TestBackendArgs instantiates with defaults.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs()
+        assert args.type_ == "test_backend"
+        assert args.target is None
+        assert args.model is None
+
+    @pytest.mark.smoke
+    def test_explicit_field_values(self):
+        """_TestBackendArgs stores explicitly provided field values.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs(target="http://localhost:8000", model="gpt-4")
+        assert args.type_ == "test_backend"
+        assert args.target == "http://localhost:8000"
+        assert args.model == "gpt-4"
+
+    @pytest.mark.sanity
+    def test_extra_fields_rejected(self):
+        """Extra fields raise ValidationError due to extra='forbid' config.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(ValidationError):
+            _TestBackendArgs(unknown_field="value")  # type: ignore
+
+    @pytest.mark.sanity
+    def test_serialization_uses_alias(self):
+        """model_dump() produces 'type' alias key, not 'type_' field name.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs()
+        data = args.model_dump()
+        assert "type" in data
+        assert "type_" not in data
+        assert data["type"] == "test_backend"
+
+    @pytest.mark.sanity
+    def test_model_dump_roundtrip(self):
+        """model_dump() -> model_validate() round-trip preserves all field values.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs(target="http://localhost:8000", model="my-model")
+        data = args.model_dump()
+        restored = _TestBackendArgs.model_validate(data)
+        assert restored.type_ == args.type_
+        assert restored.target == args.target
+        assert restored.model == args.model
+
+    @pytest.mark.sanity
+    def test_model_dump_json_roundtrip(self):
+        """model_dump_json() -> model_validate_json() round-trip preserves all fields.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs(target="http://localhost:8000", model="my-model")
+        json_str = args.model_dump_json()
+        restored = _TestBackendArgs.model_validate_json(json_str)
+        assert restored.type_ == args.type_
+        assert restored.target == args.target
+        assert restored.model == args.model
+
+    @pytest.mark.sanity
+    def test_polymorphic_validation_from_dict(self):
+        """BackendArgs.model_validate dispatches to correct subclass via discriminator.
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+
+        data = {"type": "openai_http", "target": "http://localhost:8000"}
+        result = BackendArgs.model_validate(data)
+        assert isinstance(result, OpenAIHTTPBackendArgs)
+        assert result.type_ == "openai_http"
+
+    @pytest.mark.sanity
+    def test_polymorphic_validation_from_json(self):
+        """BackendArgs.model_validate_json dispatches to correct subclass.
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+
+        args = OpenAIHTTPBackendArgs(target="http://localhost:8000")
+        result = BackendArgs.model_validate_json(args.model_dump_json())
+        assert isinstance(result, OpenAIHTTPBackendArgs)
+        assert result.type_ == "openai_http"
+
+    @pytest.mark.sanity
+    def test_polymorphic_unknown_type_rejected(self):
+        """BackendArgs.model_validate raises ValidationError for unknown discriminator.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(ValidationError):
+            BackendArgs.model_validate({"type": "nonexistent_backend_xyz"})
+
+    @pytest.mark.regression
+    def test_registration_adds_to_registry(self):
+        """BackendArgs.register adds subclass to registry and polymorphic dispatch.
+
+        ### WRITTEN BY AI ###
+        """
+
+        @BackendArgs.register("test_reg_args_unique")
+        class TestRegisteredArgs(BackendArgs):
+            type_: Literal["test_reg_args_unique"] = Field(  # type: ignore[assignment]
+                alias="type",
+                default="test_reg_args_unique",
+            )
+
+        assert BackendArgs.is_registered("test_reg_args_unique")
+        result = BackendArgs.model_validate({"type": "test_reg_args_unique"})
+        assert isinstance(result, TestRegisteredArgs)
+        assert result.type_ == "test_reg_args_unique"
+
+    @pytest.mark.regression
+    def test_polymorphic_dump_restore_via_base(self):
+        """Subclass serialized via model_dump() round-trips through model_validate().
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+
+        args = OpenAIHTTPBackendArgs(target="http://localhost:8000", model="gpt-4")
+        data = args.model_dump()
+        restored = BackendArgs.model_validate(data)
+        assert isinstance(restored, OpenAIHTTPBackendArgs)
+        assert restored.type_ == "openai_http"
+        assert restored.target == args.target
+        assert restored.model == args.model
+
+
 class TestBackend:
     """Test cases for Backend base class."""
 
