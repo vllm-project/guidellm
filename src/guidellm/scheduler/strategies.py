@@ -698,8 +698,9 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     @property
     def processes_limit(self) -> PositiveInt | None:
-        # TODO: Support multi-process trace replay once each scheduled timestamp
-        # is bound to its request before workers compete for queue items.
+        # Trace replay is currently constrained to one process until each
+        # scheduled timestamp is bound to its request before workers compete
+        # for queue items.
         return 1
 
     @property

@@ -117,9 +117,7 @@ class TestReplayProfile:
         assert kwargs["constraints"]["max_requests"] == 3
 
     @pytest.mark.smoke
-    def test_large_bursty_trace_sets_default_request_constraint(
-        self, tmp_path: Path
-    ):
+    def test_large_bursty_trace_sets_default_request_constraint(self, tmp_path: Path):
         prompt_lengths = [
             6755,
             7319,
@@ -198,9 +196,7 @@ class TestReplayProfile:
             data=[str(trace)],
         )
 
-        assert kwargs["relative_timestamps"] == pytest.approx(
-            timestamps, abs=1e-9
-        )
+        assert kwargs["relative_timestamps"] == pytest.approx(timestamps, abs=1e-9)
         assert kwargs["constraints"]["max_requests"] == 27
 
     @pytest.mark.smoke

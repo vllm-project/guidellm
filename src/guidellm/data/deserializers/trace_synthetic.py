@@ -94,8 +94,7 @@ def _create_prompt(
             f"{prompt_tokens_count} tokens from generated base tokens"
         )
 
-    prompt = _decode_prompt(processor, prompt_token_ids)
-    return prompt
+    return _decode_prompt(processor, prompt_token_ids)
 
 
 def _load_trace_rows(
