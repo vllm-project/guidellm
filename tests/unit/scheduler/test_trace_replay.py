@@ -125,9 +125,7 @@ class TestTraceReplayStrategy:
         async def run():
             return [await strategy.next_request_time(0) for _ in range(3)]
 
-        assert asyncio.run(run()) == pytest.approx(
-            [1000.0, 1001.0, 1002.0], abs=1e-6
-        )
+        assert asyncio.run(run()) == pytest.approx([1000.0, 1001.0, 1002.0], abs=1e-6)
 
     @pytest.mark.smoke
     def test_next_request_time_parks_when_trace_exhausted(self):
