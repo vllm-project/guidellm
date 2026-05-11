@@ -3,28 +3,29 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Iterator
 from random import Random
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
+from pydantic import BaseModel, Field, field_validator, model_validator
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.config import load_config
 from guidellm.data.deserializers.deserializer import (
-    DataNotSupportedError,
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.schemas import SyntheticTextDatasetConfig
+from guidellm.data.schemas import DataArgs
 from guidellm.settings import settings
 from guidellm.utils.imports import json
 from guidellm.utils.random import IntegerRangeSampler
 
 __all__ = [
+    "SyntheticTextDataArgs",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
+    "SyntheticTextPrefixBucketConfig",
 ]
 
 # Placeholder tool definition used when the user doesn't supply their own
@@ -45,12 +46,164 @@ DEFAULT_SYNTHETIC_TOOLS: list[dict[str, Any]] = [
 ]
 
 
+class SyntheticTextPrefixBucketConfig(BaseModel):
+    bucket_weight: int = Field(
+        description="Weight of this bucket in the overall distribution.",
+        gt=0,
+        default=100,
+    )
+    prefix_count: int = Field(
+        description="The number of unique prefixes to generate for this bucket.",
+        ge=1,
+        default=1,
+    )
+    prefix_tokens: int = Field(
+        description="The number of prefix tokens per-prompt for this bucket.",
+        ge=0,
+        default=0,
+    )
+
+
+@DataArgs.register("synthetic_text")
+class SyntheticTextDataArgs(DataArgs):
+    kind: Literal["synthetic_text"] = Field(  # type: ignore[assignment]
+        default="synthetic_text",
+        description="Type identifier for the synthetic text dataset configuration.",
+    )
+    prompt_tokens: int = Field(
+        description="The average number of text tokens generated for prompts.",
+        gt=0,
+    )
+    prompt_tokens_stdev: int | None = Field(
+        description="The standard deviation of the tokens generated for prompts.",
+        gt=0,
+        default=None,
+    )
+    prompt_tokens_min: int | None = Field(
+        description="The minimum number of text tokens generated for prompts.",
+        gt=0,
+        default=None,
+    )
+    prompt_tokens_max: int | None = Field(
+        description="The maximum number of text tokens generated for prompts.",
+        gt=0,
+        default=None,
+    )
+    output_tokens: int = Field(
+        description="The average number of text tokens generated for outputs.",
+        gt=0,
+    )
+    output_tokens_stdev: int | None = Field(
+        description="The standard deviation of the tokens generated for outputs.",
+        gt=0,
+        default=None,
+    )
+    output_tokens_min: int | None = Field(
+        description="The minimum number of text tokens generated for outputs.",
+        gt=0,
+        default=None,
+    )
+    output_tokens_max: int | None = Field(
+        description="The maximum number of text tokens generated for outputs.",
+        gt=0,
+        default=None,
+    )
+    turns: int = Field(
+        description="The number of turns in the conversation.",
+        gt=0,
+        default=1,
+    )
+    tool_call_turns: list[int] = Field(
+        description="Which turns should include tool definitions and expect "
+        "tool-call responses. An int N means 'the first N turns'; a list "
+        "of ints specifies explicit 0-based turn indices (e.g. [0, 2]). "
+        "Normalized to a sorted list after validation. "
+        "When 0 or [] (default), no tool calling is configured.",
+        default_factory=list,
+    )
+    tools: list[dict[str, Any]] | None = Field(
+        description="Tool definitions in OpenAI format. When tool_call_turns is "
+        "non-empty and this is None, a static placeholder tool definition is used.",
+        default=None,
+    )
+    tool_response_tokens: int | None = Field(
+        description="Average number of tokens for synthetic tool call responses. "
+        "When None (default), a short placeholder response is used.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_stdev: int | None = Field(
+        description="Standard deviation for tool response token count.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_min: int | None = Field(
+        description="Minimum number of tokens for tool response.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_max: int | None = Field(
+        description="Maximum number of tokens for tool response.",
+        gt=0,
+        default=None,
+    )
+
+    prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
+        description="Buckets for the prefix tokens distribution.",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def check_prefix_options(self) -> SyntheticTextDataArgs:
+        if self.__pydantic_extra__ is not None:
+            prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
+            prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
+
+            if prefix_count is not None or prefix_tokens is not None:
+                if self.prefix_buckets:
+                    raise ValueError(
+                        "prefix_buckets is mutually exclusive"
+                        " with prefix_count and prefix_tokens"
+                    )
+
+                self.prefix_buckets = [
+                    SyntheticTextPrefixBucketConfig(
+                        prefix_count=prefix_count or 1,
+                        prefix_tokens=prefix_tokens or 0,
+                    )
+                ]
+
+        return self
+
+    @field_validator("tool_call_turns", mode="before")
+    @classmethod
+    def _coerce_tool_call_turns(cls, v: int | list[int]) -> list[int]:
+        """Convert an int N to [0, ..., N-1]; pass lists through sorted."""
+        if isinstance(v, int):
+            if v < 0:
+                raise ValueError("tool_call_turns int must be >= 0")
+            return list(range(v))
+        if len(v) != len(set(v)):
+            raise ValueError("tool_call_turns list must not contain duplicates")
+        return sorted(v)
+
+    @model_validator(mode="after")
+    def _validate_tool_call_turn_indices(self) -> SyntheticTextDataArgs:
+        """Ensure all tool_call_turns indices are within [0, turns)."""
+        for idx in self.tool_call_turns:
+            if idx < 0 or idx >= self.turns:
+                raise ValueError(
+                    f"tool_call_turns index {idx} out of range [0, {self.turns})"
+                )
+        return self
+
+
 class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
     """Custom examples iterable for synthetic text generation."""
 
     def __init__(
         self,
-        config: SyntheticTextDatasetConfig,
+        config: SyntheticTextDataArgs,
         processor: PreTrainedTokenizerBase,
         random_seed: int,
     ):
@@ -253,7 +406,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 class SyntheticTextDataset(IterableDataset):
     def __init__(
         self,
-        config: SyntheticTextDatasetConfig,
+        config: SyntheticTextDataArgs,
         processor: PreTrainedTokenizerBase,
         random_seed: int = 42,
     ):
@@ -287,24 +440,12 @@ class SyntheticTextDataset(IterableDataset):
 class SyntheticTextDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
-        data: Any,
+        config: SyntheticTextDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-        **data_kwargs: dict[str, Any],
     ) -> IterableDataset:
-        # Config file and string pathways; deserialize and call self again
-        if (config := load_config(data, SyntheticTextDatasetConfig)) is not None:
-            return self(config, processor_factory, random_seed, **data_kwargs)
-
-        if not isinstance(data, SyntheticTextDatasetConfig):
-            raise DataNotSupportedError(
-                "Unsupported data for SyntheticTextDatasetDeserializer, "
-                "expected SyntheticTextDatasetConfig, str or Path to a config file, "
-                f"got {data}"
-            )
-
         return SyntheticTextDataset(
-            config=data,
+            config=config,
             processor=processor_factory(),
             random_seed=random_seed,
         )

@@ -1,7 +1,6 @@
 from .builders import ShortPromptStrategy
 from .collators import GenerativeRequestCollator
 from .deserializers import (
-    DataNotSupportedError,
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
@@ -14,9 +13,10 @@ from .preprocessors import (
     PreprocessorRegistry,
 )
 from .processor import ProcessorFactory
-from .schemas import GenerativeDatasetColumnType
+from .schemas import DataArgs, DataNotSupportedError, GenerativeDatasetColumnType
 
 __all__ = [
+    "DataArgs",
     "DataDependentPreprocessor",
     "DataLoader",
     "DataNotSupportedError",

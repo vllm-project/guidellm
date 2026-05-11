@@ -63,7 +63,7 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
 )
 @click.option(
     "--data",
-    type=str,
+    callback=cli_tools.parse_arguments,
     multiple=True,
     help=(
         "HuggingFace dataset ID, path to dataset, path to data file "
@@ -138,12 +138,6 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     callback=cli_tools.parse_arguments,
     default=BenchmarkGenerativeTextArgs.get_default("processor_args"),
     help="JSON string of arguments to pass to the processor constructor.",
-)
-@click.option(
-    "--data-args",
-    multiple=True,
-    default=BenchmarkGenerativeTextArgs.get_default("data_args"),
-    help="JSON string of arguments to pass to dataset creation.",
 )
 @click.option(
     "--data-samples",

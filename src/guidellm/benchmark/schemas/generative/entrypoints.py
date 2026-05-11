@@ -35,7 +35,7 @@ from guidellm.backends import BackendArgs
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
-from guidellm.data import DatasetFinalizer, DatasetPreprocessor
+from guidellm.data import DataArgs, DatasetFinalizer, DatasetPreprocessor
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
 
@@ -164,7 +164,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         ),
     )
 
-    data: list[Any] = Field(
+    data: list[DataArgs] = Field(
         description="List of dataset sources or data files",
         default_factory=list,
         min_length=1,
@@ -186,10 +186,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     )
     processor_args: dict[str, Any] | None = Field(
         default=None, description="Additional tokenizer configuration arguments"
-    )
-    data_args: list[dict[str, Any]] | None = Field(
-        default_factory=list,  # type: ignore[arg-type]
-        description="Per-dataset configuration arguments",
     )
     data_samples: int = Field(
         default=-1, description="Number of samples to use from datasets (-1 for all)"
@@ -298,7 +294,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         ),
     )
 
-    @field_validator("data", "data_args", "rate", "data_preprocessors", mode="wrap")
+    @field_validator("data", "rate", "data_preprocessors", mode="wrap")
     @classmethod
     def single_to_list(
         cls, value: Any, handler: ValidatorFunctionWrapHandler
@@ -317,13 +313,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
                 return handler([value])
             else:
                 raise
-
-    @field_serializer("data")
-    def serialize_data(self, data: list[Any]) -> list[str | None]:
-        """Serialize data items to strings."""
-        return [
-            item if isinstance(item, str | type(None)) else str(item) for item in data
-        ]
 
     @field_serializer("data_collator")
     def serialize_data_collator(

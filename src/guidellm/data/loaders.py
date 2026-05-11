@@ -13,6 +13,7 @@ from transformers import PreTrainedTokenizerBase
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.finalizers import DatasetFinalizer
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
+from guidellm.data.schemas import DataArgs
 from guidellm.logger import logger
 from guidellm.utils.mixins import InfoMixin
 
@@ -25,8 +26,7 @@ DataT = TypeVar("DataT")
 class DatasetsIterator(TorchIterableDataset[DataT]):
     def __init__(
         self,
-        data: list[Any],
-        data_args: list[dict[str, Any]] | None,
+        data: list[DataArgs],
         data_samples: int,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
@@ -36,23 +36,13 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         if not data or not isinstance(data, list):
             raise ValueError(f"Data must be a non-empty list, got {data}.")
 
-        if not data_args:
-            data_args = [{} for _ in data]
-
-        if len(data) != len(data_args):
-            raise ValueError(
-                f"Length of data ({len(data)}) must match length of data_args "
-                f"({len(data_args)})."
-            )
-
         self.datasets = []
-        for datum, data_kwargs in zip(data, data_args, strict=False):
+        for datum in data:
             self.datasets.append(
                 DatasetDeserializerFactory.deserialize(
-                    data=datum,
+                    config=datum,
                     processor_factory=processor_factory,
                     random_seed=random_seed,
-                    **data_kwargs,
                 )
             )
         self.preprocessors = preprocessors
@@ -60,7 +50,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
             if isinstance(preprocessor, DataDependentPreprocessor):
                 preprocessor.setup_data(
                     datasets=self.datasets,
-                    data_args=data_args,
+                    data_args=[d.load_kwargs for d in data],
                 )
         self.finalizer = finalizer
         self.precache: list[Any] | None = (
@@ -158,8 +148,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
 class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
     def __init__(
         self,
-        data: list[Any],
-        data_args: list[dict[str, Any]] | None,
+        config: list[DataArgs],
         data_samples: int,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
@@ -171,8 +160,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
         **kwargs: Any,
     ):
         iterator: DatasetsIterator[DataT] = DatasetsIterator(
-            data=data,
-            data_args=data_args,
+            data=config,
             data_samples=data_samples,
             processor_factory=processor_factory,
             preprocessors=preprocessors,
@@ -180,8 +168,7 @@ class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
             random_seed=random_seed,
         )
         self._info: dict[str, Any] = {
-            "data": str(data),
-            "data_args": str(data_args),
+            "data": str(config),
             "data_samples": data_samples,
             "preprocessors": [
                 preprocessor.__class__.__name__ for preprocessor in preprocessors

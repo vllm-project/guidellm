@@ -35,6 +35,7 @@ from guidellm.benchmark.schemas import (
 )
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
+    DataArgs,
     DataLoader,
     DatasetFinalizer,
     DatasetPreprocessor,
@@ -226,9 +227,8 @@ def resolve_item_from_registry(
 
 
 async def resolve_request_loader(
-    data: list[Any],
+    data: list[DataArgs],
     model: str,
-    data_args: list[dict[str, Any]] | None,
     data_samples: int,
     processor: ProcessorInputT | None,
     processor_args: dict[str, Any] | None,
@@ -305,8 +305,7 @@ async def resolve_request_loader(
     )
 
     request_loader: DataLoader[GenerationRequest] = DataLoader(
-        data=data,
-        data_args=data_args,
+        config=data,
         data_samples=data_samples,
         processor_factory=ProcessorFactory(
             processor=processor if processor is not None else model,
@@ -491,7 +490,6 @@ async def benchmark_generative_text(
     request_loader = await resolve_request_loader(
         data=args.data,
         model=model,
-        data_args=args.data_args,
         data_samples=args.data_samples,
         processor=processor,
         processor_args=args.processor_args,

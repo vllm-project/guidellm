@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from datasets import Dataset
 from datasets.exceptions import DatasetGenerationError
 from faker import Faker
+from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -21,6 +22,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
+from guidellm.data.schemas import DataArgs
 from guidellm.utils.trace_io import load_trace_rows
 
 __all__ = ["TraceSyntheticDatasetDeserializer"]
@@ -136,6 +138,31 @@ def _load_trace_rows(
         raise DataNotSupportedError(str(e)) from e
 
 
+@DataArgs.register("trace_synthetic")
+class TraceSyntheticDataArgs(DataArgs):
+    """
+    DataArgs for TraceSyntheticDatasetDeserializer.
+    """
+
+    kind: Literal["trace_synthetic"] = Field(
+        default="trace_synthetic",
+        description="Type identifier for the trace synthetic dataset deserializer.",
+    )
+    path: Path = Field(description="Path to the trace file.")
+    timestamp_column: str = Field(
+        default="timestamp",
+        description="Column name for timestamps in the trace file.",
+    )
+    prompt_tokens_column: str = Field(
+        default="input_length",
+        description="Column name for prompt token counts in the trace file.",
+    )
+    output_tokens_column: str = Field(
+        default="output_length",
+        description="Column name for output token counts in the trace file.",
+    )
+
+
 @DatasetDeserializerFactory.register("trace_synthetic")
 class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
     """
@@ -148,29 +175,20 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
 
     def __call__(
         self,
-        data: Any,
+        config: TraceSyntheticDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-        **data_kwargs: dict[str, Any],
     ) -> Dataset:
-        if (
-            not isinstance(data, str | Path)
-            or not (path := Path(data)).exists()
-            or not path.is_file()
-        ):
+        if not (path := config.path).exists() or not path.is_file():
             raise DataNotSupportedError(
                 "TraceSyntheticDatasetDeserializer expects a path to a trace file, "
-                f"got {data}"
+                f"got {path}"
             )
-        timestamp_column = str(data_kwargs.pop("timestamp_column", "timestamp"))
-        prompt_tokens_column = str(
-            data_kwargs.pop("prompt_tokens_column", "input_length")
-        )
-        output_tokens_column = str(
-            data_kwargs.pop("output_tokens_column", "output_length")
-        )
         rows = _load_trace_rows(
-            path, timestamp_column, prompt_tokens_column, output_tokens_column
+            path,
+            config.timestamp_column,
+            config.prompt_tokens_column,
+            config.output_tokens_column,
         )
         if not rows:
             raise DataNotSupportedError("Trace file is empty")
@@ -201,14 +219,11 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
             prompt_tokens_counts.append(n_in)
             output_tokens_counts.append(n_out)
 
-        # Avoid passing deserializer-only keys to Dataset.from_dict
-        data_kwargs.pop("type_", None)
-
         return Dataset.from_dict(
             {
                 "prompt": prompts,
                 "prompt_tokens_count": prompt_tokens_counts,
                 "output_tokens_count": output_tokens_counts,
             },
-            **data_kwargs,
+            **config.load_kwargs,
         )
