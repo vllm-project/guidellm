@@ -30,10 +30,12 @@ from guidellm.backends.openai.common import (
     build_headers,
     resolve_validate_kwargs,
 )
-from guidellm.backends.openai.request_handlers import AudioRequestHandler
+from guidellm.backends.openai.request_handlers import (
+    OpenAIRequestHandlerFactory,
+    RealtimeWebSocketRequestHandler,
+)
 from guidellm.schemas import (
     GenerationRequest,
-    GenerationRequestArguments,
     GenerationResponse,
     RequestInfo,
 )
@@ -48,21 +50,26 @@ _WS_API_ROUTES = {
     "/v1/models": "v1/models",
 }
 
-# Default WebSocket HTTP path under target (CLI: --request-format / --request-type).
+# Only ``/v1/realtime`` is implemented today; extend this set when adding formats.
+_ALLOWED_WS_REQUEST_FORMATS: frozenset[str] = frozenset({"/v1/realtime"})
 _DEFAULT_WS_REQUEST_FORMAT = "/v1/realtime"
 
 
+def _ws_request_format_error_detail() -> str:
+    opts = ", ".join(sorted(repr(p) for p in _ALLOWED_WS_REQUEST_FORMATS))
+    return f"must be one of: {opts}"
+
+
 def _effective_websocket_http_path(request_format: str | None) -> str:
-    """Normalize ``request_format`` to a WebSocket path (``/…`` segment on the host)."""
+    """Resolve ``request_format`` to the WebSocket HTTP path (only supported values)."""
     if request_format is None:
         return _DEFAULT_WS_REQUEST_FORMAT
     s = request_format.strip()
     if not s:
         raise ValueError("request_format must not be empty or whitespace")
-    if not s.startswith("/"):
+    if s not in _ALLOWED_WS_REQUEST_FORMATS:
         raise ValueError(
-            "request_format must be a path starting with '/' (for example "
-            f"{_DEFAULT_WS_REQUEST_FORMAT!r})."
+            f"request_format {_ws_request_format_error_detail()}. Got {s!r}."
         )
     return s
 
@@ -147,29 +154,6 @@ def _load_ws_event(raw: str) -> dict[str, Any]:
     return parsed
 
 
-# Module-level hook for ``guidellm.extras.audio.pcm16_append_b64_chunks``: on first
-# realtime encode we assign the imported callable here (see ``_ensure_*``). Unit tests
-# patch this attribute so WS logic can be exercised without ``guidellm[audio]``.
-pcm16_append_b64_chunks: Any = None
-_pcm_imported_fn: dict[str, Any] = {"fn": None}
-
-
-def _ensure_pcm16_append_b64_chunks() -> Any:
-    if pcm16_append_b64_chunks is not None:
-        return pcm16_append_b64_chunks
-    if _pcm_imported_fn["fn"] is not None:
-        return _pcm_imported_fn["fn"]
-    try:
-        from guidellm.extras.audio import pcm16_append_b64_chunks as fn
-    except ImportError as exc:
-        raise ImportError(
-            "The openai_websocket backend requires the audio extras for PCM "
-            "handling used in realtime transcription. " + _AUDIO_EXTRA_HINT
-        ) from exc
-    _pcm_imported_fn["fn"] = fn
-    return fn
-
-
 def _coerce_usage_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
@@ -235,15 +219,14 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
     request_format: str | None = Field(
         default=None,
         description=(
-            "WebSocket path on the HTTP host (default /v1/realtime). "
+            "Realtime WebSocket path (only /v1/realtime is supported today). "
             "Use the same top-level CLI flags as ``openai_http``: "
             "--request-format / --request-type."
         ),
         json_schema_extra={
             "error_message": (
                 "Backend '{backend_type}' received an invalid --request-format / "
-                f"request_format. Use {_DEFAULT_WS_REQUEST_FORMAT!r} or another "
-                "path starting with '/'."
+                f"request_format; {_ws_request_format_error_detail()}."
             )
         },
     )
@@ -295,6 +278,18 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
 @Backend.register("openai_websocket")
 class OpenAIWebSocketBackend(Backend):
     """WebSocket client for realtime (streaming) audio transcription."""
+
+    @staticmethod
+    def append_pcm16_chunks(*args: Any, **kwargs: Any) -> Any:
+        """Encode audio to PCM16 base64 chunks (lazy-imports ``guidellm[audio]``)."""
+        try:
+            from guidellm.extras.audio import pcm16_append_b64_chunks
+        except ImportError as exc:
+            raise ImportError(
+                "The openai_websocket backend requires the audio extras for PCM "
+                "handling used in realtime transcription. " + _AUDIO_EXTRA_HINT
+            ) from exc
+        return pcm16_append_b64_chunks(*args, **kwargs)
 
     def __init__(self, arguments: OpenAIWebSocketBackendArgs):
         super().__init__(arguments)
@@ -445,13 +440,6 @@ class OpenAIWebSocketBackend(Backend):
                 "openai_websocket does not support multiturn/history yet."
             )
 
-        audio_columns = request.columns.get("audio_column", [])
-        if len(audio_columns) != 1:
-            raise ValueError(
-                "Realtime transcription expects exactly one audio_column entry; "
-                f"got {len(audio_columns)}."
-            )
-
         model_name = await self.default_model()
         if not str(model_name).strip():
             raise RuntimeError(
@@ -459,17 +447,22 @@ class OpenAIWebSocketBackend(Backend):
                 "none. Pass --model or ensure the server lists at least one model."
             )
 
-        arguments = GenerationRequestArguments(
-            body={
-                "model": model_name,
-                "websocket_path": self.websocket_path,
-                "chunk_samples": self._args.chunk_samples,
-            }
+        handler_raw = OpenAIRequestHandlerFactory.create(self.websocket_path)
+        if not isinstance(handler_raw, RealtimeWebSocketRequestHandler):
+            raise TypeError(
+                "Expected RealtimeWebSocketRequestHandler for "
+                f"{self.websocket_path!r}, got {type(handler_raw).__name__}"
+            )
+        handler = handler_raw
+        arguments = handler.format(
+            request,
+            model=model_name,
+            websocket_path=self.websocket_path,
+            chunk_samples=self._args.chunk_samples,
         )
-
-        pcm_fn = _ensure_pcm16_append_b64_chunks()
-        chunks = pcm_fn(
-            audio_columns[0],
+        audio_entry = handler.extract_single_audio(request)
+        chunks = OpenAIWebSocketBackend.append_pcm16_chunks(
+            audio_entry,
             chunk_samples=self._args.chunk_samples,
         )
 
@@ -483,7 +476,6 @@ class OpenAIWebSocketBackend(Backend):
 
         ssl_ctx = self._ssl_context()
         ws_headers = build_headers(self._args.api_key)
-        audio_handler = AudioRequestHandler()
         full_text_parts: list[str] = []
 
         try:
@@ -557,7 +549,7 @@ class OpenAIWebSocketBackend(Backend):
                                 1 if full_text else 0
                             )
                         usage_dict = _normalize_transcription_usage(event.get("usage"))
-                        inp, outp = audio_handler.extract_metrics(usage_dict, full_text)
+                        inp, outp = handler.extract_metrics(usage_dict, full_text)
                         yield (
                             GenerationResponse(
                                 request_id=request.request_id,
@@ -582,7 +574,7 @@ class OpenAIWebSocketBackend(Backend):
 
         except asyncio.CancelledError as err:
             text_so_far = "".join(full_text_parts)
-            inp, outp = audio_handler.extract_metrics(None, text_so_far or "")
+            inp, outp = handler.extract_metrics(None, text_so_far or "")
             yield (
                 GenerationResponse(
                     request_id=request.request_id,
