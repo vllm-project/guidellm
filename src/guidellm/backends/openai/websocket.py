@@ -15,7 +15,7 @@ import json
 import ssl
 import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import ParseResult, urlparse
 
 import httpx
@@ -50,9 +50,6 @@ _WS_API_ROUTES = {
 
 # Default WebSocket HTTP path under target (CLI: --request-format / --request-type).
 _DEFAULT_WS_REQUEST_FORMAT = "/v1/realtime"
-_WS_REQUEST_FORMAT_ALIASES: dict[str, str] = {
-    "realtime": _DEFAULT_WS_REQUEST_FORMAT,
-}
 
 
 def _effective_websocket_http_path(request_format: str | None) -> str:
@@ -62,14 +59,12 @@ def _effective_websocket_http_path(request_format: str | None) -> str:
     s = request_format.strip()
     if not s:
         raise ValueError("request_format must not be empty or whitespace")
-    canonical = _WS_REQUEST_FORMAT_ALIASES.get(s, s)
-    if not canonical.startswith("/"):
+    if not s.startswith("/"):
         raise ValueError(
             "request_format must be a path starting with '/' (for example "
-            f"{_DEFAULT_WS_REQUEST_FORMAT!r}) or alias "
-            f"{', '.join(repr(k) for k in _WS_REQUEST_FORMAT_ALIASES)}"
+            f"{_DEFAULT_WS_REQUEST_FORMAT!r})."
         )
-    return canonical
+    return s
 
 
 # Guard against a misbehaving server that only emits ignored event types.
@@ -214,9 +209,15 @@ def _normalize_transcription_usage(
     return result if result else None
 
 
+@BackendArgs.register("openai_websocket")
 class OpenAIWebSocketBackendArgs(BackendArgs):
     """Arguments for creating the realtime WebSocket backend."""
 
+    type_: Literal["openai_websocket"] = Field(
+        alias="type",
+        default="openai_websocket",
+        description="Type identifier for the backend configuration.",
+    )
     target: str = Field(
         description=(
             "HTTP(S) base URL of the server (WebSocket URL is derived from it)."
@@ -246,6 +247,12 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
             )
         },
     )
+
+    @field_validator("target", mode="after")
+    @classmethod
+    def strip_target(cls, value: str) -> str:
+        """Strip trailing slashes and ``/v1`` suffix from the target URL."""
+        return value.rstrip("/").removesuffix("/v1")
 
     @field_validator("request_format")
     @classmethod
@@ -289,63 +296,49 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
 class OpenAIWebSocketBackend(Backend):
     """WebSocket client for realtime (streaming) audio transcription."""
 
-    @classmethod
-    def backend_args(cls) -> type[BackendArgs]:
-        return OpenAIWebSocketBackendArgs
-
-    def __init__(
-        self,
-        target: str,
-        model: str = "",
-        request_format: str | None = None,
-        chunk_samples: int = 3200,
-        api_key: str | None = None,
-        verify: bool = False,
-        timeout: float | None = _DEFAULT_WS_RECV_TIMEOUT,
-        timeout_connect: float = FALLBACK_TIMEOUT,
-        validate_backend: bool | str | dict[str, Any] = True,
-        extras: dict[str, Any] | None = None,
-    ):
-        super().__init__(type_="openai_websocket")
-        self.target = target.rstrip("/").removesuffix("/v1")
-        self.model = model or ""
-        self.websocket_path = _effective_websocket_http_path(request_format)
-        self.chunk_samples = chunk_samples
-        self.api_key = api_key
-        self.verify = verify
-        self.timeout = timeout
-        self.timeout_connect = timeout_connect
-        self.api_routes = _WS_API_ROUTES
+    def __init__(self, arguments: OpenAIWebSocketBackendArgs):
+        super().__init__(arguments)
+        self._args = arguments
+        self._resolved_model = (arguments.model or "").strip()
         self.validate_backend: dict[str, Any] | None = resolve_validate_kwargs(
-            validate_backend,
-            self.target,
-            self.api_routes,
+            arguments.validate_backend,
+            self._args.target,
+            _WS_API_ROUTES,
         )
-        self.extras = extras or {}
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
 
     @property
+    def websocket_path(self) -> str:
+        return _effective_websocket_http_path(self._args.request_format)
+
+    @property
     def info(self) -> dict[str, Any]:
         return {
-            "target": self.target,
-            "model": self.model,
+            "target": self._args.target,
+            "model": self._resolved_model or self._args.model,
             "websocket_path": self.websocket_path,
-            "chunk_samples": self.chunk_samples,
-            "timeout": self.timeout,
-            "timeout_connect": self.timeout_connect,
-            "verify": self.verify,
+            "chunk_samples": self._args.chunk_samples,
+            "timeout": self._args.timeout,
+            "timeout_connect": self._args.timeout_connect,
+            "verify": self._args.verify,
             "validate_backend": self.validate_backend,
         }
 
     def _parsed_target(self) -> ParseResult:
-        raw = self.target if "://" in self.target else f"http://{self.target}"
+        raw = (
+            self._args.target
+            if "://" in self._args.target
+            else f"http://{self._args.target}"
+        )
         return urlparse(raw)
 
     def _ws_url(self) -> str:
         parsed = self._parsed_target()
         if not parsed.netloc:
-            raise ValueError(f"Invalid target URL for WebSocket: {self.target!r}")
+            raise ValueError(
+                f"Invalid target URL for WebSocket: {self._args.target!r}"
+            )
         ws_scheme = "wss" if parsed.scheme in ("https", "wss") else "ws"
         path = self.websocket_path
         if not path.startswith("/"):
@@ -356,7 +349,7 @@ class OpenAIWebSocketBackend(Backend):
         if self._parsed_target().scheme in ("http", "ws"):
             return None
         ctx = ssl.create_default_context()
-        if not self.verify:
+        if not self._args.verify:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
         return ctx
@@ -364,7 +357,7 @@ class OpenAIWebSocketBackend(Backend):
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
     ) -> dict[str, str] | None:
-        return build_headers(self.api_key, existing_headers)
+        return build_headers(self._args.api_key, existing_headers)
 
     async def process_startup(self) -> None:
         if self._in_process:
@@ -372,10 +365,10 @@ class OpenAIWebSocketBackend(Backend):
         self._async_client = httpx.AsyncClient(
             timeout=httpx.Timeout(
                 FALLBACK_TIMEOUT,
-                read=self.timeout,
-                connect=self.timeout_connect,
+                read=self._args.timeout,
+                connect=self._args.timeout_connect,
             ),
-            verify=self.verify,
+            verify=self._args.verify,
             limits=httpx.Limits(
                 max_connections=None,
                 max_keepalive_connections=None,
@@ -401,7 +394,9 @@ class OpenAIWebSocketBackend(Backend):
             return
         validate_kwargs = {**self.validate_backend}
         existing_headers = validate_kwargs.get("headers")
-        validate_kwargs["headers"] = build_headers(existing_headers)
+        validate_kwargs["headers"] = build_headers(
+            self._args.api_key, existing_headers
+        )
         try:
             response = await self._async_client.request(**validate_kwargs)
             response.raise_for_status()
@@ -414,9 +409,9 @@ class OpenAIWebSocketBackend(Backend):
     async def available_models(self) -> list[str]:
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
-        target = f"{self.target}/v1/models"
+        target = f"{self._args.target}/v1/models"
         response = await self._async_client.get(
-            target, headers=build_headers(self.api_key)
+            target, headers=build_headers(self._args.api_key)
         )
         response.raise_for_status()
         try:
@@ -428,13 +423,13 @@ class OpenAIWebSocketBackend(Backend):
         return _model_ids_from_openai_models_payload(payload)
 
     async def default_model(self) -> str:
-        if self.model:
-            return self.model
+        if self._resolved_model:
+            return self._resolved_model
         if not self._in_process:
             return ""
         models = await self.available_models()
-        self.model = models[0] if models else ""
-        return self.model
+        self._resolved_model = models[0] if models else ""
+        return self._resolved_model
 
     async def resolve(  # type: ignore[override, misc]  # noqa: C901, PLR0912, PLR0915
         self,
@@ -468,25 +463,26 @@ class OpenAIWebSocketBackend(Backend):
             body={
                 "model": model_name,
                 "websocket_path": self.websocket_path,
-                "chunk_samples": self.chunk_samples,
+                "chunk_samples": self._args.chunk_samples,
             }
         )
 
         pcm_fn = _ensure_pcm16_append_b64_chunks()
         chunks = pcm_fn(
             audio_columns[0],
-            chunk_samples=self.chunk_samples,
+            chunk_samples=self._args.chunk_samples,
         )
 
         session_update: dict[str, Any] = {"type": "session.update"}
-        if self.extras:
-            for key, val in self.extras.items():
+        extras = self._args.extras or {}
+        if extras:
+            for key, val in extras.items():
                 if key not in ("type", "model"):
                     session_update[key] = val
         session_update["model"] = model_name
 
         ssl_ctx = self._ssl_context()
-        ws_headers = build_headers(self.api_key)
+        ws_headers = build_headers(self._args.api_key)
         audio_handler = AudioRequestHandler()
         full_text_parts: list[str] = []
 
@@ -494,7 +490,7 @@ class OpenAIWebSocketBackend(Backend):
             request_info.timings.request_start = time.time()
             connect_kw: dict[str, Any] = {
                 "ssl": ssl_ctx,
-                "open_timeout": self.timeout_connect,
+                "open_timeout": self._args.timeout_connect,
             }
             if ws_headers:
                 connect_kw["additional_headers"] = ws_headers
@@ -606,10 +602,10 @@ class OpenAIWebSocketBackend(Backend):
                 request_info.timings.request_end = time.time()
 
     async def _recv_ws(self, ws: ClientConnection) -> str:
-        if self.timeout is None:
+        if self._args.timeout is None:
             msg = await ws.recv()
         else:
-            msg = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
+            msg = await asyncio.wait_for(ws.recv(), timeout=self._args.timeout)
         if isinstance(msg, bytes):
             return msg.decode()
         return str(msg)

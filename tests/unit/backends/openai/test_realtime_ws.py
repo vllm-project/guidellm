@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 import contextlib
 import json
 
@@ -28,6 +29,10 @@ from guidellm.backends.openai.websocket import (
     OpenAIWebSocketBackendArgs,
 )
 from guidellm.schemas import GenerationRequest, RequestInfo, RequestTimings
+
+
+def _make_ws_backend(**kwargs: Any) -> OpenAIWebSocketBackend:
+    return OpenAIWebSocketBackend(OpenAIWebSocketBackendArgs(**kwargs))
 
 
 async def _bounded_ws_recv(ws: object, *, timeout: float = 5.0) -> None:
@@ -75,7 +80,7 @@ async def test_resolve_streams_deltas_and_done(monkeypatch: pytest.MonkeyPatch) 
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="test-model",
             validate_backend=False,
@@ -143,7 +148,7 @@ async def test_transcription_done_without_deltas_sets_first_token_and_prefetch_y
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="test-model",
             validate_backend=False,
@@ -213,7 +218,7 @@ async def test_transcription_done_usage_string_counts(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="test-model",
             validate_backend=False,
@@ -265,7 +270,7 @@ async def test_server_error_event_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -296,7 +301,7 @@ async def test_first_message_error_event_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -327,7 +332,7 @@ async def test_first_message_not_session_created_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -366,7 +371,7 @@ async def test_invalid_json_from_server_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -385,7 +390,7 @@ async def test_invalid_json_from_server_raises(
 
 @pytest.mark.asyncio
 async def test_resolve_requires_process_startup() -> None:
-    be = OpenAIWebSocketBackend(
+    be = _make_ws_backend(
         target="http://127.0.0.1:9",
         model="m",
         validate_backend=False,
@@ -402,7 +407,7 @@ async def test_resolve_requires_process_startup() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_rejects_history() -> None:
-    be = OpenAIWebSocketBackend(
+    be = _make_ws_backend(
         target="http://127.0.0.1:9",
         model="m",
         validate_backend=False,
@@ -422,7 +427,7 @@ async def test_resolve_rejects_history() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_rejects_wrong_audio_column_count() -> None:
-    be = OpenAIWebSocketBackend(
+    be = _make_ws_backend(
         target="http://127.0.0.1:9",
         model="m",
         validate_backend=False,
@@ -472,7 +477,7 @@ async def test_resolve_cancelled_after_delta_yields_partial_then_reraises(
     results: list = []
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -522,7 +527,7 @@ async def test_non_object_json_after_handshake_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -565,7 +570,7 @@ async def test_excessive_ignored_events_raises(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -588,7 +593,7 @@ async def test_available_models_parses_response(httpx_mock: object) -> None:
         url="http://127.0.0.1:9/v1/models",
         json={"data": [{"id": "a"}, {"id": "b"}]},
     )
-    be = OpenAIWebSocketBackend(
+    be = _make_ws_backend(
         target="http://127.0.0.1:9",
         validate_backend=False,
     )
@@ -603,7 +608,7 @@ async def test_available_models_bad_data_shape_raises(httpx_mock: object) -> Non
         url="http://127.0.0.1:9/v1/models",
         json={"data": "not-a-list"},
     )
-    be = OpenAIWebSocketBackend(
+    be = _make_ws_backend(
         target="http://127.0.0.1:9",
         validate_backend=False,
     )
@@ -626,7 +631,7 @@ async def test_resolve_raises_when_no_model_and_empty_catalog(
         "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
-    be = OpenAIWebSocketBackend(
+    be = _make_ws_backend(
         target="http://127.0.0.1:9",
         model="",
         validate_backend=False,
@@ -651,7 +656,7 @@ async def test_resolve_invalid_ws_target_url_raises(
         "guidellm.backends.openai.websocket.pcm16_append_b64_chunks",
         lambda *a, **k: ["YQ=="],
     )
-    be = OpenAIWebSocketBackend(
+    be = _make_ws_backend(
         target="",
         model="m",
         validate_backend=False,
@@ -689,7 +694,7 @@ async def test_error_event_dict_formatted_message(
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        be = OpenAIWebSocketBackend(
+        be = _make_ws_backend(
             target=f"http://127.0.0.1:{port}",
             model="m",
             validate_backend=False,
@@ -713,19 +718,20 @@ def test_openai_websocket_backend_args_model() -> None:
     assert a.timeout == _DEFAULT_WS_RECV_TIMEOUT
 
 
-def test_openai_websocket_backend_args_normalizes_request_format_alias() -> None:
-    args = OpenAIWebSocketBackendArgs(
-        target="http://localhost:8000",
-        request_format="realtime",
-    )
-    assert args.request_format == "/v1/realtime"
+def test_openai_websocket_backend_args_rejects_non_path_request_format() -> None:
+    with pytest.raises(ValidationError):
+        OpenAIWebSocketBackendArgs(
+            target="http://localhost:8000",
+            request_format="realtime",
+        )
 
 
 def test_openai_websocket_backend_resolves_websocket_path_from_request_format() -> None:
     backend = Backend.create(
-        "openai_websocket",
-        target="http://127.0.0.1:9",
-        request_format="/custom/ws",
+        OpenAIWebSocketBackendArgs(
+            target="http://127.0.0.1:9",
+            request_format="/custom/ws",
+        )
     )
     assert backend.websocket_path == "/custom/ws"
 
