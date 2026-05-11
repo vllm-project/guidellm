@@ -31,6 +31,7 @@ __all__ = [
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
     "PoolingRequestHandler",
+    "RealtimeWebSocketRequestHandler",
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
     "ToolCall",
@@ -1119,6 +1120,87 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             text_words=text_words,
             text_characters=text_chars,
         )
+
+
+@OpenAIRequestHandlerFactory.register("/v1/realtime")
+class RealtimeWebSocketRequestHandler(OpenAIRequestHandler):
+    """
+    Request shape and metrics for realtime WebSocket transcription (``/v1/realtime``).
+
+    The WebSocket driver in ``OpenAIWebSocketBackend`` performs I/O; this handler
+    validates columns and builds ``GenerationRequestArguments`` metadata so the
+    backend stays aligned with other ``request_format`` / handler pairs.
+    """
+
+    def __init__(self) -> None:
+        self._audio_metrics = AudioRequestHandler()
+
+    @staticmethod
+    def extract_single_audio(data: GenerationRequest) -> dict[str, Any]:
+        """Return the single ``audio_column`` entry required for realtime streaming."""
+        audio_columns = data.columns.get("audio_column", [])
+        if len(audio_columns) != 1:
+            raise ValueError(
+                "Realtime WebSocket transcription expects exactly one audio_column "
+                f"entry; got {len(audio_columns)}."
+            )
+        return audio_columns[0]
+
+    def format(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        **kwargs: Any,
+    ) -> GenerationRequestArguments:
+        if history or response:
+            raise ValueError(
+                "RealtimeWebSocketRequestHandler does not support multiturn."
+            )
+        RealtimeWebSocketRequestHandler.extract_single_audio(data)
+        model = kwargs.get("model")
+        if model is None:
+            raise ValueError("model is required for realtime WebSocket format()")
+        websocket_path = kwargs.get("websocket_path")
+        if websocket_path is None:
+            raise ValueError(
+                "websocket_path is required for realtime WebSocket format()"
+            )
+        chunk_samples = kwargs.get("chunk_samples", 3200)
+        arguments = GenerationRequestArguments()
+        arguments.body = {
+            "model": model,
+            "websocket_path": websocket_path,
+            "chunk_samples": chunk_samples,
+        }
+        return arguments
+
+    def compile_non_streaming(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: Any,
+    ) -> GenerationResponse:
+        raise NotImplementedError(
+            "Realtime WebSocket transcription does not use compile_non_streaming."
+        )
+
+    def add_streaming_line(self, line: str) -> int | None:  # noqa: ARG002
+        raise NotImplementedError(
+            "Realtime WebSocket transcription does not use add_streaming_line."
+        )
+
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        raise NotImplementedError(
+            "Realtime WebSocket transcription does not use compile_streaming."
+        )
+
+    def extract_metrics(
+        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
+    ) -> tuple[UsageMetrics, UsageMetrics]:
+        return self._audio_metrics.extract_metrics(usage, text)
 
 
 @OpenAIRequestHandlerFactory.register("/v1/responses")
