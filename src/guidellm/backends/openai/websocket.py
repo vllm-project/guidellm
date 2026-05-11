@@ -355,9 +355,7 @@ class OpenAIWebSocketBackend(Backend):
         """Build ``ws://`` or ``wss://`` URL including :attr:`websocket_path`."""
         parsed = self._parsed_target()
         if not parsed.netloc:
-            raise ValueError(
-                f"Invalid target URL for WebSocket: {self._args.target!r}"
-            )
+            raise ValueError(f"Invalid target URL for WebSocket: {self._args.target!r}")
         ws_scheme = "wss" if parsed.scheme in ("https", "wss") else "ws"
         path = self.websocket_path
         if not path.startswith("/"):
@@ -430,9 +428,7 @@ class OpenAIWebSocketBackend(Backend):
             return
         validate_kwargs = {**self.validate_backend}
         existing_headers = validate_kwargs.get("headers")
-        validate_kwargs["headers"] = build_headers(
-            self._args.api_key, existing_headers
-        )
+        validate_kwargs["headers"] = build_headers(self._args.api_key, existing_headers)
         try:
             response = await self._async_client.request(**validate_kwargs)
             response.raise_for_status()
