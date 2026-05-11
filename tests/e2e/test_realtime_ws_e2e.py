@@ -23,7 +23,10 @@ except ImportError:
         allow_module_level=True,
     )
 
-from guidellm.backends.openai.websocket import OpenAIWebSocketBackend
+from guidellm.backends.openai.websocket import (
+    OpenAIWebSocketBackend,
+    OpenAIWebSocketBackendArgs,
+)
 from guidellm.schemas import GenerationRequest, RequestInfo, RequestTimings
 
 
@@ -121,9 +124,11 @@ async def test_realtime_ws_full_stack_in_one_event_loop(
     stub = make_realtime_transcription_stub_handler(session_id="e2e-stub-sess")
     async with serve(stub, "127.0.0.1", port):
         be = OpenAIWebSocketBackend(
-            target=f"http://127.0.0.1:{port}",
-            model="stub-model",
-            validate_backend=False,
+            OpenAIWebSocketBackendArgs(
+                target=f"http://127.0.0.1:{port}",
+                model="stub-model",
+                validate_backend=False,
+            )
         )
         await be.process_startup()
         try:

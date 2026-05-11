@@ -67,15 +67,15 @@ class TestBackendArgsTransformation:
         """WebSocket backend accepts ``request_format`` (CLI --request-format)."""
         args = BenchmarkGenerativeTextArgs.model_validate(
             {
-                "backend": "openai_websocket",
                 "backend_kwargs": {
+                    "type": "openai_websocket",
                     "target": "http://localhost:8000",
                     "model": "rt-model",
                 },
                 "data": ["prompt_tokens=256,output_tokens=128"],
             }
         )
-        assert args.backend == "openai_websocket"
+        assert args.backend_kwargs.type_ == "openai_websocket"
         assert isinstance(args.backend_kwargs, OpenAIWebSocketBackendArgs)
         assert args.backend_kwargs.target == "http://localhost:8000"
         assert args.backend_kwargs.model == "rt-model"
@@ -83,11 +83,11 @@ class TestBackendArgsTransformation:
 
         with_format = BenchmarkGenerativeTextArgs.model_validate(
             {
-                "backend": "openai_websocket",
                 "backend_kwargs": {
+                    "type": "openai_websocket",
                     "target": "http://localhost:8000",
                     "model": "rt-model",
-                    "request_format": "realtime",
+                    "request_format": "/v1/realtime",
                 },
                 "data": ["prompt_tokens=256,output_tokens=128"],
             }
