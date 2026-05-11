@@ -5,10 +5,11 @@ Unit tests for the Backend base class and registry functionality.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import Mock, patch
 
 import pytest
+from pydantic import Field, ValidationError
 
 from guidellm.backends import Backend, BackendArgs
 from guidellm.schemas import GenerationRequest, RequestInfo
@@ -19,28 +20,193 @@ from tests.unit.testing_utils import async_timeout
 class _TestBackendArgs(BackendArgs):
     """Minimal backend args model for test backends."""
 
+    type_: Literal["test_backend"] = Field(
+        alias="type",
+        default="test_backend",
+        description="Type identifier for the backend configuration.",
+    )
     target: str | None = None
     model: str | None = None
+
+
+class TestBackendArgs:
+    """Test cases for BackendArgs base class."""
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Verify BackendArgs inheritance, discriminator, and available methods.
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.schemas import PydanticClassRegistryMixin
+
+        assert issubclass(BackendArgs, PydanticClassRegistryMixin)
+        assert BackendArgs.schema_discriminator == "type"
+        assert "type_" in BackendArgs.model_fields
+        assert hasattr(BackendArgs, "register")
+        assert hasattr(BackendArgs, "is_registered")
+        assert hasattr(BackendArgs, "model_dump")
+        assert hasattr(BackendArgs, "model_validate")
+        assert hasattr(BackendArgs, "model_validate_json")
+
+    @pytest.mark.smoke
+    def test_cannot_instantiate_base(self):
+        """BackendArgs raises TypeError on direct instantiation.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(TypeError):
+            BackendArgs(type="test")  # type: ignore
+
+    @pytest.mark.smoke
+    def test_default_instantiation(self):
+        """_TestBackendArgs instantiates with defaults.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs()
+        assert args.type_ == "test_backend"
+        assert args.target is None
+        assert args.model is None
+
+    @pytest.mark.smoke
+    def test_explicit_field_values(self):
+        """_TestBackendArgs stores explicitly provided field values.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs(target="http://localhost:8000", model="gpt-4")
+        assert args.type_ == "test_backend"
+        assert args.target == "http://localhost:8000"
+        assert args.model == "gpt-4"
+
+    @pytest.mark.sanity
+    def test_extra_fields_rejected(self):
+        """Extra fields raise ValidationError due to extra='forbid' config.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(ValidationError):
+            _TestBackendArgs(unknown_field="value")  # type: ignore
+
+    @pytest.mark.sanity
+    def test_serialization_uses_alias(self):
+        """model_dump() produces 'type' alias key, not 'type_' field name.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs()
+        data = args.model_dump()
+        assert "type" in data
+        assert "type_" not in data
+        assert data["type"] == "test_backend"
+
+    @pytest.mark.sanity
+    def test_model_dump_roundtrip(self):
+        """model_dump() -> model_validate() round-trip preserves all field values.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs(target="http://localhost:8000", model="my-model")
+        data = args.model_dump()
+        restored = _TestBackendArgs.model_validate(data)
+        assert restored.type_ == args.type_
+        assert restored.target == args.target
+        assert restored.model == args.model
+
+    @pytest.mark.sanity
+    def test_model_dump_json_roundtrip(self):
+        """model_dump_json() -> model_validate_json() round-trip preserves all fields.
+
+        ### WRITTEN BY AI ###
+        """
+        args = _TestBackendArgs(target="http://localhost:8000", model="my-model")
+        json_str = args.model_dump_json()
+        restored = _TestBackendArgs.model_validate_json(json_str)
+        assert restored.type_ == args.type_
+        assert restored.target == args.target
+        assert restored.model == args.model
+
+    @pytest.mark.sanity
+    def test_polymorphic_validation_from_dict(self):
+        """BackendArgs.model_validate dispatches to correct subclass via discriminator.
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+
+        data = {"type": "openai_http", "target": "http://localhost:8000"}
+        result = BackendArgs.model_validate(data)
+        assert isinstance(result, OpenAIHTTPBackendArgs)
+        assert result.type_ == "openai_http"
+
+    @pytest.mark.sanity
+    def test_polymorphic_validation_from_json(self):
+        """BackendArgs.model_validate_json dispatches to correct subclass.
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+
+        args = OpenAIHTTPBackendArgs(target="http://localhost:8000")
+        result = BackendArgs.model_validate_json(args.model_dump_json())
+        assert isinstance(result, OpenAIHTTPBackendArgs)
+        assert result.type_ == "openai_http"
+
+    @pytest.mark.sanity
+    def test_polymorphic_unknown_type_rejected(self):
+        """BackendArgs.model_validate raises ValidationError for unknown discriminator.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(ValidationError):
+            BackendArgs.model_validate({"type": "nonexistent_backend_xyz"})
+
+    @pytest.mark.regression
+    def test_registration_adds_to_registry(self):
+        """BackendArgs.register adds subclass to registry and polymorphic dispatch.
+
+        ### WRITTEN BY AI ###
+        """
+
+        @BackendArgs.register("test_reg_args_unique")
+        class TestRegisteredArgs(BackendArgs):
+            type_: Literal["test_reg_args_unique"] = Field(  # type: ignore[assignment]
+                alias="type",
+                default="test_reg_args_unique",
+            )
+
+        assert BackendArgs.is_registered("test_reg_args_unique")
+        result = BackendArgs.model_validate({"type": "test_reg_args_unique"})
+        assert isinstance(result, TestRegisteredArgs)
+        assert result.type_ == "test_reg_args_unique"
+
+    @pytest.mark.regression
+    def test_polymorphic_dump_restore_via_base(self):
+        """Subclass serialized via model_dump() round-trips through model_validate().
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+
+        args = OpenAIHTTPBackendArgs(target="http://localhost:8000", model="gpt-4")
+        data = args.model_dump()
+        restored = BackendArgs.model_validate(data)
+        assert isinstance(restored, OpenAIHTTPBackendArgs)
+        assert restored.type_ == "openai_http"
+        assert restored.target == args.target
+        assert restored.model == args.model
 
 
 class TestBackend:
     """Test cases for Backend base class."""
 
-    @pytest.fixture(
-        params=[
-            {"type_": "openai_http"},
-        ],
-        ids=["openai_http_type"],
-    )
-    def valid_instances(self, request):
+    @pytest.fixture
+    def valid_instances(self):
         """Fixture providing valid Backend instances."""
-        constructor_args = request.param
+        constructor_args = {"type_": "test_backend"}
 
         class TestBackendImpl(Backend):
-            @classmethod
-            def backend_args(cls) -> type[BackendArgs]:
-                return _TestBackendArgs
-
             @property
             def info(self) -> dict[str, Any]:
                 return {"type": self.type_, "test": "backend"}
@@ -62,7 +228,8 @@ class TestBackend:
             async def default_model(self) -> str:
                 return "test-model"
 
-        instance = TestBackendImpl(**constructor_args)
+        args = _TestBackendArgs()
+        instance = TestBackendImpl(args)
         return instance, constructor_args
 
     @pytest.mark.smoke
@@ -91,7 +258,6 @@ class TestBackend:
 
         # Check abstract methods exist
         assert hasattr(Backend, "default_model")
-        assert hasattr(Backend, "backend_args")
 
     @pytest.mark.smoke
     def test_initialization(self, valid_instances):
@@ -110,46 +276,15 @@ class TestBackend:
         ],
     )
     def test_invalid_initialization_values(self, field, value):
-        """Test Backend with invalid field values."""
-
-        class TestBackendImpl(Backend):
-            @classmethod
-            def backend_args(cls) -> type[BackendArgs]:
-                return _TestBackendArgs
-
-            @property
-            def info(self) -> dict[str, Any]:
-                return {}
-
-            async def process_startup(self):
-                pass
-
-            async def process_shutdown(self):
-                pass
-
-            async def validate(self):
-                pass
-
-            async def resolve(self, request, request_info, history=None):
-                yield request, request_info
-
-            async def default_model(self) -> str:
-                return "test-model"
-
-        data = {field: value}
-        # Backend itself doesn't validate types, but we test that it accepts the value
-        backend = TestBackendImpl(**data)
-        assert getattr(backend, field) == value
+        """Test BackendArgs rejects invalid field values via pydantic validation."""
+        with pytest.raises(ValidationError):
+            _TestBackendArgs(**{field: value})
 
     @pytest.mark.sanity
     def test_invalid_initialization_missing(self):
         """Test Backend initialization without required field."""
 
         class TestBackendImpl(Backend):
-            @classmethod
-            def backend_args(cls) -> type[BackendArgs]:
-                return _TestBackendArgs
-
             @property
             def info(self) -> dict[str, Any]:
                 return {}
@@ -253,41 +388,47 @@ class TestBackend:
     @pytest.mark.smoke
     def test_create(self):
         """Test Backend.create class method with valid backend."""
-        # Mock a registered backend
         mock_backend_class = Mock()
         mock_backend_instance = Mock()
         mock_backend_class.return_value = mock_backend_instance
 
+        mock_args = Mock(spec=BackendArgs)
+        mock_args.type_ = "openai_http"
+
         with patch.object(
             Backend, "get_registered_object", return_value=mock_backend_class
         ):
-            result = Backend.create("openai_http", test_arg="value")
+            result = Backend.create(mock_args)
 
             Backend.get_registered_object.assert_called_once_with("openai_http")
-            mock_backend_class.assert_called_once_with(test_arg="value")
+            mock_backend_class.assert_called_once_with(mock_args)
             assert result == mock_backend_instance
 
     @pytest.mark.sanity
     def test_create_invalid(self):
         """Test Backend.create class method with invalid backend type."""
+        mock_args = Mock(spec=BackendArgs)
+        mock_args.type_ = "invalid_type"
+
         with pytest.raises(
             ValueError, match="Backend type 'invalid_type' is not registered"
         ):
-            Backend.create("invalid_type")  # type: ignore
+            Backend.create(mock_args)
 
     @pytest.mark.regression
     def test_docstring_example_pattern(self):
         """Test that Backend docstring examples work as documented."""
 
+        @BackendArgs.register("my_backend")
+        class MyBackendArgs(BackendArgs):
+            type_: str = "my_backend"  # type: ignore[assignment]
+            api_key: str = ""
+
         # Test the pattern shown in docstring
         class MyBackend(Backend):
-            @classmethod
-            def backend_args(cls) -> type[BackendArgs]:
-                return _TestBackendArgs
-
-            def __init__(self, api_key: str):
-                super().__init__("mock_backend")  # type: ignore [arg-type]
-                self.api_key = api_key
+            def __init__(self, arguments: MyBackendArgs):
+                super().__init__(arguments)
+                self.api_key = arguments.api_key
 
             @property
             def info(self) -> dict[str, Any]:
@@ -311,19 +452,22 @@ class TestBackend:
         # Register the backend
         Backend.register("my_backend")(MyBackend)
 
-        # Create instance
-        backend = Backend.create("my_backend", api_key="secret")
+        # Create instance using BackendArgs
+        args = MyBackendArgs(api_key="secret")
+        backend = Backend.create(args)
         assert isinstance(backend, MyBackend)
         assert backend.api_key == "secret"
-        assert backend.type_ == "mock_backend"
+        assert backend.type_ == "my_backend"
 
     @pytest.mark.smoke
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""
         from guidellm.backends.openai import OpenAIHTTPBackend
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
 
         # OpenAI backend should be registered
-        backend = Backend.create("openai_http", target="http://test")
+        args = OpenAIHTTPBackendArgs(target="http://test")
+        backend = Backend.create(args)
         assert isinstance(backend, OpenAIHTTPBackend)
         assert backend.type_ == "openai_http"
 
@@ -333,32 +477,34 @@ class TestBackend:
         Test that vllm_python backend is registered and createable.
         ## WRITTEN BY AI ##
         """
-        from unittest.mock import patch
-
-        from guidellm.backends.vllm_python.vllm import VLLMPythonBackend
+        from guidellm.backends.vllm_python.vllm import (
+            VLLMPythonBackend,
+            VLLMPythonBackendArgs,
+        )
 
         assert Backend.is_registered("vllm_python")
         with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
-            backend = Backend.create("vllm_python", model="test-model")
+            args = VLLMPythonBackendArgs(model="test-model")
+            backend = Backend.create(args)
         assert isinstance(backend, VLLMPythonBackend)
-        assert backend.model == "test-model"
+        assert backend._args.model == "test-model"
         assert backend.type_ == "vllm_python"
 
     @pytest.mark.smoke
     def test_backend_registry_functionality(self):
         """Test that backend registry functions work."""
         from guidellm.backends.openai import OpenAIHTTPBackend
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
 
         # Test that we can get registered backends
         openai_class = Backend.get_registered_object("openai_http")
         assert openai_class == OpenAIHTTPBackend
 
-        # Test creating with kwargs
-        backend = Backend.create(
-            "openai_http", target="http://localhost:8000", model="gpt-4"
-        )
-        assert backend.target == "http://localhost:8000"
-        assert backend.model == "gpt-4"
+        # Test creating with BackendArgs
+        args = OpenAIHTTPBackendArgs(target="http://localhost:8000", model="gpt-4")
+        backend = Backend.create(args)
+        assert backend._args.target == "http://localhost:8000"
+        assert backend._args.model == "gpt-4"
 
     @pytest.mark.smoke
     def test_is_registered(self):
@@ -373,16 +519,17 @@ class TestBackend:
     def test_registration_decorator(self):
         """Test that backend registration decorator works."""
 
+        @BackendArgs.register("test_decorator_backend")
+        class TestDecoratorArgs(BackendArgs):
+            type_: str = "test_decorator_backend"  # type: ignore[assignment]
+            test_param: str = "default"
+
         # Create a test backend class
         @Backend.register("test_decorator_backend")
         class TestDecoratorBackend(Backend):
-            @classmethod
-            def backend_args(cls) -> type[BackendArgs]:
-                return _TestBackendArgs
-
-            def __init__(self, test_param="default"):
-                super().__init__("test_decorator_backend")  # type: ignore
-                self._test_param = test_param
+            def __init__(self, arguments: TestDecoratorArgs):
+                super().__init__(arguments)
+                self._test_param = arguments.test_param
 
             @property
             def info(self):
@@ -404,7 +551,8 @@ class TestBackend:
                 return "test-model"
 
         # Test that it's registered and can be created
-        backend = Backend.create("test_decorator_backend", test_param="custom")
+        args = TestDecoratorArgs(test_param="custom")
+        backend = Backend.create(args)
         assert isinstance(backend, TestDecoratorBackend)
         assert backend.info == {"test_param": "custom"}
 

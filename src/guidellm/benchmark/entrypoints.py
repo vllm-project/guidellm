@@ -19,7 +19,7 @@ from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
-from guidellm.backends import Backend
+from guidellm.backends import Backend, BackendArgs
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
@@ -78,9 +78,8 @@ ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokeni
 
 
 async def resolve_backend(
-    backend: str | Backend,
+    backend_args: BackendArgs,
     console: Console | None = None,
-    **backend_kwargs: Any,
 ) -> tuple[Backend, str]:
     """
     Initialize and validate a backend instance for benchmarking execution.
@@ -102,16 +101,12 @@ async def resolve_backend(
     :return: Tuple of initialized Backend instance and resolved model identifier
     """
     console_step = (
-        console.print_update_step(title=f"Initializing backend {backend}")
+        console.print_update_step(title=f"Initializing backend {backend_args.type_}")
         if console
         else None
     )
 
-    backend_instance = (
-        Backend.create(backend, **backend_kwargs)
-        if not isinstance(backend, Backend)
-        else backend
-    )
+    backend_instance = Backend.create(backend_args)
 
     if console_step:
         console_step.update(
@@ -480,11 +475,9 @@ async def benchmark_generative_text(
     :return: Tuple of GenerativeBenchmarksReport and dictionary of output format
         results
     """
-    backend_params = args.backend_kwargs.model_dump(exclude_defaults=True)
     backend, model = await resolve_backend(
-        backend=args.backend,
+        backend_args=args.backend_kwargs,
         console=console,
-        **backend_params,
     )
     processor = await resolve_processor(
         processor=args.processor, model=model, console=console

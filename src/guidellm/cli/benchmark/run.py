@@ -10,7 +10,6 @@ import click
 from pydantic import ValidationError
 
 import guidellm.utils.cli as cli_tools
-from guidellm.backends import BackendType
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
@@ -95,16 +94,12 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     "--backend",
     "--backend-type",  # legacy alias
     "backend",
-    type=click.Choice(list(get_literal_vals(BackendType))),
-    default=BenchmarkGenerativeTextArgs.get_default("backend"),
-    help=f"Backend type. Options: {', '.join(get_literal_vals(BackendType))}.",
 )
 @click.option(
     "--backend-kwargs",
     "--backend-args",  # legacy alias
     "backend_kwargs",
     callback=cli_tools.parse_arguments,
-    default=BenchmarkGenerativeTextArgs.get_default("backend_kwargs"),
     help=(
         "JSON string of arguments to pass to the backend. E.g., "
         '\'{"api_key": "apikey-*", "verify": false}\''
@@ -386,6 +381,8 @@ def run(**kwargs):  # noqa: C901
 
     # Map top-level CLI options to backend_kwargs
     backend_kwargs = kwargs.pop("backend_kwargs", {})
+    backend_type = kwargs.pop("backend", "openai_http")
+    backend_kwargs["type"] = backend_type
     for alias in ("target", "model", "request_format"):
         with contextlib.suppress(KeyError):
             backend_kwargs[alias] = kwargs.pop(alias)
