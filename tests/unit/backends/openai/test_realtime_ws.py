@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 import contextlib
 import json
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
