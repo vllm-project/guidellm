@@ -36,4 +36,4 @@ Link any relevant issues that this PR addresses.
 - [ ] Includes code generated or substantially modified by an AI agent
 - [ ] Includes tests generated or substantially modified by an AI agent
 
-> NOTE: the `Generated-by` and `Assisted-by` tags should be used in both git commit messages and docstrings to indicate when code or tests were generated or substantially modified by an AI agent, as described in the project's [`DEVELOPING.md`](https://github.com/vllm-project/guidellm/blob/main/DEVELOPING.md) file.
+> NOTE: the `Generated-by` or `Assisted-by` trailers should be used in git commit messages when code or tests were generated or substantially modified by an AI agent, as described in the project's [`DEVELOPING.md`](https://github.com/vllm-project/guidellm/blob/main/DEVELOPING.md) file.

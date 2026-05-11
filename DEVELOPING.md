@@ -55,7 +55,7 @@ The `-e` flag installs the package in editable mode, allowing you to make change
 
 ## Tag use of AI coding assistants
 
-When AI coding assistants are used to generate or modify substantive code, the GuideLLM project requires that you add one of the following two "trailer" tags to the git commit message. Git "trailers" are a series of key-value pairs appended to the end of the commit message, separated by a line break, including `Co-authored-by: <name> <email>` and `Signed-off-by: <name> <email>`. We use the keys `Generated-by` and `Assisted-by` to indicate when code or tests were generated or substantially modified by an AI agent.
+When AI coding assistants are used to generate or substantially modify code, the GuideLLM project requires that you add one of the following trailers to the git commit message:
 
 - `Generated-by: <name of the AI coding assistant>`: when the code in the commit was generated primarily by an AI coding assistant.
 - `Assisted-by: <name of the AI coding assistant>`: when the commit includes substantial code created or modified by the AI coding assistant.
@@ -71,16 +71,14 @@ Generated-by: Cursor
 Signed-off-by: John Doe <john.doe@example.com>
 ```
 
-You can optionally add the LLM model name after the name of the AI coding assistant, separated by a comma or space.
+You can optionally add the LLM model name after the name of the AI coding assistant, separated by a space.
 
 For example:
 
 ```markdown
 Generated-by: Cursor claude-4.6-sonnet
-Assisted-by: GitHub Copilot, gpt-4o
+Assisted-by: GitHub Copilot gpt-4o
 ```
-
-Do not use the `Generated-by` and `Assisted-by` tags in code (comments, docstrings, etc.): as the code evolves, this sort of "origin" attribution can lose relevance and become noise.
 
 ## Running Quality, Style, and Type Checks
 
