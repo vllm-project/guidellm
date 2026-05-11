@@ -81,7 +81,8 @@ tox -e tests -- -m regression
 ### Design Requirements
 
 - Only touch sections of code that need to be changed for the given task
-- Prefer solutions that keep non-generic code out of generic pathways
+- When handling variant-specific logic, encapsulate it in methods on registry class implementations rather than adding if/else branches to generic code paths
+- Class implementations must fully encapsulate their unique logic and that logic must not leak into caller code paths.
 
 ## Common Tasks
 
