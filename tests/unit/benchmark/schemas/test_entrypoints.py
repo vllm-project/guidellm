@@ -79,7 +79,7 @@ class TestBackendArgsTransformation:
         assert isinstance(args.backend, OpenAIWebSocketBackendArgs)
         assert args.backend.target == "http://localhost:8000"
         assert args.backend.model == "rt-model"
-        assert args.backend.request_format is None
+        assert args.backend.request_format == "/v1/realtime"
 
         with_format = BenchmarkArgs.model_validate(
             {
@@ -87,7 +87,7 @@ class TestBackendArgsTransformation:
                     "kind": "openai_websocket",
                     "target": "http://localhost:8000",
                     "model": "rt-model",
-                    "request_format": "realtime",
+                    "request_format": "/v1/realtime",
                 },
                 **_PIPELINE_DEFAULTS,
             }
