@@ -50,30 +50,6 @@ _WS_API_ROUTES = {
     "/v1/models": "v1/models",
 }
 
-# Only ``/v1/realtime`` is implemented today; extend this set when adding formats.
-_ALLOWED_WS_REQUEST_FORMATS: frozenset[str] = frozenset({"/v1/realtime"})
-_DEFAULT_WS_REQUEST_FORMAT = "/v1/realtime"
-
-
-def _ws_request_format_error_detail() -> str:
-    opts = ", ".join(sorted(repr(p) for p in _ALLOWED_WS_REQUEST_FORMATS))
-    return f"must be one of: {opts}"
-
-
-def _effective_websocket_http_path(request_format: str | None) -> str:
-    """Resolve ``request_format`` to the WebSocket HTTP path (only supported values)."""
-    if request_format is None:
-        return _DEFAULT_WS_REQUEST_FORMAT
-    s = request_format.strip()
-    if not s:
-        raise ValueError("request_format must not be empty or whitespace")
-    if s not in _ALLOWED_WS_REQUEST_FORMATS:
-        raise ValueError(
-            f"request_format {_ws_request_format_error_detail()}. Got {s!r}."
-        )
-    return s
-
-
 # Guard against a misbehaving server that only emits ignored event types.
 _MAX_IGNORED_WS_EVENT_TYPES = 50_000
 
@@ -195,7 +171,13 @@ def _normalize_transcription_usage(
 
 @BackendArgs.register("openai_websocket")
 class OpenAIWebSocketBackendArgs(BackendArgs):
-    """Arguments for creating the realtime WebSocket backend."""
+    """
+    Typed configuration for :class:`OpenAIWebSocketBackend`.
+
+    ``request_format`` is validated against
+    :class:`~guidellm.backends.openai.request_handlers.RealtimeWebSocketRequestHandler`
+    so allowed paths stay aligned with the registered handler (``/v1/realtime``).
+    """
 
     type_: Literal["openai_websocket"] = Field(
         alias="type",
@@ -226,7 +208,9 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
         json_schema_extra={
             "error_message": (
                 "Backend '{backend_type}' received an invalid --request-format / "
-                f"request_format; {_ws_request_format_error_detail()}."
+                "request_format; "
+                + RealtimeWebSocketRequestHandler.request_format_options_description()
+                + "."
             )
         },
     )
@@ -240,9 +224,8 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
     @field_validator("request_format")
     @classmethod
     def validate_request_format(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        return _effective_websocket_http_path(v)
+        """Delegate path validation to the realtime WebSocket request handler."""
+        return RealtimeWebSocketRequestHandler.validate_request_format_field(v)
 
     chunk_samples: int = Field(
         default=3200,
@@ -277,7 +260,29 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
 
 @Backend.register("openai_websocket")
 class OpenAIWebSocketBackend(Backend):
-    """WebSocket client for realtime (streaming) audio transcription."""
+    """
+    WebSocket client for realtime (streaming) audio transcription.
+
+    Connects to a vLLM-style ``/v1/realtime`` WebSocket, streams PCM16 audio chunks,
+    and maps ``transcription.*`` events into ``GenerationResponse`` with timings.
+    Request-shape validation and allowed ``request_format`` paths are delegated to
+    :class:`~guidellm.backends.openai.request_handlers.RealtimeWebSocketRequestHandler`
+    (same pattern as :class:`~guidellm.backends.openai.http.OpenAIHTTPBackend` uses
+    per-endpoint handlers).
+
+    Example:
+    ::
+        args = OpenAIWebSocketBackendArgs(
+            target="http://localhost:8000",
+            model="my-model",
+        )
+        backend = OpenAIWebSocketBackend(args)
+
+        await backend.process_startup()
+        async for response, request_info in backend.resolve(request, info):
+            ...
+        await backend.process_shutdown()
+    """
 
     @staticmethod
     def append_pcm16_chunks(*args: Any, **kwargs: Any) -> Any:
@@ -292,6 +297,11 @@ class OpenAIWebSocketBackend(Backend):
         return pcm16_append_b64_chunks(*args, **kwargs)
 
     def __init__(self, arguments: OpenAIWebSocketBackendArgs):
+        """
+        Initialize the WebSocket backend from validated args.
+
+        :param arguments: Typed configuration including target, model, and paths.
+        """
         super().__init__(arguments)
         self._args = arguments
         self._resolved_model = (arguments.model or "").strip()
@@ -305,10 +315,22 @@ class OpenAIWebSocketBackend(Backend):
 
     @property
     def websocket_path(self) -> str:
-        return _effective_websocket_http_path(self._args.request_format)
+        """
+        HTTP path segment on the host used for the WebSocket URL.
+
+        :return: Resolved path (default when ``request_format`` was omitted).
+        """
+        return RealtimeWebSocketRequestHandler.resolved_websocket_path(
+            self._args.request_format
+        )
 
     @property
     def info(self) -> dict[str, Any]:
+        """
+        Return a snapshot of backend configuration for logging or debugging.
+
+        :return: Dict of target, model, WebSocket path, timeouts, and validation opts.
+        """
         return {
             "target": self._args.target,
             "model": self._resolved_model or self._args.model,
@@ -321,6 +343,7 @@ class OpenAIWebSocketBackend(Backend):
         }
 
     def _parsed_target(self) -> ParseResult:
+        """Parse ``target`` into a URL structure for scheme and host lookup."""
         raw = (
             self._args.target
             if "://" in self._args.target
@@ -329,6 +352,7 @@ class OpenAIWebSocketBackend(Backend):
         return urlparse(raw)
 
     def _ws_url(self) -> str:
+        """Build ``ws://`` or ``wss://`` URL including :attr:`websocket_path`."""
         parsed = self._parsed_target()
         if not parsed.netloc:
             raise ValueError(
@@ -341,6 +365,7 @@ class OpenAIWebSocketBackend(Backend):
         return f"{ws_scheme}://{parsed.netloc}{path}"
 
     def _ssl_context(self) -> ssl.SSLContext | None:
+        """TLS context for secure WebSockets; ``None`` when using plain ``ws``."""
         if self._parsed_target().scheme in ("http", "ws"):
             return None
         ctx = ssl.create_default_context()
@@ -352,9 +377,15 @@ class OpenAIWebSocketBackend(Backend):
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
     ) -> dict[str, str] | None:
+        """Merge bearer auth and optional headers for HTTP and WebSocket handshakes."""
         return build_headers(self._args.api_key, existing_headers)
 
     async def process_startup(self) -> None:
+        """
+        Create the shared :class:`httpx.AsyncClient` used for health and ``/v1/models``.
+
+        :raises RuntimeError: If the backend was already started in this process.
+        """
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
         self._async_client = httpx.AsyncClient(
@@ -373,6 +404,11 @@ class OpenAIWebSocketBackend(Backend):
         self._in_process = True
 
     async def process_shutdown(self) -> None:
+        """
+        Close the HTTP client and reset process-local state.
+
+        :raises RuntimeError: If the backend was not started.
+        """
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
         client = self._async_client
@@ -383,6 +419,11 @@ class OpenAIWebSocketBackend(Backend):
         self._in_process = False
 
     async def validate(self) -> None:
+        """
+        Run the configured HTTP probe (same semantics as ``openai_http``).
+
+        :raises RuntimeError: If the client is not started or the probe fails.
+        """
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
         if not self.validate_backend:
@@ -402,6 +443,12 @@ class OpenAIWebSocketBackend(Backend):
             ) from exc
 
     async def available_models(self) -> list[str]:
+        """
+        List model IDs from ``GET /v1/models`` on the HTTP target.
+
+        :return: Model identifiers from the OpenAI-style payload.
+        :raises RuntimeError: If the client is not started or the response is invalid.
+        """
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
         target = f"{self._args.target}/v1/models"
@@ -418,6 +465,11 @@ class OpenAIWebSocketBackend(Backend):
         return _model_ids_from_openai_models_payload(payload)
 
     async def default_model(self) -> str:
+        """
+        Return the configured model, or the first from ``available_models`` if empty.
+
+        :return: Non-empty model name when discoverable; otherwise ``""``.
+        """
         if self._resolved_model:
             return self._resolved_model
         if not self._in_process:
@@ -433,6 +485,22 @@ class OpenAIWebSocketBackend(Backend):
         history: list[tuple[GenerationRequest, GenerationResponse | None]]
         | None = None,
     ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
+        """
+        Stream one realtime transcription over WebSocket for a single audio column.
+
+        Uses :class:`RealtimeWebSocketRequestHandler` for request arguments and
+        metrics, performs the vLLM-style handshake and chunk protocol, and yields
+        ``None`` for intermediate timing updates followed by a final
+        :class:`~guidellm.schemas.GenerationResponse`.
+
+        :param request: Must contain exactly one ``audio_column`` entry.
+        :param request_info: Timings updated as deltas and final text arrive.
+        :param history: Not supported; raises ``NotImplementedError`` if non-empty.
+        :raises NotImplementedError: If ``history`` is provided.
+        :raises RuntimeError: If the client is not started, model is missing, or the
+            peer returns an error event.
+        :yields: ``(response_or_none, request_info)`` until ``transcription.done``.
+        """
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
         if history:
@@ -594,6 +662,12 @@ class OpenAIWebSocketBackend(Backend):
                 request_info.timings.request_end = time.time()
 
     async def _recv_ws(self, ws: ClientConnection) -> str:
+        """
+        Receive one text frame from the WebSocket, honoring per-message timeout.
+
+        :param ws: Active realtime connection.
+        :return: Decoded UTF-8 text from the server.
+        """
         if self._args.timeout is None:
             msg = await ws.recv()
         else:
