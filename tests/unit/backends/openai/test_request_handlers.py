@@ -15,6 +15,7 @@ from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
     PoolingRequestHandler,
+    RealtimeWebSocketRequestHandler,
     ResponsesRequestHandler,
     TextCompletionsRequestHandler,
 )
@@ -76,6 +77,7 @@ class TestOpenAIRequestHandlerFactory:
             ("/v1/audio/translations", None, AudioRequestHandler),
             ("/pooling", None, PoolingRequestHandler),
             ("/v1/embeddings", None, EmbeddingsRequestHandler),
+            ("/v1/realtime", None, RealtimeWebSocketRequestHandler),
             (
                 "/v1/completions",
                 {"/v1/completions": ChatCompletionsRequestHandler},
@@ -90,6 +92,7 @@ class TestOpenAIRequestHandlerFactory:
             "/v1/audio/translations",
             "/pooling",
             "/v1/embeddings",
+            "/v1/realtime",
             "override_text_completions",
         ],
     )
@@ -109,6 +112,37 @@ class TestOpenAIRequestHandlerFactory:
         """
         with pytest.raises(ValueError, match="No response handler registered"):
             OpenAIRequestHandlerFactory.create("invalid_type")
+
+
+class TestRealtimeWebSocketRequestHandler:
+    """Realtime WebSocket path handler (``/v1/realtime``)."""
+
+    def test_extract_single_audio_requires_one_column(self) -> None:
+        handler = RealtimeWebSocketRequestHandler()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": []},
+        )
+        with pytest.raises(ValueError, match="exactly one audio_column"):
+            handler.extract_single_audio(req)
+
+    def test_format_builds_body(self) -> None:
+        handler = RealtimeWebSocketRequestHandler()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": [{"audio": b"x"}]},
+        )
+        args = handler.format(
+            req,
+            model="m1",
+            websocket_path="/v1/realtime",
+            chunk_samples=1600,
+        )
+        assert args.body == {
+            "model": "m1",
+            "websocket_path": "/v1/realtime",
+            "chunk_samples": 1600,
+        }
 
 
 class TestTextCompletionsRequestHandler:
