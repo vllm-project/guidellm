@@ -80,8 +80,7 @@ Generated-by: Cursor claude-4.6-sonnet
 Assisted-by: GitHub Copilot, gpt-4o
 ```
 
-Do not use the `Generated-by` and `Assisted-by` tags in code (comments, docstrings, etc.): as the code
-evolves, this sort of "origin" attribution can lose relevance and become noise.
+Do not use the `Generated-by` and `Assisted-by` tags in code (comments, docstrings, etc.): as the code evolves, this sort of "origin" attribution can lose relevance and become noise.
 
 ## Running Quality, Style, and Type Checks
 
