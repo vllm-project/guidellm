@@ -144,6 +144,28 @@ class TestRealtimeWebSocketRequestHandler:
             "chunk_samples": 1600,
         }
 
+    def test_validate_request_format_field_accepts_none_and_allowed_path(self) -> None:
+        h = RealtimeWebSocketRequestHandler
+        assert h.validate_request_format_field(None) is None
+        assert h.validate_request_format_field("/v1/realtime") == "/v1/realtime"
+        assert h.validate_request_format_field(" /v1/realtime ") == "/v1/realtime"
+
+    def test_validate_request_format_field_rejects_invalid(self) -> None:
+        with pytest.raises(ValueError, match="empty or whitespace"):
+            RealtimeWebSocketRequestHandler.validate_request_format_field("   ")
+        with pytest.raises(ValueError, match="must be one of"):
+            RealtimeWebSocketRequestHandler.validate_request_format_field("/other")
+
+    def test_resolved_websocket_path(self) -> None:
+        assert (
+            RealtimeWebSocketRequestHandler.resolved_websocket_path(None)
+            == "/v1/realtime"
+        )
+        assert (
+            RealtimeWebSocketRequestHandler.resolved_websocket_path("/v1/realtime")
+            == "/v1/realtime"
+        )
+
 
 class TestTextCompletionsRequestHandler:
     """Test cases for TextCompletionsRequestHandler.
