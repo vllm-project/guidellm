@@ -28,6 +28,16 @@ class TestReplayProfile:
             )
 
     @pytest.mark.smoke
+    def test_resolve_args_rejects_multiple_data_sources(self):
+        with pytest.raises(ValueError, match="exactly one data source"):
+            ReplayProfile.resolve_args(
+                rate_type="replay",
+                rate=[1.0],
+                random_seed=42,
+                data=["trace-a.jsonl", "trace-b.jsonl"],
+            )
+
+    @pytest.mark.smoke
     def test_resolve_args_rejects_missing_or_empty_trace(self, tmp_path: Path):
         missing = tmp_path / "missing.jsonl"
         with pytest.raises(ValueError, match="not found"):
