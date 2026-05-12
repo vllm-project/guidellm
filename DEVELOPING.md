@@ -53,6 +53,33 @@ The `-e` flag installs the package in editable mode, allowing you to make change
 
 3. **Update Documentation**: Update or add documentation to reflect your changes. This includes updating README files, docstrings, and any relevant guides.
 
+## Tag use of AI coding assistants
+
+When AI coding assistants are used to generate or substantially modify code, the GuideLLM project requires that you add one of the following trailers to the git commit message:
+
+- `Generated-by: <name of the AI coding assistant>`: when the code in the commit was generated primarily by an AI coding assistant.
+- `Assisted-by: <name of the AI coding assistant>`: when the commit includes substantial code created or modified by the AI coding assistant.
+
+For example:
+
+```markdown
+This is the commit summary.
+
+Details of the changes made in this commit.
+
+Generated-by: Cursor
+Signed-off-by: John Doe <john.doe@example.com>
+```
+
+You can optionally add the LLM model name after the name of the AI coding assistant, separated by a space.
+
+For example:
+
+```markdown
+Generated-by: Cursor claude-4.6-sonnet
+Assisted-by: GitHub Copilot gpt-4o
+```
+
 ## Running Quality, Style, and Type Checks
 
 We use Tox to simplify running various tasks in isolated environments. Tox standardizes environments to ensure consistency across local development, CI/CD pipelines, and releases. This guarantees that the code behaves the same regardless of where it is executed.
