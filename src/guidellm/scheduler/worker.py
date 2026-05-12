@@ -50,7 +50,6 @@ from guidellm.utils.synchronous import (
 
 __all__ = ["WorkerProcess"]
 
-
 ProcessRequestT = TypeAliasType(
     "ProcessRequestT",
     tuple[
@@ -369,7 +368,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", None, request, request_info)
 
-    async def _process_next_request(  # noqa: C901, PLR0912, PLR0915
+    async def _process_next_request(  # noqa: C901
         self, target_start: float
     ) -> ProcessRequestT[RequestT, ResponseT]:
         """
@@ -377,10 +376,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         Retrieves request from messaging queue, applies timing strategy, processes
         through backend, and publishes status updates throughout the lifecycle.
-
-        After resolve completes the worker inspects ``request_info.error``
-        to decide whether to continue with remaining conversation turns, cancel
-        them, or mark the current turn as errored.
 
         :param target_start: Unix timestamp when request should begin processing
         """
@@ -414,22 +409,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
                 response = resp
 
+            # Complete the request
             request_info.timings.resolve_end = time.time()
+            self._send_update("completed", response, request, request_info)
 
-            if request_info.error:
-                self._send_update("errored", response, request, request_info)
-            else:
-                self._send_update("completed", response, request, request_info)
-
+            # Record Turn
             history.append((request, response))
-
-            # Cancel remaining conversation turns when the backend signals an error.
-            if request_info.error:
-                for skip_req, skip_info in conversation:
-                    skip_info.error = f"Cancelled: {request_info.error}"
-                    skip_info.timings.resolve_end = time.time()
-                    self._send_update("cancelled", None, skip_req, skip_info)
-                conversation.clear()
 
             response = request = request_info = None
         except asyncio.CancelledError:
@@ -441,6 +426,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self._send_update("cancelled", response, request, request_info)
             raise
         except Exception as exc:  # noqa: BLE001
+            premature_exit = True
             if request is not None and request_info is not None:
                 request_info.error = repr(exc)
                 request_info.traceback = traceback.format_exc()
@@ -449,12 +435,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 logger.opt(exception=True).debug(
                     f"Backend exception for request {request_info.request_id}"
                 )
-                # Cancel remaining conversation turns on backend error
-                for skip_req, skip_info in conversation:
-                    skip_info.error = f"Cancelled: {request_info.error}"
-                    skip_info.timings.resolve_end = time.time()
-                    self._send_update("cancelled", None, skip_req, skip_info)
-                conversation.clear()
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)
