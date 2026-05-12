@@ -895,10 +895,14 @@ class TestOpenAIBackendToolCallMissingBehavior:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.openai.http import OpenAIHTTPBackend
+        from guidellm.backends.openai.http import (
+            OpenAIHTTPBackend,
+            OpenAIHTTPBackendArgs,
+        )
 
-        backend = OpenAIHTTPBackend(target="http://localhost:8000")
-        assert backend.tool_call_missing_behavior == "error_stop"
+        args = OpenAIHTTPBackendArgs(target="http://localhost:8000")
+        backend = OpenAIHTTPBackend(args)
+        assert backend._args.tool_call_missing_behavior == "error_stop"
 
     @pytest.mark.sanity
     def test_valid_behaviors_accepted(self):
@@ -906,14 +910,18 @@ class TestOpenAIBackendToolCallMissingBehavior:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.openai.http import OpenAIHTTPBackend
+        from guidellm.backends.openai.http import (
+            OpenAIHTTPBackend,
+            OpenAIHTTPBackendArgs,
+        )
 
         for behavior in ("ignore_continue", "ignore_stop", "error_stop"):
-            backend = OpenAIHTTPBackend(
+            args = OpenAIHTTPBackendArgs(
                 target="http://localhost:8000",
                 tool_call_missing_behavior=behavior,
             )
-            assert backend.tool_call_missing_behavior == behavior
+            backend = OpenAIHTTPBackend(args)
+            assert backend._args.tool_call_missing_behavior == behavior
 
     @pytest.mark.sanity
     def test_invalid_behavior_rejected(self):
@@ -921,10 +929,10 @@ class TestOpenAIBackendToolCallMissingBehavior:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.openai.http import OpenAIHttpBackendArgs
+        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
 
         with pytest.raises(ValidationError):
-            OpenAIHttpBackendArgs(
+            OpenAIHTTPBackendArgs(
                 target="http://localhost:8000",
                 tool_call_missing_behavior="invalid_mode",
             )
@@ -945,12 +953,16 @@ class TestCheckToolCallExpectations:
         """
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.openai.http import OpenAIHTTPBackend
+        from guidellm.backends.openai.http import (
+            OpenAIHTTPBackend,
+            OpenAIHTTPBackendArgs,
+        )
 
-        return OpenAIHTTPBackend(
+        args = OpenAIHTTPBackendArgs(
             target="http://localhost:8000",
             tool_call_missing_behavior=behavior,
         )
+        return OpenAIHTTPBackend(args)
 
     def _make_request(self, expects_tool_call: bool) -> GenerationRequest:
         """
