@@ -2,7 +2,7 @@
 
 GuideLLM supports benchmarking multi-turn tool calling workloads. Tool call turns are **pre-anticipated**: the data pipeline decides upfront which turns expect a tool call and which expect plain text. GuideLLM does not dynamically create follow-up turns at runtime. Instead, the full conversation structure is planned during data generation, and the worker executes each turn in order, with each tool call being scheduled like any other turn by the profile.
 
-When a tool-call turn completes, GuideLLM appends a tool result to the conversation history and proceeds to the next pre-planned turn. The tool result content comes from one of three sources (in priority order): the dataset's tool response column, synthetic data configured via `tool_response_tokens`, or a short placeholder (`{"status": "ok"}`). All turns where a tool call is not anticipated have `tool_choice` overridden to `"none"` for predictability.
+When a tool-call turn completes, GuideLLM appends a tool result to the conversation history and proceeds to the next pre-planned turn. The tool result content comes from one of three sources (in priority order): the dataset's tool response column, synthetic data configured via `tool_response_tokens`, or a short placeholder (`{"status": "ok"}`). Tool definitions are only included in the request body on turns that have a `tools_column` in their data; non-tool turns are sent as plain chat completions without tools or `tool_choice`.
 
 ## Mocked client-side tool calls
 
@@ -97,10 +97,10 @@ The `tool_calling_message_extractor` preprocessor must be explicitly enabled via
 
 Two backend settings control how tool-call turns are handled at runtime. Both are configured via `--backend-kwargs`:
 
-| Setting                      | Values                                         | Default      | Description                                                                                                                     |
-| ---------------------------- | ---------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `extras.body.tool_choice`    | `required`, `auto`, `none`                     | `required`   | Sent as the `tool_choice` API parameter on turns that expect a tool call. On non-tool turns, it is always overridden to `none`. |
-| `tool_call_missing_behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the backend does when a tool call was expected but the model produced plain text instead.                                  |
+| Setting                      | Values                                         | Default      | Description                                                                                                                                      |
+| ---------------------------- | ---------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `extras.body.tool_choice`    | `required`, `auto`, `none`                     | `required`   | Sent as the `tool_choice` API parameter on turns that expect a tool call. Non-tool turns omit tools and `tool_choice` from the request entirely. |
+| `tool_call_missing_behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the backend does when a tool call was expected but the model produced plain text instead.                                                   |
 
 **Setting `tool_choice` via `--backend-kwargs`:**
 
@@ -126,7 +126,7 @@ guidellm benchmark run \
 
 - `required` (default) -- the model **must** produce a tool call. This gives the most predictable benchmarks and the fewest errors, since the server constrains the output to valid tool call JSON. Use this when you don't want to rely on the model choosing to use tools. However, it may slow down the server due to forcing the server to choose low-probability options.
 - `auto` -- the model decides whether to call a tool. Useful for testing how often a model chooses to invoke tools, but increases the chance of missing tool calls (see `tool_call_missing_behavior`).
-- `none` -- tools are present in the request but the model cannot call them. This is primarily set automatically on the final (plain-text) turn; setting it globally disables tool calling entirely.
+- `none` -- tools are present in the request but the model cannot call them. This value is not set automatically by the pipeline (non-tool turns omit tools entirely); it is only useful when explicitly configured via `--backend-kwargs` alongside a global `tools` definition in extras.
 
 Note that `required` vs `auto` can also result in different model behavior. For example, the Qwen models only show their pre-tool-call thinking with `auto`.
 
@@ -156,13 +156,13 @@ When `output_tokens` is configured (either via synthetic data or a dataset colum
 
 As a result, tool-call turns generate output whose length is determined by the model and tool schema rather than the configured `output_tokens`. The model stops as soon as it produces valid JSON for the function name and arguments. This typically results in shorter output (20–80 tokens) compared to the configured target.
 
-Plain-text turns (where `tool_choice="none"`) are unaffected and continue to respect `output_tokens` / `ignore_eos` as normal, even when tool definitions are present in the request.
+Plain-text turns are unaffected and continue to respect `output_tokens` / `ignore_eos` as normal. These turns do not include tool definitions or `tool_choice` in the request.
 
 ## Edge Cases
 
 - **Single-turn tool calling** (`turns=1, tool_call_turns=1` or `tool_call_turns=[0]`) is supported. The conversation has one turn that expects a tool call and no plain-text response.
 - **All-tool conversations** (e.g. `tool_call_turns=3` with `turns=3`, or `tool_call_turns=[0,1,2]`) are supported. Every turn is a tool-call turn and the model never produces a final plain-text response. The `output` field in `benchmarks.json` will be `None` for every request; use the `tool_calls` field to inspect model output.
 - **Non-contiguous tool turns** (e.g. `tool_call_turns=[0, 2]` with `turns=4`) are supported. Only the specified turns expect tool calls; other turns produce plain text.
-- **Tool definitions on non-tool turns** are still sent in the request (they're part of the data), but `tool_choice` is forced to `none` so the model produces text. This matches real-world agentic patterns where the tools remain available but the model is instructed to respond in natural language.
+- **Tool definitions on non-tool turns** are not included in the request. The data pipeline only attaches `tools_column` to turns that expect a tool call, so non-tool turns are sent as plain chat completions without tools or `tool_choice`.
 - **Mixed datasets** where only some rows have a `tools_column` work correctly. Rows without tools are treated as plain text conversations; rows with tools follow the tool-call flow.
 - **Rate-limited profiles** (e.g. `--profile constant --rate 1`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.

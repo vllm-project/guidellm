@@ -441,8 +441,8 @@ class OpenAIHTTPBackend(Backend):
 
             request_info.timings.request_end = time.time()
             gen_response = request_handler.compile_streaming(request, arguments)
-            yield gen_response, request_info
             self._check_tool_call_expectations(request, gen_response)
+            yield gen_response, request_info
         except asyncio.CancelledError as err:
             # Yield current result to store iterative results before propagating
             yield request_handler.compile_streaming(request, arguments), request_info

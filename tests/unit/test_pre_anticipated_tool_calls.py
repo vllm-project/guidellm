@@ -528,10 +528,15 @@ class TestChatCompletionsToolChoiceOverride:
 class _MockToolBackend:
     """Mock backend that raises exceptions for missing tool calls.
 
-    Mimics what OpenAIHTTPBackend._check_tool_call_expectations does:
-    raises CancelledError or ValueError during resolve based on
-    tool_call_missing_behavior, so the worker reacts via its exception
-    handlers.
+    Mimics the streaming path of OpenAIHTTPBackend.resolve():
+
+    * ``_check_tool_call_expectations`` runs BEFORE the final yield.
+    * If it raises ``CancelledError`` (ignore_stop), the ``except`` block
+      yields the response once, then re-raises -- so the consumer sees the
+      response followed by ``CancelledError`` on the next iteration.
+    * If it raises ``ValueError`` (error_stop), the exception is NOT caught
+      by the ``except asyncio.CancelledError`` block, so it propagates
+      without ever yielding the final response.
     """
 
     def __init__(
@@ -574,18 +579,21 @@ class _MockToolBackend:
             else None
         )
 
-        yield response, request_info
-
-        # Replicate what the real backend does in
-        # _check_tool_call_expectations: raise exceptions when a tool
-        # call was expected but not produced.
+        # Replicate the streaming resolve control flow:
+        # _check_tool_call_expectations runs before the final yield.
         if request.expects_tool_call and not self.has_tool_calls:
             if self.tool_call_missing_behavior == "ignore_stop":
+                # CancelledError is caught by the except block which
+                # yields the response first, then re-raises.
+                yield response, request_info
                 raise asyncio.CancelledError(
                     "Expected tool call but model produced none"
                 )
             elif self.tool_call_missing_behavior == "error_stop":
+                # ValueError is NOT caught -- propagates without yielding.
                 raise ValueError("Expected tool call but model produced none")
+
+        yield response, request_info
 
 
 def _make_conversation(
@@ -725,12 +733,13 @@ class TestWorkerMissingToolCallBehavior:
     @async_timeout(5.0)
     @pytest.mark.asyncio
     @pytest.mark.smoke
-    async def test_error_stop_errors_and_cancels(self, make_worker):
-        """error_stop: current turn errored via ValueError, remaining cancelled.
+    async def test_error_stop_errors_and_cancels_remaining(self, make_worker):
+        """error_stop: current turn errored, remaining turns cancelled.
 
-        The backend raises ValueError which the worker catches via its
-        generic exception handler, setting request_info.error and sending
-        an "errored" status update.
+        The backend raises ValueError (before yielding the response) which
+        the worker catches via its generic exception handler, setting
+        request_info.error and sending an "errored" status update.  The
+        remaining conversation turns are cancelled in the finally block.
 
         ## WRITTEN BY AI ##
         """
@@ -758,12 +767,16 @@ class TestWorkerMissingToolCallBehavior:
             target_start=time.time()
         )
 
-        # error_stop: conversation should be empty (cancelled in finally block)
+        # error_stop: remaining turns are cancelled
         assert len(remaining_conv) == 0
 
-        # Should have errored the current turn
+        # Current turn errored
         errored_updates = [u for u in updates if u[0] == "errored"]
         assert len(errored_updates) == 1
+
+        # Remaining 2 turns cancelled
+        cancelled_updates = [u for u in updates if u[0] == "cancelled"]
+        assert len(cancelled_updates) == 2
 
     @async_timeout(5.0)
     @pytest.mark.asyncio

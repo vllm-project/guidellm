@@ -178,9 +178,6 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
                     dataset_columns_str,
                 )
 
-                # Preserve the original turn index from the column name so
-                # that sparse columns (e.g. tools_0, tools_3) stay aligned
-                # with the turns they belong to.
                 for turn, column_name in sorted(turn_columns):
                     column_type = cast("GenerativeDatasetColumnType", column_type)
                     mappings[(column_type, turn)].append((index, column_name))
