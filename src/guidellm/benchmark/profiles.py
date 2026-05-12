@@ -365,7 +365,13 @@ class ReplayProfile(Profile):
     ) -> dict[str, Any]:
         _ = (rate_type, random_seed)  # unused
         data = kwargs.get("data")
-        if not data or not data[0]:
+        if not data:
+            raise ValueError("Replay profile requires data (path to trace file)")
+        if len(data) != 1:
+            raise ValueError(
+                f"ReplayProfile requires exactly one data source, received {len(data)}"
+            )
+        if not data[0]:
             raise ValueError("Replay profile requires data (path to trace file)")
         path = Path(data[0]) if isinstance(data[0], str) else data[0]
         if not path.exists():
