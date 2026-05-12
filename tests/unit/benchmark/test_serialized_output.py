@@ -30,6 +30,26 @@ def minimal_report() -> GenerativeBenchmarksReport:
     return GenerativeBenchmarksReport(args=args)
 
 
+@pytest.fixture
+def report_with_extras() -> GenerativeBenchmarksReport:
+    """
+    Create a GenerativeBenchmarksReport with output_extras set.
+
+    ## WRITTEN BY AI ##
+    """
+    extras = {"tag": "prod-test", "hardware": "A100", "metadata": {"count": 8}}
+    args = BenchmarkGenerativeTextArgs(
+        backend_kwargs={
+            "type": "openai_http",
+            "target": "http://localhost:8000/v1",
+            "model": "test-model",
+        },
+        data=["test_data.jsonl"],
+        output_extras=extras,
+    )
+    return GenerativeBenchmarksReport(args=args, extras=extras)
+
+
 class TestResolveFormatType:
     """
     Tests that resolve() propagates the format key correctly.
@@ -164,3 +184,105 @@ class TestFinalizeFormats:
         parsed = yaml.safe_load(content)
         assert isinstance(parsed, dict)
         assert "args" in parsed
+
+
+@pytest.mark.smoke
+class TestExtrasInReport:
+    """
+    Tests that the extras field is present and correct in serialized output.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def test_report_extras_none_by_default(
+        self, minimal_report: GenerativeBenchmarksReport
+    ):
+        """
+        extras field should be None when not supplied to the report.
+
+        ## WRITTEN BY AI ##
+        """
+        assert minimal_report.extras is None
+
+    def test_report_extras_stored(self, report_with_extras: GenerativeBenchmarksReport):
+        """
+        extras field should hold the dict passed during construction.
+
+        ## WRITTEN BY AI ##
+        """
+        assert report_with_extras.extras == {
+            "tag": "prod-test",
+            "hardware": "A100",
+            "metadata": {"count": 8},
+        }
+
+
+@pytest.mark.sanity
+class TestExtrasSerializedToFile:
+    """
+    Tests that extras appear correctly in JSON and YAML output files.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.asyncio
+    async def test_extras_present_in_json_output(
+        self, tmp_path: Path, report_with_extras: GenerativeBenchmarksReport
+    ):
+        """
+        extras dict should appear under the 'extras' key in the written JSON file.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=tmp_path, format_type="json"
+        )
+        result_path = await handler.finalize(report_with_extras)
+
+        parsed = json.loads(result_path.read_text())
+        assert "extras" in parsed
+        assert parsed["extras"] == {
+            "tag": "prod-test",
+            "hardware": "A100",
+            "metadata": {"count": 8},
+        }
+
+    @pytest.mark.asyncio
+    async def test_extras_present_in_yaml_output(
+        self, tmp_path: Path, report_with_extras: GenerativeBenchmarksReport
+    ):
+        """
+        extras dict should appear under the 'extras' key in the written YAML file.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=tmp_path, format_type="yaml"
+        )
+        result_path = await handler.finalize(report_with_extras)
+
+        parsed = yaml.safe_load(result_path.read_text())
+        assert "extras" in parsed
+        assert parsed["extras"] == {
+            "tag": "prod-test",
+            "hardware": "A100",
+            "metadata": {"count": 8},
+        }
+
+    @pytest.mark.asyncio
+    async def test_extras_null_in_json_when_not_set(
+        self, tmp_path: Path, minimal_report: GenerativeBenchmarksReport
+    ):
+        """
+        extras should serialize as null in JSON when not provided.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=tmp_path, format_type="json"
+        )
+        result_path = await handler.finalize(minimal_report)
+
+        parsed = json.loads(result_path.read_text())
+        assert "extras" in parsed
+        assert parsed["extras"] is None

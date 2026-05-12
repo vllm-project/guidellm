@@ -371,3 +371,123 @@ class TestBackendArgsTransformation:
             )
             assert VLLMPythonBackendArgs is not None
             assert isinstance(args_vllm.backend_kwargs, VLLMPythonBackendArgs)
+
+
+@pytest.mark.smoke
+class TestOutputExtrasDefault:
+    """Test that output_extras defaults to None.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def test_output_extras_defaults_to_none(self):
+        """
+        Test that output_extras field defaults to None when not provided.
+
+        ## WRITTEN BY AI ##
+        """
+        args = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "type": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": ["prompt_tokens=256,output_tokens=128"],
+            }
+        )
+        assert args.output_extras is None
+
+    def test_get_default_returns_none(self):
+        """
+        Test that get_default('output_extras') returns None.
+
+        ## WRITTEN BY AI ##
+        """
+        assert BenchmarkGenerativeTextArgs.get_default("output_extras") is None
+
+
+@pytest.mark.sanity
+class TestOutputExtrasField:
+    """Test output_extras field accepts, stores, and round-trips values.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def test_output_extras_accepts_flat_dict(self):
+        """
+        Test that output_extras stores a flat dict correctly.
+
+        ## WRITTEN BY AI ##
+        """
+        extras = {"tag": "prod-test", "hardware": "A100"}
+        args = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "type": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": ["prompt_tokens=256,output_tokens=128"],
+                "output_extras": extras,
+            }
+        )
+        assert args.output_extras == extras
+
+    def test_output_extras_accepts_nested_dict(self):
+        """
+        Test that output_extras stores a nested dict correctly.
+
+        ## WRITTEN BY AI ##
+        """
+        extras = {"tag": "v1", "metadata": {"gpu": "A100", "count": 8}}
+        args = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "type": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": ["prompt_tokens=256,output_tokens=128"],
+                "output_extras": extras,
+            }
+        )
+        assert args.output_extras == extras
+
+    def test_output_extras_serialization_round_trip(self):
+        """
+        Test that output_extras survives a model_dump / model_validate round-trip.
+
+        ## WRITTEN BY AI ##
+        """
+        extras = {"tag": "my_tag", "metadata": {"key": "value"}}
+        args = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "type": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": ["prompt_tokens=256,output_tokens=128"],
+                "output_extras": extras,
+            }
+        )
+        dumped = args.model_dump()
+        assert dumped["output_extras"] == extras
+
+        args2 = BenchmarkGenerativeTextArgs.model_validate(dumped)
+        assert args2.output_extras == extras
+
+    def test_output_extras_none_in_dump(self):
+        """
+        Test that output_extras serializes as None when not set.
+
+        ## WRITTEN BY AI ##
+        """
+        args = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "type": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": ["prompt_tokens=256,output_tokens=128"],
+            }
+        )
+        dumped = args.model_dump()
+        assert dumped["output_extras"] is None

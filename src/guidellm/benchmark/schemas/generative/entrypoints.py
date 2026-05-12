@@ -243,6 +243,13 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default_factory=Path.cwd,
         description="The directory path to save file output types in",
     )
+    output_extras: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional metadata to include in output reports "
+            "(e.g. tags, hardware details). Must be a JSON-serializable dict."
+        ),
+    )
     # Benchmarker configuration
     sample_requests: int | None = Field(
         default=None,

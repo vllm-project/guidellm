@@ -14,7 +14,7 @@ import json
 import platform
 from importlib.metadata import version
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 import yaml
 from pydantic import Field
@@ -79,6 +79,13 @@ class GenerativeBenchmarksReport(StandardBaseModel):
     benchmarks: list[GenerativeBenchmark] = Field(
         description="List of completed benchmarks in the report",
         default_factory=list,
+    )
+    extras: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional user-supplied metadata included in the report "
+            "(e.g. tags, hardware details)."
+        ),
     )
 
     def save_file(
