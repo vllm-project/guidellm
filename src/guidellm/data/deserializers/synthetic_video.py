@@ -153,6 +153,13 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
         }
         if self.config.output_tokens is not None:
             features["output_tokens_count_0"] = Value("int32")
+        features["video"] = {
+            "type": Value("string"),
+            "video": Value("string"),
+            "video_frames": Value("int64"),
+            "video_seconds": Value("float64"),
+            "video_bytes": Value("int64"),
+        }
         return Features(features)
 
     @property
