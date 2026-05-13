@@ -10,6 +10,7 @@ __all__ = [
     "DataConfig",
     "DataNotSupportedError",
     "GenerativeDatasetColumnType",
+    "MultiImageDatasetConfig",
     "SyntheticTextDatasetConfig",
     "SyntheticTextPrefixBucketConfig",
 ]
@@ -181,3 +182,21 @@ class SyntheticTextDatasetConfig(DataConfig):
                 ]
 
         return self
+
+
+class MultiImageDatasetConfig(SyntheticTextDatasetConfig):
+    """
+    Config for generating synthetic datasets with multiple images per request.
+    Extends SyntheticTextDatasetConfig to include image specifications.
+    """
+
+    images_per_request: int = Field(
+        description="Number of images to include per request (1-10 recommended)",
+        ge=1,
+        le=10,
+        default=1,
+    )
+    image_size: Literal["720p"] = Field(
+        description="Standard image resolution (720p = 1280x720)",
+        default="720p",
+    )
