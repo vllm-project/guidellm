@@ -29,7 +29,7 @@ def is_url(text: Any) -> bool:
 
 
 def encode_image(
-    image: bytes | str | Path | np.ndarray | libs.Image,
+    image: bytes | str | Path | np.ndarray | dict[str, Any] | libs.Image,
     width: int | None = None,
     height: int | None = None,
     max_size: int | None = None,
@@ -59,6 +59,9 @@ def encode_image(
     - image url
     - "data:image/{type};base64, {data}" string
     """
+    if isinstance(image, dict) and "image" in image and "type" in image:
+        return image  # type: ignore[return-value]
+
     if isinstance(image, str) and is_url(image):
         if encode_type == "base64":
             response = httpx.get(image)
@@ -204,7 +207,7 @@ def image_dict_to_pil(item: dict[str, Any]) -> libs.Image:
 
 
 def encode_video(
-    video: bytes | str | Path,
+    video: bytes | str | Path | dict[str, Any],
     encode_type: Literal["base64", "url"] | None = "base64",
 ) -> dict[
     Literal["type", "video", "video_frames", "video_seconds", "video_bytes"],
@@ -226,6 +229,9 @@ def encode_video(
     - video url
     - "data:video/{type};base64, {data}" string
     """
+    if isinstance(video, dict) and "video" in video and "type" in video:
+        return video  # type: ignore[return-value]
+
     if isinstance(video, str) and is_url(video):
         if encode_type == "base64":
             response = httpx.get(video)
