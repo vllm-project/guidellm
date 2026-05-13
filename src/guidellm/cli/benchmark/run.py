@@ -213,6 +213,16 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     type=int,
     help="Random seed for reproducibility.",
 )
+@click.option(
+    "--images-per-request",
+    type=str,
+    default=None,
+    help=(
+        "Number of images per request for vision benchmarks. "
+        "Single value (e.g., '2') or comma-separated list (e.g., '1,2,5'). "
+        "When a list is provided, runs sequential benchmarks for each count."
+    ),
+)
 # Output configuration
 @click.option(
     "--output-dir",
@@ -367,6 +377,18 @@ def run(**kwargs):  # noqa: C901
     ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
+
+    # Handle images_per_request parameter
+    images_per_request = kwargs.pop("images_per_request", None)
+    if images_per_request:
+        # Parse as single value or comma-separated list
+        try:
+            parts = [int(x.strip()) for x in images_per_request.split(",")]
+            kwargs["images_per_request"] = parts if len(parts) > 1 else parts[0]
+        except ValueError:
+            raise click.BadParameter(
+                f"--images-per-request must be an integer or comma-separated integers, got '{images_per_request}'"
+            )
 
     # Handle output path remapping
     if (output_path := kwargs.pop("output_path", None)) is not None:

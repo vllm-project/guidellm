@@ -17,7 +17,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.schemas import SyntheticTextDatasetConfig
+from guidellm.data.schemas import MultiImageDatasetConfig, SyntheticTextDatasetConfig
 from guidellm.utils.random import IntegerRangeSampler
 
 __all__ = [
@@ -235,13 +235,18 @@ class SyntheticTextDatasetDeserializer(DatasetDeserializer):
         **data_kwargs: dict[str, Any],
     ) -> IterableDataset:
         # Config file and string pathways; deserialize and call self again
+        # Try MultiImageDatasetConfig first, then fall back to SyntheticTextDatasetConfig
+        config = None
+        if (config := load_config(data, MultiImageDatasetConfig)) is not None:
+            return self(config, processor_factory, random_seed, **data_kwargs)
         if (config := load_config(data, SyntheticTextDatasetConfig)) is not None:
             return self(config, processor_factory, random_seed, **data_kwargs)
 
-        if not isinstance(data, SyntheticTextDatasetConfig):
+        if not isinstance(data, (SyntheticTextDatasetConfig, MultiImageDatasetConfig)):
             raise DataNotSupportedError(
                 "Unsupported data for SyntheticTextDatasetDeserializer, "
-                "expected SyntheticTextDatasetConfig, str or Path to a config file, "
+                "expected SyntheticTextDatasetConfig, MultiImageDatasetConfig, "
+                "str or Path to a config file, "
                 f"got {data}"
             )
 
