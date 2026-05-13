@@ -320,13 +320,10 @@ def _extract_column_names(
     except (KeyError, IndexError):
         prefix_column = None
 
-    try:
-        output_mappings = column_mapper.datasets_column_mappings[
-            ("output_tokens_count_column", 0)
-        ]
-        output_column = output_mappings[0][1]
-    except (KeyError, IndexError):
-        output_column = "output_tokens_count"
+    output_mappings = column_mapper.datasets_column_mappings.get(
+        ("output_tokens_count_column", 0), []
+    )
+    output_column = output_mappings[0][1] if output_mappings else "output_tokens_count"
 
     return prompt_column, prefix_column, output_column
 
