@@ -28,6 +28,16 @@ from .synthetic import (
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
+from .synthetic_image import (
+    SyntheticImageDataArgs,
+    SyntheticImageDataset,
+    SyntheticImageDatasetDeserializer,
+)
+from .synthetic_video import (
+    SyntheticVideoDataArgs,
+    SyntheticVideoDataset,
+    SyntheticVideoDatasetDeserializer,
+)
 from .trace_common import (
     TraceDataArgs,
     TraceDatasetDeserializer,
@@ -60,9 +70,15 @@ __all__ = [
     "MinimalTraceFormatArgs",
     "MooncakeTraceFormatArgs",
     "ParquetFileDatasetDeserializer",
+    "SyntheticImageDataArgs",
+    "SyntheticImageDataset",
+    "SyntheticImageDatasetDeserializer",
     "SyntheticTextDataArgs",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
+    "SyntheticVideoDataArgs",
+    "SyntheticVideoDataset",
+    "SyntheticVideoDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
     "TraceDataArgs",
