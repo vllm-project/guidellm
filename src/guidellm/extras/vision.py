@@ -62,6 +62,11 @@ def encode_image(
     - image url
     - "data:image/{type};base64, {data}" string
     """
+    if isinstance(image, dict) and "image" in image and "type" in image:
+        # Already in the canonical encoded shape (e.g. from synthesize_image).
+        # Pass through unchanged so the encoder is idempotent.
+        return image  # type: ignore[return-value]
+
     if isinstance(image, str) and is_url(image):
         if encode_type == "base64":
             response = httpx.get(image)
@@ -229,6 +234,10 @@ def encode_video(
     - video url
     - "data:video/{type};base64, {data}" string
     """
+    if isinstance(video, dict) and "video" in video and "type" in video:
+        # Already in the canonical encoded shape (e.g. from synthesize_video).
+        return video  # type: ignore[return-value]
+
     if isinstance(video, str) and is_url(video):
         if encode_type == "base64":
             response = httpx.get(video)

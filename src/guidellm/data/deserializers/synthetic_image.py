@@ -166,11 +166,17 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
         }
         if self.config.output_tokens is not None:
             features["output_tokens_count_0"] = Value("int32")
-        # Images are stored as the encoded dict; datasets' Features needs a
-        # struct type. We leave them out of the typed features (datasets
-        # tolerates extra keys when ``is_typed`` reports True for the typed
-        # subset). Mirror the synthetic_text approach of declaring only the
-        # text features.
+        image_struct = {
+            "type": Value("string"),
+            "image": Value("string"),
+            "image_pixels": Value("int64"),
+            "image_bytes": Value("int64"),
+        }
+        if self.config.images_per_request == 1:
+            features["image"] = image_struct
+        else:
+            for img_idx in range(self.config.images_per_request):
+                features[f"image_{img_idx}"] = image_struct
         return Features(features)
 
     @property
