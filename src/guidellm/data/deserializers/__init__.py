@@ -25,6 +25,14 @@ from .synthetic import (
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
+from .synthetic_image import (
+    SyntheticImageDataset,
+    SyntheticImageDatasetDeserializer,
+)
+from .synthetic_video import (
+    SyntheticVideoDataset,
+    SyntheticVideoDatasetDeserializer,
+)
 from .trace_synthetic import TraceSyntheticDatasetDeserializer
 
 __all__ = [
@@ -43,8 +51,12 @@ __all__ = [
     "InMemoryJsonStrDatasetDeserializer",
     "JSONFileDatasetDeserializer",
     "ParquetFileDatasetDeserializer",
+    "SyntheticImageDataset",
+    "SyntheticImageDatasetDeserializer",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
+    "SyntheticVideoDataset",
+    "SyntheticVideoDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
     "TraceSyntheticDatasetDeserializer",
