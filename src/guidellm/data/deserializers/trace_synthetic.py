@@ -25,7 +25,7 @@ from guidellm.data.deserializers.deserializer import (
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.trace_io import load_trace_rows
 
-__all__ = ["TraceSyntheticDatasetDeserializer"]
+__all__ = ["TraceSyntheticDataArgs", "TraceSyntheticDatasetDeserializer"]
 
 
 def _encode_prompt(

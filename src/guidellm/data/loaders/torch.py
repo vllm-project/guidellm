@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterator
 from typing import Any, Literal, TypeVar
 
 import torch
+from pydantic import Field
 from torch.utils.data import Sampler
 from torch.utils.data.dataloader import DataLoader as PyTorchDataLoader
 from torch.utils.data.dataset import IterableDataset as TorchIterableDataset
@@ -12,12 +13,35 @@ from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.finalizers import DatasetFinalizer
+from guidellm.data.loaders.loader import DataLoader, DataLoaderRegistry
 from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
-from guidellm.data.schemas import DataArgs
+from guidellm.data.schemas import DataArgs, DataEntrypointArgs, DataLoaderArgs
 from guidellm.logger import logger
 from guidellm.utils.mixins import InfoMixin
 
-__all__ = ["DataLoader", "DatasetsIterator"]
+__all__ = ["DatasetsIterator", "TorchDataLoader", "TorchDataLoaderArgs"]
+
+
+@DataLoaderArgs.register("pytorch")
+class TorchDataLoaderArgs(DataLoaderArgs):
+    kind: Literal["pytorch"] = Field(  # type: ignore[assignment]
+        default="pytorch",
+        description="Type identifier for the generative data loader.",
+    )
+    sampler: Sampler[int] | Literal["shuffle"] | None = Field(
+        default=None,
+        description=(
+            "Sampler for the data loader. Can be a PyTorch Sampler, 'shuffle'"
+            "for random shuffling, or None for sequential sampling."
+        ),
+    )
+    num_workers: int = Field(
+        default=1,
+        description=(
+            "Number of worker processes for data loading. If 0, data loading "
+            "will be performed in the main process."
+        ),
+    )
 
 
 DataT = TypeVar("DataT")
@@ -145,49 +169,37 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
             )
 
 
-class DataLoader(PyTorchDataLoader[DataT], InfoMixin):
+@DataLoaderRegistry.register("pytorch")
+class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
     def __init__(
         self,
-        config: list[DataArgs],
-        data_samples: int,
+        config: DataEntrypointArgs[TorchDataLoaderArgs],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
         finalizer: DatasetFinalizer[DataT],
         collator: Callable,
-        sampler: Sampler[int] | Literal["shuffle"] | None = None,
-        num_workers: int | None = 1,
         random_seed: int = 42,
         **kwargs: Any,
     ):
         iterator: DatasetsIterator[DataT] = DatasetsIterator(
-            data=config,
-            data_samples=data_samples,
+            data=config.data,
+            data_samples=config.loader.samples,
             processor_factory=processor_factory,
             preprocessors=preprocessors,
             finalizer=finalizer,
             random_seed=random_seed,
         )
-        self._info: dict[str, Any] = {
-            "data": str(config),
-            "data_samples": data_samples,
-            "preprocessors": [
-                preprocessor.__class__.__name__ for preprocessor in preprocessors
-            ],
-            "finalizer": finalizer.__class__.__name__,
-            "collator": collator.__class__.__name__,
-            "sampler": str(sampler),
-            "num_workers": num_workers,
-            "random_seed": random_seed,
-        }
+        self._info: dict[str, Any] = config.model_dump()
         self.epoch = 0
 
+        sampler = config.loader.sampler
         super().__init__(
             dataset=iterator,
             batch_size=1,
             shuffle=sampler == "shuffle",
             sampler=sampler if sampler != "shuffle" else None,
             collate_fn=collator,
-            num_workers=num_workers or 0,
+            num_workers=config.loader.num_workers,
             **kwargs,
         )
 

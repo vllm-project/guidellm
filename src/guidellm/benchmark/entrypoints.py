@@ -15,7 +15,6 @@ from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
-from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
@@ -36,7 +35,10 @@ from guidellm.benchmark.schemas import (
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
     DataArgs,
+    DataEntrypointArgs,
     DataLoader,
+    DataLoaderArgs,
+    DataLoaderRegistry,
     DatasetFinalizer,
     DatasetPreprocessor,
     FinalizerRegistry,
@@ -228,8 +230,8 @@ def resolve_item_from_registry(
 
 async def resolve_request_loader(
     data: list[DataArgs],
+    loader: DataLoaderArgs,
     model: str,
-    data_samples: int,
     processor: ProcessorInputT | None,
     processor_args: dict[str, Any] | None,
     data_column_mapper: (
@@ -241,11 +243,8 @@ async def resolve_request_loader(
     data_preprocessors_kwargs: dict[str, Any],
     data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
     data_collator: Callable | Literal["generative"] | None,
-    data_sampler: Sampler[int] | Literal["shuffle"] | None,
-    data_num_workers: int | None,
     random_seed: int,
     console: Console | None = None,
-    **dataloader_kwargs: dict[str, Any] | None,
 ) -> DataLoader[GenerationRequest]:
     """
     Construct a DataLoader for GenerationRequest objects from raw data inputs.
@@ -304,9 +303,12 @@ async def resolve_request_loader(
         data_finalizer,
     )
 
-    request_loader: DataLoader[GenerationRequest] = DataLoader(
-        config=data,
-        data_samples=data_samples,
+    config = DataEntrypointArgs(
+        loader=loader,
+        data=data,
+    )
+    request_loader: DataLoader[GenerationRequest] = DataLoaderRegistry.create(
+        config=config,
         processor_factory=ProcessorFactory(
             processor=processor if processor is not None else model,
             processor_args=processor_args,
@@ -316,17 +318,14 @@ async def resolve_request_loader(
         collator=(
             data_collator if callable(data_collator) else GenerativeRequestCollator()
         ),
-        sampler=data_sampler,
-        num_workers=data_num_workers,
         random_seed=random_seed,
-        **(dataloader_kwargs or {}),
     )
 
     if console_step:
         console_step.finish(
             title=(
                 f"Request loader initialized with "
-                f"{data_samples if data_samples > 0 else 'inf'} "
+                f"{loader.samples if loader.samples > 0 else 'inf'} "
                 "unique requests"
             ),
             details=InfoMixin.extract_from_obj(request_loader),
@@ -349,7 +348,7 @@ async def resolve_profile(
     max_global_error_rate: float | None,
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
-    data: list[Any] | None = None,
+    data: list[DataArgs] | None = None,
     **profile_kwargs: Any,
 ) -> Profile:
     """
@@ -489,8 +488,8 @@ async def benchmark_generative_text(
     )
     request_loader = await resolve_request_loader(
         data=args.data,
+        loader=args.data_loader,
         model=model,
-        data_samples=args.data_samples,
         processor=processor,
         processor_args=args.processor_args,
         data_column_mapper=args.data_column_mapper,
@@ -498,11 +497,8 @@ async def benchmark_generative_text(
         data_preprocessors_kwargs=args.data_preprocessors_kwargs,
         data_finalizer=args.data_finalizer,
         data_collator=args.data_collator,
-        data_sampler=args.data_sampler,
-        data_num_workers=args.data_num_workers,
         random_seed=args.random_seed,
         console=console,
-        **(args.dataloader_kwargs or {}),
     )
 
     warmup = TransientPhaseConfig.create_from_value(args.warmup)
@@ -534,7 +530,6 @@ async def benchmark_generative_text(
         over_saturation=args.over_saturation,
         console=console,
         data=args.data,
-        data_args=args.data_args,
         data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(
@@ -554,7 +549,7 @@ async def benchmark_generative_text(
     async for benchmark in benchmarker.run(
         accumulator_class=GenerativeBenchmarkAccumulator,
         benchmark_class=GenerativeBenchmark,
-        requests=request_loader,
+        requests=request_loader,  # type: ignore[arg-type]
         backend=backend,
         profile=profile,
         environment=NonDistributedEnvironment(),

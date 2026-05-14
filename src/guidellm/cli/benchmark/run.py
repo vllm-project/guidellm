@@ -140,16 +140,6 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     help="JSON string of arguments to pass to the processor constructor.",
 )
 @click.option(
-    "--data-samples",
-    callback=cli_tools.parse_arguments,
-    default=BenchmarkGenerativeTextArgs.get_default("data_samples"),
-    type=int,
-    help=(
-        "Number of samples from dataset. -1 (default) uses all samples "
-        "and dynamically generates more."
-    ),
-)
-@click.option(
     "--data-column-mapper",
     callback=cli_tools.parse_arguments,
     default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
@@ -184,21 +174,8 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     ),
 )
 @click.option(
-    "--data-sampler",
-    default=BenchmarkGenerativeTextArgs.get_default("data_sampler"),
-    type=click.Choice(["shuffle"]),
-    help="Data sampler type.",
-)
-@click.option(
-    "--data-num-workers",
-    default=BenchmarkGenerativeTextArgs.get_default("data_num_workers"),
-    type=int,
-    help="Number of worker processes for data loading.",
-)
-@click.option(
-    "--dataloader-kwargs",
-    callback=cli_tools.parse_arguments,
-    default=BenchmarkGenerativeTextArgs.get_default("dataloader_kwargs"),
+    "--data-loader",
+    default=BenchmarkGenerativeTextArgs.get_default("data_loader"),
     help="JSON string of arguments to pass to the dataloader constructor.",
 )
 @click.option(
@@ -372,6 +349,11 @@ def run(**kwargs):  # noqa: C901
         else:
             kwargs["output_dir"] = path.parent
             kwargs["outputs"] = (path.name,)
+
+    # Hardcode pytorch loader for now
+    loader_args = kwargs.pop("data_loader", {})
+    loader_args["kind"] = "pytorch"
+    kwargs["data_loader"] = loader_args
 
     # Map top-level CLI options to backend_kwargs
     backend_kwargs = kwargs.pop("backend_kwargs", {})

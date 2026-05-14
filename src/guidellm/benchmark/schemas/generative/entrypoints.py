@@ -28,14 +28,18 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
-from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.backends import BackendArgs
 from guidellm.benchmark.profiles import Profile, ProfileType
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
-from guidellm.data import DataArgs, DatasetFinalizer, DatasetPreprocessor
+from guidellm.data import (
+    DataArgs,
+    DataLoaderArgs,
+    DatasetFinalizer,
+    DatasetPreprocessor,
+)
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
 
@@ -187,9 +191,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     processor_args: dict[str, Any] | None = Field(
         default=None, description="Additional tokenizer configuration arguments"
     )
-    data_samples: int = Field(
-        default=-1, description="Number of samples to use from datasets (-1 for all)"
-    )
     data_column_mapper: (
         DatasetPreprocessor
         | dict[str, Any]
@@ -217,14 +218,8 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     data_collator: Callable | Literal["generative"] | None = Field(
         default="generative", description="Data collator for batch processing"
     )
-    data_sampler: Sampler[int] | Literal["shuffle"] | None = Field(
-        default=None, description="Data sampler for request ordering"
-    )
-    data_num_workers: int | None = Field(
-        default=1, description="Number of workers for data loading"
-    )
-    dataloader_kwargs: dict[str, Any] | None = Field(
-        default=None, description="Additional dataloader configuration arguments"
+    data_loader: DataLoaderArgs = Field(
+        description="Dataloader configuration arguments",
     )
     random_seed: int = Field(default=42, description="Random seed for reproducibility")
     # Output configuration
@@ -345,13 +340,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     ) -> dict | str:
         """Serialize data_request_formatter to dict or string."""
         return data_finalizer if isinstance(data_finalizer, dict | str) else {}
-
-    @field_serializer("data_sampler")
-    def serialize_data_sampler(
-        self, data_sampler: Sampler[int] | Literal["shuffle"] | None
-    ) -> str | None:
-        """Serialize data_sampler to string or None."""
-        return data_sampler if isinstance(data_sampler, str) else None
 
     @field_serializer("output_dir")
     def serialize_output_dir(self, output_dir: str | Path) -> str | None:
