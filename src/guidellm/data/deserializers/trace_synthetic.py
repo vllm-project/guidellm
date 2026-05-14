@@ -81,7 +81,14 @@ def _create_prompt(
     base_prompt_token_ids: list[int],
     request_index: int,
 ) -> str:
-    """Build a prompt from unique prefix tokens and reusable base prompt tokens."""
+    """
+    Build a prompt from unique prefix tokens and reusable base prompt tokens.
+
+    For very small prompt lengths (roughly under 15 tokens, depending on the
+    tokenizer), the target slice can truncate the per-row unique prefix before
+    it includes the request index, so prompts may become similar across rows and
+    less cache-resistant.
+    """
     if prompt_tokens_count <= 0:
         return ""
 

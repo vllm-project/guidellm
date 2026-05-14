@@ -216,6 +216,8 @@ GuideLLM orders trace rows by timestamp before scheduling and payload generation
 
 If your trace uses different column names, map them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in `--data-args`.
 
+For very small prompts (roughly under 15 tokens, depending on the tokenizer), GuideLLM may not have enough room to include the full per-row unique prefix. Different rows can then produce similar or identical prompts, which reduces cache resistance in replay benchmarks.
+
 ### Working with Real Data
 
 While synthetic data is convenient for quick tests, you can benchmark with real-world data:
