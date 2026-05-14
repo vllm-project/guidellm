@@ -386,6 +386,7 @@ def run(**kwargs):  # noqa: C901
     for alias in ("target", "model", "request_format"):
         with contextlib.suppress(KeyError):
             backend_kwargs[alias] = kwargs.pop(alias)
+
     kwargs["backend_kwargs"] = backend_kwargs
 
     # Handle console options

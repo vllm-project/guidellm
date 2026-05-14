@@ -5,6 +5,7 @@ from .preprocessor import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
+from .tool_calling import ToolCallingMessageExtractor
 from .turn_pivot import TurnPivot
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "GenerativeColumnMapper",
     "MediaEncoder",
     "PreprocessorRegistry",
+    "ToolCallingMessageExtractor",
     "TurnPivot",
 ]

@@ -68,6 +68,14 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Over-Saturation Guide](over_saturation_stopping.md)
 
+- :material-wrench:{ .lg .middle } Tool Calling
+
+  ______________________________________________________________________
+
+  Benchmark multi-turn tool calling workloads with pre-anticipated tool call turns, synthetic data, and dataset-driven tool definitions.
+
+  [:octicons-arrow-right-24: Tool Calling Guide](tool_calling.md)
+
 - :material-image-multiple:{ .lg .middle } Multimodal Benchmarking
 
   ______________________________________________________________________
