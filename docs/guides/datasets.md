@@ -174,6 +174,8 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
   For replay, `--rate` is a time scale for the intervals between trace events rather than requests per second. Use `--data-samples` to limit how many trace rows are loaded and replayed. Use `--max-requests` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
 
+  Very small `input_length` values (roughly under 15 tokens, depending on the tokenizer) may not leave enough room for the full per-row unique prefix in the synthetic prompt. This can make prompts more similar across rows and weaken cache resistance. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking) for details.
+
 - **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
 
   ```json
