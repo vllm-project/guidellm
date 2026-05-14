@@ -28,6 +28,7 @@ __all__ = [
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
     "PoolingRequestHandler",
+    "RealtimeWebSocketRequestHandler",
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
 ]
@@ -767,6 +768,138 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             text_words=text_words,
             text_characters=text_chars,
         )
+
+
+@OpenAIRequestHandlerFactory.register("/v1/realtime")
+class RealtimeWebSocketRequestHandler(OpenAIRequestHandler):
+    """
+    Request shape and metrics for realtime WebSocket transcription (``/v1/realtime``).
+
+    The WebSocket driver in ``OpenAIWebSocketBackend`` performs I/O; this handler
+    validates columns and builds ``GenerationRequestArguments`` metadata so the
+    backend stays aligned with other ``request_format`` / handler pairs.
+
+    **Request path policy:** which HTTP paths are valid for ``--request-format`` /
+    ``request_format`` lives here (with ``OpenAIRequestHandlerFactory`` registration),
+    not in the backend driver, so new realtime endpoints follow the same pattern as
+    HTTP handlers: register a path, extend ``ALLOWED_REQUEST_PATHS``, and implement
+    ``format`` / metrics on the new class.
+    """
+
+    #: WebSocket URL path segments accepted for this handler (and ``openai_websocket``).
+    ALLOWED_REQUEST_PATHS: frozenset[str] = frozenset({"/v1/realtime"})
+    DEFAULT_REQUEST_PATH: str = "/v1/realtime"
+
+    @classmethod
+    def request_format_options_description(cls) -> str:
+        """List allowed ``request_format`` values (errors and schema text)."""
+        opts = ", ".join(sorted(repr(p) for p in cls.ALLOWED_REQUEST_PATHS))
+        return f"must be one of: {opts}"
+
+    @classmethod
+    def validate_request_format_field(cls, value: str | None) -> str | None:
+        """
+        Validate optional ``request_format`` from CLI or config.
+
+        :param value: Raw value or ``None`` (use default path when resolving the URL).
+        :return: ``None`` or a normalized path present in ``ALLOWED_REQUEST_PATHS``.
+        :raises ValueError: If empty, whitespace-only, or not an allowed path.
+        """
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("request_format must not be empty or whitespace")
+        if stripped not in cls.ALLOWED_REQUEST_PATHS:
+            raise ValueError(
+                f"request_format {cls.request_format_options_description()}. "
+                f"Got {stripped!r}."
+            )
+        return stripped
+
+    @classmethod
+    def resolved_websocket_path(cls, stored: str | None) -> str:
+        """
+        Return the HTTP path segment used on the WebSocket URL.
+
+        :param stored: Value from ``OpenAIWebSocketBackendArgs.request_format`` after
+            validation, or ``None`` for the default.
+        :return: Always a member of ``ALLOWED_REQUEST_PATHS`` (default when ``stored``
+            is ``None``).
+        """
+        if stored is None:
+            return cls.DEFAULT_REQUEST_PATH
+        return cast("str", cls.validate_request_format_field(stored))
+
+    def __init__(self) -> None:
+        self._audio_metrics = AudioRequestHandler()
+
+    @staticmethod
+    def extract_single_audio(data: GenerationRequest) -> dict[str, Any]:
+        """Return the single ``audio_column`` entry required for realtime streaming."""
+        audio_columns = data.columns.get("audio_column", [])
+        if len(audio_columns) != 1:
+            raise ValueError(
+                "Realtime WebSocket transcription expects exactly one audio_column "
+                f"entry; got {len(audio_columns)}."
+            )
+        return audio_columns[0]
+
+    def format(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        **kwargs: Any,
+    ) -> GenerationRequestArguments:
+        if history or response:
+            raise ValueError(
+                "RealtimeWebSocketRequestHandler does not support multiturn."
+            )
+        RealtimeWebSocketRequestHandler.extract_single_audio(data)
+        model = kwargs.get("model")
+        if model is None:
+            raise ValueError("model is required for realtime WebSocket format()")
+        websocket_path = kwargs.get("websocket_path")
+        if websocket_path is None:
+            raise ValueError(
+                "websocket_path is required for realtime WebSocket format()"
+            )
+        chunk_samples = kwargs.get("chunk_samples", 3200)
+        arguments = GenerationRequestArguments()
+        arguments.body = {
+            "model": model,
+            "websocket_path": websocket_path,
+            "chunk_samples": chunk_samples,
+        }
+        return arguments
+
+    def compile_non_streaming(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: Any,
+    ) -> GenerationResponse:
+        raise NotImplementedError(
+            "Realtime WebSocket transcription does not use compile_non_streaming."
+        )
+
+    def add_streaming_line(self, line: str) -> int | None:  # noqa: ARG002
+        raise NotImplementedError(
+            "Realtime WebSocket transcription does not use add_streaming_line."
+        )
+
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        raise NotImplementedError(
+            "Realtime WebSocket transcription does not use compile_streaming."
+        )
+
+    def extract_metrics(
+        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
+    ) -> tuple[UsageMetrics, UsageMetrics]:
+        return self._audio_metrics.extract_metrics(usage, text)
 
 
 @OpenAIRequestHandlerFactory.register("/v1/responses")

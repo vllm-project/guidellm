@@ -86,6 +86,7 @@ audio = [
     # Torchcodec needs specific torch version
     "torch==2.10.*",
     "torchcodec==0.10.*",
+    "websockets>=13.0",
 ]
 vision = [
     "datasets[vision]",

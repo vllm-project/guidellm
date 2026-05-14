@@ -841,12 +841,14 @@ all = [
     { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "torchcodec" },
     { name = "uvloop" },
+    { name = "websockets" },
 ]
 audio = [
     { name = "datasets", extra = ["audio"] },
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "torchcodec" },
+    { name = "websockets" },
 ]
 dev = [
     { name = "blobfile" },
@@ -889,6 +891,7 @@ dev = [
     { name = "types-requests" },
     { name = "types-toml" },
     { name = "uvloop" },
+    { name = "websockets" },
 ]
 perf = [
     { name = "msgpack" },
@@ -985,6 +988,7 @@ requires-dist = [
     { name = "types-toml", marker = "extra == 'dev'" },
     { name = "uvloop", specifier = ">=0.18" },
     { name = "uvloop", marker = "extra == 'perf'" },
+    { name = "websockets", marker = "extra == 'audio'", specifier = ">=13.0" },
 ]
 provides-extras = ["all", "recommended", "perf", "tokenizers", "audio", "vision", "dev"]
 

@@ -18,6 +18,8 @@ from .openai import (
     OpenAIHTTPBackend,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    OpenAIWebSocketBackend,
+    OpenAIWebSocketBackendArgs,
     TextCompletionsRequestHandler,
 )
 
@@ -36,6 +38,8 @@ __all__ = [
     "OpenAIHTTPBackend",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "OpenAIWebSocketBackend",
+    "OpenAIWebSocketBackendArgs",
     "TextCompletionsRequestHandler",
 ]
 
