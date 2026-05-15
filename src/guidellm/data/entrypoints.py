@@ -5,10 +5,11 @@ from transformers import PreTrainedTokenizerBase
 
 from guidellm.data import builders
 from guidellm.data.builders import ShortPromptStrategy
+from guidellm.data.schemas import DataArgs
 
 
 def process_dataset(
-    data: str | Path,
+    data: dict,
     output_path: str | Path,
     processor: str | Path | PreTrainedTokenizerBase,
     config: str | Path,
@@ -45,8 +46,9 @@ def process_dataset(
     :param random_seed: Seed for random sampling.
     :raises ValueError: If the output path is invalid or pushing conditions unmet.
     """
+    data_config = DataArgs.model_validate(data)
     builders.process_dataset(
-        data,
+        data_config,
         output_path,
         processor,
         config,
