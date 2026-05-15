@@ -129,7 +129,7 @@ def _run_benchmark(
 
 @pytest.mark.timeout(240)
 def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
-    """A short benchmark on synthetic_image must complete cleanly."""
+    """A short benchmark on synthetic_image must complete cleanly. ## WRITTEN BY AI ##"""
     result = _run_benchmark(
         base_url=mock_backend,
         data=(
@@ -151,7 +151,7 @@ def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
 
 @pytest.mark.timeout(240)
 def test_synthetic_video_benchmark_against_mock(mock_backend, tmp_path):
-    """A short benchmark on synthetic_video must complete cleanly."""
+    """A short benchmark on synthetic_video must complete cleanly. ## WRITTEN BY AI ##"""
     result = _run_benchmark(
         base_url=mock_backend,
         data=(
