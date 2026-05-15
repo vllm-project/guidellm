@@ -63,8 +63,7 @@ __all__ = ["VLLMPythonBackend", "VLLMPythonBackendArgs"]
 class VLLMPythonBackendArgs(BackendArgs):
     """Pydantic model for VLLM Python backend creation arguments."""
 
-    type_: Literal["vllm_python"] = Field(
-        alias="type",
+    kind: Literal["vllm_python"] = Field(
         default="vllm_python",
         description="Backend type identifier for VLLM Python backend.",
     )

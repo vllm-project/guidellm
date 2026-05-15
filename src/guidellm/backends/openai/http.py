@@ -56,8 +56,7 @@ DEFAULT_API_PATHS = {
 class OpenAIHTTPBackendArgs(BackendArgs):
     """Pydantic model for OpenAI HTTP backend creation arguments."""
 
-    type_: Literal["openai_http"] = Field(
-        alias="type",
+    kind: Literal["openai_http"] = Field(
         default="openai_http",
         description="Type identifier for the backend configuration.",
     )

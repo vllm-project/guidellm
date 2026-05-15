@@ -101,7 +101,7 @@ async def resolve_backend(
     :return: Tuple of initialized Backend instance and resolved model identifier
     """
     console_step = (
-        console.print_update_step(title=f"Initializing backend {backend_args.type_}")
+        console.print_update_step(title=f"Initializing backend {backend_args.kind}")
         if console
         else None
     )

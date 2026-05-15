@@ -46,7 +46,7 @@ class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
         val_json_bytes="base64",
     )
 
-    schema_discriminator: ClassVar[str] = "type"
+    schema_discriminator: ClassVar[str] = "kind"
 
     @classmethod
     def __pydantic_schema_base_type__(cls) -> type[BackendArgs]:
@@ -60,8 +60,7 @@ class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
 
         return BackendArgs
 
-    type_: str = Field(
-        alias="type",
+    kind: str = Field(
         description="Type identifier for the backend configuration.",
     )
 
@@ -110,13 +109,13 @@ class Backend(
         :return: An instance of a subclass of Backend
         :raises ValueError: If the backend type is not registered
         """
-        type_ = args.type_
+        kind = args.kind
 
-        backend = cls.get_registered_object(type_)
+        backend = cls.get_registered_object(kind)
 
         if backend is None:
             raise ValueError(
-                f"Backend type '{type_}' is not registered. "
+                f"Backend type '{kind}' is not registered. "
                 f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
             )
 
@@ -128,7 +127,7 @@ class Backend(
 
         :param type_: The backend type identifier
         """
-        self.type_ = args.type_
+        self.kind = args.kind
 
     @property
     def processes_limit(self) -> int | None:

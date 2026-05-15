@@ -382,7 +382,7 @@ def run(**kwargs):  # noqa: C901
     # Map top-level CLI options to backend_kwargs
     backend_kwargs = kwargs.pop("backend_kwargs", {})
     backend_type = kwargs.pop("backend", "openai_http")
-    backend_kwargs["type"] = backend_type
+    backend_kwargs["kind"] = backend_type
     for alias in ("target", "model", "request_format"):
         with contextlib.suppress(KeyError):
             backend_kwargs[alias] = kwargs.pop(alias)

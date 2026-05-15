@@ -181,7 +181,7 @@ class TestOpenAIHTTPBackend:
         args = OpenAIHTTPBackendArgs(target="http://test")
         backend = Backend.create(args)
         assert isinstance(backend, OpenAIHTTPBackend)
-        assert backend.type_ == "openai_http"
+        assert backend.kind == "openai_http"
 
     @pytest.mark.smoke
     def test_initialization_minimal(self):
