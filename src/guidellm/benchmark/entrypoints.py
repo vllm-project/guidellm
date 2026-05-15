@@ -36,14 +36,12 @@ from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
     DataArgs,
     DataEntrypointArgs,
+    DataFinalizerArgs,
     DataLoader,
     DataLoaderArgs,
     DataLoaderRegistry,
-    DatasetFinalizer,
-    DatasetPreprocessor,
-    FinalizerRegistry,
+    DataPreprocessorArgs,
     GenerativeRequestCollator,
-    PreprocessorRegistry,
     ProcessorFactory,
 )
 from guidellm.scheduler import (
@@ -234,14 +232,9 @@ async def resolve_request_loader(
     model: str,
     processor: ProcessorInputT | None,
     processor_args: dict[str, Any] | None,
-    data_column_mapper: (
-        DatasetPreprocessor
-        | dict[str, str | list[str]]
-        | Literal["generative_column_mapper", "pooling_column_mapper"]
-    ),
-    data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
-    data_preprocessors_kwargs: dict[str, Any],
-    data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
+    data_column_mapper: DataPreprocessorArgs,
+    data_preprocessors: list[DataPreprocessorArgs],
+    data_finalizer: DataFinalizerArgs,
     data_collator: Callable | Literal["generative"] | None,
     random_seed: int,
     console: Console | None = None,
@@ -280,32 +273,12 @@ async def resolve_request_loader(
         else None
     )
 
-    # If no type is specified for the data column mapper, load default
-    if isinstance(data_column_mapper, dict) and "type" not in data_column_mapper:
-        data_column_mapper = {
-            "type": BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
-            **data_column_mapper,
-        }
-
-    preprocessors_list: list[DatasetPreprocessor] = [
-        resolve_item_from_registry(
-            DatasetPreprocessor,  # type: ignore [type-abstract]
-            PreprocessorRegistry,
-            preprocessor,
-            data_preprocessors_kwargs,
-        )
-        for preprocessor in ([data_column_mapper] + data_preprocessors)
-    ]
-
-    finalizer_instance = resolve_item_from_registry(
-        DatasetFinalizer,  # type: ignore [type-abstract]
-        FinalizerRegistry,
-        data_finalizer,
-    )
-
+    pre_list: list[DataPreprocessorArgs] = [data_column_mapper] + data_preprocessors
     config = DataEntrypointArgs(
         loader=loader,
         data=data,
+        preprocessors=pre_list,
+        finalizer=data_finalizer,
     )
     request_loader: DataLoader[GenerationRequest] = DataLoaderRegistry.create(
         config=config,
@@ -313,8 +286,6 @@ async def resolve_request_loader(
             processor=processor if processor is not None else model,
             processor_args=processor_args,
         ),
-        preprocessors=preprocessors_list,
-        finalizer=finalizer_instance,
         collator=(
             data_collator if callable(data_collator) else GenerativeRequestCollator()
         ),
@@ -494,7 +465,6 @@ async def benchmark_generative_text(
         processor_args=args.processor_args,
         data_column_mapper=args.data_column_mapper,
         data_preprocessors=args.data_preprocessors,
-        data_preprocessors_kwargs=args.data_preprocessors_kwargs,
         data_finalizer=args.data_finalizer,
         data_collator=args.data_collator,
         random_seed=args.random_seed,

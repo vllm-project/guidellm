@@ -142,7 +142,6 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
 @click.option(
     "--data-column-mapper",
     callback=cli_tools.parse_arguments,
-    default=BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
     help=(
         "JSON string of column mappings to apply to the dataset. "
         'E.g., \'{"column_mappings": {"text_column": "article", '
@@ -152,7 +151,6 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
 @click.option(
     "--data-preprocessors",
     callback=cli_tools.parse_arguments,
-    default=BenchmarkGenerativeTextArgs.get_default("data_preprocessors"),
     multiple=True,
     help=(
         "List of of preprocessors to apply to the dataset. E.g., "
@@ -160,14 +158,8 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     ),
 )
 @click.option(
-    "--data-preprocessors-kwargs",
-    callback=cli_tools.parse_arguments,
-    help="JSON string of arguments to pass to all preprocessors.",
-)
-@click.option(
     "--data-finalizer",
     callback=cli_tools.parse_arguments,
-    default=BenchmarkGenerativeTextArgs.get_default("data_finalizer"),
     help=(
         "JSON string of finalizer to convert dataset rows to requests."
         " E.g., 'generative' or '{\"type\": \"generative\"}'"
@@ -350,10 +342,26 @@ def run(**kwargs):  # noqa: C901
             kwargs["output_dir"] = path.parent
             kwargs["outputs"] = (path.name,)
 
-    # Hardcode pytorch loader for now
+    # NOTE: Hardcode some of the defaults for now
+    # data loader
     loader_args = kwargs.pop("data_loader", {})
     loader_args["kind"] = "pytorch"
     kwargs["data_loader"] = loader_args
+    # column mapper
+    column_mapper = kwargs.pop("data_column_mapper", {})
+    kind = column_mapper.get("kind", "generative_column_mapper")
+    column_mapper["kind"] = kind
+    kwargs["data_column_mapper"] = column_mapper
+    # preprocessors
+    preprocessors = kwargs.pop("data_preprocessors", [])
+    if not preprocessors:
+        preprocessors = [{"kind": "encode_media"}]
+    kwargs["data_preprocessors"] = preprocessors
+    # finalizer
+    finalizer = kwargs.pop("data_finalizer", {})
+    if not finalizer:
+        finalizer = {"kind": "generative"}
+    kwargs["data_finalizer"] = finalizer
 
     # Map top-level CLI options to backend_kwargs
     backend_kwargs = kwargs.pop("backend_kwargs", {})

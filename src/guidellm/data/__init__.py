@@ -16,8 +16,10 @@ from .processor import ProcessorFactory
 from .schemas import (
     DataArgs,
     DataEntrypointArgs,
+    DataFinalizerArgs,
     DataLoaderArgs,
     DataNotSupportedError,
+    DataPreprocessorArgs,
     GenerativeDatasetColumnType,
 )
 
@@ -25,10 +27,12 @@ __all__ = [
     "DataArgs",
     "DataDependentPreprocessor",
     "DataEntrypointArgs",
+    "DataFinalizerArgs",
     "DataLoader",
     "DataLoaderArgs",
     "DataLoaderRegistry",
     "DataNotSupportedError",
+    "DataPreprocessorArgs",
     "DatasetDeserializer",
     "DatasetDeserializerFactory",
     "DatasetFinalizer",

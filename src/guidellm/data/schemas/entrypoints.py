@@ -10,7 +10,9 @@ from guidellm.schemas import PydanticClassRegistryMixin, StandardBaseModel
 __all__ = [
     "DataArgs",
     "DataEntrypointArgs",
+    "DataFinalizerArgs",
     "DataLoaderArgs",
+    "DataPreprocessorArgs",
 ]
 
 
@@ -110,6 +112,88 @@ class DataArgs(
     )
 
 
+class DataPreprocessorArgs(
+    PydanticClassRegistryMixin["DataPreprocessorArgs"],
+    ABC,
+):
+    """
+    Base class for data preprocessor argument models.
+
+    This class serves as a base for defining arguments related to data preprocessing
+    configurations. It inherits from PydanticClassRegistryMixin to enable automatic
+    registration of subclasses, allowing for flexible and extensible data preprocessing
+    configurations.
+
+    :cvar schema_discriminator: Field name for polymorphic deserialization
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        serialize_by_alias=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
+    )
+
+    schema_discriminator: ClassVar[str] = "kind"
+
+    @classmethod
+    def __pydantic_schema_base_type__(cls) -> type[DataPreprocessorArgs]:
+        """
+        Return base type for polymorphic validation hierarchy.
+
+        :return: Base DataPreprocessorArgs class for schema validation
+        """
+        if cls.__name__ == "DataPreprocessorArgs":
+            return cls
+
+        return DataPreprocessorArgs
+
+    kind: str = Field(
+        description="Type identifier for the data preprocessor arguments.",
+    )
+
+
+class DataFinalizerArgs(
+    PydanticClassRegistryMixin["DataFinalizerArgs"],
+    ABC,
+):
+    """
+    Base class for data finalizer argument models.
+
+    This class serves as a base for defining arguments related to data finalization
+    configurations. It inherits from PydanticClassRegistryMixin to enable automatic
+    registration of subclasses, allowing for flexible and extensible data finalization
+    configurations.
+
+    :cvar schema_discriminator: Field name for polymorphic deserialization
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        serialize_by_alias=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
+    )
+
+    schema_discriminator: ClassVar[str] = "kind"
+
+    @classmethod
+    def __pydantic_schema_base_type__(cls) -> type[DataFinalizerArgs]:
+        """
+        Return base type for polymorphic validation hierarchy.
+
+        :return: Base DataFinalizerArgs class for schema validation
+        """
+        if cls.__name__ == "DataFinalizerArgs":
+            return cls
+
+        return DataFinalizerArgs
+
+    kind: str = Field(
+        description="Type identifier for the data finalizer arguments.",
+    )
+
+
 DataLoaderArgsT = TypeVar("DataLoaderArgsT", bound=DataLoaderArgs)
 
 
@@ -127,6 +211,12 @@ class DataEntrypointArgs(StandardBaseModel, Generic[DataLoaderArgsT]):
         description="Configuration for the data loader.",
     )
     data: list[DataArgs] = Field(
-        default_factory=list,
+        min_length=1,
         description="List of data loading argument configurations.",
+    )
+    preprocessors: list[DataPreprocessorArgs] = Field(
+        description="List of data preprocessor argument configurations.",
+    )
+    finalizer: DataFinalizerArgs = Field(
+        description="Configuration for the data finalizer.",
     )

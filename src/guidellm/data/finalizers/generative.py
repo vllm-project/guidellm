@@ -1,23 +1,27 @@
+from __future__ import annotations
+
 from collections.abc import Iterable
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, Literal
 
+from pydantic import Field
+
+from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
+from guidellm.data.schemas import DataFinalizerArgs
 from guidellm.schemas import GenerationRequest, UsageMetrics
-from guidellm.utils.registry import RegistryMixin
 
-DataT_co = TypeVar("DataT_co", covariant=True)
+__all__ = ["GenerativeRequestFinalizer"]
 
 
-@runtime_checkable
-class DatasetFinalizer(Protocol[DataT_co]):
+@DataFinalizerArgs.register("generative")
+class GenerativeRequestFinalizerConfig(DataFinalizerArgs):
     """
-    Protocol for finalizing dataset rows into a desired data type.
+    Configuration for the GenerativeRequestFinalizer.
     """
 
-    def __call__(self, items: list[dict[str, Any]]) -> DataT_co: ...
-
-
-class FinalizerRegistry(RegistryMixin[type[DatasetFinalizer]]):
-    pass
+    kind: Literal["generative"] = Field(
+        default="generative",
+        description="Type identifier for the generative request finalizer.",
+    )
 
 
 @FinalizerRegistry.register("generative")
@@ -26,6 +30,9 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
     Finalizer that converts dataset rows into GenerationRequest objects,
     aggregating usage metrics from the provided columns.
     """
+
+    def __init__(self, config: GenerativeRequestFinalizerConfig) -> None:
+        self.config = config
 
     def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
         return [self.finalize_turn(item) for item in items]

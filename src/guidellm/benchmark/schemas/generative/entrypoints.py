@@ -36,9 +36,9 @@ from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
     DataArgs,
+    DataFinalizerArgs,
     DataLoaderArgs,
-    DatasetFinalizer,
-    DatasetPreprocessor,
+    DataPreprocessorArgs,
 )
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
@@ -191,28 +191,13 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     processor_args: dict[str, Any] | None = Field(
         default=None, description="Additional tokenizer configuration arguments"
     )
-    data_column_mapper: (
-        DatasetPreprocessor
-        | dict[str, Any]
-        | Literal["generative_column_mapper", "pooling_column_mapper"]
-    ) = Field(
-        default="generative_column_mapper",
+    data_column_mapper: DataPreprocessorArgs = Field(
         description="Column mapping preprocessor for dataset fields",
     )
-    data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str] = (
-        Field(
-            default_factory=lambda: [  # type: ignore [arg-type]
-                "encode_media",
-            ],
-            description="List of dataset preprocessors to apply in order",
-        )
+    data_preprocessors: list[DataPreprocessorArgs] = Field(
+        description="List of dataset preprocessors to apply in order",
     )
-    data_preprocessors_kwargs: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Global arguments for data preprocessors",
-    )
-    data_finalizer: DatasetFinalizer | str | dict[str, Any] = Field(
-        default="generative",
+    data_finalizer: DataFinalizerArgs = Field(
         description="Finalizer for preparing data samples into requests",
     )
     data_collator: Callable | Literal["generative"] | None = Field(
@@ -315,31 +300,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
     ) -> str | None:
         """Serialize data_collator to string or None."""
         return data_collator if isinstance(data_collator, str) else None
-
-    @field_serializer("data_column_mapper")
-    def serialize_preprocessor(
-        self,
-        data_preprocessor: (DatasetPreprocessor | dict[str, str | list[str]] | str),
-    ) -> dict | str:
-        """Serialize a preprocessor to dict or string."""
-        return data_preprocessor if isinstance(data_preprocessor, dict | str) else {}
-
-    @field_serializer("data_preprocessors")
-    def serialize_preprocessors(
-        self,
-        data_preprocessors: list[
-            DatasetPreprocessor | dict[str, str | list[str]] | str
-        ],
-    ) -> list[dict | str]:
-        """Serialize each preprocessor to dict or string."""
-        return [self.serialize_preprocessor(p) for p in data_preprocessors]
-
-    @field_serializer("data_finalizer")
-    def serialize_data_request_formatter(
-        self, data_finalizer: DatasetFinalizer | dict[str, Any] | str
-    ) -> dict | str:
-        """Serialize data_request_formatter to dict or string."""
-        return data_finalizer if isinstance(data_finalizer, dict | str) else {}
 
     @field_serializer("output_dir")
     def serialize_output_dir(self, output_dir: str | Path) -> str | None:

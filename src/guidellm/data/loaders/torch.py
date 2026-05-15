@@ -12,9 +12,13 @@ from torch.utils.data.dataset import IterableDataset as TorchIterableDataset
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
-from guidellm.data.finalizers import DatasetFinalizer
+from guidellm.data.finalizers import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.loaders.loader import DataLoader, DataLoaderRegistry
-from guidellm.data.preprocessors import DataDependentPreprocessor, DatasetPreprocessor
+from guidellm.data.preprocessors import (
+    DataDependentPreprocessor,
+    DatasetPreprocessor,
+    PreprocessorRegistry,
+)
 from guidellm.data.schemas import DataArgs, DataEntrypointArgs, DataLoaderArgs
 from guidellm.logger import logger
 from guidellm.utils.mixins import InfoMixin
@@ -175,12 +179,14 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
         self,
         config: DataEntrypointArgs[TorchDataLoaderArgs],
         processor_factory: Callable[[], PreTrainedTokenizerBase],
-        preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
-        finalizer: DatasetFinalizer[DataT],
         collator: Callable,
         random_seed: int = 42,
         **kwargs: Any,
     ):
+        preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor] = [
+            PreprocessorRegistry.create(pre) for pre in config.preprocessors
+        ]
+        finalizer: DatasetFinalizer[DataT] = FinalizerRegistry.create(config.finalizer)
         iterator: DatasetsIterator[DataT] = DatasetsIterator(
             data=config.data,
             data_samples=config.loader.samples,
