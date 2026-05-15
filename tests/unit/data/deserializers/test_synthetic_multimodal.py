@@ -54,6 +54,7 @@ class TestSynthesizeImage:
     @pytest.mark.parametrize("fmt", ["jpeg", "png"])
     @pytest.mark.parametrize("width,height", [(640, 480), (1280, 720), (256, 256)])
     def test_decoded_dims_match(self, fmt: str, width: int, height: int):
+        """## WRITTEN BY AI ##"""
         out = synthesize_image(width, height, image_format=fmt, seed=0, row_index=0)
         decoded = _decode_data_url(out["image"])
         img = Image.open(io.BytesIO(decoded))
@@ -62,24 +63,28 @@ class TestSynthesizeImage:
 
     @pytest.mark.smoke
     def test_image_bytes_match_payload(self):
+        """## WRITTEN BY AI ##"""
         out = synthesize_image(640, 480, seed=0, row_index=0)
         decoded = _decode_data_url(out["image"])
         assert out["image_bytes"] == len(decoded)
 
     @pytest.mark.smoke
     def test_reproducible_same_seed_row_index(self):
+        """## WRITTEN BY AI ##"""
         a = synthesize_image(320, 240, seed=99, row_index=7)
         b = synthesize_image(320, 240, seed=99, row_index=7)
         assert a["image"] == b["image"]
 
     @pytest.mark.smoke
     def test_row_index_changes_payload(self):
+        """## WRITTEN BY AI ##"""
         a = synthesize_image(320, 240, seed=99, row_index=0)
         b = synthesize_image(320, 240, seed=99, row_index=1)
         assert a["image"] != b["image"]
 
     @pytest.mark.sanity
     def test_seed_changes_payload(self):
+        """## WRITTEN BY AI ##"""
         a = synthesize_image(320, 240, seed=1, row_index=0)
         b = synthesize_image(320, 240, seed=2, row_index=0)
         assert a["image"] != b["image"]
@@ -87,6 +92,7 @@ class TestSynthesizeImage:
     @pytest.mark.sanity
     @pytest.mark.parametrize("content", ["gradient", "noise", "solid", "checkerboard"])
     def test_content_modes_produce_valid_images(self, content: str):
+        """## WRITTEN BY AI ##"""
         out = synthesize_image(64, 64, content=content, seed=3, row_index=0)
         decoded = _decode_data_url(out["image"])
         img = Image.open(io.BytesIO(decoded))
@@ -95,7 +101,7 @@ class TestSynthesizeImage:
 
     @pytest.mark.sanity
     def test_byte_uniqueness_gradient_1000_rows(self):
-        """1000 gradient rows with the same seed must all be byte-different."""
+        """1000 gradient rows with the same seed must all be byte-different. ## WRITTEN BY AI ##"""
         hashes = set()
         for i in range(1000):
             out = synthesize_image(128, 128, content="gradient", seed=17, row_index=i)
@@ -104,11 +110,13 @@ class TestSynthesizeImage:
 
     @pytest.mark.regression
     def test_unsupported_format_raises(self):
+        """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError, match="format"):
             synthesize_image(64, 64, image_format="webp", seed=0)
 
     @pytest.mark.regression
     def test_unsupported_content_raises(self):
+        """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError, match="content"):
             synthesize_image(64, 64, content="zebra", seed=0)  # type: ignore[arg-type]
 
@@ -123,6 +131,7 @@ class TestSynthesizeVideo:
     @pytest.mark.parametrize("frames", [4, 6, 12])
     @pytest.mark.parametrize("fps", [1.0, 2.0])
     def test_decoded_frame_count_and_seconds_match(self, frames: int, fps: float):
+        """## WRITTEN BY AI ##"""
         out = synthesize_video(
             320, 240, frames=frames, fps=fps, seed=5, row_index=0
         )
@@ -146,25 +155,28 @@ class TestSynthesizeVideo:
 
     @pytest.mark.smoke
     def test_video_bytes_match_payload(self):
+        """## WRITTEN BY AI ##"""
         out = synthesize_video(320, 240, frames=4, fps=1, seed=5, row_index=0)
         decoded = _decode_data_url(out["video"])
         assert out["video_bytes"] == len(decoded)
 
     @pytest.mark.smoke
     def test_reproducible_same_seed_row_index(self):
+        """## WRITTEN BY AI ##"""
         a = synthesize_video(160, 120, frames=3, fps=1, seed=42, row_index=2)
         b = synthesize_video(160, 120, frames=3, fps=1, seed=42, row_index=2)
         assert a["video"] == b["video"]
 
     @pytest.mark.smoke
     def test_row_index_changes_payload(self):
+        """## WRITTEN BY AI ##"""
         a = synthesize_video(160, 120, frames=3, fps=1, seed=42, row_index=0)
         b = synthesize_video(160, 120, frames=3, fps=1, seed=42, row_index=1)
         assert a["video"] != b["video"]
 
     @pytest.mark.sanity
     def test_byte_uniqueness_gradient_video(self):
-        """200 gradient clips with same seed must all be byte-different."""
+        """200 gradient clips with same seed must all be byte-different. ## WRITTEN BY AI ##"""
         hashes = set()
         for i in range(200):
             out = synthesize_video(
@@ -175,11 +187,13 @@ class TestSynthesizeVideo:
 
     @pytest.mark.regression
     def test_unsupported_format_raises(self):
+        """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError, match="format"):
             synthesize_video(64, 64, frames=2, video_format="webm", seed=0)
 
     @pytest.mark.regression
     def test_unsupported_content_raises(self):
+        """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError, match="content"):
             synthesize_video(64, 64, frames=2, content="solid", seed=0)  # type: ignore[arg-type]
 
@@ -192,12 +206,14 @@ class TestSynthesizeVideo:
 class TestSyntheticImageConfig:
     @pytest.mark.smoke
     def test_resolution_resolves_to_width_height(self):
+        """## WRITTEN BY AI ##"""
         cfg = SyntheticImageDatasetConfig(resolution="720p", text_tokens=50)
         assert cfg.width == 1280
         assert cfg.height == 720
 
     @pytest.mark.sanity
     def test_aspect_ratio_overrides_width(self):
+        """## WRITTEN BY AI ##"""
         cfg = SyntheticImageDatasetConfig(
             resolution="720p", aspect_ratio="4:3", text_tokens=50
         )
@@ -207,6 +223,7 @@ class TestSyntheticImageConfig:
 
     @pytest.mark.sanity
     def test_prompt_tokens_alias_accepted(self):
+        """## WRITTEN BY AI ##"""
         cfg = SyntheticImageDatasetConfig.model_validate(
             {"width": 640, "height": 480, "prompt_tokens": 50}
         )
@@ -214,11 +231,13 @@ class TestSyntheticImageConfig:
 
     @pytest.mark.regression
     def test_missing_dims_raises(self):
+        """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError):
             SyntheticImageDatasetConfig(text_tokens=10)
 
     @pytest.mark.regression
     def test_unknown_resolution_raises(self):
+        """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError, match="resolution"):
             SyntheticImageDatasetConfig(resolution="9000p", text_tokens=10)
 
@@ -231,6 +250,7 @@ class TestSyntheticImageConfig:
 class TestSyntheticImageDeserializer:
     @pytest.mark.smoke
     def test_pull_10_rows_from_data_string(self):
+        """## WRITTEN BY AI ##"""
         d = SyntheticImageDatasetDeserializer()
         ds = d(
             data=(
@@ -263,6 +283,7 @@ class TestSyntheticImageDeserializer:
 
     @pytest.mark.sanity
     def test_factory_dispatch_via_explicit_type(self):
+        """## WRITTEN BY AI ##"""
         ds = DatasetDeserializerFactory.deserialize(
             data=(
                 "type=synthetic_image,width=320,height=240,text_tokens=15,"
@@ -274,6 +295,7 @@ class TestSyntheticImageDeserializer:
 
     @pytest.mark.sanity
     def test_refuses_when_type_mismatch(self):
+        """## WRITTEN BY AI ##"""
         d = SyntheticImageDatasetDeserializer()
         with pytest.raises(DataNotSupportedError):
             d(
@@ -284,6 +306,7 @@ class TestSyntheticImageDeserializer:
 
     @pytest.mark.regression
     def test_images_per_request_emits_indexed_columns(self):
+        """## WRITTEN BY AI ##"""
         d = SyntheticImageDatasetDeserializer()
         ds = d(
             data=(
@@ -305,6 +328,7 @@ class TestSyntheticImageDeserializer:
 class TestSyntheticVideoDeserializer:
     @pytest.mark.smoke
     def test_pull_10_rows_from_data_string(self):
+        """## WRITTEN BY AI ##"""
         d = SyntheticVideoDatasetDeserializer()
         ds = d(
             data=(
@@ -335,6 +359,7 @@ class TestSyntheticVideoDeserializer:
 
     @pytest.mark.sanity
     def test_factory_dispatch_via_explicit_type(self):
+        """## WRITTEN BY AI ##"""
         ds = DatasetDeserializerFactory.deserialize(
             data=(
                 "type=synthetic_video,width=160,height=120,frames=3,fps=1,"
@@ -346,6 +371,7 @@ class TestSyntheticVideoDeserializer:
 
     @pytest.mark.sanity
     def test_refuses_when_type_mismatch(self):
+        """## WRITTEN BY AI ##"""
         d = SyntheticVideoDatasetDeserializer()
         with pytest.raises(DataNotSupportedError):
             d(
@@ -356,6 +382,7 @@ class TestSyntheticVideoDeserializer:
 
     @pytest.mark.smoke
     def test_video_config_via_json(self):
+        """## WRITTEN BY AI ##"""
         cfg = SyntheticVideoDatasetConfig.model_validate(
             {
                 "width": 320,
@@ -378,7 +405,7 @@ class TestSyntheticVideoDeserializer:
 
 @pytest.mark.smoke
 def test_full_dataset_reproducible_with_same_seed():
-    """Two datasets with the same seed must produce identical per-row sha256."""
+    """Two datasets with the same seed must produce identical per-row sha256. ## WRITTEN BY AI ##"""
     d = SyntheticImageDatasetDeserializer()
     common = {
         "data": (
