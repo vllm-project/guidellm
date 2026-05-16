@@ -31,7 +31,7 @@ def is_url(text: Any) -> bool:
     return isinstance(text, str) and text.startswith(("http://", "https://"))
 
 
-def encode_image(
+def encode_image(  # noqa: C901
     image: bytes | str | Path | np.ndarray | PILImage.Image,
     width: int | None = None,
     height: int | None = None,
@@ -331,6 +331,23 @@ def _gradient_frame(
 
     ys = np.linspace(-1.0, 1.0, height, dtype=np.float32).reshape(height, 1)
     xs = np.linspace(-1.0, 1.0, width, dtype=np.float32).reshape(1, width)
+    dx, dy = (
+        np.asarray(
+            PILImage.fromarray(flow, mode="F").resize(
+                (width, height), PILImage.Resampling.BICUBIC
+            ),
+            dtype=np.float32,
+        )
+        for flow in rng.uniform(-1.0, 1.0, size=(2, 16, 16)).astype(np.float32)
+    )
+    sample_xs, sample_ys = np.meshgrid(
+        np.arange(width, dtype=np.float32),
+        np.arange(height, dtype=np.float32),
+    )
+    sample_xs = np.clip(sample_xs + dx * 80.0, 0.0, width - 1)
+    sample_ys = np.clip(sample_ys + dy * 80.0, 0.0, height - 1)
+    xs = (sample_xs / max(width - 1, 1) * 2.0 - 1.0).astype(np.float32)
+    ys = (sample_ys / max(height - 1, 1) * 2.0 - 1.0).astype(np.float32)
     # Project (x, y) onto the random direction, normalize to [0, 1].
     proj = xs * np.cos(angle) + ys * np.sin(angle)
     proj = (proj - proj.min()) / max(proj.max() - proj.min(), 1e-6)
@@ -437,7 +454,10 @@ def synthesize_image(
         )
 
     rng = _row_rng(seed, row_index)
-    arr = _generate_image_array(height, width, content, rng)
+    if content == "gradient":
+        arr = _gradient_frame(height, width, rng)
+    else:
+        arr = _generate_image_array(height, width, content, rng)
     img = PILImage.fromarray(arr, mode="RGB")
 
     buffer = io.BytesIO()
