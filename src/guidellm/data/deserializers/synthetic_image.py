@@ -74,9 +74,9 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
             )
             text = unique + faker.text(max_nb_chars=num_chars)
             token_ids = processor.encode(text)
-        return processor.decode(
-            token_ids[:token_count], skip_special_tokens=True
-        )
+        decoded = processor.decode(token_ids[:token_count], skip_special_tokens=True)
+        assert isinstance(decoded, str)  # noqa: S101
+        return decoded
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
         iter_seed = self.random_seed + self.iteration_count

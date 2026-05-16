@@ -398,7 +398,7 @@ class SyntheticImageDatasetConfig(_SyntheticMultimodalTextMixin):
     model_config = ConfigDict(extra="allow")
 
     @model_validator(mode="after")
-    def _resolve_dimensions(self) -> SyntheticImageDatasetConfig:
+    def _resolve_dimensions(self) -> SyntheticImageDatasetConfig:  # noqa: C901
         # Resolve resolution / aspect_ratio sugar into concrete width/height.
         w = self.width
         h = self.height
@@ -434,8 +434,7 @@ class SyntheticImageDatasetConfig(_SyntheticMultimodalTextMixin):
         self.height = int(h) - (int(h) % 2)
         if self.width <= 0 or self.height <= 0:
             raise ValueError(
-                f"Resolved image dims must be positive, got "
-                f"{self.width}x{self.height}"
+                f"Resolved image dims must be positive, got {self.width}x{self.height}"
             )
         return self
 
@@ -486,7 +485,6 @@ class SyntheticVideoDatasetConfig(_SyntheticMultimodalTextMixin):
         self.height = int(self.height) - (int(self.height) % 2)
         if self.width <= 0 or self.height <= 0:
             raise ValueError(
-                f"Resolved video dims must be positive, got "
-                f"{self.width}x{self.height}"
+                f"Resolved video dims must be positive, got {self.width}x{self.height}"
             )
         return self
