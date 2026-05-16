@@ -31,10 +31,8 @@ from guidellm.extras.vision import synthesize_image, synthesize_video
 def _mock_tokenizer() -> Mock:
     tokenizer = Mock()
     tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
-    tokenizer.decode.side_effect = (
-        lambda tokens, skip_special_tokens=False: " ".join(
-            f"tok_{t}" for t in tokens
-        )
+    tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
+        f"tok_{t}" for t in tokens
     )
     return tokenizer
 
@@ -52,7 +50,7 @@ def _decode_data_url(data_url: str) -> bytes:
 class TestSynthesizeImage:
     @pytest.mark.smoke
     @pytest.mark.parametrize("fmt", ["jpeg", "png"])
-    @pytest.mark.parametrize("width,height", [(640, 480), (1280, 720), (256, 256)])
+    @pytest.mark.parametrize(("width", "height"), [(640, 480), (1280, 720), (256, 256)])
     def test_decoded_dims_match(self, fmt: str, width: int, height: int):
         """## WRITTEN BY AI ##"""
         out = synthesize_image(width, height, image_format=fmt, seed=0, row_index=0)
@@ -101,7 +99,10 @@ class TestSynthesizeImage:
 
     @pytest.mark.sanity
     def test_byte_uniqueness_gradient_1000_rows(self):
-        """1000 gradient rows with the same seed must all be byte-different. ## WRITTEN BY AI ##"""
+        """1000 gradient rows with the same seed must all be byte-different.
+
+        ## WRITTEN BY AI ##
+        """
         hashes = set()
         for i in range(1000):
             out = synthesize_image(128, 128, content="gradient", seed=17, row_index=i)
@@ -132,9 +133,7 @@ class TestSynthesizeVideo:
     @pytest.mark.parametrize("fps", [1.0, 2.0])
     def test_decoded_frame_count_and_seconds_match(self, frames: int, fps: float):
         """## WRITTEN BY AI ##"""
-        out = synthesize_video(
-            320, 240, frames=frames, fps=fps, seed=5, row_index=0
-        )
+        out = synthesize_video(320, 240, frames=frames, fps=fps, seed=5, row_index=0)
         decoded = _decode_data_url(out["video"])
         # Write to temp file and read back via imageio's ffmpeg reader to
         # check decoded frame count and dims.
@@ -143,7 +142,7 @@ class TestSynthesizeVideo:
             path = f.name
         try:
             reader = imageio.get_reader(path, "ffmpeg")
-            decoded_frames = [frame for frame in reader]
+            decoded_frames = [frame for frame in reader]  # noqa: C416
             assert len(decoded_frames) == frames
             assert decoded_frames[0].shape == (240, 320, 3)
             reader.close()
@@ -176,7 +175,10 @@ class TestSynthesizeVideo:
 
     @pytest.mark.sanity
     def test_byte_uniqueness_gradient_video(self):
-        """200 gradient clips with same seed must all be byte-different. ## WRITTEN BY AI ##"""
+        """200 gradient clips with same seed must all be byte-different.
+
+        ## WRITTEN BY AI ##
+        """
         hashes = set()
         for i in range(200):
             out = synthesize_video(
@@ -405,7 +407,10 @@ class TestSyntheticVideoDeserializer:
 
 @pytest.mark.smoke
 def test_full_dataset_reproducible_with_same_seed():
-    """Two datasets with the same seed must produce identical per-row sha256. ## WRITTEN BY AI ##"""
+    """Two datasets with the same seed must produce identical per-row sha256.
+
+    ## WRITTEN BY AI ##
+    """
     d = SyntheticImageDatasetDeserializer()
     common = {
         "data": (

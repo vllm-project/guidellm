@@ -19,7 +19,6 @@ import multiprocessing
 import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import httpx
@@ -122,14 +121,17 @@ def _run_benchmark(
         "--disable-progress",
         "--disable-console-outputs",
     ]
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603
         cmd, capture_output=True, text=True, timeout=180, check=False
     )
 
 
 @pytest.mark.timeout(240)
 def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
-    """A short benchmark on synthetic_image must complete cleanly. ## WRITTEN BY AI ##"""
+    """A short benchmark on synthetic_image must complete cleanly.
+
+    ## WRITTEN BY AI ##
+    """
     result = _run_benchmark(
         base_url=mock_backend,
         data=(
@@ -151,7 +153,10 @@ def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
 
 @pytest.mark.timeout(240)
 def test_synthetic_video_benchmark_against_mock(mock_backend, tmp_path):
-    """A short benchmark on synthetic_video must complete cleanly. ## WRITTEN BY AI ##"""
+    """A short benchmark on synthetic_video must complete cleanly.
+
+    ## WRITTEN BY AI ##
+    """
     result = _run_benchmark(
         base_url=mock_backend,
         data=(
