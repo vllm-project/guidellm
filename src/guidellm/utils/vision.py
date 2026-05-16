@@ -322,8 +322,23 @@ def _gradient_frame(
     color_b = rng.integers(0, 256, size=3, dtype=np.int32)
     angle = float(rng.uniform(0.0, 2.0 * np.pi))
 
-    ys = np.linspace(-1.0, 1.0, height, dtype=np.float32).reshape(height, 1)
-    xs = np.linspace(-1.0, 1.0, width, dtype=np.float32).reshape(1, width)
+    dx, dy = (
+        np.asarray(
+            libs.PILImage.fromarray(flow, mode="F").resize(
+                (width, height), libs.PILImage.Resampling.BICUBIC
+            ),
+            dtype=np.float32,
+        )
+        for flow in rng.uniform(-1.0, 1.0, size=(2, 16, 16)).astype(np.float32)
+    )
+    sample_xs, sample_ys = np.meshgrid(
+        np.arange(width, dtype=np.float32),
+        np.arange(height, dtype=np.float32),
+    )
+    sample_xs = np.clip(sample_xs + dx * 80.0, 0.0, width - 1)
+    sample_ys = np.clip(sample_ys + dy * 80.0, 0.0, height - 1)
+    xs = (sample_xs / max(width - 1, 1) * 2.0 - 1.0).astype(np.float32)
+    ys = (sample_ys / max(height - 1, 1) * 2.0 - 1.0).astype(np.float32)
     proj = xs * np.cos(angle) + ys * np.sin(angle)
     proj = (proj - proj.min()) / max(proj.max() - proj.min(), 1e-6)
     proj = proj[..., None]
