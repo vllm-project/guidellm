@@ -167,7 +167,7 @@ class TestProcessDatasetShortPromptStrategies:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -237,7 +237,7 @@ class TestProcessDatasetShortPromptStrategies:
 
         # Run process_dataset with the `concatenate` strategy
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=short_config,
@@ -311,7 +311,7 @@ class TestProcessDatasetShortPromptStrategies:
 
         # Run process_dataset with pad strategy
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -378,7 +378,7 @@ class TestProcessDatasetShortPromptStrategies:
         # Run process_dataset with error strategy - should raise exception
         with pytest.raises(PromptTooShortError):
             process_dataset(
-                data="test_data",
+                data={"kind": "huggingface", "source": "test_data"},
                 output_path=temp_output_path,
                 processor=tokenizer_mock,
                 config=sample_config_json,
@@ -415,7 +415,7 @@ class TestProcessDatasetColumnNames:
 
         # Run process_dataset without column mapping
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -459,7 +459,7 @@ class TestProcessDatasetColumnNames:
 
         # Run process_dataset with column mapping
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -504,7 +504,7 @@ class TestProcessDatasetColumnNames:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -557,7 +557,7 @@ class TestProcessDatasetColumnNames:
 
         # Run process_dataset without column mapping (should auto-detect 'instruction')
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -600,7 +600,7 @@ class TestProcessDatasetConfigFormats:
         )
         # Run process_dataset with JSON config
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -635,7 +635,7 @@ class TestProcessDatasetConfigFormats:
 
         # Run process_dataset with key-value config
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_key_value,
@@ -676,7 +676,7 @@ class TestProcessDatasetConfigFormats:
 
         # Run process_dataset with JSON file config
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=output_path,
             processor=tokenizer_mock,
             config=str(config_file),
@@ -718,7 +718,7 @@ class TestProcessDatasetConfigFormats:
 
         # Run process_dataset with YAML file config
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=output_path,
             processor=tokenizer_mock,
             config=str(config_file),
@@ -759,7 +759,7 @@ class TestProcessDatasetConfigFormats:
 
         # Run process_dataset with .config file
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=output_path,
             processor=tokenizer_mock,
             config=str(config_file),
@@ -798,7 +798,7 @@ class TestProcessDatasetIntegration:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -853,7 +853,7 @@ class TestProcessDatasetIntegration:
 
         # Run process_dataset with IGNORE strategy
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -894,7 +894,7 @@ class TestProcessDatasetIntegration:
 
         # Run process_dataset with prefix_tokens
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -947,7 +947,7 @@ class TestProcessDatasetIntegration:
 
         # Run process_dataset with include_prefix_in_token_count
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
@@ -1030,7 +1030,7 @@ class TestProcessDatasetIntegration:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1090,7 +1090,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1139,7 +1139,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1185,7 +1185,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1245,7 +1245,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1298,7 +1298,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1360,7 +1360,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1414,7 +1414,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1467,7 +1467,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1517,7 +1517,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset with PAD strategy
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1593,7 +1593,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1651,7 +1651,7 @@ class TestProcessDatasetConfigValidation:
         )
 
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config_small,
@@ -1684,7 +1684,7 @@ class TestProcessDatasetConfigValidation:
         short_dataset = Dataset.from_dict({"prompt": ["A"] * 5})
         mock_deserializer_factory_class.deserialize.return_value = short_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config_min,
@@ -1734,7 +1734,7 @@ class TestProcessDatasetConfigValidation:
 
         # Run process_dataset
         process_dataset(
-            data="test_data",
+            data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1847,7 +1847,7 @@ class TestProcessDatasetPushToHub:
         config = '{"prompt_tokens": 10, "output_tokens": 5}'
 
         process_dataset(
-            data="input",
+            data={"kind": "huggingface", "source": "input"},
             output_path=output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1890,7 +1890,7 @@ class TestProcessDatasetPushToHub:
         config = '{"prompt_tokens": 10, "output_tokens": 5}'
 
         process_dataset(
-            data="input",
+            data={"kind": "huggingface", "source": "input"},
             output_path=output_path,
             processor=tokenizer_mock,
             config=config,
@@ -1963,7 +1963,7 @@ class TestProcessDatasetStrategyHandlerIntegration:
             config = '{"prompt_tokens": 10, "output_tokens": 5}'
 
             process_dataset(
-                data="input",
+                data={"kind": "huggingface", "source": "input"},
                 output_path=output_path,
                 processor=tokenizer_mock,
                 config=config,

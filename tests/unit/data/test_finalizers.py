@@ -12,6 +12,7 @@ from guidellm.data.finalizers import (
     FinalizerRegistry,
     GenerativeRequestFinalizer,
 )
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizerConfig
 from guidellm.schemas import GenerationRequest
 
 
@@ -27,7 +28,7 @@ class TestGenerativeRequestFinalizerTokenAggregation:
 
         ### WRITTEN BY AI ###
         """
-        return GenerativeRequestFinalizer()
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
 
     @pytest.mark.smoke
     def test_finalize_single_turn_prompt_tokens(self, valid_instances):
@@ -116,7 +117,7 @@ class TestGenerativeRequestFinalizerMultimodal:
 
         ### WRITTEN BY AI ###
         """
-        return GenerativeRequestFinalizer()
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
 
     @pytest.mark.sanity
     def test_finalize_multi_value_text_columns(self, valid_instances):
@@ -196,7 +197,7 @@ class TestFinalizerTopLevel:
 
         ### WRITTEN BY AI ###
         """
-        return GenerativeRequestFinalizer()
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
 
     @pytest.mark.smoke
     def test_finalizer_returns_list(self, valid_instances):
@@ -294,7 +295,7 @@ class TestFinalizerRegistry:
 
         ### WRITTEN BY AI ###
         """
-        instance = GenerativeRequestFinalizer()
+        instance = GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
 
         # Should have __call__ method
         assert callable(instance)

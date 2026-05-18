@@ -19,13 +19,19 @@ def minimal_report() -> GenerativeBenchmarksReport:
 
     ## WRITTEN BY AI ##
     """
-    args = BenchmarkGenerativeTextArgs(
-        backend_kwargs={
-            "type": "openai_http",
-            "target": "http://localhost:8000/v1",
-            "model": "test-model",
-        },
-        data=["test_data.jsonl"],
+    args = BenchmarkGenerativeTextArgs.model_validate(
+        {
+            "backend_kwargs": {
+                "kind": "openai_http",
+                "target": "http://localhost:8000/v1",
+                "model": "test-model",
+            },
+            "data": [{"kind": "huggingface", "source": "test_data.jsonl"}],
+            "data_column_mapper": {"kind": "generative_column_mapper"},
+            "data_preprocessors": [],
+            "data_finalizer": {"kind": "generative"},
+            "data_loader": {"kind": "pytorch"},
+        }
     )
     return GenerativeBenchmarksReport(args=args)
 

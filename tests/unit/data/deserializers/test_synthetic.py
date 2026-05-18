@@ -14,14 +14,12 @@ from faker import Faker
 
 from guidellm.data import config as config_module
 from guidellm.data.deserializers.synthetic import (
+    SyntheticTextDataArgs,
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
-)
-from guidellm.data.schemas import (
-    DataNotSupportedError,
-    SyntheticTextDatasetConfig,
     SyntheticTextPrefixBucketConfig,
 )
+from guidellm.data.schemas import DataNotSupportedError
 
 
 class TestPrefixBucketConfig:
@@ -126,7 +124,7 @@ class TestSyntheticDatasetConfig:
             bucket_weight=100, prefix_count=1, prefix_tokens=5
         )
 
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prefix_buckets=[prefix_bucket],
             prompt_tokens=100,
             prompt_tokens_stdev=10,
@@ -136,7 +134,6 @@ class TestSyntheticDatasetConfig:
             output_tokens_stdev=5,
             output_tokens_min=20,
             output_tokens_max=40,
-            source="custom_text.txt",
         )
 
         assert config.prefix_buckets[0].prefix_tokens == 5  # type: ignore [index]
@@ -148,7 +145,6 @@ class TestSyntheticDatasetConfig:
         assert config.output_tokens_stdev == 5
         assert config.output_tokens_min == 20
         assert config.output_tokens_max == 40
-        assert config.source == "custom_text.txt"
 
     @pytest.mark.regression
     def test_parse_json_string(self):
@@ -160,18 +156,16 @@ class TestSyntheticDatasetConfig:
             {
                 "prompt_tokens": 75,
                 "output_tokens": 25,
-                "source": "test.txt",
                 "prefix_buckets": [
                     {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 10}
                 ],
             }
         )
 
-        config = SyntheticTextDatasetConfig.model_validate_json(json_str)
+        config = SyntheticTextDataArgs.model_validate_json(json_str)
 
         assert config.prompt_tokens == 75
         assert config.output_tokens == 25
-        assert config.source == "test.txt"
         assert config.prefix_buckets[0].prefix_tokens == 10  # type: ignore [index]
 
     @pytest.mark.sanity
@@ -181,10 +175,10 @@ class TestSyntheticDatasetConfig:
         ### WRITTEN BY AI ###
         """
         with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(prompt_tokens=0, output_tokens=20)
+            SyntheticTextDataArgs(prompt_tokens=0, output_tokens=20)
 
         with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(prompt_tokens=20, output_tokens=0)
+            SyntheticTextDataArgs(prompt_tokens=20, output_tokens=0)
 
         # Test negative prefix tokens via PrefixBucketConfig validation
         with pytest.raises(ValueError):
@@ -197,17 +191,17 @@ class TestSyntheticDatasetConfig:
         ### WRITTEN BY AI ###
         """
         with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(
+            SyntheticTextDataArgs(
                 prompt_tokens=20, output_tokens=10, prompt_tokens_stdev=-1
             )
 
         with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(
+            SyntheticTextDataArgs(
                 prompt_tokens=20, output_tokens=10, prompt_tokens_min=-1
             )
 
         with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(
+            SyntheticTextDataArgs(
                 prompt_tokens=20, output_tokens=10, output_tokens_max=0
             )
 
@@ -239,10 +233,9 @@ class TestSyntheticTextGenerator:
 
         ### WRITTEN BY AI ###
         """
-        return SyntheticTextDatasetConfig(
+        return SyntheticTextDataArgs(
             prompt_tokens=15,
             output_tokens=10,
-            source="The quick brown fox jumps over the lazy dog.",
         )
 
     @pytest.fixture
@@ -255,11 +248,10 @@ class TestSyntheticTextGenerator:
             bucket_weight=100, prefix_count=1, prefix_tokens=3
         )
 
-        return SyntheticTextDatasetConfig(
+        return SyntheticTextDataArgs(
             prefix_buckets=[prefix_bucket],
             prompt_tokens=15,
             output_tokens=10,
-            source="The quick brown fox jumps over the lazy dog.",
         )
 
     @pytest.mark.smoke
@@ -400,7 +392,6 @@ class TestSyntheticDatasetDeserializer:
         config_data = {
             "prompt_tokens": 60,
             "output_tokens": 15,
-            "source": "yaml_test.txt",
             "prefix_buckets": [
                 {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 3}
             ],
@@ -413,12 +404,11 @@ class TestSyntheticDatasetDeserializer:
         try:
             loaded_config = config_module._load_config_file(
                 yaml_path,
-                SyntheticTextDatasetConfig,
+                SyntheticTextDataArgs,
             )
 
             assert loaded_config.prompt_tokens == 60
             assert loaded_config.output_tokens == 15
-            assert loaded_config.source == "yaml_test.txt"
             assert loaded_config.prefix_buckets[0].prefix_tokens == 3  # type: ignore [index]
         finally:
             Path(yaml_path).unlink()
@@ -444,7 +434,7 @@ class TestSyntheticDatasetDeserializer:
         try:
             loaded_config = config_module._load_config_file(
                 config_path,
-                SyntheticTextDatasetConfig,
+                SyntheticTextDataArgs,
             )
 
             assert loaded_config.prompt_tokens == 90
@@ -462,7 +452,7 @@ class TestSyntheticDatasetDeserializer:
         json_str = '{"prompt_tokens": 50, "output_tokens": 25}'
         loaded_config = config_module._load_config_str(
             json_str,
-            SyntheticTextDatasetConfig,
+            SyntheticTextDataArgs,
         )
 
         assert loaded_config.prompt_tokens == 50
@@ -477,7 +467,7 @@ class TestSyntheticDatasetDeserializer:
         kv_str = "prompt_tokens=50,output_tokens=25"
         loaded_config = config_module._load_config_str(
             kv_str,
-            SyntheticTextDatasetConfig,
+            SyntheticTextDataArgs,
         )
 
         assert loaded_config.prompt_tokens == 50
@@ -492,7 +482,7 @@ class TestSyntheticDatasetDeserializer:
         with pytest.raises(DataNotSupportedError, match="Unsupported string data"):
             config_module._load_config_str(
                 "invalid_format_string",
-                SyntheticTextDatasetConfig,
+                SyntheticTextDataArgs,
             )
 
     @pytest.mark.regression
@@ -503,7 +493,7 @@ class TestSyntheticDatasetDeserializer:
         """
         loaded_config = config_module._load_config_file(
             "/non/existent/path.config",
-            SyntheticTextDatasetConfig,
+            SyntheticTextDataArgs,
         )
         assert loaded_config is None
 
@@ -513,84 +503,25 @@ class TestSyntheticDatasetDeserializer:
 
         ### WRITTEN BY AI ###
         """
-        loaded_config = config_module._load_config_str(123, SyntheticTextDatasetConfig)
+        loaded_config = config_module._load_config_str(123, SyntheticTextDataArgs)
         assert loaded_config is None
 
     @pytest.mark.smoke
     def test_call_with_config_object(self, mock_tokenizer):
-        """Test calling deserializer with SyntheticTextDatasetConfig.
+        """Test calling deserializer with SyntheticTextDataArgs config.
 
         ### WRITTEN BY AI ###
         """
-        config_input = SyntheticTextDatasetConfig(prompt_tokens=50, output_tokens=25)
+        config = SyntheticTextDataArgs(prompt_tokens=50, output_tokens=25)
         deserializer = SyntheticTextDatasetDeserializer()
 
         result = deserializer(
-            data=config_input,
-            data_kwargs={},
+            config=config,
             processor_factory=lambda: mock_tokenizer,
             random_seed=42,
         )
 
         assert isinstance(result, IterableDataset)
-
-    @pytest.mark.regression
-    def test_call_with_unsupported_data(self, mock_tokenizer):
-        """Test calling deserializer with unsupported data raises error.
-
-        ### WRITTEN BY AI ###
-        """
-        deserializer = SyntheticTextDatasetDeserializer()
-
-        with pytest.raises(DataNotSupportedError, match="Unsupported data"):
-            deserializer(
-                data=123,
-                data_kwargs={},
-                processor_factory=lambda: mock_tokenizer,
-                random_seed=42,
-            )
-
-    @pytest.mark.regression
-    def test_call_with_json_string(self, mock_tokenizer):
-        """Test calling deserializer with JSON string.
-
-        ### WRITTEN BY AI ###
-        """
-        json_str = '{"prompt_tokens": 50, "output_tokens": 25}'
-        deserializer = SyntheticTextDatasetDeserializer()
-
-        result = deserializer(
-            data=json_str,
-            data_kwargs={},
-            processor_factory=lambda: mock_tokenizer,
-            random_seed=42,
-        )
-
-        assert isinstance(result, IterableDataset)
-
-    @pytest.mark.regression
-    def test_call_with_config_file(self, mock_tokenizer):
-        """Test calling deserializer with config file.
-
-        ### WRITTEN BY AI ###
-        """
-        config_data = {"prompt_tokens": 65, "output_tokens": 45}
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(config_data, f)
-            config_path = f.name
-
-        try:
-            deserializer = SyntheticTextDatasetDeserializer()
-            result = deserializer(
-                data=config_path,
-                data_kwargs={},
-                processor_factory=lambda: mock_tokenizer,
-                random_seed=42,
-            )
-            assert isinstance(result, IterableDataset)
-        finally:
-            Path(config_path).unlink()
 
 
 class TestSyntheticTextDatasetMultiturn:
@@ -620,7 +551,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=100,
             output_tokens=50,
         )
@@ -633,7 +564,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=100,
             output_tokens=50,
             turns=3,
@@ -649,7 +580,7 @@ class TestSyntheticTextDatasetMultiturn:
         """
         # turns=0 should fail (gt=0 constraint)
         with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(
+            SyntheticTextDataArgs(
                 prompt_tokens=100,
                 output_tokens=50,
                 turns=0,
@@ -657,7 +588,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         # turns=-1 should fail
         with pytest.raises(ValueError):
-            SyntheticTextDatasetConfig(
+            SyntheticTextDataArgs(
                 prompt_tokens=100,
                 output_tokens=50,
                 turns=-1,
@@ -669,7 +600,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=50,
             output_tokens=25,
             turns=1,
@@ -695,7 +626,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=50,
             output_tokens=25,
             turns=3,
@@ -720,7 +651,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=50,
             output_tokens=25,
             turns=3,
@@ -748,7 +679,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=30,
             output_tokens=15,
             turns=2,
@@ -780,7 +711,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=50,
             output_tokens=25,
             turns=4,
@@ -803,7 +734,7 @@ class TestSyntheticTextDatasetMultiturn:
 
         ### WRITTEN BY AI ###
         """
-        config = SyntheticTextDatasetConfig(
+        config = SyntheticTextDataArgs(
             prompt_tokens=50,
             output_tokens=25,
             turns=3,

@@ -1,3 +1,9 @@
+"""
+Unit tests for guidellm.data.deserializers.file module.
+
+### WRITTEN BY AI ###
+"""
+
 import csv
 import io
 from pathlib import Path
@@ -14,6 +20,7 @@ from guidellm.data.deserializers.file import (
     ArrowFileDatasetDeserializer,
     CSVFileDatasetDeserializer,
     DBFileDatasetDeserializer,
+    FileDataArgs,
     HDF5FileDatasetDeserializer,
     JSONFileDatasetDeserializer,
     ParquetFileDatasetDeserializer,
@@ -33,84 +40,72 @@ def processor_factory():
 
 @pytest.mark.sanity
 def test_text_file_deserializer_success(tmp_path):
-    # Arrange: create a temp text file
+    """TextFileDatasetDeserializer reads .txt file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     file_path = tmp_path / "sample.txt"
     file_content = ["hello\n", "world\n"]
     file_path.write_text("".join(file_content))
 
     deserializer = TextFileDatasetDeserializer()
+    config = FileDataArgs(kind="text_file", path=file_path)
 
     dataset = deserializer(
-        data=file_path,
-        processor_factory=processor_factory(),
-        random_seed=123,
+        config=config, processor_factory=processor_factory(), random_seed=123
     )
 
-    # Assert
     assert isinstance(dataset, Dataset)
     assert dataset["text"] == file_content
     assert len(dataset) == 2
 
 
-@pytest.mark.parametrize(
-    "invalid_data",
-    [
-        123,  # Not a path
-        None,  # Not a path
-        {"file": "abc.txt"},  # Wrong type
-    ],
-)
-@pytest.mark.sanity
-def test_text_file_deserializer_invalid_type(invalid_data):
-    deserializer = TextFileDatasetDeserializer()
-
-    with pytest.raises(DataNotSupportedError):
-        deserializer(
-            data=invalid_data,
-            processor_factory=processor_factory(),
-            random_seed=0,
-        )
-
-
 @pytest.mark.sanity
 def test_text_file_deserializer_file_not_exists(tmp_path):
+    """TextFileDatasetDeserializer raises DataNotSupportedError for missing file.
+
+    ### WRITTEN BY AI ###
+    """
     deserializer = TextFileDatasetDeserializer()
-    non_existent_file = tmp_path / "missing.txt"
+    config = FileDataArgs(kind="text_file", path=tmp_path / "missing.txt")
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
-            data=non_existent_file,
-            processor_factory=processor_factory(),
-            random_seed=0,
+            config=config, processor_factory=processor_factory(), random_seed=0
         )
 
 
 @pytest.mark.sanity
 def test_text_file_deserializer_not_a_file(tmp_path):
-    deserializer = TextFileDatasetDeserializer()
+    """TextFileDatasetDeserializer raises DataNotSupportedError for directory.
+
+    ### WRITTEN BY AI ###
+    """
     directory = tmp_path / "folder"
     directory.mkdir()
+    deserializer = TextFileDatasetDeserializer()
+    config = FileDataArgs(kind="text_file", path=directory)
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
-            data=directory,
-            processor_factory=processor_factory(),
-            random_seed=0,
+            config=config, processor_factory=processor_factory(), random_seed=0
         )
 
 
 @pytest.mark.sanity
 def test_text_file_deserializer_invalid_file_extension(tmp_path):
-    deserializer = TextFileDatasetDeserializer()
+    """TextFileDatasetDeserializer raises DataNotSupportedError for wrong extension.
 
+    ### WRITTEN BY AI ###
+    """
     file_path = tmp_path / "data.ttl"
     file_path.write_text("hello")
+    deserializer = TextFileDatasetDeserializer()
+    config = FileDataArgs(kind="text_file", path=file_path)
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
-            data=file_path,
-            processor_factory=processor_factory(),
-            random_seed=0,
+            config=config, processor_factory=processor_factory(), random_seed=0
         )
 
 
@@ -120,25 +115,26 @@ def test_text_file_deserializer_invalid_file_extension(tmp_path):
 
 
 def create_parquet_file(path: Path):
-    # Arrange: to create a minimal parquet file
     table = pa.Table.from_pydict({"text": ["hello", "world"]})
     pq.write_table(table, path)
 
 
 @pytest.mark.sanity
 def test_parquet_file_deserializer_success(tmp_path):
+    """ParquetFileDatasetDeserializer reads .parquet file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     file_path = tmp_path / "sample.parquet"
     create_parquet_file(file_path)
 
     deserializer = ParquetFileDatasetDeserializer()
+    config = FileDataArgs(kind="parquet_file", path=file_path)
 
     dataset = deserializer(
-        data=file_path,
-        processor_factory=processor_factory(),
-        random_seed=42,
+        config=config, processor_factory=processor_factory(), random_seed=42
     )
 
-    # Assert
     assert isinstance(dataset, DatasetDict)
     assert dataset["train"].column_names == ["text"]
     assert dataset["train"]["text"] == ["hello", "world"]
@@ -147,14 +143,16 @@ def test_parquet_file_deserializer_success(tmp_path):
 
 @pytest.mark.sanity
 def test_parquet_file_deserializer_file_not_exists(tmp_path):
+    """ParquetFileDatasetDeserializer raises DataNotSupportedError for missing file.
+
+    ### WRITTEN BY AI ###
+    """
     deserializer = ParquetFileDatasetDeserializer()
-    missing_file = tmp_path / "missing.parquet"
+    config = FileDataArgs(kind="parquet_file", path=tmp_path / "missing.parquet")
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
-            data=missing_file,
-            processor_factory=processor_factory(),
-            random_seed=3,
+            config=config, processor_factory=processor_factory(), random_seed=3
         )
 
 
@@ -164,7 +162,6 @@ def test_parquet_file_deserializer_file_not_exists(tmp_path):
 
 
 def create_csv_file(path: Path):
-    """Helper to create a minimal csv file."""
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["text"])
@@ -175,19 +172,20 @@ def create_csv_file(path: Path):
 
 @pytest.mark.sanity
 def test_csv_file_deserializer_success(tmp_path):
-    # Arrange: create a temp csv file
+    """CSVFileDatasetDeserializer reads .csv file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     file_path = tmp_path / "sample.csv"
     create_csv_file(file_path)
 
     deserializer = CSVFileDatasetDeserializer()
+    config = FileDataArgs(kind="csv_file", path=file_path)
 
     dataset = deserializer(
-        data=file_path,
-        processor_factory=processor_factory(),
-        random_seed=43,
+        config=config, processor_factory=processor_factory(), random_seed=43
     )
 
-    # Assert
     assert isinstance(dataset, DatasetDict)
     assert dataset["train"]["text"] == ["hello world"]
     assert len(["train"]) == 1
@@ -200,20 +198,21 @@ def test_csv_file_deserializer_success(tmp_path):
 
 @pytest.mark.sanity
 def test_json_file_deserializer_success(tmp_path):
-    # Arrange: create a temp json file
+    """JSONFileDatasetDeserializer reads .json file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     file_path = tmp_path / "sample.json"
     file_content = '{"text": "hello world"}\n'
     file_path.write_text("".join(file_content))
 
     deserializer = JSONFileDatasetDeserializer()
+    config = FileDataArgs(kind="json_file", path=file_path)
 
     dataset = deserializer(
-        data=file_path,
-        processor_factory=processor_factory(),
-        random_seed=123,
+        config=config, processor_factory=processor_factory(), random_seed=123
     )
 
-    # Assert
     assert isinstance(dataset, DatasetDict)
     assert dataset["train"]["text"] == ["hello world"]
     assert len(dataset) == 1
@@ -226,7 +225,10 @@ def test_json_file_deserializer_success(tmp_path):
 
 @pytest.mark.sanity
 def test_arrow_file_deserializer_success(monkeypatch, tmp_path):
-    # Arrange: create a temp arrow file
+    """ArrowFileDatasetDeserializer reads .arrow file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     table = pa.Table.from_pydict({"text": ["hello", "world"]})
     file_path = tmp_path / "sample.arrow"
 
@@ -237,14 +239,12 @@ def test_arrow_file_deserializer_success(monkeypatch, tmp_path):
         writer.write_table(table)
 
     deserializer = ArrowFileDatasetDeserializer()
+    config = FileDataArgs(kind="arrow_file", path=file_path)
 
     dataset = deserializer(
-        data=file_path,
-        processor_factory=processor_factory(),
-        random_seed=42,
+        config=config, processor_factory=processor_factory(), random_seed=42
     )
 
-    # assert
     assert isinstance(dataset, DatasetDict)
     assert "train" in dataset
     assert isinstance(dataset["train"], Dataset)
@@ -261,19 +261,21 @@ def test_arrow_file_deserializer_success(monkeypatch, tmp_path):
                 to install hdf5 dependency such as pytables & h5py"
 )
 def test_hdf5_file_deserializer_success(tmp_path):
+    """HDF5FileDatasetDeserializer reads .h5 file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     df_sample = pd.DataFrame({"text": ["hello", "world"]})
     file_path = tmp_path / "sample.h5"
     df_sample.to_hdf(str(file_path), key="data", mode="w", format="fixed")
 
     deserializer = HDF5FileDatasetDeserializer()
+    config = FileDataArgs(kind="hdf5_file", path=file_path)
 
     dataset = deserializer(
-        data=file_path,
-        processor_factory=processor_factory(),
-        random_seed=1,
+        config=config, processor_factory=processor_factory(), random_seed=1
     )
 
-    # assert
     assert isinstance(dataset, Dataset)
     assert dataset.num_rows == 2
     assert dataset["text"] == ["hello", "world"]
@@ -286,6 +288,10 @@ def test_hdf5_file_deserializer_success(tmp_path):
 
 @pytest.mark.sanity
 def test_db_file_deserializer_success(monkeypatch, tmp_path):
+    """DBFileDatasetDeserializer reads .db file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     import sqlite3
 
     def create_sqlite_db(path: Path):
@@ -297,11 +303,9 @@ def test_db_file_deserializer_success(monkeypatch, tmp_path):
         conn.commit()
         conn.close()
 
-    # Arrange: create a valid .db file
     db_path = tmp_path / "sample.db"
     create_sqlite_db(db_path)
 
-    # arrange: mock Dataset.from_sql return one dataset
     mocked_ds = Dataset.from_dict({"text": ["hello", "world"]})
 
     def mock_from_sql(sql, con, **kwargs):
@@ -312,15 +316,16 @@ def test_db_file_deserializer_success(monkeypatch, tmp_path):
     monkeypatch.setattr("datasets.Dataset.from_sql", mock_from_sql)
 
     deserializer = DBFileDatasetDeserializer()
-
-    dataset = deserializer(
-        data=db_path,
-        processor_factory=processor_factory(),
-        random_seed=1,
-        sql="SELECT * FROM samples",
+    config = FileDataArgs(
+        kind="db_file",
+        path=db_path,
+        load_kwargs={"sql": "SELECT * FROM samples"},
     )
 
-    # Assert: result is of type Dataset
+    dataset = deserializer(
+        config=config, processor_factory=processor_factory(), random_seed=1
+    )
+
     assert isinstance(dataset, Dataset)
     assert dataset.num_rows == 2
     assert dataset["text"] == ["hello", "world"]
@@ -334,33 +339,28 @@ def test_db_file_deserializer_success(monkeypatch, tmp_path):
 def create_simple_tar(tar_path: str):
     import tarfile
 
-    # create tar 文件 in write mode
+    content = b"hello world\nthis is a tar file\n"
     with tarfile.open(tar_path, "w") as tar:
-        # write content to be added to the tar file
-        content = b"hello world\nthis is a tar file\n"
-
-        # using BytesIO
         data_stream = io.BytesIO(content)
-
-        # tarinfo: file description info
         info = tarfile.TarInfo(name="sample.txt")
         info.size = len(content)
-
-        # write file to tar archive
         tar.addfile(info, data_stream)
 
 
 @pytest.mark.sanity
 def test_tar_file_deserializer_success(tmp_path):
+    """TarFileDatasetDeserializer reads .tar file into Dataset.
+
+    ### WRITTEN BY AI ###
+    """
     file_path = tmp_path / "sample.tar"
-    create_simple_tar(file_path)
+    create_simple_tar(str(file_path))
 
     deserializer = TarFileDatasetDeserializer()
+    config = FileDataArgs(kind="tar_file", path=file_path)
 
     dataset = deserializer(
-        data=file_path,
-        processor_factory=processor_factory(),
-        random_seed=43,
+        config=config, processor_factory=processor_factory(), random_seed=43
     )
 
     assert isinstance(dataset, DatasetDict)

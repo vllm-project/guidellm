@@ -2,6 +2,7 @@ import pytest
 from datasets import Dataset
 
 from guidellm.data.deserializers.huggingface import (
+    HuggingFaceDataArgs,
     HuggingFaceDatasetDeserializer,
 )
 
@@ -19,7 +20,8 @@ def deserializer():
 def test_hf_dataset_direct_return(deserializer, processor_factory):
     # build one simple HF dataset
     data = Dataset.from_dict({"text": ["hello", "world"]})
-    result = deserializer(data, processor_factory, random_seed=42)
+    config = HuggingFaceDataArgs(source=data)
+    result = deserializer(config, processor_factory, random_seed=42)
     assert result is data, "return original Dataset object"
 
 
@@ -31,8 +33,9 @@ def test_local_hf_directory_dataset(deserializer, processor_factory, tmp_path):
     dataset.save_to_disk(dataset_dir)
 
     # --- 3. call HF DatasetDeserializer  ---
+    config = HuggingFaceDataArgs(source=str(dataset_dir))
     result = deserializer(
-        dataset_dir,
+        config,
         processor_factory,
         random_seed=123,
     )

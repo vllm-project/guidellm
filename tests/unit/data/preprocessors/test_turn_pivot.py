@@ -10,6 +10,7 @@ import pytest
 
 from guidellm.data.preprocessors import TurnPivot
 from guidellm.data.preprocessors.preprocessor import PreprocessorRegistry
+from guidellm.data.preprocessors.turn_pivot import TurnPivotArgs
 
 
 class TestTurnPivot:
@@ -32,7 +33,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
         assert isinstance(preprocessor, TurnPivot)
 
     @pytest.mark.smoke
@@ -42,7 +43,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         # Input: 2 turns, each with 2 batches
         turns = [
@@ -64,7 +65,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"text": ["batch1", "batch2", "batch3"], "count": [1, 2, 3]},
@@ -84,7 +85,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"question": ["Q1"], "answer": ["A1"]},
@@ -110,7 +111,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"prompt": ["P1a", "P1b"], "tokens": [10, 20]},  # 2 batches
@@ -131,7 +132,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"prompt": ["P1a", "P1b"], "system": ["S1a", "S1b"]},  # Has system column
@@ -160,7 +161,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
         result = preprocessor([])
         assert result == []
 
@@ -171,7 +172,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"question": ["What is 2+2?"], "answer": ["4"]},
@@ -189,7 +190,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"prompt": [], "tokens": []},  # Empty turn
@@ -209,7 +210,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"column_a": ["A1", "A2"]},
@@ -230,7 +231,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         num_turns = 100
         num_batches = 50
@@ -259,7 +260,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {
@@ -297,7 +298,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"sequence": ["T1B1", "T1B2", "T1B3"]},
@@ -319,7 +320,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         turns = [
             {"col1": ["val1"], "col2": ["val2"]},
@@ -341,7 +342,7 @@ class TestTurnPivot:
 
         ### WRITTEN BY AI ###
         """
-        preprocessor = TurnPivot()
+        preprocessor = TurnPivot(TurnPivotArgs())
 
         # 3 conversations (batches), each with 2 turns
         turns = [
