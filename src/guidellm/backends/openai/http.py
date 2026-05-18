@@ -413,6 +413,7 @@ class OpenAIHTTPBackend(Backend):
                 end_reached = False
 
                 async for chunk in self._aiter_lines(stream):
+                    stream.raise_for_status()
                     iter_time = time.time()
 
                     if request_info.timings.first_request_iteration is None:
