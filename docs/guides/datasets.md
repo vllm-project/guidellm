@@ -10,7 +10,7 @@ The following arguments can be used to configure datasets and their processing:
 
 - `--data`: Specifies the dataset source. This can be a file path, Hugging Face dataset ID, synthetic data configuration, or in-memory data.
 - `--data-args`: A JSON string or dictionary argument that allows you to control how datasets are parsed and prepared. This includes specific aliases for GuideLLM flows, such as:
-  - `prompt_column`: Specifies the column name for the prompt. By default, GuideLLM will try the most common column names (e.g., `prompt`, `text`, `input`).
+  - `prompt_column`: Specifies the column name for the prompt. By default, GuideLLM will try the most common column names (e.g., `prompt`, `text`, `input`). Datasets may instead provide a `messages` column for full multi-turn chat per request.
   - `prompt_tokens_count_column`: Specifies the column name for the prompt token count. These are used to set the request prompt token count for counting metrics. By default, GuideLLM assumes no token count is provided.
   - `output_tokens_count_column`: Specifies the column name for the output token count. These are used to set the request output token count for the request and counting metrics. By default, GuideLLM assumes no token count is provided.
   - `split`: Specifies the dataset split to use (e.g., `train`, `val`, `test`). By default, GuideLLM will try the most common split names (e.g., `train`, `validation`, `test`) if the dataset has splits, otherwise it will use the entire dataset.
@@ -131,6 +131,11 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"}
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
+- **Multi-turn messages (`.jsonl`)**: When the dataset has a column named `messages` whose value is a list of objects with `role` and `content` (OpenAI-style chat message format), GuideLLM uses that column as the full conversation for each request instead of building a single-turn message from `prefix_column` and `text_column`. Each row represents one request; the column value is the complete message list (e.g. `system`, `user`, `assistant`, `user`). You can combine this with other columns such as `output_tokens_count` (or map a custom name via `--data-column-mapper`). Content may be a string or a list of content parts (e.g. `[{"type": "text", "text": "..."}]`).
+  ```json
+  {"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "What is AI?"}, {"role": "assistant", "content": "AI is..."}, {"role": "user", "content": "Give an example."}], "output_tokens_count": 256}
+  {"messages": [{"role": "user", "content": "Hello."}], "output_tokens_count": 128}
+  ```
 - **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```json
   {
@@ -163,6 +168,7 @@ Where `.ext` can be any of the supported file formats listed above.
 
 - Ensure the file format matches the expected structure for the dataset and is listed as a supported format.
 - The `--data-column-mapper` argument can be used to specify additional parameters for parsing the dataset, such as the prompt column name or the split to use.
+- For multi-turn datasets, a column named `messages` is automatically mapped to `messages_column`; use `--data-column-mapper '{"messages_column": "your_column_name"}'` only if your column has a different name.
 - A processor/tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the processor/tokenizer must be specified using the `--processor` argument. If not set, the processor/tokenizer will be set to the model passed in or retrieved from the server.
 - More information on the supported formats and additional args for the underlying use of `load_dataset` can be found in the [Hugging Face datasets documentation](https://huggingface.co/docs/datasets/en/loading#local-and-remote-files).
 
@@ -312,6 +318,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 
 - `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `text`)
 - `prefix_column`: System prompt or prefix (defaults: `system_prompt`, `system`, `prefix`)
+- `messages_column`: Full multi-turn conversation per request (default: `messages`). When present and valid (list of objects with `role` and `content`), the OpenAI-style request handler uses this as the request body’s `messages` instead of building from `prefix_column` and `text_column`.
 - `prompt_tokens_count_column`: Column containing prompt token counts (defaults: `prompt_tokens_count`, `input_tokens_count`)
 - `output_tokens_count_column`: Column containing output token counts (defaults: `output_tokens_count`, `completion_tokens_count`)
 - `image_column`: Image data column
