@@ -197,31 +197,9 @@ guidellm benchmark run \
 - `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
 - `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths
 
-### Synthetic Multimodal Data
+### Synthetic Visual Data
 
-GuideLLM can synthesize images and short videos on the fly so you can benchmark VLM serving configurations without bringing your own dataset. Two new `--data` types compose with the existing text token controls.
-
-A single 720p image alongside 200 text tokens and 64 output tokens:
-
-```bash
-guidellm benchmark run \
-  --target http://localhost:8000 \
-  --data "type=synthetic_image,resolution=720p,text_tokens=200,output_tokens=64"
-```
-
-A six-frame 480p clip at 1 fps with modest prompt and output budgets:
-
-```bash
-guidellm benchmark run \
-  --target http://localhost:8000 \
-  --data "type=synthetic_video,width=854,height=480,frames=6,fps=1,text_tokens=64,output_tokens=128"
-```
-
-**Key parameters:**
-
-- `--data "type=synthetic_image,..."`: Knobs include `width`, `height`, the `resolution=720p` / `aspect_ratio=16:9` sugar, `format` (`jpeg` or `png`), `jpeg_quality`, `content` (`gradient` default, `noise`, `solid`, `checkerboard`), `images_per_request`, `text_tokens` (with the same `stdev`/`min`/`max` companions as the synthetic text mode), `output_tokens`, and `seed`. `prompt_tokens` is accepted as an alias for `text_tokens`.
-- `--data "type=synthetic_video,..."`: Knobs include `width`, `height`, `frames`, `fps`, `video_bitrate`, `content` (`gradient` default or `noise`), the same `text_tokens` / `output_tokens` fields, and `seed`. `format` is `mp4` (h264, yuv420p) in v1.
-- Defaults pick per-row seeded gradients so every payload is byte-different from the next, which defeats vLLM's multimodal preprocessor cache while still compressing like real media. `noise` is opt-in for worst-case wire sizes; `solid` and `checkerboard` are opt-in for cache-sensitivity sweeps.
+GuideLLM can synthesize images and short videos on the fly so you can benchmark VLM serving configurations without bringing your own dataset. Two `--data` types — `synthetic_image` and `synthetic_video` — compose with the existing text token controls. See [Synthetic Visual Data](docs/guides/multimodal/synthetic_vision.md) for example commands and the full list of configuration options.
 
 ### Request Types and API Targets
 
