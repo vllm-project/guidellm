@@ -345,9 +345,11 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        request_handler, arguments, request_kwargs = (
-            await self._prepare_resolve_request(request, history)
-        )
+        (
+            request_handler,
+            arguments,
+            request_kwargs,
+        ) = await self._prepare_resolve_request(request, history)
 
         if not arguments.stream:
             async for item in self._resolve_non_streaming(
@@ -451,9 +453,7 @@ class OpenAIHTTPBackend(Backend):
         request_info.timings.request_end = time.time()
         response.raise_for_status()
         data = response.json()
-        gen_response = request_handler.compile_non_streaming(
-            request, arguments, data
-        )
+        gen_response = request_handler.compile_non_streaming(request, arguments, data)
         yield gen_response, request_info
         self._check_tool_call_expectations(request, gen_response)
 
