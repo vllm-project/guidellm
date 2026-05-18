@@ -19,7 +19,10 @@ import httpx
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
-from guidellm.backends.openai.request_handlers import OpenAIRequestHandlerFactory
+from guidellm.backends.openai.request_handlers import (
+    OpenAIRequestHandler,
+    OpenAIRequestHandlerFactory,
+)
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
@@ -342,6 +345,40 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
+        request_handler, arguments, request_kwargs = (
+            await self._prepare_resolve_request(request, history)
+        )
+
+        if not arguments.stream:
+            async for item in self._resolve_non_streaming(
+                request, request_info, request_handler, arguments, request_kwargs
+            ):
+                yield item
+            return
+
+        async for item in self._resolve_streaming(
+            request, request_info, request_handler, arguments, request_kwargs
+        ):
+            yield item
+
+    async def _prepare_resolve_request(
+        self,
+        request: GenerationRequest,
+        history: list[tuple[GenerationRequest, GenerationResponse | None]]
+        | None = None,
+    ) -> tuple[
+        OpenAIRequestHandler,
+        GenerationRequestArguments,
+        dict[str, Any],
+    ]:
+        """
+        Build the request handler, format arguments, and prepare HTTP kwargs.
+
+        :param request: Generation request with content and parameters
+        :param history: Optional conversation history for multi-turn requests
+        :return: Tuple of (request_handler, formatted_arguments, http_kwargs)
+        :raises ValueError: If request format is unsupported
+        """
         if (
             request_path := self._args.api_routes.get(self._args.request_format)
         ) is None:
@@ -376,39 +413,75 @@ class OpenAIHTTPBackend(Backend):
         request_json = arguments.body if not request_files else None
         request_data = arguments.body if request_files else None
 
-        if not arguments.stream:
-            request_info.timings.request_start = time.time()
-            response = await self._async_client.request(
-                arguments.method or "POST",
-                request_url,
-                params=arguments.params,
-                headers=self._build_headers(arguments.headers),
-                json=request_json,
-                data=request_data,
-                files=request_files,
-            )
-            request_info.timings.request_end = time.time()
-            response.raise_for_status()
-            data = response.json()
-            gen_response = request_handler.compile_non_streaming(
-                request, arguments, data
-            )
-            yield gen_response, request_info
-            self._check_tool_call_expectations(request, gen_response)
-            return
+        request_kwargs: dict[str, Any] = {
+            "url": request_url,
+            "method": arguments.method or "POST",
+            "params": arguments.params,
+            "headers": self._build_headers(arguments.headers),
+            "json": request_json,
+            "data": request_data,
+            "files": request_files,
+        }
+
+        return request_handler, arguments, request_kwargs
+
+    async def _resolve_non_streaming(
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        request_handler: OpenAIRequestHandler,
+        arguments: GenerationRequestArguments,
+        request_kwargs: dict[str, Any],
+    ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
+        """
+        Handle a non-streaming generation request.
+
+        :param request: The original generation request
+        :param request_info: Request tracking info updated with timing metadata
+        :param request_handler: Handler for compiling the response
+        :param arguments: Formatted request arguments
+        :param request_kwargs: Prepared HTTP request keyword arguments
+        :yields: Single (response, request_info) tuple
+        """
+        if self._async_client is None:
+            raise RuntimeError("Backend not started up for process.")
+
+        request_info.timings.request_start = time.time()
+        response = await self._async_client.request(**request_kwargs)
+        request_info.timings.request_end = time.time()
+        response.raise_for_status()
+        data = response.json()
+        gen_response = request_handler.compile_non_streaming(
+            request, arguments, data
+        )
+        yield gen_response, request_info
+        self._check_tool_call_expectations(request, gen_response)
+
+    async def _resolve_streaming(
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        request_handler: OpenAIRequestHandler,
+        arguments: GenerationRequestArguments,
+        request_kwargs: dict[str, Any],
+    ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
+        """
+        Handle a streaming generation request with progressive timing updates.
+
+        :param request: The original generation request
+        :param request_info: Request tracking info updated with timing metadata
+        :param request_handler: Handler for processing stream lines and compiling
+        :param arguments: Formatted request arguments
+        :param request_kwargs: Prepared HTTP request keyword arguments
+        :yields: Tuples of (response, request_info) as generation progresses
+        """
+        if self._async_client is None:
+            raise RuntimeError("Backend not started up for process.")
 
         try:
             request_info.timings.request_start = time.time()
 
-            async with self._async_client.stream(
-                arguments.method or "POST",
-                request_url,
-                params=arguments.params,
-                headers=self._build_headers(arguments.headers),
-                json=request_json,
-                data=request_data,
-                files=request_files,
-            ) as stream:
+            async with self._async_client.stream(**request_kwargs) as stream:
                 stream.raise_for_status()
                 end_reached = False
 
