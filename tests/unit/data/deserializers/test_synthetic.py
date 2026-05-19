@@ -14,10 +14,12 @@ from faker import Faker
 
 from guidellm.data import config as config_module
 from guidellm.data.deserializers.synthetic import (
+    DEFAULT_SYNTHETIC_TOOLS,
     SyntheticTextDataArgs,
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
     SyntheticTextPrefixBucketConfig,
+    _SyntheticTextExamplesIterable,
 )
 from guidellm.data.schemas import DataNotSupportedError
 
@@ -759,3 +761,362 @@ class TestSyntheticTextDatasetMultiturn:
 
         # These should all be the same for a given sample
         assert output_count_0 == output_count_1 == output_count_2
+
+
+class TestSyntheticTextDatasetConfigToolCallFields:
+    """Validate tool_call_turns and tools fields on SyntheticTextDataArgs.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_defaults_no_tool_calling(self):
+        """Default config has no tool calling enabled.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(prompt_tokens=50, output_tokens=50)
+        assert config.tool_call_turns == []
+        assert config.tools is None
+
+    @pytest.mark.smoke
+    def test_tool_call_turns_less_than_turns(self):
+        """tool_call_turns int is normalized to a list of indices.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=2
+        )
+        assert config.tool_call_turns == [0, 1]
+
+    @pytest.mark.sanity
+    def test_tool_call_turns_equal_to_turns_accepted(self):
+        """tool_call_turns == turns is valid (all turns are tool-call turns).
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=3
+        )
+        assert config.tool_call_turns == [0, 1, 2]
+
+    @pytest.mark.sanity
+    def test_custom_tools_accepted(self):
+        """Custom tools with valid tool_call_turns are accepted.
+
+        ## WRITTEN BY AI ##
+        """
+        custom_tools = [{"type": "function", "function": {"name": "my_func"}}]
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            output_tokens=50,
+            turns=3,
+            tool_call_turns=1,
+            tools=custom_tools,
+        )
+        assert config.tools == custom_tools
+        assert config.tool_call_turns == [0]
+
+    @pytest.mark.smoke
+    def test_list_tool_call_turns_accepted(self):
+        """Explicit list of turn indices is accepted and sorted.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50, output_tokens=50, turns=4, tool_call_turns=[2, 0]
+        )
+        assert config.tool_call_turns == [0, 2]
+
+    @pytest.mark.sanity
+    def test_list_tool_call_turns_validation_out_of_range(self):
+        """List indices must be within [0, turns).
+
+        ## WRITTEN BY AI ##
+        """
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="out of range"):
+            SyntheticTextDataArgs(
+                prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=[0, 3]
+            )
+
+    @pytest.mark.sanity
+    def test_list_tool_call_turns_validation_duplicates(self):
+        """Duplicate indices in the list are rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="duplicates"):
+            SyntheticTextDataArgs(
+                prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=[0, 0]
+            )
+
+    @pytest.mark.sanity
+    def test_int_tool_call_turns_exceeds_turns_rejected(self):
+        """An int greater than turns is rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="out of range"):
+            SyntheticTextDataArgs(
+                prompt_tokens=50, output_tokens=50, turns=2, tool_call_turns=3
+            )
+
+
+class TestSyntheticDataToolColumns:
+    """Verify synthetic data emits tools_{turn} columns for tool_call_turns.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def processor(self):
+        """Minimal mock processor for token encoding/decoding.
+
+        ## WRITTEN BY AI ##
+        """
+        proc = Mock()
+        proc.encode.return_value = list(range(100))
+        proc.decode.return_value = "mock text"
+        return proc
+
+    @pytest.mark.smoke
+    def test_no_tools_columns_when_tool_call_turns_zero(self, processor):
+        """With tool_call_turns=0, no tools columns are emitted.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(prompt_tokens=10, output_tokens=10, turns=3)
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        assert "tools_0" not in row
+        assert "tools_1" not in row
+        assert "tools_2" not in row
+
+    @pytest.mark.smoke
+    def test_tools_columns_emitted_for_tool_call_turns(self, processor):
+        """With tool_call_turns=2 and turns=3, tools_0 and tools_1 are emitted.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        assert "tools_0" in row
+        assert "tools_1" in row
+        assert "tools_2" not in row
+
+        tools_0 = json.loads(row["tools_0"])
+        assert tools_0 == DEFAULT_SYNTHETIC_TOOLS
+
+    @pytest.mark.smoke
+    def test_non_contiguous_tool_call_turns_list(self, processor):
+        """With tool_call_turns=[0, 2] and turns=4, only turns 0 and 2 get tools.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10, output_tokens=10, turns=4, tool_call_turns=[0, 2]
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        assert "tools_0" in row
+        assert "tools_1" not in row
+        assert "tools_2" in row
+        assert "tools_3" not in row
+
+        tools_0 = json.loads(row["tools_0"])
+        assert tools_0 == DEFAULT_SYNTHETIC_TOOLS
+
+    @pytest.mark.sanity
+    def test_custom_tools_used_in_synthetic_data(self, processor):
+        """User-provided tools are used instead of the default placeholder.
+
+        ## WRITTEN BY AI ##
+        """
+        custom_tools = [{"type": "function", "function": {"name": "custom_fn"}}]
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10,
+            output_tokens=10,
+            turns=2,
+            tool_call_turns=1,
+            tools=custom_tools,
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        tools_0 = json.loads(row["tools_0"])
+        assert tools_0 == custom_tools
+
+    @pytest.mark.sanity
+    def test_features_include_tools_columns(self, processor):
+        """Features property includes tools_{i} entries for tool_call_turns.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        features = iterable.features
+
+        assert "tools_0" in features
+        assert "tools_1" in features
+        assert "tools_2" not in features
+
+    @pytest.mark.sanity
+    def test_features_non_contiguous_tool_call_turns(self, processor):
+        """Features property includes tools_{i} only for listed turn indices.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10, output_tokens=10, turns=4, tool_call_turns=[1, 3]
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        features = iterable.features
+
+        assert "tools_0" not in features
+        assert "tools_1" in features
+        assert "tools_2" not in features
+        assert "tools_3" in features
+
+
+class TestSyntheticTextDatasetConfigToolResponseFields:
+    """Validate tool_response_tokens fields on SyntheticTextDataArgs.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_tool_response_tokens_defaults_to_none(self):
+        """Default config has no tool_response_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(prompt_tokens=50, output_tokens=50)
+        assert config.tool_response_tokens is None
+        assert config.tool_response_tokens_stdev is None
+        assert config.tool_response_tokens_min is None
+        assert config.tool_response_tokens_max is None
+
+    @pytest.mark.smoke
+    def test_tool_response_tokens_accepted_with_tool_call_turns(self):
+        """tool_response_tokens is valid when tool_call_turns > 0.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            output_tokens=50,
+            turns=3,
+            tool_call_turns=2,
+            tool_response_tokens=50,
+        )
+        assert config.tool_response_tokens == 50
+
+    @pytest.mark.sanity
+    def test_tool_response_tokens_variance_fields(self):
+        """All variance fields are accepted together.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            output_tokens=50,
+            turns=3,
+            tool_call_turns=2,
+            tool_response_tokens=100,
+            tool_response_tokens_stdev=20,
+            tool_response_tokens_min=50,
+            tool_response_tokens_max=150,
+        )
+        assert config.tool_response_tokens == 100
+        assert config.tool_response_tokens_stdev == 20
+        assert config.tool_response_tokens_min == 50
+        assert config.tool_response_tokens_max == 150
+
+
+class TestSyntheticDataToolResponseColumns:
+    """Verify synthetic data emits tool_response_{turn} columns.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def processor(self):
+        """Minimal mock processor for token encoding/decoding.
+
+        ## WRITTEN BY AI ##
+        """
+        proc = Mock()
+        proc.encode.return_value = list(range(100))
+        proc.decode.return_value = "mock text"
+        return proc
+
+    @pytest.mark.smoke
+    def test_default_tool_response_columns_emitted(self, processor):
+        """When tool_response_tokens is None, placeholder responses are used.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.settings import settings
+
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        assert row["tool_response_0"] == settings.default_synthetic_tool_response
+        assert row["tool_response_1"] == settings.default_synthetic_tool_response
+        assert "tool_response_2" not in row
+
+    @pytest.mark.smoke
+    def test_variable_length_tool_response_columns(self, processor):
+        """When tool_response_tokens is set, generated JSON responses are used.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10,
+            output_tokens=10,
+            turns=3,
+            tool_call_turns=2,
+            tool_response_tokens=30,
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        _, row = next(iter(iterable))
+
+        parsed_0 = json.loads(row["tool_response_0"])
+        parsed_1 = json.loads(row["tool_response_1"])
+        assert "result" in parsed_0
+        assert "result" in parsed_1
+        assert "tool_response_2" not in row
+
+    @pytest.mark.sanity
+    def test_features_include_tool_response_columns(self, processor):
+        """Features property includes tool_response_{i} for tool_call_turns.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
+        )
+        iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
+        features = iterable.features
+
+        assert "tool_response_0" in features
+        assert "tool_response_1" in features
+        assert "tool_response_2" not in features

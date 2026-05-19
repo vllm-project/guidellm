@@ -303,3 +303,74 @@ class TestFinalizerRegistry:
         # Test it works as expected
         result = instance([{"text_column": ["test"]}])
         assert isinstance(result, list)
+
+
+class TestFinalizerExpectsToolCall:
+    """Verify GenerativeRequestFinalizer sets expects_tool_call correctly.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def finalizer(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+
+    @pytest.mark.smoke
+    def test_expects_tool_call_matches_tools_column_presence(self, finalizer):
+        """expects_tool_call is True only on turns that have tools_column.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
+            {"text_column": ["world"]},
+        ]
+        results = finalizer(items)
+
+        assert results[0].expects_tool_call is True
+        assert results[1].expects_tool_call is False
+
+    @pytest.mark.smoke
+    def test_all_turns_with_tools_all_expect_tool_call(self, finalizer):
+        """When every turn has tools_column, every turn expects a tool call.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
+            {"text_column": ["world"], "tools_column": ['[{"type": "function"}]']},
+        ]
+        results = finalizer(items)
+
+        assert results[0].expects_tool_call is True
+        assert results[1].expects_tool_call is True
+
+    @pytest.mark.sanity
+    def test_expects_tool_call_false_without_tools(self, finalizer):
+        """Turns without tools_column have expects_tool_call=False.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {"text_column": ["hello"]},
+            {"text_column": ["world"]},
+        ]
+        results = finalizer(items)
+
+        assert results[0].expects_tool_call is False
+        assert results[1].expects_tool_call is False
+
+    @pytest.mark.sanity
+    def test_single_turn_with_tools_expects_tool_call(self, finalizer):
+        """A single-turn conversation with tools has expects_tool_call=True.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
+        ]
+        results = finalizer(items)
+        assert results[0].expects_tool_call is True

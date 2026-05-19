@@ -807,3 +807,160 @@ class TestOpenAIHTTPBackend:
         assert "max_tokens" not in sent_body  # None value filtered
         assert "top_p" not in sent_body  # None value filtered
         assert "stream" not in sent_body  # None value filtered
+
+
+class TestOpenAIBackendToolCallMissingBehavior:
+    """Validate tool_call_missing_behavior field on the backend.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_default_is_error_stop(self):
+        """Default tool_call_missing_behavior is error_stop.
+
+        ## WRITTEN BY AI ##
+        """
+        args = OpenAIHTTPBackendArgs(target="http://localhost:8000")
+        backend = OpenAIHTTPBackend(args)
+        assert backend._args.tool_call_missing_behavior == "error_stop"
+
+    @pytest.mark.sanity
+    def test_valid_behaviors_accepted(self):
+        """All valid tool_call_missing_behavior values are accepted.
+
+        ## WRITTEN BY AI ##
+        """
+        for behavior in ("ignore_continue", "ignore_stop", "error_stop"):
+            args = OpenAIHTTPBackendArgs(
+                target="http://localhost:8000",
+                tool_call_missing_behavior=behavior,
+            )
+            backend = OpenAIHTTPBackend(args)
+            assert backend._args.tool_call_missing_behavior == behavior
+
+    @pytest.mark.sanity
+    def test_invalid_behavior_rejected(self):
+        """Invalid tool_call_missing_behavior is rejected by the Literal type.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            OpenAIHTTPBackendArgs(
+                target="http://localhost:8000",
+                tool_call_missing_behavior="invalid_mode",
+            )
+
+
+class TestCheckToolCallExpectations:
+    """Verify _check_tool_call_expectations raises the right exceptions.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def _make_backend(self, behavior: str) -> OpenAIHTTPBackend:
+        """
+        ## WRITTEN BY AI ##
+        """
+        args = OpenAIHTTPBackendArgs(
+            target="http://localhost:8000",
+            tool_call_missing_behavior=behavior,
+        )
+        return OpenAIHTTPBackend(args)
+
+    def _make_request(self, expects_tool_call: bool) -> GenerationRequest:
+        """
+        ## WRITTEN BY AI ##
+        """
+        return GenerationRequest(
+            columns={"text_column": ["test"]},
+            expects_tool_call=expects_tool_call,
+        )
+
+    def _make_response(self, has_tool_calls: bool):
+        """
+        ## WRITTEN BY AI ##
+        """
+        from unittest.mock import MagicMock
+
+        from guidellm.schemas.tool_call import (
+            StreamingToolCall,
+            StreamingToolCallFunction,
+        )
+
+        resp = MagicMock()
+        resp.tool_calls = (
+            [
+                StreamingToolCall(
+                    id="call_1",
+                    function=StreamingToolCallFunction(name="fn"),
+                )
+            ]
+            if has_tool_calls
+            else None
+        )
+        return resp
+
+    @pytest.mark.smoke
+    def test_no_op_when_tool_call_present(self):
+        """No exception when the model produced a tool call.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("error_stop")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=True)
+
+        backend._check_tool_call_expectations(req, resp)
+
+    @pytest.mark.smoke
+    def test_no_op_when_not_expecting_tool_call(self):
+        """No exception when the turn doesn't expect a tool call.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("error_stop")
+        req = self._make_request(expects_tool_call=False)
+        resp = self._make_response(has_tool_calls=False)
+
+        backend._check_tool_call_expectations(req, resp)
+
+    @pytest.mark.smoke
+    def test_ignore_continue_raises_nothing(self):
+        """ignore_continue: no exception even when tool call is missing.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("ignore_continue")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=False)
+
+        backend._check_tool_call_expectations(req, resp)
+
+    @pytest.mark.smoke
+    def test_ignore_stop_raises_cancelled_error(self):
+        """ignore_stop: raises CancelledError when tool call is missing.
+
+        ## WRITTEN BY AI ##
+        """
+        import asyncio
+
+        backend = self._make_backend("ignore_stop")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=False)
+
+        with pytest.raises(asyncio.CancelledError, match="tool call"):
+            backend._check_tool_call_expectations(req, resp)
+
+    @pytest.mark.smoke
+    def test_error_stop_raises_value_error(self):
+        """error_stop: raises ValueError when tool call is missing.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = self._make_backend("error_stop")
+        req = self._make_request(expects_tool_call=True)
+        resp = self._make_response(has_tool_calls=False)
+
+        with pytest.raises(ValueError, match="tool call"):
+            backend._check_tool_call_expectations(req, resp)

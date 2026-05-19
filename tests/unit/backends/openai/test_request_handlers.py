@@ -3369,3 +3369,311 @@ class TestEmbeddingsRequestHandler:
             NotImplementedError, match="Embeddings do not support streaming"
         ):
             instance.compile_streaming(request, arguments)
+
+
+class TestChatCompletionsToolChoiceOverride:
+    """Verify tool_choice is overridden to 'none' on non-tool-call turns.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def handler(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        return ChatCompletionsRequestHandler()
+
+    @pytest.mark.smoke
+    def test_tool_choice_none_when_expects_false(self, handler):
+        """When expects_tool_call=False and tools come from dataset, tool_choice='none'.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=False,
+        )
+        extras = {"body": {"tool_choice": "required"}}
+        result = handler.format(data, extras=extras)
+
+        assert result.body["tool_choice"] == "none"
+
+    @pytest.mark.smoke
+    def test_tool_choice_preserved_when_expects_true(self, handler):
+        """When expects_tool_call=True, the configured tool_choice is kept.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=True,
+        )
+        extras = {"body": {"tool_choice": "required"}}
+        result = handler.format(data, extras=extras)
+
+        assert result.body["tool_choice"] == "required"
+
+    @pytest.mark.sanity
+    def test_auto_tool_choice_preserved_when_expects_true(self, handler):
+        """When expects_tool_call=True with auto mode, tool_choice stays 'auto'.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=True,
+        )
+        extras = {"body": {"tool_choice": "auto"}}
+        result = handler.format(data, extras=extras)
+
+        assert result.body["tool_choice"] == "auto"
+
+    @pytest.mark.sanity
+    def test_no_override_without_tools(self, handler):
+        """Without tools in body, no tool_choice override happens.
+
+        ## WRITTEN BY AI ##
+        """
+        data = GenerationRequest(
+            columns={"text_column": ["test"]},
+            expects_tool_call=False,
+        )
+        result = handler.format(data)
+
+        assert "tool_choice" not in result.body
+
+    @pytest.mark.sanity
+    def test_per_request_tools_deserialized_from_json(self, handler):
+        """JSON-serialized tools from synthetic data are deserialized.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        tools = [{"type": "function", "function": {"name": "get_data"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=True,
+        )
+        result = handler.format(data)
+
+        assert result.body["tools"] == tools
+
+    @pytest.mark.smoke
+    def test_max_completion_tokens_stripped_on_tool_call_turn(self, handler):
+        """On tool-call turns, max_completion_tokens is removed so the model
+        can finish producing valid tool call JSON without truncation.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=True,
+            output_metrics=UsageMetrics(text_tokens=100),
+        )
+        result = handler.format(data)
+
+        assert "max_completion_tokens" not in result.body
+        assert "max_tokens" not in result.body
+
+    @pytest.mark.smoke
+    def test_max_completion_tokens_kept_on_plain_text_turn(self, handler):
+        """On the final plain-text turn, max_completion_tokens is preserved.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=False,
+            output_metrics=UsageMetrics(text_tokens=100),
+        )
+        result = handler.format(data)
+
+        assert result.body["max_completion_tokens"] == 100
+
+
+class TestChatCompletionsToolResponseColumn:
+    """Verify request handler uses tool_response_column instead of hardcoded default.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def handler(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        return ChatCompletionsRequestHandler()
+
+    @pytest.mark.smoke
+    def test_uses_tool_response_from_column(self, handler):
+        """Tool response content from tool_response_column is used in history.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+        from unittest.mock import MagicMock
+
+        from guidellm.schemas.tool_call import (
+            StreamingToolCall,
+            StreamingToolCallFunction,
+        )
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        prior_request = GenerationRequest(
+            columns={
+                "text_column": ["call the tool"],
+                "tools_column": [json.dumps(tools)],
+                "tool_response_column": ['{"result": "custom data"}'],
+            },
+            expects_tool_call=True,
+        )
+        prior_response = MagicMock(spec=GenerationResponse)
+        prior_response.tool_calls = [
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(name="fn"),
+            )
+        ]
+        prior_response.text = None
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["now respond"]},
+            expects_tool_call=False,
+        )
+
+        result = handler.format(
+            current_request,
+            history=[(prior_request, prior_response)],
+        )
+
+        tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
+        assert len(tool_messages) == 1
+        assert tool_messages[0]["content"] == '{"result": "custom data"}'
+
+    @pytest.mark.sanity
+    def test_falls_back_to_default_without_column(self, handler):
+        """Without tool_response_column, the default placeholder is used.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+        from unittest.mock import MagicMock
+
+        from guidellm.schemas.tool_call import (
+            StreamingToolCall,
+            StreamingToolCallFunction,
+        )
+        from guidellm.settings import settings
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        prior_request = GenerationRequest(
+            columns={
+                "text_column": ["call the tool"],
+                "tools_column": [json.dumps(tools)],
+            },
+            expects_tool_call=True,
+        )
+        prior_response = MagicMock(spec=GenerationResponse)
+        prior_response.tool_calls = [
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(name="fn"),
+            )
+        ]
+        prior_response.text = None
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["now respond"]},
+            expects_tool_call=False,
+        )
+
+        result = handler.format(
+            current_request,
+            history=[(prior_request, prior_response)],
+        )
+
+        tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
+        assert len(tool_messages) == 1
+        assert tool_messages[0]["content"] == settings.default_synthetic_tool_response
+
+    @pytest.mark.sanity
+    def test_bytes_tool_response_decoded(self, handler):
+        """Tool response content stored as bytes (from orjson) is decoded to str.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+        from unittest.mock import MagicMock
+
+        from guidellm.schemas.tool_call import (
+            StreamingToolCall,
+            StreamingToolCallFunction,
+        )
+
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        prior_request = GenerationRequest(
+            columns={
+                "text_column": ["call the tool"],
+                "tools_column": [json.dumps(tools)],
+                "tool_response_column": [b'{"result": "bytes data"}'],
+            },
+            expects_tool_call=True,
+        )
+        prior_response = MagicMock(spec=GenerationResponse)
+        prior_response.tool_calls = [
+            StreamingToolCall(
+                id="call_1",
+                function=StreamingToolCallFunction(name="fn"),
+            )
+        ]
+        prior_response.text = None
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["now respond"]},
+            expects_tool_call=False,
+        )
+
+        result = handler.format(
+            current_request,
+            history=[(prior_request, prior_response)],
+        )
+
+        tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
+        assert len(tool_messages) == 1
+        assert tool_messages[0]["content"] == '{"result": "bytes data"}'
+        assert isinstance(tool_messages[0]["content"], str)
