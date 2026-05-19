@@ -152,13 +152,12 @@ This benchmark tests Automatic Speech Recognition (ASR) models, such as Whisper,
 
 ```bash
 guidellm benchmark \
-  --target "http://localhost:8000" \
-  --request-type audio_transcriptions \
-  --profile synchronous \
-  --max-requests 20 \
-  --data openslr/librispeech_asr \
-  --data-args "{\"name\": \"clean\", \"split\": \"test\"}" \
-  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
+  --target "http://localhost:8000" \
+  --request-type audio_transcriptions \
+  --profile synchronous \
+  --max-requests 20 \
+  --data ‘{"kind": "huggingface", "data": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}’ \
+  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
 ```
 
 **Key Parameters**
@@ -167,8 +166,7 @@ guidellm benchmark \
 - `--request-type`: Specifies the API endpoint type, here audio_transcriptions for ASR.
 - `--profile`: The load generation profile. synchronous runs requests sequentially.
 - `--max-requests`: Limits the benchmark to 20 total requests.
-- `--data`: The dataset identifier (openslr/librispeech_asr) to load from Hugging Face.
-- `--data-args`: Configuration for the dataset loading, selecting the "clean" config and "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
+- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "clean" config and "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Maps the dataset’s audio column to GuideLLM’s audio_column to ensure correct processing.
 
 The above command benchmarks the audio/transcriptions endpoint on the target server using audio from the LibriSpeech dataset for ASR. It will result in an output similar to the following:
@@ -185,20 +183,20 @@ The above command benchmarks the audio/transcriptions endpoint on the target ser
 
 ℹ Audio Metrics Statistics (Completed Requests)
 |=============|=======|========|========|========|=========|=========|==========|==========|======|=======|======|======|=========|==========|==========|==========|
-| Benchmark   | Input Tokens                  |||| Input Samples                        |||| Input Seconds           |||| Input Bytes                           ||||
-| Strategy    | Per Request   || Per Second     || Per Request      || Per Second         || Per Request || Per Second || Per Request       || Per Second         ||
-|             | Mdn   | p95    | Mdn    | Mean   | Mdn     | p95     | Mdn      | Mean     | Mdn  | p95   | Mdn  | Mean | Mdn     | p95      | Mdn      | Mean     |
+| Benchmark   | Input Tokens                  |||| Input Samples                        |||| Input Seconds           |||| Input Bytes                           ||||
+| Strategy    | Per Request   || Per Second     || Per Request      || Per Second         || Per Request || Per Second || Per Request       || Per Second         ||
+|             | Mdn   | p95    | Mdn    | Mean   | Mdn     | p95     | Mdn      | Mean     | Mdn  | p95   | Mdn  | Mean | Mdn     | p95      | Mdn      | Mean     |
 |-------------|-------|--------|--------|--------|---------|---------|----------|----------|------|-------|------|------|---------|----------|----------|----------|
-| synchronous | 642.0 | 1688.0 | 7565.1 | 7329.1 | 16000.0 | 16000.0 | 129722.1 | 141848.5 | 6.4  | 16.8  | 75.3 | 72.9 | 52172.0 | 135692.0 | 610195.0 | 592749.4 |
+| synchronous | 642.0 | 1688.0 | 7565.1 | 7329.1 | 16000.0 | 16000.0 | 129722.1 | 141848.5 | 6.4  | 16.8  | 75.3 | 72.9 | 52172.0 | 135692.0 | 610195.0 | 592749.4 |
 |=============|=======|========|========|========|=========|=========|==========|==========|======|=======|======|======|=========|==========|==========|==========|
 
 ......
 ......
 
 ✔ Benchmarking complete, generated 1 benchmark(s)
-…   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
-…   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
+…   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
+…   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
+…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```
 
 ### 2. Audio Translation
@@ -209,14 +207,13 @@ This benchmark tests audio translation models like Whisper at converting audio i
 
 ```bash
 guidellm benchmark \
-  --target "http://localhost:8000" \
-  --request-type audio_translations \
-  --request-formatter-kwargs '{"extras": {"body": {"language": "fr"}}}' \
-  --profile synchronous \
-  --max-requests 20 \
-  --data openslr/librispeech_asr \
-  --data-args "{\"name\": \"clean\", \"split\": \"test\"}" \
-  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
+  --target "http://localhost:8000" \
+  --request-type audio_translations \
+  --request-formatter-kwargs '{"extras": {"body": {"language": "fr"}}}' \
+  --profile synchronous \
+  --max-requests 20 \
+  --data '{"kind": "huggingface", "data": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
+  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
 ```
 
 **Key Parameters:**
@@ -226,8 +223,7 @@ guidellm benchmark \
 - `--request-formatter-kwargs`: Injects additional parameters into the request body. Here, it sets the target language to French (fr).
 - `--profile`: synchronous execution mode.
 - `--max-requests`: Limits the test to 20 requests.
-- `--data`: Uses openslr/librispeech_asr as the source.
-- `--data-args`: Selects the "clean" configuration and "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
+- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "clean" config and "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Identifies the audio column for audio processing.
 
 The above command benchmarks the audio/translations endpoint on the target server using audio from the LibriSpeech dataset and requesting translations to French. It will result in an output similar to the following:
@@ -244,20 +240,20 @@ The above command benchmarks the audio/translations endpoint on the target serve
 
 ℹ Audio Metrics Statistics (Completed Requests)
 |=============|=======|========|========|========|=========|=========|==========|==========|======|=======|======|======|=========|==========|==========|==========|
-| Benchmark   | Input Tokens                  |||| Input Samples                        |||| Input Seconds           |||| Input Bytes                           ||||
-| Strategy    | Per Request   || Per Second     || Per Request      || Per Second         || Per Request || Per Second || Per Request       || Per Second         ||
-|             | Mdn   | p95    | Mdn    | Mean   | Mdn     | p95     | Mdn      | Mean     | Mdn  | p95   | Mdn  | Mean | Mdn     | p95      | Mdn      | Mean     |
+| Benchmark   | Input Tokens                  |||| Input Samples                        |||| Input Seconds           |||| Input Bytes                           ||||
+| Strategy    | Per Request   || Per Second     || Per Request      || Per Second         || Per Request || Per Second || Per Request       || Per Second         ||
+|             | Mdn   | p95    | Mdn    | Mean   | Mdn     | p95     | Mdn      | Mean     | Mdn  | p95   | Mdn  | Mean | Mdn     | p95      | Mdn      | Mean     |
 |-------------|-------|--------|--------|--------|---------|---------|----------|----------|------|-------|------|------|---------|----------|----------|----------|
-| synchronous | 642.0 | 1688.0 | 7483.6 | 7563.5 | 16000.0 | 16000.0 | 133404.0 | 146385.0 | 6.4  | 16.8  | 74.5 | 75.2 | 52172.0 | 135692.0 | 603620.5 | 611706.4 |
+| synchronous | 642.0 | 1688.0 | 7483.6 | 7563.5 | 16000.0 | 16000.0 | 133404.0 | 146385.0 | 6.4  | 16.8  | 74.5 | 75.2 | 52172.0 | 135692.0 | 603620.5 | 611706.4 |
 |=============|=======|========|========|========|=========|=========|==========|==========|======|=======|======|======|=========|==========|==========|==========|
 
 ......
 ......
 
 ✔ Benchmarking complete, generated 1 benchmark(s)
-…   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
-…   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
+…   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
+…   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
+…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 
 ```
 
@@ -269,15 +265,13 @@ This benchmark tests models that can handle audio inputs in a conversational for
 
 ```bash
 guidellm benchmark \
-  --target "http://localhost:8000" \
-  --request-type chat_completions \
-  --profile synchronous \
-  --max-requests 20 \
-  --data "prompt_tokens=256,output_tokens=128" \
-  --data-args "{}" \
-  --data openslr/librispeech_asr \
-  --data-args "{\"name\": \"clean\", \"split\": \"test\"}" \
-  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"1.audio\", \"text_column\": \"0.prompt\"}}"
+  --target "http://localhost:8000" \
+  --request-type chat_completions \
+  --profile synchronous \
+  --max-requests 20 \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
+  --data '{"kind": "huggingface", "data": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
+  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"1.audio\", \"text_column\": \"0.prompt\"}}"
 ```
 
 **Key Parameters**
@@ -286,8 +280,7 @@ guidellm benchmark \
 - `--request-type`: chat_completions, supporting multimodal inputs (audio + text).
 - `--profile`: synchronous execution.
 - `--max-requests`: Limits to 20 requests.
-- `--data`: Specified twice: first for synthetic prompt configuration (`prompt_tokens=256,output_tokens=128`), second for real audio from `openslr/librispeech_asr`.
-- `--data-args`: Dataset arguments corresponding to the order of `--data` inputs (empty `{}` for synthetic prompts, LibriSpeech config second).
+- `--data`: Specified twice — first for synthetic prompts (`kind=synthetic_text`), second for real audio from `openslr/librispeech_asr` (`kind=huggingface` with `load_kwargs` for dataset config).
 - `--data-column-mapper`: Maps audio from dataset index 1 (`"1.audio"`, LibriSpeech) and text from dataset index 0 (`"0.prompt"`, synthetic prompts) into each request.
 
 The above command benchmarks the chat/completions endpoint on the target server using the prompt text from the synthetic dataset and audio from the LibriSpeech dataset. It will result in an output similar to the following:
@@ -304,23 +297,23 @@ The above command benchmarks the chat/completions endpoint on the target server 
 
 ℹ Audio Metrics Statistics (Completed Requests)
 |=============|=======|========|========|========|=========|=========|==========|==========|======|=======|======|======|=========|==========|==========|==========|
-| Benchmark   | Input Tokens                  |||| Input Samples                        |||| Input Seconds           |||| Input Bytes                           ||||
-| Strategy    | Per Request   || Per Second     || Per Request      || Per Second         || Per Request || Per Second || Per Request       || Per Second         ||
-|             | Mdn   | p95    | Mdn    | Mean   | Mdn     | p95     | Mdn      | Mean     | Mdn  | p95   | Mdn  | Mean | Mdn     | p95      | Mdn      | Mean     |
+| Benchmark   | Input Tokens                  |||| Input Samples                        |||| Input Seconds           |||| Input Bytes                           ||||
+| Strategy    | Per Request   || Per Second     || Per Request      || Per Second         || Per Request || Per Second || Per Request       || Per Second         ||
+|             | Mdn   | p95    | Mdn    | Mean   | Mdn     | p95     | Mdn      | Mean     | Mdn  | p95   | Mdn  | Mean | Mdn     | p95      | Mdn      | Mean     |
 |-------------|-------|--------|--------|--------|---------|---------|----------|----------|------|-------|------|------|---------|----------|----------|----------|
-| synchronous | 642.0 | 1688.0 | 7565.1 | 7329.1 | 16000.0 | 16000.0 | 129722.1 | 141848.5 | 6.4  | 16.8  | 75.3 | 72.9 | 52172.0 | 135692.0 | 610195.0 | 592749.4 |
+| synchronous | 642.0 | 1688.0 | 7565.1 | 7329.1 | 16000.0 | 16000.0 | 129722.1 | 141848.5 | 6.4  | 16.8  | 75.3 | 72.9 | 52172.0 | 135692.0 | 610195.0 | 592749.4 |
 |=============|=======|========|========|========|=========|=========|==========|==========|======|=======|======|======|=========|==========|==========|==========|
 
 ℹ GuideLLM Request Metrics Statistics (Completed Requests)
 |=============|=======|=======|=======|=======|======|=====|=======|=======|=======|=======|======|=====|=======|=======|=======|=======|======|=====|
-| Benchmark   | Request Latency (ms)          ||||| Output Tokens / Sec          ||||| Time to First Token (ms)      ||||| Time per Output Token (ms)    |||||
-| Strategy    | Mdn   | Mean  | p50   | p90   | p95  | p99 | Mdn   | Mean  | p50   | p90   | p95  | p99 | Mdn   | Mean  | p50   | p90   | p95  | p99 | Mdn   | Mean  | p50   | p90   | p95  | p99 |
+| Benchmark   | Request Latency (ms)          ||||| Output Tokens / Sec          ||||| Time to First Token (ms)      ||||| Time per Output Token (ms)    |||||
+| Strategy    | Mdn   | Mean  | p50   | p90   | p95  | p99 | Mdn   | Mean  | p50   | p90   | p95  | p99 | Mdn   | Mean  | p50   | p90   | p95  | p99 | Mdn   | Mean  | p50   | p90   | p95  | p99 |
 |-------------|-------|-------|-------|-------|------|-----|-------|-------|-------|-------|------|-----|-------|-------|-------|-------|------|-----|-------|-------|-------|-------|------|-----|
-| synchronous | 125.4 | 130.2 | 125.4 | 145.1 | 150.2| 160.5| 45.2  | 44.8  | 45.2  | 42.1  | 41.5 | 40.2| 25.1  | 26.5  | 25.1  | 30.2  | 32.5 | 35.1| 22.1  | 22.3  | 22.1  | 23.7  | 24.1 | 24.8|
+| synchronous | 125.4 | 130.2 | 125.4 | 145.1 | 150.2| 160.5| 45.2  | 44.8  | 45.2  | 42.1  | 41.5 | 40.2| 25.1  | 26.5  | 25.1  | 30.2  | 32.5 | 35.1| 22.1  | 22.3  | 22.1  | 23.7  | 24.1 | 24.8|
 |=============|=======|=======|=======|=======|======|=====|=======|=======|=======|=======|======|=====|=======|=======|=======|=======|======|=====|
 
 ✔ Benchmarking complete, generated 1 benchmark(s)
-…   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
-…   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
+…   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
+…   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
+…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```

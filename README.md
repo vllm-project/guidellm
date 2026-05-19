@@ -94,7 +94,7 @@ podman run \
   -e GUIDELLM_TARGET=http://localhost:8000 \
   -e GUIDELLM_PROFILE=sweep \
   -e GUIDELLM_MAX_SECONDS=30 \
-  -e GUIDELLM_DATA="prompt_tokens=256,output_tokens=128" \
+  -e GUIDELLM_DATA="kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   ghcr.io/vllm-project/guidellm:latest
 ```
 
@@ -117,7 +117,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --profile sweep \
   --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128"
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"
 ```
 
 You will see progress updates and per-benchmark summaries during the run, as given below:
@@ -168,7 +168,7 @@ guidellm benchmark \
   --profile constant \
   --rate 10 \
   --max-seconds 20 \
-  --data "prompt_tokens=128,output_tokens=256"
+  --data "kind=synthetic_text,prompt_tokens=128,output_tokens=256"
 ```
 
 **Key parameters:**
@@ -184,15 +184,13 @@ GuideLLM supports HuggingFace datasets, local files, and synthetic data. This ex
 ```bash
 guidellm benchmark run \
   --target http://localhost:8000 \
-  --data "abisee/cnn_dailymail" \
-  --data-args '{"name": "3.0.0"}' \
+  --data '{"kind": "huggingface", "data": "abisee/cnn_dailymail", "load_kwargs": {"name": "3.0.0"}}' \
   --data-column-mapper '{"column_mappings": {"text_column": "article"}}'
 ```
 
 **Key parameters:**
 
-- `--data`: Data source specification - accepts HuggingFace dataset IDs (prefix with `hf:`), local file paths (`.json`, `.csv`, `.jsonl`, `.txt`), or synthetic data configs (JSON object or `key=value` pairs like `prompt_tokens=256,output_tokens=128`)
-- `--data-args`: Arguments for loading the dataset. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for valid options.
+- `--data`: Data source specification — pass `kind=synthetic_text,prompt_tokens=...,output_tokens=...` for synthetic data, `kind=huggingface,data=DATASET_ID` for HuggingFace datasets (with optional `load_kwargs` for dataset loading args), `kind=json_file,path=...` / `kind=csv_file,path=...` / `kind=text_file,path=...` for local files, or `kind=trace_synthetic,path=...` for trace replay files. Can be specified multiple times for multiple data sources.
 - `--data-column-mapper`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `text_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
 - `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
 - `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths
@@ -205,7 +203,7 @@ You can benchmark chat completions, text completions, or other supported request
 guidellm benchmark \
   --target http://localhost:8000 \
   --request-type chat_completions \
-  --data path/to/data.json
+  --data "kind=json_file,path=path/to/data.json"
 ```
 
 **Key parameters:**
@@ -236,7 +234,7 @@ guidellm benchmark \
   --warmup 0.1 \
   --cooldown 0.1 \
   --max-errors 5 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --detect-saturation
 ```
 

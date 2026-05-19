@@ -67,7 +67,7 @@ GuideLLM can automatically generate multiturn synthetic data using the `turns` p
 To generate multiturn synthetic data, use the `--data` argument with `turns` specified:
 
 ```bash
---data "prompt_tokens=256,output_tokens=128,turns=3"
+--data "kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3"
 ```
 
 This creates a 3-turn conversation where each turn has 256 prompt tokens and requests 128 output tokens.
@@ -79,7 +79,7 @@ You can add system prompts (prefixes) to synthetic conversations using two appro
 **Simple Prefix Configuration:**
 
 ```bash
---data "prompt_tokens=256,output_tokens=128,turns=3,prefix_count=5,prefix_tokens=50"
+--data "kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3,prefix_count=5,prefix_tokens=50"
 ```
 
 This generates 5 unique prefixes of 50 tokens. Every conversation will select one of these 5 at random as the system message.
@@ -90,6 +90,7 @@ For more complex scenarios, use `prefix_buckets` to create weighted distribution
 
 ```bash
 --data '{
+  "kind": "synthetic_text",
   "prompt_tokens": 256,
   "output_tokens": 128,
   "turns": 3,
@@ -162,7 +163,7 @@ guidellm benchmark run \
   --target "http://localhost:8000" \
   --request-format /v1/responses \
   --backend-kwargs '{"server_history": true}' \
-  --data "prompt_tokens=200,output_tokens=100,turns=3"
+  --data "kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3"
 ```
 
 When enabled, GuideLLM sends only the current turn's input and references the previous response by ID. The server reconstructs the full conversation context internally.
@@ -248,8 +249,8 @@ with **TurnPivot** the second turn will be:
 To use TurnPivot in the CLI, specify it as a data preprocessor:
 
 ```bash
---data "dataset0.jsonl" \
---data "dataset1.jsonl" \
+--data "kind=huggingface,data=dataset0.jsonl" \
+--data "kind=huggingface,data=dataset1.jsonl" \
 --data-preprocessors "encode_media,turn_pivot"
 ```
 
@@ -272,7 +273,7 @@ guidellm benchmark run \
   --profile concurrent \
   --rate 6 \
   --max-requests 30 \
-  --data "prompt_tokens=200,output_tokens=100,turns=3"
+  --data "kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3"
 ```
 
 **Key Parameters:**
@@ -301,7 +302,7 @@ guidellm benchmark run \
   --profile constant \
   --rate 2.0 \
   --max-requests 100 \
-  --data "prompt_tokens=150,output_tokens=75,turns=4,prefix_tokens=100"
+  --data "kind=synthetic_text,prompt_tokens=150,output_tokens=75,turns=4,prefix_tokens=100"
 ```
 
 **Key Parameters:**
@@ -331,6 +332,7 @@ guidellm benchmark run \
   --rate 1.5 \
   --max-seconds 60 \
   --data '{
+    "kind": "synthetic_text",
     "prompt_tokens": 180,
     "output_tokens": 90,
     "turns": 3,
@@ -371,7 +373,7 @@ guidellm benchmark run \
   --profile concurrent \
   --rate 10 \
   --max-requests 200 \
-  --data "multiturn_conversations.jsonl"
+  --data "kind=huggingface,data=multiturn_conversations.jsonl"
 ```
 
 **Key Parameters:**
@@ -395,9 +397,9 @@ guidellm benchmark run \
   --profile concurrent \
   --rate 10 \
   --max-requests 150 \
-  --data "prefix_tokens=512,prompt_tokens=128,output_tokens=256" \      # Turn 1
-  --data "prompt_tokens=256,prompt_token_stdev=32,output_tokens=128" \  # Turn 2
-  --data "prompt_tokens=64,output_tokens=128,output_tokens_stdev=16" \  # Turn 3
+  --data "kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256" \      # Turn 1
+  --data "kind=synthetic_text,prompt_tokens=256,prompt_token_stdev=32,output_tokens=128" \  # Turn 2
+  --data "kind=synthetic_text,prompt_tokens=64,output_tokens=128,output_tokens_stdev=16" \  # Turn 3
   --data-preprocessors "turn_pivot"
 ```
 
@@ -439,7 +441,7 @@ Multiturn conversations accumulate conversation history, which increases memory 
 - Token counts grow with each turn as history accumulates
 - Consider the model's context window when configuring the number of turns and token counts
 
-For example, `--data prefix_tokens=50,prompt_tokens=100,output_tokens=200,turns=5` will have:
+For example, `--data "kind=synthetic_text,prefix_tokens=50,prompt_tokens=100,output_tokens=200,turns=5"` will have:
 
 - Turn 1: 150 tokens in; 200 tokens out
 - Turn 2: (150 + 200) + 100 = 450 tokens in; 200 tokens out

@@ -22,7 +22,7 @@ guidellm benchmark \
   --target http://localhost:8000/v1 \
   --model "BAAI/bge-small-en-v1.5" \
   --request-format /v1/embeddings \
-  --data "prompt_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=128" \
   --max-requests 100
 ```
 

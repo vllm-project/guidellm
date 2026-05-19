@@ -115,7 +115,7 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --profile concurrent \
   --rate 16 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --max-seconds 300 \
   --over-saturation '{"enabled": true, "min_seconds": 30, "max_window_seconds": 120}' \
   --outputs json,html
