@@ -173,6 +173,10 @@ When enabled, GuideLLM sends only the current turn's input and references the pr
 - If the server does not support response storage, requests on turn 2+ will fail with an error (typically a 404).
 - This option is only valid with `/v1/responses`. Using it with other request formats raises an error at startup.
 
+## Tool Calling
+
+Multi-turn tool calling is supported as part of multi-turn benchmarks. See the dedicated [Tool Calling Guide](tool_calling.md) for full documentation on server setup, tool definitions, tool choice configuration, and edge cases.
+
 ## The TurnPivot Preprocessor
 
 GuideLLM supports passing multiple `--data` options, each pointing to a separate dataset. If there are matches for the same column type across multiple datasets, they are treated as separate batches. Normally this is useful for layering columns from different datasets within the same request. For example adding a text column from one dataset to another with images or combining multiple normally-distributed synthetic datasets into a multimodal distribution. We can use the **TurnPivot** preprocessor to transpose turn columns and dataset batches.

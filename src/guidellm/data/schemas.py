@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from guidellm.schemas import StandardBaseModel
 
@@ -23,6 +23,8 @@ GenerativeDatasetColumnType = Literal[
     "image_column",
     "video_column",
     "audio_column",
+    "tools_column",
+    "tool_response_column",
 ]
 
 
@@ -150,6 +152,40 @@ class SyntheticTextDatasetConfig(DataConfig):
         gt=0,
         default=1,
     )
+    tool_call_turns: list[int] = Field(
+        description="Which turns should include tool definitions and expect "
+        "tool-call responses. An int N means 'the first N turns'; a list "
+        "of ints specifies explicit 0-based turn indices (e.g. [0, 2]). "
+        "Normalized to a sorted list after validation. "
+        "When 0 or [] (default), no tool calling is configured.",
+        default_factory=list,
+    )
+    tools: list[dict[str, Any]] | None = Field(
+        description="Tool definitions in OpenAI format. When tool_call_turns is "
+        "non-empty and this is None, a static placeholder tool definition is used.",
+        default=None,
+    )
+    tool_response_tokens: int | None = Field(
+        description="Average number of tokens for synthetic tool call responses. "
+        "When None (default), a short placeholder response is used.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_stdev: int | None = Field(
+        description="Standard deviation for tool response token count.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_min: int | None = Field(
+        description="Minimum number of tokens for tool response.",
+        gt=0,
+        default=None,
+    )
+    tool_response_tokens_max: int | None = Field(
+        description="Maximum number of tokens for tool response.",
+        gt=0,
+        default=None,
+    )
 
     model_config = ConfigDict(
         extra="allow",
@@ -159,6 +195,28 @@ class SyntheticTextDatasetConfig(DataConfig):
         description="Buckets for the prefix tokens distribution.",
         default=None,
     )
+
+    @field_validator("tool_call_turns", mode="before")
+    @classmethod
+    def _coerce_tool_call_turns(cls, v: int | list[int]) -> list[int]:
+        """Convert an int N to [0, ..., N-1]; pass lists through sorted."""
+        if isinstance(v, int):
+            if v < 0:
+                raise ValueError("tool_call_turns int must be >= 0")
+            return list(range(v))
+        if len(v) != len(set(v)):
+            raise ValueError("tool_call_turns list must not contain duplicates")
+        return sorted(v)
+
+    @model_validator(mode="after")
+    def _validate_tool_call_turn_indices(self) -> SyntheticTextDatasetConfig:
+        """Ensure all tool_call_turns indices are within [0, turns)."""
+        for idx in self.tool_call_turns:
+            if idx < 0 or idx >= self.turns:
+                raise ValueError(
+                    f"tool_call_turns index {idx} out of range [0, {self.turns})"
+                )
+        return self
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDatasetConfig:

@@ -18,6 +18,8 @@ from more_itertools import roundrobin
 from guidellm.scheduler import HistoryT
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.request import GenerationRequestArguments
+from guidellm.schemas.tool_call import StreamingToolCall, StreamingToolCallFunction
+from guidellm.settings import settings
 from guidellm.utils.imports import json
 from guidellm.utils.registry import RegistryMixin
 
@@ -29,6 +31,8 @@ __all__ = [
     "OpenAIRequestHandlerFactory",
     "PoolingRequestHandler",
     "ResponsesRequestHandler",
+    "StreamingToolCall",
+    "StreamingToolCallFunction",
     "TextCompletionsRequestHandler",
 ]
 
@@ -407,7 +411,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     def __init__(self):
         super().__init__()
+        # Indices seen so far, used to count distinct tool calls
         self.streaming_tool_call_indices: set[int] = set()
+        # Full tool call payloads accumulated across streaming deltas,
+        # keyed by the delta ``index`` field.  Needed for multi-turn tool
+        # calling so the response carries the id/name/arguments of each call.
+        self.streaming_tool_calls: dict[int, StreamingToolCall] = {}
 
     def _format_prompts(
         self, column_data: list[dict[str, Any]], column_type: str
@@ -451,7 +460,95 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return formatted_data
 
-    def format(  # noqa: C901
+    @staticmethod
+    def _build_tool_response_messages(
+        tool_calls: list[StreamingToolCall],
+        tool_response_columns: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Build synthetic ``role: "tool"`` messages for each tool call.
+
+        Uses per-request tool response content from ``tool_response_columns``
+        when available, falling back to
+        :attr:`settings.default_synthetic_tool_response`.
+
+        :param tool_calls: The tool call objects from the prior assistant response.
+        :param tool_response_columns: Per-tool-call response content from the
+            dataset, which may be ``str`` or ``bytes`` (orjson).
+        :return: List of tool-role message dicts ready to append to messages.
+        """
+        messages: list[dict[str, Any]] = []
+        for idx, tc in enumerate(tool_calls):
+            raw_content = (
+                tool_response_columns[idx]
+                if idx < len(tool_response_columns)
+                else settings.default_synthetic_tool_response
+            )
+            # orjson.dumps returns bytes; ensure content is a string.
+            content = (
+                raw_content.decode("utf-8")
+                if isinstance(raw_content, bytes)
+                else raw_content
+            )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": content,
+                }
+            )
+        return messages
+
+    @staticmethod
+    def _apply_tool_call_overrides(
+        body: dict[str, Any],
+        data: GenerationRequest,
+    ) -> None:
+        """Inject tool definitions and constrain the request body for tool calling.
+
+        Handles three concerns:
+
+        1. Deserializes and injects tool definitions from dataset columns.
+        2. Sets ``tool_choice`` to ``"required"`` or ``"none"`` depending on
+           whether the current turn expects a tool call.
+        3. Removes body keys that are incompatible with tool calling
+           (``ignore_eos``, ``stop``, and token-limit keys on tool-call turns).
+
+        :param body: The mutable request body dict being built.
+        :param data: The current generation request.
+        """
+        tools_column = data.columns.get("tools_column", [])
+        if tools_column:
+            tools_value = tools_column[0]
+            # JSON-serialized tool definitions (e.g. from synthetic data
+            # generators that store tools as strings for HuggingFace
+            # Features compatibility).  orjson produces bytes; stdlib
+            # json produces str.
+            if isinstance(tools_value, str | bytes):
+                tools_value = json.loads(tools_value)
+            if isinstance(tools_value, list):
+                body["tools"] = tools_value
+                body.setdefault("tool_choice", "required")
+
+        if "tools" not in body:
+            return
+
+        # Override tool_choice to "none" on turns that don't expect tool calls,
+        # so the model produces a plain text response instead.
+        if not data.expects_tool_call:
+            body["tool_choice"] = "none"
+
+        # Tool calling requires the model to stop naturally after producing
+        # valid JSON; ignore_eos would force generation past that point and
+        # break the server's constrained decoding grammar.
+        # max_completion_tokens would truncate output mid-JSON and corrupt
+        # the arguments sent in conversation history on follow-up turns.
+        if data.expects_tool_call:
+            body.pop("ignore_eos", None)
+            body.pop("stop", None)
+            body.pop("max_completion_tokens", None)
+            body.pop("max_tokens", None)
+
+    def format(  # noqa: C901, PLR0912, PLR0915
         self,
         data: GenerationRequest,
         response: GenerationResponse | None = None,
@@ -461,7 +558,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         Format the chat completion generation request into the appropriate structure.
 
-        :param request: The generation request to format
+        :param data: The generation request to format
+        :param response: Optional prior response for multi-turn history
+        :param history: Prior (request, response) pairs in the conversation
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
@@ -522,17 +621,35 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self._format_prompts(data.columns.get(col, []), col)
             for col in ("text_column", "image_column", "video_column", "audio_column")
         ]
-        if prompts:
-            # Interleave prompt types
-            arguments.body["messages"].append(
-                {"role": "user", "content": list(roundrobin(*prompts))}
-            )
+        user_content = list(roundrobin(*prompts))
+        if user_content:
+            arguments.body["messages"].append({"role": "user", "content": user_content})
 
-        # Add the response to the current prompt if available
-        if response and response.text:
+        # Append the prior assistant response to the message history.
+        # For tool call responses, include the assistant's tool_calls and
+        # synthetic tool result messages so the model sees the full
+        # multi-turn exchange.  For plain text responses, just add content.
+        if response and response.tool_calls:
+            arguments.body["messages"].append(
+                {
+                    "role": "assistant",
+                    "content": response.text,
+                    "tool_calls": [tc.model_dump() for tc in response.tool_calls],
+                }
+            )
+            tool_response_columns = data.columns.get("tool_response_column", [])
+            arguments.body["messages"].extend(
+                self._build_tool_response_messages(
+                    response.tool_calls, tool_response_columns
+                )
+            )
+        elif response and response.text:
             arguments.body["messages"].append(
                 {"role": "assistant", "content": response.text}
             )
+
+        # Inject tool definitions and apply tool-call-specific overrides.
+        self._apply_tool_call_overrides(arguments.body, data)
 
         return arguments
 
@@ -549,6 +666,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         structure specific to chat completion endpoints.
 
         :param request: Original generation request
+        :param arguments: The request arguments that were sent
         :param response: Complete API response containing choices and usage data
         :return: Standardized GenerationResponse with extracted content and metrics
         """
@@ -560,7 +678,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if text is None and not raw_tool_calls:
             text = ""  # Edge case: null content and no tools
         input_metrics, output_metrics = self.extract_metrics(usage, text)
+
+        tool_calls: list[StreamingToolCall] | None = None
         if raw_tool_calls:
+            tool_calls = [StreamingToolCall.model_validate(tc) for tc in raw_tool_calls]
             output_metrics.tool_call_count = len(raw_tool_calls)
             if text is None:  # tool-only turn
                 output_metrics.tool_call_tokens = output_metrics.text_tokens
@@ -572,6 +693,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
+            tool_calls=tool_calls,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -602,17 +724,45 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self.streaming_texts.append(content)
             updated = True
 
-        # tool_calls is an optional field for when the server is requesting a tool
+        # Accumulate streamed tool_calls deltas.  Each tool call may be split
+        # across multiple chunks; we reassemble by ``index``.
         for tc_delta in delta.get("tool_calls", []):
-            # Keep track of the index to properly count tool usage, since a tool call
-            # can be split into multiple chunks when streaming.
-            self.streaming_tool_call_indices.add(tc_delta["index"])
+            self._accumulate_tool_call_delta(tc_delta)
             updated = True
 
         if usage:
             self.streaming_usage = usage
 
         return 1 if updated else 0
+
+    def _accumulate_tool_call_delta(self, tc_delta: dict[str, Any]) -> None:
+        """Merge a single streaming tool_call delta into accumulated state.
+
+        Each tool call is split across multiple SSE chunks.  This method
+        creates or updates the :class:`StreamingToolCall` entry keyed by the
+        delta's ``index`` field.
+
+        :param tc_delta: A single element from the ``tool_calls`` array in a
+            streaming chat completion delta.
+        """
+        idx = tc_delta["index"]
+        self.streaming_tool_call_indices.add(idx)
+
+        if idx not in self.streaming_tool_calls:
+            self.streaming_tool_calls[idx] = StreamingToolCall(
+                id=tc_delta.get("id", ""),
+                type=tc_delta.get("type", "function"),
+            )
+
+        tc = self.streaming_tool_calls[idx]
+        fn_delta = tc_delta.get("function", {})
+
+        if fn_id := tc_delta.get("id"):
+            tc.id = fn_id
+        if fn_name := fn_delta.get("name"):
+            tc.function.name += fn_name
+        if fn_args := fn_delta.get("arguments"):
+            tc.function.arguments += fn_args
 
     def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
@@ -635,11 +785,18 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             else:  # mixed content + tool call turn
                 output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
+        tool_calls: list[StreamingToolCall] | None = None
+        if self.streaming_tool_calls:
+            tool_calls = [
+                self.streaming_tool_calls[i] for i in sorted(self.streaming_tool_calls)
+            ]
+
         return GenerationResponse(
             request_id=request.request_id,
             request_args=arguments.model_dump_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
+            tool_calls=tool_calls,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )

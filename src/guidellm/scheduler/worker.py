@@ -426,6 +426,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self._send_update("cancelled", response, request, request_info)
             raise
         except Exception as exc:  # noqa: BLE001
+            premature_exit = True
             if request is not None and request_info is not None:
                 request_info.error = repr(exc)
                 request_info.traceback = traceback.format_exc()

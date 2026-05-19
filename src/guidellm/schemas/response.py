@@ -15,8 +15,13 @@ from guidellm.schemas.base import StandardBaseModel
 from guidellm.schemas.info import RequestInfo
 from guidellm.schemas.request import GenerationRequest, UsageMetrics
 from guidellm.schemas.request_stats import GenerativeRequestStats
+from guidellm.schemas.tool_call import StreamingToolCall, StreamingToolCallFunction
 
-__all__ = ["GenerationResponse"]
+__all__ = [
+    "GenerationResponse",
+    "StreamingToolCall",
+    "StreamingToolCallFunction",
+]
 
 
 class GenerationResponse(StandardBaseModel):
@@ -24,8 +29,8 @@ class GenerationResponse(StandardBaseModel):
     Response model for backend generation operations.
 
     Captures the output and metrics from a generation request, providing structured
-    data for text output, token usage statistics, and compilation of detailed
-    request statistics for analysis and monitoring purposes.
+    data for text output, tool call payloads, token usage statistics, and compilation
+    of detailed request statistics for analysis and monitoring purposes.
 
     Example:
     ::
@@ -51,6 +56,13 @@ class GenerationResponse(StandardBaseModel):
     text: str | None = Field(
         default=None,
         description="The generated response text.",
+    )
+    tool_calls: list[StreamingToolCall] | None = Field(
+        default=None,
+        description=(
+            "Raw tool call payloads from the model response, each containing "
+            "id, type, and function (name + arguments) in OpenAI format."
+        ),
     )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
@@ -115,6 +127,7 @@ class GenerationResponse(StandardBaseModel):
             response_id=self.response_id,
             request_args=self.request_args,
             output=self.text,
+            tool_calls=self.tool_calls,
             info=info,
             input_metrics=UsageMetrics(**input_metrics_dict),
             output_metrics=UsageMetrics(**output_metrics_dict),
