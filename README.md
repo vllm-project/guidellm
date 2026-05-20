@@ -57,7 +57,7 @@ This section summarizes the newest capabilities available to users and outlines 
 
 **Active Development**
 
-- Generation of synthetic multimodal datasets for controlled experimentation across images, audio, and video.
+- Generation of synthetic audio datasets for controlled experimentation; synthetic image and video generation are now supported (see Synthetic Multimodal Data below).
 - Extended prefixing options for testing system-prompt and user-prompt variations.
 - Multi-turn conversation capabilities for benchmarking chat agents and dialogue systems.
 - Speculative decoding specific views and outputs.
@@ -196,6 +196,10 @@ guidellm benchmark run \
 - `--data-column-mapper`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `text_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
 - `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
 - `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths
+
+### Synthetic Visual Data
+
+GuideLLM can synthesize images and short videos on the fly so you can benchmark VLM serving configurations without bringing your own dataset. Two `--data` types — `synthetic_image` and `synthetic_video` — compose with the existing text token controls. See [Synthetic Visual Data](docs/guides/multimodal/synthetic_vision.md) for example commands and the full list of configuration options.
 
 ### Request Types and API Targets
 

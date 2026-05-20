@@ -49,4 +49,12 @@ Ensure you have a running inference server and model compatible with the OpenAI 
 
   [:octicons-arrow-right-24: Audio Guide](audio.md)
 
+- :material-image-multiple-outline:{ .lg .middle } Synthetic Vision
+
+  ______________________________________________________________________
+
+  Generate images and short videos on the fly to benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Covers the `synthetic_image` and `synthetic_video` `--data` types.
+
+  [:octicons-arrow-right-24: Synthetic Vision Guide](synthetic_vision.md)
+
 </div>
