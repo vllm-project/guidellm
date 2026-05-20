@@ -66,7 +66,7 @@ guidellm benchmark run \
   --data "type=synthetic_video,width=854,height=480,frames=6,fps=1,text_tokens=64,output_tokens=128"
 ```
 
-A twelve-frame 720p clip at 3 fps with a wire-size pin:
+A twelve-frame 720p clip at 3 fps with an explicit h264 target bitrate:
 
 ```bash
 guidellm benchmark run \
@@ -80,7 +80,7 @@ guidellm benchmark run \
 - `height`: Height of the generated video in pixels. The same `resolution` / `aspect_ratio` shorthands as for synthetic image apply.
 - `frames`: Number of frames in the clip.
 - `fps`: Frames per second. Combined with `frames`, this also determines the clip duration.
-- `video_bitrate`: Optional h264 target bitrate (e.g. `1M`, `500k`) — useful when wire size needs to be pinned across runs.
+- `video_bitrate`: Optional h264 target bitrate (e.g. `1M`, `500k`) — useful when you want to specify a fixed wire size across runs.
 - `content`: Per-row clip content. `gradient` (default) emits a seeded gradient with a coordinate warp so each clip compresses similarly to real video; `noise` emits uniform random pixels for worst-case wire size.
 - `text_tokens`: Average number of tokens in the accompanying text prompt; same `stdev` / `min` / `max` suffixes as synthetic image. `prompt_tokens` is accepted as an alias.
 - `output_tokens`: Average number of tokens the model should generate; same `stdev` / `min` / `max` suffixes apply.
@@ -90,4 +90,4 @@ guidellm benchmark run \
 
 - A processor/tokenizer is required for the text portion of the request. By default the model passed in or retrieved from the server is used; otherwise specify one with `--processor`.
 - Per-row seeded gradients produce byte-different payloads on every request, which bypasses vLLM's multimodal preprocessor cache. If you want to deliberately hit the cache, set `content=solid` or pin a fixed `seed` and `samples`.
-- Reproducibility of exact mp4 bytes depends on the installed `ffmpeg` and `PIL` versions. Pin via the lockfile if you compare runs across machines.
+- The exact mp4 bytes produced for a given seed depend on the installed `ffmpeg` and `PIL` versions. Output token counts and request shape stay stable across versions, but if you are comparing byte-level outputs or wire-size measurements across machines, expect small variation.

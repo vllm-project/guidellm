@@ -69,8 +69,12 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
             text = unique + faker.text(max_nb_chars=num_chars)
             token_ids = processor.encode(text)
         decoded = processor.decode(token_ids[:token_count], skip_special_tokens=True)
-        assert isinstance(decoded, str)  # noqa: S101
-        return decoded
+        if isinstance(decoded, str):
+            return decoded
+        raise RuntimeError(
+            "Processor.decode returned a non-string value while generating "
+            "synthetic video prompt text."
+        )
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
         iter_seed = self.random_seed + self.iteration_count
