@@ -16,8 +16,8 @@ from guidellm.schemas import (
     RequestInfo,
     RequestTimings,
     StandardBaseModel,
-    StreamingToolCall,
-    StreamingToolCallFunction,
+    ToolCall,
+    ToolCallFunction,
     UsageMetrics,
 )
 
@@ -216,9 +216,9 @@ class TestGenerationResponse:
         ## WRITTEN BY AI ##
         """
         tool_calls = [
-            StreamingToolCall(
+            ToolCall(
                 id="call_1",
-                function=StreamingToolCallFunction(
+                function=ToolCallFunction(
                     name="get_weather", arguments='{"city": "NYC"}'
                 ),
             )
@@ -330,9 +330,9 @@ class TestGenerativeRequestStatsToolCalls:
         ## WRITTEN BY AI ##
         """
         tool_calls = [
-            StreamingToolCall(
+            ToolCall(
                 id="call_1",
-                function=StreamingToolCallFunction(name="fn", arguments="{}"),
+                function=ToolCallFunction(name="fn", arguments="{}"),
             )
         ]
         tool_calls_dicts = [

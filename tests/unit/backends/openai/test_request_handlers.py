@@ -1264,15 +1264,15 @@ class TestChatCompletionsRequestHandler:
         assert response.output_metrics.tool_call_count is None
 
     @pytest.mark.smoke
-    def test_initialization_has_streaming_tool_call_indices(self, valid_instances):
+    def test_initialization_has_streaming_tool_calls(self, valid_instances):
         """
-        Test ChatCompletionsRequestHandler initializes streaming_tool_call_indices.
+        Test ChatCompletionsRequestHandler initializes streaming_tool_calls.
 
         ## WRITTEN BY AI ##
         """
         instance = valid_instances
-        assert hasattr(instance, "streaming_tool_call_indices")
-        assert instance.streaming_tool_call_indices == set()
+        assert hasattr(instance, "streaming_tool_calls")
+        assert instance.streaming_tool_calls == {}
 
 
 class TestAudioRequestHandler:
@@ -2621,6 +2621,154 @@ class TestResponsesRequestHandler:
         assert len(input_items) == 1
         assert input_items[0]["role"] == "user"
 
+    @pytest.mark.sanity
+    def test_format_with_server_history_tool_calls(self, valid_instances):
+        """
+        Test format includes function_call_output items when server_history
+        is enabled and the last response had tool calls, but does NOT include
+        function_call items (the server already has those).
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Call get_weather for SF"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text=None,
+            response_id="resp_tool_001",
+            tool_calls=[
+                ToolCall(
+                    id="call_xyz",
+                    type="function",
+                    function=ToolCallFunction(
+                        name="get_weather",
+                        arguments='{"location": "SF"}',
+                    ),
+                )
+            ],
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is the weather?"]},
+        )
+
+        result = instance.format(
+            data, history=[(prev_request, prev_response)], server_history=True
+        )
+
+        assert result.body["previous_response_id"] == "resp_tool_001"
+        input_items = result.body["input"]
+
+        # function_call_output should be first, then the user message
+        fco_items = [i for i in input_items if i.get("type") == "function_call_output"]
+        assert len(fco_items) == 1
+        assert fco_items[0]["call_id"] == "call_xyz"
+        assert fco_items[0]["output"] == '{"status": "ok"}'
+
+        # function_call items must NOT be present (server already has them)
+        fc_items = [i for i in input_items if i.get("type") == "function_call"]
+        assert len(fc_items) == 0
+
+        # User message should still be present
+        user_items = [i for i in input_items if i.get("role") == "user"]
+        assert len(user_items) == 1
+
+    @pytest.mark.sanity
+    def test_format_with_server_history_tool_calls_custom_response(
+        self, valid_instances
+    ):
+        """
+        Test format sources tool response content from tool_response_column
+        on the previous request when using server_history with tool calls.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={
+                "text_column": ["Call get_weather"],
+                "tool_response_column": ['{"temp": 72, "unit": "F"}'],
+            },
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text=None,
+            response_id="resp_tool_002",
+            tool_calls=[
+                ToolCall(
+                    id="call_custom",
+                    type="function",
+                    function=ToolCallFunction(
+                        name="get_weather",
+                        arguments='{"location": "NYC"}',
+                    ),
+                )
+            ],
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["Summarize the weather"]},
+        )
+
+        result = instance.format(
+            data, history=[(prev_request, prev_response)], server_history=True
+        )
+
+        input_items = result.body["input"]
+        fco_items = [i for i in input_items if i.get("type") == "function_call_output"]
+        assert len(fco_items) == 1
+        assert fco_items[0]["call_id"] == "call_custom"
+        assert fco_items[0]["output"] == '{"temp": 72, "unit": "F"}'
+
+    @pytest.mark.sanity
+    def test_format_with_server_history_no_tool_calls(self, valid_instances):
+        """
+        Test format with server_history does NOT include function_call_output
+        items when the previous response was plain text (regression check).
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="4",
+            response_id="resp_plain",
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["And 3+3?"]},
+        )
+
+        result = instance.format(
+            data, history=[(prev_request, prev_response)], server_history=True
+        )
+
+        assert result.body["previous_response_id"] == "resp_plain"
+        input_items = result.body["input"]
+
+        # No function_call_output items should be present
+        fco_items = [i for i in input_items if i.get("type") == "function_call_output"]
+        assert len(fco_items) == 0
+
+        # Only the user message
+        assert len(input_items) == 1
+        assert input_items[0]["role"] == "user"
+
     # Tool call response handling tests
 
     @pytest.mark.sanity
@@ -2656,6 +2804,13 @@ class TestResponsesRequestHandler:
         assert result.output_metrics.tool_call_tokens == 15
         assert result.output_metrics.mixed_content_tool_tokens is None
         assert result.output_metrics.tool_call_count == 1
+        assert result.tool_calls is not None
+        assert len(result.tool_calls) == 1
+        tc = result.tool_calls[0]
+        assert tc.id == "call_abc123"
+        assert tc.type == "function"
+        assert tc.function.name == "get_weather"
+        assert tc.function.arguments == '{"location": "SF"}'
 
     @pytest.mark.sanity
     def test_non_streaming_tool_calls_content_preferred(
@@ -2739,6 +2894,13 @@ class TestResponsesRequestHandler:
         assert result.output_metrics.tool_call_tokens == 20
         assert result.output_metrics.mixed_content_tool_tokens is None
         assert result.output_metrics.tool_call_count == 2
+        assert result.tool_calls is not None
+        assert len(result.tool_calls) == 2
+        assert result.tool_calls[0].id == "call_1"
+        assert result.tool_calls[0].function.name == "get_weather"
+        assert result.tool_calls[1].id == "call_2"
+        assert result.tool_calls[1].function.name == "get_time"
+        assert result.tool_calls[1].function.arguments == '{"timezone": "PST"}'
 
     @pytest.mark.sanity
     def test_non_streaming_no_tool_calls_unchanged(
@@ -2823,6 +2985,13 @@ class TestResponsesRequestHandler:
         assert response.output_metrics.tool_call_tokens == 12
         assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count == 1
+        assert response.tool_calls is not None
+        assert len(response.tool_calls) == 1
+        tc = response.tool_calls[0]
+        assert tc.id == "call_abc"
+        assert tc.type == "function"
+        assert tc.function.name == "get_weather"
+        assert tc.function.arguments == '{"loc":"SF"}'
 
     @pytest.mark.sanity
     def test_streaming_multiple_tool_calls(self, valid_instances, generation_request):
@@ -2960,15 +3129,218 @@ class TestResponsesRequestHandler:
         assert response.output_metrics.tool_call_count is None
 
     @pytest.mark.smoke
-    def test_initialization_has_streaming_tool_call_indices(self, valid_instances):
+    def test_initialization_has_streaming_tool_calls(self, valid_instances):
         """
-        Test ResponsesRequestHandler initializes streaming_tool_call_indices.
+        Test ResponsesRequestHandler initializes streaming_tool_calls.
 
         ## WRITTEN BY AI ##
         """
         instance = valid_instances
-        assert hasattr(instance, "streaming_tool_call_indices")
-        assert instance.streaming_tool_call_indices == set()
+        assert hasattr(instance, "streaming_tool_calls")
+        assert instance.streaming_tool_calls == {}
+
+    @pytest.mark.sanity
+    def test_format_tool_call_overrides(self, valid_instances):
+        """
+        Test _apply_tool_call_overrides injects tools, sets tool_choice, and
+        removes incompatible keys on tool-call turns.  Tools provided in Chat
+        Completions format are normalised to flat Responses API format.
+
+        ## WRITTEN BY AI ##
+        """
+        import json as stdlib_json
+
+        instance = valid_instances
+        chat_tools = [
+            {"type": "function", "function": {"name": "fn", "parameters": {}}}
+        ]
+        expected_tools = [{"type": "function", "name": "fn", "parameters": {}}]
+        data = GenerationRequest(
+            columns={"tools_column": [stdlib_json.dumps(chat_tools)]},
+            expects_tool_call=True,
+        )
+
+        result = instance.format(data)
+
+        assert result.body["tools"] == expected_tools
+        assert result.body["tool_choice"] == "required"
+        assert "ignore_eos" not in result.body
+        assert "stop" not in result.body
+        assert "max_output_tokens" not in result.body
+
+    @pytest.mark.sanity
+    def test_format_tool_choice_none_on_non_tool_turn(self, valid_instances):
+        """
+        Test that non-tool turns set tool_choice to 'none' when tools are
+        present from extras.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        tools = [{"type": "function", "function": {"name": "fn", "parameters": {}}}]
+        data = GenerationRequest(expects_tool_call=False)
+
+        result = instance.format(data, extras={"body": {"tools": tools}})
+
+        assert result.body["tools"] == tools
+        assert result.body["tool_choice"] == "none"
+
+    @pytest.mark.sanity
+    def test_build_input_items_replays_tool_calls(self, valid_instances):
+        """
+        Test _build_input_items converts ToolCall objects to
+        Responses API function_call items and appends function_call_output
+        items for multi-turn replay.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["follow-up question"]},
+        )
+        response = GenerationResponse(
+            request_id="req-1",
+            request_args="{}",
+            tool_calls=[
+                ToolCall(
+                    id="call_abc",
+                    type="function",
+                    function=ToolCallFunction(
+                        name="get_weather",
+                        arguments='{"loc": "SF"}',
+                    ),
+                )
+            ],
+        )
+
+        items = instance._build_input_items(data, response, [])
+
+        fc_items = [i for i in items if i.get("type") == "function_call"]
+        assert len(fc_items) == 1
+        assert fc_items[0]["call_id"] == "call_abc"
+        assert fc_items[0]["name"] == "get_weather"
+        assert fc_items[0]["arguments"] == '{"loc": "SF"}'
+
+        fco_items = [i for i in items if i.get("type") == "function_call_output"]
+        assert len(fco_items) == 1
+        assert fco_items[0]["call_id"] == "call_abc"
+        assert fco_items[0]["output"] == '{"status": "ok"}'
+
+
+class TestEnsureChatCompletionsTool:
+    """Tests for ChatCompletionsRequestHandler._ensure_tool_format normalizer.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_passthrough_native_format(self):
+        """
+        Chat Completions-format tools are returned unchanged.
+
+        ## WRITTEN BY AI ##
+        """
+        tool = {
+            "type": "function",
+            "function": {"name": "fn", "description": "d", "parameters": {}},
+        }
+        assert ChatCompletionsRequestHandler._ensure_tool_format(tool) == tool
+
+    @pytest.mark.smoke
+    def test_converts_responses_format(self):
+        """
+        Responses API-format tools are wrapped into the nested ``function`` structure.
+
+        ## WRITTEN BY AI ##
+        """
+        responses_tool = {
+            "type": "function",
+            "name": "fn",
+            "description": "d",
+            "parameters": {"type": "object"},
+            "strict": True,
+        }
+        expected = {
+            "type": "function",
+            "function": {
+                "name": "fn",
+                "description": "d",
+                "parameters": {"type": "object"},
+                "strict": True,
+            },
+        }
+        assert ChatCompletionsRequestHandler._ensure_tool_format(responses_tool) == expected
+
+    @pytest.mark.sanity
+    def test_partial_fields(self):
+        """
+        Only fields present in the source tool are carried over.
+
+        ## WRITTEN BY AI ##
+        """
+        responses_tool = {"type": "function", "name": "fn"}
+        result = ChatCompletionsRequestHandler._ensure_tool_format(responses_tool)
+        assert result == {"type": "function", "function": {"name": "fn"}}
+
+
+class TestEnsureResponsesTool:
+    """Tests for ResponsesRequestHandler._ensure_tool_format normalizer.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_passthrough_native_format(self):
+        """
+        Responses API-format tools are returned unchanged.
+
+        ## WRITTEN BY AI ##
+        """
+        tool = {
+            "type": "function",
+            "name": "fn",
+            "description": "d",
+            "parameters": {},
+        }
+        assert ResponsesRequestHandler._ensure_tool_format(tool) == tool
+
+    @pytest.mark.smoke
+    def test_converts_chat_completions_format(self):
+        """
+        Chat Completions-format tools are flattened to top-level keys.
+
+        ## WRITTEN BY AI ##
+        """
+        chat_tool = {
+            "type": "function",
+            "function": {
+                "name": "fn",
+                "description": "d",
+                "parameters": {"type": "object"},
+                "strict": True,
+            },
+        }
+        expected = {
+            "type": "function",
+            "name": "fn",
+            "description": "d",
+            "parameters": {"type": "object"},
+            "strict": True,
+        }
+        assert ResponsesRequestHandler._ensure_tool_format(chat_tool) == expected
+
+    @pytest.mark.sanity
+    def test_partial_fields(self):
+        """
+        Only fields present in the source function dict are carried over.
+
+        ## WRITTEN BY AI ##
+        """
+        chat_tool = {"type": "function", "function": {"name": "fn"}}
+        result = ResponsesRequestHandler._ensure_tool_format(chat_tool)
+        assert result == {"type": "function", "name": "fn"}
 
 
 class TestPoolingRequestHandler:
@@ -3549,8 +3921,8 @@ class TestChatCompletionsToolResponseColumn:
         from unittest.mock import MagicMock
 
         from guidellm.schemas.tool_call import (
-            StreamingToolCall,
-            StreamingToolCallFunction,
+            ToolCall,
+            ToolCallFunction,
         )
 
         tools = [{"type": "function", "function": {"name": "fn"}}]
@@ -3564,9 +3936,9 @@ class TestChatCompletionsToolResponseColumn:
         )
         prior_response = MagicMock(spec=GenerationResponse)
         prior_response.tool_calls = [
-            StreamingToolCall(
+            ToolCall(
                 id="call_1",
-                function=StreamingToolCallFunction(name="fn"),
+                function=ToolCallFunction(name="fn"),
             )
         ]
         prior_response.text = None
@@ -3595,8 +3967,8 @@ class TestChatCompletionsToolResponseColumn:
         from unittest.mock import MagicMock
 
         from guidellm.schemas.tool_call import (
-            StreamingToolCall,
-            StreamingToolCallFunction,
+            ToolCall,
+            ToolCallFunction,
         )
         from guidellm.settings import settings
 
@@ -3610,9 +3982,9 @@ class TestChatCompletionsToolResponseColumn:
         )
         prior_response = MagicMock(spec=GenerationResponse)
         prior_response.tool_calls = [
-            StreamingToolCall(
+            ToolCall(
                 id="call_1",
-                function=StreamingToolCallFunction(name="fn"),
+                function=ToolCallFunction(name="fn"),
             )
         ]
         prior_response.text = None
@@ -3641,8 +4013,8 @@ class TestChatCompletionsToolResponseColumn:
         from unittest.mock import MagicMock
 
         from guidellm.schemas.tool_call import (
-            StreamingToolCall,
-            StreamingToolCallFunction,
+            ToolCall,
+            ToolCallFunction,
         )
 
         tools = [{"type": "function", "function": {"name": "fn"}}]
@@ -3656,9 +4028,9 @@ class TestChatCompletionsToolResponseColumn:
         )
         prior_response = MagicMock(spec=GenerationResponse)
         prior_response.tool_calls = [
-            StreamingToolCall(
+            ToolCall(
                 id="call_1",
-                function=StreamingToolCallFunction(name="fn"),
+                function=ToolCallFunction(name="fn"),
             )
         ]
         prior_response.text = None
