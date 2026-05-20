@@ -87,7 +87,7 @@ def test_lazy_import_subpackages():
         hp = lazy.load("html.parser")
     assert "html" in sys.modules
     assert type(sys.modules["html"]) is type(pytest)
-    assert isinstance(hp, importlib.util._LazyModule)
+    assert isinstance(hp, lazy._SafeLazyModule)
     assert "html.parser" in sys.modules
     assert sys.modules["html.parser"] == hp
 
