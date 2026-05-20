@@ -53,7 +53,7 @@ Ensure you have a running inference server and model compatible with the OpenAI 
 
   ______________________________________________________________________
 
-  Generate images and short videos on the fly to benchmark VLM serving configurations without bringing your own dataset. Covers the `synthetic_image` and `synthetic_video` `--data` types.
+  Generate images and short videos on the fly to benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Covers the `synthetic_image` and `synthetic_video` `--data` types.
 
   [:octicons-arrow-right-24: Synthetic Vision Guide](synthetic_vision.md)
 
