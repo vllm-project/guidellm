@@ -11,6 +11,7 @@ extract usage metrics, and convert results into standardized GenerationResponse.
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from typing import Any, Protocol, cast
 
 from more_itertools import roundrobin
@@ -18,7 +19,7 @@ from more_itertools import roundrobin
 from guidellm.scheduler import HistoryT
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.request import GenerationRequestArguments
-from guidellm.schemas.tool_call import StreamingToolCall, StreamingToolCallFunction
+from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
 from guidellm.utils.imports import json
 from guidellm.utils.registry import RegistryMixin
@@ -31,9 +32,9 @@ __all__ = [
     "OpenAIRequestHandlerFactory",
     "PoolingRequestHandler",
     "ResponsesRequestHandler",
-    "StreamingToolCall",
-    "StreamingToolCallFunction",
     "TextCompletionsRequestHandler",
+    "ToolCall",
+    "ToolCallFunction",
 ]
 
 
@@ -135,6 +136,82 @@ class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
             )
 
         return handler_cls()
+
+
+def _apply_tool_call_metrics(
+    output_metrics: UsageMetrics,
+    tool_call_count: int,
+    text: str | None,
+) -> None:
+    """Set tool-call-related fields on *output_metrics* in place.
+
+    Shared by both chat completions and responses handlers so the logic for
+    deciding between ``tool_call_tokens`` (tool-only turn) and
+    ``mixed_content_tool_tokens`` (mixed turn) lives in one place.
+
+    :param output_metrics: The mutable output metrics to update.
+    :param tool_call_count: Number of tool calls in the response.
+    :param text: The generated text, or ``None`` for tool-only turns.
+    """
+    if not tool_call_count:
+        return
+    output_metrics.tool_call_count = tool_call_count
+    if text is None:  # tool-only turn
+        output_metrics.tool_call_tokens = output_metrics.text_tokens
+    else:  # mixed content + tool call turn
+        output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
+
+
+def _compile_streaming_response(
+    request: GenerationRequest,
+    arguments: GenerationRequestArguments,
+    streaming_texts: list[str],
+    streaming_tool_calls: dict[int, ToolCall],
+    streaming_usage: dict[str, int | dict[str, int]] | None,
+    streaming_response_id: str | None,
+    extract_metrics: Callable[
+        [dict[str, int | dict[str, int]] | None, str | None],
+        tuple[UsageMetrics, UsageMetrics],
+    ],
+) -> GenerationResponse:
+    """Compile accumulated streaming state into a final response.
+
+    Shared by both chat completions and responses handlers so the logic for
+    assembling text, tool calls, and metrics from streaming state lives in one
+    place.
+
+    :param request: Original generation request.
+    :param arguments: The request arguments that were sent.
+    :param streaming_texts: Text chunks accumulated during streaming.
+    :param streaming_tool_calls: Tool calls keyed by stream index.
+    :param streaming_usage: Usage dict from the final streaming event.
+    :param streaming_response_id: Server-assigned response ID, if any.
+    :param extract_metrics: Handler-specific metric extraction callable.
+    :return: Standardized GenerationResponse with extracted metrics.
+    """
+    text = "".join(streaming_texts) or None
+    tool_calls: list[ToolCall] | None = (
+        [streaming_tool_calls[i] for i in sorted(streaming_tool_calls)]
+        if streaming_tool_calls
+        else None
+    )
+    if text is None and not tool_calls:
+        text = ""
+    input_metrics, output_metrics = extract_metrics(streaming_usage, text)
+    _apply_tool_call_metrics(output_metrics, len(tool_calls) if tool_calls else 0, text)
+
+    return GenerationResponse(
+        request_id=request.request_id,
+        request_args=arguments.model_dump_json(),
+        response_id=streaming_response_id,
+        text=text,
+        tool_calls=tool_calls,
+        input_metrics=input_metrics,
+        output_metrics=output_metrics,
+    )
+
+
+_FUNCTION_DETAIL_KEYS = ("name", "description", "parameters", "strict")
 
 
 @OpenAIRequestHandlerFactory.register("/v1/completions")
@@ -411,12 +488,27 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     def __init__(self):
         super().__init__()
-        # Indices seen so far, used to count distinct tool calls
-        self.streaming_tool_call_indices: set[int] = set()
         # Full tool call payloads accumulated across streaming deltas,
         # keyed by the delta ``index`` field.  Needed for multi-turn tool
         # calling so the response carries the id/name/arguments of each call.
-        self.streaming_tool_calls: dict[int, StreamingToolCall] = {}
+        self.streaming_tool_calls: dict[int, ToolCall] = {}
+
+    @staticmethod
+    def _ensure_tool_format(tool: dict[str, Any]) -> dict[str, Any]:
+        """Normalise a single tool definition to Chat Completions format.
+
+        Chat Completions expects ``{"type": "function", "function": {"name": ..., ...}}``.
+        If the tool is already in that format it is returned as-is.  If it is in the
+        flat Responses API format (top-level ``name``, no ``function`` key) the detail
+        fields are wrapped into a nested ``function`` dict.
+
+        :param tool: A single tool definition dict in either format.
+        :return: The tool in Chat Completions format.
+        """
+        if "name" in tool and "function" not in tool:
+            fn = {k: tool[k] for k in _FUNCTION_DETAIL_KEYS if k in tool}
+            return {"type": tool.get("type", "function"), "function": fn}
+        return tool
 
     def _format_prompts(
         self, column_data: list[dict[str, Any]], column_type: str
@@ -462,7 +554,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     @staticmethod
     def _build_tool_response_messages(
-        tool_calls: list[StreamingToolCall],
+        tool_calls: list[ToolCall],
         tool_response_columns: list[Any],
     ) -> list[dict[str, Any]]:
         """Build synthetic ``role: "tool"`` messages for each tool call.
@@ -526,7 +618,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             if isinstance(tools_value, str | bytes):
                 tools_value = json.loads(tools_value)
             if isinstance(tools_value, list):
-                body["tools"] = tools_value
+                body["tools"] = [
+                    ChatCompletionsRequestHandler._ensure_tool_format(t)
+                    for t in tools_value
+                ]
                 body.setdefault("tool_choice", "required")
 
         if "tools" not in body:
@@ -679,14 +774,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             text = ""  # Edge case: null content and no tools
         input_metrics, output_metrics = self.extract_metrics(usage, text)
 
-        tool_calls: list[StreamingToolCall] | None = None
+        tool_calls: list[ToolCall] | None = None
         if raw_tool_calls:
-            tool_calls = [StreamingToolCall.model_validate(tc) for tc in raw_tool_calls]
-            output_metrics.tool_call_count = len(raw_tool_calls)
-            if text is None:  # tool-only turn
-                output_metrics.tool_call_tokens = output_metrics.text_tokens
-            else:  # mixed content + tool call turn
-                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
+            tool_calls = [ToolCall.model_validate(tc) for tc in raw_tool_calls]
+        _apply_tool_call_metrics(
+            output_metrics, len(tool_calls) if tool_calls else 0, text
+        )
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -741,17 +834,16 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """Merge a single streaming tool_call delta into accumulated state.
 
         Each tool call is split across multiple SSE chunks.  This method
-        creates or updates the :class:`StreamingToolCall` entry keyed by the
+        creates or updates the :class:`ToolCall` entry keyed by the
         delta's ``index`` field.
 
         :param tc_delta: A single element from the ``tool_calls`` array in a
             streaming chat completion delta.
         """
         idx = tc_delta["index"]
-        self.streaming_tool_call_indices.add(idx)
 
         if idx not in self.streaming_tool_calls:
-            self.streaming_tool_calls[idx] = StreamingToolCall(
+            self.streaming_tool_calls[idx] = ToolCall(
                 id=tc_delta.get("id", ""),
                 type=tc_delta.get("type", "function"),
             )
@@ -775,32 +867,14 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :param request: Original generation request
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
-        text = "".join(self.streaming_texts) or None
-        has_tool_calls = bool(self.streaming_tool_call_indices)
-        if text is None and not has_tool_calls:
-            text = ""
-        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
-        if has_tool_calls:
-            output_metrics.tool_call_count = len(self.streaming_tool_call_indices)
-            if text is None:  # tool-only turn
-                output_metrics.tool_call_tokens = output_metrics.text_tokens
-            else:  # mixed content + tool call turn
-                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
-
-        tool_calls: list[StreamingToolCall] | None = None
-        if self.streaming_tool_calls:
-            tool_calls = [
-                self.streaming_tool_calls[i] for i in sorted(self.streaming_tool_calls)
-            ]
-
-        return GenerationResponse(
-            request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
-            response_id=self.streaming_response_id,  # use vLLM ID if available
-            text=text,
-            tool_calls=tool_calls,
-            input_metrics=input_metrics,
-            output_metrics=output_metrics,
+        return _compile_streaming_response(
+            request,
+            arguments,
+            self.streaming_texts,
+            self.streaming_tool_calls,
+            self.streaming_usage,
+            self.streaming_response_id,
+            self.extract_metrics,
         )
 
 
@@ -942,7 +1016,30 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
-        self.streaming_tool_call_indices: set[int] = set()
+        # Accumulated function_call items keyed by output_index, used to
+        # reconstruct tool_calls on GenerationResponse after streaming.
+        self.streaming_tool_calls: dict[int, ToolCall] = {}
+
+    @staticmethod
+    def _ensure_tool_format(tool: dict[str, Any]) -> dict[str, Any]:
+        """Normalise a single tool definition to Responses API format.
+
+        The Responses API expects ``{"type": "function", "name": ..., ...}`` with
+        detail fields at the top level.  If the tool is already in that format it is
+        returned as-is.  If it is in Chat Completions format (nested ``function``
+        key, no top-level ``name``) the detail fields are flattened up.
+
+        :param tool: A single tool definition dict in either format.
+        :return: The tool in Responses API format.
+        """
+        if "function" in tool and "name" not in tool:
+            fn = tool["function"]
+            converted = {"type": tool.get("type", "function")}
+            for key in _FUNCTION_DETAIL_KEYS:
+                if key in fn:
+                    converted[key] = fn[key]
+            return converted
+        return tool
 
     def _format_prompts(
         self, column_data: list, column_type: str
@@ -997,10 +1094,82 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         if content_parts:
             input_items.append({"role": "user", "content": content_parts})
 
-        if response and response.text:
+        # Replay the prior assistant response. For tool call responses,
+        # include the function_call items and synthetic function_call_output
+        # items so the model sees the full multi-turn exchange.
+        if response and response.tool_calls:
+            for tc in response.tool_calls:
+                input_items.append(self._tool_call_to_responses_item(tc))
+            tool_response_columns = data.columns.get("tool_response_column", [])
+            for tc_idx, tc in enumerate(response.tool_calls):
+                raw_content = (
+                    tool_response_columns[tc_idx]
+                    if tc_idx < len(tool_response_columns)
+                    else settings.default_synthetic_tool_response
+                )
+                output_content = (
+                    raw_content.decode("utf-8")
+                    if isinstance(raw_content, bytes)
+                    else raw_content
+                )
+                input_items.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": tc.id,
+                        "output": output_content,
+                    }
+                )
+        elif response and response.text:
             input_items.append({"role": "assistant", "content": response.text})
 
         return input_items
+
+    @staticmethod
+    def _apply_tool_call_overrides(
+        body: dict[str, Any],
+        data: GenerationRequest,
+    ) -> None:
+        """Inject tool definitions and constrain the request body for tool calling.
+
+        Handles three concerns:
+
+        1. Deserializes and injects tool definitions from dataset columns,
+           normalising to Responses API format when necessary.
+        2. Sets ``tool_choice`` to ``"required"`` or ``"none"`` depending on
+           whether the current turn expects a tool call.
+        3. Removes body keys that are incompatible with tool calling
+           (``ignore_eos``, ``stop``, and ``max_output_tokens`` on tool-call
+           turns).
+
+        :param body: The mutable request body dict being built.
+        :param data: The current generation request.
+        """
+        tools_column = data.columns.get("tools_column", [])
+        if tools_column:
+            tools_value = tools_column[0]
+            if isinstance(tools_value, str | bytes):
+                tools_value = json.loads(tools_value)
+            if isinstance(tools_value, list):
+                body["tools"] = [
+                    ResponsesRequestHandler._ensure_tool_format(t)
+                    for t in tools_value
+                ]
+                body.setdefault("tool_choice", "required")
+
+        if "tools" not in body:
+            return
+
+        if not data.expects_tool_call:
+            body["tool_choice"] = "none"
+
+        # Tool calling requires the model to stop naturally after producing
+        # valid JSON; ignore_eos would force generation past that point.
+        # max_output_tokens would truncate output mid-JSON and corrupt
+        # the arguments sent in conversation history on follow-up turns.
+        if data.expects_tool_call:
+            body.pop("ignore_eos", None)
+            body.pop("stop", None)
+            body.pop("max_output_tokens", None)
 
     def format(
         self,
@@ -1019,11 +1188,6 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         arguments = GenerationRequestArguments()
         arguments.body = {}
-
-        if use_server_history:
-            _, last_response = history[-1]  # type: ignore[index]
-            if last_response and last_response.response_id:
-                arguments.body["previous_response_id"] = last_response.response_id
 
         if kwargs.get("model") is not None:
             arguments.body["model"] = kwargs["model"]
@@ -1056,6 +1220,16 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         arguments.body["input"] = self._build_input_items(data, response, prev_requests)
 
+        # Server-side history: reference the previous response by ID and
+        # include any tool outputs the server cannot know (tool execution
+        # is client-side).  Only the immediate follow-up after a tool-call
+        # response needs function_call_output items; subsequent turns have
+        # no tool_calls on the last response so this branch is skipped.
+        if use_server_history:
+            self._apply_server_history(arguments.body, history)  # type: ignore[arg-type]
+
+        self._apply_tool_call_overrides(arguments.body, data)
+
         return arguments
 
     def compile_non_streaming(
@@ -1065,27 +1239,30 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         response: dict,
     ) -> GenerationResponse:
         text = self._extract_output_text(response)
-        tool_call_count = sum(
-            1
+        raw_items = [
+            item
             for item in response.get("output", [])
             if item.get("type") == "function_call"
+        ]
+        tool_calls: list[ToolCall] | None = (
+            [self._responses_item_to_tool_call(item) for item in raw_items]
+            if raw_items
+            else None
         )
-        if text is None and not tool_call_count:
+        if text is None and not tool_calls:
             text = ""
         usage = response.get("usage", {})
         input_metrics, output_metrics = self.extract_metrics(usage, text)
-        if tool_call_count:
-            output_metrics.tool_call_count = tool_call_count
-            if text is None:  # tool-only turn
-                output_metrics.tool_call_tokens = output_metrics.text_tokens
-            else:  # mixed content + tool call turn
-                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
+        _apply_tool_call_metrics(
+            output_metrics, len(tool_calls) if tool_calls else 0, text
+        )
 
         return GenerationResponse(
             request_id=request.request_id,
             request_args=arguments.model_dump_json(),
             response_id=response.get("id"),
             text=text,
+            tool_calls=tool_calls,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
@@ -1093,25 +1270,14 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
     def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
     ) -> GenerationResponse:
-        text = "".join(self.streaming_texts) or None
-        has_tool_calls = bool(self.streaming_tool_call_indices)
-        if text is None and not has_tool_calls:
-            text = ""
-        input_metrics, output_metrics = self.extract_metrics(self.streaming_usage, text)
-        if has_tool_calls:
-            output_metrics.tool_call_count = len(self.streaming_tool_call_indices)
-            if text is None:  # tool-only turn
-                output_metrics.tool_call_tokens = output_metrics.text_tokens
-            else:  # mixed content + tool call turn
-                output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
-
-        return GenerationResponse(
-            request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
-            response_id=self.streaming_response_id,
-            text=text,
-            input_metrics=input_metrics,
-            output_metrics=output_metrics,
+        return _compile_streaming_response(
+            request,
+            arguments,
+            self.streaming_texts,
+            self.streaming_tool_calls,
+            self.streaming_usage,
+            self.streaming_response_id,
+            self.extract_metrics,
         )
 
     def extract_line_data(self, line: str) -> dict[str, Any] | None:
@@ -1132,15 +1298,176 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         return json.loads(line[len("data:") :].strip())
 
+    @staticmethod
+    def _responses_item_to_tool_call(item: dict[str, Any]) -> ToolCall:
+        """Convert a Responses API ``function_call`` output item to a
+        ``ToolCall``.
+
+        The Responses API uses a flat structure (``call_id``, ``name``,
+        ``arguments``) while ``ToolCall`` nests name/arguments
+        inside a ``function`` sub-object.
+
+        :param item: A Responses API ``function_call`` dict.
+        :return: The equivalent ``ToolCall``.
+        """
+        return ToolCall(
+            id=item.get("call_id", ""),
+            type="function",
+            function=ToolCallFunction(
+                name=item.get("name", ""),
+                arguments=item.get("arguments", ""),
+            ),
+        )
+
+    @staticmethod
+    def _tool_call_to_responses_item(tc: ToolCall) -> dict[str, Any]:
+        """Convert a ``ToolCall`` back to a Responses API
+        ``function_call`` input item for multi-turn replay.
+
+        :param tc: The canonical tool call object.
+        :return: A dict suitable for the Responses API ``input`` array.
+        """
+        return {
+            "type": "function_call",
+            "call_id": tc.id,
+            "name": tc.function.name,
+            "arguments": tc.function.arguments,
+        }
+
+    def _apply_server_history(
+        self,
+        body: dict[str, Any],
+        history: HistoryT[GenerationRequest, GenerationResponse],
+    ) -> None:
+        """Apply server-side history fields to the request body.
+
+        Sets ``previous_response_id`` from the last response in history and
+        prepends ``function_call_output`` items when the last response
+        contained tool calls (since tool execution is client-side and the
+        server cannot infer those results).
+
+        :param body: The mutable request body dict being built.
+        :param history: The conversation history up to this point.
+        """
+        last_request, last_response = history[-1]
+        if last_response and last_response.response_id:
+            body["previous_response_id"] = last_response.response_id
+        # Tool call responses need to be manually added from history because they are
+        # stored on the prior request, rather than the current request.
+        if last_response and last_response.tool_calls:
+            body["input"] = (
+                self._build_tool_outputs_from_history(last_request, last_response)
+                + body["input"]
+            )
+
+    @staticmethod
+    def _build_tool_outputs_from_history(
+        prev_request: GenerationRequest,
+        prev_response: GenerationResponse,
+    ) -> list[dict[str, Any]]:
+        """Build ``function_call_output`` items for server-history follow-ups.
+
+        When using server-side history (``previous_response_id``), the server
+        already stores the model's ``function_call`` outputs but cannot know
+        what the tools returned (tool execution is client-side).  This method
+        produces the minimal ``function_call_output`` items needed to complete
+        the tool-calling cycle.
+
+        :param prev_request: The request whose response triggered tool calls.
+            Its ``tool_response_column`` supplies per-call response content.
+        :param prev_response: The response containing tool calls.
+        :return: List of ``function_call_output`` dicts for the ``input`` array.
+        """
+        tool_response_columns = prev_request.columns.get("tool_response_column", [])
+        outputs: list[dict[str, Any]] = []
+        for idx, tc in enumerate(prev_response.tool_calls):  # type: ignore[arg-type]
+            raw_content = (
+                tool_response_columns[idx]
+                if idx < len(tool_response_columns)
+                else settings.default_synthetic_tool_response
+            )
+            content = (
+                raw_content.decode("utf-8")
+                if isinstance(raw_content, bytes)
+                else raw_content
+            )
+            outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": tc.id,
+                    "output": content,
+                }
+            )
+        return outputs
+
+    def _handle_streaming_function_call(
+        self, event_type: str, data: dict[str, Any]
+    ) -> int | None:
+        """Process function_call-related streaming events.
+
+        Accumulates ``ToolCall`` objects keyed by ``output_index``.
+        The Responses API streams ``call_id`` / ``name`` / ``arguments`` at
+        the top level; these are mapped into the canonical
+        ``ToolCall`` shape used across all handlers.
+
+        :returns: Token count delta, or ``None`` if unrecognized.
+        """
+        # First event for a new tool call: the server announces the
+        # function_call output item with its call_id and name.  We
+        # create a new ToolCall entry keyed by output_index so that
+        # subsequent argument deltas can append to the right object.
+        if (
+            event_type == "response.output_item.added"
+            and data.get("item", {}).get("type") == "function_call"
+        ):
+            idx = data["output_index"]
+            item = data["item"]
+            self.streaming_tool_calls[idx] = ToolCall(
+                id=item.get("call_id", ""),
+                type="function",
+                function=ToolCallFunction(
+                    name=item.get("name", ""),
+                    arguments=item.get("arguments", ""),
+                ),
+            )
+            return 1
+
+        # Incremental argument chunk: append the JSON fragment to the
+        # tool call that was created by the output_item.added event above.
+        if event_type == "response.function_call_arguments.delta":
+            idx = data.get("output_index", -1)
+            if idx in self.streaming_tool_calls:
+                self.streaming_tool_calls[idx].function.arguments += data.get(
+                    "delta", ""
+                )
+            return 1
+
+        # Final arguments payload: the server sends the complete argument
+        # string once streaming is finished.  We overwrite whatever was
+        # accumulated from deltas to guarantee consistency.
+        if event_type == "response.function_call_arguments.done":
+            idx = data.get("output_index", -1)
+            if idx in self.streaming_tool_calls:
+                self.streaming_tool_calls[idx].function.arguments = data.get(
+                    "arguments",
+                    self.streaming_tool_calls[idx].function.arguments,
+                )
+            return 1
+
+        # Not a function-call event; let the caller handle it.
+        return None
+
     def add_streaming_line(self, line: str) -> int | None:
         if not (data := self.extract_line_data(line)):
             return None if data is None else 0
 
         event_type = data.get("type", "")
 
-        if "id" in data and self.streaming_response_id is None:
+        # Extract the response ID from the response.created event which
+        # carries a nested "response" object containing the actual ID.
+        if self.streaming_response_id is None:
             resp = data.get("response", {})
-            if "id" in resp:
+            if isinstance(resp, dict) and "id" in resp:
                 self.streaming_response_id = resp["id"]
 
         if event_type == "response.output_text.delta":
@@ -1150,12 +1477,9 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 return 1
             return 0
 
-        if (
-            event_type == "response.output_item.added"
-            and data.get("item", {}).get("type") == "function_call"
-        ):
-            self.streaming_tool_call_indices.add(data["output_index"])
-            return 1
+        fc_result = self._handle_streaming_function_call(event_type, data)
+        if fc_result is not None:
+            return fc_result
 
         if event_type in (
             "response.completed",
@@ -1182,6 +1506,9 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
     ) -> tuple[UsageMetrics, UsageMetrics]:
         # Responses API uses "input_tokens"/"output_tokens" in its usage
         # payload, unlike chat completions' "prompt_tokens"/"completion_tokens".
+        # It also provides "input_tokens_details" and "output_tokens_details"
+        # for multimodal breakdowns, mirroring chat completions'
+        # "prompt_tokens_details"/"completion_tokens_details".
         if text is None:
             # text not applicable — exclude from aggregation
             text_words = None
@@ -1197,13 +1524,35 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             )
 
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
+        input_details: dict[str, int] = cast(
+            "dict[str, int]", usage.get("input_tokens_details", {}) or {}
+        )
+        output_details: dict[str, int] = cast(
+            "dict[str, int]", usage.get("output_tokens_details", {}) or {}
+        )
 
         return UsageMetrics(
-            text_tokens=usage_metrics.get("input_tokens", 0),
+            text_tokens=(
+                input_details.get("text_tokens")
+                or usage_metrics.get("input_tokens")
+                or 0
+            ),
+            image_tokens=input_details.get("image_tokens"),
+            video_tokens=input_details.get("video_tokens"),
+            audio_tokens=input_details.get("audio_tokens"),
+            audio_seconds=input_details.get("seconds"),
         ), UsageMetrics(
-            text_tokens=usage_metrics.get("output_tokens", 0),
+            text_tokens=(
+                output_details.get("text_tokens")
+                or usage_metrics.get("output_tokens")
+                or 0
+            ),
             text_words=text_words,
             text_characters=text_chars,
+            image_tokens=output_details.get("image_tokens"),
+            video_tokens=output_details.get("video_tokens"),
+            audio_tokens=output_details.get("audio_tokens"),
+            audio_seconds=output_details.get("seconds"),
         )
 
     @staticmethod

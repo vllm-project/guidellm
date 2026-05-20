@@ -36,7 +36,7 @@ from .statistics import (
     Percentiles,
     StatusDistributionSummary,
 )
-from .tool_call import StreamingToolCall, StreamingToolCallFunction
+from .tool_call import ToolCall, ToolCallFunction
 
 __all__ = [
     "BaseModelT",
@@ -58,9 +58,9 @@ __all__ = [
     "StandardBaseModel",
     "StatusBreakdown",
     "StatusDistributionSummary",
-    "StreamingToolCall",
-    "StreamingToolCallFunction",
     "SuccessfulT",
+    "ToolCall",
+    "ToolCallFunction",
     "TotalT",
     "UsageMetrics",
 ]

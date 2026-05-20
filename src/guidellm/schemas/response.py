@@ -15,12 +15,12 @@ from guidellm.schemas.base import StandardBaseModel
 from guidellm.schemas.info import RequestInfo
 from guidellm.schemas.request import GenerationRequest, UsageMetrics
 from guidellm.schemas.request_stats import GenerativeRequestStats
-from guidellm.schemas.tool_call import StreamingToolCall, StreamingToolCallFunction
+from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 
 __all__ = [
     "GenerationResponse",
-    "StreamingToolCall",
-    "StreamingToolCallFunction",
+    "ToolCall",
+    "ToolCallFunction",
 ]
 
 
@@ -57,7 +57,7 @@ class GenerationResponse(StandardBaseModel):
         default=None,
         description="The generated response text.",
     )
-    tool_calls: list[StreamingToolCall] | None = Field(
+    tool_calls: list[ToolCall] | None = Field(
         default=None,
         description=(
             "Raw tool call payloads from the model response, each containing "

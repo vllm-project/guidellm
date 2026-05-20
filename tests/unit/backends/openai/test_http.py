@@ -884,16 +884,16 @@ class TestCheckToolCallExpectations:
         from unittest.mock import MagicMock
 
         from guidellm.schemas.tool_call import (
-            StreamingToolCall,
-            StreamingToolCallFunction,
+            ToolCall,
+            ToolCallFunction,
         )
 
         resp = MagicMock()
         resp.tool_calls = (
             [
-                StreamingToolCall(
+                ToolCall(
                     id="call_1",
-                    function=StreamingToolCallFunction(name="fn"),
+                    function=ToolCallFunction(name="fn"),
                 )
             ]
             if has_tool_calls

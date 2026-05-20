@@ -1,5 +1,5 @@
 """
-Tool call data models for streaming and non-streaming responses.
+Tool call data models for OpenAI-compatible API responses.
 
 Provides Pydantic models for representing tool calls returned by OpenAI-compatible
 APIs. Used by both the response and request statistics schemas to carry tool call
@@ -11,23 +11,21 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 __all__ = [
-    "StreamingToolCall",
-    "StreamingToolCallFunction",
+    "ToolCall",
+    "ToolCallFunction",
 ]
 
 
-class StreamingToolCallFunction(BaseModel):
-    """Accumulated function name and arguments for a single streamed tool call."""
+class ToolCallFunction(BaseModel):
+    """Function name and arguments for a single tool call."""
 
     name: str = ""
     arguments: str = ""
 
 
-class StreamingToolCall(BaseModel):
-    """A single tool call reassembled from streaming deltas."""
+class ToolCall(BaseModel):
+    """A single tool call from an OpenAI-compatible API response."""
 
     id: str = ""
     type: str = "function"
-    function: StreamingToolCallFunction = Field(
-        default_factory=StreamingToolCallFunction
-    )
+    function: ToolCallFunction = Field(default_factory=ToolCallFunction)

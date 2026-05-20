@@ -18,7 +18,7 @@ from pydantic import Field, computed_field
 from guidellm.schemas.base import StandardBaseDict
 from guidellm.schemas.info import RequestInfo
 from guidellm.schemas.request import UsageMetrics
-from guidellm.schemas.tool_call import StreamingToolCall
+from guidellm.schemas.tool_call import ToolCall
 
 __all__ = ["GenerativeRequestStats"]
 
@@ -54,7 +54,7 @@ class GenerativeRequestStats(StandardBaseDict):
     output: str | None = Field(
         default=None, description="Generated text output from the request"
     )
-    tool_calls: list[StreamingToolCall] | None = Field(
+    tool_calls: list[ToolCall] | None = Field(
         default=None,
         description="Raw tool call payloads from the model response in OpenAI format",
     )
