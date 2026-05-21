@@ -153,7 +153,7 @@ class DelayedImportErrorModule(types.ModuleType):
         self.__message = message
         super().__init__(*args, **kwargs)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, x):
         fd = self.__frame_data
         raise ModuleNotFoundError(
             f"{self.__message}\n\n"
@@ -161,34 +161,6 @@ class DelayedImportErrorModule(types.ModuleType):
             f"  File {fd['filename']}, line {fd['lineno']}, in {fd['function']}\n\n"
             f"----> {''.join(fd['code_context'] or '').strip()}"
         )
-
-
-class _SafeLazyModule(types.ModuleType):
-    """Lazy module that does not trigger loading for metadata attribute access.
-
-    ``importlib.util._LazyModule`` triggers a full module load on *any*
-    ``__getattribute__`` call, including ``__file__`` and ``__class__``.  Code
-    that inspects ``sys.modules`` (e.g. ``inspect.getmodule`` inside
-    ``torch.__init__``) therefore force-loads every lazy module registered
-    there, which can cause circular-import failures when the lazy module's
-    own dependencies are not yet fully initialised.
-
-    This subclass returns metadata attributes directly from the module dict
-    (populated by ``module_from_spec``) and only triggers the real load when
-    a *content* attribute (function, class, …) is first accessed.
-    """
-
-    def __getattr__(self, name):
-        spec = types.ModuleType.__getattribute__(self, "__spec__")
-        loader = spec.loader
-        loader.exec_module(self)
-
-        try:
-            return self.__dict__[name]
-        except KeyError:
-            raise AttributeError(
-                f"module {self.__name__!r} has no attribute {name!r}"
-            ) from None
 
 
 def load(fullname, *, require=None, error_on_import=False, suppress_warning=False):
@@ -317,7 +289,8 @@ def load(fullname, *, require=None, error_on_import=False, suppress_warning=Fals
             module = importlib.util.module_from_spec(spec)
             sys.modules[fullname] = module
 
-            module.__class__ = _SafeLazyModule
+            loader = importlib.util.LazyLoader(spec.loader)
+            loader.exec_module(module)
 
     return module
 
