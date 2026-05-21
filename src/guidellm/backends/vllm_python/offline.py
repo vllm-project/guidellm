@@ -18,10 +18,7 @@ from typing import Any, Literal
 from pydantic import Field, PositiveInt, model_validator
 
 from guidellm.backends.backend import BackendArgs
-from guidellm.backends.vllm_python.base import (
-    VLLMBackendBase,
-    _check_vllm_available,
-)
+from guidellm.backends.vllm_python.base import VLLMBackendBase
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras.vllm import LLM, EngineArgs, RequestOutput
 from guidellm.logger import logger
@@ -139,7 +136,7 @@ class VLLMOfflineBackend(VLLMBackendBase):
 
     def __init__(self, arguments: VLLMOfflineBackendArgs):
         """Initialize vLLM Offline backend with model and configuration."""
-        _check_vllm_available()
+        # Initialize base class with common parameters (checks vllm availability)
         super().__init__(
             model=arguments.model,
             request_format=arguments.request_format,

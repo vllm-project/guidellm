@@ -62,7 +62,7 @@ def _mock_audio_decode_result(audio_array: np.ndarray) -> Mock:
 def backend():
     """VLLMPythonBackend instance without requiring vllm to be installed."""
     with (
-        patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
+        patch("guidellm.backends.vllm_python.base._check_vllm_available"),
         patch(
             "guidellm.backends.vllm_python.vllm.SamplingParams",
             _fake_sampling_params,
@@ -83,7 +83,7 @@ class TestResolveRequest:
         Request with text_column resolves to a prompt string via plain format.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_plain = _make_vllm_backend(
                 model="test-model", request_format="plain"
             )
@@ -100,7 +100,7 @@ class TestResolveRequest:
         When backend.stream=False, resolved.stream is False.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend = _make_vllm_backend(
                 model="test-model", stream=False, request_format="plain"
             )
@@ -114,7 +114,7 @@ class TestResolveRequest:
         Columns with prefix_column and text_column are formatted into prompt.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend = _make_vllm_backend(model="test-model", request_format="plain")
         request = GenerationRequest(
             columns={
@@ -131,7 +131,7 @@ class TestResolveRequest:
         Request with only text columns leaves multi_modal_data None.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_plain = _make_vllm_backend(
                 model="test-model", request_format="plain"
             )
@@ -172,7 +172,7 @@ class TestResolveRequest:
         ## WRITTEN BY AI ##
         """
         mock_pil = Mock()
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend = _make_vllm_backend(model="test-model", request_format="plain")
         request = GenerationRequest(
             columns={
@@ -224,7 +224,7 @@ class TestResolveRequest:
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template = fake_apply_chat_template
 
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend = _make_vllm_backend(
                 model="test-model", request_format="default-template"
             )
@@ -263,7 +263,7 @@ class TestResolveRequest:
         mock_audio_array = np.array([0.0, 0.1], dtype=np.float32)
         mock_decode_result = _mock_audio_decode_result(mock_audio_array)
 
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend = _make_vllm_backend(model="test-model", request_format="plain")
 
         request = GenerationRequest(
@@ -303,7 +303,7 @@ class TestImagePlaceholderInjection:
         _build_placeholder_prefix uses image_placeholder override.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_custom = _make_vllm_backend(
                 model="Qwen/Qwen3-VL-2B-Instruct",
                 image_placeholder=("<|vision_start|><|image_pad|><|vision_end|>"),
@@ -387,7 +387,7 @@ class TestAudioPlaceholderInjection:
         _build_placeholder_prefix uses audio_placeholder override.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_custom = _make_vllm_backend(
                 model="zai-org/GLM-ASR-Nano-2512",
                 audio_placeholder=("<|begin_of_audio|><|pad|><|end_of_audio|>"),
@@ -551,7 +551,7 @@ class TestVLLMRequestFormat:
         With request_format=plain, _resolve_request produces plain concatenation.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_plain = _make_vllm_backend(
                 model="test-model", request_format="plain"
             )
@@ -572,7 +572,7 @@ class TestVLLMRequestFormat:
         ValueError with message that includes received value and allowed options.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_api = _make_vllm_backend(
                 model="test-model", request_format="chat_completions"
             )
@@ -594,7 +594,7 @@ class TestVLLMRequestFormat:
         """
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "formatted_prompt"
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_default = _make_vllm_backend(
                 model="test-model", request_format="default-template"
             )
@@ -616,7 +616,7 @@ class TestVLLMRequestFormat:
         """
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "default_prompt"
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_none = _make_vllm_backend(model="test-model")
             backend_none._engine = Mock()
             backend_none._engine.tokenizer = mock_tokenizer
@@ -633,7 +633,7 @@ class TestVLLMRequestFormat:
         """
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "custom_prompt"
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_custom = _make_vllm_backend(
                 model="test-model",
                 request_format="{{ messages[0]['content'] }}",
@@ -656,7 +656,7 @@ class TestVLLMRequestFormat:
         template_file.write_text("Custom: {{ messages[0]['content'] }}")
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "Custom: Hi"
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_file = _make_vllm_backend(
                 model="test-model", request_format=str(template_file)
             )
@@ -679,7 +679,7 @@ class TestVLLMRequestFormat:
         )
         mock_tokenizer = Mock()
         mock_tokenizer.apply_chat_template.return_value = "Hi"
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_file = _make_vllm_backend(
                 model="test-model", request_format=str(template_file)
             )
@@ -700,7 +700,7 @@ class TestVLLMRequestFormat:
         """
         no_markers_file = tmp_path / "plain.txt"
         no_markers_file.write_text("just plain text")
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_file = _make_vllm_backend(
                 model="test-model", request_format=str(no_markers_file)
             )
@@ -718,7 +718,7 @@ class TestVLLMRequestFormat:
         request_format with invalid Jinja2 syntax raises ValueError.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_bad = _make_vllm_backend(
                 model="test-model", request_format="{{ unclosed"
             )
@@ -736,7 +736,7 @@ class TestVLLMRequestFormat:
         Custom request_format is stored on the backend, not in vllm_config.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_custom = _make_vllm_backend(
                 model="test-model",
                 request_format="/path/to/template.jinja",
@@ -750,7 +750,7 @@ class TestVLLMRequestFormat:
         request_format=plain does not add chat_template to vllm_config.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_plain = _make_vllm_backend(
                 model="test-model", request_format="plain"
             )
@@ -763,7 +763,7 @@ class TestVLLMRequestFormat:
         request_format=default-template does not add chat_template to vllm_config.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_def = _make_vllm_backend(
                 model="test-model", request_format="default-template"
             )
@@ -776,7 +776,7 @@ class TestVLLMRequestFormat:
         With vllm_config empty or None, backend only sets model; no extra keys.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend_empty = _make_vllm_backend(model="test-model", vllm_config={})
         assert backend_empty._args.vllm_config.get("model") == "test-model"
         assert "tensor_parallel_size" not in backend_empty._args.vllm_config
@@ -949,7 +949,7 @@ class TestVLLMLifecycle:
         """
         mock_engine = Mock()
         with (
-            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
+            patch("guidellm.backends.vllm_python.base._check_vllm_available"),
             patch(
                 "guidellm.backends.vllm_python.vllm.AsyncEngineArgs",
                 return_value=Mock(),
@@ -973,7 +973,7 @@ class TestVLLMLifecycle:
         """
         mock_engine = Mock()
         with (
-            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
+            patch("guidellm.backends.vllm_python.base._check_vllm_available"),
             patch(
                 "guidellm.backends.vllm_python.vllm.AsyncEngineArgs",
                 return_value=Mock(),
@@ -997,7 +997,7 @@ class TestVLLMLifecycle:
         """
         mock_engine = Mock()
         with (
-            patch("guidellm.backends.vllm_python.vllm._check_vllm_available"),
+            patch("guidellm.backends.vllm_python.base._check_vllm_available"),
             patch(
                 "guidellm.backends.vllm_python.vllm.AsyncEngineArgs",
                 return_value=Mock(),
@@ -1021,7 +1021,7 @@ class TestVLLMLifecycle:
         Raise RuntimeError when not started.
         ## WRITTEN BY AI ##
         """
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             backend = _make_vllm_backend(model="test-model")
             backend._in_process = False
             backend._engine = None

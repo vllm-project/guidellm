@@ -21,7 +21,6 @@ from guidellm.backends.backend import BackendArgs
 from guidellm.backends.vllm_python.base import (
     VLLMBackendBase,
     _ResolvedRequest,
-    _check_vllm_available,
     _has_jinja2_markers,
 )
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
@@ -150,8 +149,7 @@ class VLLMPythonBackend(VLLMBackendBase):
         """
         Initialize VLLM Python backend with model and configuration.
         """
-        _check_vllm_available()
-        # Initialize base class with common parameters
+        # Initialize base class with common parameters (checks vllm availability)
         super().__init__(
             model=arguments.model,
             request_format=arguments.request_format,
