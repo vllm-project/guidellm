@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
+from guidellm.schemas import StatusDistributionSummary
 
 
 class TestAlignColumns:
@@ -154,6 +155,61 @@ class TestAlignColumns:
         assert rows[0] == ["a", "", ""]
         assert rows[1] == ["", "b", ""]
         assert rows[2] == ["", "", "c"]
+
+
+class TestHasDistributionData:
+    """
+    Tests for _has_distribution_data on GenerativeBenchmarkerCSV.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_returns_true_for_zero_valued_distribution(self):
+        """
+        _has_distribution_data returns True when a status has count > 0
+        but total_sum == 0 (e.g. errored tool-call requests with count=0).
+
+        ## WRITTEN BY AI ##
+        """
+        dist = StatusDistributionSummary.from_values(
+            successful=[],
+            incomplete=[],
+            errored=[0.0, 0.0, 0.0],
+        )
+        csv_out = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
+        assert csv_out._has_distribution_data(dist) is True
+
+    @pytest.mark.smoke
+    def test_returns_false_for_empty_distribution(self):
+        """
+        _has_distribution_data returns False when all statuses have
+        count == 0 (no data at all).
+
+        ## WRITTEN BY AI ##
+        """
+        dist = StatusDistributionSummary.from_values(
+            successful=[],
+            incomplete=[],
+            errored=[],
+        )
+        csv_out = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
+        assert csv_out._has_distribution_data(dist) is False
+
+    @pytest.mark.smoke
+    def test_returns_true_for_positive_distribution(self):
+        """
+        _has_distribution_data returns True for a normal positive distribution.
+
+        ## WRITTEN BY AI ##
+        """
+        dist = StatusDistributionSummary.from_values(
+            successful=[5.0, 10.0],
+            incomplete=[],
+            errored=[],
+        )
+        csv_out = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
+        assert csv_out._has_distribution_data(dist) is True
 
 
 @pytest.mark.asyncio

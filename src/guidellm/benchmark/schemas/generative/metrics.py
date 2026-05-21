@@ -268,22 +268,29 @@ class GenerativeMetricsSummary(StandardBaseDict):
             dict[StatusTypes, list[tuple[float, float, float]]],
         ]:
             """Helper to compile value, rate, and concurrency distributions."""
+            # Filter out None values instead of coercing to 0.0 so we can
+            # distinguish "metric not applicable" (None) from "metric is
+            # zero" (e.g. errored tool call requests with tool_call_count=0).
             value_lists: dict[StatusTypes, list[float]] = {
                 status: [
-                    float(metric[value_index] or 0.0)
+                    float(val)
                     for metric in metrics
                     if metric is not None
+                    for val in [metric[value_index]]
+                    if val is not None
                 ]
                 for status, metrics in metrics_by_status.items()
             }
+
+            # No data at all for this value index — skip distributions.
+            if all(len(vl) == 0 for vl in value_lists.values()):
+                return None, None, None, value_lists, {}, {}
+
             value_dist = StatusDistributionSummary.from_values(
                 successful=value_lists["successful"],
                 incomplete=value_lists["incomplete"],
                 errored=value_lists["errored"],
             )
-
-            if value_dist.total_sum == 0.0:
-                return None, None, None, value_lists, {}, {}
 
             rate_lists: dict[StatusTypes, list[tuple[float, float]]] = {
                 status: [

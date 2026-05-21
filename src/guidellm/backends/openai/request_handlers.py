@@ -497,7 +497,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     def _ensure_tool_format(tool: dict[str, Any]) -> dict[str, Any]:
         """Normalise a single tool definition to Chat Completions format.
 
-        Chat Completions expects ``{"type": "function", "function": {"name": ..., ...}}``.
+        Chat Completions expects
+        ``{"type": "function", "function": {"name": ..., ...}}``.
         If the tool is already in that format it is returned as-is.  If it is in the
         flat Responses API format (top-level ``name``, no ``function`` key) the detail
         fields are wrapped into a nested ``function`` dict.
@@ -625,6 +626,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 body.setdefault("tool_choice", "required")
 
         if "tools" not in body:
+            body.pop("tool_choice", None)
             return
 
         # Override tool_choice to "none" on turns that don't expect tool calls,
@@ -1151,12 +1153,12 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 tools_value = json.loads(tools_value)
             if isinstance(tools_value, list):
                 body["tools"] = [
-                    ResponsesRequestHandler._ensure_tool_format(t)
-                    for t in tools_value
+                    ResponsesRequestHandler._ensure_tool_format(t) for t in tools_value
                 ]
                 body.setdefault("tool_choice", "required")
 
         if "tools" not in body:
+            body.pop("tool_choice", None)
             return
 
         if not data.expects_tool_call:
