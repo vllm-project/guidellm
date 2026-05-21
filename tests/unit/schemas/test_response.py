@@ -209,6 +209,79 @@ class TestGenerationResponse:
         assert stats.info.status == "errored"
 
     @pytest.mark.smoke
+    def test_compile_stats_errored_preserves_tool_call_count_when_expected(self):
+        """
+        compile_stats sets tool_call_count=0 on errored requests that
+        expected tool calls, so the tool call metrics table still appears.
+
+        ## WRITTEN BY AI ##
+        """
+        response = GenerationResponse(
+            request_id="tc-err",
+            request_args="test_args",
+            text=None,
+            output_metrics=UsageMetrics(text_tokens=10),
+        )
+        request = GenerationRequest(
+            request_id="tc-err",
+            expects_tool_call=True,
+            output_metrics=UsageMetrics(text_tokens=20, tool_call_count=3),
+        )
+        info = RequestInfo(request_id="tc-err", status="errored")
+
+        stats = response.compile_stats(request, info)
+        assert stats.output_metrics.tool_call_count == 0
+
+    @pytest.mark.smoke
+    def test_compile_stats_errored_no_tool_call_count_when_not_expected(self):
+        """
+        compile_stats leaves tool_call_count as None on errored requests
+        that did not expect tool calls.
+
+        ## WRITTEN BY AI ##
+        """
+        response = GenerationResponse(
+            request_id="no-tc-err",
+            request_args="test_args",
+            text=None,
+            output_metrics=UsageMetrics(text_tokens=10),
+        )
+        request = GenerationRequest(
+            request_id="no-tc-err",
+            expects_tool_call=False,
+            output_metrics=UsageMetrics(text_tokens=20),
+        )
+        info = RequestInfo(request_id="no-tc-err", status="errored")
+
+        stats = response.compile_stats(request, info)
+        assert stats.output_metrics.tool_call_count is None
+
+    @pytest.mark.smoke
+    def test_compile_stats_completed_sets_tool_call_count_zero_when_expected(self):
+        """
+        compile_stats sets tool_call_count=0 on completed requests where
+        tool calls were expected but the model produced none (e.g.
+        ignore_continue with tool_choice=none).
+
+        ## WRITTEN BY AI ##
+        """
+        response = GenerationResponse(
+            request_id="tc-ok-none",
+            request_args="test_args",
+            text="plain text response",
+            output_metrics=UsageMetrics(text_tokens=15),
+        )
+        request = GenerationRequest(
+            request_id="tc-ok-none",
+            expects_tool_call=True,
+            output_metrics=UsageMetrics(text_tokens=20),
+        )
+        info = RequestInfo(request_id="tc-ok-none", status="completed")
+
+        stats = response.compile_stats(request, info)
+        assert stats.output_metrics.tool_call_count == 0
+
+    @pytest.mark.smoke
     def test_compile_stats_persists_tool_calls(self):
         """
         compile_stats carries tool_calls from the response to the stats.

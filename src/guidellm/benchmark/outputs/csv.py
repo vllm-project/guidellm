@@ -558,12 +558,16 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         """
         Check if distribution summary contains any data.
 
+        Uses ``count > 0`` rather than ``total_sum > 0`` so that
+        all-zero distributions (e.g. errored tool-call requests) are
+        still recognised as having data.
+
         :param dist_summary: Distribution summary to check
         :return: True if summary contains data, False otherwise
         """
         return any(
             getattr(dist_summary, status, None) is not None
-            and getattr(dist_summary, status).total_sum > 0.0
+            and getattr(dist_summary, status).count > 0
             for status in ["successful", "incomplete", "errored"]
         )
 

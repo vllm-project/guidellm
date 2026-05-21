@@ -100,9 +100,14 @@ class GenerationResponse(StandardBaseModel):
             raise ValueError("Mismatched request IDs between info and response.")
 
         if info.status != "completed":
-            # clear out request output metrics if the request failed since
-            # those are not valid
+            # Clear out request output metrics if the request failed since
+            # those are not valid.  Preserve tool_call_count=0 when the
+            # request expected a tool call so errored-request statistics
+            # still contribute to the tool call metrics table.
+            expected_tool_call = request.expects_tool_call
             request.output_metrics = UsageMetrics()
+            if expected_tool_call:
+                request.output_metrics.tool_call_count = 0
 
         base_input = request.input_metrics if prefer_response else self.input_metrics
         override_input = (
@@ -121,6 +126,15 @@ class GenerationResponse(StandardBaseModel):
         for key, value in override_output.model_dump().items():
             if value is not None:
                 output_metrics_dict[key] = value
+
+        # If tool calls were expected but none were recorded (either because
+        # the request errored or the model produced none with ignore_continue),
+        # set tool_call_count=0 so the metrics table still appears.
+        if (
+            request.expects_tool_call
+            and output_metrics_dict.get("tool_call_count") is None
+        ):
+            output_metrics_dict["tool_call_count"] = 0
 
         return GenerativeRequestStats(
             request_id=self.request_id,

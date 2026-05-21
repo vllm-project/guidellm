@@ -1274,6 +1274,25 @@ class TestChatCompletionsRequestHandler:
         assert hasattr(instance, "streaming_tool_calls")
         assert instance.streaming_tool_calls == {}
 
+    @pytest.mark.sanity
+    def test_format_strips_tool_choice_without_tools(self, valid_instances):
+        """
+        Test that tool_choice from extras is stripped when no tools are present
+        in the request body.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["test prompt"]},
+            expects_tool_call=False,
+        )
+
+        result = instance.format(data, extras={"body": {"tool_choice": "required"}})
+
+        assert "tool_choice" not in result.body
+        assert "tools" not in result.body
+
 
 class TestAudioRequestHandler:
     """Test cases for AudioRequestHandler.
@@ -3186,6 +3205,25 @@ class TestResponsesRequestHandler:
         assert result.body["tool_choice"] == "none"
 
     @pytest.mark.sanity
+    def test_format_strips_tool_choice_without_tools(self, valid_instances):
+        """
+        Test that tool_choice from extras is stripped when no tools are present
+        in the request body.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        data = GenerationRequest(
+            columns={"text_column": ["test prompt"]},
+            expects_tool_call=False,
+        )
+
+        result = instance.format(data, extras={"body": {"tool_choice": "required"}})
+
+        assert "tool_choice" not in result.body
+        assert "tools" not in result.body
+
+    @pytest.mark.sanity
     def test_build_input_items_replays_tool_calls(self, valid_instances):
         """
         Test _build_input_items converts ToolCall objects to
@@ -3271,7 +3309,8 @@ class TestEnsureChatCompletionsTool:
                 "strict": True,
             },
         }
-        assert ChatCompletionsRequestHandler._ensure_tool_format(responses_tool) == expected
+        result = ChatCompletionsRequestHandler._ensure_tool_format(responses_tool)
+        assert result == expected
 
     @pytest.mark.sanity
     def test_partial_fields(self):
