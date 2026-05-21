@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from .benchmarker import Benchmarker
 from .entrypoints import benchmark_generative_text, reimport_benchmarks_report
+from .multi_image import MultiImageBenchmark, MultiImageBenchmarkResults
 from .outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerCSV,
@@ -83,6 +84,8 @@ __all__ = [
     "GenerativeRequestsAccumulator",
     "GenerativeTextMetricsSummary",
     "GenerativeVideoMetricsSummary",
+    "MultiImageBenchmark",
+    "MultiImageBenchmarkResults",
     "Profile",
     "ProfileType",
     "RunningMetricStats",
