@@ -1,14 +1,11 @@
 # vLLM Offline Backend
 
-The **vLLM Offline backend** (`vllm_offline`) provides synchronous batch
-processing using vLLM's `LLM` class. It collects requests into micro-batches
-and processes them together for maximum throughput, making it ideal for
-offline benchmarking scenarios where batching efficiency is prioritized over
-per-request latency.
+The **vLLM Offline backend** (`vllm_offline`) provides synchronous batch processing using vLLM's `LLM` class. It collects requests into micro-batches and processes them together for maximum throughput, making it ideal for offline benchmarking scenarios where batching efficiency is prioritized over per-request latency.
 
 ## When to Use the Offline Backend
 
 **Use `vllm_offline` when:**
+
 - Running offline batch inference on large datasets
 - Maximizing throughput is more important than individual request latency
 - You have a known dataset size and want optimal batch processing
@@ -16,21 +13,21 @@ per-request latency.
 - Processing datasets for evaluation or ETL pipelines
 
 **Use `vllm_python` (AsyncLLMEngine) when:**
+
 - You need streaming token-by-token responses
 - Simulating production-like continuous request arrival
 - Measuring realistic latency characteristics
 - Need async request handling
 
 **Use OpenAI HTTP backend when:**
+
 - Testing against a production vLLM server
 - Measuring end-to-end latency including network overhead
 - Benchmarking a deployed service
 
 ## Installation
 
-The offline backend requires vLLM to be installed. See the [vLLM Python
-Backend installation guide](vllm-python-backend.md#installation) for
-recommended installation methods.
+The offline backend requires vLLM to be installed. See the [vLLM Python Backend installation guide](vllm-python-backend.md#installation) for recommended installation methods.
 
 ## Basic Usage
 
@@ -69,8 +66,7 @@ Configure the offline backend via `--backend-kwargs` with JSON:
   - `tensor_parallel_size`: Number of GPUs for tensor parallelism
   - `gpu_memory_utilization`: Fraction of GPU memory to use (0.0-1.0)
   - `max_model_len`: Maximum sequence length
-  - See [vLLM Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/)
-    for all options (use Python parameter names)
+  - See [vLLM Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) for all options (use Python parameter names)
 - **`request_format`**: How to format prompts
   - `"default-template"` (default): Use tokenizer's chat template
   - `"plain"`: No chat template, plain text concatenation
@@ -88,8 +84,7 @@ The offline backend uses a **micro-batching** approach:
 4. **Result Distribution**: Return cached results to waiting requests
 5. **Flush on Shutdown**: Remaining requests processed when backend shuts down
 
-This gives you 10-100x fewer model forward passes compared to per-request
-processing while working within GuideLLM's scheduler architecture.
+This gives you 10-100x fewer model forward passes compared to per-request processing while working within GuideLLM's scheduler architecture.
 
 ## Examples
 
@@ -147,11 +142,11 @@ guidellm benchmark run \
 
 ### Choosing Batch Size
 
-| Batch Size | Throughput | Latency | Memory | When to Use |
-|------------|------------|---------|--------|-------------|
-| 8-16 | Low | Low | Low | Small models, limited memory |
-| 32-64 | Good | Medium | Medium | General use, balanced |
-| 128-256 | High | High | High | Large GPUs, max throughput |
+| Batch Size | Throughput | Latency | Memory | When to Use                  |
+| ---------- | ---------- | ------- | ------ | ---------------------------- |
+| 8-16       | Low        | Low     | Low    | Small models, limited memory |
+| 32-64      | Good       | Medium  | Medium | General use, balanced        |
+| 128-256    | High       | High    | High   | Large GPUs, max throughput   |
 
 **Rule of thumb**: Start with 32, increase until GPU utilization >90% or OOM.
 
@@ -183,15 +178,15 @@ guidellm benchmark run \
 
 ## Comparison: Offline vs Python vs HTTP
 
-| Feature | `vllm_offline` | `vllm_python` | OpenAI HTTP |
-|---------|----------------|---------------|-------------|
-| **Batching** | Micro-batching | Continuous | Continuous |
-| **Throughput** | Highest | High | Good |
-| **Latency** | Higher (batched) | Lower | Lowest† |
-| **Streaming** | No | Yes | Yes |
-| **Overhead** | None | None | HTTP/network |
-| **Processes** | 1 | 1 | Multiple |
-| **Use Case** | Offline eval | Research | Production |
+| Feature        | `vllm_offline`   | `vllm_python` | OpenAI HTTP  |
+| -------------- | ---------------- | ------------- | ------------ |
+| **Batching**   | Micro-batching   | Continuous    | Continuous   |
+| **Throughput** | Highest          | High          | Good         |
+| **Latency**    | Higher (batched) | Lower         | Lowest†      |
+| **Streaming**  | No               | Yes           | Yes          |
+| **Overhead**   | None             | None          | HTTP/network |
+| **Processes**  | 1                | 1             | Multiple     |
+| **Use Case**   | Offline eval     | Research      | Production   |
 
 *† Subject to network conditions*
 
@@ -199,8 +194,7 @@ guidellm benchmark run \
 
 ### "Backend not started up for process"
 
-The backend wasn't initialized. Ensure your benchmark calls the backend
-lifecycle correctly (this should happen automatically).
+The backend wasn't initialized. Ensure your benchmark calls the backend lifecycle correctly (this should happen automatically).
 
 ### Out of Memory (OOM)
 

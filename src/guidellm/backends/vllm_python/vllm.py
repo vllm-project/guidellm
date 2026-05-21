@@ -20,8 +20,8 @@ from pydantic import Field, model_validator
 from guidellm.backends.backend import BackendArgs
 from guidellm.backends.vllm_python.base import (
     VLLMBackendBase,
-    _ResolvedRequest,
     _has_jinja2_markers,
+    _ResolvedRequest,
 )
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras.vllm import (
@@ -53,7 +53,12 @@ except ImportError:
     image_dict_to_pil = None  # type: ignore[assignment]
     HAS_VISION = False
 
-__all__ = ["VLLMPythonBackend", "VLLMPythonBackendArgs"]
+__all__ = [
+    "VLLMPythonBackend",
+    "VLLMPythonBackendArgs",
+    "_ResolvedRequest",  # Re-exported from base for test compatibility
+    "_has_jinja2_markers",  # Re-exported from base for test compatibility
+]
 
 
 @BackendArgs.register("vllm_python")
