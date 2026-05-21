@@ -13,22 +13,19 @@ import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any, Literal, cast
 
-import jinja2
-from more_itertools import roundrobin
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
-from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.backend import BackendArgs
 from guidellm.backends.vllm_python.base import (
     VLLMBackendBase,
     _ResolvedRequest,
     _check_vllm_available,
+    _has_jinja2_markers,
 )
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras.vllm import (
-    HAS_VLLM,
     AsyncEngineArgs,
     AsyncLLMEngine,
     RequestOutput,
@@ -39,7 +36,6 @@ from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
     RequestInfo,
-    StandardBaseModel,
 )
 
 try:

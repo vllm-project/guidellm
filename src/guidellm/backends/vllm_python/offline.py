@@ -17,7 +17,7 @@ from typing import Any, Literal
 
 from pydantic import Field, PositiveInt, model_validator
 
-from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.backend import BackendArgs
 from guidellm.backends.vllm_python.base import (
     VLLMBackendBase,
     _check_vllm_available,
@@ -146,11 +146,13 @@ class VLLMOfflineBackend(VLLMBackendBase):
             image_placeholder=arguments.image_placeholder,
             audio_placeholder=arguments.audio_placeholder,
         )
-        super(Backend, self).__init__(arguments)  # Call Backend.__init__
+        # Call Backend.__init__ for registry
+        super(VLLMBackendBase, self).__init__(arguments)
         self._args = arguments
 
         # Runtime state
         self._in_process = False
+        self._shutting_down = False
         self._llm: LLM | None = None
         self._batch_lock = asyncio.Lock()
         self._pending_batch: list[_BatchedRequest] = []
@@ -192,6 +194,9 @@ class VLLMOfflineBackend(VLLMBackendBase):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
 
+        # Set shutdown flag to reject new requests
+        self._shutting_down = True
+
         # Cancel any pending processing
         if self._processing_task and not self._processing_task.done():
             self._processing_task.cancel()
@@ -201,14 +206,16 @@ class VLLMOfflineBackend(VLLMBackendBase):
                 pass
 
         # Process any remaining requests in batch
-        if self._pending_batch:
-            await self._process_batch()
+        async with self._batch_lock:
+            if self._pending_batch:
+                await self._process_batch()
 
         if self._llm is not None:
             # LLM cleanup happens automatically via GC
             self._llm = None
 
         self._in_process = False
+        self._shutting_down = False
 
     async def validate(self):
         """Validate backend readiness."""
@@ -270,15 +277,21 @@ class VLLMOfflineBackend(VLLMBackendBase):
             )
 
             # Match outputs to requests and mark ready
-            for req, output in zip(batch, outputs, strict=False):
+            if len(outputs) != len(batch):
+                raise RuntimeError(
+                    f"Batch size mismatch: expected {len(batch)} outputs, "
+                    f"got {len(outputs)}"
+                )
+
+            for req, output in zip(batch, outputs, strict=True):
                 req.result = output
                 req.ready.set()
         except Exception as exc:
             logger.error(f"Batch processing failed: {exc}")
-            # Mark all as failed
+            # Mark all requests as failed but don't re-raise
+            # (individual requests will see None result)
             for req in batch:
                 req.ready.set()
-            raise
 
     async def _maybe_process_batch(self):
         """Check if batch is full and process if so."""
@@ -308,6 +321,11 @@ class VLLMOfflineBackend(VLLMBackendBase):
         """
         if self._llm is None:
             raise RuntimeError("Backend not started up for process.")
+
+        if self._shutting_down:
+            raise RuntimeError(
+                "Backend is shutting down, cannot accept new requests."
+            )
 
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
