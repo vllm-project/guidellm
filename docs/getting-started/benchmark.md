@@ -55,19 +55,19 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 
 ### Key Parameters
 
-| Parameter        | Description                                    | Example                                        |
-| ---------------- | ---------------------------------------------- | ---------------------------------------------- |
-| `--target`       | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`             |
-| `--model`        | Model name to benchmark                        | `--model "Meta-Llama-3.1-8B-Instruct"`         |
-| `--data`         | Data configuration for benchmarking            | `--data "prompt_tokens=256,output_tokens=128"` |
-| `--profile`      | Type of benchmark profile to run               | `--profile sweep`                              |
-| `--rate`         | Request rate or number of benchmarks for sweep | `--rate 10`                                    |
-| `--random-seed`  | Random seed for reproducibility                | `--random-seed 42`                             |
-| `--max-seconds`  | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
-| `--max-requests` | Maximum number of requests for each benchmark  | `--max-requests 1000`                          |
-| `--data-samples` | Maximum number of dataset rows to load         | `--data-samples 1000`                          |
-| `--output-dir`   | Directory path to save output files            | `--output-dir results/`                        |
-| `--outputs`      | Output formats to generate                     | `--outputs json csv html`                      |
+| Parameter          | Description                                    | Example                                        |
+| ------------------ | ---------------------------------------------- | ---------------------------------------------- |
+| `--target`         | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`             |
+| `--model`          | Model name to benchmark                        | `--model "Meta-Llama-3.1-8B-Instruct"`         |
+| `--data`           | Data configuration for benchmarking            | `--data "prompt_tokens=256,output_tokens=128"` |
+| `--profile`        | Type of benchmark profile to run               | `--profile sweep`                              |
+| `--rate`           | Request rate or number of benchmarks for sweep | `--rate 10`                                    |
+| `--images-per-request` | Number of images per request for vision benchmarks | `--images-per-request "1,2,5"`            |
+| `--random-seed`    | Random seed for reproducibility                | `--random-seed 42`                             |
+| `--max-seconds`    | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
+| `--max-requests`   | Maximum number of requests for each benchmark  | `--max-requests 1000`                          |
+| `--output-dir`     | Directory path to save output files            | `--output-dir results/`                        |
+| `--outputs`        | Output formats to generate                     | `--outputs json csv html`                      |
 
 ### Random Seed (`--random-seed`)
 
@@ -239,6 +239,55 @@ guidellm benchmark \
   --profile constant \
   --rate 5
 ```
+
+### Multi-Image Benchmarking
+
+When benchmarking vision-language models with multiple images per request, use `--images-per-request` to measure latency impact. This is useful for understanding how TTFT and ITL scale with increasing frame/image counts:
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --data "prompt_tokens=256,output_tokens=128" \
+  --images-per-request 1,2,5 \
+  --profile constant \
+  --rate 10 \
+  --max-seconds 30
+```
+
+This runs three sequential benchmarks (1, 2, and 5 images per request) with synthetic 720p images and outputs comparative latency metrics in the report.
+
+**Single image count:**
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --images-per-request 3 \
+  --profile constant \
+  --rate 5
+```
+
+**Programmatic usage:**
+
+```python
+from guidellm.benchmark import MultiImageBenchmark
+
+# Create multi-image benchmark configuration
+bench = MultiImageBenchmark(
+    image_counts=[1, 2, 5],
+    prompt_tokens=256,
+    output_tokens=128,
+)
+
+# Get configs for each image count
+configs = bench.get_configs()  # {1: config, 2: config, 5: config}
+
+# Get image statistics
+for img_count in [1, 2, 5]:
+    stats = bench.get_image_stats(img_count)
+    print(f"{img_count} images: {stats['total_bytes']} bytes total")
+```
+
+**Note:** Multi-image benchmarking requires the vision dependencies (`pip install guidellm[vision]`).
 
 ## Output Options
 
