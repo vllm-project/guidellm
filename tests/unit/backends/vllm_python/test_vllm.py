@@ -64,6 +64,10 @@ def backend():
     with (
         patch("guidellm.backends.vllm_python.base._check_vllm_available"),
         patch(
+            "guidellm.backends.vllm_python.base.SamplingParams",
+            _fake_sampling_params,
+        ),
+        patch(
             "guidellm.backends.vllm_python.vllm.SamplingParams",
             _fake_sampling_params,
         ),

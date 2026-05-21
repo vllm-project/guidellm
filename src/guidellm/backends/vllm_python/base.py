@@ -67,9 +67,7 @@ class _ResolvedRequest(StandardBaseModel):
 def _check_vllm_available() -> None:
     """Check if vllm is available and raise helpful error if not."""
     if not HAS_VLLM:
-        raise ImportError(
-            "vllm is not installed. Install vllm to use vllm backends."
-        )
+        raise ImportError("vllm is not installed. Install vllm to use vllm backends.")
 
 
 def _has_jinja2_markers(s: str) -> bool:
@@ -86,8 +84,13 @@ class VLLMBackendBase(Backend):
     implement the specific engine initialization and request processing logic.
     """
 
-    def __init__(self, model: str, request_format: str, image_placeholder: str,
-                 audio_placeholder: str):
+    def __init__(
+        self,
+        model: str,
+        request_format: str,
+        image_placeholder: str,
+        audio_placeholder: str,
+    ):
         """
         Initialize base vLLM backend.
 

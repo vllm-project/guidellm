@@ -10,6 +10,7 @@ more important than per-request latency.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -178,9 +179,7 @@ class VLLMOfflineBackend(VLLMBackendBase):
 
         # Initialize LLM in thread pool to avoid blocking
         def _init_llm():
-            engine_args = EngineArgs(
-                **self._args.vllm_config
-            )  # type: ignore[misc]
+            engine_args = EngineArgs(**self._args.vllm_config)  # type: ignore[misc]
             return LLM.from_engine_args(engine_args)  # type: ignore[misc]
 
         self._llm = await asyncio.to_thread(_init_llm)
@@ -197,10 +196,8 @@ class VLLMOfflineBackend(VLLMBackendBase):
         # Cancel any pending processing
         if self._processing_task and not self._processing_task.done():
             self._processing_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._processing_task
-            except asyncio.CancelledError:
-                pass
 
         # Process any remaining requests in batch
         async with self._batch_lock:
@@ -269,9 +266,7 @@ class VLLMOfflineBackend(VLLMBackendBase):
             )
 
         try:
-            outputs: list[RequestOutput] = await asyncio.to_thread(
-                _generate_batch
-            )
+            outputs: list[RequestOutput] = await asyncio.to_thread(_generate_batch)
 
             # Match outputs to requests and mark ready
             if len(outputs) != len(batch):
@@ -283,7 +278,9 @@ class VLLMOfflineBackend(VLLMBackendBase):
             for req, output in zip(batch, outputs, strict=True):
                 req.result = output
                 req.ready.set()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
+            # Catch all exceptions to ensure requests don't hang forever.
+            # This is safe here because we're marking requests as failed.
             logger.error(f"Batch processing failed: {exc}")
             # Mark all requests as failed but don't re-raise
             # (individual requests will see None result)
@@ -300,9 +297,7 @@ class VLLMOfflineBackend(VLLMBackendBase):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        history: (
-            list[tuple[GenerationRequest, GenerationResponse]] | None
-        ) = None,
+        history: (list[tuple[GenerationRequest, GenerationResponse]] | None) = None,
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Process generation request by batching with others.
@@ -320,9 +315,7 @@ class VLLMOfflineBackend(VLLMBackendBase):
             raise RuntimeError("Backend not started up for process.")
 
         if self._shutting_down:
-            raise RuntimeError(
-                "Backend is shutting down, cannot accept new requests."
-            )
+            raise RuntimeError("Backend is shutting down, cannot accept new requests.")
 
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
@@ -368,11 +361,7 @@ class VLLMOfflineBackend(VLLMBackendBase):
                 if output.outputs
                 else 0,
                 "total_tokens": len(output.prompt_token_ids or [])
-                + (
-                    len(output.outputs[0].token_ids or [])
-                    if output.outputs
-                    else 0
-                ),
+                + (len(output.outputs[0].token_ids or []) if output.outputs else 0),
             }
 
             response = VLLMResponseHandler.build_response(
