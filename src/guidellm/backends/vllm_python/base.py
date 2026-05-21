@@ -112,6 +112,16 @@ class VLLMBackendBase(Backend):
         """
         ...
 
+    @property
+    def _stream_value(self) -> bool:
+        """
+        Get the streaming mode for this backend.
+
+        Returns True by default (for offline backends).
+        VLLMPythonBackend overrides this to return its _stream attribute.
+        """
+        return True
+
     def _build_multi_modal_data_from_columns(  # noqa: C901, PLR0912
         self, columns: dict[str, Any]
     ) -> dict[str, Any] | None:
@@ -380,6 +390,7 @@ class VLLMBackendBase(Backend):
         return _ResolvedRequest(
             prompt=prompt,
             multi_modal_data=multi_modal_data,
+            stream=self._stream_value,
         )
 
     def _create_sampling_params(

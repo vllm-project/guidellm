@@ -182,6 +182,11 @@ class VLLMPythonBackend(VLLMBackendBase):
         """
         return self._args.model_dump()
 
+    @property
+    def _stream_value(self) -> bool:
+        """Get the streaming mode for this backend instance."""
+        return self._stream
+
     async def process_startup(self):
         """
         Initialize VLLM AsyncLLMEngine instance with configured parameters.
