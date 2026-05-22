@@ -964,3 +964,80 @@ class TestCheckToolCallExpectations:
 
         with pytest.raises(ValueError, match="tool call"):
             backend._check_tool_call_expectations(req, resp)
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_resolve_stream_reasoning_tokens_ttft(
+        self,
+        httpx_mock: HTTPXMock,
+    ):
+        """
+        Test that TTFT is measured correctly when reasoning tokens arrive first.
+
+        Validates that the first_token_iteration timing is set on the first
+        reasoning token, not waiting for the first content token.
+        This is an integration test for issue #737.
+
+        ### WRITTEN BY AI ###
+        """
+        # Create a realistic reasoning model response stream
+        stream_chunks = [
+            # First chunk: reasoning token (should trigger TTFT)
+            b'data: {"id": "chatcmpl-123", "choices": '
+            b'[{"index": 0, "delta": {"reasoning": "Let me think"}}]}\n\n',
+            # More reasoning tokens
+            b'data: {"choices": [{"delta": {"reasoning": " about this..."}}]}\n\n',
+            # Finally, content tokens
+            b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n',
+            b'data: {"choices": [{"delta": {"content": " world"}}], '
+            b'"usage": {"prompt_tokens": 5, "completion_tokens": 10}}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+
+        httpx_mock.add_response(
+            url="http://test/v1/chat/completions",
+            stream=IteratorStream(stream_chunks),
+        )
+
+        backend = _make_backend(
+            target="http://test",
+            model="reasoning-model",
+            stream=True,
+            validate_backend=False,
+            request_format="/v1/chat/completions",
+        )
+        await backend.process_startup()
+
+        request = GenerationRequest()
+        request_info = RequestInfo(
+            request_id="test-id",
+            status="pending",
+            scheduler_node_id=1,
+            scheduler_process_id=1,
+            scheduler_start_time=123.0,
+            timings=RequestTimings(),
+        )
+
+        responses = []
+        async for response, info in backend.resolve(request, request_info):
+            responses.append((response, info))
+
+        # Verify we got a response
+        assert len(responses) > 0
+        final_response, final_info = responses[-1]
+
+        # Verify TTFT was measured (first_token_iteration should be set)
+        assert final_info.timings.first_token_iteration is not None, (
+            "TTFT (first_token_iteration) should be set when reasoning tokens arrive"
+        )
+
+        # Verify the response contains both reasoning and content
+        assert final_response.text is not None
+        assert "Let me think" in final_response.text
+        assert "about this..." in final_response.text
+        assert "Hello world" in final_response.text
+
+        # Verify token counts
+        assert final_info.timings.token_iterations > 0
+        assert final_response.output_metrics.text_tokens == 10
