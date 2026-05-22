@@ -13,11 +13,13 @@ from tests.e2e.utils import (
 from tests.e2e.vllm_sim_server import VllmSimServer
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def server():
     """
-    Pytest fixture to start and stop the server for the entire module
-    using the TestServer class.
+    Pytest fixture to start and stop the server for each test function.
+
+    Uses function scope (not module) because this test intentionally kills
+    the server mid-run; function scope ensures reruns get a fresh server.
     """
     server = VllmSimServer(
         port=8000,
@@ -33,7 +35,7 @@ def server():
         server.stop()  # Teardown: Stop the server after tests are done
 
 
-@pytest.mark.timeout(30)
+@pytest.mark.timeout(120)
 def test_max_error_benchmark(server: VllmSimServer, tmp_path: Path):
     """
     Test that the max error rate constraint is properly triggered when server goes down.
@@ -53,12 +55,15 @@ def test_max_error_benchmark(server: VllmSimServer, tmp_path: Path):
     # Start the benchmark
     client.start_benchmark(
         rate=rate,
-        max_seconds=25,
+        max_seconds=50,
         max_error_rate=max_error_rate,
     )
 
-    # Wait for the benchmark to complete (server will be stopped after 15 seconds)
-    client.wait_for_completion(timeout=30, stop_server_after=15, server=server)
+    # Wait for the benchmark to complete (server will be stopped after 30 seconds).
+    # CI workers need ~15-20s to initialize (fork, download/load tokenizer on first
+    # run), so 30s gives enough headroom for actual benchmarking before the server
+    # is killed and the error-rate constraint triggers.
+    client.wait_for_completion(timeout=60, stop_server_after=30, server=server)
 
     # Assert no Python exceptions occurred
     assert_no_python_exceptions(client.stderr)
