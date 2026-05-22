@@ -927,6 +927,110 @@ class TestChatCompletionsRequestHandler:
         assert response.input_metrics.text_tokens == expected_input_tokens
         assert response.output_metrics.text_tokens == expected_output_tokens
 
+    @pytest.mark.sanity
+    def test_streaming_reasoning_tokens(self, valid_instances, generation_request):
+        """Test that reasoning tokens are properly detected for TTFT measurement.
+
+        Reasoning-capable models (e.g., DeepSeek-R1, o1) emit delta.reasoning
+        before delta.content. This test verifies that the first reasoning token
+        triggers the updated flag, ensuring accurate TTFT measurement.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            # First chunk has reasoning token
+            (
+                'data: {"id": "chatcmpl-123", "choices": '
+                '[{"index": 0, "delta": {"reasoning": "Okay"}}], "usage": {}}'
+            ),
+            # More reasoning tokens
+            'data: {"choices": [{"delta": {"reasoning": ", let me"}}], "usage": {}}',
+            'data: {"choices": [{"delta": {"reasoning": " think..."}}], "usage": {}}',
+            # Finally content tokens
+            'data: {"choices": [{"delta": {"content": "Hello"}}], "usage": {}}',
+            (
+                'data: {"choices": [{"delta": {"content": " world!"}}], '
+                '"usage": {"prompt_tokens": 5, "completion_tokens": 10}}'
+            ),
+            "data: [DONE]",
+        ]
+
+        updated_count = 0
+        first_update_on_line = None
+        for idx, line in enumerate(lines):
+            result = instance.add_streaming_line(line)
+            if result == 1:
+                updated_count += 1
+                if first_update_on_line is None:
+                    first_update_on_line = idx
+            elif result is None:
+                break
+
+        # Verify that the first update happened on the first reasoning token (line 0)
+        assert first_update_on_line == 0, (
+            f"Expected first token detection on line 0 (reasoning token), "
+            f"but got {first_update_on_line}"
+        )
+
+        # Verify all chunks with content were counted (5 lines with tokens)
+        assert updated_count == 5
+
+        response = instance.compile_streaming(generation_request, arguments)
+        # Verify that both reasoning and content are in the final text
+        assert "Okay" in response.text
+        assert "let me think..." in response.text
+        assert "Hello world!" in response.text
+        assert response.text == "Okay, let me think...Hello world!"
+        assert response.input_metrics.text_tokens == 5
+        assert response.output_metrics.text_tokens == 10
+
+    @pytest.mark.sanity
+    def test_streaming_both_reasoning_and_content_in_same_chunk(
+        self, valid_instances, generation_request
+    ):
+        """Test handling chunks with both reasoning and content fields.
+
+        Edge case: verify that if a chunk contains both delta.reasoning
+        and delta.content, both are properly captured and counted.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            # Chunk with both reasoning and content (edge case)
+            (
+                'data: {"choices": [{"delta": '
+                '{"reasoning": "Let me think...", "content": "Answer: "}}], '
+                '"usage": {}}'
+            ),
+            'data: {"choices": [{"delta": {"content": "42"}}], "usage": {}}',
+            "data: [DONE]",
+        ]
+
+        updated_count = 0
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+            if result > 0:
+                updated_count += 1
+
+        # First chunk has both reasoning and content (counts as 1 iteration)
+        # Second chunk has content only (counts as 1 iteration)
+        assert updated_count == 2
+
+        response = instance.compile_streaming(generation_request, arguments)
+        # Both reasoning and content from the same chunk should be present
+        assert "Let me think..." in response.text
+        assert "Answer: " in response.text
+        assert "42" in response.text
+        assert response.text == "Let me think...Answer: 42"
+
     # Tool call response handling tests
 
     @pytest.mark.sanity
