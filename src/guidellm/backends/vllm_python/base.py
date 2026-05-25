@@ -26,7 +26,7 @@ try:
     from guidellm.extras.audio import _decode_audio
 
     HAS_AUDIO = True
-except ImportError:
+except (ImportError, RuntimeError):
     _decode_audio = None  # type: ignore[assignment]
     HAS_AUDIO = False
 
@@ -34,7 +34,7 @@ try:
     from guidellm.extras.vision import image_dict_to_pil
 
     HAS_VISION = True
-except ImportError:
+except (ImportError, RuntimeError):
     image_dict_to_pil = None  # type: ignore[assignment]
     HAS_VISION = False
 

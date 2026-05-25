@@ -157,9 +157,12 @@ class TestResolveRequest:
                 "audio_column": [{"audio": b"fake-wav-bytes", "format": "wav"}],
             }
         )
-        with patch(
-            "guidellm.backends.vllm_python.base._decode_audio",
-            return_value=mock_decode_result,
+        with (
+            patch(
+                "guidellm.backends.vllm_python.base._decode_audio",
+                return_value=mock_decode_result,
+            ),
+            patch("guidellm.backends.vllm_python.base.HAS_AUDIO", True),
         ):
             resolved = backend._resolve_request(request)
         assert resolved.multi_modal_data is not None
@@ -186,9 +189,12 @@ class TestResolveRequest:
                 ],
             }
         )
-        with patch(
-            "guidellm.backends.vllm_python.vllm.image_dict_to_pil",
-            return_value=mock_pil,
+        with (
+            patch(
+                "guidellm.backends.vllm_python.base.image_dict_to_pil",
+                return_value=mock_pil,
+            ),
+            patch("guidellm.backends.vllm_python.base.HAS_VISION", True),
         ):
             resolved = backend._resolve_request(request)
         assert resolved.multi_modal_data is not None
@@ -241,9 +247,12 @@ class TestResolveRequest:
                 "audio_column": [{"audio": b"fake-wav-bytes", "format": "wav"}],
             }
         )
-        with patch(
-            "guidellm.backends.vllm_python.base._decode_audio",
-            return_value=mock_decode_result,
+        with (
+            patch(
+                "guidellm.backends.vllm_python.base._decode_audio",
+                return_value=mock_decode_result,
+            ),
+            patch("guidellm.backends.vllm_python.base.HAS_AUDIO", True),
         ):
             resolved = backend._resolve_request(request)
 
@@ -276,9 +285,12 @@ class TestResolveRequest:
                 "audio_column": [{"audio": b"fake-wav-bytes", "format": "wav"}],
             }
         )
-        with patch(
-            "guidellm.backends.vllm_python.base._decode_audio",
-            return_value=mock_decode_result,
+        with (
+            patch(
+                "guidellm.backends.vllm_python.base._decode_audio",
+                return_value=mock_decode_result,
+            ),
+            patch("guidellm.backends.vllm_python.base.HAS_AUDIO", True),
         ):
             resolved = backend._resolve_request(request)
 
@@ -1451,9 +1463,12 @@ class TestVLLMResolveAudioFromColumns:
         )
         request.output_metrics = UsageMetrics()
 
-        with patch(
-            "guidellm.backends.vllm_python.base._decode_audio",
-            return_value=mock_decode_result,
+        with (
+            patch(
+                "guidellm.backends.vllm_python.base._decode_audio",
+                return_value=mock_decode_result,
+            ),
+            patch("guidellm.backends.vllm_python.base.HAS_AUDIO", True),
         ):
             backend._engine = Mock()
             backend._engine.generate = mock_generate
