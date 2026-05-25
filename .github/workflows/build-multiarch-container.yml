@@ -51,7 +51,7 @@ jobs:
             extras: all
             arch_suffix: amd64
           - platform: linux/arm64
-            extras: recommended
+            extras: all
             arch_suffix: arm64
     steps:
       - name: Checkout
