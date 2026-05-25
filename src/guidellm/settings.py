@@ -58,7 +58,7 @@ class ReportGenerationSettings(BaseModel):
     Report generation settings for the application
     """
 
-    source: str = "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/v0.5.4/index.html"
+    source: str = "https://vllm-project.github.io/guidellm/ui/v0.5.4/index.html"
 
 
 class Settings(BaseSettings):
