@@ -39,7 +39,7 @@ Enable over-saturation detection with default settings:
 ```bash
 guidellm benchmark \
   --target http://localhost:8000 \
-  --profile throughput \
+  --profile kind=throughput \
   --rate 10 \
   --detect-saturation
 ```
@@ -51,7 +51,7 @@ Configure detection parameters using a JSON dictionary:
 ```bash
 guidellm benchmark \
   --target http://localhost:8000 \
-  --profile concurrent \
+  --profile kind=concurrent \
   --rate 16 \
   --over-saturation '{"enabled": true, "min_seconds": 60, "max_window_seconds": 300, "moe_threshold": 1.5}'
 ```
@@ -80,7 +80,7 @@ When testing how your system handles increasing load, over-saturation detection 
 ```bash
 guidellm benchmark \
   --target http://localhost:8000 \
-  --profile sweep \
+  --profile kind=sweep \
   --rate 5 \
   --detect-saturation
 ```
@@ -113,7 +113,7 @@ These metrics can help you understand why over-saturation was detected and fine-
 ```bash
 guidellm benchmark \
   --target http://localhost:8000 \
-  --profile concurrent \
+  --profile kind=concurrent \
   --rate 16 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --max-seconds 300 \

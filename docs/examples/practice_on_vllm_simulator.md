@@ -96,7 +96,7 @@ guidellm benchmark \
 --target "http://localhost:8000/" \
 --model "tweet-summary-0" \
 --processor "${local_path}/Qwen2.5-1.5B-Instruct" \
---profile sweep \
+--profile kind=sweep \
 --max-seconds 10 \
 --max-requests 10 \
 --data "kind=synthetic_text,prompt_tokens=128,output_tokens=56"

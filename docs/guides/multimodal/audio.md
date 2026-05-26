@@ -154,7 +154,7 @@ This benchmark tests Automatic Speech Recognition (ASR) models, such as Whisper,
 guidellm benchmark \
   --target "http://localhost:8000" \
   --request-type audio_transcriptions \
-  --profile synchronous \
+  --profile kind=synchronous \
   --max-requests 20 \
   --data ‘{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}’ \
   --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
@@ -210,7 +210,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --request-type audio_translations \
   --request-formatter-kwargs '{"extras": {"body": {"language": "fr"}}}' \
-  --profile synchronous \
+  --profile kind=synchronous \
   --max-requests 20 \
   --data '{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
   --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
@@ -267,7 +267,7 @@ This benchmark tests models that can handle audio inputs in a conversational for
 guidellm benchmark \
   --target "http://localhost:8000" \
   --request-type chat_completions \
-  --profile synchronous \
+  --profile kind=synchronous \
   --max-requests 20 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --data '{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \

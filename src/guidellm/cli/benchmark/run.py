@@ -72,10 +72,8 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
 )
 @click.option(
     "--profile",
-    "--rate-type",  # legacy alias
     "profile",
-    default=BenchmarkGenerativeTextArgs.get_default("profile"),
-    type=click.Choice(STRATEGY_PROFILE_CHOICES),
+    callback=cli_tools.parse_arguments,
     help=f"Benchmark profile type. Options: {', '.join(STRATEGY_PROFILE_CHOICES)}.",
 )
 @click.option(

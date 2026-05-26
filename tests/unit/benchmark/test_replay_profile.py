@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -8,6 +7,7 @@ from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import resolve_profile
 from guidellm.benchmark.profiles import Profile, ReplayProfile
+from guidellm.benchmark.profiles.replay import ReplayProfileArgs
 from guidellm.data.deserializers import TraceSyntheticDataArgs
 from guidellm.scheduler import TraceReplayStrategy
 
@@ -18,49 +18,55 @@ def _trace_path(tmp_path: Path, lines: list[str] | None = None) -> Path:
     return path
 
 
+def _replay_args(**kwargs) -> ReplayProfileArgs:
+    payload = {"kind": "replay", **kwargs}
+    return ReplayProfileArgs.model_validate(payload)
+
+
+def _replay_profile(**kwargs) -> ReplayProfile:
+    return Profile.create(_replay_args(**kwargs))
+
+
 class TestReplayProfile:
     @pytest.mark.smoke
-    def test_resolve_args_requires_data(self):
-        with pytest.raises(ValueError, match="exactly one data source"):
-            ReplayProfile.resolve_args(
-                rate_type="replay",
-                rate=[1.0],
-                random_seed=42,
-                data=[],
-            )
+    def test_requires_data(self):
+        """
+        Replay profile args require a trace data source.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            _replay_args()
 
     @pytest.mark.smoke
-    def test_resolve_args_rejects_multiple_data_sources(self):
+    def test_rejects_multiple_data_sources(self, tmp_path: Path):
+        """
+        Replay profile rejects more than one data source.
+
+        ## WRITTEN BY AI ##
+        """
         with pytest.raises(ValueError, match="exactly one data source"):
-            ReplayProfile.resolve_args(
-                rate_type="replay",
-                rate=[1.0],
-                random_seed=42,
+            _replay_profile(
                 data=[
-                    TraceSyntheticDataArgs(path=Path("trace-a.jsonl")),
-                    TraceSyntheticDataArgs(path=Path("trace-b.jsonl")),
+                    TraceSyntheticDataArgs(path=tmp_path / "trace-a.jsonl"),
+                    TraceSyntheticDataArgs(path=tmp_path / "trace-b.jsonl"),
                 ],
             )
 
     @pytest.mark.smoke
-    def test_resolve_args_rejects_missing_or_empty_trace(self, tmp_path: Path):
+    def test_rejects_missing_or_empty_trace(self, tmp_path: Path):
+        """
+        Replay profile rejects missing files and empty traces.
+
+        ## WRITTEN BY AI ##
+        """
         missing = tmp_path / "missing.jsonl"
         with pytest.raises(ValueError, match="not found"):
-            ReplayProfile.resolve_args(
-                rate_type="replay",
-                rate=[1.0],
-                random_seed=42,
-                data=[TraceSyntheticDataArgs(path=missing)],
-            )
+            _replay_profile(data=[TraceSyntheticDataArgs(path=missing)])
 
         empty = _trace_path(tmp_path)
         with pytest.raises(ValueError, match="empty|No timestamps"):
-            ReplayProfile.resolve_args(
-                rate_type="replay",
-                rate=[1.0],
-                random_seed=42,
-                data=[TraceSyntheticDataArgs(path=empty)],
-            )
+            _replay_profile(data=[TraceSyntheticDataArgs(path=empty)])
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -73,6 +79,11 @@ class TestReplayProfile:
     def test_profile_create_resolves_timestamps_and_time_scale(
         self, tmp_path: Path, rate, expected_scale
     ):
+        """
+        Profile.create loads sorted relative timestamps and time scale from data.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             [
@@ -82,12 +93,13 @@ class TestReplayProfile:
             ],
         )
 
-        profile = Profile.create(
-            rate_type="replay",
-            rate=rate,
-            random_seed=42,
-            data=[TraceSyntheticDataArgs(path=trace)],
-        )
+        payload: dict = {
+            "data": [TraceSyntheticDataArgs(path=trace)],
+        }
+        if rate is not None:
+            payload["rate"] = rate
+
+        profile = _replay_profile(**payload)
 
         assert isinstance(profile, ReplayProfile)
         assert profile.relative_timestamps == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
@@ -96,21 +108,29 @@ class TestReplayProfile:
 
     @pytest.mark.sanity
     def test_non_positive_time_scale_is_rejected(self, tmp_path: Path):
+        """
+        Non-positive time scale values are rejected during argument validation.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             ['{"timestamp": 0, "input_length": 1, "output_length": 1}'],
         )
 
         with pytest.raises(ValidationError):
-            Profile.create(
-                rate_type="replay",
+            _replay_profile(
                 rate=[0.0],
-                random_seed=42,
                 data=[TraceSyntheticDataArgs(path=trace)],
             )
 
     @pytest.mark.smoke
     def test_custom_timestamp_column_via_data_args(self, tmp_path: Path):
+        """
+        Custom timestamp columns are honored when loading trace timestamps.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             [
@@ -120,18 +140,20 @@ class TestReplayProfile:
             ],
         )
 
-        kwargs = ReplayProfile.resolve_args(
-            rate_type="replay",
-            rate=[1.0],
-            random_seed=42,
+        profile = _replay_profile(
             data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
         )
 
-        assert kwargs["relative_timestamps"] == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
-        assert kwargs["constraints"]["max_requests"] == 3
+        assert profile.relative_timestamps == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
+        assert profile.constraints["max_requests"] == 3
 
     @pytest.mark.smoke
     def test_large_bursty_trace_sets_default_request_constraint(self, tmp_path: Path):
+        """
+        Default max_requests matches the number of loaded trace events.
+
+        ## WRITTEN BY AI ##
+        """
         prompt_lengths = [
             6755,
             7319,
@@ -203,21 +225,21 @@ class TestReplayProfile:
             ],
         )
 
-        kwargs = ReplayProfile.resolve_args(
-            rate_type="replay",
-            rate=[1.0],
-            random_seed=42,
-            data=[TraceSyntheticDataArgs(path=trace)],
-        )
+        profile = _replay_profile(data=[TraceSyntheticDataArgs(path=trace)])
 
-        assert kwargs["relative_timestamps"] == pytest.approx(timestamps, abs=1e-9)
-        assert kwargs["constraints"]["max_requests"] == 27
+        assert profile.relative_timestamps == pytest.approx(timestamps, abs=1e-9)
+        assert profile.constraints["max_requests"] == 27
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("invalid_value", [None, 123, False, []])
     def test_non_string_timestamp_column_rejected_by_pydantic(
         self, tmp_path: Path, invalid_value
     ):
+        """
+        Trace data args reject invalid timestamp column types.
+
+        ## WRITTEN BY AI ##
+        """
         with pytest.raises(ValidationError):
             TraceSyntheticDataArgs(
                 path=tmp_path / "trace.jsonl",
@@ -227,6 +249,11 @@ class TestReplayProfile:
     @pytest.mark.smoke
     @pytest.mark.parametrize("invalid_col", ["", "   "])
     def test_blank_timestamp_column_raises_error(self, tmp_path: Path, invalid_col):
+        """
+        Blank timestamp column names fail when loading trace timestamps.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             [
@@ -236,10 +263,7 @@ class TestReplayProfile:
         )
 
         with pytest.raises((KeyError, ValueError)):
-            ReplayProfile.resolve_args(
-                rate_type="replay",
-                rate=[1.0],
-                random_seed=42,
+            _replay_profile(
                 data=[TraceSyntheticDataArgs(path=trace, timestamp_column=invalid_col)],
             )
 
@@ -247,6 +271,11 @@ class TestReplayProfile:
     def test_data_samples_truncates_after_sorting_and_preserves_constraints(
         self, tmp_path: Path
     ):
+        """
+        data_samples truncates timestamps while preserving explicit constraints.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             [
@@ -257,23 +286,25 @@ class TestReplayProfile:
             ],
         )
 
-        kwargs = ReplayProfile.resolve_args(
-            rate_type="replay",
-            rate=[1.0],
-            random_seed=42,
+        profile = _replay_profile(
             data=[TraceSyntheticDataArgs(path=trace)],
             data_samples=3,
             constraints={"max_requests": 10, "max_seconds": 0.25},
         )
 
-        assert kwargs["relative_timestamps"] == pytest.approx([0.0, 1.0, 4.0], abs=1e-9)
-        assert kwargs["constraints"] == {"max_requests": 10, "max_seconds": 0.25}
+        assert profile.relative_timestamps == pytest.approx([0.0, 1.0, 4.0], abs=1e-9)
+        assert profile.constraints == {"max_requests": 10, "max_seconds": 0.25}
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("data_samples", [0, -1])
     def test_non_positive_data_samples_do_not_truncate(
         self, tmp_path: Path, data_samples: int
     ):
+        """
+        Non-positive data_samples values keep the full trace.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             [
@@ -282,19 +313,22 @@ class TestReplayProfile:
             ],
         )
 
-        kwargs = ReplayProfile.resolve_args(
-            rate_type="replay",
-            rate=[1.0],
-            random_seed=42,
+        profile = _replay_profile(
             data=[TraceSyntheticDataArgs(path=trace)],
             data_samples=data_samples,
         )
 
-        assert kwargs["relative_timestamps"] == pytest.approx([0.0, 1.0], abs=1e-9)
-        assert kwargs["constraints"]["max_requests"] == 2
+        assert profile.relative_timestamps == pytest.approx([0.0, 1.0], abs=1e-9)
+        assert profile.constraints["max_requests"] == 2
 
     @pytest.mark.smoke
-    def test_resolve_profile_passes_replay_specific_kwargs(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_resolve_profile_passes_replay_specific_kwargs(self, tmp_path: Path):
+        """
+        resolve_profile wires replay data, samples, and rate into the profile.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             [
@@ -304,21 +338,19 @@ class TestReplayProfile:
             ],
         )
 
-        profile = asyncio.run(
-            resolve_profile(
-                profile="replay",
-                rate=[2.0],
-                random_seed=42,
-                rampup=0.0,
-                constraints={},
-                max_seconds=None,
-                max_requests=2,
-                max_errors=None,
-                max_error_rate=None,
-                max_global_error_rate=None,
-                data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
-                data_samples=2,
-            )
+        profile = await resolve_profile(
+            profile={"kind": "replay"},
+            rate=[2.0],
+            random_seed=42,
+            rampup=0.0,
+            constraints={},
+            max_seconds=None,
+            max_requests=2,
+            max_errors=None,
+            max_error_rate=None,
+            max_global_error_rate=None,
+            data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
+            data_samples=2,
         )
 
         assert isinstance(profile, ReplayProfile)
@@ -328,17 +360,19 @@ class TestReplayProfile:
 
     @pytest.mark.smoke
     def test_next_strategy_returns_trace_then_none(self, tmp_path: Path):
+        """
+        Replay profile yields one trace strategy then completes.
+
+        ## WRITTEN BY AI ##
+        """
         trace = _trace_path(
             tmp_path,
             ['{"timestamp": 0, "input_length": 1, "output_length": 1}'],
         )
-        kwargs = ReplayProfile.resolve_args(
-            rate_type="replay",
+        profile = _replay_profile(
             rate=[2.0],
-            random_seed=42,
             data=[TraceSyntheticDataArgs(path=trace)],
         )
-        profile = ReplayProfile(**kwargs)
 
         strategy = profile.next_strategy(None, None)
         assert profile.strategy_types == ["trace"]

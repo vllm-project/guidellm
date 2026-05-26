@@ -42,7 +42,7 @@ guidellm benchmark run \
   --request-format /v1/chat/completions \
   --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2}' \
   --max-requests 30 \
-  --profile constant \
+  --profile kind=constant \
   --rate 1
 ```
 
@@ -55,7 +55,7 @@ guidellm benchmark run \
   --request-format /v1/chat/completions \
   --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 4, "tool_call_turns": [0, 2]}' \
   --max-requests 30 \
-  --profile constant \
+  --profile kind=constant \
   --rate 1
 ```
 
@@ -81,7 +81,7 @@ guidellm benchmark run \
   --request-format /v1/chat/completions \
   --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2, "tool_response_tokens": 50}' \
   --max-requests 30 \
-  --profile constant \
+  --profile kind=constant \
   --rate 1
 ```
 
@@ -96,7 +96,7 @@ guidellm benchmark run \
   --data-column-mapper '{"text_column": "messages", "tools_column": "tools"}' \
   --data-preprocessors "tool_calling_message_extractor,encode_media" \
   --max-requests 50 \
-  --profile constant \
+  --profile kind=constant \
   --rate 1
 ```
 

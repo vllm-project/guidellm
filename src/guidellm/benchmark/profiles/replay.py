@@ -1,0 +1,206 @@
+"""Trace replay benchmark profile."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import AliasChoices, Field, field_validator, model_validator
+
+from guidellm.data import DataArgs
+from guidellm.data.deserializers import TraceSyntheticDataArgs
+from guidellm.scheduler import SchedulingStrategy, TraceReplayStrategy
+from guidellm.utils.trace_io import load_relative_timestamps
+
+from .profile import Profile, ProfileArgs
+
+if TYPE_CHECKING:
+    from guidellm.benchmark.schemas import Benchmark
+
+_MAX_REQUEST_CONSTRAINT_KEYS = (
+    "max_number",
+    "max_num",
+    "max_requests",
+    "max_req",
+)
+
+
+def _normalize_data_args(data: list[Any]) -> list[DataArgs]:
+    """
+    Coerce serialized data entries back into validated ``DataArgs`` instances.
+
+    :param data: Data sources as models or serialized mappings from ``model_dump``
+    :return: Validated data argument instances
+    :raises ValueError: If an entry is not a supported data configuration type
+    """
+    normalized: list[DataArgs] = []
+    for item in data:
+        if isinstance(item, DataArgs):
+            normalized.append(item)
+        elif isinstance(item, dict):
+            normalized.append(DataArgs.model_validate(item))
+        else:
+            raise ValueError(
+                "ReplayProfile data entries must be DataArgs instances or mappings, "
+                f"got {type(item).__name__}"
+            )
+    return normalized
+
+
+def _resolve_relative_timestamps(
+    data: list[Any],
+    data_samples: int,
+) -> list[float]:
+    """
+    Load and optionally truncate relative timestamps from a trace data source.
+
+    :param data: Data sources configured for the replay profile
+    :param data_samples: Maximum number of timestamps to retain; non-positive keeps all
+    :return: Sorted timestamps relative to the first event
+    :raises ValueError: If data configuration is invalid or yields no timestamps
+    """
+    data_args = _normalize_data_args(data)
+    if len(data_args) != 1:
+        raise ValueError(
+            f"ReplayProfile requires exactly one data source, received {len(data_args)}"
+        )
+    config = data_args[0]
+    if not isinstance(config, TraceSyntheticDataArgs):
+        raise ValueError("ReplayProfile requires a trace data source")
+    if not (path := Path(config.path)).exists():
+        raise ValueError(f"Replay trace file not found: {config.path}")
+
+    relative_timestamps = load_relative_timestamps(path, config.timestamp_column)
+    if data_samples > 0:
+        relative_timestamps = relative_timestamps[:data_samples]
+
+    if not relative_timestamps:
+        raise ValueError(
+            "No timestamps remain after applying data_samples. "
+            "The trace is empty or all events were filtered out."
+        )
+
+    return relative_timestamps
+
+
+@ProfileArgs.register("replay")
+class ReplayProfileArgs(ProfileArgs):
+    """Pydantic model for replay profile creation arguments."""
+
+    kind: Literal["replay"] = Field(
+        default="replay",
+        description="Profile type discriminator for polymorphic serialization",
+    )
+    data: list[DataArgs] = Field(description="Data source for replay profile")
+    data_samples: int = Field(
+        default=-1,
+        ge=-1,
+        description="Number of data samples to use for replay profile",
+    )
+    time_scale: float = Field(
+        validation_alias=AliasChoices("time_scale", "rate"),
+        default=1.0,
+        gt=0,
+        description="Scale factor applied to relative timestamps",
+    )
+
+    @field_validator("time_scale", mode="before")
+    @classmethod
+    def _coerce_time_scale_from_rate(cls, value: Any) -> Any:
+        """
+        Accept global ``--rate`` list values as time scale.
+        """
+        if isinstance(value, list | tuple):
+            if not value:
+                raise ValueError(
+                    "time_scale (rate) requires at least one value when given as a list"
+                )
+            value = value[0]
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return float(value)
+        raise ValueError(
+            "time_scale (rate) must be an integer or a list of numeric values, "
+            f"got {type(value).__name__}"
+        )
+
+
+@Profile.register("replay")
+class ReplayProfile(Profile):
+    """
+    Replay a trace file:
+    schedule each request at start_time + time_scale * relative_timestamp[i].
+
+    For this profile, the ``rate`` argument is interpreted as time_scale (scale factor
+    applied to relative timestamps), not as requests per second.
+
+    When ``data_samples`` is set, the replayed timestamps are truncated to match
+    the sampled dataset size.
+    """
+
+    kind: Literal["replay"] = Field(
+        default="replay",
+        description="Profile type discriminator for polymorphic serialization",
+    )
+    relative_timestamps: list[float] = Field(
+        description="Request start times relative to first event (first = 0)",
+    )
+    time_scale: float = Field(
+        default=1.0,
+        gt=0,
+        description="Scale factor applied to relative timestamps",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _load_relative_timestamps_from_data(cls, value: Any) -> Any:
+        """
+        Populate replay fields from trace data when timestamps are not preloaded.
+
+        :param value: Raw or partially resolved profile argument mapping
+        :return: Mapping with ``relative_timestamps`` and default constraints set
+        """
+        if not isinstance(value, dict) or "relative_timestamps" in value:
+            return value
+
+        data = value.get("data")
+        if data is None:
+            raise ValueError(
+                "ReplayProfile requires relative_timestamps or a trace data source"
+            )
+
+        data_samples = value.get("data_samples", -1)
+        if not isinstance(data_samples, int):
+            data_samples = -1
+
+        relative_timestamps = _resolve_relative_timestamps(data, data_samples)
+
+        constraints = dict(value.get("constraints") or {})
+        if not any(key in constraints for key in _MAX_REQUEST_CONSTRAINT_KEYS):
+            constraints["max_requests"] = len(relative_timestamps)
+
+        result = {
+            **value,
+            "relative_timestamps": relative_timestamps,
+            "constraints": constraints,
+        }
+        for key in ("data", "data_samples", "rate", "random_seed"):
+            result.pop(key, None)
+        return result
+
+    @property
+    def strategy_types(self) -> list[str]:
+        return ["trace"]
+
+    def next_strategy(
+        self,
+        prev_strategy: SchedulingStrategy | None,
+        prev_benchmark: Benchmark | None,
+    ) -> TraceReplayStrategy | None:
+        _ = prev_benchmark
+        # Replay has a single strategy; return it once, then None
+        if prev_strategy is not None:
+            return None
+        return TraceReplayStrategy(
+            relative_timestamps=self.relative_timestamps,
+            time_scale=self.time_scale,
+        )

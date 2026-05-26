@@ -24,7 +24,8 @@ from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,
 )
-from guidellm.benchmark.profiles import Profile, ProfileType
+from guidellm.benchmark.profiles import Profile
+from guidellm.benchmark.profiles.profile import ProfileArgs
 from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 from guidellm.benchmark.schemas import (
     BenchmarkGenerativeTextArgs,
@@ -44,11 +45,7 @@ from guidellm.data import (
     GenerativeRequestCollator,
     ProcessorFactory,
 )
-from guidellm.scheduler import (
-    ConstraintInitializer,
-    NonDistributedEnvironment,
-    StrategyType,
-)
+from guidellm.scheduler import ConstraintInitializer, NonDistributedEnvironment
 from guidellm.schemas import GenerationRequest, GenerationResponse
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
@@ -306,8 +303,57 @@ async def resolve_request_loader(
     return request_loader
 
 
+def _build_profile_from_args(
+    profile: ProfileArgs | dict[str, Any],
+    random_seed: int,
+    rampup: float,
+    constraints: MutableMapping[str, ConstraintInitializer | Any],
+    rate: list[float] | None,
+    data: list[DataArgs] | None,
+    profile_kwargs: dict[str, Any],
+) -> Profile:
+    """
+    Build a Profile instance argument dictionary from the provided parameters.
+
+    :param profile: The profile configuration, which may be a ProfileArgs instance or a
+     dictionary.
+    :param random_seed: An integer seed for reproducible operations.
+    :param rampup: The ramp-up duration as a float (seconds).
+    :param constraints: Constraints for the profile, as a mapping from string to
+        constraint initializers or values.
+    :param rate: (Optional) The request rate for the benchmark.
+    :param data: (Optional) Data to include in the benchmark configuration.
+    :param profile_kwargs: Additional keyword arguments, may include "data_samples" and
+        other profile options.
+    :return: a Profile instance.
+    """
+    profile_args: dict[str, Any] = {
+        "random_seed": random_seed,
+        "rampup_duration": rampup,
+        "constraints": dict[str, Any](constraints),
+    }
+    if rate is not None:
+        profile_args["rate"] = rate
+    if data is not None:
+        profile_args["data"] = data
+    if "data_samples" in profile_kwargs:
+        profile_args["data_samples"] = profile_kwargs.get("data_samples")
+    profile_args.update(profile_kwargs)
+
+    if isinstance(profile, ProfileArgs):
+        profile_args.update(profile.model_dump())
+    elif isinstance(profile, dict):
+        profile_args.update(profile)
+    else:
+        raise ValueError(
+            "Profile arguments must be a string, dictionary, or ProfileArgs."
+        )
+    args = ProfileArgs.model_validate(profile_args)
+    return Profile.create(args)
+
+
 async def resolve_profile(
-    profile: StrategyType | ProfileType | Profile,
+    profile: ProfileArgs | dict[str, Any] | Profile,
     rate: list[float] | None,
     random_seed: int,
     rampup: float,
@@ -365,14 +411,8 @@ async def resolve_profile(
             constraints[key] = val
 
     if not isinstance(profile, Profile):
-        profile = Profile.create(
-            rate_type=profile,
-            rate=rate,
-            random_seed=random_seed,
-            rampup_duration=rampup,
-            constraints={**constraints},
-            data=data,
-            **profile_kwargs,
+        profile = _build_profile_from_args(
+            profile, random_seed, rampup, constraints, rate, data, profile_kwargs
         )
     elif constraints:
         raise ValueError(

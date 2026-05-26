@@ -270,7 +270,7 @@ guidellm benchmark run \
   --target "http://localhost:8000" \
   --model "meta-llama/Llama-3.1-8B-Instruct" \
   --request-format /v1/chat/completions \
-  --profile concurrent \
+  --profile kind=concurrent \
   --rate 6 \
   --max-requests 30 \
   --data "kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3"
@@ -299,7 +299,7 @@ guidellm benchmark run \
   --target "http://localhost:8000" \
   --model "meta-llama/Llama-3.1-8B-Instruct" \
   --request-format /v1/chat/completions \
-  --profile constant \
+  --profile kind=constant \
   --rate 2.0 \
   --max-requests 100 \
   --data "kind=synthetic_text,prompt_tokens=150,output_tokens=75,turns=4,prefix_tokens=100"
@@ -307,7 +307,7 @@ guidellm benchmark run \
 
 **Key Parameters:**
 
-- `--profile`: constant - Send requests at a constant rate
+- `--profile`: kind=constant - Send requests at a constant rate
 - `--rate`: 2.0 - Send 2 requests per second
 - `--max-requests`: Maximum number of requests (100 requests ~= 25 conversations with 4 turns each)
 - `--data`: Added `prefix_tokens=100` to generate a system prompt of 100 tokens
@@ -328,7 +328,7 @@ guidellm benchmark run \
   --target "http://localhost:8000" \
   --model "meta-llama/Llama-3.1-8B-Instruct" \
   --request-format /v1/chat/completions \
-  --profile constant \
+  --profile kind=constant \
   --rate 1.5 \
   --max-seconds 60 \
   --data '{
@@ -345,7 +345,7 @@ guidellm benchmark run \
 
 **Key Parameters:**
 
-- `--profile`: constant - Send requests at a constant rate
+- `--profile`: kind=constant - Send requests at a constant rate
 - `--rate`: 1.5 - Send 1.5 requests per second
 - `--max-seconds`: 60 - Run the benchmark for up to 60 seconds
 - `--data`: JSON configuration with `prefix_buckets` defining two prefix distributions
@@ -370,7 +370,7 @@ guidellm benchmark run \
   --target "http://localhost:8000" \
   --model "meta-llama/Llama-3.1-8B-Instruct" \
   --request-format /v1/chat/completions \
-  --profile concurrent \
+  --profile kind=concurrent \
   --rate 10 \
   --max-requests 200 \
   --data "kind=huggingface,source=multiturn_conversations.jsonl"
@@ -378,7 +378,7 @@ guidellm benchmark run \
 
 **Key Parameters:**
 
-- `--profile`: concurrent - Maintain a fixed number of concurrent requests
+- `--profile`: kind=concurrent - Maintain a fixed number of concurrent requests
 - `--rate`: 10 - Maintain 10 concurrent requests
 - `--max-requests`: Maximum number of requests (200 requests ~= 100 conversations with 2 turns each)
 - `--data`: Path to JSONL file with turn-indexed columns
@@ -394,7 +394,7 @@ guidellm benchmark run \
   --target "http://localhost:8000" \
   --model "meta-llama/Llama-3.1-8B-Instruct" \
   --request-format /v1/chat/completions \
-  --profile concurrent \
+  --profile kind=concurrent \
   --rate 10 \
   --max-requests 150 \
   --data "kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256" \      # Turn 1

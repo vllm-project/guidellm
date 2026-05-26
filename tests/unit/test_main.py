@@ -23,7 +23,7 @@ def test_benchmark_run_with_backend_args():
             "--data",
             "prompt_tokens=1,output_tokens=1",
             "--profile",
-            "constant",
+            "kind=constant",
             "--rate",
             "1",
             "--max-requests",
