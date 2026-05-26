@@ -148,7 +148,7 @@ guidellm benchmark \
   --request-type chat_completions \
   --profile synchronous \
   --max-requests 20 \
-  --data ‘{"kind": "huggingface", "data": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}’ \
+  --data ‘{"kind": "huggingface", "source": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}’ \
   --data-column-mapper ‘{"column_mappings": {"image_column": "image", "text_column": "question"}}’
 ```
 
@@ -204,7 +204,7 @@ guidellm benchmark \
   --request-type chat_completions \
   --profile synchronous \
   --max-requests 20 \
-  --data '{"kind": "huggingface", "data": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}' \
+  --data '{"kind": "huggingface", "source": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}' \
   --data-column-mapper '{"column_mappings": {"image_column": "image"}}'
 ```
 

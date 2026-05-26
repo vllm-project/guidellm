@@ -156,7 +156,7 @@ guidellm benchmark \
   --request-type audio_transcriptions \
   --profile synchronous \
   --max-requests 20 \
-  --data ‘{"kind": "huggingface", "data": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}’ \
+  --data ‘{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}’ \
   --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
 ```
 
@@ -212,7 +212,7 @@ guidellm benchmark \
   --request-formatter-kwargs '{"extras": {"body": {"language": "fr"}}}' \
   --profile synchronous \
   --max-requests 20 \
-  --data '{"kind": "huggingface", "data": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
+  --data '{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
   --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
 ```
 
@@ -270,7 +270,7 @@ guidellm benchmark \
   --profile synchronous \
   --max-requests 20 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --data '{"kind": "huggingface", "data": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
+  --data '{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
   --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"1.audio\", \"text_column\": \"0.prompt\"}}"
 ```
 

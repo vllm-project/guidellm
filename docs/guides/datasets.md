@@ -10,10 +10,10 @@ The following arguments can be used to configure datasets and their processing:
 
 - `--data`: Specifies the dataset source and type using a `kind=` discriminator. Accepted kinds:
   - `kind=synthetic_text` — generates synthetic prompts on the fly. Required fields: `prompt_tokens`, `output_tokens`. Optional: `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
-  - `kind=huggingface` — loads from HuggingFace Hub or a local directory/file. Required field: `data` (dataset ID or path). Pass dataset loading arguments (e.g. `split`, `name`) via the `load_kwargs` field.
+  - `kind=huggingface` — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (e.g. `split`, `name`) via the `load_kwargs` field.
   - `kind=json_file`, `kind=csv_file`, `kind=text_file`, `kind=parquet_file`, `kind=arrow_file`, `kind=hdf5_file` — loads from a local file. Required field: `path`.
   - `kind=trace_synthetic` — loads a JSONL trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
-  - Can be specified as a key=value string (`kind=synthetic_text,prompt_tokens=256,output_tokens=128`), a JSON string (`'{"kind": "huggingface", "data": "my/dataset", "load_kwargs": {"split": "train"}}'`), or repeated for multiple sources.
+  - Can be specified as a key=value string (`kind=synthetic_text,prompt_tokens=256,output_tokens=128`), a JSON string (`'{"kind": "huggingface", "source": "my/dataset", "load_kwargs": {"split": "train"}}'`), or repeated for multiple sources.
 - `--data-sampler`: Specifies the sampling strategy for datasets. By default, no sampling is applied. When set to `random`, it enables random shuffling of the dataset, which can be useful for creating diverse batches during benchmarking.
 - `--processor`: Specifies the processor or tokenizer to use. This is only required for synthetic data generation or when local calculations are specified through configuration settings. By default, the processor is set to the `--model` argument. If `--model` is not supplied, it defaults to the model retrieved from the backend.
 - `--processor-args`: A JSON string containing any arguments to pass to the processor or tokenizer constructor. These arguments are passed as a dictionary of kwargs.
@@ -25,7 +25,7 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "kind=huggingface,data=my/dataset" \
+    --data "kind=huggingface,source=my/dataset" \
     --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}' \
     --processor "path/to/processor" \
     --processor-args '{"arg1": "value1"}' \
@@ -88,7 +88,7 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "kind=huggingface,data=garage-bAInd/Open-Platypus"
+    --data "kind=huggingface,source=garage-bAInd/Open-Platypus"
 ```
 
 Or using a local dataset directory:
@@ -98,7 +98,7 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "kind=huggingface,data=path/to/dataset"
+    --data "kind=huggingface,source=path/to/dataset"
 ```
 
 #### Notes

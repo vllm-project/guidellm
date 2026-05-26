@@ -242,7 +242,7 @@ You can also use datasets from HuggingFace:
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data "kind=huggingface,data=garage-bAInd/Open-Platypus" \
+  --data "kind=huggingface,source=garage-bAInd/Open-Platypus" \
   --profile constant \
   --rate 5
 ```

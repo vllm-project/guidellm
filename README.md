@@ -184,13 +184,13 @@ GuideLLM supports HuggingFace datasets, local files, and synthetic data. This ex
 ```bash
 guidellm benchmark run \
   --target http://localhost:8000 \
-  --data '{"kind": "huggingface", "data": "abisee/cnn_dailymail", "load_kwargs": {"name": "3.0.0"}}' \
+  --data '{"kind": "huggingface", "source": "abisee/cnn_dailymail", "load_kwargs": {"name": "3.0.0"}}' \
   --data-column-mapper '{"column_mappings": {"text_column": "article"}}'
 ```
 
 **Key parameters:**
 
-- `--data`: Data source specification — pass `kind=synthetic_text,prompt_tokens=...,output_tokens=...` for synthetic data, `kind=huggingface,data=DATASET_ID` for HuggingFace datasets (with optional `load_kwargs` for dataset loading args), `kind=json_file,path=...` / `kind=csv_file,path=...` / `kind=text_file,path=...` for local files, or `kind=trace_synthetic,path=...` for trace replay files. Can be specified multiple times for multiple data sources.
+- `--data`: Data source specification — pass `kind=synthetic_text,prompt_tokens=...,output_tokens=...` for synthetic data, `kind=huggingface,source=DATASET_ID` for HuggingFace datasets (with optional `load_kwargs` for dataset loading args), `kind=json_file,path=...` / `kind=csv_file,path=...` / `kind=text_file,path=...` for local files, or `kind=trace_synthetic,path=...` for trace replay files. Can be specified multiple times for multiple data sources.
 - `--data-column-mapper`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `text_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
 - `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
 - `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths

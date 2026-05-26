@@ -103,7 +103,7 @@ uv run guidellm benchmark run \
   --target http://localhost:8000 \
   --profile constant \
   --rate 10,20 \
-  --data "kind=huggingface,data=openai/gsm8k" \
+  --data "kind=huggingface,source=openai/gsm8k" \
   --max-seconds 300 \
   --outputs "benchmark.json,report.csv"
 ```

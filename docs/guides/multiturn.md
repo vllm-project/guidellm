@@ -249,8 +249,8 @@ with **TurnPivot** the second turn will be:
 To use TurnPivot in the CLI, specify it as a data preprocessor:
 
 ```bash
---data "kind=huggingface,data=dataset0.jsonl" \
---data "kind=huggingface,data=dataset1.jsonl" \
+--data "kind=huggingface,source=dataset0.jsonl" \
+--data "kind=huggingface,source=dataset1.jsonl" \
 --data-preprocessors "encode_media,turn_pivot"
 ```
 
@@ -373,7 +373,7 @@ guidellm benchmark run \
   --profile concurrent \
   --rate 10 \
   --max-requests 200 \
-  --data "kind=huggingface,data=multiturn_conversations.jsonl"
+  --data "kind=huggingface,source=multiturn_conversations.jsonl"
 ```
 
 **Key Parameters:**
