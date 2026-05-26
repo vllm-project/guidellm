@@ -26,7 +26,7 @@ Run a benchmark with the vLLM Python backend:
 guidellm benchmark run \
   --backend vllm_python \
   --model "Qwen/Qwen3-0.6B" \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --max-seconds 20 \
   --rate 3
 ```

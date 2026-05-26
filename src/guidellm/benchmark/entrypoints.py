@@ -15,7 +15,6 @@ from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
-from torch.utils.data import Sampler
 from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
@@ -35,12 +34,14 @@ from guidellm.benchmark.schemas import (
 )
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
+    DataArgs,
+    DataEntrypointArgs,
+    DataFinalizerArgs,
     DataLoader,
-    DatasetFinalizer,
-    DatasetPreprocessor,
-    FinalizerRegistry,
+    DataLoaderArgs,
+    DataLoaderRegistry,
+    DataPreprocessorArgs,
     GenerativeRequestCollator,
-    PreprocessorRegistry,
     ProcessorFactory,
 )
 from guidellm.scheduler import (
@@ -101,7 +102,7 @@ async def resolve_backend(
     :return: Tuple of initialized Backend instance and resolved model identifier
     """
     console_step = (
-        console.print_update_step(title=f"Initializing backend {backend_args.type_}")
+        console.print_update_step(title=f"Initializing backend {backend_args.kind}")
         if console
         else None
     )
@@ -226,26 +227,17 @@ def resolve_item_from_registry(
 
 
 async def resolve_request_loader(
-    data: list[Any],
+    data: list[DataArgs],
+    loader: DataLoaderArgs,
     model: str,
-    data_args: list[dict[str, Any]] | None,
-    data_samples: int,
     processor: ProcessorInputT | None,
     processor_args: dict[str, Any] | None,
-    data_column_mapper: (
-        DatasetPreprocessor
-        | dict[str, str | list[str]]
-        | Literal["generative_column_mapper", "pooling_column_mapper"]
-    ),
-    data_preprocessors: list[DatasetPreprocessor | dict[str, str | list[str]] | str],
-    data_preprocessors_kwargs: dict[str, Any],
-    data_finalizer: (DatasetFinalizer | dict[str, Any] | str),
+    data_column_mapper: DataPreprocessorArgs,
+    data_preprocessors: list[DataPreprocessorArgs],
+    data_finalizer: DataFinalizerArgs,
     data_collator: Callable | Literal["generative"] | None,
-    data_sampler: Sampler[int] | Literal["shuffle"] | None,
-    data_num_workers: int | None,
     random_seed: int,
     console: Console | None = None,
-    **dataloader_kwargs: dict[str, Any] | None,
 ) -> DataLoader[GenerationRequest]:
     """
     Construct a DataLoader for GenerationRequest objects from raw data inputs.
@@ -281,53 +273,30 @@ async def resolve_request_loader(
         else None
     )
 
-    # If no type is specified for the data column mapper, load default
-    if isinstance(data_column_mapper, dict) and "type" not in data_column_mapper:
-        data_column_mapper = {
-            "type": BenchmarkGenerativeTextArgs.get_default("data_column_mapper"),
-            **data_column_mapper,
-        }
-
-    preprocessors_list: list[DatasetPreprocessor] = [
-        resolve_item_from_registry(
-            DatasetPreprocessor,  # type: ignore [type-abstract]
-            PreprocessorRegistry,
-            preprocessor,
-            data_preprocessors_kwargs,
-        )
-        for preprocessor in ([data_column_mapper] + data_preprocessors)
-    ]
-
-    finalizer_instance = resolve_item_from_registry(
-        DatasetFinalizer,  # type: ignore [type-abstract]
-        FinalizerRegistry,
-        data_finalizer,
-    )
-
-    request_loader: DataLoader[GenerationRequest] = DataLoader(
+    pre_list: list[DataPreprocessorArgs] = [data_column_mapper] + data_preprocessors
+    config = DataEntrypointArgs(
+        loader=loader,
         data=data,
-        data_args=data_args,
-        data_samples=data_samples,
+        preprocessors=pre_list,
+        finalizer=data_finalizer,
+    )
+    request_loader: DataLoader[GenerationRequest] = DataLoaderRegistry.create(
+        config=config,
         processor_factory=ProcessorFactory(
             processor=processor if processor is not None else model,
             processor_args=processor_args,
         ),
-        preprocessors=preprocessors_list,
-        finalizer=finalizer_instance,
         collator=(
             data_collator if callable(data_collator) else GenerativeRequestCollator()
         ),
-        sampler=data_sampler,
-        num_workers=data_num_workers,
         random_seed=random_seed,
-        **(dataloader_kwargs or {}),
     )
 
     if console_step:
         console_step.finish(
             title=(
                 f"Request loader initialized with "
-                f"{data_samples if data_samples > 0 else 'inf'} "
+                f"{loader.samples if loader.samples > 0 else 'inf'} "
                 "unique requests"
             ),
             details=InfoMixin.extract_from_obj(request_loader),
@@ -350,7 +319,7 @@ async def resolve_profile(
     max_global_error_rate: float | None,
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
-    data: list[Any] | None = None,
+    data: list[DataArgs] | None = None,
     **profile_kwargs: Any,
 ) -> Profile:
     """
@@ -490,21 +459,16 @@ async def benchmark_generative_text(
     )
     request_loader = await resolve_request_loader(
         data=args.data,
+        loader=args.data_loader,
         model=model,
-        data_args=args.data_args,
-        data_samples=args.data_samples,
         processor=processor,
         processor_args=args.processor_args,
         data_column_mapper=args.data_column_mapper,
         data_preprocessors=args.data_preprocessors,
-        data_preprocessors_kwargs=args.data_preprocessors_kwargs,
         data_finalizer=args.data_finalizer,
         data_collator=args.data_collator,
-        data_sampler=args.data_sampler,
-        data_num_workers=args.data_num_workers,
         random_seed=args.random_seed,
         console=console,
-        **(args.dataloader_kwargs or {}),
     )
 
     warmup = TransientPhaseConfig.create_from_value(args.warmup)
@@ -536,7 +500,6 @@ async def benchmark_generative_text(
         over_saturation=args.over_saturation,
         console=console,
         data=args.data,
-        data_args=args.data_args,
         data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(
@@ -556,7 +519,7 @@ async def benchmark_generative_text(
     async for benchmark in benchmarker.run(
         accumulator_class=GenerativeBenchmarkAccumulator,
         benchmark_class=GenerativeBenchmark,
-        requests=request_loader,
+        requests=request_loader,  # type: ignore[arg-type]
         backend=backend,
         profile=profile,
         environment=NonDistributedEnvironment(),

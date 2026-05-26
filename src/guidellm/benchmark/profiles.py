@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
 
 import numpy as np
@@ -45,6 +44,11 @@ from guidellm.utils.trace_io import load_relative_timestamps
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
+
+# NOTE: These imports should be removed after changes to trace
+from guidellm.data import DataArgs  # noqa: I001
+from guidellm.data.deserializers import TraceSyntheticDataArgs  # noqa: I001
+##
 
 __all__ = [
     "AsyncProfile",
@@ -364,18 +368,15 @@ class ReplayProfile(Profile):
         **kwargs: Any,
     ) -> dict[str, Any]:
         _ = (rate_type, random_seed)  # unused
-        data = kwargs.get("data")
-        if not data:
-            raise ValueError("Replay profile requires data (path to trace file)")
+        data: list[DataArgs] = kwargs.get("data", [])
         if len(data) != 1:
             raise ValueError(
                 f"ReplayProfile requires exactly one data source, received {len(data)}"
             )
-        if not data[0]:
-            raise ValueError("Replay profile requires data (path to trace file)")
-        path = Path(data[0]) if isinstance(data[0], str) else data[0]
-        if not path.exists():
-            raise ValueError(f"Replay trace file not found: {path}")
+        if not isinstance((config := data[0]), TraceSyntheticDataArgs):
+            raise ValueError("ReplayProfile requires a trace data source")
+        if not config.path.exists():
+            raise ValueError(f"Replay trace file not found: {config.path}")
 
         # For replay profile, rate is interpreted as time_scale (not requests per
         # second)
@@ -383,16 +384,9 @@ class ReplayProfile(Profile):
 
         # Honor a custom timestamp column when configured via --data-args so the
         # replay profile and trace_synthetic deserializer use the same field.
-        data_args = kwargs.get("data_args") or []
-        first_args = data_args[0] if data_args else {}
-        timestamp_column = "timestamp"
-        if isinstance(first_args, dict):
-            raw_timestamp_column = first_args.get("timestamp_column")
-            if isinstance(raw_timestamp_column, str) and raw_timestamp_column.strip():
-                timestamp_column = raw_timestamp_column
 
         relative_timestamps = load_relative_timestamps(
-            path, timestamp_column=timestamp_column
+            config.path, config.timestamp_column
         )
         data_samples = kwargs.get("data_samples", -1)
         if isinstance(data_samples, int) and data_samples > 0:

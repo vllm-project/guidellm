@@ -50,7 +50,7 @@ class GuidellmClient:
         max_requests: int | None = None,
         max_error_rate: float | None = None,
         over_saturation: dict[str, Any] | None = None,
-        data: str = "prompt_tokens=256,output_tokens=128",
+        data: str = "kind=synthetic_text,prompt_tokens=256,output_tokens=128",
         processor: str = "gpt2",
         additional_args: str = "",
         extra_env: dict[str, str] | None = None,

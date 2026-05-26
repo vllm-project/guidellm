@@ -7,25 +7,28 @@ from .file import (
     ArrowFileDatasetDeserializer,
     CSVFileDatasetDeserializer,
     DBFileDatasetDeserializer,
+    FileDataArgs,
     HDF5FileDatasetDeserializer,
     JSONFileDatasetDeserializer,
     ParquetFileDatasetDeserializer,
     TarFileDatasetDeserializer,
     TextFileDatasetDeserializer,
 )
-from .huggingface import HuggingFaceDatasetDeserializer
+from .huggingface import HuggingFaceDataArgs, HuggingFaceDatasetDeserializer
 from .memory import (
-    InMemoryCsvDatasetDeserializer,
+    InMemoryDictDataArgs,
     InMemoryDictDatasetDeserializer,
+    InMemoryDictListDataArgs,
     InMemoryDictListDatasetDeserializer,
+    InMemoryItemListDataArgs,
     InMemoryItemListDatasetDeserializer,
-    InMemoryJsonStrDatasetDeserializer,
 )
 from .synthetic import (
+    SyntheticTextDataArgs,
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
-from .trace_synthetic import TraceSyntheticDatasetDeserializer
+from .trace_synthetic import TraceSyntheticDataArgs, TraceSyntheticDatasetDeserializer
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
@@ -34,18 +37,23 @@ __all__ = [
     "DataNotSupportedError",
     "DatasetDeserializer",
     "DatasetDeserializerFactory",
+    "FileDataArgs",
     "HDF5FileDatasetDeserializer",
+    "HuggingFaceDataArgs",
     "HuggingFaceDatasetDeserializer",
-    "InMemoryCsvDatasetDeserializer",
+    "InMemoryDictDataArgs",
     "InMemoryDictDatasetDeserializer",
+    "InMemoryDictListDataArgs",
     "InMemoryDictListDatasetDeserializer",
+    "InMemoryItemListDataArgs",
     "InMemoryItemListDatasetDeserializer",
-    "InMemoryJsonStrDatasetDeserializer",
     "JSONFileDatasetDeserializer",
     "ParquetFileDatasetDeserializer",
+    "SyntheticTextDataArgs",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
+    "TraceSyntheticDataArgs",
     "TraceSyntheticDatasetDeserializer",
 ]

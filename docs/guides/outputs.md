@@ -9,7 +9,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --profile sweep \
   --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-extras '{"tag": "my_tag", "metadata": {"key": "value"}}'
 ```
 
@@ -33,7 +33,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --profile sweep \
   --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --disable-progress
 ```
 
@@ -44,7 +44,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --profile sweep \
   --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --disable-console-outputs
 ```
 
@@ -96,7 +96,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --profile sweep \
   --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-dir "results/" \
   --outputs json,csv,html \
   --sample-requests 20
@@ -109,7 +109,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --profile sweep \
   --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-dir "results/" \
   --outputs json \
   --outputs csv \
@@ -125,7 +125,7 @@ podman run --rm -it --network=host \
   -e GUIDELLM_TARGET=http://localhost:8000 \
   -e GUIDELLM_PROFILE=sweep \
   -e GUIDELLM_MAX_SECONDS=30 \
-  -e GUIDELLM_DATA="prompt_tokens=256,output_tokens=128" \
+  -e GUIDELLM_DATA="kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   -e GUIDELLM_OUTPUT_DIR=/results \
   -e GUIDELLM_OUTPUTS=json,csv,html \
   -e GUIDELLM_SAMPLE_REQUESTS=20 \
@@ -139,7 +139,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --profile sweep \
   --max-seconds 30 \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-dir "results/" \
   --outputs json \
   --sample-requests 20

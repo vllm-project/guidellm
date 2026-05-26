@@ -8,17 +8,12 @@ GuideLLM supports various dataset configurations to enable benchmarking and eval
 
 The following arguments can be used to configure datasets and their processing:
 
-- `--data`: Specifies the dataset source. This can be a file path, Hugging Face dataset ID, synthetic data configuration, or in-memory data.
-- `--data-args`: A JSON string or dictionary argument that allows you to control how datasets are parsed and prepared. This includes specific aliases for GuideLLM flows, such as:
-  - `prompt_column`: Specifies the column name for the prompt. By default, GuideLLM will try the most common column names (e.g., `prompt`, `text`, `input`).
-  - `prompt_tokens_count_column`: Specifies the column name for the prompt token count. These are used to set the request prompt token count for counting metrics. By default, GuideLLM assumes no token count is provided.
-  - `output_tokens_count_column`: Specifies the column name for the output token count. These are used to set the request output token count for the request and counting metrics. By default, GuideLLM assumes no token count is provided.
-  - `type_`: Selects a specialized dataset deserializer, such as `trace_synthetic` for trace replay files.
-  - `timestamp_column`: Specifies the timestamp column for `trace_synthetic` data. The default is `timestamp`.
-  - `prompt_tokens_column`: Specifies the prompt token length column for `trace_synthetic` data. The default is `input_length`.
-  - `output_tokens_column`: Specifies the output token length column for `trace_synthetic` data. The default is `output_length`.
-  - `split`: Specifies the dataset split to use (e.g., `train`, `val`, `test`). By default, GuideLLM will try the most common split names (e.g., `train`, `validation`, `test`) if the dataset has splits, otherwise it will use the entire dataset.
-  - Any remaining arguments are passed directly into the dataset constructor as kwargs.
+- `--data`: Specifies the dataset source and type using a `kind=` discriminator. Accepted kinds:
+  - `kind=synthetic_text` — generates synthetic prompts on the fly. Required fields: `prompt_tokens`, `output_tokens`. Optional: `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
+  - `kind=huggingface` — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (e.g. `split`, `name`) via the `load_kwargs` field.
+  - `kind=json_file`, `kind=csv_file`, `kind=text_file`, `kind=parquet_file`, `kind=arrow_file`, `kind=hdf5_file` — loads from a local file. Required field: `path`.
+  - `kind=trace_synthetic` — loads a JSONL trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
+  - Can be specified as a key=value string (`kind=synthetic_text,prompt_tokens=256,output_tokens=128`), a JSON string (`'{"kind": "huggingface", "source": "my/dataset", "load_kwargs": {"split": "train"}}'`), or repeated for multiple sources.
 - `--data-sampler`: Specifies the sampling strategy for datasets. By default, no sampling is applied. When set to `random`, it enables random shuffling of the dataset, which can be useful for creating diverse batches during benchmarking.
 - `--processor`: Specifies the processor or tokenizer to use. This is only required for synthetic data generation or when local calculations are specified through configuration settings. By default, the processor is set to the `--model` argument. If `--model` is not supplied, it defaults to the model retrieved from the backend.
 - `--processor-args`: A JSON string containing any arguments to pass to the processor or tokenizer constructor. These arguments are passed as a dictionary of kwargs.
@@ -30,9 +25,8 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "path/to/dataset|dataset_id" \
+    --data "kind=huggingface,source=my/dataset" \
     --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}' \
-    --data-args '{"split": "train"}' \
     --processor "path/to/processor" \
     --processor-args '{"arg1": "value1"}' \
     --data-sampler "random"
@@ -53,7 +47,7 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "prompt_tokens=256,output_tokens=128"
+    --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"
 ```
 
 Or using a JSON string:
@@ -63,7 +57,7 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data '{"prompt_tokens": 256, "output_tokens": 128}'
+    --data '{"kind": "synthetic_text", "prompt_tokens": 256, "output_tokens": 128}'
 ```
 
 #### Configuration Options
@@ -94,17 +88,17 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "garage-bAInd/Open-Platypus"
+    --data "kind=huggingface,source=garage-bAInd/Open-Platypus"
 ```
 
-Or using a local dataset:
+Or using a local dataset directory:
 
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "path/to/dataset"
+    --data "kind=huggingface,source=path/to/dataset"
 ```
 
 #### Notes
@@ -134,7 +128,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   What is your name?,3,baz,qux
   ```
 
-- **JSON Lines files (`.jsonl`)**: Where each line is a separate JSON object. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-args` argument.
+- **JSON Lines files (`.jsonl`)**: Where each line is a separate JSON object. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
 
   ```json
   {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"}
@@ -150,26 +144,24 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
   In this example, the second request is scheduled 0.5 seconds after the first request. Trace rows are ordered by timestamp before GuideLLM schedules requests and generates synthetic payloads. This keeps each scheduled event aligned with the prompt and output token lengths from the same row.
 
-  Use `--data-args type_=trace_synthetic` to enable trace loading:
+  Use `kind=trace_synthetic` to enable trace loading:
 
   ```bash
   guidellm benchmark \
       --target http://localhost:8000 \
       --profile replay \
       --rate 1.0 \
-      --data path/to/trace.jsonl \
-      --data-args type_=trace_synthetic
+      --data "kind=trace_synthetic,path=path/to/trace.jsonl"
   ```
 
-  If your trace uses different column names, configure them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column`:
+  If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` directly in the `--data` argument:
 
   ```bash
   guidellm benchmark \
       --target http://localhost:8000 \
       --profile replay \
       --rate 1.0 \
-      --data replay.jsonl \
-      --data-args type_=trace_synthetic,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
+      --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length"
   ```
 
   For replay, `--rate` is a time scale for the intervals between trace events rather than requests per second. Use `--data-samples` to limit how many trace rows are loaded and replayed. Use `--max-requests` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
@@ -201,12 +193,11 @@ guidellm benchmark \
     --target "http://localhost:8000" \
     --profile "throughput" \
     --max-requests 1000 \
-    --data "path/to/dataset.ext" \
-    --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}' \
-    --data-args '{"split": "train"}'
+    --data "kind=json_file,path=path/to/dataset.json" \
+    --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}'
 ```
 
-Where `.ext` can be any of the supported file formats listed above.
+Replace `json_file` with `csv_file`, `text_file`, `parquet_file`, `arrow_file`, or `hdf5_file` for other formats.
 
 #### Notes
 

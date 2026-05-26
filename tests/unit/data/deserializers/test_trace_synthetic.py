@@ -5,8 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 from datasets import Dataset
+from pydantic import ValidationError
 
 from guidellm.data.deserializers.trace_synthetic import (
+    TraceSyntheticDataArgs,
     TraceSyntheticDatasetDeserializer,
 )
 from guidellm.data.schemas import DataNotSupportedError
@@ -34,11 +36,21 @@ class TestTraceSyntheticDatasetDeserializer:
         return TraceSyntheticDatasetDeserializer()
 
     def _deserialize(self, deserializer, data, **kwargs):
+        col_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k in ("timestamp_column", "prompt_tokens_column", "output_tokens_column")
+        }
+        try:
+            config = TraceSyntheticDataArgs(path=data, **col_kwargs)
+        except ValidationError as e:
+            raise DataNotSupportedError(
+                f"Expected a path to a trace file, got {data!r}"
+            ) from e
         return deserializer(
-            data=data,
+            config=config,
             processor_factory=_mock_processor,
             random_seed=42,
-            **kwargs,
         )
 
     @pytest.mark.smoke
@@ -53,7 +65,7 @@ class TestTraceSyntheticDatasetDeserializer:
             '{"timestamp": 8.0, "input_length": 0, "output_length": 40}\n',
         )
 
-        ds = self._deserialize(deserializer, trace, type_="trace_synthetic")
+        ds = self._deserialize(deserializer, trace)
 
         assert isinstance(ds, Dataset)
         assert ds["prompt_tokens_count"] == [1, 2, 3, 0]
@@ -74,7 +86,6 @@ class TestTraceSyntheticDatasetDeserializer:
         ds = self._deserialize(
             deserializer,
             trace,
-            type_="trace_synthetic",
             timestamp_column="ts",
             prompt_tokens_column="input_tokens",
             output_tokens_column="generated_tokens",
@@ -189,11 +200,11 @@ class TestTraceSyntheticDatasetDeserializer:
         )
         processor = _mock_processor()
 
+        config = TraceSyntheticDataArgs(path=trace)
         ds = deserializer(
-            data=trace,
+            config=config,
             processor_factory=lambda: processor,
             random_seed=42,
-            type_="trace_synthetic",
         )
 
         assert ds["prompt_tokens_count"] == prompt_lengths

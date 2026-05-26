@@ -143,9 +143,8 @@ guidellm benchmark \
   --request-type chat_completions \
   --profile synchronous \
   --max-requests 50 \
-  --data "lmms-lab/Video-MME" \
-  --data-args "{\"split\": \"test\"}" \
-  --data-column-mapper '{"column_mappings": {"video_column": "url", "text_column": "question"}}'
+  --data ‘{"kind": "huggingface", "source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}’ \
+  --data-column-mapper ‘{"column_mappings": {"video_column": "url", "text_column": "question"}}’
 ```
 
 **Key Parameters**
@@ -153,8 +152,7 @@ guidellm benchmark \
 - `--target`: The base URL of the inference server.
 - `--model`: The model name to use for requests.
 - `--request-type`: chat_completions, supporting multimodal inputs.
-- `--data`: The dataset identifier (lmms-lab/Video-MME).
-- `--data-args`: Configuration for the dataset loading, selecting the "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
+- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Maps the dataset’s `url` column (containing the video link) to `video_column` and `question` to `text_column`.
 
 ### 2. Video Captioning
@@ -170,8 +168,7 @@ guidellm benchmark \
   --request-type chat_completions \
   --profile synchronous \
   --max-requests 50 \
-  --data "lmms-lab/Video-MME" \
-  --data-args "{\"split\": \"test\"}" \
+  --data '{"kind": "huggingface", "source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}' \
   --data-column-mapper '{"column_mappings": {"video_column": "url"}}'
 ```
 

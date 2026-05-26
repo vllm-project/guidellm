@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import Field
 
 from guidellm.data.preprocessors.preprocessor import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
+from guidellm.data.schemas import DataPreprocessorArgs
 
 __all__ = ["TurnPivot"]
+
+
+class TurnPivotArgs(DataPreprocessorArgs):
+    kind: Literal["turn_pivot"] = Field(
+        default="turn_pivot",
+        description="Type identifier for the turn pivot preprocessor.",
+    )
 
 
 @PreprocessorRegistry.register("turn_pivot")
@@ -31,6 +41,12 @@ class TurnPivot(DatasetPreprocessor):
         # turns[0] = {"prompt": ["P1a", "P2a"], "output_tokens_count": [11, 21]}
         # turns[1] = {"prompt": ["P1b", "P2b"], "output_tokens_count": [12, 22]}
     """
+
+    def __init__(
+        self,
+        config: TurnPivotArgs,
+    ) -> None:
+        self.config = config
 
     def __call__(self, items: list[dict[str, list[Any]]]) -> list[dict[str, list[Any]]]:
         new_turns: list[dict[str, list[Any]]] = []

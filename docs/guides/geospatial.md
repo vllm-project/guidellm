@@ -28,7 +28,7 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --model ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11 \
   --backend openai_http \
-  --data flood_detection_dataset.jsonl \
+  --data "kind=huggingface,source=flood_detection_dataset.jsonl" \
   --request-format /pooling \
   --data-column-mapper pooling_column_mapper \
   --max-requests 10 \
@@ -104,7 +104,7 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --model ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11 \
   --backend openai_http \
-  --data flood_detection_dataset.jsonl \
+  --data "kind=huggingface,source=flood_detection_dataset.jsonl" \
   --request-format /pooling \
   --data-column-mapper pooling_column_mapper \
   --max-requests 100 \
@@ -138,7 +138,7 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --model ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11 \
   --backend openai_http \
-  --data flood_detection_dataset.jsonl \
+  --data "kind=huggingface,source=flood_detection_dataset.jsonl" \
   --request-format /pooling \
   --data-column-mapper pooling_column_mapper \
   --max-requests 10 \

@@ -2,23 +2,42 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Any, ClassVar, TypeAlias, cast
+from typing import Any, ClassVar, Literal, TypeAlias, cast
 
 from datasets import Dataset, IterableDataset
+from pydantic import Field
 
 from guidellm.data.preprocessors.preprocessor import (
     DataDependentPreprocessor,
     PreprocessorRegistry,
 )
-from guidellm.data.schemas import GenerativeDatasetColumnType
+from guidellm.data.schemas import DataPreprocessorArgs, GenerativeDatasetColumnType
 from guidellm.logger import logger
 
-__all__ = ["GenerativeColumnMapper", "PoolingColumnMapper"]
+__all__ = [
+    "GenerativeColumnMapper",
+    "GenerativeColumnMapperArgs",
+    "PoolingColumnMapper",
+]
 
 # dataset_column_type and turn index
 DatasetColumnKey: TypeAlias = tuple[GenerativeDatasetColumnType, int]
 # dataset index and column_name
 DatasetColumnValue: TypeAlias = tuple[int, str]
+
+
+@DataPreprocessorArgs.register(
+    [
+        "generative_column_mapper",
+        "pooling_column_mapper",
+    ]
+)
+class GenerativeColumnMapperArgs(DataPreprocessorArgs):
+    kind: Literal["generative_column_mapper", "pooling_column_mapper"] = Field(
+        default="generative_column_mapper",
+        description="Type identifier for the generative column mapper preprocessor.",
+    )
+    column_mappings: dict[str, str | list[str]] | None = None
 
 
 @PreprocessorRegistry.register("generative_column_mapper")
@@ -186,10 +205,9 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
 
     def __init__(
         self,
-        column_mappings: dict[str, str | list[str]] | None = None,
-        **_: Any,  # Ignore global kwargs
+        config: GenerativeColumnMapperArgs,
     ):
-        self.input_mappings = column_mappings
+        self.input_mappings = config.column_mappings
         self.datasets_column_mappings: (
             dict[DatasetColumnKey, list[DatasetColumnValue]] | None
         )

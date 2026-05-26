@@ -99,7 +99,7 @@ guidellm benchmark \
 --profile sweep \
 --max-seconds 10 \
 --max-requests 10 \
---data "prompt_tokens=128,output_tokens=56"
+--data "kind=synthetic_text,prompt_tokens=128,output_tokens=56"
 ```
 
 ______________________________________________________________________

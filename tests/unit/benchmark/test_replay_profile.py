@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import resolve_profile
 from guidellm.benchmark.profiles import Profile, ReplayProfile
+from guidellm.data.deserializers import TraceSyntheticDataArgs
 from guidellm.scheduler import TraceReplayStrategy
 
 
@@ -20,11 +21,12 @@ def _trace_path(tmp_path: Path, lines: list[str] | None = None) -> Path:
 class TestReplayProfile:
     @pytest.mark.smoke
     def test_resolve_args_requires_data(self):
-        with pytest.raises(ValueError, match="Replay profile requires data"):
+        with pytest.raises(ValueError, match="exactly one data source"):
             ReplayProfile.resolve_args(
                 rate_type="replay",
                 rate=[1.0],
                 random_seed=42,
+                data=[],
             )
 
     @pytest.mark.smoke
@@ -34,7 +36,10 @@ class TestReplayProfile:
                 rate_type="replay",
                 rate=[1.0],
                 random_seed=42,
-                data=["trace-a.jsonl", "trace-b.jsonl"],
+                data=[
+                    TraceSyntheticDataArgs(path=Path("trace-a.jsonl")),
+                    TraceSyntheticDataArgs(path=Path("trace-b.jsonl")),
+                ],
             )
 
     @pytest.mark.smoke
@@ -45,7 +50,7 @@ class TestReplayProfile:
                 rate_type="replay",
                 rate=[1.0],
                 random_seed=42,
-                data=[str(missing)],
+                data=[TraceSyntheticDataArgs(path=missing)],
             )
 
         empty = _trace_path(tmp_path)
@@ -54,7 +59,7 @@ class TestReplayProfile:
                 rate_type="replay",
                 rate=[1.0],
                 random_seed=42,
-                data=[str(empty)],
+                data=[TraceSyntheticDataArgs(path=empty)],
             )
 
     @pytest.mark.smoke
@@ -81,7 +86,7 @@ class TestReplayProfile:
             rate_type="replay",
             rate=rate,
             random_seed=42,
-            data=[str(trace)],
+            data=[TraceSyntheticDataArgs(path=trace)],
         )
 
         assert isinstance(profile, ReplayProfile)
@@ -101,7 +106,7 @@ class TestReplayProfile:
                 rate_type="replay",
                 rate=[0.0],
                 random_seed=42,
-                data=[str(trace)],
+                data=[TraceSyntheticDataArgs(path=trace)],
             )
 
     @pytest.mark.smoke
@@ -119,8 +124,7 @@ class TestReplayProfile:
             rate_type="replay",
             rate=[1.0],
             random_seed=42,
-            data=[str(trace)],
-            data_args=[{"timestamp_column": "ts"}],
+            data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
         )
 
         assert kwargs["relative_timestamps"] == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
@@ -203,17 +207,26 @@ class TestReplayProfile:
             rate_type="replay",
             rate=[1.0],
             random_seed=42,
-            data=[str(trace)],
+            data=[TraceSyntheticDataArgs(path=trace)],
         )
 
         assert kwargs["relative_timestamps"] == pytest.approx(timestamps, abs=1e-9)
         assert kwargs["constraints"]["max_requests"] == 27
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize("invalid_value", [None, "", "   ", 123, False, []])
-    def test_invalid_timestamp_column_config_falls_back_to_default(
+    @pytest.mark.parametrize("invalid_value", [None, 123, False, []])
+    def test_non_string_timestamp_column_rejected_by_pydantic(
         self, tmp_path: Path, invalid_value
     ):
+        with pytest.raises(ValidationError):
+            TraceSyntheticDataArgs(
+                path=tmp_path / "trace.jsonl",
+                timestamp_column=invalid_value,
+            )
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize("invalid_col", ["", "   "])
+    def test_blank_timestamp_column_raises_error(self, tmp_path: Path, invalid_col):
         trace = _trace_path(
             tmp_path,
             [
@@ -222,16 +235,13 @@ class TestReplayProfile:
             ],
         )
 
-        kwargs = ReplayProfile.resolve_args(
-            rate_type="replay",
-            rate=[1.0],
-            random_seed=42,
-            data=[str(trace)],
-            data_args=[{"timestamp_column": invalid_value}],
-        )
-
-        assert kwargs["relative_timestamps"] == pytest.approx([0.0, 2.0], abs=1e-9)
-        assert kwargs["constraints"]["max_requests"] == 2
+        with pytest.raises((KeyError, ValueError)):
+            ReplayProfile.resolve_args(
+                rate_type="replay",
+                rate=[1.0],
+                random_seed=42,
+                data=[TraceSyntheticDataArgs(path=trace, timestamp_column=invalid_col)],
+            )
 
     @pytest.mark.smoke
     def test_data_samples_truncates_after_sorting_and_preserves_constraints(
@@ -251,7 +261,7 @@ class TestReplayProfile:
             rate_type="replay",
             rate=[1.0],
             random_seed=42,
-            data=[str(trace)],
+            data=[TraceSyntheticDataArgs(path=trace)],
             data_samples=3,
             constraints={"max_requests": 10, "max_seconds": 0.25},
         )
@@ -276,7 +286,7 @@ class TestReplayProfile:
             rate_type="replay",
             rate=[1.0],
             random_seed=42,
-            data=[str(trace)],
+            data=[TraceSyntheticDataArgs(path=trace)],
             data_samples=data_samples,
         )
 
@@ -306,8 +316,7 @@ class TestReplayProfile:
                 max_errors=None,
                 max_error_rate=None,
                 max_global_error_rate=None,
-                data=[str(trace)],
-                data_args=[{"timestamp_column": "ts"}],
+                data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
                 data_samples=2,
             )
         )
@@ -327,7 +336,7 @@ class TestReplayProfile:
             rate_type="replay",
             rate=[2.0],
             random_seed=42,
-            data=[str(trace)],
+            data=[TraceSyntheticDataArgs(path=trace)],
         )
         profile = ReplayProfile(**kwargs)
 

@@ -81,7 +81,7 @@ guidellm benchmark \
   --target "https://api.openai.com/v1" \
   --backend-kwargs '{"api_key": "sk-..."}' \
   --model "gpt-3.5-turbo" \
-  --data "prompt_tokens=256,output_tokens=128"
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"
 ```
 
 The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP requests to the backend server.
@@ -101,7 +101,7 @@ The `extras` field accepts a `body` key whose values are merged directly into th
 guidellm benchmark \
   --target "http://localhost:8000/v1" \
   --model "meta-llama/Meta-Llama-3.1-8B-Instruct" \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --backend-kwargs '{"extras": {"body": {"temperature": 0.6, "top_p": 0.95, "top_k": 20}}}'
 ```
 
@@ -121,7 +121,7 @@ The `--backend-kwargs` option accepts a JSON string that is passed as keyword ar
 guidellm benchmark \
   --target "http://localhost:8000/v1" \
   --model "meta-llama/Meta-Llama-3.1-8B-Instruct" \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --backend-kwargs '{"api_key": "sk-...", "extras": {"body": {"temperature": 0.8, "top_p": 0.9}}}'
 ```
 

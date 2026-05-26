@@ -32,7 +32,7 @@ To run a benchmark against your local vLLM server with default settings:
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data "prompt_tokens=256,output_tokens=128" \
+  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --max-seconds 60
 ```
 
@@ -55,19 +55,19 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 
 ### Key Parameters
 
-| Parameter        | Description                                    | Example                                        |
-| ---------------- | ---------------------------------------------- | ---------------------------------------------- |
-| `--target`       | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`             |
-| `--model`        | Model name to benchmark                        | `--model "Meta-Llama-3.1-8B-Instruct"`         |
-| `--data`         | Data configuration for benchmarking            | `--data "prompt_tokens=256,output_tokens=128"` |
-| `--profile`      | Type of benchmark profile to run               | `--profile sweep`                              |
-| `--rate`         | Request rate or number of benchmarks for sweep | `--rate 10`                                    |
-| `--random-seed`  | Random seed for reproducibility                | `--random-seed 42`                             |
-| `--max-seconds`  | Duration for each benchmark in seconds         | `--max-seconds 30`                             |
-| `--max-requests` | Maximum number of requests for each benchmark  | `--max-requests 1000`                          |
-| `--data-samples` | Maximum number of dataset rows to load         | `--data-samples 1000`                          |
-| `--output-dir`   | Directory path to save output files            | `--output-dir results/`                        |
-| `--outputs`      | Output formats to generate                     | `--outputs json csv html`                      |
+| Parameter        | Description                                    | Example                                                            |
+| ---------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| `--target`       | URL of the OpenAI-compatible server            | `--target "http://localhost:8000"`                                 |
+| `--model`        | Model name to benchmark                        | `--model "Meta-Llama-3.1-8B-Instruct"`                             |
+| `--data`         | Data configuration for benchmarking            | `--data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"` |
+| `--profile`      | Type of benchmark profile to run               | `--profile sweep`                                                  |
+| `--rate`         | Request rate or number of benchmarks for sweep | `--rate 10`                                                        |
+| `--random-seed`  | Random seed for reproducibility                | `--random-seed 42`                                                 |
+| `--max-seconds`  | Duration for each benchmark in seconds         | `--max-seconds 30`                                                 |
+| `--max-requests` | Maximum number of requests for each benchmark  | `--max-requests 1000`                                              |
+| `--data-samples` | Maximum number of dataset rows to load         | `--data-samples 1000`                                              |
+| `--output-dir`   | Directory path to save output files            | `--output-dir results/`                                            |
+| `--outputs`      | Output formats to generate                     | `--outputs json csv html`                                          |
 
 ### Random Seed (`--random-seed`)
 
@@ -171,17 +171,17 @@ guidellm benchmark --profile sweep
 
 ### Synthetic Data Options
 
-For synthetic data, parameters for random data generation are passed as key=value pairs to the `--data` parameter. Some key options include:
+For synthetic data, pass `kind=synthetic_text` with the desired parameters to the `--data` argument. Some key options include:
 
 - `prompt_tokens`: Average number of tokens for prompts
 - `output_tokens`: Average number of tokens for outputs
 
-For example, to generate 1000 samples with a prompt length of 100 tokens and an output length of 50 tokens:
+For example, to benchmark with a prompt length of 100 tokens and an output length of 50 tokens:
 
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data "prompt_tokens=100,output_tokens=50,samples=1000" \
+  --data "kind=synthetic_text,prompt_tokens=100,output_tokens=50" \
   --profile constant \
   --rate 5
 ```
@@ -204,8 +204,7 @@ Run with the `replay` profile:
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data path/to/trace.jsonl \
-  --data-args type_=trace_synthetic \
+  --data "kind=trace_synthetic,path=path/to/trace.jsonl" \
   --profile replay \
   --rate 1.0
 ```
@@ -214,7 +213,15 @@ The `--rate` parameter acts as a time scale for the intervals between trace even
 
 GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-samples` to limit how many trace rows are loaded and replayed. `--max-requests` remains a runtime completion constraint; it does not truncate the trace dataset.
 
-If your trace uses different column names, map them with `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in `--data-args`.
+If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` directly in the `--data` argument:
+
+```bash
+guidellm benchmark \
+  --target "http://localhost:8000" \
+  --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length" \
+  --profile replay \
+  --rate 1.0
+```
 
 For very small prompts (roughly under 15 tokens, depending on the tokenizer), GuideLLM may not have enough room to include the full per-row unique prefix. Different rows can then produce similar or identical prompts, which reduces cache resistance in replay benchmarks.
 
@@ -225,7 +232,7 @@ While synthetic data is convenient for quick tests, you can benchmark with real-
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data "/path/to/your/dataset.json" \
+  --data "kind=json_file,path=/path/to/your/dataset.json" \
   --profile constant \
   --rate 5
 ```
@@ -235,7 +242,7 @@ You can also use datasets from HuggingFace:
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --data garage-bAInd/Open-Platypus \
+  --data "kind=huggingface,source=garage-bAInd/Open-Platypus" \
   --profile constant \
   --rate 5
 ```
