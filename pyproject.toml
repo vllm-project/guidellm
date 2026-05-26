@@ -18,6 +18,7 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
+torchcodec = { index = "pytorch-cpu" }
 
 # ************************************************
 # ********** Project Metadata **********
@@ -81,11 +82,11 @@ recommended = ["guidellm[perf,tokenizers]"]
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 tokenizers = ["tiktoken", "blobfile", "mistral-common"]
 audio = [
-    # Lowest version with full torchcodec support
+    # Version with stable aarch64 CPU-only wheels
     "datasets[audio]>=4.1.0",
-    # Torchcodec needs specific torch version
-    "torch==2.10.*",
-    "torchcodec==0.10.*",
+    # Torchcodec 0.13 requires PyTorch >= 2.11
+    "torch==2.11.*",
+    "torchcodec==0.13.*",
 ]
 vision = [
     "datasets[vision]",
