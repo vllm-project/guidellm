@@ -10,9 +10,7 @@ from guidellm.settings import (
     settings,
 )
 
-BASE_URL = (
-    "https://raw.githubusercontent.com/vllm-project/guidellm/refs/heads/gh-pages/ui/"
-)
+BASE_URL = "https://vllm-project.github.io/guidellm/ui/"
 
 
 @pytest.mark.smoke
