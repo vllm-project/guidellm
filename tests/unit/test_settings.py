@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from guidellm.settings import (
@@ -14,7 +16,12 @@ BASE_URL = "https://vllm-project.github.io/guidellm/ui/"
 
 
 @pytest.mark.smoke
-def test_default_settings():
+def test_default_settings(mocker):
+    mocker.patch.dict(
+        "os.environ",
+        {k: v for k, v in os.environ.items() if not k.startswith("GUIDELLM__")},
+        clear=True,
+    )
     settings = Settings()
     assert settings.logging == LoggingSettings()
     assert settings.report_generation.source.startswith(BASE_URL)
@@ -55,7 +62,12 @@ def test_report_generation_settings():
 
 
 @pytest.mark.sanity
-def test_generate_env_file():
+def test_generate_env_file(mocker):
+    mocker.patch.dict(
+        "os.environ",
+        {k: v for k, v in os.environ.items() if not k.startswith("GUIDELLM__")},
+        clear=True,
+    )
     settings = Settings()
     env_file_content = settings.generate_env_file()
     assert "GUIDELLM__LOGGING__DISABLED" in env_file_content
@@ -106,7 +118,12 @@ def test_dataset_settings_defaults():
 
 
 @pytest.mark.sanity
-def test_table_properties_defaults():
+def test_table_properties_defaults(mocker):
+    mocker.patch.dict(
+        "os.environ",
+        {k: v for k, v in os.environ.items() if not k.startswith("GUIDELLM__")},
+        clear=True,
+    )
     settings = Settings()
     assert settings.table_border_char == "="
     assert settings.table_headers_border_char == "-"
