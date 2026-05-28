@@ -1032,10 +1032,10 @@ class TestCheckToolCallExpectations:
             "TTFT (first_token_iteration) should be set when reasoning tokens arrive"
         )
 
-        # Verify the response contains both reasoning and content
+        # Reasoning tokens should NOT appear in text; only content is captured
         assert final_response.text is not None
-        assert "Let me think" in final_response.text
-        assert "about this..." in final_response.text
+        assert "Let me think" not in final_response.text
+        assert "about this..." not in final_response.text
         assert "Hello world" in final_response.text
 
         # Verify token counts
