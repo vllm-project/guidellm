@@ -815,8 +815,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choice: dict[str, dict] = choices[0] if choices else {}
         delta = choice.get("delta", {}) if choices else {}
 
-        if reasoning := delta.get("reasoning"):
-            self.streaming_texts.append(reasoning)
+        if delta.get("reasoning"):
             updated = True
         if content := delta.get("content"):
             self.streaming_texts.append(content)

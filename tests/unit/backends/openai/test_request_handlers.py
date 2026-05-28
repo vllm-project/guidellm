@@ -979,11 +979,10 @@ class TestChatCompletionsRequestHandler:
         assert updated_count == 5
 
         response = instance.compile_streaming(generation_request, arguments)
-        # Verify that both reasoning and content are in the final text
-        assert "Okay" in response.text
-        assert "let me think..." in response.text
-        assert "Hello world!" in response.text
-        assert response.text == "Okay, let me think...Hello world!"
+        # Reasoning tokens should NOT appear in response.text; only content does
+        assert "Okay" not in response.text
+        assert "let me think..." not in response.text
+        assert response.text == "Hello world!"
         assert response.input_metrics.text_tokens == 5
         assert response.output_metrics.text_tokens == 10
 
@@ -994,7 +993,8 @@ class TestChatCompletionsRequestHandler:
         """Test handling chunks with both reasoning and content fields.
 
         Edge case: verify that if a chunk contains both delta.reasoning
-        and delta.content, both are properly captured and counted.
+        and delta.content, reasoning triggers the update flag but only
+        content is captured in the response text.
 
         ### WRITTEN BY AI ###
         """
@@ -1025,11 +1025,9 @@ class TestChatCompletionsRequestHandler:
         assert updated_count == 2
 
         response = instance.compile_streaming(generation_request, arguments)
-        # Both reasoning and content from the same chunk should be present
-        assert "Let me think..." in response.text
-        assert "Answer: " in response.text
-        assert "42" in response.text
-        assert response.text == "Let me think...Answer: 42"
+        # Reasoning text should NOT appear; only content is captured
+        assert "Let me think..." not in response.text
+        assert response.text == "Answer: 42"
 
     # Tool call response handling tests
 
