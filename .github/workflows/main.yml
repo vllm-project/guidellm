@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "DEVELOPING.md"
+      - "CONTRIBUTING.md"
+      - "CODE_OF_CONDUCT.md"
 
 jobs:
   tests:
@@ -22,3 +28,28 @@ jobs:
     uses: ./.github/workflows/quality.yml
     with:
       python: ${{ matrix.python }}
+
+  docs-deploy:
+    needs: [tests, quality]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Setup Python with UV
+        uses: ./.github/actions/python-uv
+        with:
+          python-version: "3.10"
+      - name: Install mkdocs dependencies
+        run: |
+          uv pip install --system mkdocs mkdocs-material mike \
+            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
+            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
+      - name: Deploy docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mike deploy main --push --update-aliases

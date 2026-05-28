@@ -75,6 +75,33 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+  docs-deploy:
+    needs: extract-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Setup Python with UV
+        uses: ./.github/actions/python-uv
+        with:
+          python-version: "3.10"
+      - name: Install mkdocs dependencies
+        run: |
+          uv pip install --system mkdocs mkdocs-material mike \
+            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
+            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
+      - name: Deploy docs
+        run: |
+          VERSION="${{ needs.extract-version.outputs.version }}"
+          VERSION="${VERSION#v}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mike deploy $VERSION stable --push --update-aliases
+
   build-and-push-container:
     needs: extract-version
     permissions:

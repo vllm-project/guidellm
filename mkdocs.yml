@@ -1,8 +1,8 @@
 site_name: GuideLLM Docs
 site_description: Documentation for GuideLLM focused on evaluating the deployability of an LLM for real-world inference
-site_url: https://neuralmagic.github.io/guidellm
-repo_url: https://github.com/neuralmagic/guidellm
-edit_uri: https://github.com/neuralmagic/guidellm/tree/main/docs
+site_url: https://vllm-project.github.io/guidellm
+repo_url: https://github.com/vllm-project/guidellm
+edit_uri: https://github.com/vllm-project/guidellm/tree/main/docs
 
 theme:
   name: material
