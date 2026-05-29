@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "DEVELOPING.md"
-      - "CONTRIBUTING.md"
-      - "CODE_OF_CONDUCT.md"
 
 jobs:
   tests:
@@ -39,16 +33,28 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+      - name: Check docs changes
+        id: docs-changed
+        run: |
+          if git diff-tree --no-commit-id --name-only -r HEAD \
+            | grep -qE '^(docs/|mkdocs\.yml|DEVELOPING\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md)'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
       - name: Setup Python with UV
+        if: steps.docs-changed.outputs.changed == 'true'
         uses: ./.github/actions/python-uv
         with:
-          python-version: "3.10"
+          python-version: "3.13"
       - name: Install mkdocs dependencies
+        if: steps.docs-changed.outputs.changed == 'true'
         run: |
           uv pip install --system mkdocs mkdocs-material mike \
             mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
             mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
       - name: Deploy docs
+        if: steps.docs-changed.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
