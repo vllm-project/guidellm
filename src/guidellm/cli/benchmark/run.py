@@ -126,7 +126,6 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
 )
 @click.option(
     "--processor",
-    default=BenchmarkGenerativeTextArgs.get_default("processor"),
     type=str,
     help=(
         "Processor or tokenizer for token count calculations. "
@@ -136,7 +135,6 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
 @click.option(
     "--processor-args",
     callback=cli_tools.parse_arguments,
-    default=BenchmarkGenerativeTextArgs.get_default("processor_args"),
     help="JSON string of arguments to pass to the processor constructor.",
 )
 @click.option(
@@ -362,6 +360,12 @@ def run(**kwargs):  # noqa: C901
     if not finalizer:
         finalizer = {"kind": "generative"}
     kwargs["data_finalizer"] = finalizer
+    # tokenizer
+    kwargs["tokenizer"] = {
+        "kind": "huggingface_auto",
+        "model": kwargs.pop("processor", None),
+        "load_kwargs": kwargs.pop("processor_args", {}),
+    }
 
     # Map top-level CLI options to backend_kwargs
     backend_kwargs = kwargs.pop("backend_kwargs", {})

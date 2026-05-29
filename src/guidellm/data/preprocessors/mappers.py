@@ -11,7 +11,11 @@ from guidellm.data.preprocessors.preprocessor import (
     DataDependentPreprocessor,
     PreprocessorRegistry,
 )
-from guidellm.data.schemas import DataPreprocessorArgs, GenerativeDatasetColumnType
+from guidellm.data.schemas import (
+    DataPreprocessorArgs,
+    DatasetType,
+    GenerativeDatasetColumnType,
+)
 from guidellm.logger import logger
 
 __all__ = [
@@ -238,10 +242,8 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
 
     def setup_data(
         self,
-        datasets: list[Dataset | IterableDataset],
-        data_args: list[dict[str, Any]],
+        datasets: list[DatasetType],
     ):
-        _ = data_args  # Unused for this mapper
         self.datasets_column_mappings = self.datasets_mappings(
             datasets, self.input_mappings
         )
