@@ -151,7 +151,7 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         default=False,
         description=(
             "Include reasoning/chain-of-thought text in multi-turn "
-            "conversation history. Disabled by default to save context."
+            "conversation history. Disabled by default."
         ),
     )
 
@@ -405,9 +405,7 @@ class OpenAIHTTPBackend(Backend):
             extras=self._args.extras,
             max_tokens=self._args.max_tokens,
             server_history=self._args.server_history,
-            include_reasoning_in_history=(
-                self._args.include_reasoning_in_history
-            ),
+            include_reasoning_in_history=(self._args.include_reasoning_in_history),
         )
 
         request_url = f"{self._args.target}/{request_path}"

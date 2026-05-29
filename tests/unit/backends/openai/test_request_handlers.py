@@ -1088,9 +1088,7 @@ class TestChatCompletionsRequestHandler:
         assert response.reasoning_text == "Let me think step by step."
 
     @pytest.mark.sanity
-    def test_format_excludes_reasoning_from_history_by_default(
-        self, valid_instances
-    ):
+    def test_format_excludes_reasoning_from_history_by_default(self, valid_instances):
         """
         By default (include_reasoning_in_history=False), reasoning_text
         should not appear in the assistant message content.
@@ -1126,9 +1124,7 @@ class TestChatCompletionsRequestHandler:
         assert "Let me add" not in assistant_msgs[0]["content"]
 
     @pytest.mark.sanity
-    def test_format_includes_reasoning_in_history_when_enabled(
-        self, valid_instances
-    ):
+    def test_format_includes_reasoning_in_history_when_enabled(self, valid_instances):
         """
         When include_reasoning_in_history=True, reasoning_text should
         be prepended to the assistant message content.
@@ -1161,6 +1157,78 @@ class TestChatCompletionsRequestHandler:
         ]
         assert len(assistant_msgs) == 1
         assert assistant_msgs[0]["content"] == "Let me add 2 and 2.4"
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_only_response_in_history(self, valid_instances):
+        """
+        When include_reasoning_in_history=True and the prior response has
+        reasoning_text but no regular text content, an assistant message
+        should still be injected containing the reasoning.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="",
+            reasoning_text="Let me think about this carefully.",
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            include_reasoning_in_history=True,
+        )
+
+        assistant_msgs = [
+            m for m in result.body["messages"] if m.get("role") == "assistant"
+        ]
+        assert len(assistant_msgs) == 1
+        assert assistant_msgs[0]["content"] == "Let me think about this carefully."
+
+    @pytest.mark.sanity
+    def test_format_drops_reasoning_only_response_from_history_by_default(
+        self, valid_instances
+    ):
+        """
+        When include_reasoning_in_history=False (default) and the prior
+        response has reasoning_text but no regular text content, no
+        assistant message should be injected.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="",
+            reasoning_text="Let me think about this carefully.",
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+        )
+
+        assistant_msgs = [
+            m for m in result.body["messages"] if m.get("role") == "assistant"
+        ]
+        assert len(assistant_msgs) == 0
 
     @pytest.mark.sanity
     def test_last_iteration_had_content_reasoning_then_content(
@@ -2971,9 +3039,7 @@ class TestResponsesRequestHandler:
         assert response.reasoning_text == "Step 1. Step 2."
 
     @pytest.mark.sanity
-    def test_format_excludes_reasoning_from_history_by_default(
-        self, valid_instances
-    ):
+    def test_format_excludes_reasoning_from_history_by_default(self, valid_instances):
         """
         By default, reasoning_text should not appear in the assistant
         input item content.
@@ -2992,22 +3058,16 @@ class TestResponsesRequestHandler:
             reasoning_text="Think about greeting.",
         )
         data = GenerationRequest(columns={"text_column": ["Follow up"]})
-        result = instance.format(
-            data, history=[(prev_request, prev_response)]
-        )
+        result = instance.format(data, history=[(prev_request, prev_response)])
 
         assistant_items = [
-            item
-            for item in result.body["input"]
-            if item.get("role") == "assistant"
+            item for item in result.body["input"] if item.get("role") == "assistant"
         ]
         assert len(assistant_items) == 1
         assert assistant_items[0]["content"] == "World"
 
     @pytest.mark.sanity
-    def test_format_includes_reasoning_in_history_when_enabled(
-        self, valid_instances
-    ):
+    def test_format_includes_reasoning_in_history_when_enabled(self, valid_instances):
         """
         When include_reasoning_in_history=True, reasoning_text should be
         prepended to the assistant input item content.
@@ -3033,12 +3093,76 @@ class TestResponsesRequestHandler:
         )
 
         assistant_items = [
-            item
-            for item in result.body["input"]
-            if item.get("role") == "assistant"
+            item for item in result.body["input"] if item.get("role") == "assistant"
         ]
         assert len(assistant_items) == 1
         assert assistant_items[0]["content"] == "Think about greeting.World"
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_only_response_in_history(self, valid_instances):
+        """
+        When include_reasoning_in_history=True and the prior response has
+        reasoning_text but no regular text content, an assistant input item
+        should still be injected containing the reasoning.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="",
+            reasoning_text="Think about greeting.",
+        )
+        data = GenerationRequest(columns={"text_column": ["Follow up"]})
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            include_reasoning_in_history=True,
+        )
+
+        assistant_items = [
+            item for item in result.body["input"] if item.get("role") == "assistant"
+        ]
+        assert len(assistant_items) == 1
+        assert assistant_items[0]["content"] == "Think about greeting."
+
+    @pytest.mark.sanity
+    def test_format_drops_reasoning_only_response_from_history_by_default(
+        self, valid_instances
+    ):
+        """
+        When include_reasoning_in_history=False (default) and the prior
+        response has reasoning_text but no regular text content, no
+        assistant input item should be injected.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="",
+            reasoning_text="Think about greeting.",
+        )
+        data = GenerationRequest(columns={"text_column": ["Follow up"]})
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+        )
+
+        assistant_items = [
+            item for item in result.body["input"] if item.get("role") == "assistant"
+        ]
+        assert len(assistant_items) == 0
 
     @pytest.mark.sanity
     def test_format_with_history(self, valid_instances):

@@ -700,6 +700,7 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
             stats.request_args = None
         if self.clear_nonsampled_outputs:
             stats.output = None
+            stats.reasoning_output = None
             stats.tool_calls = None
 
     @classmethod

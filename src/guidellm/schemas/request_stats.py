@@ -54,6 +54,10 @@ class GenerativeRequestStats(StandardBaseDict):
     output: str | None = Field(
         default=None, description="Generated text output from the request"
     )
+    reasoning_output: str | None = Field(
+        default=None,
+        description="Reasoning/chain-of-thought text emitted before content",
+    )
     tool_calls: list[ToolCall] | None = Field(
         default=None,
         description="Raw tool call payloads from the model response in OpenAI format",

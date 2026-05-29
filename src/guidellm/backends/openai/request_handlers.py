@@ -773,9 +773,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if response and response.tool_calls:
             assistant_content = response.text
             if include_reasoning and response.reasoning_text:
-                assistant_content = (
-                    response.reasoning_text + (assistant_content or "")
-                )
+                assistant_content = response.reasoning_text + (assistant_content or "")
             arguments.body["messages"].append(
                 {
                     "role": "assistant",
@@ -789,13 +787,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     response.tool_calls, tool_response_columns
                 )
             )
-        elif response and response.text:
-            content = response.text
+        elif response and (
+            response.text or (include_reasoning and response.reasoning_text)
+        ):
+            content = response.text or ""
             if include_reasoning and response.reasoning_text:
                 content = response.reasoning_text + content
-            arguments.body["messages"].append(
-                {"role": "assistant", "content": content}
-            )
+            arguments.body["messages"].append({"role": "assistant", "content": content})
 
         # Inject tool definitions and apply tool-call-specific overrides.
         self._apply_tool_call_overrides(arguments.body, data)
@@ -1205,8 +1203,10 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                         "output": output_content,
                     }
                 )
-        elif response and response.text:
-            content = response.text
+        elif response and (
+            response.text or (include_reasoning and response.reasoning_text)
+        ):
+            content = response.text or ""
             if include_reasoning and response.reasoning_text:
                 content = response.reasoning_text + content
             input_items.append({"role": "assistant", "content": content})

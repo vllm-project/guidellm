@@ -148,6 +148,7 @@ class GenerationResponse(StandardBaseModel):
             response_id=self.response_id,
             request_args=self.request_args,
             output=self.text,
+            reasoning_output=self.reasoning_text,
             tool_calls=self.tool_calls,
             info=info,
             input_metrics=UsageMetrics(**input_metrics_dict),
