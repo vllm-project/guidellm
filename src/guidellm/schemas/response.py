@@ -57,6 +57,13 @@ class GenerationResponse(StandardBaseModel):
         default=None,
         description="The generated response text.",
     )
+    reasoning_text: str | None = Field(
+        default=None,
+        description=(
+            "Reasoning/chain-of-thought text emitted before the content. "
+            "Not included in multi-turn history unless explicitly enabled."
+        ),
+    )
     tool_calls: list[ToolCall] | None = Field(
         default=None,
         description=(

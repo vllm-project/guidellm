@@ -1029,6 +1029,188 @@ class TestChatCompletionsRequestHandler:
         assert "Let me think..." not in response.text
         assert response.text == "Answer: 42"
 
+    @pytest.mark.sanity
+    def test_streaming_captures_reasoning_text(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify reasoning text is accumulated on response.reasoning_text
+        during streaming, separate from response.text.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            'data: {"choices": [{"delta": {"reasoning": "Step 1. "}}], "usage": {}}',
+            'data: {"choices": [{"delta": {"reasoning": "Step 2."}}], "usage": {}}',
+            'data: {"choices": [{"delta": {"content": "Final answer"}}], "usage": {}}',
+            "data: [DONE]",
+        ]
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+        assert response.text == "Final answer"
+        assert response.reasoning_text == "Step 1. Step 2."
+
+    @pytest.mark.sanity
+    def test_non_streaming_captures_reasoning_text(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify compile_non_streaming extracts reasoning from the message.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        api_response = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "reasoning": "Let me think step by step.",
+                        "content": "The answer is 42.",
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 15},
+        }
+        response = instance.compile_non_streaming(
+            generation_request, arguments, api_response
+        )
+        assert response.text == "The answer is 42."
+        assert response.reasoning_text == "Let me think step by step."
+
+    @pytest.mark.sanity
+    def test_format_excludes_reasoning_from_history_by_default(
+        self, valid_instances
+    ):
+        """
+        By default (include_reasoning_in_history=False), reasoning_text
+        should not appear in the assistant message content.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="4",
+            reasoning_text="Let me add 2 and 2.",
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+        )
+
+        # Find the assistant message in the history
+        assistant_msgs = [
+            m for m in result.body["messages"] if m.get("role") == "assistant"
+        ]
+        assert len(assistant_msgs) == 1
+        assert assistant_msgs[0]["content"] == "4"
+        assert "Let me add" not in assistant_msgs[0]["content"]
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_in_history_when_enabled(
+        self, valid_instances
+    ):
+        """
+        When include_reasoning_in_history=True, reasoning_text should
+        be prepended to the assistant message content.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="4",
+            reasoning_text="Let me add 2 and 2.",
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            include_reasoning_in_history=True,
+        )
+
+        assistant_msgs = [
+            m for m in result.body["messages"] if m.get("role") == "assistant"
+        ]
+        assert len(assistant_msgs) == 1
+        assert assistant_msgs[0]["content"] == "Let me add 2 and 2.4"
+
+    @pytest.mark.sanity
+    def test_last_iteration_had_content_reasoning_then_content(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify last_iteration_had_content tracks content vs reasoning deltas.
+
+        Reasoning-only iterations set the flag to False; content sets it True.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        instance.format(generation_request)
+
+        # Initial state before any streaming
+        assert instance.last_iteration_had_content is False
+
+        # Reasoning-only delta
+        instance.add_streaming_line(
+            'data: {"choices": [{"delta": {"reasoning": "thinking..."}}], "usage": {}}'
+        )
+        assert instance.last_iteration_had_content is False
+
+        # Content delta
+        instance.add_streaming_line(
+            'data: {"choices": [{"delta": {"content": "Hello"}}], "usage": {}}'
+        )
+        assert instance.last_iteration_had_content is True
+
+    @pytest.mark.sanity
+    def test_last_iteration_had_content_tool_call(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify tool call deltas set last_iteration_had_content to True.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        instance.format(generation_request)
+
+        tc_line = (
+            'data: {"choices": [{"delta": {"tool_calls": '
+            '[{"index": 0, "id": "call_1", "type": "function", '
+            '"function": {"name": "foo", "arguments": ""}}]}}], "usage": {}}'
+        )
+        instance.add_streaming_line(tc_line)
+        assert instance.last_iteration_had_content is True
+
     # Tool call response handling tests
 
     @pytest.mark.sanity
@@ -2661,6 +2843,202 @@ class TestResponsesRequestHandler:
         assert response.text == expected_text
         assert response.input_metrics.text_tokens == expected_input_tokens
         assert response.output_metrics.text_tokens == expected_output_tokens
+
+    @pytest.mark.sanity
+    def test_streaming_reasoning_triggers_ttft_not_content(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify Responses API reasoning events trigger TTFT (return 1)
+        but set last_iteration_had_content to False, matching Chat
+        Completions parity for TTFOT measurement.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        instance.format(generation_request)
+
+        assert instance.last_iteration_had_content is False
+
+        # Reasoning summary delta -- should return 1 (TTFT) but not content
+        result = instance.add_streaming_line(
+            'data: {"type": "response.reasoning_summary_text.delta", '
+            '"delta": "Let me think..."}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is False
+
+        # Output text delta -- now content flag flips to True
+        result = instance.add_streaming_line(
+            'data: {"type": "response.output_text.delta", "delta": "Hello"}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is True
+
+    @pytest.mark.sanity
+    def test_streaming_reasoning_only_leaves_content_false(
+        self, valid_instances, generation_request
+    ):
+        """
+        If a Responses API stream emits only reasoning before completing,
+        last_iteration_had_content stays False.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        instance.format(generation_request)
+
+        instance.add_streaming_line(
+            'data: {"type": "response.reasoning_summary_text.delta", '
+            '"delta": "thinking..."}'
+        )
+        instance.add_streaming_line(
+            'data: {"type": "response.reasoning_summary_text.delta", '
+            '"delta": " more thinking"}'
+        )
+        assert instance.last_iteration_had_content is False
+
+        # Stream completes
+        instance.add_streaming_line(
+            'data: {"type": "response.completed", "response": '
+            '{"id": "resp_1", "usage": {"input_tokens": 5, "output_tokens": 0}}}'
+        )
+        assert instance.last_iteration_had_content is False
+
+    @pytest.mark.sanity
+    def test_streaming_captures_reasoning_text(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify Responses API streaming accumulates reasoning_text on the
+        compiled response.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        lines = [
+            'data: {"type": "response.reasoning_summary_text.delta", '
+            '"delta": "First, "}',
+            'data: {"type": "response.reasoning_summary_text.delta", '
+            '"delta": "consider..."}',
+            'data: {"type": "response.output_text.delta", "delta": "Answer"}',
+            'data: {"type": "response.completed", "response": '
+            '{"id": "resp_1", "usage": {"input_tokens": 5, "output_tokens": 3}}}',
+        ]
+        for line in lines:
+            result = instance.add_streaming_line(line)
+            if result is None:
+                break
+
+        response = instance.compile_streaming(generation_request, arguments)
+        assert response.text == "Answer"
+        assert response.reasoning_text == "First, consider..."
+
+    @pytest.mark.sanity
+    def test_non_streaming_captures_reasoning_text(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify compile_non_streaming extracts reasoning from Responses API
+        output items with type 'reasoning'.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        api_response = {
+            "id": "resp_1",
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [{"text": "Step 1. "}, {"text": "Step 2."}],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Final answer"}],
+                },
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        response = instance.compile_non_streaming(
+            generation_request, arguments, api_response
+        )
+        assert response.text == "Final answer"
+        assert response.reasoning_text == "Step 1. Step 2."
+
+    @pytest.mark.sanity
+    def test_format_excludes_reasoning_from_history_by_default(
+        self, valid_instances
+    ):
+        """
+        By default, reasoning_text should not appear in the assistant
+        input item content.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="World",
+            reasoning_text="Think about greeting.",
+        )
+        data = GenerationRequest(columns={"text_column": ["Follow up"]})
+        result = instance.format(
+            data, history=[(prev_request, prev_response)]
+        )
+
+        assistant_items = [
+            item
+            for item in result.body["input"]
+            if item.get("role") == "assistant"
+        ]
+        assert len(assistant_items) == 1
+        assert assistant_items[0]["content"] == "World"
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_in_history_when_enabled(
+        self, valid_instances
+    ):
+        """
+        When include_reasoning_in_history=True, reasoning_text should be
+        prepended to the assistant input item content.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="World",
+            reasoning_text="Think about greeting.",
+        )
+        data = GenerationRequest(columns={"text_column": ["Follow up"]})
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            include_reasoning_in_history=True,
+        )
+
+        assistant_items = [
+            item
+            for item in result.body["input"]
+            if item.get("role") == "assistant"
+        ]
+        assert len(assistant_items) == 1
+        assert assistant_items[0]["content"] == "Think about greeting.World"
 
     @pytest.mark.sanity
     def test_format_with_history(self, valid_instances):

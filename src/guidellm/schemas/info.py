@@ -59,6 +59,13 @@ class RequestTimings(StandardBaseDict):
     first_token_iteration: float | None = Field(
         default=None,
     )
+    first_output_token_iteration: float | None = Field(
+        default=None,
+        description=(
+            "Unix timestamp of the first non-reasoning content token. "
+            "Equals first_token_iteration when no reasoning tokens are emitted."
+        ),
+    )
     last_token_iteration: float | None = Field(
         default=None,
     )

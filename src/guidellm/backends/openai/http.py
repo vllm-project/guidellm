@@ -147,6 +147,13 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "cancel remaining turns)."
         ),
     )
+    include_reasoning_in_history: bool = Field(
+        default=False,
+        description=(
+            "Include reasoning/chain-of-thought text in multi-turn "
+            "conversation history. Disabled by default to save context."
+        ),
+    )
 
     @field_validator("target", mode="after")
     @classmethod
@@ -398,6 +405,9 @@ class OpenAIHTTPBackend(Backend):
             extras=self._args.extras,
             max_tokens=self._args.max_tokens,
             server_history=self._args.server_history,
+            include_reasoning_in_history=(
+                self._args.include_reasoning_in_history
+            ),
         )
 
         request_url = f"{self._args.target}/{request_path}"
@@ -508,6 +518,15 @@ class OpenAIHTTPBackend(Backend):
                         request_info.timings.first_token_iteration = iter_time
                         request_info.timings.token_iterations = 0
                         yield None, request_info
+
+                    # TTFOT: record the first content (non-reasoning) token.
+                    # For non-reasoning models this fires on the same iteration
+                    # as first_token_iteration, making TTFOT == TTFT.
+                    if (
+                        request_info.timings.first_output_token_iteration is None
+                        and request_handler.last_iteration_had_content
+                    ):
+                        request_info.timings.first_output_token_iteration = iter_time
 
                     request_info.timings.last_token_iteration = iter_time
                     request_info.timings.token_iterations += iterations

@@ -224,6 +224,23 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
+    def time_to_first_output_token_ms(self) -> float | None:
+        """
+        Time to first content (non-reasoning) token in milliseconds.
+
+        When no reasoning tokens are emitted this equals TTFT.
+
+        :return: Milliseconds from request start to first content token,
+            or None if unavailable
+        """
+        first_output = self.info.timings.first_output_token_iteration
+        start = self.info.timings.request_start
+        if first_output is None or start is None:
+            return None
+        return 1000 * (first_output - start)
+
+    @computed_field  # type: ignore[misc]
+    @property
     def iter_tokens_per_iteration(self) -> float | None:
         """
         :return: Average tokens per iteration excluding first token, or None if
