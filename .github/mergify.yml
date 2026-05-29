@@ -2,6 +2,7 @@ queue_rules:
   - name: default
     update_method: rebase
     merge_method: merge
+    batch_size: 1
 pull_request_rules:
   - name: comment-pre-commit-failure
     description: Comment on PR when pre-commit check fails
@@ -78,3 +79,5 @@ pull_request_rules:
           - needs-rebase
 merge_protections_settings:
   reporting_method: check-runs
+merge_queue:
+  max_parallel_checks: 1
