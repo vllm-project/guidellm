@@ -27,6 +27,7 @@ def minimal_report() -> GenerativeBenchmarksReport:
                 "model": "test-model",
             },
             "data": [{"kind": "huggingface", "source": "test_data.jsonl"}],
+            "tokenizer": {"kind": "huggingface_auto", "model": "test-model"},
             "data_column_mapper": {"kind": "generative_column_mapper"},
             "data_preprocessors": [],
             "data_finalizer": {"kind": "generative"},

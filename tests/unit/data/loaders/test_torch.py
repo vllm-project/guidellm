@@ -46,13 +46,13 @@ class TestTorchDataLoaderArgs:
         assert args.num_workers == 1
 
     @pytest.mark.smoke
-    def test_default_sampler_is_none(self):
-        """TorchDataLoaderArgs defaults sampler to None.
+    def test_default_shuffle_is_false(self):
+        """TorchDataLoaderArgs defaults shuffle to False.
 
         ### WRITTEN BY AI ###
         """
         args = TorchDataLoaderArgs()
-        assert args.sampler is None
+        assert args.shuffle is False
 
     @pytest.mark.sanity
     def test_custom_values(self):
@@ -60,10 +60,10 @@ class TestTorchDataLoaderArgs:
 
         ### WRITTEN BY AI ###
         """
-        args = TorchDataLoaderArgs(samples=500, num_workers=4, sampler="shuffle")
+        args = TorchDataLoaderArgs(samples=500, num_workers=4, shuffle=True)
         assert args.samples == 500
         assert args.num_workers == 4
-        assert args.sampler == "shuffle"
+        assert args.shuffle is True
 
     @pytest.mark.sanity
     def test_registered_in_registry(self):

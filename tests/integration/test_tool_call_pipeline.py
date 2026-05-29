@@ -31,7 +31,7 @@ def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:
     dataset = Dataset.from_dict({k: [v] for k, v in row.items()})
 
     mapper = GenerativeColumnMapper(GenerativeColumnMapperArgs())
-    mapper.setup_data([dataset], [{}])
+    mapper.setup_data([dataset])
 
     finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
     mapped_turns = mapper([{"dataset": row}])
