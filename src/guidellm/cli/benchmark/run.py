@@ -408,11 +408,13 @@ def run(**kwargs):  # noqa: C901
             scenario=kwargs.pop("scenario", None), **kwargs
         )
     except ValidationError as err:
-        # Translate pydantic valdation error to click argument error
+        # Translate pydantic validation error to click argument error
         errs = err.errors(include_url=False, include_context=True, include_input=True)
-        param_name = "--" + str(errs[0]["loc"][0]).replace("_", "-")
+        first_loc = errs[0]["loc"]
+        top_field = str(first_loc[0]) if first_loc else ""
+        param_name = "--" + top_field.replace("_", "-")
         raise click.BadParameter(
-            errs[0]["msg"], ctx=ctx, param_hint=param_name
+            cli_tools.format_validation_errors(errs), ctx=ctx, param_hint=param_name
         ) from err
 
     asyncio.run(

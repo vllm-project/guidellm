@@ -89,9 +89,15 @@ class SyntheticTextDataArgs(DataArgs):
         gt=0,
         default=None,
     )
-    output_tokens: int = Field(
-        description="The average number of text tokens generated for outputs.",
+    output_tokens: int | None = Field(
+        description=(
+            "The average number of text tokens generated for outputs. "
+            "When omitted, output tokens are not sampled and ``max_tokens`` is left "
+            "to the backend default. Useful for endpoints that do not produce "
+            "output tokens (e.g. embeddings)."
+        ),
         gt=0,
+        default=None,
     )
     output_tokens_stdev: int | None = Field(
         description="The standard deviation of the tokens generated for outputs.",

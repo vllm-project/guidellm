@@ -4,6 +4,7 @@ from typing import Any
 
 import click
 import yaml
+from pydantic_core import ErrorDetails
 
 from guidellm.utils import arg_string
 
@@ -11,6 +12,8 @@ __all__ = [
     "Union",
     "decode_escaped_str",
     "format_list_arg",
+    "format_validation_error",
+    "format_validation_errors",
     "parse_json",
     "parse_list",
     "parse_list_floats",
@@ -67,6 +70,45 @@ def parse_list_floats(ctx, param, value):
             f"Input '{value}' is not a valid comma-separated list "
             f"of floats/ints. Failed on {item} Error: {err}"
         ) from err
+
+
+def format_validation_error(err: ErrorDetails) -> str:
+    """
+    Format a single pydantic validation error into a human-readable message.
+
+    Includes the full location path, such as
+    ``data[0].synthetic_text.output_tokens``, so callers can identify which
+    nested subfield failed rather than only the top-level CLI option.
+
+    :param err: A pydantic error dict as returned by ``ValidationError.errors()``
+    :return: Formatted error string including the failing field path
+    """
+    loc = err.get("loc", ())
+    msg = err.get("msg", "validation error")
+    if not loc:
+        return msg
+
+    path = str(loc[0])
+    for component in loc[1:]:
+        if isinstance(component, int):
+            path += f"[{component}]"
+        else:
+            path += f".{component}"
+
+    return f"{msg} (at '{path}')"
+
+
+def format_validation_errors(errs: list[ErrorDetails]) -> str:
+    """
+    Combine one or more pydantic error dicts into a single click-friendly message.
+
+    :param errs: Pydantic error dicts as returned by ``ValidationError.errors()``
+    :return: Single error message; multiple errors are rendered as a bullet list
+    """
+    formatted = [format_validation_error(e) for e in errs]
+    if len(formatted) == 1:
+        return formatted[0]
+    return "\n  - " + "\n  - ".join(formatted)
 
 
 def parse_json(ctx, param, value):  # noqa: ARG001, C901, PLR0911
