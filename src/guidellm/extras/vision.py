@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-try:
-    from PIL import Image as PILImage
-    from PIL.Image import Image
-except ImportError as e:
-    raise AttributeError(
-        "Please install guidellm[vision] to use image/video features"
-    ) from e
+import guidellm.utils.lazy_loader as lazy
 
-__all__ = [
-    "Image",
-    "PILImage",
-]
+__getattr__, __dir__, __all__ = lazy.attach_extras(
+    __name__,
+    attrs={
+        "PILImage": ("PIL", "Image"),
+        "Image": ("PIL.Image", "Image"),
+    },
+    error_message="Please install guidellm[vision] to use image/video features",
+)

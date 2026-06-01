@@ -2,14 +2,10 @@
 vLLM wrapper with same interface as vLLM.
 """
 
-try:
-    import vllm
-except ImportError as e:
-    raise AttributeError("Please install vllm to use vLLM features") from e
+import guidellm.utils.lazy_loader as lazy
 
-
-def __getattr__(name: str):
-    return getattr(vllm, name)
-
-
-__all__ = vllm.__all__
+__getattr__, __dir__, __all__ = lazy.attach_extras(
+    __name__,
+    package="vllm",
+    error_message="Please install vllm to use vLLM features",
+)

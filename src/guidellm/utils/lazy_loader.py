@@ -49,7 +49,7 @@ import types
 import warnings
 
 __version__ = "0.6rc0.dev0"
-__all__ = ["attach", "attach_stub", "load"]
+__all__ = ["attach", "attach_extras", "attach_stub", "load"]
 
 
 threadlock = threading.Lock()
@@ -145,6 +145,109 @@ def attach(
             __getattr__(attr)
 
     return __getattr__, __dir__, __all__.copy()
+
+
+def _attach_extras_attrs(module_name, attrs, error_message):
+    _attr_map = {}
+    for export_name, source in attrs.items():
+        if isinstance(source, str):
+            _attr_map[export_name] = (source, export_name)
+        else:
+            _attr_map[export_name] = (source[0], source[1])
+
+    _all = sorted(_attr_map.keys())
+
+    def __getattr__(name):
+        if name not in _attr_map:
+            raise AttributeError(f"module {module_name!r} has no attribute {name!r}")
+        source_mod_name, source_attr = _attr_map[name]
+        try:
+            source_mod = importlib.import_module(source_mod_name)
+        except ImportError as exc:
+            raise AttributeError(error_message) from exc
+        try:
+            value = getattr(source_mod, source_attr)
+        except AttributeError:
+            try:
+                value = importlib.import_module(f"{source_mod_name}.{source_attr}")
+            except ImportError:
+                raise AttributeError(error_message) from None
+        if module_name in sys.modules:
+            sys.modules[module_name].__dict__[name] = value
+        return value
+
+    def __dir__():
+        return _all.copy()
+
+    return __getattr__, __dir__, _all.copy()
+
+
+def _attach_extras_package(module_name, package, error_message):
+    _cached_pkg = {}
+
+    def _get_package():
+        if "mod" not in _cached_pkg:
+            try:
+                _cached_pkg["mod"] = importlib.import_module(package)
+            except ImportError as exc:
+                raise AttributeError(error_message) from exc
+        return _cached_pkg["mod"]
+
+    def __getattr__(name):
+        pkg = _get_package()
+        try:
+            value = getattr(pkg, name)
+        except AttributeError:
+            raise AttributeError(
+                f"module {module_name!r} has no attribute {name!r}"
+            ) from None
+        if module_name in sys.modules:
+            sys.modules[module_name].__dict__[name] = value
+        return value
+
+    def __dir__():
+        try:
+            return list(dir(_get_package()))
+        except AttributeError:
+            return []
+
+    return __getattr__, __dir__, []
+
+
+def attach_extras(
+    module_name,
+    *,
+    attrs=None,
+    package=None,
+    error_message="Required optional dependency is not installed",
+):
+    """Attach lazily loaded attributes from optional external packages.
+
+    Designed for 'extras' modules that re-export symbols from optional
+    dependencies.  The resulting module is always safe to import; errors
+    are deferred until an attribute is actually accessed.
+
+    Exactly one of ``attrs`` or ``package`` must be provided.
+
+    :param module_name: Typically use ``__name__``.
+    :param attrs: Map of exported names to their source.  Each value is
+        either a ``str`` (source module; the exported name matches the
+        attribute in that module) or a ``(source_module, source_attr)``
+        tuple for aliases.
+    :param package: Name of a package whose public attributes should be
+        proxied wholesale.
+    :param error_message: Human-readable message included in the
+        ``AttributeError`` raised when the optional dependency is not
+        installed.
+    :returns: ``(__getattr__, __dir__, __all__)``
+    """
+    if (attrs is None) == (package is None):
+        raise ValueError("attach_extras() requires exactly one of 'attrs' or 'package'")
+
+    if attrs is not None:
+        return _attach_extras_attrs(module_name, attrs, error_message)
+
+    return _attach_extras_package(module_name, package, error_message)
 
 
 class DelayedImportErrorModule(types.ModuleType):

@@ -288,3 +288,142 @@ def test_require_kwarg():
     # raise a ValueError
     with pytest.raises(ValueError):
         lazy.load("math", require="somepkg >= 1.0")
+
+
+# ── attach_extras tests ──────────────────────────────────────────────
+
+
+def test_attach_extras_attrs_installed_package():
+    """## WRITTEN BY AI ##"""
+    ga, gd, gall = lazy.attach_extras(
+        "test_extras_attrs",
+        attrs={"sin": "math", "mypi": ("math", "pi")},
+        error_message="install math",
+    )
+    assert ga("sin") is __import__("math").sin
+    assert ga("mypi") == __import__("math").pi
+    assert gall == ["mypi", "sin"]
+    assert gd() == ["mypi", "sin"]
+
+
+def test_attach_extras_attrs_alias():
+    """## WRITTEN BY AI ##"""
+    ga, _, _ = lazy.attach_extras(
+        "test_extras_alias",
+        attrs={"my_sep": ("os.path", "sep")},
+        error_message="install os",
+    )
+    import os.path
+
+    assert ga("my_sep") == os.path.sep
+
+
+def test_attach_extras_attrs_submodule_fallback():
+    """## WRITTEN BY AI ##"""
+    ga, _, _ = lazy.attach_extras(
+        "test_extras_submod",
+        attrs={"path": ("os", "path")},
+        error_message="install os",
+    )
+    import os.path
+
+    assert ga("path") is os.path
+
+
+def test_attach_extras_attrs_missing_package():
+    """## WRITTEN BY AI ##"""
+    ga, _, _ = lazy.attach_extras(
+        "test_extras_missing",
+        attrs={"Foo": "nonexistent_pkg_12345"},
+        error_message="install nonexistent_pkg_12345",
+    )
+    with pytest.raises(AttributeError, match="install nonexistent_pkg_12345"):
+        ga("Foo")
+
+
+def test_attach_extras_attrs_unknown_attr():
+    """## WRITTEN BY AI ##"""
+    ga, _, _ = lazy.attach_extras(
+        "test_extras_unknown",
+        attrs={"sin": "math"},
+        error_message="install math",
+    )
+    with pytest.raises(AttributeError, match="has no attribute"):
+        ga("nonexistent")
+
+
+def test_attach_extras_attrs_caching():
+    """## WRITTEN BY AI ##"""
+    mod_name = "test_extras_caching_mod"
+    mod = types.ModuleType(mod_name)
+    sys.modules[mod_name] = mod
+    try:
+        ga, _, _ = lazy.attach_extras(
+            mod_name,
+            attrs={"pi": "math"},
+            error_message="install math",
+        )
+        mod.__getattr__ = ga
+        result = ga("pi")
+        assert result == __import__("math").pi
+        assert "pi" in mod.__dict__
+        assert mod.__dict__["pi"] == __import__("math").pi
+    finally:
+        del sys.modules[mod_name]
+
+
+def test_attach_extras_attrs_dir_returns_copies():
+    """## WRITTEN BY AI ##"""
+    _, gd, gall = lazy.attach_extras(
+        "test_extras_copies",
+        attrs={"sin": "math", "pi": "math"},
+        error_message="install math",
+    )
+    assert gd() == gall
+    assert gd() is not gd()
+    gd().append("extra")
+    assert gd() == ["pi", "sin"]
+
+
+def test_attach_extras_package_installed():
+    """## WRITTEN BY AI ##"""
+    ga, gd, _ = lazy.attach_extras(
+        "test_extras_pkg",
+        package="math",
+        error_message="install math",
+    )
+    assert ga("sin") is __import__("math").sin
+    assert ga("pi") == __import__("math").pi
+    assert "sin" in gd()
+
+
+def test_attach_extras_package_missing():
+    """## WRITTEN BY AI ##"""
+    ga, gd, gall = lazy.attach_extras(
+        "test_extras_pkg_missing",
+        package="nonexistent_pkg_12345",
+        error_message="install nonexistent",
+    )
+    with pytest.raises(AttributeError, match="install nonexistent"):
+        ga("anything")
+    assert gd() == []
+    assert gall == []
+
+
+def test_attach_extras_package_bad_attr():
+    """## WRITTEN BY AI ##"""
+    ga, _, _ = lazy.attach_extras(
+        "test_extras_pkg_bad",
+        package="math",
+        error_message="install math",
+    )
+    with pytest.raises(AttributeError, match="has no attribute"):
+        ga("totally_not_in_math_12345")
+
+
+def test_attach_extras_mutual_exclusion():
+    """## WRITTEN BY AI ##"""
+    with pytest.raises(ValueError, match="exactly one"):
+        lazy.attach_extras("x", attrs={"a": "b"}, package="c")
+    with pytest.raises(ValueError, match="exactly one"):
+        lazy.attach_extras("x")
