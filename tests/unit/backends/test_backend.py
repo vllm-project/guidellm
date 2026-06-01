@@ -475,7 +475,7 @@ class TestBackend:
             OpenAIWebSocketBackendArgs(target="http://localhost:9000")
         )
         assert isinstance(backend, OpenAIWebSocketBackend)
-        assert backend.type_ == "openai_websocket"
+        assert backend.kind == "openai_websocket"
 
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""

@@ -9,7 +9,7 @@ provide a standard interface for distributed execution across worker processes.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from pydantic import Field
 
@@ -25,13 +25,6 @@ from guidellm.utils.registry import RegistryMixin
 __all__ = [
     "Backend",
     "BackendArgs",
-    "BackendType",
-]
-
-BackendType = Literal[
-    "openai_http",
-    "openai_websocket",
-    "vllm_python",
 ]
 
 

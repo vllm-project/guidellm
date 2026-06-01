@@ -11,7 +11,6 @@ Implements the JSON event protocol used by vLLM's ``/v1/realtime`` endpoint:
 from __future__ import annotations
 
 import asyncio
-import json
 import ssl
 import time
 from collections.abc import AsyncIterator
@@ -22,6 +21,8 @@ import httpx
 from pydantic import Field, field_validator
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from websockets.asyncio.client import ClientConnection
 
 from guidellm.backends.backend import Backend, BackendArgs
@@ -39,6 +40,7 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
 )
+from guidellm.utils.imports import json
 
 __all__ = [
     "OpenAIWebSocketBackend",
@@ -50,12 +52,7 @@ _WS_API_ROUTES = {
     "/v1/models": "v1/models",
 }
 
-# Guard against a misbehaving server that only emits ignored event types.
 _MAX_IGNORED_WS_EVENT_TYPES = 50_000
-
-# Per-message WebSocket recv timeout default so benchmark workers do not hang forever
-# on a silent peer. Pass ``timeout=None`` to wait indefinitely.
-_DEFAULT_WS_RECV_TIMEOUT = 120.0
 
 _AUDIO_EXTRA_HINT = (
     "Install optional audio extras: pip install 'guidellm[audio]' "
@@ -64,6 +61,11 @@ _AUDIO_EXTRA_HINT = (
 
 
 def _require_ws_connect() -> Any:
+    """Import and return the ``websockets`` async connect helper.
+
+    :return: ``websockets.asyncio.client.connect``
+    :raises ImportError: If ``websockets`` is not installed.
+    """
     try:
         from websockets.asyncio.client import connect as ws_connect
     except ImportError as exc:
@@ -83,7 +85,9 @@ def _ws_error_message(err: Any) -> str:
         if parts:
             return ": ".join(parts)
         try:
-            return json.dumps(err)[:500]
+            raw = json.dumps(err)
+            text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+            return text[:500]
         except (TypeError, ValueError):
             return repr(err)
     if err is None or err == "":
@@ -91,38 +95,12 @@ def _ws_error_message(err: Any) -> str:
     return str(err)
 
 
-def _model_ids_from_openai_models_payload(payload: Any) -> list[str]:
-    """Parse ``GET /v1/models`` JSON body; raise RuntimeError if shape is unexpected."""
-    if not isinstance(payload, dict):
-        raise RuntimeError(
-            "Unexpected /v1/models response: top-level JSON must be an object, "
-            f"got {type(payload).__name__}"
-        )
-    data = payload.get("data")
-    if not isinstance(data, list):
-        raise RuntimeError(
-            "Unexpected /v1/models response: 'data' must be a list, "
-            f"got {type(data).__name__}"
-        )
-    ids: list[str] = []
-    for i, item in enumerate(data):
-        if not isinstance(item, dict) or "id" not in item:
-            raise RuntimeError(
-                "Unexpected /v1/models response: each entry must be an object with "
-                f"'id' (index {i})"
-            )
-        ids.append(str(item["id"]))
-    return ids
-
-
 def _load_ws_event(raw: str) -> dict[str, Any]:
     """Parse a JSON WebSocket text frame; raise RuntimeError on invalid JSON."""
     try:
         parsed: Any = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Invalid JSON from realtime WebSocket: {exc.msg} at position {exc.pos}"
-        ) from exc
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError(f"Invalid JSON from realtime WebSocket: {exc}") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError(
             f"Expected JSON object from realtime WebSocket, got {type(parsed).__name__}"
@@ -130,57 +108,17 @@ def _load_ws_event(raw: str) -> dict[str, Any]:
     return parsed
 
 
-def _coerce_usage_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return int(value)
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return int(stripped)
-        except ValueError:
-            return None
-    return None
-
-
-def _normalize_transcription_usage(
-    raw_usage: Any,
-) -> dict[str, int | dict[str, int]] | None:
-    """Coerce OpenAI-style usage dict values to ints (including numeric strings)."""
-    if not isinstance(raw_usage, dict):
-        return None
-    result: dict[str, int | dict[str, int]] = {}
-    for key, val in raw_usage.items():
-        if isinstance(val, dict):
-            inner: dict[str, int] = {}
-            for ik, iv in val.items():
-                num = _coerce_usage_int(iv)
-                if num is not None:
-                    inner[ik] = num
-            if inner:
-                result[key] = inner
-        else:
-            num = _coerce_usage_int(val)
-            if num is not None:
-                result[key] = num
-    return result if result else None
+def _json_text(obj: Any) -> str:
+    """Serialize *obj* to a JSON string (handles orjson bytes transparently)."""
+    raw = json.dumps(obj)
+    return raw.decode("utf-8") if isinstance(raw, bytes) else raw
 
 
 @BackendArgs.register("openai_websocket")
 class OpenAIWebSocketBackendArgs(BackendArgs):
-    """
-    Typed configuration for :class:`OpenAIWebSocketBackend`.
+    """Typed configuration for :class:`OpenAIWebSocketBackend`."""
 
-    ``request_format`` is validated against
-    :class:`~guidellm.backends.openai.request_handlers.RealtimeWebSocketRequestHandler`
-    so allowed paths stay aligned with the registered handler (``/v1/realtime``).
-    """
-
-    type_: Literal["openai_websocket"] = Field(
-        alias="type",
+    kind: Literal["openai_websocket"] = Field(
         default="openai_websocket",
         description="Type identifier for the backend configuration.",
     )
@@ -188,45 +126,19 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
         description=(
             "HTTP(S) base URL of the server (WebSocket URL is derived from it)."
         ),
-        json_schema_extra={
-            "error_message": (
-                "Backend '{backend_type}' requires --target with a valid URL."
-            )
-        },
     )
-    model: str | None = Field(
-        default=None,
-        description="Model identifier (required unless discoverable from /v1/models).",
+    model: str = Field(
+        default_factory=str,
+        description="Model identifier for generation requests.",
     )
-    request_format: str | None = Field(
-        default=None,
+    request_format: str = Field(
+        default="/v1/realtime",
         description=(
             "Realtime WebSocket path (only /v1/realtime is supported today). "
             "Use the same top-level CLI flags as ``openai_http``: "
             "--request-format / --request-type."
         ),
-        json_schema_extra={
-            "error_message": (
-                "Backend '{backend_type}' received an invalid --request-format / "
-                "request_format; "
-                + RealtimeWebSocketRequestHandler.request_format_options_description()
-                + "."
-            )
-        },
     )
-
-    @field_validator("target", mode="after")
-    @classmethod
-    def strip_target(cls, value: str) -> str:
-        """Strip trailing slashes and ``/v1`` suffix from the target URL."""
-        return value.rstrip("/").removesuffix("/v1")
-
-    @field_validator("request_format")
-    @classmethod
-    def validate_request_format(cls, v: str | None) -> str | None:
-        """Delegate path validation to the realtime WebSocket request handler."""
-        return RealtimeWebSocketRequestHandler.validate_request_format_field(v)
-
     chunk_samples: int = Field(
         default=3200,
         ge=1,
@@ -235,12 +147,8 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
     api_key: str | None = Field(default=None, description="Bearer token if required.")
     verify: bool = Field(default=False, description="Verify TLS certificates.")
     timeout: float | None = Field(
-        default=_DEFAULT_WS_RECV_TIMEOUT,
-        description=(
-            "Per-message read timeout for WebSocket receives (seconds). "
-            f"Defaults to {_DEFAULT_WS_RECV_TIMEOUT}s so hung servers do not block "
-            "workers; use ``None`` for no limit."
-        ),
+        default=None,
+        description="Per-message read timeout for WebSocket receives (seconds).",
     )
     timeout_connect: float = Field(
         default=FALLBACK_TIMEOUT,
@@ -257,6 +165,21 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
         description="Extra fields merged into session.update (backend model wins).",
     )
 
+    @field_validator("target", mode="after")
+    @classmethod
+    def strip_target(cls, value: str) -> str:
+        """Strip trailing slashes and ``/v1`` suffix from the target URL."""
+        return value.rstrip("/").removesuffix("/v1")
+
+    @field_validator("request_format")
+    @classmethod
+    def validate_request_format(cls, v: str) -> str:
+        """Validate ``request_format`` against allowed WebSocket paths."""
+        stripped = v.strip()
+        if stripped != "/v1/realtime":
+            raise ValueError(f"request_format must be '/v1/realtime', got {stripped!r}")
+        return stripped
+
 
 @Backend.register("openai_websocket")
 class OpenAIWebSocketBackend(Backend):
@@ -265,10 +188,6 @@ class OpenAIWebSocketBackend(Backend):
 
     Connects to a vLLM-style ``/v1/realtime`` WebSocket, streams PCM16 audio chunks,
     and maps ``transcription.*`` events into ``GenerationResponse`` with timings.
-    Request-shape validation and allowed ``request_format`` paths are delegated to
-    :class:`~guidellm.backends.openai.request_handlers.RealtimeWebSocketRequestHandler`
-    (same pattern as :class:`~guidellm.backends.openai.http.OpenAIHTTPBackend` uses
-    per-endpoint handlers).
 
     Example:
     ::
@@ -284,23 +203,15 @@ class OpenAIWebSocketBackend(Backend):
         await backend.process_shutdown()
     """
 
-    @staticmethod
-    def append_pcm16_chunks(*args: Any, **kwargs: Any) -> Any:
-        """Encode audio to PCM16 base64 chunks (lazy-imports ``guidellm[audio]``)."""
-        try:
-            from guidellm.extras.audio import pcm16_append_b64_chunks
-        except ImportError as exc:
-            raise ImportError(
-                "The openai_websocket backend requires the audio extras for PCM "
-                "handling used in realtime transcription. " + _AUDIO_EXTRA_HINT
-            ) from exc
-        return pcm16_append_b64_chunks(*args, **kwargs)
-
     def __init__(self, arguments: OpenAIWebSocketBackendArgs):
         """
         Initialize the WebSocket backend from validated args.
 
+        Eagerly resolves the audio extras import so a missing ``guidellm[audio]``
+        installation fails at construction time rather than during the first request.
+
         :param arguments: Typed configuration including target, model, and paths.
+        :raises ImportError: If the ``guidellm[audio]`` extras are not installed.
         """
         super().__init__(arguments)
         self._args = arguments
@@ -313,16 +224,25 @@ class OpenAIWebSocketBackend(Backend):
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
 
+        self._append_pcm16_chunks: Callable[..., Any]
+        try:
+            from guidellm.extras.audio import pcm16_append_b64_chunks
+
+            self._append_pcm16_chunks = pcm16_append_b64_chunks
+        except ImportError as exc:
+            raise ImportError(
+                "The openai_websocket backend requires the audio extras for PCM "
+                "handling used in realtime transcription. " + _AUDIO_EXTRA_HINT
+            ) from exc
+
     @property
     def websocket_path(self) -> str:
         """
         HTTP path segment on the host used for the WebSocket URL.
 
-        :return: Resolved path (default when ``request_format`` was omitted).
+        :return: Resolved path from ``request_format``.
         """
-        return RealtimeWebSocketRequestHandler.resolved_websocket_path(
-            self._args.request_format
-        )
+        return self._args.request_format
 
     @property
     def info(self) -> dict[str, Any]:
@@ -452,13 +372,7 @@ class OpenAIWebSocketBackend(Backend):
             target, headers=build_headers(self._args.api_key)
         )
         response.raise_for_status()
-        try:
-            payload: Any = response.json()
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                "Unexpected /v1/models response: body is not valid JSON"
-            ) from exc
-        return _model_ids_from_openai_models_payload(payload)
+        return [item["id"] for item in response.json()["data"]]
 
     async def default_model(self) -> str:
         """
@@ -525,7 +439,7 @@ class OpenAIWebSocketBackend(Backend):
             chunk_samples=self._args.chunk_samples,
         )
         audio_entry = handler.extract_single_audio(request)
-        chunks = OpenAIWebSocketBackend.append_pcm16_chunks(
+        chunks = self._append_pcm16_chunks(
             audio_entry,
             chunk_samples=self._args.chunk_samples,
         )
@@ -560,20 +474,18 @@ class OpenAIWebSocketBackend(Backend):
                     raise RuntimeError(
                         f"Expected session.created, got {first_event.get('type')!r}"
                     )
-                await ws.send(json.dumps(session_update))
+                await ws.send(_json_text(session_update))
                 for b64_chunk in chunks:
                     await ws.send(
-                        json.dumps(
+                        _json_text(
                             {"type": "input_audio_buffer.append", "audio": b64_chunk}
                         )
                     )
                 await ws.send(
-                    json.dumps({"type": "input_audio_buffer.commit", "final": False})
+                    _json_text({"type": "input_audio_buffer.commit", "final": False})
                 )
-                # Sentinel end-of-stream for vLLM's audio queue
-                # (see RealtimeConnection).
                 await ws.send(
-                    json.dumps({"type": "input_audio_buffer.commit", "final": True})
+                    _json_text({"type": "input_audio_buffer.commit", "final": True})
                 )
 
                 ignored_events = 0
@@ -612,7 +524,7 @@ class OpenAIWebSocketBackend(Backend):
                             request_info.timings.token_iterations += (
                                 1 if full_text else 0
                             )
-                        usage_dict = _normalize_transcription_usage(event.get("usage"))
+                        usage_dict = event.get("usage")
                         inp, outp = handler.extract_metrics(usage_dict, full_text)
                         yield (
                             GenerationResponse(
