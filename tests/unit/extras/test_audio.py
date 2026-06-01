@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import torch
 
-from guidellm.extras import audio as _audio_mod
+from guidellm.utils import audio as _audio_mod
 
 
 @pytest.fixture
@@ -104,7 +104,7 @@ def test_encode_audio_with_dict_input_complete():
 
 
 @patch("httpx.get")
-@patch("guidellm.extras.audio._encode_audio")
+@patch("guidellm.utils.audio._encode_audio")
 def test_encode_audio_with_url(mock_http_get, sample_audio_tensor):
     # mock http get response
     mock_response = MagicMock()
@@ -113,7 +113,7 @@ def test_encode_audio_with_url(mock_http_get, sample_audio_tensor):
     mock_http_get.return_value = mock_response
 
     # mock decode - return sample audio tensor
-    with patch("guidellm.extras.audio._decode_audio") as mock_decoder:
+    with patch("guidellm.utils.audio._decode_audio") as mock_decoder:
         mock_audio_result = MagicMock()
         mock_audio_result.data = sample_audio_tensor
         mock_audio_result.sample_rate = 16000

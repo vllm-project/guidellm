@@ -142,7 +142,7 @@ class TestResolveRequest:
             }
         )
         with patch(
-            "guidellm.extras.audio._decode_audio",
+            "guidellm.utils.audio._decode_audio",
             return_value=mock_decode_result,
         ):
             resolved = backend._resolve_request(request)
@@ -170,7 +170,7 @@ class TestResolveRequest:
             }
         )
         with patch(
-            "guidellm.extras.vision.image_dict_to_pil",
+            "guidellm.utils.vision.image_dict_to_pil",
             return_value=mock_pil,
         ):
             resolved = backend._resolve_request(request)
@@ -224,7 +224,7 @@ class TestResolveRequest:
             }
         )
         with patch(
-            "guidellm.extras.audio._decode_audio",
+            "guidellm.utils.audio._decode_audio",
             return_value=mock_decode_result,
         ):
             resolved = backend._resolve_request(request)
@@ -258,7 +258,7 @@ class TestResolveRequest:
             }
         )
         with patch(
-            "guidellm.extras.audio._decode_audio",
+            "guidellm.utils.audio._decode_audio",
             return_value=mock_decode_result,
         ):
             resolved = backend._resolve_request(request)
@@ -1389,7 +1389,7 @@ class TestVLLMResolveAudioFromColumns:
         request.output_metrics = UsageMetrics()
 
         with patch(
-            "guidellm.extras.audio._decode_audio",
+            "guidellm.utils.audio._decode_audio",
             return_value=mock_decode_result,
         ):
             backend._engine = Mock()

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from guidellm.extras import vision as _vision_mod
+from guidellm.utils import vision as _vision_mod
 
 
 @pytest.fixture
