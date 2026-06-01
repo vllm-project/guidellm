@@ -285,7 +285,7 @@ def load(fullname, *, require=None, error_on_import=False, suppress_warning=Fals
                 message=not_found_message,
             )
 
-        if spec is not None:
+        if spec is not None and spec.loader is not None:
             module = importlib.util.module_from_spec(spec)
             sys.modules[fullname] = module
 
