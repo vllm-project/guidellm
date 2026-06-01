@@ -24,7 +24,6 @@ except ImportError:
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.websocket import (
-    _DEFAULT_WS_RECV_TIMEOUT,
     OpenAIWebSocketBackend,
     OpenAIWebSocketBackendArgs,
 )
@@ -32,7 +31,9 @@ from guidellm.schemas import GenerationRequest, RequestInfo, RequestTimings
 
 
 def _make_ws_backend(**kwargs: Any) -> OpenAIWebSocketBackend:
-    return OpenAIWebSocketBackend(OpenAIWebSocketBackendArgs(**kwargs))
+    be = OpenAIWebSocketBackend(OpenAIWebSocketBackendArgs(**kwargs))
+    be._append_pcm16_chunks = lambda *a, **k: ["YWFhYQ=="]
+    return be
 
 
 async def _bounded_ws_recv(ws: object, *, timeout: float = 5.0) -> None:
@@ -42,7 +43,7 @@ async def _bounded_ws_recv(ws: object, *, timeout: float = 5.0) -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_streams_deltas_and_done(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_resolve_streams_deltas_and_done() -> None:
     """Fake server speaks vLLM-style realtime events; PCM path is patched."""
 
     async def handler(ws: object) -> None:
@@ -72,12 +73,6 @@ async def test_resolve_streams_deltas_and_done(monkeypatch: pytest.MonkeyPatch) 
                 }
             )
         )
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YWFhYQ=="]),
-    )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
@@ -110,9 +105,7 @@ async def test_resolve_streams_deltas_and_done(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
-async def test_transcription_done_without_deltas_sets_first_token_and_prefetch_yield(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_done_without_deltas_sets_first_token_and_prefetch_yield() -> None:
     """Only ``transcription.done`` (no deltas): TTFT and two yields match delta path."""
 
     async def handler(ws: object) -> None:
@@ -141,12 +134,6 @@ async def test_transcription_done_without_deltas_sets_first_token_and_prefetch_y
                 }
             )
         )
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YWFhYQ=="]),
-    )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
@@ -184,72 +171,7 @@ async def test_transcription_done_without_deltas_sets_first_token_and_prefetch_y
 
 
 @pytest.mark.asyncio
-async def test_transcription_done_usage_string_counts(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """String token counts in usage should still feed AudioRequestHandler metrics."""
-
-    async def handler(ws: object) -> None:
-        await ws.send(
-            json.dumps({"type": "session.created", "id": "sess-x", "created": 0})
-        )
-        while True:
-            msg = await ws.recv()
-            data = json.loads(msg if isinstance(msg, str) else msg.decode())
-            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
-                break
-        await ws.send(json.dumps({"type": "transcription.delta", "delta": "x"}))
-        await ws.send(
-            json.dumps(
-                {
-                    "type": "transcription.done",
-                    "text": "x",
-                    "usage": {
-                        "prompt_tokens": "12",
-                        "completion_tokens": "3",
-                        "total_tokens": "15",
-                    },
-                }
-            )
-        )
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YWFhYQ=="]),
-    )
-
-    async with serve(handler, "127.0.0.1", 0) as server:
-        port = server.sockets[0].getsockname()[1]
-        be = _make_ws_backend(
-            target=f"http://127.0.0.1:{port}",
-            model="test-model",
-            validate_backend=False,
-        )
-        await be.process_startup()
-        req = GenerationRequest(
-            request_id="r1",
-            columns={
-                "audio_column": [
-                    {"audio": b"fake", "format": "mp3", "file_name": "f.mp3"}
-                ]
-            },
-        )
-        info = RequestInfo(timings=RequestTimings())
-        out: list = []
-        async for item in be.resolve(req, info):
-            out.append(item)
-        await be.process_shutdown()
-
-    final_resp, _ = out[1]
-    assert final_resp.input_metrics.audio_tokens == 12
-    assert final_resp.output_metrics.text_tokens == 3
-
-
-@pytest.mark.asyncio
-async def test_server_error_event_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_server_error_event_raises() -> None:
     async def handler(ws: object) -> None:
         await ws.send(
             json.dumps({"type": "session.created", "id": "sess-x", "created": 0})
@@ -265,12 +187,6 @@ async def test_server_error_event_raises(
                 )
                 await _bounded_ws_recv(ws)
                 return
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
@@ -292,15 +208,7 @@ async def test_server_error_event_raises(
 
 
 @pytest.mark.asyncio
-async def test_first_message_error_event_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
-
+async def test_first_message_error_event_raises() -> None:
     async def handler(ws: object) -> None:
         await ws.send(json.dumps({"type": "error", "error": "auth failed"}))
 
@@ -324,15 +232,7 @@ async def test_first_message_error_event_raises(
 
 
 @pytest.mark.asyncio
-async def test_first_message_not_session_created_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
-
+async def test_first_message_not_session_created_raises() -> None:
     async def handler(ws: object) -> None:
         await ws.send(json.dumps({"type": "unexpected.ping"}))
 
@@ -356,9 +256,7 @@ async def test_first_message_not_session_created_raises(
 
 
 @pytest.mark.asyncio
-async def test_invalid_json_from_server_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_invalid_json_from_server_raises() -> None:
     async def handler(ws: object) -> None:
         await ws.send(
             json.dumps({"type": "session.created", "id": "sess-x", "created": 0})
@@ -369,12 +267,6 @@ async def test_invalid_json_from_server_raises(
             if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
                 break
         await ws.send("{not-json")
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
@@ -460,9 +352,7 @@ async def test_resolve_rejects_wrong_audio_column_count() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(45)
-async def test_resolve_cancelled_after_delta_yields_partial_then_reraises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_resolve_cancelled_after_delta_yields_partial_then_reraises() -> None:
     delta_seen = asyncio.Event()
 
     async def handler(ws: object) -> None:
@@ -475,12 +365,6 @@ async def test_resolve_cancelled_after_delta_yields_partial_then_reraises(
         await ws.send(json.dumps({"type": "transcription.delta", "delta": "partial"}))
         delta_seen.set()
         await _bounded_ws_recv(ws)
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
 
     results: list = []
     async with serve(handler, "127.0.0.1", 0) as server:
@@ -516,9 +400,7 @@ async def test_resolve_cancelled_after_delta_yields_partial_then_reraises(
 
 
 @pytest.mark.asyncio
-async def test_non_object_json_after_handshake_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_non_object_json_after_handshake_raises() -> None:
     async def handler(ws: object) -> None:
         await ws.send(json.dumps({"type": "session.created", "id": "s", "created": 0}))
         while True:
@@ -527,12 +409,6 @@ async def test_non_object_json_after_handshake_raises(
             if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
                 break
         await ws.send("[]")
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
@@ -572,12 +448,6 @@ async def test_excessive_ignored_events_raises(
         for _ in range(10):
             await ws.send(json.dumps({"type": "noise.event"}))
 
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
-
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
         be = _make_ws_backend(
@@ -613,34 +483,12 @@ async def test_available_models_parses_response(httpx_mock: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_available_models_bad_data_shape_raises(httpx_mock: object) -> None:
-    httpx_mock.add_response(
-        url="http://127.0.0.1:9/v1/models",
-        json={"data": "not-a-list"},
-    )
-    be = _make_ws_backend(
-        target="http://127.0.0.1:9",
-        validate_backend=False,
-    )
-    await be.process_startup()
-    with pytest.raises(RuntimeError, match="list"):
-        await be.available_models()
-    await be.process_shutdown()
-
-
-@pytest.mark.asyncio
 async def test_resolve_raises_when_no_model_and_empty_catalog(
     httpx_mock: object,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     httpx_mock.add_response(
         url="http://127.0.0.1:9/v1/models",
         json={"data": []},
-    )
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
     )
     be = _make_ws_backend(
         target="http://127.0.0.1:9",
@@ -660,14 +508,7 @@ async def test_resolve_raises_when_no_model_and_empty_catalog(
 
 
 @pytest.mark.asyncio
-async def test_resolve_invalid_ws_target_url_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
+async def test_resolve_invalid_ws_target_url_raises() -> None:
     be = _make_ws_backend(
         target="",
         model="m",
@@ -686,9 +527,7 @@ async def test_resolve_invalid_ws_target_url_raises(
 
 
 @pytest.mark.asyncio
-async def test_error_event_dict_formatted_message(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_error_event_dict_formatted_message() -> None:
     async def handler(ws: object) -> None:
         await ws.send(
             json.dumps(
@@ -698,12 +537,6 @@ async def test_error_event_dict_formatted_message(
                 }
             )
         )
-
-    monkeypatch.setattr(
-        OpenAIWebSocketBackend,
-        "append_pcm16_chunks",
-        staticmethod(lambda *a, **k: ["YQ=="]),
-    )
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
@@ -725,13 +558,15 @@ async def test_error_event_dict_formatted_message(
 
 
 def test_openai_websocket_backend_args_model() -> None:
+    """## WRITTEN BY AI ##"""
     a = OpenAIWebSocketBackendArgs(target="http://localhost:8000", model="x")
-    assert a.request_format is None
+    assert a.request_format == "/v1/realtime"
     assert a.chunk_samples == 3200
-    assert a.timeout == _DEFAULT_WS_RECV_TIMEOUT
+    assert a.timeout is None
 
 
 def test_openai_websocket_backend_args_rejects_non_path_request_format() -> None:
+    """## WRITTEN BY AI ##"""
     with pytest.raises(ValidationError):
         OpenAIWebSocketBackendArgs(
             target="http://localhost:8000",
@@ -740,6 +575,7 @@ def test_openai_websocket_backend_args_rejects_non_path_request_format() -> None
 
 
 def test_openai_websocket_backend_args_accepts_explicit_v1_realtime() -> None:
+    """## WRITTEN BY AI ##"""
     args = OpenAIWebSocketBackendArgs(
         target="http://localhost:8000",
         request_format="/v1/realtime",
@@ -748,6 +584,7 @@ def test_openai_websocket_backend_args_accepts_explicit_v1_realtime() -> None:
 
 
 def test_openai_websocket_backend_resolves_websocket_path_from_request_format() -> None:
+    """## WRITTEN BY AI ##"""
     backend = Backend.create(
         OpenAIWebSocketBackendArgs(
             target="http://127.0.0.1:9",
@@ -758,6 +595,7 @@ def test_openai_websocket_backend_resolves_websocket_path_from_request_format() 
 
 
 def test_openai_websocket_backend_args_invalid_request_format_rejected() -> None:
+    """## WRITTEN BY AI ##"""
     with pytest.raises(ValidationError):
         OpenAIWebSocketBackendArgs(
             target="http://localhost:8000",

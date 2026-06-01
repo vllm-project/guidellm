@@ -68,28 +68,28 @@ class TestBackendArgsTransformation:
         args = BenchmarkGenerativeTextArgs.model_validate(
             {
                 "backend_kwargs": {
-                    "type": "openai_websocket",
+                    "kind": "openai_websocket",
                     "target": "http://localhost:8000",
                     "model": "rt-model",
                 },
-                "data": ["prompt_tokens=256,output_tokens=128"],
+                **_PIPELINE_DEFAULTS,
             }
         )
-        assert args.backend_kwargs.type_ == "openai_websocket"
+        assert args.backend_kwargs.kind == "openai_websocket"
         assert isinstance(args.backend_kwargs, OpenAIWebSocketBackendArgs)
         assert args.backend_kwargs.target == "http://localhost:8000"
         assert args.backend_kwargs.model == "rt-model"
-        assert args.backend_kwargs.request_format is None
+        assert args.backend_kwargs.request_format == "/v1/realtime"
 
         with_format = BenchmarkGenerativeTextArgs.model_validate(
             {
                 "backend_kwargs": {
-                    "type": "openai_websocket",
+                    "kind": "openai_websocket",
                     "target": "http://localhost:8000",
                     "model": "rt-model",
                     "request_format": "/v1/realtime",
                 },
-                "data": ["prompt_tokens=256,output_tokens=128"],
+                **_PIPELINE_DEFAULTS,
             }
         )
         assert with_format.backend_kwargs.request_format == "/v1/realtime"
