@@ -22,7 +22,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-from guidellm.extras import audio, vision, vllm
+from guidellm.extras import vllm
 from guidellm.logger import logger
 from guidellm.schemas import (
     GenerationRequest,
@@ -30,6 +30,7 @@ from guidellm.schemas import (
     RequestInfo,
     StandardBaseModel,
 )
+from guidellm.utils import audio, vision
 
 # Sentinel for "chat template not yet resolved" cache.
 _CHAT_TEMPLATE_UNSET: object = object()

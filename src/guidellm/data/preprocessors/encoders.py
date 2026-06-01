@@ -9,8 +9,8 @@ from guidellm.data.preprocessors.preprocessor import (
     PreprocessorRegistry,
 )
 from guidellm.data.schemas import DataPreprocessorArgs
-from guidellm.extras import audio as guidellm_audio
-from guidellm.extras import vision as guidellm_vision
+from guidellm.utils import audio as guidellm_audio
+from guidellm.utils import vision as guidellm_vision
 
 __all__ = ["MediaEncoder"]
 
