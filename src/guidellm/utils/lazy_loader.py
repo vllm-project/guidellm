@@ -46,10 +46,23 @@ import os
 import sys
 import threading
 import types
+import typing
 import warnings
 
 __version__ = "0.6rc0.dev0"
-__all__ = ["attach", "attach_extras", "attach_stub", "load"]
+__all__ = ["ExtraAttr", "attach", "attach_extras", "attach_stub", "load"]
+
+
+class ExtraAttr(typing.NamedTuple):
+    """Descriptor for a lazily imported attribute in :func:`attach_extras`.
+
+    :param source: Dotted module path to import from.
+    :param alias: Attribute name inside *source*.  When ``None`` (the
+        default), the dictionary key passed to ``attach_extras`` is used.
+    """
+
+    source: str
+    alias: str | None = None
 
 
 threadlock = threading.Lock()
@@ -149,11 +162,9 @@ def attach(
 
 def _attach_extras_attrs(module_name, attrs, error_message):
     _attr_map = {}
-    for export_name, source in attrs.items():
-        if isinstance(source, str):
-            _attr_map[export_name] = (source, export_name)
-        else:
-            _attr_map[export_name] = (source[0], source[1])
+    for export_name, spec in attrs.items():
+        source_attr = spec.alias if spec.alias is not None else export_name
+        _attr_map[export_name] = (spec.source, source_attr)
 
     _all = sorted(_attr_map.keys())
 
@@ -230,10 +241,10 @@ def attach_extras(
     Exactly one of ``attrs`` or ``package`` must be provided.
 
     :param module_name: Typically use ``__name__``.
-    :param attrs: Map of exported names to their source.  Each value is
-        either a ``str`` (source module; the exported name matches the
-        attribute in that module) or a ``(source_module, source_attr)``
-        tuple for aliases.
+    :param attrs: Map of exported names to :class:`ExtraAttr` descriptors.
+        Each value specifies the *source* module and an optional *alias*
+        (the attribute name inside *source*, when it differs from the
+        dictionary key).
     :param package: Name of a package whose public attributes should be
         proxied wholesale.
     :param error_message: Human-readable message included in the

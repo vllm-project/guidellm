@@ -297,7 +297,10 @@ def test_attach_extras_attrs_installed_package():
     """## WRITTEN BY AI ##"""
     ga, gd, gall = lazy.attach_extras(
         "test_extras_attrs",
-        attrs={"sin": "math", "mypi": ("math", "pi")},
+        attrs={
+            "sin": lazy.ExtraAttr("math"),
+            "mypi": lazy.ExtraAttr("math", alias="pi"),
+        },
         error_message="install math",
     )
     assert ga("sin") is __import__("math").sin
@@ -310,7 +313,7 @@ def test_attach_extras_attrs_alias():
     """## WRITTEN BY AI ##"""
     ga, _, _ = lazy.attach_extras(
         "test_extras_alias",
-        attrs={"my_sep": ("os.path", "sep")},
+        attrs={"my_sep": lazy.ExtraAttr("os.path", alias="sep")},
         error_message="install os",
     )
     import os.path
@@ -322,7 +325,7 @@ def test_attach_extras_attrs_submodule_fallback():
     """## WRITTEN BY AI ##"""
     ga, _, _ = lazy.attach_extras(
         "test_extras_submod",
-        attrs={"path": ("os", "path")},
+        attrs={"path": lazy.ExtraAttr("os", alias="path")},
         error_message="install os",
     )
     import os.path
@@ -334,7 +337,7 @@ def test_attach_extras_attrs_missing_package():
     """## WRITTEN BY AI ##"""
     ga, _, _ = lazy.attach_extras(
         "test_extras_missing",
-        attrs={"Foo": "nonexistent_pkg_12345"},
+        attrs={"Foo": lazy.ExtraAttr("nonexistent_pkg_12345")},
         error_message="install nonexistent_pkg_12345",
     )
     with pytest.raises(AttributeError, match="install nonexistent_pkg_12345"):
@@ -345,7 +348,7 @@ def test_attach_extras_attrs_unknown_attr():
     """## WRITTEN BY AI ##"""
     ga, _, _ = lazy.attach_extras(
         "test_extras_unknown",
-        attrs={"sin": "math"},
+        attrs={"sin": lazy.ExtraAttr("math")},
         error_message="install math",
     )
     with pytest.raises(AttributeError, match="has no attribute"):
@@ -360,7 +363,7 @@ def test_attach_extras_attrs_caching():
     try:
         ga, _, _ = lazy.attach_extras(
             mod_name,
-            attrs={"pi": "math"},
+            attrs={"pi": lazy.ExtraAttr("math")},
             error_message="install math",
         )
         mod.__getattr__ = ga
@@ -376,7 +379,7 @@ def test_attach_extras_attrs_dir_returns_copies():
     """## WRITTEN BY AI ##"""
     _, gd, gall = lazy.attach_extras(
         "test_extras_copies",
-        attrs={"sin": "math", "pi": "math"},
+        attrs={"sin": lazy.ExtraAttr("math"), "pi": lazy.ExtraAttr("math")},
         error_message="install math",
     )
     assert gd() == gall
@@ -424,6 +427,6 @@ def test_attach_extras_package_bad_attr():
 def test_attach_extras_mutual_exclusion():
     """## WRITTEN BY AI ##"""
     with pytest.raises(ValueError, match="exactly one"):
-        lazy.attach_extras("x", attrs={"a": "b"}, package="c")
+        lazy.attach_extras("x", attrs={"a": lazy.ExtraAttr("b")}, package="c")
     with pytest.raises(ValueError, match="exactly one"):
         lazy.attach_extras("x")
