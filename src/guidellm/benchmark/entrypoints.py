@@ -354,7 +354,6 @@ def _build_profile_from_args(
     :return: a Profile instance.
     """
     profile_args: dict[str, Any] = {
-        "random_seed": random_seed,
         "rampup_duration": rampup,
     }
     if rate is not None:
@@ -374,7 +373,7 @@ def _build_profile_from_args(
             "Profile arguments must be a string, dictionary, or ProfileArgs."
         )
     args = ProfileArgs.model_validate(profile_args)
-    return ProfileFactory.create(args, resolve_constraints(constraints))
+    return ProfileFactory.create(args, random_seed, resolve_constraints(constraints))
 
 
 async def resolve_profile(

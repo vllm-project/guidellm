@@ -154,9 +154,10 @@ class ReplayProfile(Profile):
     def __init__(
         self,
         args: ReplayProfileArgs,
+        random_seed: int,
         constraints: dict[str, Any] | None,
     ):
-        super().__init__(args, constraints)
+        super().__init__(args, random_seed, constraints)
         self.args = args
         relative_timestamps = _resolve_relative_timestamps(args.data, args.data_samples)
 

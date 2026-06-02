@@ -79,9 +79,10 @@ class SweepProfile(Profile):
     def __init__(
         self,
         args: SweepProfileArgs,
+        random_seed: int,
         constraints: dict[str, Any] | None,
     ):
-        super().__init__(args, constraints)
+        super().__init__(args, random_seed, constraints)
         self.args = args
         self.synchronous_rate = -1.0
         self.throughput_rate = -1.0
@@ -166,6 +167,6 @@ class SweepProfile(Profile):
             return AsyncPoissonStrategy(
                 rate=next_rate,
                 max_concurrency=self.args.max_concurrency,
-                random_seed=self.args.random_seed,
+                random_seed=self.random_seed,
             )
         raise ValueError(f"Invalid strategy type: {self.args.strategy_type}")

@@ -80,10 +80,6 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
             "Duration in seconds to ramp up the targeted scheduling rate, if applicable"
         ),
     )
-    random_seed: int = Field(
-        default=42,
-        description="Random seed for policies that use randomness",
-    )
 
     @model_validator(mode="before")
     @classmethod
@@ -105,6 +101,7 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
     def create(
         cls,
         args: ProfileArgs,
+        random_seed: int,
         constraints: dict[str, Any] | None = None,
     ) -> Profile:
         """
@@ -124,7 +121,7 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
                 f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
             )
 
-        return profile_class(args, constraints)
+        return profile_class(args, random_seed, constraints)
 
     @classmethod
     def registered_names(cls) -> tuple[str, ...]:
@@ -134,7 +131,7 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
         return tuple(cls.registry.keys() if cls.registry else [])
 
 
-class Profile:
+class Profile(ABC):
     """
     Coordinate multi-strategy benchmark execution with automatic strategy generation.
 
@@ -157,6 +154,7 @@ class Profile:
     def __init__(
         self,
         args: ProfileArgs,
+        random_seed: int,
         constraints: dict[str, Any] | None,
     ):
         """
@@ -166,6 +164,7 @@ class Profile:
         """
         self.kind = args.kind
         self.args = args
+        self.random_seed = random_seed
         self.constraints = constraints
         self.completed_strategies: list[SchedulingStrategy] = []
 

@@ -63,9 +63,10 @@ class ConcurrentProfile(Profile):
     def __init__(
         self,
         args: ConcurrentProfileArgs,
+        random_seed: int,
         constraints: dict[str, Any] | None,
     ):
-        super().__init__(args, constraints)
+        super().__init__(args, random_seed, constraints)
         self.args = args
 
     @property

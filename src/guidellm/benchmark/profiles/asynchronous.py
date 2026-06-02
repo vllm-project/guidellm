@@ -69,9 +69,10 @@ class AsyncProfile(Profile):
     def __init__(
         self,
         args: AsyncProfileArgs,
+        random_seed: int,
         constraints: dict[str, Any] | None,
     ):
-        super().__init__(args, constraints)
+        super().__init__(args, random_seed, constraints)
         self.args = args
         if args.kind in ("async", "constant"):
             self._strategy_type: Literal["constant", "poisson"] = "constant"
@@ -118,6 +119,6 @@ class AsyncProfile(Profile):
             return AsyncPoissonStrategy(
                 rate=current_rate,
                 max_concurrency=self.args.max_concurrency,
-                random_seed=self.args.random_seed,
+                random_seed=self.random_seed,
             )
         raise ValueError(f"Invalid strategy type: {self._strategy_type}")

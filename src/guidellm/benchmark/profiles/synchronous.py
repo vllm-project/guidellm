@@ -49,9 +49,10 @@ class SynchronousProfile(Profile):
     def __init__(
         self,
         args: SynchronousProfileArgs,
+        random_seed: int,
         constraints: dict[str, Any] | None,
     ):
-        super().__init__(args, constraints)
+        super().__init__(args, random_seed, constraints)
         self.args = args
 
     @property

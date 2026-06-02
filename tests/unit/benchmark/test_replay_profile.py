@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -23,9 +24,12 @@ def _replay_args(**kwargs) -> ReplayProfileArgs:
     return ReplayProfileArgs.model_validate(payload)
 
 
-def _replay_profile(**kwargs) -> ReplayProfile:
-    constraints = kwargs.pop("constraints", None)
-    return ProfileFactory.create(_replay_args(**kwargs), constraints=constraints)
+def _replay_profile(
+    constraints: dict[str, Any] | None = None, random_seed: int = 42, **kwargs
+) -> ReplayProfile:
+    return ProfileFactory.create(
+        _replay_args(**kwargs), random_seed=random_seed, constraints=constraints
+    )
 
 
 class TestReplayProfile:
