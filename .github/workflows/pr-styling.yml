@@ -3,22 +3,17 @@ name: PR Styling
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
-  # This is a hack to ensure this workflow is available as a merge blocker.
-  # All the jobs need a condition to ensure they only run on PRs.
-  push:
-    branches: [main]
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: pr-description-${{ github.event.pull_request.number || github.sha }}
+  group: pr-description-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   update-description:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
