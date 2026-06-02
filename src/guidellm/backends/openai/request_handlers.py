@@ -83,12 +83,14 @@ class OpenAIRequestHandler(Protocol):
     @property
     def last_iteration_had_content(self) -> bool:
         """
-        Whether the last streaming iteration produced content (not reasoning-only).
+        Whether the last chunk carried output (text/tool-call) tokens,
+        not solely reasoning tokens.
 
-        Used by the HTTP streaming loop to distinguish the first content token
-        from the first reasoning token for TTFOT measurement.
+        Used by the HTTP streaming loop to detect the first output token
+        for TTFOT measurement.
 
-        :return: True if the last iteration had content, False if reasoning-only
+        :return: True if the last chunk carried output tokens, not solely
+            reasoning tokens.
         """
         ...
 
@@ -529,8 +531,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     @property
     def last_iteration_had_content(self) -> bool:
         """
-        :return: True if the last streaming iteration produced content
-            (not reasoning-only)
+        :return: True if the last chunk carried output (text/tool-call) tokens,
+            not solely reasoning tokens.
         """
         return self._last_iteration_had_content
 
@@ -767,12 +769,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # For tool call responses, include the assistant's tool_calls and
         # synthetic tool result messages so the model sees the full
         # multi-turn exchange.  For plain text responses, just add content.
-        # When include_reasoning_in_history is enabled, prepend reasoning
+        # When multiturn_reasoning is enabled, prepend reasoning
         # text to the assistant content so the model sees its own CoT.
-        include_reasoning = kwargs.get("include_reasoning_in_history", False)
+        multiturn_reasoning = kwargs.get("multiturn_reasoning", False)
         if response and response.tool_calls:
             assistant_content = response.text
-            if include_reasoning and response.reasoning_text:
+            if multiturn_reasoning and response.reasoning_text:
                 assistant_content = response.reasoning_text + (assistant_content or "")
             arguments.body["messages"].append(
                 {
@@ -788,10 +790,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 )
             )
         elif response and (
-            response.text or (include_reasoning and response.reasoning_text)
+            response.text or (multiturn_reasoning and response.reasoning_text)
         ):
             content = response.text or ""
-            if include_reasoning and response.reasoning_text:
+            if multiturn_reasoning and response.reasoning_text:
                 content = response.reasoning_text + content
             arguments.body["messages"].append({"role": "assistant", "content": content})
 
@@ -1094,8 +1096,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
     @property
     def last_iteration_had_content(self) -> bool:
         """
-        :return: True if the last streaming iteration produced content
-            (not reasoning-only)
+        :return: True if the last chunk carried output (text/tool-call) tokens,
+            not solely reasoning tokens.
         """
         return self._last_iteration_had_content
 
@@ -1151,7 +1153,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         response: GenerationResponse | None,
         prev_requests: list[GenerationRequestArguments],
         *,
-        include_reasoning: bool = False,
+        multiturn_reasoning: bool = False,
     ) -> list[dict[str, Any]]:
         """Build the ``input`` array for the Responses API.
 
@@ -1159,7 +1161,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         dicts (with nested content parts like ``input_text``, ``input_image``)
         instead of chat completions' ``messages`` array.
 
-        :param include_reasoning: When True, prepend reasoning text to
+        :param multiturn_reasoning: When True, prepend reasoning text to
             assistant content in the conversation history.
         """
         input_items: list[dict[str, Any]] = []
@@ -1204,10 +1206,10 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                     }
                 )
         elif response and (
-            response.text or (include_reasoning and response.reasoning_text)
+            response.text or (multiturn_reasoning and response.reasoning_text)
         ):
             content = response.text or ""
-            if include_reasoning and response.reasoning_text:
+            if multiturn_reasoning and response.reasoning_text:
                 content = response.reasoning_text + content
             input_items.append({"role": "assistant", "content": content})
 
@@ -1311,7 +1313,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             data,
             response,
             prev_requests,
-            include_reasoning=kwargs.get("include_reasoning_in_history", False),
+            multiturn_reasoning=kwargs.get("multiturn_reasoning", False),
         )
 
         # Server-side history: reference the previous response by ID and

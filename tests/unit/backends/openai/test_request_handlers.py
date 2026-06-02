@@ -1090,7 +1090,7 @@ class TestChatCompletionsRequestHandler:
     @pytest.mark.sanity
     def test_format_excludes_reasoning_from_history_by_default(self, valid_instances):
         """
-        By default (include_reasoning_in_history=False), reasoning_text
+        By default (multiturn_reasoning=False), reasoning_text
         should not appear in the assistant message content.
 
         ## WRITTEN BY AI ##
@@ -1126,7 +1126,7 @@ class TestChatCompletionsRequestHandler:
     @pytest.mark.sanity
     def test_format_includes_reasoning_in_history_when_enabled(self, valid_instances):
         """
-        When include_reasoning_in_history=True, reasoning_text should
+        When multiturn_reasoning=True, reasoning_text should
         be prepended to the assistant message content.
 
         ## WRITTEN BY AI ##
@@ -1149,7 +1149,7 @@ class TestChatCompletionsRequestHandler:
         result = instance.format(
             data,
             history=[(prev_request, prev_response)],
-            include_reasoning_in_history=True,
+            multiturn_reasoning=True,
         )
 
         assistant_msgs = [
@@ -1161,7 +1161,7 @@ class TestChatCompletionsRequestHandler:
     @pytest.mark.sanity
     def test_format_includes_reasoning_only_response_in_history(self, valid_instances):
         """
-        When include_reasoning_in_history=True and the prior response has
+        When multiturn_reasoning=True and the prior response has
         reasoning_text but no regular text content, an assistant message
         should still be injected containing the reasoning.
 
@@ -1185,7 +1185,7 @@ class TestChatCompletionsRequestHandler:
         result = instance.format(
             data,
             history=[(prev_request, prev_response)],
-            include_reasoning_in_history=True,
+            multiturn_reasoning=True,
         )
 
         assistant_msgs = [
@@ -1199,7 +1199,7 @@ class TestChatCompletionsRequestHandler:
         self, valid_instances
     ):
         """
-        When include_reasoning_in_history=False (default) and the prior
+        When multiturn_reasoning=False (default) and the prior
         response has reasoning_text but no regular text content, no
         assistant message should be injected.
 
@@ -3069,7 +3069,7 @@ class TestResponsesRequestHandler:
     @pytest.mark.sanity
     def test_format_includes_reasoning_in_history_when_enabled(self, valid_instances):
         """
-        When include_reasoning_in_history=True, reasoning_text should be
+        When multiturn_reasoning=True, reasoning_text should be
         prepended to the assistant input item content.
 
         ## WRITTEN BY AI ##
@@ -3089,7 +3089,7 @@ class TestResponsesRequestHandler:
         result = instance.format(
             data,
             history=[(prev_request, prev_response)],
-            include_reasoning_in_history=True,
+            multiturn_reasoning=True,
         )
 
         assistant_items = [
@@ -3101,7 +3101,7 @@ class TestResponsesRequestHandler:
     @pytest.mark.sanity
     def test_format_includes_reasoning_only_response_in_history(self, valid_instances):
         """
-        When include_reasoning_in_history=True and the prior response has
+        When multiturn_reasoning=True and the prior response has
         reasoning_text but no regular text content, an assistant input item
         should still be injected containing the reasoning.
 
@@ -3122,7 +3122,7 @@ class TestResponsesRequestHandler:
         result = instance.format(
             data,
             history=[(prev_request, prev_response)],
-            include_reasoning_in_history=True,
+            multiturn_reasoning=True,
         )
 
         assistant_items = [
@@ -3136,7 +3136,7 @@ class TestResponsesRequestHandler:
         self, valid_instances
     ):
         """
-        When include_reasoning_in_history=False (default) and the prior
+        When multiturn_reasoning=False (default) and the prior
         response has reasoning_text but no regular text content, no
         assistant input item should be injected.
 

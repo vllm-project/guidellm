@@ -147,7 +147,7 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "cancel remaining turns)."
         ),
     )
-    include_reasoning_in_history: bool = Field(
+    multiturn_reasoning: bool = Field(
         default=False,
         description=(
             "Include reasoning/chain-of-thought text in multi-turn "
@@ -405,7 +405,7 @@ class OpenAIHTTPBackend(Backend):
             extras=self._args.extras,
             max_tokens=self._args.max_tokens,
             server_history=self._args.server_history,
-            include_reasoning_in_history=(self._args.include_reasoning_in_history),
+            multiturn_reasoning=self._args.multiturn_reasoning,
         )
 
         request_url = f"{self._args.target}/{request_path}"
