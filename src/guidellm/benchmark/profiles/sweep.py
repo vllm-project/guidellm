@@ -15,7 +15,7 @@ from guidellm.scheduler import (
     ThroughputStrategy,
 )
 
-from .profile import Profile, ProfileArgs
+from .profile import Profile, ProfileArgs, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -39,10 +39,6 @@ class SweepProfileArgs(ProfileArgs):
     max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum concurrent requests to schedule",
-    )
-    random_seed: int = Field(
-        default=42,
-        description="Random seed for Poisson distribution strategy",
     )
 
     @field_validator("sweep_size", mode="before")
@@ -68,7 +64,7 @@ class SweepProfileArgs(ProfileArgs):
         )
 
 
-@Profile.register("sweep")
+@ProfileFactory.register("sweep")
 class SweepProfile(Profile):
     """
     Discover optimal rate range through adaptive multi-strategy execution.
@@ -78,39 +74,19 @@ class SweepProfile(Profile):
     to comprehensively sweep the performance space.
     """
 
-    kind: Literal["sweep"] = Field(
-        default="sweep",
-        description="Profile type discriminator for polymorphic serialization",
-    )
-    sweep_size: int = Field(
-        description="Number of strategies to generate for the sweep",
-        ge=2,
-    )
-    strategy_type: Literal["constant", "poisson"] = "constant"
-    max_concurrency: PositiveInt | None = Field(
-        default=None,
-        description="Maximum concurrent requests to schedule",
-    )
-    random_seed: int = Field(
-        default=42,
-        description="Random seed for Poisson distribution strategy",
-    )
-    synchronous_rate: float = Field(
-        default=-1.0,
-        description="Measured rate from synchronous strategy execution",
-    )
-    throughput_rate: float = Field(
-        default=-1.0,
-        description="Measured rate from throughput strategy execution",
-    )
-    async_rates: list[float] = Field(
-        default_factory=list,
-        description="Generated rates for async strategy sweep",
-    )
-    measured_rates: list[float] = Field(
-        default_factory=list,
-        description="Interpolated rates between synchronous and throughput",
-    )
+    args: SweepProfileArgs
+
+    def __init__(
+        self,
+        args: SweepProfileArgs,
+        constraints: dict[str, Any] | None,
+    ):
+        super().__init__(args, constraints)
+        self.args = args
+        self.synchronous_rate = -1.0
+        self.throughput_rate = -1.0
+        self.async_rates: list[float] = []
+        self.measured_rates: list[float] = []
 
     @property
     def strategy_types(self) -> list[str]:
@@ -118,7 +94,7 @@ class SweepProfile(Profile):
         :return: Strategy types for the complete sweep sequence
         """
         types = ["synchronous", "throughput"]
-        types += [self.strategy_type] * (self.sweep_size - len(types))
+        types += [self.args.strategy_type] * (self.args.sweep_size - len(types))
         return types
 
     def next_strategy(
@@ -150,8 +126,8 @@ class SweepProfile(Profile):
             self.synchronous_rate = prev_benchmark.request_throughput.successful.mean
 
             return ThroughputStrategy(
-                max_concurrency=self.max_concurrency,
-                rampup_duration=self.rampup_duration,
+                max_concurrency=self.args.max_concurrency,
+                rampup_duration=self.args.rampup_duration,
             )
 
         if prev_strategy.type_ == "throughput":
@@ -165,7 +141,7 @@ class SweepProfile(Profile):
                 np.linspace(
                     self.synchronous_rate,
                     self.throughput_rate,
-                    self.sweep_size - 1,
+                    self.args.sweep_size - 1,
                 )
             )[1:]  # don't rerun synchronous
 
@@ -182,14 +158,14 @@ class SweepProfile(Profile):
             # Stop if we don't have another valid rate to run
             return None
 
-        if self.strategy_type == "constant":
+        if self.args.strategy_type == "constant":
             return AsyncConstantStrategy(
-                rate=next_rate, max_concurrency=self.max_concurrency
+                rate=next_rate, max_concurrency=self.args.max_concurrency
             )
-        if self.strategy_type == "poisson":
+        if self.args.strategy_type == "poisson":
             return AsyncPoissonStrategy(
                 rate=next_rate,
-                max_concurrency=self.max_concurrency,
-                random_seed=self.random_seed,
+                max_concurrency=self.args.max_concurrency,
+                random_seed=self.args.random_seed,
             )
-        raise ValueError(f"Invalid strategy type: {self.strategy_type}")
+        raise ValueError(f"Invalid strategy type: {self.args.strategy_type}")

@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import resolve_profile
-from guidellm.benchmark.profiles import Profile, SweepProfile
+from guidellm.benchmark.profiles import ProfileFactory, SweepProfile
 from guidellm.benchmark.profiles.sweep import SweepProfileArgs
 
 
@@ -37,11 +37,11 @@ class TestSweepProfileArgs:
 
         ## WRITTEN BY AI ##
         """
-        profile = Profile.create(
-            SweepProfileArgs.model_validate({"kind": "sweep", "rate": [6.0]})
+        profile = ProfileFactory.create(
+            SweepProfileArgs.model_validate({"kind": "sweep", "rate": [6.0]}), {}
         )
         assert isinstance(profile, SweepProfile)
-        assert profile.sweep_size == 6
+        assert profile.args.sweep_size == 6
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -64,7 +64,7 @@ class TestSweepProfileArgs:
             max_global_error_rate=None,
         )
         assert isinstance(profile, SweepProfile)
-        assert profile.sweep_size == 7
+        assert profile.args.sweep_size == 7
 
     @pytest.mark.smoke
     def test_sweep_size_rejects_empty_rate_list(self):

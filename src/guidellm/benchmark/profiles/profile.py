@@ -6,41 +6,25 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import (
     ConfigDict,
     Field,
     NonNegativeFloat,
-    computed_field,
-    field_serializer,
-    field_validator,
+    model_validator,
 )
 
 from guidellm.scheduler import (
     Constraint,
-    ConstraintInitializer,
     ConstraintsInitializerFactory,
     SchedulingStrategy,
 )
 from guidellm.schemas import PydanticClassRegistryMixin
+from guidellm.utils.registry import RegistryMixin
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
-
-ProfileType = Annotated[
-    Literal[
-        "synchronous",
-        "concurrent",
-        "throughput",
-        "async",
-        "constant",
-        "poisson",
-        "sweep",
-        "replay",
-    ],
-    "Profile type identifiers for polymorphic deserialization",
-]
 
 
 class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
@@ -52,11 +36,22 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
     automatic registration of subclasses, allowing for flexible and extensible
     profile configurations.
 
+    NOTES:
+
+    - Several fields are always passed by the CLI but are not relevant to some
+      profiles. In order to "forbid" unknown parameters, we have to handle these
+      here. There are two separate strategies:
+      - a "before" model validator removes the replay specific parameters (data and
+        data_samples), and this validator is overriden by the replay profile.
+      - random_seed is allowed as a "global" even though it's not used by most
+        profiles. Since random_seed is a CLI option used outside of profiles, this
+        seems less "hacky" than the temporary solution for replay.
+
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
     model_config = ConfigDict(
-        extra="ignore",
+        extra="forbid",
         serialize_by_alias=True,
         ser_json_bytes="base64",
         val_json_bytes="base64",
@@ -76,22 +71,8 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
 
         return ProfileArgs
 
-    kind: Literal[
-        "profile",
-        "synchronous",
-        "concurrent",
-        "throughput",
-        "async",
-        "constant",
-        "poisson",
-        "sweep",
-        "replay",
-    ] = Field(
+    kind: str = Field(
         description="Profile type discriminator for polymorphic serialization",
-    )
-    constraints: dict[str, Any | dict[str, Any] | ConstraintInitializer] | None = Field(
-        default=None,
-        description="Runtime constraints applied to strategy execution",
     )
     rampup_duration: NonNegativeFloat = Field(
         default=0.0,
@@ -99,51 +80,61 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
             "Duration in seconds to ramp up the targeted scheduling rate, if applicable"
         ),
     )
+    random_seed: int = Field(
+        default=42,
+        description="Random seed for policies that use randomness",
+    )
 
-    @field_validator("constraints", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def _constraints_validator(
-        cls, value: Any
-    ) -> dict[str, Any | dict[str, Any] | ConstraintInitializer] | None:
-        if value is None:
-            return None
+    def _remove_replay_params(cls, data: Any) -> Any:
+        """Remove replay specific parameters from the data.
 
-        if not isinstance(value, dict):
-            raise ValueError("Constraints must be a dictionary")
+        TODO: This is a temporary solution to remove replay specific parameters from the
+        data so we can use Pydantic to validate the parameters. This is overriden by the
+        replay profile, and will be removed when we have a better solution.
+        """
+        if isinstance(data, dict):
+            data.pop("data", None)
+            data.pop("data_samples", None)
+        return data
 
-        return {
-            key: (
-                ConstraintsInitializerFactory.deserialize(initializer_dict=val)
-                if isinstance(val, dict)
-                and "type_" in val
-                and not isinstance(val, ConstraintInitializer)
-                else val
+
+class ProfileFactory(RegistryMixin["type[Profile]"]):
+    @classmethod
+    def create(
+        cls,
+        args: ProfileArgs,
+        constraints: dict[str, Any] | None = None,
+    ) -> Profile:
+        """
+        Create profile instances from validated profile arguments.
+
+        :param args: Validated profile argument model for the target profile type
+        :return: Configured profile instance for the specified type
+        :raises ValueError: If the profile kind is not registered
+        """
+        kind = args.kind
+
+        profile_class = cls.get_registered_object(kind)
+
+        if profile_class is None:
+            raise ValueError(
+                f"Profile type '{kind}' is not registered. "
+                f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
             )
-            for key, val in value.items()
-        }
 
-    @field_serializer("constraints")
-    def _constraints_serializer(
-        self,
-        constraints: dict[str, Any | dict[str, Any] | ConstraintInitializer] | None,
-    ) -> dict[str, Any | dict[str, Any]] | None:
-        if constraints is None:
-            return None
+        return profile_class(args, constraints)
 
-        return {
-            key: (
-                val
-                if not isinstance(val, ConstraintInitializer)
-                else ConstraintsInitializerFactory.serialize(initializer=val)
-            )
-            for key, val in constraints.items()
-        }
+    @classmethod
+    def registered_names(cls) -> tuple[str, ...]:
+        """
+        Get all registered names from the registry.
+        """
+        return tuple(cls.registry.keys() if cls.registry else [])
 
 
-class Profile(
-    PydanticClassRegistryMixin["Profile"],
-    ABC,
-):
+class Profile:
     """
     Coordinate multi-strategy benchmark execution with automatic strategy generation.
 
@@ -152,112 +143,39 @@ class Profile(
     specific execution patterns like synchronous, concurrent, throughput-focused,
     rate-based async, or adaptive sweep profiles.
 
-    :cvar schema_discriminator: Field name for polymorphic deserialization
+    Example:
+    ::
+        @Profile.register("synchronous")
+        class SynchronousProfile(Profile):
+            def __init__(self, args: SynchronousProfileArgs):
+                super().__init__(args)
+
+        args = SynchronousProfileArgs(kind="synchronous")
+        profile = Profile.create(args)
     """
 
-    schema_discriminator: ClassVar[str] = "kind"
-
-    kind: Literal[
-        "profile",
-        "synchronous",
-        "concurrent",
-        "throughput",
-        "async",
-        "constant",
-        "poisson",
-        "sweep",
-        "replay",
-    ] = Field(
-        description="Profile type discriminator for polymorphic serialization",
-    )
-    completed_strategies: list[SchedulingStrategy] = Field(
-        default_factory=list,
-        description="Strategies that completed execution in this profile",
-    )
-    constraints: dict[str, Any | dict[str, Any] | ConstraintInitializer] | None = Field(
-        default=None,
-        description="Runtime constraints applied to strategy execution",
-    )
-    rampup_duration: NonNegativeFloat = Field(
-        default=0.0,
-        description=(
-            "Duration in seconds to ramp up the targeted scheduling rate, if applicable"
-        ),
-    )
-
-    @classmethod
-    def __pydantic_schema_base_type__(cls) -> type[Profile]:
-        """
-        Return base type for polymorphic validation hierarchy.
-
-        :return: Base Profile class for schema validation
-        """
-        if cls.__name__ == "Profile":
-            return cls
-
-        return Profile
-
-    @classmethod
-    def create(cls, args: ProfileArgs) -> Profile:
-        """
-        Create profile instances from validated profile arguments.
-
-        :param args: Validated profile argument model for the target profile type
-        :return: Configured profile instance for the specified type
-        :raises ValueError: If the profile kind is not registered
-        """
-        profile_class = cls.get_registered_object(args.kind)
-
-        if profile_class is None:
-            raise ValueError(
-                f"Profile type '{args.kind}' is not registered. "
-                f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
-            )
-
-        return profile_class.model_validate(
-            args.model_dump(by_alias=True, mode="python")
-        )
-
-    @field_validator("constraints", mode="before")
-    @classmethod
-    def _constraints_validator(
-        cls, value: Any
-    ) -> dict[str, Any | dict[str, Any] | ConstraintInitializer] | None:
-        if value is None:
-            return None
-
-        if not isinstance(value, dict):
-            raise ValueError("Constraints must be a dictionary")
-
-        return {
-            key: (
-                ConstraintsInitializerFactory.deserialize(initializer_dict=val)
-                if isinstance(val, dict)
-                and "type_" in val
-                and not isinstance(val, ConstraintInitializer)
-                else val
-            )
-            for key, val in value.items()
-        }
-
-    @field_serializer("constraints")
-    def _constraints_serializer(
+    def __init__(
         self,
-        constraints: dict[str, Any | dict[str, Any] | ConstraintInitializer] | None,
-    ) -> dict[str, Any | dict[str, Any]] | None:
-        if constraints is None:
-            return None
+        args: ProfileArgs,
+        constraints: dict[str, Any] | None,
+    ):
+        """
+        Initialize a profile instance.
 
-        return {
-            key: (
-                val
-                if not isinstance(val, ConstraintInitializer)
-                else ConstraintsInitializerFactory.serialize(initializer=val)
-            )
-            for key, val in constraints.items()
-        }
+        :param args: Validated profile argument model for this profile type
+        """
+        self.kind = args.kind
+        self.args = args
+        self.constraints = constraints
+        self.completed_strategies: list[SchedulingStrategy] = []
 
-    @computed_field  # type: ignore[misc]
+    @property
+    def info(self) -> dict[str, Any]:
+        """
+        Help json serialization by deferring to ProfileArgs.
+        """
+        return self.args.model_dump()
+
     @property
     def strategy_types(self) -> list[str]:
         """

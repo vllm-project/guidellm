@@ -13,19 +13,14 @@ import guidellm.utils.cli as cli_tools
 from guidellm.benchmark import (
     BenchmarkGenerativeTextArgs,
     GenerativeConsoleBenchmarkerProgress,
-    ProfileType,
     benchmark_generative_text,
     get_builtin_scenarios,
 )
-from guidellm.scheduler import StrategyType
+from guidellm.benchmark.profiles import ProfileFactory
 from guidellm.utils.console import Console
 from guidellm.utils.env_validator import validate_env_vars
-from guidellm.utils.typing import get_literal_vals
 
-__all__ = ["STRATEGY_PROFILE_CHOICES", "run"]
-
-STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | StrategyType))
-"""Available strategy and profile type choices for benchmark execution."""
+__all__ = ["run"]
 
 
 @click.command(
@@ -74,7 +69,10 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     "--profile",
     "profile",
     callback=cli_tools.parse_arguments,
-    help=f"Benchmark profile type. Options: {', '.join(STRATEGY_PROFILE_CHOICES)}.",
+    help=(
+        "Benchmark profile type. Options: "
+        f"{', '.join(ProfileFactory.registered_names())}."
+    ),
 )
 @click.option(
     "--rate",

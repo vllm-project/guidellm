@@ -121,7 +121,7 @@ class Benchmarker(
                     warmup=warmup,
                     cooldown=cooldown,
                     prefer_response_metrics=prefer_response_metrics,
-                    profile=profile,
+                    profile=InfoMixin.extract_from_obj(profile),
                     requests=InfoMixin.extract_from_obj(requests),
                     backend=InfoMixin.extract_from_obj(backend),
                     environment=InfoMixin.extract_from_obj(environment),

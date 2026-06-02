@@ -6,9 +6,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import AliasChoices, Field, PositiveInt, field_validator
 
-from guidellm.scheduler import ConcurrentStrategy, SchedulingStrategy
+from guidellm.scheduler import (
+    ConcurrentStrategy,
+    SchedulingStrategy,
+)
 
-from .profile import Profile, ProfileArgs
+from .profile import Profile, ProfileArgs, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -46,7 +49,7 @@ class ConcurrentProfileArgs(ProfileArgs):
         )
 
 
-@Profile.register("concurrent")
+@ProfileFactory.register("concurrent")
 class ConcurrentProfile(Profile):
     """
     Execute strategies with fixed concurrency levels for performance testing.
@@ -55,20 +58,22 @@ class ConcurrentProfile(Profile):
     testing system performance under specific concurrency levels.
     """
 
-    kind: Literal["concurrent"] = Field(
-        default="concurrent",
-        description="Profile type discriminator for polymorphic serialization",
-    )
-    streams: list[PositiveInt] = Field(
-        description="Concurrent stream counts to execute",
-    )
+    args: ConcurrentProfileArgs
+
+    def __init__(
+        self,
+        args: ConcurrentProfileArgs,
+        constraints: dict[str, Any] | None,
+    ):
+        super().__init__(args, constraints)
+        self.args = args
 
     @property
     def strategy_types(self) -> list[str]:
         """
         :return: Concurrent strategy types for each configured stream count
         """
-        return [self.kind] * len(self.streams)
+        return [self.kind] * len(self.args.streams)
 
     def next_strategy(
         self,
@@ -84,10 +89,10 @@ class ConcurrentProfile(Profile):
         """
         _ = (prev_strategy, prev_benchmark)  # unused
 
-        if len(self.completed_strategies) >= len(self.streams):
+        if len(self.completed_strategies) >= len(self.args.streams):
             return None
 
         return ConcurrentStrategy(
-            streams=self.streams[len(self.completed_strategies)],
-            rampup_duration=self.rampup_duration,
+            streams=self.args.streams[len(self.completed_strategies)],
+            rampup_duration=self.args.rampup_duration,
         )

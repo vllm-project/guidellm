@@ -6,9 +6,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, model_validator
 
-from guidellm.scheduler import SchedulingStrategy, SynchronousStrategy
+from guidellm.scheduler import (
+    SchedulingStrategy,
+    SynchronousStrategy,
+)
 
-from .profile import Profile, ProfileArgs
+from .profile import Profile, ProfileArgs, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -32,7 +35,7 @@ class SynchronousProfileArgs(ProfileArgs):
         return data
 
 
-@Profile.register("synchronous")
+@ProfileFactory.register("synchronous")
 class SynchronousProfile(Profile):
     """
     Execute single synchronous strategy for baseline performance metrics.
@@ -41,10 +44,15 @@ class SynchronousProfile(Profile):
     baseline performance metrics without concurrent execution overhead.
     """
 
-    kind: Literal["synchronous"] = Field(
-        default="synchronous",
-        description="Profile type discriminator for polymorphic serialization",
-    )
+    args: SynchronousProfileArgs
+
+    def __init__(
+        self,
+        args: SynchronousProfileArgs,
+        constraints: dict[str, Any] | None,
+    ):
+        super().__init__(args, constraints)
+        self.args = args
 
     @property
     def strategy_types(self) -> list[str]:

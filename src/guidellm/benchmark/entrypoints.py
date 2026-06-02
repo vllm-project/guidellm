@@ -24,8 +24,7 @@ from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,
 )
-from guidellm.benchmark.profiles import Profile
-from guidellm.benchmark.profiles.profile import ProfileArgs
+from guidellm.benchmark.profiles import Profile, ProfileArgs, ProfileFactory
 from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 from guidellm.benchmark.schemas import (
     BenchmarkGenerativeTextArgs,
@@ -45,7 +44,11 @@ from guidellm.data import (
     GenerativeRequestCollator,
     ProcessorFactory,
 )
-from guidellm.scheduler import ConstraintInitializer, NonDistributedEnvironment
+from guidellm.scheduler import (
+    ConstraintInitializer,
+    ConstraintsInitializerFactory,
+    NonDistributedEnvironment,
+)
 from guidellm.schemas import GenerationRequest, GenerationResponse
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
@@ -303,6 +306,29 @@ async def resolve_request_loader(
     return request_loader
 
 
+def resolve_constraints(constraints: MutableMapping[str, Any]) -> dict[str, Any] | None:
+    """
+    Resolve the constraints from the provided parameters.
+    """
+
+    if constraints is None:
+        return None
+
+    if not isinstance(constraints, dict):
+        raise ValueError("Constraints must be a dictionary")
+
+    return {
+        key: (
+            ConstraintsInitializerFactory.deserialize(initializer_dict=val)
+            if isinstance(val, dict)
+            and "type_" in val
+            and not isinstance(val, ConstraintInitializer)
+            else val
+        )
+        for key, val in constraints.items()
+    }
+
+
 def _build_profile_from_args(
     profile: ProfileArgs | dict[str, Any],
     random_seed: int,
@@ -330,7 +356,6 @@ def _build_profile_from_args(
     profile_args: dict[str, Any] = {
         "random_seed": random_seed,
         "rampup_duration": rampup,
-        "constraints": dict[str, Any](constraints),
     }
     if rate is not None:
         profile_args["rate"] = rate
@@ -349,7 +374,7 @@ def _build_profile_from_args(
             "Profile arguments must be a string, dictionary, or ProfileArgs."
         )
     args = ProfileArgs.model_validate(profile_args)
-    return Profile.create(args)
+    return ProfileFactory.create(args, resolve_constraints(constraints))
 
 
 async def resolve_profile(

@@ -6,10 +6,10 @@ import pytest
 from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import resolve_profile
-from guidellm.benchmark.profiles import Profile, ReplayProfile
+from guidellm.benchmark.profiles import ProfileFactory, ReplayProfile
 from guidellm.benchmark.profiles.replay import ReplayProfileArgs
 from guidellm.data.deserializers import TraceSyntheticDataArgs
-from guidellm.scheduler import TraceReplayStrategy
+from guidellm.scheduler import MaxNumberConstraint, TraceReplayStrategy
 
 
 def _trace_path(tmp_path: Path, lines: list[str] | None = None) -> Path:
@@ -24,7 +24,8 @@ def _replay_args(**kwargs) -> ReplayProfileArgs:
 
 
 def _replay_profile(**kwargs) -> ReplayProfile:
-    return Profile.create(_replay_args(**kwargs))
+    constraints = kwargs.pop("constraints", None)
+    return ProfileFactory.create(_replay_args(**kwargs), constraints=constraints)
 
 
 class TestReplayProfile:
@@ -103,8 +104,10 @@ class TestReplayProfile:
 
         assert isinstance(profile, ReplayProfile)
         assert profile.relative_timestamps == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
-        assert profile.time_scale == expected_scale
-        assert profile.constraints["max_requests"] == 3
+        assert profile.args.time_scale == expected_scale
+        assert profile.constraints["max_requests"] == MaxNumberConstraint(
+            type_="max_number", max_num=3, current_index=0
+        )
 
     @pytest.mark.sanity
     def test_non_positive_time_scale_is_rejected(self, tmp_path: Path):
@@ -145,7 +148,9 @@ class TestReplayProfile:
         )
 
         assert profile.relative_timestamps == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
-        assert profile.constraints["max_requests"] == 3
+        assert profile.constraints["max_requests"] == MaxNumberConstraint(
+            type_="max_number", max_num=3, current_index=0
+        )
 
     @pytest.mark.smoke
     def test_large_bursty_trace_sets_default_request_constraint(self, tmp_path: Path):
@@ -228,7 +233,9 @@ class TestReplayProfile:
         profile = _replay_profile(data=[TraceSyntheticDataArgs(path=trace)])
 
         assert profile.relative_timestamps == pytest.approx(timestamps, abs=1e-9)
-        assert profile.constraints["max_requests"] == 27
+        assert profile.constraints["max_requests"] == MaxNumberConstraint(
+            type_="max_number", max_num=27, current_index=0
+        )
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("invalid_value", [None, 123, False, []])
@@ -319,7 +326,9 @@ class TestReplayProfile:
         )
 
         assert profile.relative_timestamps == pytest.approx([0.0, 1.0], abs=1e-9)
-        assert profile.constraints["max_requests"] == 2
+        assert profile.constraints["max_requests"] == MaxNumberConstraint(
+            type_="max_number", max_num=2, current_index=0
+        )
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
@@ -355,7 +364,7 @@ class TestReplayProfile:
 
         assert isinstance(profile, ReplayProfile)
         assert profile.relative_timestamps == pytest.approx([0.0, 3.0], abs=1e-9)
-        assert profile.time_scale == 2.0
+        assert profile.args.time_scale == 2.0
         assert profile.constraints["max_requests"] == 2
 
     @pytest.mark.smoke

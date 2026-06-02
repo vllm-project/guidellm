@@ -278,7 +278,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             values,
             "Run Info",
             "Profile",
-            benchmark.config.profile.model_dump_json(),
+            json.dumps(benchmark.config.profile),
         )
         self._add_field(
             headers,

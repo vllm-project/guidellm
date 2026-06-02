@@ -31,7 +31,7 @@ from pydantic import (
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.backends import BackendArgs
-from guidellm.benchmark.profiles import Profile, ProfileType
+from guidellm.benchmark.profiles import Profile
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
@@ -317,6 +317,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         return processor if isinstance(processor, str) else str(processor)
 
     @field_serializer("profile")
-    def serialize_profile(self, profile: StrategyType | ProfileType | Profile) -> str:
+    def serialize_profile(self, profile: StrategyType | Profile) -> str:
         """Serialize profile to type string."""
         return profile if isinstance(profile, str) else str(profile)

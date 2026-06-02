@@ -6,9 +6,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import AliasChoices, Field, PositiveInt, field_validator
 
-from guidellm.scheduler import SchedulingStrategy, ThroughputStrategy
+from guidellm.scheduler import (
+    SchedulingStrategy,
+    ThroughputStrategy,
+)
 
-from .profile import Profile, ProfileArgs
+from .profile import Profile, ProfileArgs, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -48,7 +51,7 @@ class ThroughputProfileArgs(ProfileArgs):
         )
 
 
-@Profile.register("throughput")
+@ProfileFactory.register("throughput")
 class ThroughputProfile(Profile):
     """
     Maximize system throughput with optional concurrency constraints.
@@ -57,13 +60,15 @@ class ThroughputProfile(Profile):
     optionally constrained by a concurrency limit.
     """
 
-    kind: Literal["throughput"] = Field(
-        default="throughput",
-        description="Profile type discriminator for polymorphic serialization",
-    )
-    max_concurrency: PositiveInt | None = Field(
-        description="Maximum concurrent requests to schedule",
-    )
+    args: ThroughputProfileArgs
+
+    def __init__(
+        self,
+        args: ThroughputProfileArgs,
+        constraints: dict[str, Any] | None,
+    ):
+        super().__init__(args, constraints)
+        self.args = args
 
     @property
     def strategy_types(self) -> list[str]:
@@ -89,6 +94,6 @@ class ThroughputProfile(Profile):
             return None
 
         return ThroughputStrategy(
-            max_concurrency=self.max_concurrency,
-            rampup_duration=self.rampup_duration,
+            max_concurrency=self.args.max_concurrency,
+            rampup_duration=self.args.rampup_duration,
         )

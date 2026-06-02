@@ -9,10 +9,14 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from guidellm.data import DataArgs
 from guidellm.data.deserializers import TraceSyntheticDataArgs
-from guidellm.scheduler import SchedulingStrategy, TraceReplayStrategy
+from guidellm.scheduler import (
+    ConstraintsInitializerFactory,
+    SchedulingStrategy,
+    TraceReplayStrategy,
+)
 from guidellm.utils.trace_io import load_relative_timestamps
 
-from .profile import Profile, ProfileArgs
+from .profile import Profile, ProfileArgs, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -123,8 +127,16 @@ class ReplayProfileArgs(ProfileArgs):
             f"got {type(value).__name__}"
         )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _remove_replay_params(cls, data: Any) -> Any:
+        """
+        Override the ProfileArgs validator that removes replay specific parameters.
+        """
+        return data
 
-@Profile.register("replay")
+
+@ProfileFactory.register("replay")
 class ReplayProfile(Profile):
     """
     Replay a trace file:
@@ -137,55 +149,26 @@ class ReplayProfile(Profile):
     the sampled dataset size.
     """
 
-    kind: Literal["replay"] = Field(
-        default="replay",
-        description="Profile type discriminator for polymorphic serialization",
-    )
-    relative_timestamps: list[float] = Field(
-        description="Request start times relative to first event (first = 0)",
-    )
-    time_scale: float = Field(
-        default=1.0,
-        gt=0,
-        description="Scale factor applied to relative timestamps",
-    )
+    args: ReplayProfileArgs
 
-    @model_validator(mode="before")
-    @classmethod
-    def _load_relative_timestamps_from_data(cls, value: Any) -> Any:
-        """
-        Populate replay fields from trace data when timestamps are not preloaded.
+    def __init__(
+        self,
+        args: ReplayProfileArgs,
+        constraints: dict[str, Any] | None,
+    ):
+        super().__init__(args, constraints)
+        self.args = args
+        relative_timestamps = _resolve_relative_timestamps(args.data, args.data_samples)
 
-        :param value: Raw or partially resolved profile argument mapping
-        :return: Mapping with ``relative_timestamps`` and default constraints set
-        """
-        if not isinstance(value, dict) or "relative_timestamps" in value:
-            return value
-
-        data = value.get("data")
-        if data is None:
-            raise ValueError(
-                "ReplayProfile requires relative_timestamps or a trace data source"
+        new_constraints = dict(constraints or {})
+        if not any(key in new_constraints for key in _MAX_REQUEST_CONSTRAINT_KEYS):
+            new_constraints.update(
+                ConstraintsInitializerFactory.resolve(
+                    {"max_requests": len(relative_timestamps)}
+                )
             )
-
-        data_samples = value.get("data_samples", -1)
-        if not isinstance(data_samples, int):
-            data_samples = -1
-
-        relative_timestamps = _resolve_relative_timestamps(data, data_samples)
-
-        constraints = dict(value.get("constraints") or {})
-        if not any(key in constraints for key in _MAX_REQUEST_CONSTRAINT_KEYS):
-            constraints["max_requests"] = len(relative_timestamps)
-
-        result = {
-            **value,
-            "relative_timestamps": relative_timestamps,
-            "constraints": constraints,
-        }
-        for key in ("data", "data_samples", "rate", "random_seed"):
-            result.pop(key, None)
-        return result
+            self.constraints = new_constraints
+        self.relative_timestamps = relative_timestamps
 
     @property
     def strategy_types(self) -> list[str]:
@@ -202,5 +185,5 @@ class ReplayProfile(Profile):
             return None
         return TraceReplayStrategy(
             relative_timestamps=self.relative_timestamps,
-            time_scale=self.time_scale,
+            time_scale=self.args.time_scale,
         )

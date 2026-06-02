@@ -11,21 +11,28 @@ that determines how benchmark requests are scheduled and executed.
 
 from __future__ import annotations
 
-from .asynchronous import AsyncProfile
-from .concurrent import ConcurrentProfile
-from .profile import Profile, ProfileType
-from .replay import ReplayProfile
-from .sweep import SweepProfile
-from .synchronous import SynchronousProfile
-from .throughput import ThroughputProfile
+from .asynchronous import AsyncProfile, AsyncProfileArgs
+from .concurrent import ConcurrentProfile, ConcurrentProfileArgs
+from .profile import Profile, ProfileArgs, ProfileFactory
+from .replay import ReplayProfile, ReplayProfileArgs
+from .sweep import SweepProfile, SweepProfileArgs
+from .synchronous import SynchronousProfile, SynchronousProfileArgs
+from .throughput import ThroughputProfile, ThroughputProfileArgs
 
 __all__ = [
     "AsyncProfile",
+    "AsyncProfileArgs",
     "ConcurrentProfile",
+    "ConcurrentProfileArgs",
     "Profile",
-    "ProfileType",
+    "ProfileArgs",
+    "ProfileFactory",
     "ReplayProfile",
+    "ReplayProfileArgs",
     "SweepProfile",
+    "SweepProfileArgs",
     "SynchronousProfile",
+    "SynchronousProfileArgs",
     "ThroughputProfile",
+    "ThroughputProfileArgs",
 ]

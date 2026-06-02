@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import Field, PositiveFloat, PositiveInt, field_validator, model_validator
+from pydantic import Field, PositiveFloat, PositiveInt, field_validator
 
 from guidellm.scheduler import (
     AsyncConstantStrategy,
@@ -12,7 +12,7 @@ from guidellm.scheduler import (
     SchedulingStrategy,
 )
 
-from .profile import Profile, ProfileArgs
+from .profile import Profile, ProfileArgs, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
@@ -32,10 +32,6 @@ class AsyncProfileArgs(ProfileArgs):
     max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum concurrent requests to schedule",
-    )
-    random_seed: int = Field(
-        default=42,
-        description="Random seed for Poisson distribution strategy",
     )
 
     @field_validator("rate", mode="before")
@@ -59,7 +55,7 @@ class AsyncProfileArgs(ProfileArgs):
         )
 
 
-@Profile.register(["async", "constant", "poisson"])
+@ProfileFactory.register(["async", "constant", "poisson"])
 class AsyncProfile(Profile):
     """
     Schedule requests at specified rates using constant or Poisson patterns.
@@ -68,53 +64,28 @@ class AsyncProfile(Profile):
     Poisson distribution patterns for realistic load simulation.
     """
 
-    kind: Literal["async", "constant", "poisson"] = Field(
-        default="async",
-        description="Profile type discriminator for polymorphic serialization",
-    )
-    strategy_type: Literal["constant", "poisson"] = Field(
-        description="Asynchronous strategy pattern type derived from profile kind",
-    )
-    rate: list[PositiveFloat] = Field(
-        description="Request scheduling rates in requests per second",
-    )
-    max_concurrency: PositiveInt | None = Field(
-        default=None,
-        description="Maximum concurrent requests to schedule",
-    )
-    random_seed: int = Field(
-        default=42,
-        description="Random seed for Poisson distribution strategy",
-    )
+    args: AsyncProfileArgs
 
-    @model_validator(mode="before")
-    @classmethod
-    def derive_strategy_type_from_kind(cls, value: Any) -> Any:
-        """
-        Map profile kind to the scheduling strategy implementation type.
-
-        ``async`` and ``constant`` kinds both use constant-interval scheduling;
-        ``poisson`` uses Poisson-distributed scheduling.
-        """
-        if not isinstance(value, dict):
-            return value
-
-        kind = value.get("kind", "async")
-        if kind in ("async", "constant"):
-            strategy_type = "constant"
-        elif kind == "poisson":
-            strategy_type = "poisson"
+    def __init__(
+        self,
+        args: AsyncProfileArgs,
+        constraints: dict[str, Any] | None,
+    ):
+        super().__init__(args, constraints)
+        self.args = args
+        if args.kind in ("async", "constant"):
+            self._strategy_type: Literal["constant", "poisson"] = "constant"
+        elif args.kind == "poisson":
+            self._strategy_type = "poisson"
         else:
-            raise ValueError(f"Invalid profile kind: {kind}")
-
-        return {**value, "strategy_type": strategy_type}
+            raise ValueError(f"Invalid profile kind: {args.kind}")
 
     @property
     def strategy_types(self) -> list[str]:
         """
         :return: Async strategy types for each configured rate
         """
-        return [self.strategy_type] * len(self.rate)
+        return [self._strategy_type] * len(self.args.rate)
 
     def next_strategy(
         self,
@@ -132,21 +103,21 @@ class AsyncProfile(Profile):
         """
         _ = (prev_strategy, prev_benchmark)  # unused
 
-        if len(self.completed_strategies) >= len(self.rate):
+        if len(self.completed_strategies) >= len(self.args.rate):
             return None
 
-        current_rate = self.rate[len(self.completed_strategies)]
+        current_rate = self.args.rate[len(self.completed_strategies)]
 
-        if self.strategy_type == "constant":
+        if self._strategy_type == "constant":
             return AsyncConstantStrategy(
                 rate=current_rate,
-                max_concurrency=self.max_concurrency,
-                rampup_duration=self.rampup_duration,
+                max_concurrency=self.args.max_concurrency,
+                rampup_duration=self.args.rampup_duration,
             )
-        if self.strategy_type == "poisson":
+        if self._strategy_type == "poisson":
             return AsyncPoissonStrategy(
                 rate=current_rate,
-                max_concurrency=self.max_concurrency,
-                random_seed=self.random_seed,
+                max_concurrency=self.args.max_concurrency,
+                random_seed=self.args.random_seed,
             )
-        raise ValueError(f"Invalid strategy type: {self.strategy_type}")
+        raise ValueError(f"Invalid strategy type: {self._strategy_type}")
