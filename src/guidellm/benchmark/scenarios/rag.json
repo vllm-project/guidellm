@@ -12,6 +12,5 @@
             "output_tokens_min": 1,
             "output_tokens_max": 1024
         }
-   
     ]
 }
