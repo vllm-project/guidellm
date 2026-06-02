@@ -1,0 +1,46 @@
+name: PR Description
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-description-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  update-description:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Update PR description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CURRENT_BODY="$(gh pr view "$PR_NUMBER" --json body -q .body)"
+
+          NEW_BODY_FILE="$(mktemp)"
+          printf '%s' "$CURRENT_BODY" \
+            | ./scripts/format_pr.sh "origin/$PR_BASE_REF" "$PR_HEAD_SHA" \
+            > "$NEW_BODY_FILE"
+          NEW_BODY="$(cat "$NEW_BODY_FILE")"
+
+          if [ "$CURRENT_BODY" = "$NEW_BODY" ]; then
+            echo "PR body is already up to date, skipping update."
+            rm -f "$NEW_BODY_FILE"
+            exit 0
+          fi
+
+          gh pr edit "$PR_NUMBER" --body-file "$NEW_BODY_FILE"
+          rm -f "$NEW_BODY_FILE"
