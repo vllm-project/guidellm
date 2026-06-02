@@ -32,11 +32,11 @@ MARKER="<!-- begin:squash-data -->"
 BASE_REF="${1:?$(usage >&2; echo "error: missing <base-ref>")}"
 HEAD_SHA="${2:?$(usage >&2; echo "error: missing <head-sha>")}"
 
-CURRENT_BODY="$(cat)"
+CURRENT_BODY="$(cat | tr -d '\r')"
 
-if printf '%s' "$CURRENT_BODY" | grep -qF "$MARKER"; then
-    USER_CONTENT="$(printf '%s' "$CURRENT_BODY" | awk -v marker="$MARKER" '$0 == marker {found=1} !found')"
-    # Strip trailing blank lines
+MARKER_LINE="$(printf '%s\n' "$CURRENT_BODY" | grep -nF "$MARKER" | head -1 | cut -d: -f1)"
+if [ -n "$MARKER_LINE" ]; then
+    USER_CONTENT="$(printf '%s\n' "$CURRENT_BODY" | head -n "$((MARKER_LINE - 1))")"
     USER_CONTENT="$(printf '%s' "$USER_CONTENT" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')"
 else
     USER_CONTENT="$CURRENT_BODY"
