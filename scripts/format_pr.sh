@@ -34,7 +34,7 @@ HEAD_SHA="${2:?$(usage >&2; echo "error: missing <head-sha>")}"
 
 CURRENT_BODY="$(cat | tr -d '\r')"
 
-MARKER_LINE="$(printf '%s\n' "$CURRENT_BODY" | grep -nF "$MARKER" | head -1 | cut -d: -f1)"
+MARKER_LINE="$(printf '%s\n' "$CURRENT_BODY" | grep -nF "$MARKER" | head -1 | cut -d: -f1)" || true
 if [ -n "$MARKER_LINE" ]; then
     USER_CONTENT="$(printf '%s\n' "$CURRENT_BODY" | head -n "$((MARKER_LINE - 1))")"
     USER_CONTENT="$(printf '%s' "$USER_CONTENT" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')"
@@ -51,28 +51,17 @@ if [ -z "$COMMIT_SHAS" ]; then
     exit 0
 fi
 
-COMMITS_SECTION=""
+COMMITS_SECTION="$(git log --reverse --first-parent --no-merges --format=medium --no-decorate "$MERGE_BASE".."$HEAD_SHA")"
+
 ALL_TRAILERS=""
-
 while IFS= read -r sha; do
-    short_sha="${sha:0:7}"
-    message="$(git log --format="%B" -1 "$sha")"
-    # Trim trailing newline from git log output
-    message="$(printf '%s' "$message" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')"
-
-    trailers="$(printf '%s' "$message" | git interpret-trailers --parse 2>/dev/null)" || true
+    trailers="$(git log --format="%B" -1 "$sha" | git interpret-trailers --parse 2>/dev/null)" || true
     if [ -n "$trailers" ]; then
         if [ -n "$ALL_TRAILERS" ]; then
             ALL_TRAILERS="$(printf '%s\n%s' "$ALL_TRAILERS" "$trailers")"
         else
             ALL_TRAILERS="$trailers"
         fi
-    fi
-
-    if [ -n "$COMMITS_SECTION" ]; then
-        COMMITS_SECTION="$(printf '%s\n\n## %s\n\n%s' "$COMMITS_SECTION" "$short_sha" "$message")"
-    else
-        COMMITS_SECTION="$(printf '## %s\n\n%s' "$short_sha" "$message")"
     fi
 done <<< "$COMMIT_SHAS"
 
@@ -96,7 +85,7 @@ fi
 {
     printf '%s\n\n%s\n' "$USER_CONTENT" "$MARKER"
     printf '\n---\n'
-    printf '\n# Commits\n\n'
+    printf '\n# Log\n\n'
     printf '%s\n' "$COMMITS_SECTION"
     if [ -n "$UNIQUE_TRAILERS" ]; then
         printf '\n---------\n\n'
