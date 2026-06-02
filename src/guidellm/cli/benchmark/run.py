@@ -324,7 +324,7 @@ STRATEGY_PROFILE_CHOICES: list[str] = list(get_literal_vals(ProfileType | Strate
     flag_value='{"enabled": true}',
     help="Enable over-saturation detection with default settings.",
 )
-def run(**kwargs):  # noqa: C901
+def run(**kwargs):  # noqa: C901, PLR0915
     ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
