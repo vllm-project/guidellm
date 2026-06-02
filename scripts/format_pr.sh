@@ -85,7 +85,7 @@ fi
 {
     printf '%s\n\n%s\n' "$USER_CONTENT" "$MARKER"
     printf '\n---\n'
-    printf '\n# Log\n\n'
+    printf '\n# git log\n\n'
     printf '%s\n' "$COMMITS_SECTION"
     if [ -n "$UNIQUE_TRAILERS" ]; then
         printf '\n---------\n\n'
