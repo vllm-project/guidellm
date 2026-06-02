@@ -76,9 +76,21 @@ while IFS= read -r sha; do
     fi
 done <<< "$COMMIT_SHAS"
 
-UNIQUE_TRAILERS=""
+SIGNOFF_TRAILERS=""
+OTHER_TRAILERS=""
 if [ -n "$ALL_TRAILERS" ]; then
-    UNIQUE_TRAILERS="$(printf '%s\n' "$ALL_TRAILERS" | sort -u)"
+    OTHER_TRAILERS="$(printf '%s\n' "$ALL_TRAILERS" | grep -v '^Signed-off-by:' | sort -u)" || true
+    # Preserve original order for sign-offs, just deduplicate
+    SIGNOFF_TRAILERS="$(printf '%s\n' "$ALL_TRAILERS" | grep '^Signed-off-by:' | awk '!seen[$0]++')" || true
+fi
+
+UNIQUE_TRAILERS=""
+if [ -n "$OTHER_TRAILERS" ] && [ -n "$SIGNOFF_TRAILERS" ]; then
+    UNIQUE_TRAILERS="$(printf '%s\n%s' "$OTHER_TRAILERS" "$SIGNOFF_TRAILERS")"
+elif [ -n "$OTHER_TRAILERS" ]; then
+    UNIQUE_TRAILERS="$OTHER_TRAILERS"
+elif [ -n "$SIGNOFF_TRAILERS" ]; then
+    UNIQUE_TRAILERS="$SIGNOFF_TRAILERS"
 fi
 
 {
@@ -87,7 +99,7 @@ fi
     printf '\n# Commits\n\n'
     printf '%s\n' "$COMMITS_SECTION"
     if [ -n "$UNIQUE_TRAILERS" ]; then
-        printf '\n---\n\n'
+        printf '\n---------\n\n'
         printf '%s\n' "$UNIQUE_TRAILERS"
     fi
 }
