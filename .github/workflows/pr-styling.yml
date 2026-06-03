@@ -1,7 +1,9 @@
 name: PR Styling
 
 on:
-  pull_request:
+  # This has to be pull_request_target since its editing but
+  # that means the the version from main runs not the PR's
+  pull_request_target:
     types: [opened, synchronize, reopened, edited]
 
 permissions:
