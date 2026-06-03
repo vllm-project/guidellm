@@ -328,6 +328,46 @@ class TestGenerationResponse:
         stats = response.compile_stats(request, info)
         assert stats.tool_calls is None
 
+    @pytest.mark.smoke
+    def test_compile_stats_persists_reasoning_text(self):
+        """
+        compile_stats carries reasoning_text to reasoning_output on stats.
+
+        ## WRITTEN BY AI ##
+        """
+        response = GenerationResponse(
+            request_id="test-reason",
+            request_args=None,
+            text="Answer is 42",
+            reasoning_text="Let me think step by step.",
+        )
+        request = GenerationRequest(request_id="test-reason")
+        info = RequestInfo(request_id="test-reason", status="completed")
+
+        stats = response.compile_stats(request, info)
+        assert stats.output == "Answer is 42"
+        assert stats.reasoning_output == "Let me think step by step."
+
+    @pytest.mark.smoke
+    def test_compile_stats_reasoning_output_none_when_absent(self):
+        """
+        compile_stats leaves reasoning_output as None when no reasoning
+        was emitted.
+
+        ## WRITTEN BY AI ##
+        """
+        response = GenerationResponse(
+            request_id="test-no-reason",
+            request_args=None,
+            text="Plain answer",
+        )
+        request = GenerationRequest(request_id="test-no-reason")
+        info = RequestInfo(request_id="test-no-reason", status="completed")
+
+        stats = response.compile_stats(request, info)
+        assert stats.output == "Plain answer"
+        assert stats.reasoning_output is None
+
     @pytest.mark.sanity
     def test_compile_stats_mismatched_request_id(self):
         """Test compile_stats with mismatched request IDs."""

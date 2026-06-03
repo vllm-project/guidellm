@@ -412,6 +412,53 @@ guidellm benchmark run \
 > [!WARNING]\
 > In the current CLI design, setting `--data-preprocessors` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
 
+## Reasoning in History
+
+Reasoning models emit chain-of-thought tokens before their final answer. By default, these are discarded from conversation history on follow-up turns. Enable `multiturn_reasoning` via `--backend-kwargs` to include them:
+
+- `false` (default) — reasoning not included in history
+- `true` — wraps in `<think>...</think>` tags (equivalent to `"<think>{reasoning}</think>"`)
+- A format string containing `{reasoning}` — custom wrapping
+
+### Think Tags (most models)
+
+```bash
+--backend-kwargs '{"multiturn_reasoning": true}'
+```
+
+Results in the following being sent for the turn in the conversation history:
+
+```json
+{"role": "assistant", "content": "<think>step-by-step reasoning...</think>Final answer."}
+```
+
+### Granite Format
+
+```bash
+--backend-kwargs '{"multiturn_reasoning": "Here is my thought process:{reasoning}Here is my response:"}'
+```
+
+### Raw (no delimiters)
+
+```bash
+--backend-kwargs '{"multiturn_reasoning": "{reasoning}"}'
+```
+
+### Common Model Pairings
+
+| Model Family                                                       | Recommended Value                                              |
+| ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| DeepSeek R1, QwQ, Qwen3, Gemma 4, GLM-4.5, Holo2, Cohere Command A | `true`                                                         |
+| IBM Granite 3.2                                                    | `"Here is my thought process:{reasoning}Here is my response:"` |
+| OpenAI o-series (o1, o3)                                           | `false` (reasoning not replayable via API)                     |
+| Custom / no delimiters                                             | `"{reasoning}"`                                                |
+
+### Other notes regarding reasoning:
+
+Reasoning is only recognized if "reasoning" chunks are sent to the client. This is typically only done if a reasoning parser is included. Otherwise, GuideLLM will interpret them as non-reasoning tokens. Regarding KVCache, reasoning parsers reformat the reasoning, which has a side effect of making it so that despite sending back reasoning tokens, kvcache likely won't match exactly, causing a partial cache miss. Settings to evict reasoning from vLLM's cache are in review as of the time of this writing.
+
+It is recommended that you research the design of the model you're using and the model server to ensure reasoning history is set up correctly.
+
 ## Limitations and Considerations
 
 ### Supported Request Formats

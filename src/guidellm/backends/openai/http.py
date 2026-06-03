@@ -147,6 +147,27 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "cancel remaining turns)."
         ),
     )
+    multiturn_reasoning: bool | str = Field(
+        default=False,
+        description=(
+            "Include reasoning/chain-of-thought text in multi-turn "
+            "conversation history. False disables (default). True wraps "
+            "reasoning in <think>...</think> tags (equivalent to the string "
+            "'<think>{reasoning}</think>'). A string value is used as a "
+            "format template and must contain '{reasoning}'."
+        ),
+    )
+
+    @field_validator("multiturn_reasoning", mode="after")
+    @classmethod
+    def validate_multiturn_reasoning(cls, value: bool | str) -> bool | str:
+        """Reject non-empty strings that don't contain the {reasoning} placeholder."""
+        if isinstance(value, str) and "{reasoning}" not in value:
+            raise ValueError(
+                "multiturn_reasoning string must contain '{reasoning}' "
+                f"placeholder, got: {value!r}"
+            )
+        return value
 
     @field_validator("target", mode="after")
     @classmethod
@@ -398,6 +419,7 @@ class OpenAIHTTPBackend(Backend):
             extras=self._args.extras,
             max_tokens=self._args.max_tokens,
             server_history=self._args.server_history,
+            multiturn_reasoning=self._args.multiturn_reasoning,
         )
 
         request_url = f"{self._args.target}/{request_path}"
@@ -508,6 +530,15 @@ class OpenAIHTTPBackend(Backend):
                         request_info.timings.first_token_iteration = iter_time
                         request_info.timings.token_iterations = 0
                         yield None, request_info
+
+                    # TTFOT: record the first content (non-reasoning) token.
+                    # For non-reasoning models this fires on the same iteration
+                    # as first_token_iteration, making TTFOT == TTFT.
+                    if (
+                        request_info.timings.first_output_token_iteration is None
+                        and request_handler.last_iteration_had_content
+                    ):
+                        request_info.timings.first_output_token_iteration = iter_time
 
                     request_info.timings.last_token_iteration = iter_time
                     request_info.timings.token_iterations += iterations
