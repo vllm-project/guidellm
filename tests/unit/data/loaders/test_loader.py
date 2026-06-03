@@ -6,16 +6,16 @@ Unit tests for guidellm.data.loaders.loader module.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
+from datasets import Dataset
 
 import guidellm.data.loaders  # noqa: F401 — ensures TorchDataLoader is registered
 
 # Import to ensure deserializer registry is populated
-from guidellm.data.deserializers.huggingface import HuggingFaceDataArgs
-from guidellm.data.finalizers.generative import GenerativeRequestFinalizerConfig
 from guidellm.data.loaders.loader import DataLoaderRegistry
 from guidellm.data.loaders.torch import TorchDataLoaderArgs
-from guidellm.data.schemas.entrypoints import DataEntrypointArgs
 
 
 class TestDataLoaderRegistry:
@@ -39,17 +39,23 @@ class TestDataLoaderRegistry:
 
         ### WRITTEN BY AI ###
         """
-        config = DataEntrypointArgs(
-            loader=TorchDataLoaderArgs(),
-            data=[HuggingFaceDataArgs(source="x")],
-            preprocessors=[],
-            finalizer=GenerativeRequestFinalizerConfig(),
-        )
+        config = TorchDataLoaderArgs()
         # Monkey-patch kind to something not registered
-        object.__setattr__(config.loader, "kind", "nonexistent_loader_kind")
+        object.__setattr__(config, "kind", "nonexistent_loader_kind")
+
+        # Create minimal mocks for required parameters
+        mock_dataset = MagicMock(spec=Dataset)
+        mock_preprocessor = MagicMock()
+        mock_finalizer = MagicMock()
 
         with pytest.raises(ValueError, match="not registered"):
-            DataLoaderRegistry.create(config)
+            DataLoaderRegistry.create(
+                config=config,
+                datasets=[mock_dataset],
+                preprocessors=[mock_preprocessor],
+                finalizer=mock_finalizer,
+                random_seed=42,
+            )
 
     @pytest.mark.smoke
     def test_registry_returns_class(self):

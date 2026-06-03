@@ -20,10 +20,10 @@ from guidellm.data.loaders.torch import TorchDataLoaderArgs
 from guidellm.data.preprocessors.mappers import GenerativeColumnMapperArgs
 from guidellm.data.schemas.entrypoints import (
     DataArgs,
-    DataEntrypointArgs,
     DataFinalizerArgs,
     DataLoaderArgs,
     DataPreprocessorArgs,
+    DataTokenizerArgs,
 )
 
 
@@ -54,7 +54,7 @@ class TestDataLoaderArgsRegistry:
         assert args.kind == "pytorch"
         assert args.samples == -1
         assert args.num_workers == 1
-        assert args.sampler is None
+        assert args.shuffle is False
 
     @pytest.mark.sanity
     def test_torch_loader_args_kind_field(self):
@@ -182,75 +182,65 @@ class TestDataFinalizerArgsRegistry:
         assert DataFinalizerArgs.schema_discriminator == "kind"
 
 
-class TestDataEntrypointArgs:
-    """Tests for DataEntrypointArgs validation.
+class TestDataTokenizerArgsRegistry:
+    """Tests for DataTokenizerArgs base class and registry.
 
     ### WRITTEN BY AI ###
     """
 
-    @pytest.fixture
-    def valid_entrypoint_args(self):
-        """Minimal valid DataEntrypointArgs.
+    @pytest.mark.smoke
+    def test_huggingface_auto_registered(self):
+        """HuggingFaceTokenizerArgs is registered under 'huggingface_auto'.
 
         ### WRITTEN BY AI ###
         """
-        return DataEntrypointArgs(
-            loader=TorchDataLoaderArgs(),
-            data=[HuggingFaceDataArgs(source="my_dataset")],
-            preprocessors=[],
-            finalizer=GenerativeRequestFinalizerConfig(),
-        )
+        from guidellm.data.tokenizers import TokenizerRegistry
+
+        obj = TokenizerRegistry.get_registered_object("huggingface_auto")
+        assert obj is not None
 
     @pytest.mark.smoke
-    def test_valid_construction(self, valid_entrypoint_args):
-        """DataEntrypointArgs constructs with valid fields.
+    def test_hf_auto_alias_registered(self):
+        """HuggingFaceTokenizerArgs is registered under 'hf_auto' alias.
 
         ### WRITTEN BY AI ###
         """
-        args = valid_entrypoint_args
-        assert args.loader.kind == "pytorch"
-        assert len(args.data) == 1
-        assert args.finalizer.kind == "generative"
+        from guidellm.data.tokenizers import TokenizerRegistry
+
+        obj = TokenizerRegistry.get_registered_object("hf_auto")
+        assert obj is not None
+
+    @pytest.mark.smoke
+    def test_tokenizer_args_defaults(self):
+        """HuggingFaceTokenizerArgs has correct defaults.
+
+        ### WRITTEN BY AI ###
+        """
+        from guidellm.data.tokenizers import HuggingFaceTokenizerArgs
+
+        args = HuggingFaceTokenizerArgs(model="gpt2")
+        assert args.kind == "huggingface_auto"
+        assert args.model == "gpt2"
+        assert args.load_kwargs == {}
 
     @pytest.mark.sanity
-    def test_empty_data_list_rejected(self):
-        """DataEntrypointArgs rejects empty data list (min_length=1).
+    def test_polymorphic_dispatch(self):
+        """DataTokenizerArgs.model_validate dispatches correctly.
 
         ### WRITTEN BY AI ###
         """
-        with pytest.raises(ValidationError):
-            DataEntrypointArgs(
-                loader=TorchDataLoaderArgs(),
-                data=[],
-                preprocessors=[],
-                finalizer=GenerativeRequestFinalizerConfig(),
-            )
-
-    @pytest.mark.sanity
-    def test_multiple_data_sources(self):
-        """DataEntrypointArgs accepts multiple data sources.
-
-        ### WRITTEN BY AI ###
-        """
-        args = DataEntrypointArgs(
-            loader=TorchDataLoaderArgs(),
-            data=[
-                HuggingFaceDataArgs(source="dataset_a"),
-                HuggingFaceDataArgs(source="dataset_b"),
-            ],
-            preprocessors=[GenerativeColumnMapperArgs()],
-            finalizer=GenerativeRequestFinalizerConfig(),
+        result = DataTokenizerArgs.model_validate(
+            {"kind": "huggingface_auto", "model": "gpt2"}
         )
-        assert len(args.data) == 2
-        assert len(args.preprocessors) == 1
+        from guidellm.data.tokenizers import HuggingFaceTokenizerArgs
 
-    @pytest.mark.regression
-    def test_round_trip_serialization(self, valid_entrypoint_args):
-        """DataEntrypointArgs serializes and deserializes correctly.
+        assert isinstance(result, HuggingFaceTokenizerArgs)
+        assert result.model == "gpt2"
+
+    @pytest.mark.sanity
+    def test_data_tokenizer_args_schema_discriminator(self):
+        """DataTokenizerArgs schema_discriminator is 'kind'.
 
         ### WRITTEN BY AI ###
         """
-        dumped = valid_entrypoint_args.model_dump()
-        assert dumped["loader"]["kind"] == "pytorch"
-        assert dumped["data"][0]["kind"] == "huggingface"
-        assert dumped["finalizer"]["kind"] == "generative"
+        assert DataTokenizerArgs.schema_discriminator == "kind"

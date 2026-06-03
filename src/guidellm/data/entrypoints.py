@@ -1,11 +1,78 @@
 from pathlib import Path
+from random import Random
 from typing import Any
 
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data import builders
 from guidellm.data.builders import ShortPromptStrategy
-from guidellm.data.schemas import DataArgs
+from guidellm.data.deserializers import DatasetDeserializerFactory
+from guidellm.data.finalizers import DatasetFinalizer, FinalizerRegistry
+from guidellm.data.loaders import DataLoader, DataLoaderRegistry
+from guidellm.data.preprocessors import (
+    DataDependentPreprocessor,
+    DatasetPreprocessor,
+    PreprocessorRegistry,
+)
+from guidellm.data.schemas import (
+    DataArgs,
+    DataFinalizerArgs,
+    DataLoaderArgs,
+    DataPreprocessorArgs,
+    DatasetType,
+    DataTokenizerArgs,
+)
+from guidellm.data.tokenizers import TokenizerRegistry
+
+
+def create_data_loader(
+    loader_config: DataLoaderArgs,
+    data_config: list[DataArgs],
+    tokenizer_config: DataTokenizerArgs,
+    column_mapper_config: DataPreprocessorArgs,
+    preprocessors_config: list[DataPreprocessorArgs],
+    finalizer_config: DataFinalizerArgs,
+    random_seed: int = 42,
+) -> DataLoader:
+    """
+    Factory function to create a DataLoader instance based on provided configurations.
+
+    :param loader_config: Configuration for the data loader.
+    :param data_config: List of configurations for dataset deserialization.
+    :param tokenizer_config: Configuration for the tokenizer factory.
+    :param column_mapper_config: Configuration for the column mapping preprocessor.
+    :param preprocessors_config: List of configurations for additional preprocessors.
+    :param finalizer_config: Configuration for the dataset finalizer.
+    :param random_seed: Seed for random operations to ensure reproducibility.
+    :param console: Optional Console instance for logging and progress display.
+    :return: An instance of DataLoader configured according to the provided arguments.
+    """
+    rng = Random(random_seed)
+
+    tokenizer_factory = TokenizerRegistry.create(tokenizer_config)
+
+    datasets: list[DatasetType] = [
+        DatasetDeserializerFactory.deserialize(
+            config=args,
+            processor_factory=tokenizer_factory,
+            random_seed=rng.getrandbits(32),
+        )
+        for args in data_config
+    ]
+
+    preproc_configs = [column_mapper_config] + preprocessors_config
+    preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor] = [
+        PreprocessorRegistry.create(pre) for pre in preproc_configs
+    ]
+    finalizer: DatasetFinalizer = FinalizerRegistry.create(finalizer_config)
+
+    return DataLoaderRegistry.create(
+        config=loader_config,
+        datasets=datasets,
+        preprocessors=preprocessors,
+        finalizer=finalizer,
+        random_seed=rng.getrandbits(32),
+    )
 
 
 def process_dataset(

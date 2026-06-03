@@ -1,10 +1,9 @@
 from .builders import ShortPromptStrategy
-from .collators import GenerativeRequestCollator
 from .deserializers import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from .entrypoints import process_dataset
+from .entrypoints import create_data_loader, process_dataset
 from .finalizers import DatasetFinalizer, FinalizerRegistry
 from .loaders import DataLoader, DataLoaderRegistry, TorchDataLoaderArgs
 from .preprocessors import (
@@ -12,27 +11,26 @@ from .preprocessors import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
-from .processor import ProcessorFactory
 from .schemas import (
     DataArgs,
-    DataEntrypointArgs,
     DataFinalizerArgs,
     DataLoaderArgs,
     DataNotSupportedError,
     DataPreprocessorArgs,
+    DataTokenizerArgs,
     GenerativeDatasetColumnType,
 )
 
 __all__ = [
     "DataArgs",
     "DataDependentPreprocessor",
-    "DataEntrypointArgs",
     "DataFinalizerArgs",
     "DataLoader",
     "DataLoaderArgs",
     "DataLoaderRegistry",
     "DataNotSupportedError",
     "DataPreprocessorArgs",
+    "DataTokenizerArgs",
     "DatasetDeserializer",
     "DatasetDeserializerFactory",
     "DatasetFinalizer",
@@ -44,5 +42,6 @@ __all__ = [
     "ProcessorFactory",
     "ShortPromptStrategy",
     "TorchDataLoaderArgs",
+    "create_data_loader",
     "process_dataset",
 ]

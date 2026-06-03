@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
-from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.schemas import DataArgs, DataNotSupportedError
+from guidellm.data.schemas import DataArgs, DataNotSupportedError, DatasetType
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
@@ -22,7 +21,7 @@ class DatasetDeserializer(Protocol):
         config,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset | IterableDataset | DatasetDict | IterableDatasetDict: ...
+    ) -> DatasetType: ...
 
 
 class DatasetDeserializerFactory(RegistryMixin["type[DatasetDeserializer]"]):
@@ -32,7 +31,7 @@ class DatasetDeserializerFactory(RegistryMixin["type[DatasetDeserializer]"]):
         config: DataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset | IterableDataset:
+    ) -> DatasetType:
         deserializer_from_type = cls.get_registered_object(config.kind)
         if deserializer_from_type is None:
             raise DataNotSupportedError(
@@ -40,7 +39,7 @@ class DatasetDeserializerFactory(RegistryMixin["type[DatasetDeserializer]"]):
             )
 
         deserializer_fn = deserializer_from_type()
-        dataset: Dataset | IterableDataset = deserializer_fn(
+        dataset: DatasetType = deserializer_fn(
             config=config,
             processor_factory=processor_factory,
             random_seed=random_seed,

@@ -28,6 +28,7 @@ except ImportError:
 # Minimal required data pipeline fields for BenchmarkGenerativeTextArgs
 _PIPELINE_DEFAULTS = {
     "data": [{"kind": "synthetic_text", "prompt_tokens": 256, "output_tokens": 128}],
+    "tokenizer": {"kind": "huggingface_auto", "model": "gpt2"},
     "data_column_mapper": {"kind": "generative_column_mapper"},
     "data_preprocessors": [],
     "data_finalizer": {"kind": "generative"},

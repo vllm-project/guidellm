@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar
 
 from pydantic import ConfigDict, Field
 
-from guidellm.schemas import PydanticClassRegistryMixin, StandardBaseModel
+from guidellm.schemas import PydanticClassRegistryMixin
 
 __all__ = [
     "DataArgs",
-    "DataEntrypointArgs",
     "DataFinalizerArgs",
     "DataLoaderArgs",
     "DataPreprocessorArgs",
+    "DataTokenizerArgs",
 ]
 
 
@@ -194,29 +194,50 @@ class DataFinalizerArgs(
     )
 
 
-DataLoaderArgsT = TypeVar("DataLoaderArgsT", bound=DataLoaderArgs)
-
-
-class DataEntrypointArgs(StandardBaseModel, Generic[DataLoaderArgsT]):
+class DataTokenizerArgs(
+    PydanticClassRegistryMixin["DataTokenizerArgs"],
+    ABC,
+):
     """
-    Arguments for data entry points.
+    Base class for data tokenizer argument models.
 
-    This class encapsulates the arguments required for data entry points, including
-    the data loader configuration and the data loading arguments. It is designed to
-    be flexible and extensible, allowing for various data loading configurations to be
-    specified.
+    This class serves as a base for defining arguments related to data tokenization
+    configurations. It inherits from PydanticClassRegistryMixin to enable automatic
+    registration of subclasses, allowing for flexible and extensible data tokenization
+    configurations.
+
+    :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    loader: DataLoaderArgsT = Field(
-        description="Configuration for the data loader.",
+    model_config = ConfigDict(
+        extra="forbid",
+        serialize_by_alias=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
     )
-    data: list[DataArgs] = Field(
-        min_length=1,
-        description="List of data loading argument configurations.",
+
+    schema_discriminator: ClassVar[str] = "kind"
+
+    @classmethod
+    def __pydantic_schema_base_type__(cls) -> type[DataTokenizerArgs]:
+        """
+        Return base type for polymorphic validation hierarchy.
+
+        :return: Base DataTokenizerArgs class for schema validation
+        """
+        if cls.__name__ == "DataTokenizerArgs":
+            return cls
+
+        return DataTokenizerArgs
+
+    kind: str = Field(
+        description="Type identifier for the data tokenizer arguments.",
     )
-    preprocessors: list[DataPreprocessorArgs] = Field(
-        description="List of data preprocessor argument configurations.",
-    )
-    finalizer: DataFinalizerArgs = Field(
-        description="Configuration for the data finalizer.",
+    model: str | None = Field(
+        default=None,
+        description=(
+            "Optional model name or path for the tokenizer. This field can be used by "
+            "tokenizer implementations that require a model specification, such as "
+            "HuggingFace tokenizers."
+        ),
     )
