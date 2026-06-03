@@ -7,7 +7,7 @@ For all of the output formats, `--output-extras` can be used to include addition
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --profile sweep \
+  --profile kind=sweep \
   --max-seconds 30 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-extras '{"tag": "my_tag", "metadata": {"key": "value"}}'
@@ -31,7 +31,7 @@ To disable the progress outputs to the console, use the `disable-progress` flag 
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --profile sweep \
+  --profile kind=sweep \
   --max-seconds 30 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --disable-progress
@@ -42,7 +42,7 @@ To disable console output, use the `--disable-console-outputs` flag when running
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --profile sweep \
+  --profile kind=sweep \
   --max-seconds 30 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --disable-console-outputs
@@ -94,7 +94,7 @@ The `--outputs` parameter accepts output formats in the following ways:
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --profile sweep \
+  --profile kind=sweep \
   --max-seconds 30 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-dir "results/" \
@@ -107,7 +107,7 @@ guidellm benchmark \
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --profile sweep \
+  --profile kind=sweep \
   --max-seconds 30 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-dir "results/" \
@@ -137,7 +137,7 @@ podman run --rm -it --network=host \
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --profile sweep \
+  --profile kind=sweep \
   --max-seconds 30 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --output-dir "results/" \

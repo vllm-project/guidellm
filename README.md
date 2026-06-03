@@ -115,7 +115,7 @@ Run a sweep that identifies the maximum performance and maximum rates for the mo
 ```bash
 guidellm benchmark \
   --target "http://localhost:8000" \
-  --profile sweep \
+  --profile kind=sweep \
   --max-seconds 30 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"
 ```
@@ -165,7 +165,7 @@ Simmulating different applications requires different traffic shapes. This examp
 ```bash
 guidellm benchmark \
   --target http://localhost:8000 \
-  --profile constant \
+  --profile kind=constant \
   --rate 10 \
   --max-seconds 20 \
   --data "kind=synthetic_text,prompt_tokens=128,output_tokens=256"
@@ -173,7 +173,7 @@ guidellm benchmark \
 
 **Key parameters:**
 
-- `--profile`: Defines the traffic pattern - options include `synchronous` (sequential requests), `concurrent` (parallel users), `throughput` (maximum capacity), `constant` (fixed requests/sec), `poisson` (randomized requests/sec), or `sweep` (automatic rate exploration)
+- `--profile`: Defines the traffic pattern - GuideLLM supports various scheduling profiles including `synchronous` (sequential requests), `concurrent` (parallel users), `throughput` (maximum capacity), `constant` (fixed requests/sec), `poisson` (randomized requests/sec), or `sweep` (automatic rate exploration)
 - `--rate`: The numeric rate value whose meaning depends on profile - for `sweep` it's the number of benchmarks, for `concurrent` it's simultaneous requests, for `constant`/`poisson` it's requests per second
 - `--max-seconds`: Maximum duration in seconds for each benchmark run (can also use `--max-requests` to limit by request count instead)
 
@@ -229,7 +229,7 @@ Warm-up, cooldown, and maximum limits help ensure stable, repeatable measurement
 ```bash
 guidellm benchmark \
   --target http://localhost:8000 \
-  --profile concurrent \
+  --profile kind=concurrent \
   --rate 16 \
   --warmup 0.1 \
   --cooldown 0.1 \

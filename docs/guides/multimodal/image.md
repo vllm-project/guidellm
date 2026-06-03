@@ -146,7 +146,7 @@ guidellm benchmark \
   --target "http://192.168.4.12:8000" \
   --model "Qwen/Qwen3-VL-2B-Instruct" \
   --request-type chat_completions \
-  --profile synchronous \
+  --profile kind=synchronous \
   --max-requests 20 \
   --data ‘{"kind": "huggingface", "source": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}’ \
   --data-column-mapper ‘{"column_mappings": {"image_column": "image", "text_column": "question"}}’
@@ -202,7 +202,7 @@ guidellm benchmark \
   --target "http://localhost:8000" \
   --model "Qwen/Qwen3-VL-2B-Instruct" \
   --request-type chat_completions \
-  --profile synchronous \
+  --profile kind=synchronous \
   --max-requests 20 \
   --data '{"kind": "huggingface", "source": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}' \
   --data-column-mapper '{"column_mappings": {"image_column": "image"}}'
