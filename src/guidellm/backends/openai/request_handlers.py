@@ -176,6 +176,24 @@ def _apply_tool_call_metrics(
         output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
 
+_DEFAULT_REASONING_TEMPLATE = "<think>{reasoning}</think>"
+
+
+def _wrap_reasoning(reasoning_text: str | None, mode: bool | str) -> str | None:
+    """Apply the configured reasoning format to reasoning text.
+
+    :param reasoning_text: Raw reasoning text from the model response.
+    :param mode: Wrapping mode — False disables, True uses the default
+        ``<think>...</think>`` template, a string is used as a format
+        template containing ``{reasoning}``.
+    :return: Formatted reasoning string, or None when disabled or no text.
+    """
+    if not mode or not reasoning_text:
+        return None
+    template = _DEFAULT_REASONING_TEMPLATE if mode is True else mode
+    return template.format(reasoning=reasoning_text)
+
+
 def _compile_streaming_response(
     request: GenerationRequest,
     arguments: GenerationRequestArguments,
@@ -769,13 +787,16 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # For tool call responses, include the assistant's tool_calls and
         # synthetic tool result messages so the model sees the full
         # multi-turn exchange.  For plain text responses, just add content.
-        # When multiturn_reasoning is enabled, prepend reasoning
+        # When multiturn_reasoning is enabled, prepend wrapped reasoning
         # text to the assistant content so the model sees its own CoT.
         multiturn_reasoning = kwargs.get("multiturn_reasoning", False)
+        wrapped_reasoning = _wrap_reasoning(
+            response.reasoning_text if response else None, multiturn_reasoning
+        )
         if response and response.tool_calls:
             assistant_content = response.text
-            if multiturn_reasoning and response.reasoning_text:
-                assistant_content = response.reasoning_text + (assistant_content or "")
+            if wrapped_reasoning:
+                assistant_content = wrapped_reasoning + (assistant_content or "")
             arguments.body["messages"].append(
                 {
                     "role": "assistant",
@@ -789,12 +810,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     response.tool_calls, tool_response_columns
                 )
             )
-        elif response and (
-            response.text or (multiturn_reasoning and response.reasoning_text)
-        ):
+        elif response and (response.text or wrapped_reasoning):
             content = response.text or ""
-            if multiturn_reasoning and response.reasoning_text:
-                content = response.reasoning_text + content
+            if wrapped_reasoning:
+                content = wrapped_reasoning + content
             arguments.body["messages"].append({"role": "assistant", "content": content})
 
         # Inject tool definitions and apply tool-call-specific overrides.
@@ -1153,7 +1172,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         response: GenerationResponse | None,
         prev_requests: list[GenerationRequestArguments],
         *,
-        multiturn_reasoning: bool = False,
+        multiturn_reasoning: bool | str = False,
     ) -> list[dict[str, Any]]:
         """Build the ``input`` array for the Responses API.
 
@@ -1161,8 +1180,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         dicts (with nested content parts like ``input_text``, ``input_image``)
         instead of chat completions' ``messages`` array.
 
-        :param multiturn_reasoning: When True, prepend reasoning text to
-            assistant content in the conversation history.
+        :param multiturn_reasoning: When truthy, prepend wrapped reasoning text
+            to assistant content in the conversation history.
         """
         input_items: list[dict[str, Any]] = []
 
@@ -1183,6 +1202,9 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         # Replay the prior assistant response. For tool call responses,
         # include the function_call items and synthetic function_call_output
         # items so the model sees the full multi-turn exchange.
+        wrapped_reasoning = _wrap_reasoning(
+            response.reasoning_text if response else None, multiturn_reasoning
+        )
         if response and response.tool_calls:
             for tc in response.tool_calls:
                 input_items.append(self._tool_call_to_responses_item(tc))
@@ -1205,12 +1227,10 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                         "output": output_content,
                     }
                 )
-        elif response and (
-            response.text or (multiturn_reasoning and response.reasoning_text)
-        ):
+        elif response and (response.text or wrapped_reasoning):
             content = response.text or ""
-            if multiturn_reasoning and response.reasoning_text:
-                content = response.reasoning_text + content
+            if wrapped_reasoning:
+                content = wrapped_reasoning + content
             input_items.append({"role": "assistant", "content": content})
 
         return input_items

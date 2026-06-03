@@ -147,13 +147,27 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "cancel remaining turns)."
         ),
     )
-    multiturn_reasoning: bool = Field(
+    multiturn_reasoning: bool | str = Field(
         default=False,
         description=(
             "Include reasoning/chain-of-thought text in multi-turn "
-            "conversation history. Disabled by default."
+            "conversation history. False disables (default). True wraps "
+            "reasoning in <think>...</think> tags (equivalent to the string "
+            "'<think>{reasoning}</think>'). A string value is used as a "
+            "format template and must contain '{reasoning}'."
         ),
     )
+
+    @field_validator("multiturn_reasoning", mode="after")
+    @classmethod
+    def validate_multiturn_reasoning(cls, value: bool | str) -> bool | str:
+        """Reject non-empty strings that don't contain the {reasoning} placeholder."""
+        if isinstance(value, str) and "{reasoning}" not in value:
+            raise ValueError(
+                "multiturn_reasoning string must contain '{reasoning}' "
+                f"placeholder, got: {value!r}"
+            )
+        return value
 
     @field_validator("target", mode="after")
     @classmethod

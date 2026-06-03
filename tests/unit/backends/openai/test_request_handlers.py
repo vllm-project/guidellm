@@ -1127,7 +1127,7 @@ class TestChatCompletionsRequestHandler:
     def test_format_includes_reasoning_in_history_when_enabled(self, valid_instances):
         """
         When multiturn_reasoning=True, reasoning_text should
-        be prepended to the assistant message content.
+        be wrapped in <think> tags and prepended to the assistant message content.
 
         ## WRITTEN BY AI ##
         """
@@ -1156,7 +1156,7 @@ class TestChatCompletionsRequestHandler:
             m for m in result.body["messages"] if m.get("role") == "assistant"
         ]
         assert len(assistant_msgs) == 1
-        assert assistant_msgs[0]["content"] == "Let me add 2 and 2.4"
+        assert assistant_msgs[0]["content"] == "<think>Let me add 2 and 2.</think>4"
 
     @pytest.mark.sanity
     def test_format_includes_reasoning_only_response_in_history(self, valid_instances):
@@ -1192,7 +1192,10 @@ class TestChatCompletionsRequestHandler:
             m for m in result.body["messages"] if m.get("role") == "assistant"
         ]
         assert len(assistant_msgs) == 1
-        assert assistant_msgs[0]["content"] == "Let me think about this carefully."
+        assert (
+            assistant_msgs[0]["content"]
+            == "<think>Let me think about this carefully.</think>"
+        )
 
     @pytest.mark.sanity
     def test_format_drops_reasoning_only_response_from_history_by_default(
@@ -1229,6 +1232,78 @@ class TestChatCompletionsRequestHandler:
             m for m in result.body["messages"] if m.get("role") == "assistant"
         ]
         assert len(assistant_msgs) == 0
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_with_custom_template(self, valid_instances):
+        """
+        When multiturn_reasoning is a custom format string, reasoning_text
+        should be wrapped using that template.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="4",
+            reasoning_text="Let me add 2 and 2.",
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+        template = "Here is my thought process:{reasoning}Here is my response:"
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            multiturn_reasoning=template,
+        )
+
+        assistant_msgs = [
+            m for m in result.body["messages"] if m.get("role") == "assistant"
+        ]
+        assert len(assistant_msgs) == 1
+        expected = "Here is my thought process:Let me add 2 and 2.Here is my response:4"
+        assert assistant_msgs[0]["content"] == expected
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_raw_template(self, valid_instances):
+        """
+        When multiturn_reasoning='{reasoning}', reasoning_text should be
+        prepended with no extra delimiters (raw mode).
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["What is 2+2?"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="4",
+            reasoning_text="Let me add 2 and 2.",
+        )
+
+        data = GenerationRequest(
+            columns={"text_column": ["What is 3+3?"]},
+        )
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            multiturn_reasoning="{reasoning}",
+        )
+
+        assistant_msgs = [
+            m for m in result.body["messages"] if m.get("role") == "assistant"
+        ]
+        assert len(assistant_msgs) == 1
+        assert assistant_msgs[0]["content"] == "Let me add 2 and 2.4"
 
     @pytest.mark.sanity
     def test_last_iteration_had_content_reasoning_then_content(
@@ -3070,7 +3145,7 @@ class TestResponsesRequestHandler:
     def test_format_includes_reasoning_in_history_when_enabled(self, valid_instances):
         """
         When multiturn_reasoning=True, reasoning_text should be
-        prepended to the assistant input item content.
+        wrapped in <think> tags and prepended to the assistant input item content.
 
         ## WRITTEN BY AI ##
         """
@@ -3096,7 +3171,9 @@ class TestResponsesRequestHandler:
             item for item in result.body["input"] if item.get("role") == "assistant"
         ]
         assert len(assistant_items) == 1
-        assert assistant_items[0]["content"] == "Think about greeting.World"
+        assert (
+            assistant_items[0]["content"] == "<think>Think about greeting.</think>World"
+        )
 
     @pytest.mark.sanity
     def test_format_includes_reasoning_only_response_in_history(self, valid_instances):
@@ -3129,7 +3206,7 @@ class TestResponsesRequestHandler:
             item for item in result.body["input"] if item.get("role") == "assistant"
         ]
         assert len(assistant_items) == 1
-        assert assistant_items[0]["content"] == "Think about greeting."
+        assert assistant_items[0]["content"] == "<think>Think about greeting.</think>"
 
     @pytest.mark.sanity
     def test_format_drops_reasoning_only_response_from_history_by_default(
@@ -3163,6 +3240,74 @@ class TestResponsesRequestHandler:
             item for item in result.body["input"] if item.get("role") == "assistant"
         ]
         assert len(assistant_items) == 0
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_with_custom_template(self, valid_instances):
+        """
+        When multiturn_reasoning is a custom format string, reasoning_text
+        should be wrapped using that template in the Responses API input.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="World",
+            reasoning_text="Think about greeting.",
+        )
+        data = GenerationRequest(columns={"text_column": ["Follow up"]})
+        template = "Here is my thought process:{reasoning}Here is my response:"
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            multiturn_reasoning=template,
+        )
+
+        assistant_items = [
+            item for item in result.body["input"] if item.get("role") == "assistant"
+        ]
+        assert len(assistant_items) == 1
+        expected = (
+            "Here is my thought process:Think about greeting.Here is my response:World"
+        )
+        assert assistant_items[0]["content"] == expected
+
+    @pytest.mark.sanity
+    def test_format_includes_reasoning_raw_template(self, valid_instances):
+        """
+        When multiturn_reasoning='{reasoning}', reasoning_text should be
+        prepended with no extra delimiters (raw mode) in the Responses API input.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        prev_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="World",
+            reasoning_text="Think about greeting.",
+        )
+        data = GenerationRequest(columns={"text_column": ["Follow up"]})
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+            multiturn_reasoning="{reasoning}",
+        )
+
+        assistant_items = [
+            item for item in result.body["input"] if item.get("role") == "assistant"
+        ]
+        assert len(assistant_items) == 1
+        assert assistant_items[0]["content"] == "Think about greeting.World"
 
     @pytest.mark.sanity
     def test_format_with_history(self, valid_instances):
@@ -4585,6 +4730,7 @@ class TestChatCompletionsToolResponseColumn:
             )
         ]
         prior_response.text = None
+        prior_response.reasoning_text = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
@@ -4631,6 +4777,7 @@ class TestChatCompletionsToolResponseColumn:
             )
         ]
         prior_response.text = None
+        prior_response.reasoning_text = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
@@ -4677,6 +4824,7 @@ class TestChatCompletionsToolResponseColumn:
             )
         ]
         prior_response.text = None
+        prior_response.reasoning_text = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
