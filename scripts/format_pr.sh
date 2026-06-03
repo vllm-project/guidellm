@@ -5,7 +5,7 @@ usage() {
     cat <<EOF
 Usage: $0 <base-ref> <head-sha>
 
-Format a PR description by appending a commits summary section.
+Format a PR description by appending a summary of commits.
 
 The current PR body is read from stdin. The output (written to stdout)
 preserves everything above the marker comment and replaces everything

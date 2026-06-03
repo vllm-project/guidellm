@@ -38,6 +38,6 @@ Link any relevant issues that this PR addresses.
 
 > NOTE: the `Generated-by` or `Assisted-by` trailers should be used in git commit messages when code or tests were generated or substantially modified by an AI agent, as described in the project's [`DEVELOPING.md`](https://github.com/vllm-project/guidellm/blob/main/DEVELOPING.md) file.
 
-<!-- Do not edit bellow this line -->
+<!-- Do not edit below this line -->
 
 <!-- begin:squash-data -->
