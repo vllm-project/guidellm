@@ -78,7 +78,7 @@ class GuidellmClient:
             "HF_HOME=" + str(self.output_dir / "huggingface_cache"),
             f"{guidellm_exe} benchmark run",
             f'--target "{self.target}"',
-            f"--profile {profile}",
+            f"--profile kind={profile}",
             f"--rate {rate}",
         ]
 

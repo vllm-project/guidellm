@@ -14,7 +14,7 @@ from typing import Any, Literal
 from datasets import Dataset
 from datasets.exceptions import DatasetGenerationError
 from faker import Faker
-from pydantic import Field
+from pydantic import Field, field_serializer
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -162,6 +162,12 @@ class TraceSyntheticDataArgs(DataArgs):
         description="Column name for output token counts in the trace file.",
     )
 
+    @field_serializer("path")
+    @classmethod
+    def serialize_path(cls, path: Path) -> str:
+        """Serialize path as a string because Path is not JSON serializable."""
+        return str(path)
+
 
 @DatasetDeserializerFactory.register("trace_synthetic")
 class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
@@ -179,7 +185,7 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
     ) -> Dataset:
-        if not (path := config.path).exists() or not path.is_file():
+        if not (path := Path(config.path)).exists() or not path.is_file():
             raise DataNotSupportedError(
                 "TraceSyntheticDatasetDeserializer expects a path to a trace file, "
                 f"got {path}"

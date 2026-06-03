@@ -23,7 +23,7 @@ The following arguments can be used to configure datasets and their processing:
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --profile "throughput" \
+    --profile "kind=throughput" \
     --max-requests 1000 \
     --data "kind=huggingface,source=my/dataset" \
     --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}' \
@@ -45,7 +45,7 @@ Synthetic datasets allow you to generate data on the fly with customizable param
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --profile "throughput" \
+    --profile "kind=throughput" \
     --max-requests 1000 \
     --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"
 ```
@@ -55,7 +55,7 @@ Or using a JSON string:
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --profile "throughput" \
+    --profile "kind=throughput" \
     --max-requests 1000 \
     --data '{"kind": "synthetic_text", "prompt_tokens": 256, "output_tokens": 128}'
 ```
@@ -86,7 +86,7 @@ GuideLLM supports datasets from the Hugging Face Hub or local directories that f
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --profile "throughput" \
+    --profile "kind=throughput" \
     --max-requests 1000 \
     --data "kind=huggingface,source=garage-bAInd/Open-Platypus"
 ```
@@ -96,7 +96,7 @@ Or using a local dataset directory:
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --profile "throughput" \
+    --profile "kind=throughput" \
     --max-requests 1000 \
     --data "kind=huggingface,source=path/to/dataset"
 ```
@@ -149,7 +149,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   ```bash
   guidellm benchmark \
       --target http://localhost:8000 \
-      --profile replay \
+      --profile kind=replay \
       --rate 1.0 \
       --data "kind=trace_synthetic,path=path/to/trace.jsonl"
   ```
@@ -159,7 +159,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   ```bash
   guidellm benchmark \
       --target http://localhost:8000 \
-      --profile replay \
+      --profile kind=replay \
       --rate 1.0 \
       --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length"
   ```
@@ -191,7 +191,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 ```bash
 guidellm benchmark \
     --target "http://localhost:8000" \
-    --profile "throughput" \
+    --profile "kind=throughput" \
     --max-requests 1000 \
     --data "kind=json_file,path=path/to/dataset.json" \
     --data-column-mapper '{"column_mappings": {"text_column": "prompt"}}'

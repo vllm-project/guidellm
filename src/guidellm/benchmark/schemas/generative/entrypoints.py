@@ -30,7 +30,7 @@ from pydantic import (
 )
 
 from guidellm.backends import BackendArgs
-from guidellm.benchmark.profiles import Profile, ProfileType
+from guidellm.benchmark.profiles import Profile
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
@@ -174,8 +174,9 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         min_length=1,
     )
     # Benchmark configuration
-    profile: StrategyType | ProfileType | Profile = Field(
-        default="sweep", description="Benchmark profile or scheduling strategy type"
+    profile: dict[str, Any] = Field(
+        default={"kind": "sweep"},
+        description="Benchmark profile configuration arguments",
     )
     rate: list[float] | None = Field(
         default=None, description="Request rate(s) for rate-based scheduling"
@@ -297,6 +298,6 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         return str(output_dir) if output_dir is not None else None
 
     @field_serializer("profile")
-    def serialize_profile(self, profile: StrategyType | ProfileType | Profile) -> str:
+    def serialize_profile(self, profile: StrategyType | Profile) -> str:
         """Serialize profile to type string."""
-        return profile.type_ if isinstance(profile, Profile) else profile
+        return profile if isinstance(profile, str) else str(profile)
