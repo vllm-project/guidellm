@@ -30,6 +30,9 @@ jobs:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          # Fetch the PR branch since we are on base repo
+          git fetch origin "refs/pull/${PR_NUMBER}/head"
+
           CURRENT_BODY="$(gh pr view "$PR_NUMBER" --json body -q .body)"
 
           NEW_BODY_FILE="$(mktemp)"
