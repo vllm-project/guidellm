@@ -11,11 +11,10 @@ validation, data preprocessing, profile constraints, and output format specifica
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, TypeVar
 
-from transformers import PreTrainedTokenizerBase
 from typing_extensions import TypeAliasType
 
 from guidellm.backends import Backend, BackendArgs
@@ -35,21 +34,18 @@ from guidellm.benchmark.schemas import (
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
     DataArgs,
-    DataEntrypointArgs,
-    DataFinalizerArgs,
     DataLoader,
-    DataLoaderArgs,
-    DataLoaderRegistry,
-    DataPreprocessorArgs,
-    GenerativeRequestCollator,
-    ProcessorFactory,
+    create_data_loader,
 )
 from guidellm.scheduler import (
     ConstraintInitializer,
     NonDistributedEnvironment,
     StrategyType,
 )
-from guidellm.schemas import GenerationRequest, GenerationResponse
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+)
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.registry import RegistryMixin
@@ -70,9 +66,6 @@ OutputFormatT = TypeAliasType(
     | None,
 )
 """Output format specification as strings, mappings, or configured output instances"""
-
-ProcessorInputT = TypeAliasType("ProcessorInputT", str | Path | PreTrainedTokenizerBase)
-"""Processor input as model identifier, path to tokenizer, or tokenizer instance"""
 
 
 # Helper Functions
@@ -139,42 +132,41 @@ async def resolve_backend(
     return backend_instance, model
 
 
-async def resolve_processor(
-    processor: ProcessorInputT | None,
+async def resolve_tokenizer(
+    args: BenchmarkGenerativeTextArgs,
     model: str | None,
     console: Console | None = None,
-) -> ProcessorInputT | None:
+) -> None:
     """
     Resolve the tokenization processor, defaulting to model if not provided.
 
-    :param processor: Processor identifier, path, tokenizer instance, or None
-    :param model: Model identifier to use as fallback processor
+    :param args: BenchmarkGenerativeTextArgs containing tokenizer configuration
+    :param model: Resolved model identifier from the backend, used as default if
+        tokenizer model is not specified
     :param console: Console instance for progress reporting, or None
-    :return: Resolved processor or None if neither processor nor model provided
+    :return: None (the tokenizer model is set in-place on args.tokenizer)
     """
     console_step = (
-        console.print_update_step(title=f"Resolving processor {processor}")
+        console.print_update_step(title=f"Resolving tokenizer {args.tokenizer}")
         if console
         else None
     )
 
-    if processor is not None:
+    if args.tokenizer.model is not None:
         if console_step:
             console_step.finish(
                 title="Processor resolved",
-                details=f"Using processor '{processor}'",
+                details=f"Using tokenizer '{args.tokenizer.model}' from arguments",
                 status_level="success",
             )
     else:
-        processor = model
+        args.tokenizer.model = model
         if console_step:
             console_step.finish(
                 title="Processor resolved",
-                details=f"Using model '{processor}' as processor",
+                details=f"Using model '{model}' as tokenizer",
                 status_level="success",
             )
-
-    return processor
 
 
 BaseTypeT = TypeVar("BaseTypeT")
@@ -227,16 +219,7 @@ def resolve_item_from_registry(
 
 
 async def resolve_request_loader(
-    data: list[DataArgs],
-    loader: DataLoaderArgs,
-    model: str,
-    processor: ProcessorInputT | None,
-    processor_args: dict[str, Any] | None,
-    data_column_mapper: DataPreprocessorArgs,
-    data_preprocessors: list[DataPreprocessorArgs],
-    data_finalizer: DataFinalizerArgs,
-    data_collator: Callable | Literal["generative"] | None,
-    random_seed: int,
+    args: BenchmarkGenerativeTextArgs,
     console: Console | None = None,
 ) -> DataLoader[GenerationRequest]:
     """
@@ -247,58 +230,30 @@ async def resolve_request_loader(
     from the PreprocessorRegistry and creates appropriate instances with provided
     configurations.
 
-    :param data: List of data sources to load requests from
-    :param model: Model identifier for request formatting
-    :param data_args: Arguments for each data source in the data list
-    :param data_samples: Number of samples to draw from the dataset
-    :param processor: Processor for tokenization operations
-    :param processor_args: Arguments for processor initialization
-    :param data_column_mapper: Preprocessor or mapping for standardizing column names
-    :param data_request_formatter: Preprocessor or config for formatting requests
-    :param data_collator: Collation function or type for batching requests
-    :param data_sampler: Sampler instance or type for data sampling
-    :param data_num_workers: Number of worker processes for data loading
-    :param random_seed: Seed for reproducible random operations
+    :param args: BenchmarkGenerativeTextArgs containing data loading configuration
     :param console: Console instance for progress reporting, or None
-    :param dataloader_kwargs: Additional arguments passed to DataLoader initialization
-    :return: Configured DataLoader instance for GenerationRequest objects
-    :raises ValueError: If request formatter type is not registered in
-        PreprocessorRegistry
-    :raises TypeError: If registered request formatter is not a RequestFormatter
-        subclass
+    :return: Configured DataLoader instance yielding GenerationRequest objects
     """
     console_step = (
-        console.print_update_step(title=f"Initializing request loader from {data}")
+        console.print_update_step(title=f"Initializing request loader from {args.data}")
         if console
         else None
     )
 
-    pre_list: list[DataPreprocessorArgs] = [data_column_mapper] + data_preprocessors
-    config = DataEntrypointArgs(
-        loader=loader,
-        data=data,
-        preprocessors=pre_list,
-        finalizer=data_finalizer,
-    )
-    request_loader: DataLoader[GenerationRequest] = DataLoaderRegistry.create(
-        config=config,
-        processor_factory=ProcessorFactory(
-            processor=processor if processor is not None else model,
-            processor_args=processor_args,
-        ),
-        collator=(
-            data_collator if callable(data_collator) else GenerativeRequestCollator()
-        ),
-        random_seed=random_seed,
+    request_loader: DataLoader[GenerationRequest] = create_data_loader(
+        loader_config=args.data_loader,
+        data_config=args.data,
+        tokenizer_config=args.tokenizer,
+        column_mapper_config=args.data_column_mapper,
+        preprocessors_config=args.data_preprocessors,
+        finalizer_config=args.data_finalizer,
+        random_seed=args.random_seed,
     )
 
     if console_step:
+        samples = args.data_loader.samples if args.data_loader.samples > 0 else "inf"
         console_step.finish(
-            title=(
-                f"Request loader initialized with "
-                f"{loader.samples if loader.samples > 0 else 'inf'} "
-                "unique requests"
-            ),
+            title=(f"Request loader initialized with {samples} unique requests"),
             details=InfoMixin.extract_from_obj(request_loader),
             status_level="success",
         )
@@ -454,20 +409,9 @@ async def benchmark_generative_text(
         backend_args=args.backend_kwargs,
         console=console,
     )
-    processor = await resolve_processor(
-        processor=args.processor, model=model, console=console
-    )
+    await resolve_tokenizer(args=args, model=model, console=console)
     request_loader = await resolve_request_loader(
-        data=args.data,
-        loader=args.data_loader,
-        model=model,
-        processor=processor,
-        processor_args=args.processor_args,
-        data_column_mapper=args.data_column_mapper,
-        data_preprocessors=args.data_preprocessors,
-        data_finalizer=args.data_finalizer,
-        data_collator=args.data_collator,
-        random_seed=args.random_seed,
+        args=args,
         console=console,
     )
 

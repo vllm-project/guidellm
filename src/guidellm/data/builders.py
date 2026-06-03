@@ -234,6 +234,7 @@ def process_dataset(
     )
 
     # Load dataset
+    data.load_kwargs.update(data_args or {})
     dataset = DatasetDeserializerFactory.deserialize(
         config=data,
         processor_factory=lambda: tokenizer,
@@ -248,7 +249,6 @@ def process_dataset(
     )
     column_mapper.setup_data(
         datasets=[dataset],
-        data_args=[data_args or {}],
     )
 
     # Extract column names from mapper

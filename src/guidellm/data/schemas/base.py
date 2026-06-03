@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, TypeAlias
+
+from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 
 __all__ = [
     "DataNotSupportedError",
+    "DatasetType",
     "GenerativeDatasetColumnType",
 ]
 
@@ -19,6 +22,8 @@ GenerativeDatasetColumnType = Literal[
     "tools_column",
     "tool_response_column",
 ]
+
+DatasetType: TypeAlias = Dataset | DatasetDict | IterableDataset | IterableDatasetDict
 
 
 class DataNotSupportedError(Exception):

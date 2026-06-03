@@ -28,7 +28,6 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
-from transformers import PreTrainedTokenizerBase
 
 from guidellm.backends import BackendArgs
 from guidellm.benchmark.profiles import Profile, ProfileType
@@ -39,6 +38,7 @@ from guidellm.data import (
     DataFinalizerArgs,
     DataLoaderArgs,
     DataPreprocessorArgs,
+    DataTokenizerArgs,
 )
 from guidellm.scheduler import StrategyType
 from guidellm.schemas import StandardBaseModel
@@ -185,11 +185,8 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         description="Backend configuration arguments",
     )
     # Data configuration
-    processor: str | Path | PreTrainedTokenizerBase | None = Field(
-        default=None, description="Tokenizer path, name, or instance for processing"
-    )
-    processor_args: dict[str, Any] | None = Field(
-        default=None, description="Additional tokenizer configuration arguments"
+    tokenizer: DataTokenizerArgs = Field(
+        description="Tokenizer configuration arguments",
     )
     data_column_mapper: DataPreprocessorArgs = Field(
         description="Column mapping preprocessor for dataset fields",
@@ -294,26 +291,10 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
             else:
                 raise
 
-    @field_serializer("data_collator")
-    def serialize_data_collator(
-        self, data_collator: Callable | Literal["generative"] | None
-    ) -> str | None:
-        """Serialize data_collator to string or None."""
-        return data_collator if isinstance(data_collator, str) else None
-
     @field_serializer("output_dir")
     def serialize_output_dir(self, output_dir: str | Path) -> str | None:
         """Serialize output_dir to string."""
         return str(output_dir) if output_dir is not None else None
-
-    @field_serializer("processor")
-    def serialize_processor(
-        self, processor: str | Path | PreTrainedTokenizerBase | None
-    ) -> str | None:
-        """Serialize processor to string."""
-        if processor is None:
-            return None
-        return processor if isinstance(processor, str) else str(processor)
 
     @field_serializer("profile")
     def serialize_profile(self, profile: StrategyType | ProfileType | Profile) -> str:

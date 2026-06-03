@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from datasets import Dataset, IterableDataset
-
-from guidellm.data.schemas import DataPreprocessorArgs
+from guidellm.data.schemas import DataPreprocessorArgs, DatasetType
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["DataDependentPreprocessor", "DatasetPreprocessor", "PreprocessorRegistry"]
@@ -21,8 +19,7 @@ class DatasetPreprocessor(Protocol):
 class DataDependentPreprocessor(DatasetPreprocessor, Protocol):
     def setup_data(
         self,
-        datasets: list[Dataset | IterableDataset],
-        data_args: list[dict[str, Any]],
+        datasets: list[DatasetType],
     ): ...
 
 
