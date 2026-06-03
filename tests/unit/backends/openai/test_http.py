@@ -1041,3 +1041,37 @@ class TestCheckToolCallExpectations:
         # Verify token counts
         assert final_info.timings.token_iterations > 0
         assert final_response.output_metrics.text_tokens == 10
+
+
+@pytest.mark.sanity
+def test_api_key_json_serializable_and_masked():
+    """
+    Backend args with an api_key must dump to JSON without raising and must mask
+    the secret.
+
+    Regression guard for the SecretStr serialization crash: ``info()`` returns
+    ``model_dump()`` and that dict is ``json.dumps``-ed by the CSV/HTML writers,
+    so an unmasked ``SecretStr`` produced empty reports for any run with an
+    api_key set.
+
+    ### WRITTEN BY AI ###
+    """
+    args = OpenAIHTTPBackendArgs(target="http://test", api_key="super-secret")
+
+    dumped = args.model_dump()
+    json.dumps(dumped)  # must not raise
+    assert dumped["api_key"] == "**********"
+    assert "super-secret" not in args.model_dump_json()
+    assert args.api_key.get_secret_value() == "super-secret"
+
+
+@pytest.mark.sanity
+def test_api_key_none_serializes_to_null():
+    """
+    An unset api_key must serialize to ``null`` without crashing.
+
+    ### WRITTEN BY AI ###
+    """
+    dumped = OpenAIHTTPBackendArgs(target="http://test").model_dump()
+    json.dumps(dumped)  # must not raise
+    assert dumped["api_key"] is None
