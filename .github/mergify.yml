@@ -26,15 +26,6 @@ pull_request_rules:
         message: |
           Hi @{{author}}, the DCO check has failed. Please click on DCO in the Checks section for instructions on how to resolve this.
 
-  - name: dismiss-reviews-on-push
-    description: Dismiss approvals when new commits are pushed to dequeue updated PRs
-    conditions:
-      - -closed
-    actions:
-      dismiss_reviews:
-        approved: true
-        when: synchronize
-
 merge_protections_settings:
   reporting_method: check-runs
   auto_merge_conditions:
