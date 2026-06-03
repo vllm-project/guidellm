@@ -1,16 +1,16 @@
 """
-Trace deserializer for Mooncake formatted files that generates synthetic prompts per row.
+Trace deserializer for Mooncake formatted files that generates synthetic prompts per
+row.
 
-Reads a trace file (timestamp, input_length, output_length, hash_ids) and yields one row per
-line with a synthetic prompt matching the requested input_length for replay benchmarks.
+Reads a trace file (timestamp, input_length, output_length, hash_ids) and yields one
+row per line with a synthetic prompt matching the requested input_length for replay
+benchmarks.
 """
 
+import math
 from collections.abc import Callable
-from pathlib import Path
-from typing import Any, Literal
 
 from datasets import Dataset
-from datasets.exceptions import DatasetGenerationError
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -30,14 +30,113 @@ __all__ = ["TraceMooncakeDataArgs", "TraceMooncakeDatasetDeserializer"]
 @DataArgs.register("trace_mooncake")
 class TraceMooncakeDataArgs(TraceSyntheticDataArgs):
     hash_ids_column: str = Field(
-        default = "hash_ids",
-        description = "Column name for lists of hash IDs in the trace file."
+        default="hash_ids",
+        description="Column name for lists of hash IDs in the trace file.",
     )
     hash_id_block_size: int = Field(
-        gt = 0,
-        default = 512,  # Default used in Mooncake's paper https://arxiv.org/pdf/2407.00079
-        description = "Amount of tokens represented by one hash ID."
+        gt=0,
+        # Default used in Mooncake's paper https://arxiv.org/pdf/2407.00079
+        default=512,
+        description="Amount of tokens represented by one hash ID.",
     )
+
+
+def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
+    n_in = row[config.prompt_tokens_column]
+    n_out = row[config.output_tokens_column]
+    n_blocks = len(row[config.hash_ids_column])
+    if n_in < 0 or n_out < 0:
+        raise DataNotSupportedError(
+            f"Trace token counts must be non-negative, got "
+            f"input_length={n_in}, output_length={n_out}"
+        )
+    for hash_id in row[config.hash_ids_column]:
+        if hash_id < 0:
+            raise ValueError(f"Hash ID must be non-negative, got {hash_id}.")
+    if math.ceil(n_in / config.hash_id_block_size) != n_blocks:
+        raise DataNotSupportedError(
+            f"Input token count of {n_in} split into blocks of size "
+            f"{config.hash_id_block_size} does not match expected {n_blocks} blocks."
+        )
+
+
+def _is_in_table(hash_id_table: list[list[int]], hash_id: int) -> bool:
+    return (
+        hash_id < len(hash_id_table)
+        and hash_id >= 0
+        and hash_id_table[hash_id] is not None
+    )
+
+
+def _resize_to_hold_id(hash_id_table: list[list[int]], hash_id: int) -> None:
+    num_new_entries = hash_id - (len(hash_id_table) - 1)
+    hash_id_table.extend(None for _ in range(num_new_entries))
+
+
+def _calculate_required_prompt_tokens(block_size: int, row: dict, hash_id: int) -> int:
+    """Returns the number of prompt tokens needed to satisfy the row input length.
+    This will be less than `block_size` if the input length is not divisible by it and
+    `hash_id` is the final ID for the row."""
+    if row["hash_ids"][-1] == hash_id:
+        return block_size - row["input_length"] % block_size
+    return block_size
+
+
+def _generate_token_ids(
+    amount: int, processor: PreTrainedTokenizerBase, faker: Faker, max_attempts: int = 8
+) -> list[int]:
+    """Generate `amount` synthetic token ids for trace prompt construction."""
+    margin_of_safety = 2
+    attempt = 0
+    while attempt < max_attempts:
+        attempt += 1
+        # The Faker.text() can only generate text of at least 5 characters.
+        num_chars = max(amount * margin_of_safety * attempt, 5)
+        text = faker.text(max_nb_chars=num_chars)
+        token_ids = processor.encode(text)
+        if len(token_ids) >= amount:
+            return token_ids[:amount]
+    raise DataNotSupportedError(
+        "Failed to generate enough synthetic prompt tokens for "
+        f"{amount} tokens after {attempt} attempts."
+    )
+
+
+def _create_distinct_token_block(
+    block_size: int,
+    exhausted_token_blocks: list[list[int]],
+    processor: PreTrainedTokenizerBase,
+    faker: Faker,
+    max_distinctness_attempts: int = 20,
+) -> list[int]:
+    """Constructs a new token block of `block_size` that does not appear in
+    `sibling_nodes`."""
+    attempt = 0
+    while attempt < max_distinctness_attempts:
+        token_ids = _generate_token_ids(block_size, processor, faker)
+        if token_ids not in exhausted_token_blocks:
+            return token_ids
+        attempt += 1
+    raise DataNotSupportedError(
+        f"Failed to generate distinct synthetic token block after {attempt} attempts."
+    )
+
+
+def _create_prompt_from_hash_ids(
+    hash_ids: list[int],
+    hash_id_table: list[list[int]],
+    processor: PreTrainedTokenizerBase,
+) -> str:
+    """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
+
+    Precondition: All ids in `hash_ids` appear in `hash_id_table`."""
+    prompt_token_ids = [
+        token for hash_id in hash_ids for token in hash_id_table[hash_id]
+    ]
+    prompt = processor.decode(prompt_token_ids, skip_special_tokens=True)
+    if isinstance(prompt, list):
+        return prompt[0] if prompt else ""
+    return prompt
 
 
 @DatasetDeserializerFactory.register("trace_mooncake")
@@ -49,8 +148,8 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
     blocks in a prompt. The relationships of IDs forms a tree, where every first ID
     in a prompt has a parent node of `None`. Parent nodes can have an unbounded
     number of children. Two hash IDs can represent identical blocks of tokens so long
-    as they do not share the same parent (previous ID). For more details, see section 4 of
-    https://arxiv.org/pdf/2407.00079.
+    as they do not share the same parent (previous ID). For more details, see section 4
+    of https://arxiv.org/pdf/2407.00079.
 
     Generated prompts match the prompt token count of the row."""
 
@@ -58,6 +157,52 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
         self,
         config: TraceMooncakeDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
-        random_seed: int
+        random_seed: int,
     ) -> Dataset:
-        ...
+        if not config.path.is_file():
+            raise DataNotSupportedError(
+                f"{type(self).__name__} expects a path to a trace file, "
+                f"got {config.path}"
+            )
+        rows = load_trace_rows(
+            config.path,
+            required_columns=[
+                config.prompt_tokens_column,
+                config.output_tokens_column,
+                config.hash_ids_column,
+            ],
+            timestamp_column=config.timestamp_column,
+        )
+        processor = processor_factory()
+        faker = Faker()
+        faker.seed_instance(random_seed)
+        hash_id_table = []
+        sibling_token_blocks = {}
+        prompts = []
+        for row in rows:
+            _validate_row(row, config)
+            ids = row[config.hash_ids_column]
+            for idx, hash_id in enumerate(ids):
+                if not _is_in_table(hash_id_table, hash_id):
+                    _resize_to_hold_id(hash_id_table, hash_id)
+                    prev_id = None if idx == 0 else ids[idx - 1]
+                    num_tokens = _calculate_required_prompt_tokens(
+                        config.hash_id_block_size, row, hash_id
+                    )
+                    sibling_token_blocks.setdefault(prev_id, [])
+                    hash_id_table[hash_id] = _create_distinct_token_block(
+                        num_tokens, sibling_token_blocks[prev_id], processor, faker
+                    )
+                    sibling_token_blocks[prev_id].append(hash_id_table[hash_id])
+            prompt = _create_prompt_from_hash_ids(ids, hash_id_table, processor)
+            prompts.append(prompt)
+
+        return Dataset.from_dict(
+            {
+                "prompt": prompts,
+                "prompt_tokens_count": rows[config.prompt_tokens_column],
+                "output_tokens_count": rows[config.output_tokens_column],
+                "hash_ids": rows[config.hash_ids_column],
+            },
+            **config.load_kwargs,
+        )
