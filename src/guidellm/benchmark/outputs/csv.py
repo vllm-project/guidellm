@@ -419,6 +419,13 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         self._add_stats_for_metric(
             headers,
             values,
+            benchmark.metrics.time_to_first_output_token_ms,
+            "Time to First Output Token",
+            "ms",
+        )
+        self._add_stats_for_metric(
+            headers,
+            values,
             benchmark.metrics.time_per_output_token_ms,
             "Time per Output Token",
             "ms",

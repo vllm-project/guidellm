@@ -802,6 +802,12 @@ class GenerativeMetrics(StandardBaseDict):
     time_to_first_token_ms: StatusDistributionSummary = Field(
         description="Distribution of first token latencies in milliseconds"
     )
+    time_to_first_output_token_ms: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of first content (non-reasoning) token latencies "
+            "in milliseconds"
+        )
+    )
     time_per_output_token_ms: StatusDistributionSummary = Field(
         description="Distribution of average time per output token in milliseconds"
     )
@@ -928,6 +934,12 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             time_to_first_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_token_ms or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            time_to_first_output_token_ms=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.time_to_first_output_token_ms or 0.0,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,

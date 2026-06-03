@@ -452,6 +452,11 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 name="ms",
             )
             columns.add_stats(
+                benchmark.metrics.time_to_first_output_token_ms,
+                group="TTFOT",
+                name="ms",
+            )
+            columns.add_stats(
                 benchmark.metrics.inter_token_latency_ms,
                 group="ITL",
                 name="ms",

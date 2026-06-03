@@ -495,6 +495,10 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         default_factory=RunningMetricStats,
         description="Accumulated time to first token statistics in milliseconds",
     )
+    time_to_first_output_token_ms: RunningMetricStats = Field(
+        default_factory=RunningMetricStats,
+        description="Accumulated time to first content token stats in ms",
+    )
     time_per_output_token_ms: RunningMetricStats = Field(
         default_factory=RunningMetricStats,
         description="Accumulated time per output token statistics in milliseconds",
@@ -534,6 +538,9 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         self.request_latency.update_estimate(stats.request_latency, duration=duration)
         self.time_to_first_token_ms.update_estimate(
             stats.time_to_first_token_ms, duration=duration
+        )
+        self.time_to_first_output_token_ms.update_estimate(
+            stats.time_to_first_output_token_ms, duration=duration
         )
         self.time_per_output_token_ms.update_estimate(
             stats.time_per_output_token_ms,
@@ -693,6 +700,7 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
             stats.request_args = None
         if self.clear_nonsampled_outputs:
             stats.output = None
+            stats.reasoning_output = None
             stats.tool_calls = None
 
     @classmethod

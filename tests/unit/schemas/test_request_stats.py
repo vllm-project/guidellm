@@ -647,6 +647,82 @@ class TestGenerativeRequestStats:
         assert stats.output_tokens_per_second is None
 
     @pytest.mark.sanity
+    def test_time_to_first_output_token_ms_with_reasoning(self):
+        """
+        TTFOT should use first_output_token_iteration, which differs
+        from first_token_iteration when reasoning precedes content.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="ttfot", status="completed")
+        info.timings.request_start = 100.0
+        info.timings.first_token_iteration = 100.2  # reasoning at +200ms
+        info.timings.first_output_token_iteration = 100.5  # content at +500ms
+        info.timings.last_token_iteration = 101.0
+        info.timings.request_end = 101.0
+        info.timings.resolve_end = 101.0
+
+        stats = GenerativeRequestStats(
+            request_id="ttfot",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=10),
+            output_metrics=UsageMetrics(text_tokens=20),
+        )
+
+        # TTFT is from request_start to first_token_iteration
+        assert stats.time_to_first_token_ms == pytest.approx(200.0, abs=0.1)
+        # TTFOT is from request_start to first_output_token_iteration
+        assert stats.time_to_first_output_token_ms == pytest.approx(500.0, abs=0.1)
+
+    @pytest.mark.sanity
+    def test_time_to_first_output_token_ms_no_reasoning(self):
+        """
+        When no reasoning tokens are emitted, first_output_token_iteration
+        equals first_token_iteration and TTFOT == TTFT.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="ttfot-noreason", status="completed")
+        info.timings.request_start = 0.0
+        info.timings.first_token_iteration = 0.15
+        info.timings.first_output_token_iteration = 0.15
+        info.timings.last_token_iteration = 1.0
+        info.timings.request_end = 1.0
+        info.timings.resolve_end = 1.0
+
+        stats = GenerativeRequestStats(
+            request_id="ttfot-noreason",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=5),
+            output_metrics=UsageMetrics(text_tokens=10),
+        )
+
+        assert stats.time_to_first_output_token_ms == pytest.approx(
+            stats.time_to_first_token_ms, abs=0.01
+        )
+
+    @pytest.mark.smoke
+    def test_time_to_first_output_token_ms_none(self):
+        """
+        TTFOT is None when first_output_token_iteration is not set.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="ttfot-none", status="completed")
+        info.timings.request_start = 0.0
+        info.timings.request_end = 1.0
+        info.timings.resolve_end = 1.0
+
+        stats = GenerativeRequestStats(
+            request_id="ttfot-none",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=5),
+            output_metrics=UsageMetrics(text_tokens=10),
+        )
+
+        assert stats.time_to_first_output_token_ms is None
+
+    @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(0.2)  # ensure no accidental indefinite waits if expanded later
     async def test_async_context_usage(self, valid_instances):
