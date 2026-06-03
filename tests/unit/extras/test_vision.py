@@ -7,12 +7,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from guidellm.extras.vision import (
-    encode_image,
-    encode_video,
-    get_file_format,
-    resize_image,
-)
+from guidellm.utils import vision as _vision_mod
 
 
 @pytest.fixture
@@ -58,7 +53,7 @@ def sample_video_file():
 
 
 def test_encode_image_base64(sample_image_bytes: bytes):
-    result = encode_image(sample_image_bytes, encode_type="base64")
+    result = _vision_mod.encode_image(sample_image_bytes, encode_type="base64")
     assert result["type"] == "image_base64"
     assert "image" in result
     assert result["image_bytes"] > 0
@@ -66,7 +61,9 @@ def test_encode_image_base64(sample_image_bytes: bytes):
 
 
 def test_encode_image_url():
-    result = encode_image(image="https://example.com/vision.jpg", encode_type="url")
+    result = _vision_mod.encode_image(
+        image="https://example.com/vision.jpg", encode_type="url"
+    )
     assert result["type"] == "image_url"
     assert result["image"] == "https://example.com/vision.jpg"
 
@@ -78,7 +75,7 @@ def test_resize_image(sample_image_array: np.ndarray):
     original_height, original_width = sample_image_array.shape[:2]
     new_width, new_height = 100, 100
 
-    resized_image = resize_image(
+    resized_image = _vision_mod.resize_image(
         pil_image,  # Pass PIL Image instead of numpy array
         width=new_width,
         height=new_height,
@@ -88,12 +85,12 @@ def test_resize_image(sample_image_array: np.ndarray):
 
 
 def test_get_file_format(sample_jpeg_file):
-    file_format = get_file_format(sample_jpeg_file)
+    file_format = _vision_mod.get_file_format(sample_jpeg_file)
     assert file_format == "jpg"
 
 
 def test_encode_video_with_fixture(sample_video_file):
-    result = encode_video(video=sample_video_file, encode_type="base64")
+    result = _vision_mod.encode_video(video=sample_video_file, encode_type="base64")
 
     assert result["type"] == "video_base64"
     assert result["video"].startswith("data:video/mp4;base64,")
@@ -111,7 +108,7 @@ def test_encode_video_with_url_base64():
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
-        result = encode_video(video=test_url, encode_type="base64")
+        result = _vision_mod.encode_video(video=test_url, encode_type="base64")
 
         mock_get.assert_called_once_with(test_url)
         assert result["type"] == "video_base64"
@@ -124,7 +121,7 @@ def test_encode_video_with_url_base64():
 def test_encode_video_with_url_url_encoding():
     """Test encoding a video URL with url encoding"""
     test_url = "https://example.com/video.mp4"
-    result = encode_video(video=test_url, encode_type="url")
+    result = _vision_mod.encode_video(video=test_url, encode_type="url")
 
     assert result["type"] == "video_url"
     assert result["video"] == test_url
@@ -139,7 +136,7 @@ def test_encode_video_with_base64_string():
     base64_video = base64.b64encode(test_video_bytes).decode("utf-8")
     data_url = f"data:video/mp4;base64,{base64_video}"
 
-    result = encode_video(video=data_url, encode_type="base64")
+    result = _vision_mod.encode_video(video=data_url, encode_type="base64")
 
     assert result["type"] == "video_base64"
     assert result["video"] == data_url
@@ -149,7 +146,7 @@ def test_encode_video_with_base64_string():
 
 
 def test_encode_video_with_file_path(sample_video_file):
-    result = encode_video(video=sample_video_file, encode_type="base64")
+    result = _vision_mod.encode_video(video=sample_video_file, encode_type="base64")
 
     assert result["type"] == "video_base64"
     assert result["video"].startswith("data:video/mp4;base64,")
@@ -172,7 +169,7 @@ def test_encode_video_with_path_object():
             f.flush()
             temp_path = Path(f.name)
 
-            result = encode_video(video=temp_path, encode_type="base64")
+            result = _vision_mod.encode_video(video=temp_path, encode_type="base64")
 
             assert result["type"] == "video_base64"
             assert result["video"].startswith("data:video/avi;base64,")
@@ -188,7 +185,7 @@ def test_encode_video_with_raw_bytes():
     """Test encoding video from raw bytes"""
     video_bytes = b"raw video bytes content"
 
-    result = encode_video(video=video_bytes, encode_type="base64")
+    result = _vision_mod.encode_video(video=video_bytes, encode_type="base64")
 
     assert result["type"] == "video_base64"
     assert result["video"].startswith("data:video/unknown;base64,")
@@ -212,14 +209,14 @@ def test_encode_video_url_with_http_error():
         mock_get.return_value = mock_response
 
         with pytest.raises(Exception, match="HTTP Error"):
-            encode_video(video=test_url, encode_type="base64")
+            _vision_mod.encode_video(video=test_url, encode_type="base64")
 
 
 def test_encode_video_with_none_encode_type():
     """Test encoding with None encode_type"""
     video_bytes = b"test video"
 
-    result = encode_video(video=video_bytes, encode_type=None)
+    result = _vision_mod.encode_video(video=video_bytes, encode_type=None)
 
     # Should default to base64 encoding
     assert result["type"] == "video_base64"
@@ -229,7 +226,9 @@ def test_encode_video_with_none_encode_type():
 def test_encode_video_with_unsupported_type():
     """Test encoding with unsupported video type"""
     with pytest.raises(ValueError, match="Unsupported video type"):
-        encode_video(video=123, encode_type="base64")  # int is not supported
+        _vision_mod.encode_video(
+            video=123, encode_type="base64"
+        )  # int is not supported
 
 
 def test_encode_video_file_not_found():
@@ -237,7 +236,7 @@ def test_encode_video_file_not_found():
     non_existent_path = "/path/that/does/not/exist/video.mp4"
 
     with pytest.raises(FileNotFoundError):
-        encode_video(video=non_existent_path, encode_type="base64")
+        _vision_mod.encode_video(video=non_existent_path, encode_type="base64")
 
 
 def test_encode_video_base64_correctness():
@@ -246,7 +245,7 @@ def test_encode_video_base64_correctness():
     test_bytes = b"Hello World"
     expected_base64 = base64.b64encode(test_bytes).decode("utf-8")
 
-    result = encode_video(video=test_bytes, encode_type="base64")
+    result = _vision_mod.encode_video(video=test_bytes, encode_type="base64")
 
     base64_part = result["video"].split(",", 1)[1]
     assert base64_part == expected_base64
@@ -257,7 +256,7 @@ def test_encode_video_data_url_format():
     """Test that data URL format is correct"""
     video_bytes = b"test video data"
 
-    result = encode_video(video=video_bytes, encode_type="base64")
+    result = _vision_mod.encode_video(video=video_bytes, encode_type="base64")
 
     assert result["video"].startswith("data:video/unknown;base64,")
     # Verify the format is exactly as expected
@@ -270,7 +269,7 @@ def test_encode_video_data_url_format():
 # Additional test for edge cases
 def test_encode_video_empty_bytes():
     """Test encoding empty video bytes"""
-    result = encode_video(video=b"", encode_type="base64")
+    result = _vision_mod.encode_video(video=b"", encode_type="base64")
 
     assert result["type"] == "video_base64"
     assert result["video"] == "data:video/unknown;base64,"
@@ -281,7 +280,7 @@ def test_encode_video_large_content():
     """Test encoding with larger video content"""
     large_content = b"x" * 1024 * 1024  # 1MB of data
 
-    result = encode_video(video=large_content, encode_type="base64")
+    result = _vision_mod.encode_video(video=large_content, encode_type="base64")
 
     assert result["type"] == "video_base64"
     assert result["video_bytes"] == len(large_content)

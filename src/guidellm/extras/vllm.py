@@ -1,13 +1,11 @@
-try:
-    from vllm import SamplingParams
-    from vllm.engine.arg_utils import AsyncEngineArgs
-    from vllm.engine.async_llm_engine import AsyncLLMEngine
-    from vllm.outputs import RequestOutput
+"""
+vLLM wrapper with same interface as vLLM.
+"""
 
-    HAS_VLLM = True
-except ImportError:
-    AsyncLLMEngine = None  # type: ignore[assignment, misc]
-    AsyncEngineArgs = None  # type: ignore[assignment, misc]
-    SamplingParams = None  # type: ignore[assignment, misc]
-    RequestOutput = None  # type: ignore[assignment, misc]
-    HAS_VLLM = False
+import guidellm.utils.lazy_loader as lazy
+
+__getattr__, __dir__, __all__ = lazy.attach_extras(
+    __name__,
+    package="vllm",
+    error_message="Please install vllm to use vLLM features",
+)

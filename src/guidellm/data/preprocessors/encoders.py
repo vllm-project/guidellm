@@ -9,6 +9,8 @@ from guidellm.data.preprocessors.preprocessor import (
     PreprocessorRegistry,
 )
 from guidellm.data.schemas import DataPreprocessorArgs
+from guidellm.utils import audio as guidellm_audio
+from guidellm.utils import vision as guidellm_vision
 
 __all__ = ["MediaEncoder"]
 
@@ -41,24 +43,6 @@ class MediaEncoder(DatasetPreprocessor):
     ) -> None:
         self.config = config
 
-    @staticmethod
-    def encode_audio(*args, **kwargs):
-        from guidellm.extras.audio import encode_audio
-
-        return encode_audio(*args, **kwargs)
-
-    @staticmethod
-    def encode_image(*args, **kwargs):
-        from guidellm.extras.vision import encode_image
-
-        return encode_image(*args, **kwargs)
-
-    @staticmethod
-    def encode_video(*args, **kwargs):
-        from guidellm.extras.vision import encode_video
-
-        return encode_video(*args, **kwargs)
-
     def __call__(self, items: list[dict[str, list[Any]]]) -> list[dict[str, list[Any]]]:
         return [self.encode_turn(item) for item in items]
 
@@ -70,7 +54,7 @@ class MediaEncoder(DatasetPreprocessor):
                     continue
 
                 encoded_audio.append(
-                    self.encode_audio(audio, **self.config.audio_kwargs)
+                    guidellm_audio.encode_audio(audio, **self.config.audio_kwargs)
                 )
             columns["audio_column"] = encoded_audio
 
@@ -81,7 +65,7 @@ class MediaEncoder(DatasetPreprocessor):
                     continue
 
                 encoded_images.append(
-                    self.encode_image(image, **self.config.image_kwargs)
+                    guidellm_vision.encode_image(image, **self.config.image_kwargs)
                 )
             columns["image_column"] = encoded_images
 
@@ -92,7 +76,7 @@ class MediaEncoder(DatasetPreprocessor):
                     continue
 
                 encoded_videos.append(
-                    self.encode_video(video, **self.config.video_kwargs)
+                    guidellm_vision.encode_video(video, **self.config.video_kwargs)
                 )
             columns["video_column"] = encoded_videos
 
