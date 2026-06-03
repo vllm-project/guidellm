@@ -18,7 +18,6 @@ from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import Field, NonNegativeFloat, NonNegativeInt
 
-from guidellm.benchmark.profiles import Profile
 from guidellm.scheduler import (
     RequestT,
     ResponseT,
@@ -287,7 +286,7 @@ class BenchmarkConfig(StandardBaseDict):
         default=True,
         description="Prioritize response-based metrics over request-based metrics",
     )
-    profile: Profile = Field(
+    profile: dict[str, Any] = Field(
         description="Profile instance coordinating multi-strategy execution",
     )
     requests: dict[str, Any] = Field(

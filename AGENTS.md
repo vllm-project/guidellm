@@ -94,14 +94,14 @@ Running benchmarks requires an active model server. Here are some example comman
 # Quick sweep benchmark
 uv run guidellm benchmark run \
   --target http://localhost:8000 \
-  --profile sweep \
+  --profile kind=sweep \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --min-requests 1000
 
 # Production-like benchmark with specific dataset
 uv run guidellm benchmark run \
   --target http://localhost:8000 \
-  --profile constant \
+  --profile kind=constant \
   --rate 10,20 \
   --data "kind=huggingface,source=openai/gsm8k" \
   --max-seconds 300 \
