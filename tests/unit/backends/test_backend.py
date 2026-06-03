@@ -481,7 +481,7 @@ class TestBackend:
         )
 
         assert Backend.is_registered("vllm_python")
-        with patch("guidellm.backends.vllm_python.vllm._check_vllm_available"):
+        with patch("guidellm.backends.vllm_python.base._check_vllm_available"):
             args = VLLMPythonBackendArgs(model="test-model")
             backend = Backend.create(args)
         assert isinstance(backend, VLLMPythonBackend)
