@@ -19,8 +19,8 @@ from typing import ClassVar, Literal
 import yaml
 from pydantic import Field
 
-from guidellm.benchmark.schemas.generative.benchmark import GenerativeBenchmark
-from guidellm.benchmark.schemas.generative.entrypoints import (
+from guidellm.benchmark.schemas.benchmark import GenerativeBenchmark
+from guidellm.benchmark.schemas.entrypoints import (
     BenchmarkGenerativeTextArgs,
 )
 from guidellm.schemas import StandardBaseModel

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from guidellm.benchmark.schemas.generative.metrics import (
+from guidellm.benchmark.schemas.metrics import (
     GenerativeMetricsSummary,
     GenerativeToolCallMetricsSummary,
 )

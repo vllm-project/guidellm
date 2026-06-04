@@ -16,11 +16,11 @@ from typing import Literal
 
 from pydantic import Field, computed_field
 
-from guidellm.benchmark.schemas.base import Benchmark, BenchmarkConfig
-from guidellm.benchmark.schemas.generative.accumulator import (
+from guidellm.benchmark.schemas.accumulator import (
     GenerativeBenchmarkAccumulator,
 )
-from guidellm.benchmark.schemas.generative.metrics import (
+from guidellm.benchmark.schemas.base import Benchmark, BenchmarkConfig
+from guidellm.benchmark.schemas.metrics import (
     GenerativeMetrics,
     SchedulerMetrics,
 )

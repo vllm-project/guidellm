@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from guidellm.backends.backend import BackendArgs
 from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-from guidellm.benchmark.schemas.generative.entrypoints import (
+from guidellm.benchmark.schemas.entrypoints import (
     BenchmarkGenerativeTextArgs,
 )
 
