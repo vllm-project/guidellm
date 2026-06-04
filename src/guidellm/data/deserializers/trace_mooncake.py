@@ -9,6 +9,7 @@ benchmarks.
 
 import math
 from collections.abc import Callable
+from typing import Any
 
 from datasets import Dataset
 from faker import Faker
@@ -60,7 +61,7 @@ def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
         )
 
 
-def _is_in_table(hash_id_table: list[list[int]], hash_id: int) -> bool:
+def _is_in_table(hash_id_table: list[Any], hash_id: int) -> bool:
     return (
         hash_id < len(hash_id_table)
         and hash_id >= 0
@@ -68,7 +69,7 @@ def _is_in_table(hash_id_table: list[list[int]], hash_id: int) -> bool:
     )
 
 
-def _resize_to_hold_id(hash_id_table: list[list[int]], hash_id: int) -> None:
+def _resize_to_hold_id(hash_id_table: list[Any], hash_id: int) -> None:
     num_new_entries = hash_id - (len(hash_id_table) - 1)
     hash_id_table.extend(None for _ in range(num_new_entries))
 
@@ -176,8 +177,8 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
         processor = processor_factory()
         faker = Faker()
         faker.seed_instance(random_seed)
-        hash_id_table = []
-        sibling_token_blocks = {}
+        hash_id_table: list[Any] = []
+        sibling_token_blocks: dict[Any, list[list[int]]] = {}
         prompts = []
         for row in rows:
             _validate_row(row, config)
