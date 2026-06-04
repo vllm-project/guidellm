@@ -30,6 +30,7 @@ __all__ = [
     "StatusBreakdown",
     "SuccessfulT",
     "TotalT",
+    "standard_model_config",
 ]
 
 
@@ -39,6 +40,27 @@ SuccessfulT = TypeVar("SuccessfulT")
 ErroredT = TypeVar("ErroredT")
 IncompleteT = TypeVar("IncompleteT")
 TotalT = TypeVar("TotalT")
+
+
+def standard_model_config(**updates: Any) -> ConfigDict:
+    """
+    Generate a standard Pydantic model configuration with optional updates.
+
+    Provides a consistent base configuration for Pydantic models in the application,
+    allowing for easy customization through additional keyword arguments.
+
+    :param updates: Additional configuration settings to override defaults
+    :return: ConfigDict with standard settings merged with any updates
+    """
+    base_config = ConfigDict(
+        extra="forbid",
+        use_enum_values=True,
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
+    )
+    return base_config | ConfigDict(**updates)  # type: ignore[typeddict-item]
 
 
 class ReloadableBaseModel(BaseModel):
@@ -51,14 +73,7 @@ class ReloadableBaseModel(BaseModel):
     registered after initial class definition.
     """
 
-    model_config = ConfigDict(
-        extra="ignore",
-        use_enum_values=True,
-        from_attributes=True,
-        arbitrary_types_allowed=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config(extra="ignore")
 
     @classmethod
     def reload_schema(cls, parents: bool = True) -> None:
@@ -172,13 +187,7 @@ class StandardBaseModel(BaseModel):
         default_value = MyModel.get_default("value")  # Returns 42
     """
 
-    model_config = ConfigDict(
-        extra="ignore",
-        use_enum_values=True,
-        from_attributes=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config(extra="ignore")
 
     @classmethod
     def get_default(cls: type[BaseModel], field: str) -> Any:
@@ -202,14 +211,7 @@ class StandardBaseDict(StandardBaseModel):
     type safety for known fields.
     """
 
-    model_config = ConfigDict(
-        extra="allow",
-        use_enum_values=True,
-        from_attributes=True,
-        arbitrary_types_allowed=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config(extra="allow")
 
 
 class StatusBreakdown(BaseModel, Generic[SuccessfulT, ErroredT, IncompleteT, TotalT]):

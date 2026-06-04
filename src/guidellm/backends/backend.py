@@ -11,13 +11,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
-from pydantic import ConfigDict, Field
+from pydantic import Field
 
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
     PydanticClassRegistryMixin,
+    standard_model_config,
 )
 from guidellm.utils.registry import RegistryMixin
 
@@ -39,12 +40,7 @@ class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    model_config = ConfigDict(
-        extra="forbid",
-        serialize_by_alias=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config()
 
     schema_discriminator: ClassVar[str] = "kind"
 

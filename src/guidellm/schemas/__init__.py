@@ -21,6 +21,7 @@ from .base import (
     StatusBreakdown,
     SuccessfulT,
     TotalT,
+    standard_model_config,
 )
 from .info import RequestInfo, RequestSettings, RequestTimings
 from .request import (
@@ -64,4 +65,5 @@ __all__ = [
     "ToolCallFunction",
     "TotalT",
     "UsageMetrics",
+    "standard_model_config",
 ]

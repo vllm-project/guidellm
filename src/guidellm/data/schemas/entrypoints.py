@@ -3,9 +3,9 @@ from __future__ import annotations
 from abc import ABC
 from typing import Any, ClassVar
 
-from pydantic import ConfigDict, Field
+from pydantic import Field
 
-from guidellm.schemas import PydanticClassRegistryMixin
+from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 
 __all__ = [
     "DataArgs",
@@ -31,12 +31,7 @@ class DataLoaderArgs(
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    model_config = ConfigDict(
-        extra="forbid",
-        serialize_by_alias=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config()
 
     schema_discriminator: ClassVar[str] = "kind"
 
@@ -79,12 +74,7 @@ class DataArgs(
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    model_config = ConfigDict(
-        extra="forbid",
-        serialize_by_alias=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config()
 
     schema_discriminator: ClassVar[str] = "kind"
 
@@ -127,12 +117,7 @@ class DataPreprocessorArgs(
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    model_config = ConfigDict(
-        extra="forbid",
-        serialize_by_alias=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config()
 
     schema_discriminator: ClassVar[str] = "kind"
 
@@ -168,12 +153,7 @@ class DataFinalizerArgs(
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    model_config = ConfigDict(
-        extra="forbid",
-        serialize_by_alias=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config()
 
     schema_discriminator: ClassVar[str] = "kind"
 
@@ -209,12 +189,7 @@ class DataTokenizerArgs(
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    model_config = ConfigDict(
-        extra="forbid",
-        serialize_by_alias=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config()
 
     schema_discriminator: ClassVar[str] = "kind"
 
