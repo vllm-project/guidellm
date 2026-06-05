@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, Field, PositiveInt, field_validator
+from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 
 from guidellm.scheduler import (
     ConcurrentStrategy,
+    ConstraintInitializer,
     SchedulingStrategy,
 )
 
@@ -29,6 +31,23 @@ class ConcurrentProfileArgs(ProfileArgs):
         validation_alias=AliasChoices("streams", "rate"),
         description="Concurrent stream counts to execute",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
+        """Remove a duplicate rate
+
+        This profile aliases "rate" to "streams"; but if the user types
+
+            "--profile kind=concurrent,streams=2.0 --rate 3"
+
+        Pydantic won't alias the "rate" because it's already seen "streams", and
+        we'll get a validation error. In this case, the global "--rate" should be
+        ignored, so we remove the "rate" key.
+        """
+        if isinstance(data, dict) and all(key in data for key in ("rate", "streams")):
+            data.pop("rate")
+        return data
 
     @field_validator("streams", mode="before")
     @classmethod
@@ -63,10 +82,10 @@ class ConcurrentProfile(Profile):
     def __init__(
         self,
         args: ConcurrentProfileArgs,
-        random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, constraints, **kwargs)
         self.args = args
 
     @property

@@ -27,21 +27,29 @@ def _replay_args(**kwargs) -> ReplayProfileArgs:
 def _replay_profile(
     constraints: dict[str, Any] | None = None, random_seed: int = 42, **kwargs
 ) -> ReplayProfile:
-    return ProfileFactory.create(
-        _replay_args(**kwargs), random_seed=random_seed, constraints=constraints
-    )
+    data = kwargs.pop("data", None)
+    data_samples = kwargs.pop("data_samples", -1)
+    args = _replay_args(**kwargs)
+    profile_kwargs: dict[str, Any] = {
+        "random_seed": random_seed,
+        "data_samples": data_samples,
+    }
+    if data is not None:
+        profile_kwargs["data"] = data
+    return ProfileFactory.create(args, constraints=constraints, **profile_kwargs)
 
 
 class TestReplayProfile:
     @pytest.mark.smoke
     def test_requires_data(self):
         """
-        Replay profile args require a trace data source.
+        Replay profile requires a trace data source.
 
         ## WRITTEN BY AI ##
         """
-        with pytest.raises(ValidationError):
-            _replay_args()
+        args = _replay_args()
+        with pytest.raises(ValueError, match="exactly one data source"):
+            ProfileFactory.create(args)
 
     @pytest.mark.smoke
     def test_rejects_multiple_data_sources(self, tmp_path: Path):
@@ -50,8 +58,10 @@ class TestReplayProfile:
 
         ## WRITTEN BY AI ##
         """
+        args = _replay_args()
         with pytest.raises(ValueError, match="exactly one data source"):
-            _replay_profile(
+            ProfileFactory.create(
+                args,
                 data=[
                     TraceSyntheticDataArgs(path=tmp_path / "trace-a.jsonl"),
                     TraceSyntheticDataArgs(path=tmp_path / "trace-b.jsonl"),
@@ -66,12 +76,13 @@ class TestReplayProfile:
         ## WRITTEN BY AI ##
         """
         missing = tmp_path / "missing.jsonl"
+        args = _replay_args()
         with pytest.raises(ValueError, match="not found"):
-            _replay_profile(data=[TraceSyntheticDataArgs(path=missing)])
+            ProfileFactory.create(args, data=[TraceSyntheticDataArgs(path=missing)])
 
         empty = _trace_path(tmp_path)
         with pytest.raises(ValueError, match="empty|No timestamps"):
-            _replay_profile(data=[TraceSyntheticDataArgs(path=empty)])
+            ProfileFactory.create(args, data=[TraceSyntheticDataArgs(path=empty)])
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -347,16 +358,14 @@ class TestReplayProfile:
         )
 
         profile = await resolve_profile(
-            profile={"kind": "replay"},
-            rate=[2.0],
-            random_seed=42,
-            rampup=0.0,
+            profile=ReplayProfileArgs.model_validate({"kind": "replay", "rate": [2.0]}),
             constraints={},
             max_seconds=None,
             max_requests=2,
             max_errors=None,
             max_error_rate=None,
             max_global_error_rate=None,
+            random_seed=42,
             data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
             data_samples=2,
         )

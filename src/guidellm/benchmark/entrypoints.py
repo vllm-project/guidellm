@@ -33,7 +33,6 @@ from guidellm.benchmark.schemas import (
 )
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
-    DataArgs,
     DataLoader,
     create_data_loader,
 )
@@ -284,58 +283,8 @@ def resolve_constraints(constraints: MutableMapping[str, Any]) -> dict[str, Any]
     }
 
 
-def _build_profile_from_args(
-    profile: ProfileArgs | dict[str, Any],
-    random_seed: int,
-    rampup: float,
-    constraints: MutableMapping[str, ConstraintInitializer | Any],
-    rate: list[float] | None,
-    data: list[DataArgs] | None,
-    profile_kwargs: dict[str, Any],
-) -> Profile:
-    """
-    Build a Profile instance argument dictionary from the provided parameters.
-
-    :param profile: The profile configuration, which may be a ProfileArgs instance or a
-     dictionary.
-    :param random_seed: An integer seed for reproducible operations.
-    :param rampup: The ramp-up duration as a float (seconds).
-    :param constraints: Constraints for the profile, as a mapping from string to
-        constraint initializers or values.
-    :param rate: (Optional) The request rate for the benchmark.
-    :param data: (Optional) Data to include in the benchmark configuration.
-    :param profile_kwargs: Additional keyword arguments, may include "data_samples" and
-        other profile options.
-    :return: a Profile instance.
-    """
-    profile_args: dict[str, Any] = {
-        "rampup_duration": rampup,
-    }
-    if rate is not None:
-        profile_args["rate"] = rate
-    if data is not None:
-        profile_args["data"] = data
-    if "data_samples" in profile_kwargs:
-        profile_args["data_samples"] = profile_kwargs.get("data_samples")
-    profile_args.update(profile_kwargs)
-
-    if isinstance(profile, ProfileArgs):
-        profile_args.update(profile.model_dump())
-    elif isinstance(profile, dict):
-        profile_args.update(profile)
-    else:
-        raise ValueError(
-            "Profile arguments must be a string, dictionary, or ProfileArgs."
-        )
-    args = ProfileArgs.model_validate(profile_args)
-    return ProfileFactory.create(args, random_seed, resolve_constraints(constraints))
-
-
 async def resolve_profile(
-    profile: ProfileArgs | dict[str, Any] | Profile,
-    rate: list[float] | None,
-    random_seed: int,
-    rampup: float,
+    profile: ProfileArgs | Profile,
     constraints: MutableMapping[str, ConstraintInitializer | Any],
     max_seconds: int | float | None,
     max_requests: int | None,
@@ -344,7 +293,6 @@ async def resolve_profile(
     max_global_error_rate: float | None,
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
-    data: list[DataArgs] | None = None,
     **profile_kwargs: Any,
 ) -> Profile:
     """
@@ -355,10 +303,6 @@ async def resolve_profile(
     profile creation.
 
     :param profile: Profile type identifier or pre-configured Profile instance
-    :param rate: Request rate(s) for the benchmark execution
-    :param random_seed: Seed for reproducible random operations
-    :param warmup: Warm-up phase configuration for the benchmark execution
-        (used for ramp-up duration calculation)
     :param constraints: Dictionary of constraint initializers for benchmark limits
     :param max_seconds: Maximum duration in seconds for the benchmark
     :param max_requests: Maximum number of requests to process
@@ -367,8 +311,8 @@ async def resolve_profile(
     :param max_global_error_rate: Maximum global error rate threshold before stopping
     :param over_saturation: Over-saturation detection configuration (dict)
     :param console: Console instance for progress reporting, or None
-    :param data: Optional list of data sources.
     :param profile_kwargs: Additional profile-specific arguments.
+        data, data_samples, random_seed are used by some profiles & ignored by others.
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile
     """
@@ -390,18 +334,11 @@ async def resolve_profile(
             constraints[key] = val
 
     if not isinstance(profile, Profile):
-        profile = _build_profile_from_args(
-            profile, random_seed, rampup, constraints, rate, data, profile_kwargs
-        )
+        profile = ProfileFactory.create(profile, constraints, **profile_kwargs)
     elif constraints:
         raise ValueError(
             "Constraints must be empty when providing a Profile instance. "
             f"Provided constraints: {constraints} ; provided profile: {profile}"
-        )
-    elif rampup > 0.0:
-        raise ValueError(
-            "Ramp-up duration must not be set when providing a Profile instance. "
-            f"Provided rampup: {rampup} ; provided profile: {profile}"
         )
 
     if console_step:
@@ -496,9 +433,6 @@ async def benchmark_generative_text(
 
     profile = await resolve_profile(
         profile=args.profile,
-        rate=args.rate,
-        random_seed=args.random_seed,
-        rampup=args.rampup,
         constraints=constraints,
         max_seconds=args.max_seconds,
         max_requests=args.max_requests,
@@ -507,6 +441,7 @@ async def benchmark_generative_text(
         max_global_error_rate=args.max_global_error_rate,
         over_saturation=args.over_saturation,
         console=console,
+        random_seed=args.random_seed,
         data=args.data,
         data_samples=request_loader.info.get("data_samples", -1),
     )

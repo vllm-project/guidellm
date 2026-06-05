@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -10,6 +11,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 from guidellm.data import DataArgs
 from guidellm.data.deserializers import TraceSyntheticDataArgs
 from guidellm.scheduler import (
+    ConstraintInitializer,
     ConstraintsInitializerFactory,
     SchedulingStrategy,
     TraceReplayStrategy,
@@ -95,18 +97,31 @@ class ReplayProfileArgs(ProfileArgs):
         default="replay",
         description="Profile type discriminator for polymorphic serialization",
     )
-    data: list[DataArgs] = Field(description="Data source for replay profile")
-    data_samples: int = Field(
-        default=-1,
-        ge=-1,
-        description="Number of data samples to use for replay profile",
-    )
     time_scale: float = Field(
         validation_alias=AliasChoices("time_scale", "rate"),
         default=1.0,
         gt=0,
         description="Scale factor applied to relative timestamps",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
+        """Remove a duplicate rate
+
+        This profile aliases "rate" to "time_scale"; but if the user types
+
+            "--profile kind=replay,time_scale=2.0 --rate 3"
+
+        Pydantic won't alias the "rate" because it's already seen "time_scale", and
+        we'll get a validation error. In this case, the global "--rate" should be
+        ignored, so we remove the "rate" key.
+        """
+        if isinstance(data, dict) and all(
+            key in data for key in ("rate", "time_scale")
+        ):
+            data.pop("rate")
+        return data
 
     @field_validator("time_scale", mode="before")
     @classmethod
@@ -126,14 +141,6 @@ class ReplayProfileArgs(ProfileArgs):
             "time_scale (rate) must be an integer or a list of numeric values, "
             f"got {type(value).__name__}"
         )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _remove_replay_params(cls, data: Any) -> Any:
-        """
-        Override the ProfileArgs validator that removes replay specific parameters.
-        """
-        return data
 
 
 @ProfileFactory.register("replay")
@@ -155,13 +162,15 @@ class ReplayProfile(Profile):
     def __init__(
         self,
         args: ReplayProfileArgs,
-        random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, constraints, **kwargs)
         self.args = args
-        relative_timestamps = _resolve_relative_timestamps(args.data, args.data_samples)
 
+        data = kwargs.get("data", [])
+        data_samples = kwargs.get("data_samples", -1)
+        relative_timestamps = _resolve_relative_timestamps(data, data_samples)
         new_constraints = dict(constraints or {})
         if not any(key in new_constraints for key in _MAX_REQUEST_CONSTRAINT_KEYS):
             new_constraints.update(
