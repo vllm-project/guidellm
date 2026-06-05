@@ -1,10 +1,9 @@
 import copy
 import dataclasses
-import itertools
 import math
 import random
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 from unittest.mock import Mock
 
 from datasets import Dataset
