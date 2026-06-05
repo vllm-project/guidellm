@@ -7,11 +7,14 @@ row per line with a synthetic prompt matching the requested input_length for rep
 benchmarks.
 """
 
-import math
 from collections.abc import Callable
+import dataclasses
+import math
+from pathlib import Path
 from typing import Any
 
-from datasets import Dataset
+from datasets import Dataset, List, Value
+from datasets.exceptions import DatasetGenerationError
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -42,25 +45,6 @@ class TraceMooncakeDataArgs(TraceSyntheticDataArgs):
     )
 
 
-def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
-    n_in = row[config.prompt_tokens_column]
-    n_out = row[config.output_tokens_column]
-    n_blocks = len(row[config.hash_ids_column])
-    if n_in < 0 or n_out < 0:
-        raise DataNotSupportedError(
-            f"Trace token counts must be non-negative, got "
-            f"input_length={n_in}, output_length={n_out}"
-        )
-    for hash_id in row[config.hash_ids_column]:
-        if hash_id < 0:
-            raise ValueError(f"Hash ID must be non-negative, got {hash_id}.")
-    if math.ceil(n_in / config.hash_id_block_size) != n_blocks:
-        raise DataNotSupportedError(
-            f"Input token count of {n_in} split into blocks of size "
-            f"{config.hash_id_block_size} does not match expected {n_blocks} blocks."
-        )
-
-
 def _is_in_table(hash_id_table: list[Any], hash_id: int) -> bool:
     return (
         hash_id < len(hash_id_table)
@@ -74,13 +58,15 @@ def _resize_to_hold_id(hash_id_table: list[Any], hash_id: int) -> None:
     hash_id_table.extend(None for _ in range(num_new_entries))
 
 
-def _calculate_required_prompt_tokens(block_size: int, row: dict, hash_id: int) -> int:
+def _calculate_required_prompt_tokens(
+    row: dict, config: TraceMooncakeDataArgs, hash_id: int
+) -> int:
     """Returns the number of prompt tokens needed to satisfy the row input length.
-    This will be less than `block_size` if the input length is not divisible by it and
-    `hash_id` is the final ID for the row."""
-    if row["hash_ids"][-1] == hash_id:
-        return block_size - row["input_length"] % block_size
-    return block_size
+    This will be less than the block_size if the input length is not divisible by it
+    and `hash_id` is the final ID for the row."""
+    if row[config.hash_ids_column][-1] == hash_id:
+        return row[config.prompt_tokens_column] % config.hash_id_block_size
+    return config.hash_id_block_size
 
 
 def _generate_token_ids(
@@ -99,7 +85,7 @@ def _generate_token_ids(
             return token_ids[:amount]
     raise DataNotSupportedError(
         "Failed to generate enough synthetic prompt tokens for "
-        f"{amount} tokens after {attempt} attempts."
+        f"{amount} tokens after {attempt} attempts"
     )
 
 
@@ -119,7 +105,7 @@ def _create_distinct_token_block(
             return token_ids
         attempt += 1
     raise DataNotSupportedError(
-        f"Failed to generate distinct synthetic token block after {attempt} attempts."
+        f"Failed to generate distinct synthetic token block after {attempt} attempts"
     )
 
 
@@ -138,6 +124,59 @@ def _create_prompt_from_hash_ids(
     if isinstance(prompt, list):
         return prompt[0] if prompt else ""
     return prompt
+
+
+@dataclasses.dataclass
+class Column:
+    name: str
+    feature_type: Value
+
+
+def _load_formatted_trace_rows(
+    path: Path,
+    timestamp_column: Column,
+    required_columns: list[Column],
+) -> list[dict[str, Any]]:
+    """Load a trace file and format the columns."""
+    try:
+        rows = load_trace_rows(
+            path,
+            [col.name for col in required_columns],
+            timestamp_column.name,
+        )
+    except (DatasetGenerationError, KeyError, ValueError) as e:
+        raise DataNotSupportedError(str(e)) from e
+    if not rows:
+        raise DataNotSupportedError("Trace file is empty")
+    for col in [timestamp_column] + required_columns:
+        if rows.data[col.name].null_count != 0:
+            raise DataNotSupportedError(f"NoneType found in {col}")
+        try:
+            rows.cast_column(col.name, col.feature_type)
+        except ValueError as e:
+            raise DataNotSupportedError(str(e)) from e
+    return rows
+
+
+def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
+    n_in = row[config.prompt_tokens_column]
+    n_out = row[config.output_tokens_column]
+    n_blocks = len(row[config.hash_ids_column])
+    if n_in < 0 or n_out < 0:
+        raise DataNotSupportedError(
+            f"Trace token counts must be non-negative, got "
+            f"input_length={n_in}, output_length={n_out}"
+        )
+    for hash_id in row[config.hash_ids_column]:
+        if hash_id < 0:
+            raise DataNotSupportedError(
+                f"Hash ID must be non-negative, got {hash_id}"
+            )
+    if math.ceil(n_in / config.hash_id_block_size) != n_blocks:
+        raise DataNotSupportedError(
+            f"Input token count of {n_in} split into blocks of size "
+            f"{config.hash_id_block_size} does not match given {n_blocks} blocks"
+        )
 
 
 @DatasetDeserializerFactory.register("trace_mooncake")
@@ -165,14 +204,14 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
                 f"{type(self).__name__} expects a path to a trace file, "
                 f"got {config.path}"
             )
-        rows = load_trace_rows(
+        rows = _load_formatted_trace_rows(
             config.path,
+            Column(config.timestamp_column, Value("float")),
             required_columns=[
-                config.prompt_tokens_column,
-                config.output_tokens_column,
-                config.hash_ids_column,
-            ],
-            timestamp_column=config.timestamp_column,
+                Column(config.prompt_tokens_column, Value("int64")),
+                Column(config.output_tokens_column, Value("int64")),
+                Column(config.hash_ids_column, List(Value("int64"))),
+            ]
         )
         processor = processor_factory()
         faker = Faker()
@@ -188,7 +227,7 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
                     _resize_to_hold_id(hash_id_table, hash_id)
                     prev_id = None if idx == 0 else ids[idx - 1]
                     num_tokens = _calculate_required_prompt_tokens(
-                        config.hash_id_block_size, row, hash_id
+                        row, config, hash_id
                     )
                     sibling_token_blocks.setdefault(prev_id, [])
                     hash_id_table[hash_id] = _create_distinct_token_block(
