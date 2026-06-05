@@ -30,13 +30,12 @@ def _replay_profile(
     data = kwargs.pop("data", None)
     data_samples = kwargs.pop("data_samples", -1)
     args = _replay_args(**kwargs)
-    profile_kwargs: dict[str, Any] = {
-        "random_seed": random_seed,
-        "data_samples": data_samples,
-    }
+    profile_kwargs: dict[str, Any] = {"data_samples": data_samples}
     if data is not None:
         profile_kwargs["data"] = data
-    return ProfileFactory.create(args, constraints=constraints, **profile_kwargs)
+    return ProfileFactory.create(
+        args, random_seed, constraints=constraints, **profile_kwargs
+    )
 
 
 class TestReplayProfile:
@@ -49,7 +48,7 @@ class TestReplayProfile:
         """
         args = _replay_args()
         with pytest.raises(ValueError, match="exactly one data source"):
-            ProfileFactory.create(args)
+            ProfileFactory.create(args, 42)
 
     @pytest.mark.smoke
     def test_rejects_multiple_data_sources(self, tmp_path: Path):
@@ -62,6 +61,7 @@ class TestReplayProfile:
         with pytest.raises(ValueError, match="exactly one data source"):
             ProfileFactory.create(
                 args,
+                42,
                 data=[
                     TraceSyntheticDataArgs(path=tmp_path / "trace-a.jsonl"),
                     TraceSyntheticDataArgs(path=tmp_path / "trace-b.jsonl"),
@@ -78,11 +78,11 @@ class TestReplayProfile:
         missing = tmp_path / "missing.jsonl"
         args = _replay_args()
         with pytest.raises(ValueError, match="not found"):
-            ProfileFactory.create(args, data=[TraceSyntheticDataArgs(path=missing)])
+            ProfileFactory.create(args, 42, data=[TraceSyntheticDataArgs(path=missing)])
 
         empty = _trace_path(tmp_path)
         with pytest.raises(ValueError, match="empty|No timestamps"):
-            ProfileFactory.create(args, data=[TraceSyntheticDataArgs(path=empty)])
+            ProfileFactory.create(args, 42, data=[TraceSyntheticDataArgs(path=empty)])
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(

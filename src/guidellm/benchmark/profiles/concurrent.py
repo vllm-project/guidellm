@@ -82,10 +82,11 @@ class ConcurrentProfile(Profile):
     def __init__(
         self,
         args: ConcurrentProfileArgs,
+        random_seed: int,
         constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
         **kwargs: Any,
     ):
-        super().__init__(args, constraints, **kwargs)
+        super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
 
     @property
