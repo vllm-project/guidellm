@@ -13,7 +13,7 @@ from guidellm.data.finalizers import (
     GenerativeRequestFinalizer,
 )
 from guidellm.data.finalizers.generative import GenerativeRequestFinalizerConfig
-from guidellm.schemas import GenerationRequest
+from guidellm.schemas import GenerationRequest, RequestSettings
 
 
 class TestGenerativeRequestFinalizerTokenAggregation:
@@ -374,3 +374,36 @@ class TestFinalizerExpectsToolCall:
         ]
         results = finalizer(items)
         assert results[0].expects_tool_call is True
+
+
+class TestGenerativeRequestFinalizerRequestSettings:
+    """Verify relative_timestamp_column maps to GenerationRequest.settings.
+
+    ### WRITTEN BY AI ###
+    """
+
+    @pytest.fixture
+    def finalizer(self):
+        """### WRITTEN BY AI ###"""
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+
+    @pytest.mark.smoke
+    def test_relative_timestamp_column_sets_settings(self, finalizer):
+        """### WRITTEN BY AI ###"""
+        result = finalizer.finalize_turn({"relative_timestamp_column": [2.5]})
+
+        assert result.settings == RequestSettings(relative_timestamp=2.5)
+
+    @pytest.mark.smoke
+    def test_missing_relative_timestamp_column_uses_empty_settings(self, finalizer):
+        """### WRITTEN BY AI ###"""
+        result = finalizer.finalize_turn({"text_column": ["hello"]})
+
+        assert result.settings == RequestSettings()
+
+    @pytest.mark.smoke
+    def test_none_relative_timestamp_column_uses_empty_settings(self, finalizer):
+        """### WRITTEN BY AI ###"""
+        result = finalizer.finalize_turn({"relative_timestamp_column": [None]})
+
+        assert result.settings == RequestSettings()

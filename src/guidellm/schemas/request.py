@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import Field, computed_field
 
 from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
+from guidellm.schemas.info import RequestSettings
 from guidellm.utils.dict import deep_update
 
 __all__ = [
@@ -251,4 +252,11 @@ class GenerationRequest(StandardBaseModel):
     output_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
         description="Output statistics including counts, sizes, and durations.",
+    )
+    settings: RequestSettings = Field(
+        default_factory=RequestSettings,
+        description=(
+            "Per-request scheduling metadata from the dataset finalizer, "
+            "for example trace replay relative timestamps."
+        ),
     )

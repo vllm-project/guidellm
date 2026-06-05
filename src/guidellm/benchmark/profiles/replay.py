@@ -139,14 +139,15 @@ class ReplayProfileArgs(ProfileArgs):
 @ProfileFactory.register("replay")
 class ReplayProfile(Profile):
     """
-    Replay a trace file:
-    schedule each request at start_time + time_scale * relative_timestamp[i].
+    Replay a trace file using per-row ``relative_timestamp`` from the dataset.
 
-    For this profile, the ``rate`` argument is interpreted as time_scale (scale factor
-    applied to relative timestamps), not as requests per second.
+    Each request is scheduled at
+    ``start_time + time_scale * relative_timestamp`` via ``RequestSettings`` on
+    the dataset finalizer output. For this profile, ``rate`` is interpreted as
+    ``time_scale`` (not requests per second).
 
-    When ``data_samples`` is set, the replayed timestamps are truncated to match
-    the sampled dataset size.
+    When ``data_samples`` is set, the default ``max_requests`` constraint matches
+    the truncated dataset size.
     """
 
     args: ReplayProfileArgs
@@ -169,7 +170,6 @@ class ReplayProfile(Profile):
                 )
             )
             self.constraints = new_constraints
-        self.relative_timestamps = relative_timestamps
 
     @property
     def strategy_types(self) -> list[str]:
@@ -184,7 +184,4 @@ class ReplayProfile(Profile):
         # Replay has a single strategy; return it once, then None
         if prev_strategy is not None:
             return None
-        return TraceReplayStrategy(
-            relative_timestamps=self.relative_timestamps,
-            time_scale=self.args.time_scale,
-        )
+        return TraceReplayStrategy(time_scale=self.args.time_scale)
