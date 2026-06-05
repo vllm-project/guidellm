@@ -1,9 +1,10 @@
 import copy
 import dataclasses
+import itertools
 import math
 import random
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 from unittest.mock import Mock
 
 from datasets import Dataset
@@ -59,6 +60,36 @@ def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
     path = tmp_path / f"trace{suffix}"
     path.write_text(content)
     return path
+
+
+def _make_valid_hash_ids(n_rows: int, prompt_lengths: list[int], block_size: int):
+    """The final token block of every row may be less than the hash id block
+    size due to the prompt length not being divisible by it. Use this
+    when testing large trace prompts to avoid including token blocks with
+    less than the block size in the middle of later rows."""
+    tail_hash_ids = []
+    original_prompt_positions = dict(zip(prompt_lengths, range(n_rows)))
+    sorted_lengths = copy.deepcopy(prompt_lengths)
+    sorted_lengths.sort()
+    hash_ids = [None for _ in range(n_rows)]
+    for length in sorted_lengths:
+        original_position = original_prompt_positions[length]
+        n_blocks = math.ceil(length / block_size)
+        n_to_generate = n_blocks + len(tail_hash_ids)
+        hash_ids[original_position] = [
+            i for i in range(n_to_generate) if i not in tail_hash_ids
+        ]
+        tail_hash_ids.append(hash_ids[original_position][-1])
+    return hash_ids
+
+
+def _all_equal(items: list):
+    return len(set(items)) == 1
+
+
+def _all_distinct(items: list):
+    seen = set()
+    return not any(i in seen or seen.add(i) for i in items)
 
 
 @dataclasses.dataclass
@@ -161,28 +192,6 @@ class TestTraceMooncakeDatasetDeserializer():
             ]),
         )
         self._deserialize(deserializer, trace, hash_id_block_size=n_in / 5)
-    
-    def _make_valid_hash_ids(
-        self, n_rows: int, prompt_lengths: list[int], block_size: int
-    ):
-        """The final token block of every row may be less than the hash id block
-        size due to the prompt length not being divisible by it. Use this
-        when testing large trace prompts to avoid including token blocks with
-        less than the block size in the middle of later rows."""
-        tail_hash_ids = []
-        original_prompt_positions = dict(zip(prompt_lengths, range(n_rows)))
-        sorted_lengths = copy.deepcopy(prompt_lengths)
-        sorted_lengths.sort()
-        hash_ids = [None for _ in range(n_rows)]
-        for length in sorted_lengths:
-            original_position = original_prompt_positions[length]
-            n_blocks = math.ceil(length / block_size)
-            n_to_generate = n_blocks + len(tail_hash_ids)
-            hash_ids[original_position] = [
-                i for i in range(n_to_generate) if i not in tail_hash_ids
-            ]
-            tail_hash_ids.append(hash_ids[original_position][-1])
-        return hash_ids
 
     @pytest.mark.smoke
     def test_generates_large_trace_prompts(self, tmp_path: Path, deserializer):
@@ -193,7 +202,7 @@ class TestTraceMooncakeDatasetDeserializer():
         times = [0.0, 0.5, 1.0, 2.0]
         timestamps = [times[int(i / n_rows * len(times))] for i in range(n_rows)]
         block_size = TraceMooncakeDataArgs(path=tmp_path).hash_id_block_size
-        hash_ids = self._make_valid_hash_ids(n_rows, prompt_lengths, block_size)
+        hash_ids = _make_valid_hash_ids(n_rows, prompt_lengths, block_size)
         trace = _write_trace(
             tmp_path,
             _generate_trace(n_rows, [
@@ -294,8 +303,58 @@ class TestTraceMooncakeDatasetDeserializer():
     def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):
         trace = _write_trace(
             tmp_path,
-            '{"timestamp": 0, "input_length": 10, "output_length": 5}\n',
+            '{"timestamp": 0, "input_length": 10, "output_length": 5, '
+            '"hash_ids": [0]}\n',
             suffix=".json",
         )
         with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.json"):
             self._deserialize(deserializer, trace)
+
+    @pytest.mark.sanity
+    def test_incompatible_encoding_raises(self, tmp_path: Path, deserializer):
+        n_rows = 2
+        trace = _write_trace(
+            tmp_path,
+            _generate_trace(n_rows, [
+                TraceColumn("timestamp", lambda i: i),
+                TraceColumn("input_length", lambda _: 1024),
+                TraceColumn("output_length", lambda _: 5),
+                TraceColumn("hash_ids", lambda i: [0, i + 1]),
+            ]),
+        )
+        config = TraceMooncakeDataArgs(path=trace)
+        with pytest.raises(DataNotSupportedError, match="generate enough"):
+            deserializer(
+                config=config,
+                processor_factory=lambda: _incompetent_processor(),
+                random_seed=42,
+            )
+        with pytest.raises(DataNotSupportedError, match="generate distinct"):
+            deserializer(
+                config=config,
+                processor_factory=lambda: _ascending_processor(),
+                random_seed=42,
+            )
+
+    @pytest.mark.smoke
+    def test_token_block_distinctness(self, tmp_path: Path, deserializer):
+        n_rows = 4
+        trace = _write_trace(
+            tmp_path,
+            _generate_trace(n_rows, [
+                TraceColumn("timestamp", lambda i: i),
+                TraceColumn("input_length", lambda _: 1024),
+                TraceColumn("output_length", lambda _: 5),
+                TraceColumn("hash_ids", lambda i: [0, i + 1]),
+            ]),
+        )
+        config = TraceMooncakeDataArgs(path=trace)
+        ds = deserializer(
+            config=config,
+            processor_factory=lambda: _compatible_processor(),
+            random_seed=42,
+        )
+        root_block = [ds["hash_ids"][row][0] for row in range(n_rows)]
+        sibling_blocks = [ds["hash_ids"][row][1] for row in range(n_rows)]
+        assert _all_equal(root_block)
+        assert _all_distinct(sibling_blocks)

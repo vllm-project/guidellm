@@ -64,8 +64,9 @@ def _calculate_required_prompt_tokens(
     """Returns the number of prompt tokens needed to satisfy the row input length.
     This will be less than the block_size if the input length is not divisible by it
     and `hash_id` is the final ID for the row."""
-    if row[config.hash_ids_column][-1] == hash_id:
-        return row[config.prompt_tokens_column] % config.hash_id_block_size
+    remainder = row[config.prompt_tokens_column] % config.hash_id_block_size
+    if row[config.hash_ids_column][-1] == hash_id and remainder != 0:
+        return remainder
     return config.hash_id_block_size
 
 
