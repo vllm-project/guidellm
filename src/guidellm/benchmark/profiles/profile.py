@@ -5,18 +5,18 @@ Profile base class for multi-strategy benchmark execution.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import Generator, MutableMapping
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import (
     ConfigDict,
     Field,
     NonNegativeFloat,
-    model_validator,
 )
 
 from guidellm.scheduler import (
     Constraint,
+    ConstraintInitializer,
     ConstraintsInitializerFactory,
     SchedulingStrategy,
 )
@@ -35,17 +35,6 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
     of profile instances. It inherits from PydanticClassRegistryMixin to enable
     automatic registration of subclasses, allowing for flexible and extensible
     profile configurations.
-
-    NOTES:
-
-    - Several fields are always passed by the CLI but are not relevant to some
-      profiles. In order to "forbid" unknown parameters, we have to handle these
-      here. There are two separate strategies:
-      - a "before" model validator removes the replay specific parameters (data and
-        data_samples), and this validator is overriden by the replay profile.
-      - random_seed is allowed as a "global" even though it's not used by most
-        profiles. Since random_seed is a CLI option used outside of profiles, this
-        seems less "hacky" than the temporary solution for replay.
 
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
@@ -81,28 +70,14 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
         ),
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _remove_replay_params(cls, data: Any) -> Any:
-        """Remove replay specific parameters from the data.
-
-        TODO: This is a temporary solution to remove replay specific parameters from the
-        data so we can use Pydantic to validate the parameters. This is overriden by the
-        replay profile, and will be removed when we have a better solution.
-        """
-        if isinstance(data, dict):
-            data.pop("data", None)
-            data.pop("data_samples", None)
-        return data
-
 
 class ProfileFactory(RegistryMixin["type[Profile]"]):
     @classmethod
     def create(
         cls,
         args: ProfileArgs,
-        random_seed: int,
-        constraints: dict[str, Any] | None = None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None = None,
+        **kwargs: Any,
     ) -> Profile:
         """
         Create profile instances from validated profile arguments.
@@ -121,7 +96,7 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
                 f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
             )
 
-        return profile_class(args, random_seed, constraints)
+        return profile_class(args, constraints, **kwargs)
 
     @classmethod
     def registered_names(cls) -> tuple[str, ...]:
@@ -154,18 +129,18 @@ class Profile(ABC):
     def __init__(
         self,
         args: ProfileArgs,
-        random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
         """
         Initialize a profile instance.
 
         :param args: Validated profile argument model for this profile type
         """
+        _ = kwargs  # unused
         self.kind = args.kind
         self.args = args
-        self.random_seed = random_seed
-        self.constraints = constraints
+        self.constraints = dict(constraints or {})
         self.completed_strategies: list[SchedulingStrategy] = []
 
     @property

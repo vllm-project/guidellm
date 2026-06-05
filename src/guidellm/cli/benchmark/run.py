@@ -320,7 +320,7 @@ __all__ = ["run"]
     flag_value='{"enabled": true}',
     help="Enable over-saturation detection with default settings.",
 )
-def run(**kwargs):  # noqa: C901, PLR0915
+def run(**kwargs):  # noqa: C901, PLR0915, PLR0912
     ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
@@ -371,7 +371,15 @@ def run(**kwargs):  # noqa: C901, PLR0915
         with contextlib.suppress(KeyError):
             backend_kwargs[alias] = kwargs.pop(alias)
 
+    # Map top-level CLI options to profile
     kwargs["backend_kwargs"] = backend_kwargs
+    profile = kwargs.pop("profile", {"kind": "sweep"})
+    rate = kwargs.pop("rate", None)
+    profile["rate"] = rate
+    rampup = kwargs.pop("rampup", None)
+    if rampup is not None and "rampup_duration" not in profile:
+        profile["rampup_duration"] = rampup
+    kwargs["profile"] = profile
 
     # Handle console options
     disable_console = kwargs.pop("disable_console", False)

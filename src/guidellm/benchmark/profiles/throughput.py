@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, Field, PositiveInt, field_validator
+from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 
 from guidellm.scheduler import (
+    ConstraintInitializer,
     SchedulingStrategy,
     ThroughputStrategy,
 )
@@ -29,6 +31,25 @@ class ThroughputProfileArgs(ProfileArgs):
         validation_alias=AliasChoices("max_concurrency", "rate"),
         description="Maximum concurrent requests to schedule",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
+        """Remove a duplicate rate
+
+        This profile aliases "rate" to "max_concurrency"; but if the user types
+
+            "--profile kind=throughput,max_concurrency=2.0 --rate 3"
+
+        Pydantic won't alias the "rate" because it's already seen "max_concurrency", and
+        we'll get a validation error. In this case, the global "--rate" shoulde be
+        ignored, so we remove the "rate" key.
+        """
+        if isinstance(data, dict) and all(
+            key in data for key in ("rate", "max_concurrency")
+        ):
+            data.pop("rate")
+        return data
 
     @field_validator("max_concurrency", mode="before")
     @classmethod
@@ -65,10 +86,10 @@ class ThroughputProfile(Profile):
     def __init__(
         self,
         args: ThroughputProfileArgs,
-        random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, constraints, **kwargs)
         self.args = args
 
     @property

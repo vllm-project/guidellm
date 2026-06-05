@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, PositiveFloat, PositiveInt, field_validator
@@ -9,6 +10,7 @@ from pydantic import Field, PositiveFloat, PositiveInt, field_validator
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
+    ConstraintInitializer,
     SchedulingStrategy,
 )
 
@@ -69,15 +71,16 @@ class AsyncProfile(Profile):
     def __init__(
         self,
         args: AsyncProfileArgs,
-        random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, constraints, **kwargs)
         self.args = args
         if args.kind in ("async", "constant"):
             self._strategy_type: Literal["constant", "poisson"] = "constant"
         elif args.kind == "poisson":
             self._strategy_type = "poisson"
+            self.random_seed = kwargs.get("random_seed", 42)
         else:
             raise ValueError(f"Invalid profile kind: {args.kind}")
 

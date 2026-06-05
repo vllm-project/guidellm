@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-from pydantic import AliasChoices, Field, PositiveInt, field_validator
+from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
+    ConstraintInitializer,
     SchedulingStrategy,
     SynchronousStrategy,
     ThroughputStrategy,
@@ -40,6 +42,25 @@ class SweepProfileArgs(ProfileArgs):
         default=None,
         description="Maximum concurrent requests to schedule",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
+        """Remove a duplicate rate
+
+        This profile aliases "rate" to "sweep_size"; but if the user types
+
+            "--profile kind=sweep,sweep_size=6 --rate 10"
+
+        Pydantic won't alias the "rate" because it's already seen "sweep_size", and
+        we'll get a validation error. In this case, the global "--rate" should be
+        ignored, so we remove the "rate" key.
+        """
+        if isinstance(data, dict) and all(
+            key in data for key in ("rate", "sweep_size")
+        ):
+            data.pop("rate")
+        return data
 
     @field_validator("sweep_size", mode="before")
     @classmethod
@@ -79,11 +100,13 @@ class SweepProfile(Profile):
     def __init__(
         self,
         args: SweepProfileArgs,
-        random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, constraints, **kwargs)
         self.args = args
+        if self.args.strategy_type == "poisson":
+            self.random_seed = kwargs.get("random_seed", 42)
         self.synchronous_rate = -1.0
         self.throughput_rate = -1.0
         self.async_rates: list[float] = []
