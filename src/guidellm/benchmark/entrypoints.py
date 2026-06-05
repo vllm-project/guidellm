@@ -26,7 +26,9 @@ from guidellm.benchmark.outputs import (
 from guidellm.benchmark.profiles import Profile, ProfileArgs, ProfileFactory
 from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 from guidellm.benchmark.schemas import (
-    BenchmarkGenerativeTextArgs,
+    BenchmarkArgs,
+    BenchmarkOutputArgs,
+    BenchmarkScenario,
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
@@ -41,7 +43,6 @@ from guidellm.scheduler import (
     ConstraintsInitializerFactory,
     NonDistributedEnvironment,
 )
-from guidellm.scheduler.constraints.args import ConstraintArgs
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
@@ -133,14 +134,14 @@ async def resolve_backend(
 
 
 async def resolve_tokenizer(
-    args: BenchmarkGenerativeTextArgs,
+    args: BenchmarkArgs,
     model: str | None,
     console: Console | None = None,
 ) -> None:
     """
     Resolve the tokenization processor, defaulting to model if not provided.
 
-    :param args: BenchmarkGenerativeTextArgs containing tokenizer configuration
+    :param args: BenchmarkArgs containing tokenizer configuration
     :param model: Resolved model identifier from the backend, used as default if
         tokenizer model is not specified
     :param console: Console instance for progress reporting, or None
@@ -219,7 +220,7 @@ def resolve_item_from_registry(
 
 
 async def resolve_request_loader(
-    args: BenchmarkGenerativeTextArgs,
+    args: BenchmarkArgs,
     console: Console | None = None,
 ) -> DataLoader[GenerationRequest]:
     """
@@ -230,7 +231,7 @@ async def resolve_request_loader(
     from the PreprocessorRegistry and creates appropriate instances with provided
     configurations.
 
-    :param args: BenchmarkGenerativeTextArgs containing data loading configuration
+    :param args: BenchmarkArgs containing data loading configuration
     :param console: Console instance for progress reporting, or None
     :return: Configured DataLoader instance yielding GenerationRequest objects
     """
@@ -247,7 +248,7 @@ async def resolve_request_loader(
         column_mapper_config=args.data_column_mapper,
         preprocessors_config=args.data_preprocessors,
         finalizer_config=args.data_finalizer,
-        random_seed=args.random_seed,
+        random_seed=args.seed.value,  # type: ignore[attr-defined]
     )
 
     if console_step:
@@ -262,15 +263,15 @@ async def resolve_request_loader(
 
 
 def resolve_constraints(
-    args: BenchmarkGenerativeTextArgs,
+    args: BenchmarkArgs,
     **extra_constraints: ConstraintInitializer | Any,
 ) -> dict[str, Any]:
     """
     Resolve all constraint sources into a unified constraints dictionary.
 
-    Translates flat CLI fields (max_seconds, max_requests, etc.) and the explicit
-    ``constraints`` list from args into a single dict keyed by constraint registry
-    names. Also merges any programmatically provided extra constraints.
+    Resolves the explicit ``constraints`` list from args into a single dict keyed
+    by constraint registry names. Also merges any programmatically provided extra
+    constraints.
 
     :param args: Benchmark configuration containing constraint fields
     :param extra_constraints: Additional constraint initializers passed programmatically
@@ -278,55 +279,11 @@ def resolve_constraints(
     """
     resolved: dict[str, Any] = {}
 
-    # 1. Translate flat CLI args into ConstraintArgs and resolve
-    flat_constraint_map: dict[str, dict[str, Any] | None] = {
-        "max_duration": (
-            {"kind": "max_duration", "max_duration": args.max_seconds}
-            if args.max_seconds is not None
-            else None
-        ),
-        "max_requests": (
-            {"kind": "max_requests", "max_num": args.max_requests}
-            if args.max_requests is not None
-            else None
-        ),
-        "max_errors": (
-            {"kind": "max_errors", "max_errors": args.max_errors}
-            if args.max_errors is not None
-            else None
-        ),
-        "max_error_rate": (
-            {"kind": "max_error_rate", "max_error_rate": args.max_error_rate}
-            if args.max_error_rate is not None
-            else None
-        ),
-        "max_global_error_rate": (
-            {
-                "kind": "max_global_error_rate",
-                "max_error_rate": args.max_global_error_rate,
-            }
-            if args.max_global_error_rate is not None
-            else None
-        ),
-        "over_saturation": (
-            {"kind": "over_saturation", **args.over_saturation}
-            if args.over_saturation is not None
-            else None
-        ),
-    }
-
-    for key, constraint_dict in flat_constraint_map.items():
-        if constraint_dict is not None:
-            constraint_args = ConstraintArgs.model_validate(constraint_dict)
-            resolved[key] = ConstraintsInitializerFactory.create(constraint_args)
-
-    # 2. Merge explicitly provided ConstraintArgs list from args
     for constraint_arg in args.constraints:
         resolved[constraint_arg.constraint_key] = ConstraintsInitializerFactory.create(
             constraint_arg
         )
 
-    # 3. Merge any programmatic extra constraints (preserving raw values/initializers)
     for key, val in extra_constraints.items():
         if isinstance(val, dict) and "type_" in val:
             resolved[key] = ConstraintsInitializerFactory.deserialize(
@@ -421,7 +378,7 @@ async def resolve_output_formats(
 
 
 async def benchmark_generative_text(
-    args: BenchmarkGenerativeTextArgs,
+    args: BenchmarkScenario,
     progress: GenerativeConsoleBenchmarkerProgress | None = None,
     console: Console | None = None,
     **constraints: str | ConstraintInitializer | Any,
@@ -434,25 +391,27 @@ async def benchmark_generative_text(
     finalizing results in specified output formats. Components include backend
     initialization, data loading, profile configuration, and output generation.
 
-    :param args: Configuration arguments for the benchmark execution
+    :param args: Scenario configuration for the benchmark execution
     :param progress: Progress tracker for benchmark execution, or None for no tracking
     :param console: Console instance for status reporting, or None for silent operation
     :param constraints: Additional constraint initializers for benchmark limits
     :return: Tuple of GenerativeBenchmarksReport and dictionary of output format
         results
     """
+    benchmark_args = args.get_benchmarks()[0]
+
     backend, model = await resolve_backend(
-        backend_args=args.backend_kwargs,
+        backend_args=benchmark_args.backend,
         console=console,
     )
-    await resolve_tokenizer(args=args, model=model, console=console)
+    await resolve_tokenizer(args=benchmark_args, model=model, console=console)
     request_loader = await resolve_request_loader(
-        args=args,
+        args=benchmark_args,
         console=console,
     )
 
-    warmup = TransientPhaseConfig.create_from_value(args.warmup)
-    cooldown = TransientPhaseConfig.create_from_value(args.cooldown)
+    warmup = benchmark_args.profile.warmup
+    cooldown = benchmark_args.profile.cooldown
     if console:
         console.print_update(
             title="Resolved transient phase configurations",
@@ -460,26 +419,27 @@ async def benchmark_generative_text(
                 [
                     f"Warmup: {warmup}",
                     f"Cooldown: {cooldown}",
-                    f"Rampup (Throughput/Concurrent): {args.rampup}",
+                    "Rampup (Throughput/Concurrent): "
+                    f"{benchmark_args.profile.rampup_duration}",
                 ]
             ),
             status="success",
         )
 
-    constraints = resolve_constraints(args, **constraints)
+    constraints = resolve_constraints(benchmark_args, **constraints)
     profile = await resolve_profile(
-        profile=args.profile,
+        profile=benchmark_args.profile,
         constraints=constraints,
         console=console,
-        random_seed=args.random_seed,
-        data=args.data,
+        random_seed=benchmark_args.seed.value,  # type: ignore[attr-defined]
+        data=benchmark_args.data,
         data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(
         outputs=args.outputs, output_dir=args.output_dir, console=console
     )
 
-    report = GenerativeBenchmarksReport(args=args)
+    report = GenerativeBenchmarksReport(config=benchmark_args)
     if console:
         console.print_update(
             title="Setup complete, starting benchmarks...", status="success"
@@ -497,10 +457,10 @@ async def benchmark_generative_text(
         profile=profile,
         environment=NonDistributedEnvironment(),
         progress=progress,
-        sample_requests=args.sample_requests,
+        sample_requests=None,
         warmup=warmup,
         cooldown=cooldown,
-        prefer_response_metrics=args.prefer_response_metrics,
+        prefer_response_metrics=True,
     ):
         if benchmark:
             report.benchmarks.append(benchmark)

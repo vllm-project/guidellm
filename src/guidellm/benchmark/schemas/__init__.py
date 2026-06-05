@@ -48,7 +48,6 @@ __all__ = [
     "BenchmarkAccumulator",
     "BenchmarkAccumulatorT",
     "BenchmarkArgs",
-    "BenchmarkCommonArgs",
     "BenchmarkConfig",
     "BenchmarkMetadata",
     "BenchmarkOutputArgs",

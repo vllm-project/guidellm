@@ -253,7 +253,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             values,
             "Runtime Info",
             "Arguments",
-            report.args.model_dump_json(),
+            report.config.model_dump_json(),
         )
 
     def _add_run_info(

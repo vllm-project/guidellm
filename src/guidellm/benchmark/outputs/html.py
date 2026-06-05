@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, computed_field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
-    BenchmarkGenerativeTextArgs,
+    BenchmarkArgs,
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
@@ -94,7 +94,7 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
             output_path = output_path / self.DEFAULT_FILE
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        data = _build_ui_data(report.benchmarks, report.args)
+        data = _build_ui_data(report.benchmarks, report.config)
         camel_data = recursive_key_update(deepcopy(data), camelize_str)
 
         ui_api_data = {
@@ -299,7 +299,7 @@ def _inject_data(js_data: dict[str, str], html: str) -> str:
 
 
 def _build_ui_data(
-    benchmarks: list[GenerativeBenchmark], args: BenchmarkGenerativeTextArgs
+    benchmarks: list[GenerativeBenchmark], args: BenchmarkArgs
 ) -> dict[str, Any]:
     """
     Build complete UI data structure from benchmarks.
@@ -319,7 +319,7 @@ def _build_ui_data(
 
 
 def _build_run_info(
-    benchmarks: list[GenerativeBenchmark], args: BenchmarkGenerativeTextArgs
+    benchmarks: list[GenerativeBenchmark], args: BenchmarkArgs
 ) -> dict[str, Any]:
     """
     Build run metadata from benchmarks.
@@ -331,9 +331,7 @@ def _build_run_info(
     :param args: Benchmark configuration arguments
     :return: Dictionary with model, task, timestamp, and dataset information
     """
-    model = (
-        args.backend_kwargs.model if hasattr(args.backend_kwargs, "model") else "N/A"
-    )
+    model = args.backend.model if hasattr(args.backend, "model") else "N/A"
     timestamp = max(bm.start_time for bm in benchmarks if bm.start_time is not None)
     return {
         "model": {"name": model, "size": 0},
@@ -344,7 +342,7 @@ def _build_run_info(
 
 
 def _build_workload_details(
-    benchmarks: list[GenerativeBenchmark], args: BenchmarkGenerativeTextArgs
+    benchmarks: list[GenerativeBenchmark], args: BenchmarkArgs
 ) -> dict[str, Any]:
     """
     Build workload details from benchmarks.
@@ -357,9 +355,7 @@ def _build_workload_details(
     :param args: Benchmark configuration arguments
     :return: Dictionary with prompts, generations, request timing, and server info
     """
-    target = (
-        args.backend_kwargs.target if hasattr(args.backend_kwargs, "target") else None
-    )
+    target = args.backend.target if hasattr(args.backend, "target") else None
     rate_type = benchmarks[0].config.strategy.type_
     successful_requests = [req for bm in benchmarks for req in bm.requests.successful]
 

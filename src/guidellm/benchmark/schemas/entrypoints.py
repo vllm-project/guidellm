@@ -163,18 +163,17 @@ class BenchmarkScenario(BaseSettings):
     Example::
 
         # Load from built-in scenario with overrides
-        args = BenchmarkGenerativeTextArgs.create(
+        args = BenchmarkScenario.create(
             scenario="chat",
-            target="http://localhost:8000/v1",
-            max_requests=1000
+            spec={"backend": {"kind": "openai_http", "target": "http://localhost:8000/v1"}},
         )
 
         # Create from keyword arguments only
-        args = BenchmarkGenerativeTextArgs(
-            target="http://localhost:8000/v1",
-            data=["path/to/dataset.json"],
-            profile="fixed",
-            rate=10.0
+        args = BenchmarkScenario(
+            spec=BenchmarkArgs(
+                backend={"kind": "openai_http", "target": "http://localhost:8000/v1"},
+                data=[{"kind": "synthetic_text"}],
+            ),
         )
     """
 
