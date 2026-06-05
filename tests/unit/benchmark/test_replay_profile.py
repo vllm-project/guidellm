@@ -81,11 +81,11 @@ class TestReplayProfile:
             ([2.0], 2.0),
         ],
     )
-    def test_profile_create_resolves_timestamps_and_time_scale(
+    def test_profile_create_resolves_time_scale_and_default_max_requests(
         self, tmp_path: Path, rate, expected_scale
     ):
         """
-        Profile.create loads sorted relative timestamps and time scale from data.
+        Profile.create resolves time scale and default max_requests from trace data.
 
         ## WRITTEN BY AI ##
         """
@@ -107,7 +107,6 @@ class TestReplayProfile:
         profile = _replay_profile(**payload)
 
         assert isinstance(profile, ReplayProfile)
-        assert profile.relative_timestamps == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
         assert profile.args.time_scale == expected_scale
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
             type_="max_number", max_num=3, current_index=0
@@ -151,7 +150,6 @@ class TestReplayProfile:
             data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
         )
 
-        assert profile.relative_timestamps == pytest.approx([0.0, 3.0, 6.0], abs=1e-9)
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
             type_="max_number", max_num=3, current_index=0
         )
@@ -236,7 +234,6 @@ class TestReplayProfile:
 
         profile = _replay_profile(data=[TraceSyntheticDataArgs(path=trace)])
 
-        assert profile.relative_timestamps == pytest.approx(timestamps, abs=1e-9)
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
             type_="max_number", max_num=27, current_index=0
         )
@@ -303,7 +300,6 @@ class TestReplayProfile:
             constraints={"max_requests": 10, "max_seconds": 0.25},
         )
 
-        assert profile.relative_timestamps == pytest.approx([0.0, 1.0, 4.0], abs=1e-9)
         assert profile.constraints == {"max_requests": 10, "max_seconds": 0.25}
 
     @pytest.mark.smoke
@@ -329,7 +325,6 @@ class TestReplayProfile:
             data_samples=data_samples,
         )
 
-        assert profile.relative_timestamps == pytest.approx([0.0, 1.0], abs=1e-9)
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
             type_="max_number", max_num=2, current_index=0
         )
@@ -367,7 +362,6 @@ class TestReplayProfile:
         )
 
         assert isinstance(profile, ReplayProfile)
-        assert profile.relative_timestamps == pytest.approx([0.0, 3.0], abs=1e-9)
         assert profile.args.time_scale == 2.0
         assert profile.constraints["max_requests"] == 2
 
@@ -390,6 +384,5 @@ class TestReplayProfile:
         strategy = profile.next_strategy(None, None)
         assert profile.strategy_types == ["trace"]
         assert isinstance(strategy, TraceReplayStrategy)
-        assert strategy.relative_timestamps == [0.0]
         assert strategy.time_scale == 2.0
         assert profile.next_strategy(strategy, None) is None

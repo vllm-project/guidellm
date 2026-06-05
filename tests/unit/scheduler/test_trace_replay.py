@@ -8,7 +8,7 @@ import pytest
 from datasets.exceptions import DatasetGenerationError
 
 from guidellm.scheduler import SchedulingStrategy, TraceReplayStrategy
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.utils.trace_io import load_relative_timestamps
 
 
@@ -92,88 +92,120 @@ class TestLoadRelativeTimestamps:
             load_relative_timestamps(trace)
 
 
+TRACE_TIMESTAMPS = [0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 2.0, 2.0, 3.5, 7.0]
+
+
 class TestTraceReplayStrategy:
     @pytest.mark.smoke
     def test_initialization_and_serialization(self):
-        strategy = TraceReplayStrategy(
-            relative_timestamps=[0.0, 0.5, 1.0],
-            time_scale=2.0,
-        )
+        strategy = TraceReplayStrategy(time_scale=2.0)
 
         assert strategy.type_ == "trace"
         assert str(strategy) == "trace@2.00"
-        assert strategy.processes_limit == 1
+        assert strategy.processes_limit is None
         assert strategy.requests_limit is None
         restored = SchedulingStrategy.model_validate(strategy.model_dump())
         assert isinstance(restored, TraceReplayStrategy)
-        assert restored.relative_timestamps == [0.0, 0.5, 1.0]
         assert restored.time_scale == 2.0
 
     @pytest.mark.smoke
-    def test_next_request_time_scales_timestamps(self):
-        strategy = TraceReplayStrategy(
-            relative_timestamps=[0.0, 0.5, 1.0],
-            time_scale=2.0,
-        )
+    def test_resolve_dequeued_target_start_applies_trace_offset(self):
+        """Dequeue resolution uses per-request settings, not provisional slot time.
+
+        ### WRITTEN BY AI ###
+        """
+        strategy = TraceReplayStrategy(time_scale=2.0)
         strategy.init_processes_timings(
-            worker_count=1,
+            worker_count=2,
             max_concurrency=10,
             mp_context=get_context(),
         )
         strategy.init_processes_start(1000.0)
 
         async def run():
-            return [await strategy.next_request_time(0) for _ in range(3)]
+            settings = RequestSettings(relative_timestamp=1.5)
+            provisional = 9999.0
+            resolved = await strategy.resolve_dequeued_target_start(
+                1,
+                provisional,
+                settings,
+            )
+            return resolved, provisional
 
-        assert asyncio.run(run()) == pytest.approx([1000.0, 1001.0, 1002.0], abs=1e-6)
+        resolved, provisional = asyncio.run(run())
+        assert resolved == pytest.approx(1000.0 + 2.0 * 1.5, abs=1e-6)
+        assert resolved != pytest.approx(provisional, abs=1e-6)
 
     @pytest.mark.smoke
-    def test_next_request_time_parks_when_trace_exhausted(self):
-        strategy = TraceReplayStrategy(
-            relative_timestamps=[0.0, 0.5],
-            time_scale=1.0,
-        )
+    def test_next_request_time_returns_start_time(self):
+        """Verify next_request_time schedules immediate dequeue at benchmark start.
+
+        ### WRITTEN BY AI ###
+        """
+        strategy = TraceReplayStrategy(time_scale=2.0)
         strategy.init_processes_timings(
             worker_count=1,
             max_concurrency=10,
             mp_context=get_context(),
         )
         strategy.init_processes_start(1000.0)
-
-        async def run():
-            # Consume the 2 valid slots
-            await strategy.next_request_time(0)
-            await strategy.next_request_time(0)
-            # The 3rd call parks; should raise CancelledError when cancelled
-            task = asyncio.create_task(strategy.next_request_time(0))
-            await asyncio.sleep(0.05)
-            assert not task.done(), "expected to be parked, not resolved"
-            task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await task
-
-        asyncio.run(run())
-
-    @pytest.mark.smoke
-    def test_empty_trace_has_no_request_limit_and_uses_start_time(self):
-        strategy = TraceReplayStrategy(relative_timestamps=[], time_scale=1.0)
-        strategy.init_processes_timings(
-            worker_count=1,
-            max_concurrency=10,
-            mp_context=get_context(),
-        )
-        strategy.init_processes_start(123.0)
-
-        assert strategy.requests_limit is None
 
         async def run():
             return await strategy.next_request_time(0)
 
-        assert asyncio.run(run()) == pytest.approx(123.0)
+        assert asyncio.run(run()) == pytest.approx(1000.0, abs=1e-6)
+
+    @pytest.mark.smoke
+    def test_resolve_dequeued_target_start_scales_timestamps(self):
+        strategy = TraceReplayStrategy(time_scale=2.0)
+        strategy.init_processes_timings(
+            worker_count=1,
+            max_concurrency=10,
+            mp_context=get_context(),
+        )
+        strategy.init_processes_start(1000.0)
+
+        async def run():
+            return [
+                await strategy.resolve_dequeued_target_start(
+                    0,
+                    1000.0,
+                    RequestSettings(relative_timestamp=ts),
+                )
+                for ts in TRACE_TIMESTAMPS
+            ]
+
+        assert asyncio.run(run()) == pytest.approx(
+            [1000.0 + 2.0 * ts for ts in TRACE_TIMESTAMPS],
+            abs=1e-6,
+        )
+
+    @pytest.mark.smoke
+    def test_resolve_dequeued_target_start_without_relative_timestamp(self):
+        """Missing offset schedules at benchmark start, not the provisional slot.
+
+        ### WRITTEN BY AI ###
+        """
+        strategy = TraceReplayStrategy(time_scale=2.0)
+        strategy.init_processes_timings(
+            worker_count=1,
+            max_concurrency=10,
+            mp_context=get_context(),
+        )
+        strategy.init_processes_start(1000.0)
+
+        async def run():
+            return await strategy.resolve_dequeued_target_start(
+                0,
+                9999.0,
+                RequestSettings(),
+            )
+
+        assert asyncio.run(run()) == pytest.approx(1000.0, abs=1e-6)
 
     @pytest.mark.smoke
     def test_request_completed_no_op(self):
-        strategy = TraceReplayStrategy(relative_timestamps=[0.0], time_scale=1.0)
+        strategy = TraceReplayStrategy(time_scale=1.0)
         info = RequestInfo(
             request_id="x",
             status="completed",

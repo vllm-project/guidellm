@@ -185,7 +185,7 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
     ) -> Dataset:
-        if not (path := Path(config.path)).exists() or not path.is_file():
+        if not (path := config.path).exists() or not path.is_file():
             raise DataNotSupportedError(
                 "TraceSyntheticDatasetDeserializer expects a path to a trace file, "
                 f"got {path}"
@@ -206,6 +206,10 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
         base_prompt_token_ids = _create_base_prompt_token_ids(
             processor, faker, max_prompt_tokens
         )
+
+        timestamps = [row["timestamp"] for row in rows]
+        t0 = timestamps[0]
+        relative_timestamps = [t - t0 for t in timestamps]
 
         prompts: list[str] = []
         prompt_tokens_counts: list[int] = []
@@ -230,6 +234,7 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
                 "prompt": prompts,
                 "prompt_tokens_count": prompt_tokens_counts,
                 "output_tokens_count": output_tokens_counts,
+                "relative_timestamp": relative_timestamps,
             },
             **config.load_kwargs,
         )
