@@ -76,6 +76,29 @@ class TestTraceSyntheticDatasetDeserializer:
             assert len(_mock_processor().encode(prompt)) == token_count
 
     @pytest.mark.smoke
+    def test_emits_relative_timestamp_column_sorted_from_trace(
+        self, tmp_path: Path, deserializer
+    ):
+        """Each row gets offset seconds from the earliest sorted timestamp.
+
+        ### WRITTEN BY AI ###
+        """
+        trace = _write_trace(
+            tmp_path,
+            '{"timestamp": 5.0, "input_length": 1, "output_length": 10}\n'
+            '{"timestamp": 2.0, "input_length": 2, "output_length": 20}\n'
+            '{"timestamp": 8.0, "input_length": 3, "output_length": 30}\n'
+            '{"timestamp": 2.0, "input_length": 4, "output_length": 40}\n'
+            '{"timestamp": 5.0, "input_length": 5, "output_length": 50}\n',
+        )
+
+        ds = self._deserialize(deserializer, trace)
+
+        assert ds["relative_timestamp"] == pytest.approx(
+            [0.0, 0.0, 3.0, 3.0, 6.0], abs=1e-9
+        )
+
+    @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
         trace = _write_trace(
             tmp_path,

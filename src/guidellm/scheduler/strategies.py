@@ -26,7 +26,7 @@ from typing import Annotated, ClassVar, Literal, TypeVar
 
 from pydantic import Field, NonNegativeFloat, NonNegativeInt, PositiveInt, PrivateAttr
 
-from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo
+from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo, RequestSettings
 from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
@@ -220,6 +220,26 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         :param request_info: Completed request metadata including timing details
             and completion status
         """
+
+    async def resolve_dequeued_target_start(
+        self,
+        worker_index: NonNegativeInt,
+        provisional_start: float,
+        settings: RequestSettings,
+    ) -> float:
+        """
+        Resolve scheduled start time after dequeue using per-request settings.
+
+        Default returns ``provisional_start`` unchanged. Strategies with
+        enqueue-bound timing metadata can override to reinterpret settings.
+
+        :param worker_index: Worker process index handling the request
+        :param provisional_start: Start time from the worker's scheduling slot
+        :param settings: Per-request scheduling metadata attached at enqueue
+        :return: Unix timestamp when the request should begin processing
+        """
+        _ = (worker_index, settings)
+        return provisional_start
 
     def requeue_delay(self) -> float:
         """
@@ -679,18 +699,18 @@ class TraceReplayStrategy(SchedulingStrategy):
     """
     Replay scheduling from a trace of timestamps.
 
-    Schedules each request at start_time + time_scale * relative_timestamp[i],
-    so the trace's inter-arrival pattern is reproduced with an optional time scale.
+    Each request carries a ``relative_timestamp`` in ``RequestSettings`` from the
+    dataset finalizer. ``next_request_time`` schedules dequeue immediately at
+    benchmark start; ``resolve_dequeued_target_start`` applies the trace offset via
+    ``start_time + time_scale * relative_timestamp``, reproducing inter-arrival
+    timing under multiprocessing.
     """
 
     type_: Literal["trace"] = "trace"  # type: ignore[assignment]
-    relative_timestamps: list[float] = Field(
-        description="Request start times relative to first event (first = 0)",
-    )
     time_scale: float = Field(
         default=1.0,
         gt=0,
-        description="Scale factor applied to relative timestamps",
+        description="Scale factor applied to relative timestamps from the dataset",
     )
 
     def __str__(self) -> str:
@@ -698,10 +718,7 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     @property
     def processes_limit(self) -> PositiveInt | None:
-        # Trace replay is currently constrained to one process until each
-        # scheduled timestamp is bound to its request before workers compete
-        # for queue items.
-        return 1
+        return None
 
     @property
     def requests_limit(self) -> PositiveInt | None:
@@ -709,18 +726,19 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     async def next_request_time(self, worker_index: NonNegativeInt) -> float:
         _ = worker_index
+        return await self.get_processes_start_time()
+
+    async def resolve_dequeued_target_start(
+        self,
+        worker_index: NonNegativeInt,
+        provisional_start: float,
+        settings: RequestSettings,
+    ) -> float:
+        _ = (worker_index, provisional_start)
+        if settings.relative_timestamp is None:
+            return await self.get_processes_start_time()
         start_time = await self.get_processes_start_time()
-        if not self.relative_timestamps:
-            return start_time
-
-        idx = self.next_request_index()
-        if idx > len(self.relative_timestamps):
-            # Trace exhausted: park this worker slot until the scheduler cancels
-            # the processing loop via constraint_reached_event. CancelledError
-            # propagates up cleanly, matching the exit path of all other strategies.
-            await asyncio.Event().wait()
-
-        return start_time + self.time_scale * self.relative_timestamps[idx - 1]
+        return start_time + self.time_scale * settings.relative_timestamp
 
     def request_completed(self, request_info: RequestInfo):
         _ = request_info

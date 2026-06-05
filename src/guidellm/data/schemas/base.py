@@ -21,6 +21,7 @@ GenerativeDatasetColumnType = Literal[
     "audio_column",
     "tools_column",
     "tool_response_column",
+    "relative_timestamp_column",
 ]
 
 DatasetType: TypeAlias = Dataset | DatasetDict | IterableDataset | IterableDatasetDict

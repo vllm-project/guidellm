@@ -391,8 +391,17 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             history, conversation = await self._dequeue_next_conversation(target_start)
             request, request_info = conversation.pop(0)
 
+            effective_target_start = await self.strategy.resolve_dequeued_target_start(
+                self.worker_index,
+                target_start,
+                request_info.settings,
+            )
+            if effective_target_start != target_start:
+                request_info.timings.targeted_start = effective_target_start
+                self._send_update("pending", None, request, request_info)
+
             # Schedule the request and send "in_progress" update
-            await self._schedule_request(request, request_info, target_start)
+            await self._schedule_request(request, request_info, effective_target_start)
 
             async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
                 request, request_info, history or None

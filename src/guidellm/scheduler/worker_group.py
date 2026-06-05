@@ -39,7 +39,7 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
 from guidellm.settings import settings
 from guidellm.utils.messaging import (
     InterProcessMessaging,
@@ -333,6 +333,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.state = WorkerGroupState[RequestT, ResponseT](
             start_time=start_time,
             processes=self.processes,
+            strategy=self.strategy,
             constraints=self.constraints,
             stop_send_requests_event=stop_send_requests_event,
             send_requests_stopped_event=send_requests_stopped_event,
@@ -491,6 +492,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self,
         start_time: float,
         processes: list[BaseProcess],
+        strategy: SchedulingStrategy,
         constraints: dict[str, Constraint],
         stop_send_requests_event: threading.Event,
         send_requests_stopped_event: threading.Event,
@@ -505,6 +507,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         :param start_time: Unix timestamp when processing should begin
         :param processes: List of worker process instances
+        :param strategy: Scheduling strategy for request timing at dequeue
         :param constraints: Named constraints for controlling execution behavior
         :param stop_send_requests_event: Threading event for stopping request generation
         :param send_requests_stopped_event: Threading event for request coordination
@@ -515,6 +518,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         """
         self.start_time = start_time
         self.processes = processes
+        self.strategy = strategy
         self.constraints = constraints
         self.stop_send_requests_event = stop_send_requests_event
         self.send_requests_stopped_event = send_requests_stopped_event
@@ -541,6 +545,16 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             return str(request.id)
         else:
             return str(uuid.uuid4())
+
+    @staticmethod
+    def _request_settings_from_request(request: RequestT) -> RequestSettings:
+        if isinstance(request, GenerationRequest):
+            return request.settings
+        if isinstance(request, dict):
+            settings = request.get("settings")
+            if isinstance(settings, RequestSettings):
+                return settings
+        return RequestSettings()
 
     def requests_generator(
         self,
@@ -578,6 +592,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,
+                        settings=self._request_settings_from_request(request),
                     )
                     state_update = self._locked_update(request_info)
                     request_info.timings.queued = time.time()
