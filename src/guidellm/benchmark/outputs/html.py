@@ -25,7 +25,6 @@ from pydantic import BaseModel, Field, computed_field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
-    BenchmarkGenerativeTextArgs,
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
