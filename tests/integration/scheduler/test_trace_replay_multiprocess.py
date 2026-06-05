@@ -22,7 +22,7 @@ from guidellm.data.deserializers.trace_synthetic import (
 )
 from guidellm.data.finalizers.generative import (
     GenerativeRequestFinalizer,
-    GenerativeRequestFinalizerConfig,
+    GenerativeRequestFinalizerArgs,
 )
 from guidellm.data.preprocessors.mappers import (
     GenerativeColumnMapper,
@@ -71,7 +71,7 @@ def _requests_from_trace(
 
     mapper = GenerativeColumnMapper(GenerativeColumnMapperArgs())
     mapper.setup_data([dataset])
-    finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+    finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     conversations: list[list[GenerationRequest]] = []
     relative_timestamps: list[float] = []

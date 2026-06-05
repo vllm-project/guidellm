@@ -12,7 +12,7 @@ from guidellm.data.finalizers import (
     FinalizerRegistry,
     GenerativeRequestFinalizer,
 )
-from guidellm.data.finalizers.generative import GenerativeRequestFinalizerConfig
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
 from guidellm.schemas import GenerationRequest, RequestSettings
 
 
@@ -28,7 +28,7 @@ class TestGenerativeRequestFinalizerTokenAggregation:
 
         ### WRITTEN BY AI ###
         """
-        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     @pytest.mark.smoke
     def test_finalize_single_turn_prompt_tokens(self, valid_instances):
@@ -117,7 +117,7 @@ class TestGenerativeRequestFinalizerMultimodal:
 
         ### WRITTEN BY AI ###
         """
-        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     @pytest.mark.sanity
     def test_finalize_multi_value_text_columns(self, valid_instances):
@@ -197,7 +197,7 @@ class TestFinalizerTopLevel:
 
         ### WRITTEN BY AI ###
         """
-        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     @pytest.mark.smoke
     def test_finalizer_returns_list(self, valid_instances):
@@ -295,7 +295,7 @@ class TestFinalizerRegistry:
 
         ### WRITTEN BY AI ###
         """
-        instance = GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+        instance = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
         # Should have __call__ method
         assert callable(instance)
@@ -316,7 +316,7 @@ class TestFinalizerExpectsToolCall:
         """
         ## WRITTEN BY AI ##
         """
-        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     @pytest.mark.smoke
     def test_expects_tool_call_matches_tools_column_presence(self, finalizer):
@@ -385,7 +385,7 @@ class TestGenerativeRequestFinalizerRequestSettings:
     @pytest.fixture
     def finalizer(self):
         """### WRITTEN BY AI ###"""
-        return GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     @pytest.mark.smoke
     def test_relative_timestamp_column_sets_settings(self, finalizer):

@@ -15,7 +15,7 @@ import guidellm.data.finalizers  # noqa: F401
 import guidellm.data.loaders  # noqa: F401
 import guidellm.data.preprocessors  # noqa: F401
 from guidellm.data.deserializers.huggingface import HuggingFaceDataArgs
-from guidellm.data.finalizers.generative import GenerativeRequestFinalizerConfig
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
 from guidellm.data.loaders.torch import TorchDataLoaderArgs
 from guidellm.data.preprocessors.mappers import GenerativeColumnMapperArgs
 from guidellm.data.schemas.entrypoints import (
@@ -161,7 +161,7 @@ class TestDataFinalizerArgsRegistry:
         ### WRITTEN BY AI ###
         """
         result = DataFinalizerArgs.model_validate({"kind": "generative"})
-        assert isinstance(result, GenerativeRequestFinalizerConfig)
+        assert isinstance(result, GenerativeRequestFinalizerArgs)
         assert result.kind == "generative"
 
     @pytest.mark.sanity
@@ -170,7 +170,7 @@ class TestDataFinalizerArgsRegistry:
 
         ### WRITTEN BY AI ###
         """
-        config = GenerativeRequestFinalizerConfig()
+        config = GenerativeRequestFinalizerArgs()
         assert config.kind == "generative"
 
     @pytest.mark.sanity

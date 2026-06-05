@@ -9,11 +9,14 @@ from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegist
 from guidellm.data.schemas import DataFinalizerArgs
 from guidellm.schemas import GenerationRequest, RequestSettings, UsageMetrics
 
-__all__ = ["GenerativeRequestFinalizer"]
+__all__ = [
+    "GenerativeRequestFinalizer",
+    "GenerativeRequestFinalizerArgs",
+]
 
 
 @DataFinalizerArgs.register("generative")
-class GenerativeRequestFinalizerConfig(DataFinalizerArgs):
+class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
     """
     Configuration for the GenerativeRequestFinalizer.
     """
@@ -31,7 +34,7 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
     aggregating usage metrics from the provided columns.
     """
 
-    def __init__(self, config: GenerativeRequestFinalizerConfig) -> None:
+    def __init__(self, config: GenerativeRequestFinalizerArgs) -> None:
         self.config = config
 
     def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
