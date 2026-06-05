@@ -7,7 +7,7 @@ from pydantic import Field
 
 from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.schemas import DataFinalizerArgs
-from guidellm.schemas import GenerationRequest, UsageMetrics
+from guidellm.schemas import GenerationRequest, RequestSettings, UsageMetrics
 
 __all__ = ["GenerativeRequestFinalizer"]
 
@@ -129,4 +129,13 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
             expects_tool_call=expects_tool_call,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
+            settings=self._request_settings_from_columns(columns),
         )
+
+    def _request_settings_from_columns(
+        self, columns: dict[str, Any]
+    ) -> RequestSettings:
+        relative_values = columns.get("relative_timestamp_column", [])
+        if relative_values and relative_values[0] is not None:
+            return RequestSettings(relative_timestamp=float(relative_values[0]))
+        return RequestSettings()

@@ -101,6 +101,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "tool_result",
             "tool_output",
         ],
+        "relative_timestamp_column": ["relative_timestamp"],
     }
     column_name_pattern: str = (
         r"^(?P<full_name>(?P<match_name>({name})(es|s)?)([-_](?P<turn>\d+))?)$"
