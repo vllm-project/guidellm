@@ -100,13 +100,12 @@ class SweepProfile(Profile):
     def __init__(
         self,
         args: SweepProfileArgs,
+        random_seed: int,
         constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
         **kwargs: Any,
     ):
-        super().__init__(args, constraints, **kwargs)
+        super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
-        if self.args.strategy_type == "poisson":
-            self.random_seed = kwargs.get("random_seed", 42)
         self.synchronous_rate = -1.0
         self.throughput_rate = -1.0
         self.async_rates: list[float] = []

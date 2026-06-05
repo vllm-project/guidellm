@@ -76,6 +76,7 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
     def create(
         cls,
         args: ProfileArgs,
+        random_seed: int,
         constraints: MutableMapping[str, ConstraintInitializer | Any] | None = None,
         **kwargs: Any,
     ) -> Profile:
@@ -83,6 +84,10 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
         Create profile instances from validated profile arguments.
 
         :param args: Validated profile argument model for the target profile type
+        :param random_seed: Seed for reproducible random operations in profile
+            strategies.
+        :param constraints: Constraints for the profile strategies.
+        :param kwargs: Additional profile-specific configuration parameters
         :return: Configured profile instance for the specified type
         :raises ValueError: If the profile kind is not registered
         """
@@ -96,7 +101,7 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
                 f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
             )
 
-        return profile_class(args, constraints, **kwargs)
+        return profile_class(args, random_seed, constraints, **kwargs)
 
     @classmethod
     def registered_names(cls) -> tuple[str, ...]:
@@ -129,6 +134,7 @@ class Profile(ABC):
     def __init__(
         self,
         args: ProfileArgs,
+        random_seed: int,
         constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
         **kwargs: Any,
     ):
@@ -136,10 +142,15 @@ class Profile(ABC):
         Initialize a profile instance.
 
         :param args: Validated profile argument model for this profile type
+        :param random_seed: Seed for reproducible random operations in profile
+            strategies.
+        :param constraints: Constraints for the profile strategies.
+        :param kwargs: Additional profile-specific configuration parameters
         """
         _ = kwargs  # unused
         self.kind = args.kind
         self.args = args
+        self.random_seed = random_seed
         self.constraints = dict(constraints or {})
         self.completed_strategies: list[SchedulingStrategy] = []
 

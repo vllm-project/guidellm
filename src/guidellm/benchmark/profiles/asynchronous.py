@@ -71,16 +71,16 @@ class AsyncProfile(Profile):
     def __init__(
         self,
         args: AsyncProfileArgs,
+        random_seed: int,
         constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
         **kwargs: Any,
     ):
-        super().__init__(args, constraints, **kwargs)
+        super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
         if args.kind in ("async", "constant"):
             self._strategy_type: Literal["constant", "poisson"] = "constant"
         elif args.kind == "poisson":
             self._strategy_type = "poisson"
-            self.random_seed = kwargs.get("random_seed", 42)
         else:
             raise ValueError(f"Invalid profile kind: {args.kind}")
 

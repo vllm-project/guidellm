@@ -291,6 +291,7 @@ async def resolve_profile(
     max_errors: int | None,
     max_error_rate: float | None,
     max_global_error_rate: float | None,
+    random_seed: int = 42,
     over_saturation: dict[str, Any] | None = None,
     console: Console | None = None,
     **profile_kwargs: Any,
@@ -311,8 +312,9 @@ async def resolve_profile(
     :param max_global_error_rate: Maximum global error rate threshold before stopping
     :param over_saturation: Over-saturation detection configuration (dict)
     :param console: Console instance for progress reporting, or None
-    :param profile_kwargs: Additional profile-specific arguments.
-        data, data_samples, random_seed are used by some profiles & ignored by others.
+    :param random_seed: Seed for reproducible random operations in profile strategies
+    :param profile_kwargs: Additional profile-specific arguments such as data and
+        data_samples, used by some profiles and ignored by others.
     :return: Configured Profile instance ready for benchmarking
     :raises ValueError: If constraints are provided with a pre-configured Profile
     """
@@ -334,7 +336,9 @@ async def resolve_profile(
             constraints[key] = val
 
     if not isinstance(profile, Profile):
-        profile = ProfileFactory.create(profile, constraints, **profile_kwargs)
+        profile = ProfileFactory.create(
+            profile, random_seed, constraints, **profile_kwargs
+        )
     elif constraints:
         raise ValueError(
             "Constraints must be empty when providing a Profile instance. "

@@ -38,7 +38,9 @@ class TestSweepProfileArgs:
         ## WRITTEN BY AI ##
         """
         profile = ProfileFactory.create(
-            SweepProfileArgs.model_validate({"kind": "sweep", "rate": [6.0]}), {}
+            SweepProfileArgs.model_validate({"kind": "sweep", "rate": [6.0]}),
+            42,
+            {},
         )
         assert isinstance(profile, SweepProfile)
         assert profile.args.sweep_size == 6
