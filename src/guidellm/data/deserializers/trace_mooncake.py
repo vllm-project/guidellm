@@ -7,9 +7,9 @@ row per line with a synthetic prompt matching the requested input_length for rep
 benchmarks.
 """
 
-from collections.abc import Callable
 import dataclasses
 import math
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -137,7 +137,7 @@ def _load_formatted_trace_rows(
     path: Path,
     timestamp_column: Column,
     required_columns: list[Column],
-) -> list[dict[str, Any]]:
+) -> Dataset:
     """Load a trace file and format the columns."""
     try:
         rows = load_trace_rows(
@@ -170,9 +170,7 @@ def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
         )
     for hash_id in row[config.hash_ids_column]:
         if hash_id < 0:
-            raise DataNotSupportedError(
-                f"Hash ID must be non-negative, got {hash_id}"
-            )
+            raise DataNotSupportedError(f"Hash ID must be non-negative, got {hash_id}")
     if math.ceil(n_in / config.hash_id_block_size) != n_blocks:
         raise DataNotSupportedError(
             f"Input token count of {n_in} split into blocks of size "
@@ -212,7 +210,7 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
                 Column(config.prompt_tokens_column, Value("int64")),
                 Column(config.output_tokens_column, Value("int64")),
                 Column(config.hash_ids_column, List(Value("int64"))),
-            ]
+            ],
         )
         processor = processor_factory()
         faker = Faker()
@@ -227,9 +225,7 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
                 if not _is_in_table(hash_id_table, hash_id):
                     _resize_to_hold_id(hash_id_table, hash_id)
                     prev_id = None if idx == 0 else ids[idx - 1]
-                    num_tokens = _calculate_required_prompt_tokens(
-                        row, config, hash_id
-                    )
+                    num_tokens = _calculate_required_prompt_tokens(row, config, hash_id)
                     sibling_token_blocks.setdefault(prev_id, [])
                     hash_id_table[hash_id] = _create_distinct_token_block(
                         num_tokens, sibling_token_blocks[prev_id], processor, faker

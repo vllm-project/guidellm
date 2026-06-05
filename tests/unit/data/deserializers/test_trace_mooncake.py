@@ -2,17 +2,18 @@ import copy
 import dataclasses
 import math
 import random
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from unittest.mock import Mock
 
-from datasets import Dataset
 import pytest
+from datasets import Dataset
 from pydantic import ValidationError
 
 from guidellm.data.deserializers.trace_mooncake import (
     TraceMooncakeDataArgs,
-    TraceMooncakeDatasetDeserializer
+    TraceMooncakeDatasetDeserializer,
 )
 from guidellm.data.schemas import DataNotSupportedError
 
@@ -25,7 +26,8 @@ def _ascending_processor() -> Mock:
     proc = Mock()
     proc.encode.side_effect = lambda text: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
-        f"tok{i}" for i, _ in enumerate(tokens))
+        f"tok{i}" for i, _ in enumerate(tokens)
+    )
     return proc
 
 
@@ -34,9 +36,12 @@ def _incompetent_processor() -> Mock:
     tokenizers are expected to be capable of generating a large enough
     token id list to fit the hash id block size."""
     proc = Mock()
-    proc.encode.side_effect = lambda text: [0,]
+    proc.encode.side_effect = lambda text: [
+        0,
+    ]
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
-        f"tok{i}" for i, _ in enumerate(tokens))
+        f"tok{i}" for i, _ in enumerate(tokens)
+    )
     return proc
 
 
@@ -51,7 +56,8 @@ def _compatible_processor() -> Mock:
         random.randint(0, 1000) for _ in range(len(text.split()))
     ]
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
-        f"tok{t}" for t in tokens)
+        f"tok{t}" for t in tokens
+    )
     return proc
 
 
@@ -67,7 +73,7 @@ def _make_valid_hash_ids(n_rows: int, prompt_lengths: list[int], block_size: int
     when testing large trace prompts to avoid including token blocks with
     less than the block size in the middle of later rows."""
     tail_hash_ids = []
-    original_prompt_positions = dict(zip(prompt_lengths, range(n_rows)))
+    original_prompt_positions = dict(zip(prompt_lengths, range(n_rows), strict=False))
     sorted_lengths = copy.deepcopy(prompt_lengths)
     sorted_lengths.sort()
     hash_ids = [None for _ in range(n_rows)]
@@ -94,33 +100,33 @@ def _all_distinct(items: list):
 @dataclasses.dataclass
 class TraceColumn:
     name: str
-    # Function with row index as the one argument 
+    # Function with row index as the one argument
     data_generator: Callable[[int], Any]
 
 
 def _generate_trace(num_rows: int, columns: list[TraceColumn]) -> str:
     return "\n".join(
-        f"{{{", ".join(f"\"{col.name}\": {col.data_generator(idx)}"
-                       for col in columns)}}}"
+        f"{{{
+            ', '.join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
+        }}}"
         for idx in range(num_rows)
     )
 
 
-class TestTraceMooncakeDatasetDeserializer():
+class TestTraceMooncakeDatasetDeserializer:
     @pytest.fixture
     def deserializer(self) -> TraceMooncakeDatasetDeserializer:
         return TraceMooncakeDatasetDeserializer()
 
     def _deserialize(self, deserializer, data, **kwargs):
         field_names = (
-            "timestamp_column", "prompt_tokens_column", "output_tokens_column",
-            "hash_ids_column", "hash_id_block_size"
+            "timestamp_column",
+            "prompt_tokens_column",
+            "output_tokens_column",
+            "hash_ids_column",
+            "hash_id_block_size",
         )
-        col_kwargs = {
-            k: v
-            for k, v in kwargs.items()
-            if k in field_names
-        }
+        col_kwargs = {k: v for k, v in kwargs.items() if k in field_names}
         config = TraceMooncakeDataArgs(path=data, **col_kwargs)
         return deserializer(
             config=config,
@@ -135,12 +141,15 @@ class TestTraceMooncakeDatasetDeserializer():
         n_rows = 10
         trace = _write_trace(
             tmp_path,
-            _generate_trace(n_rows, [
-                TraceColumn("timestamp", lambda i: n_rows - i),
-                TraceColumn("input_length", lambda i: n_rows - i),
-                TraceColumn("output_length", lambda i: (n_rows - i) * 10),
-                TraceColumn("hash_ids", lambda i: [n_rows - i]),
-            ]),
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumn("timestamp", lambda i: n_rows - i),
+                    TraceColumn("input_length", lambda i: n_rows - i),
+                    TraceColumn("output_length", lambda i: (n_rows - i) * 10),
+                    TraceColumn("hash_ids", lambda i: [n_rows - i]),
+                ],
+            ),
         )
         ds = self._deserialize(deserializer, trace)
         assert isinstance(ds, Dataset)
@@ -157,15 +166,19 @@ class TestTraceMooncakeDatasetDeserializer():
         n_rows = 3
         trace = _write_trace(
             tmp_path,
-            _generate_trace(n_rows, [
-                TraceColumn("ts", lambda i: i),
-                TraceColumn("input_tokens", lambda i: i + 1),
-                TraceColumn("generated_tokens", lambda i: (i + 1) * 10),
-                TraceColumn("ids", lambda i: [i]),
-            ]),
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumn("ts", lambda i: i),
+                    TraceColumn("input_tokens", lambda i: i + 1),
+                    TraceColumn("generated_tokens", lambda i: (i + 1) * 10),
+                    TraceColumn("ids", lambda i: [i]),
+                ],
+            ),
         )
         ds = self._deserialize(
-            deserializer, trace,
+            deserializer,
+            trace,
             timestamp_column="ts",
             prompt_tokens_column="input_tokens",
             output_tokens_column="generated_tokens",
@@ -181,14 +194,17 @@ class TestTraceMooncakeDatasetDeserializer():
         n_in = 1000
         trace = _write_trace(
             tmp_path,
-            _generate_trace(n_rows, [
-                TraceColumn("timestamp", lambda i: i),
-                TraceColumn("input_length", lambda _: n_in),
-                TraceColumn("output_length", lambda i: i + 1),
-                # Would throw a DataNotSupportedError with default block size 512
-                # See row validation in trace_mooncake.py
-                TraceColumn("hash_ids", lambda _: [0, 1, 2, 3, 4]),
-            ]),
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumn("timestamp", lambda i: i),
+                    TraceColumn("input_length", lambda _: n_in),
+                    TraceColumn("output_length", lambda i: i + 1),
+                    # Would throw a DataNotSupportedError with default block size 512
+                    # See row validation in trace_mooncake.py
+                    TraceColumn("hash_ids", lambda _: [0, 1, 2, 3, 4]),
+                ],
+            ),
         )
         self._deserialize(deserializer, trace, hash_id_block_size=n_in / 5)
 
@@ -204,12 +220,15 @@ class TestTraceMooncakeDatasetDeserializer():
         hash_ids = _make_valid_hash_ids(n_rows, prompt_lengths, block_size)
         trace = _write_trace(
             tmp_path,
-            _generate_trace(n_rows, [
-                TraceColumn("timestamp", lambda i: timestamps[i]),
-                TraceColumn("input_length", lambda i: prompt_lengths[i]),
-                TraceColumn("output_length", lambda i: output_lengths[i]),
-                TraceColumn("hash_ids", lambda i: hash_ids[i]),
-            ]),
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumn("timestamp", lambda i: timestamps[i]),
+                    TraceColumn("input_length", lambda i: prompt_lengths[i]),
+                    TraceColumn("output_length", lambda i: output_lengths[i]),
+                    TraceColumn("hash_ids", lambda i: hash_ids[i]),
+                ],
+            ),
         )
         processor = _ascending_processor()
         config = TraceMooncakeDataArgs(path=trace)
@@ -225,7 +244,7 @@ class TestTraceMooncakeDatasetDeserializer():
         for prompt, token_count in zip(
             ds["prompt"], ds["prompt_tokens_count"], strict=True
         ):
-            if not len(processor.encode(prompt)) == token_count:
+            if len(processor.encode(prompt)) != token_count:
                 pytest.fail(f"{len(processor.encode(prompt))} != {token_count}")
 
     @pytest.mark.smoke
@@ -314,12 +333,15 @@ class TestTraceMooncakeDatasetDeserializer():
         n_rows = 2
         trace = _write_trace(
             tmp_path,
-            _generate_trace(n_rows, [
-                TraceColumn("timestamp", lambda i: i),
-                TraceColumn("input_length", lambda _: 1024),
-                TraceColumn("output_length", lambda _: 5),
-                TraceColumn("hash_ids", lambda i: [0, i + 1]),
-            ]),
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumn("timestamp", lambda i: i),
+                    TraceColumn("input_length", lambda _: 1024),
+                    TraceColumn("output_length", lambda _: 5),
+                    TraceColumn("hash_ids", lambda i: [0, i + 1]),
+                ],
+            ),
         )
         config = TraceMooncakeDataArgs(path=trace)
         with pytest.raises(DataNotSupportedError, match="generate enough"):
@@ -340,12 +362,15 @@ class TestTraceMooncakeDatasetDeserializer():
         n_rows = 4
         trace = _write_trace(
             tmp_path,
-            _generate_trace(n_rows, [
-                TraceColumn("timestamp", lambda i: i),
-                TraceColumn("input_length", lambda _: 1024),
-                TraceColumn("output_length", lambda _: 5),
-                TraceColumn("hash_ids", lambda i: [0, i + 1]),
-            ]),
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumn("timestamp", lambda i: i),
+                    TraceColumn("input_length", lambda _: 1024),
+                    TraceColumn("output_length", lambda _: 5),
+                    TraceColumn("hash_ids", lambda i: [0, i + 1]),
+                ],
+            ),
         )
         config = TraceMooncakeDataArgs(path=trace)
         ds = deserializer(
