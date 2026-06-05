@@ -1,24 +1,31 @@
 import codecs
-import json
 from typing import Any
 
 import click
 import yaml
-from pydantic_core import ErrorDetails
+from typing_extensions import Sentinel
 
 from guidellm.utils import arg_string
 
 __all__ = [
+    "BLANK",
     "Union",
     "decode_escaped_str",
     "format_list_arg",
     "format_validation_error",
     "format_validation_errors",
+    "overrides_to_benchmarks",
+    "parse_arguments",
     "parse_json",
+    "parse_json_list",
     "parse_list",
     "parse_list_floats",
+    "parse_overrides",
+    "parse_overrides",
     "set_if_not_default",
 ]
+
+BLANK = Sentinel("BLANK")
 
 
 def parse_list(ctx, param, value) -> list[str] | None:
@@ -46,7 +53,14 @@ def parse_list(ctx, param, value) -> list[str] | None:
 
     if isinstance(value, str) and "," in value:
         # Handle comma-separated strings
-        return [item.strip() for item in value.split(",") if item.strip()]
+        result = []
+        for item in value.split(","):
+            stripped = item.strip()
+            if stripped:
+                result.append(stripped)
+            else:
+                result.append(BLANK)
+        return result
 
     if isinstance(value, str):
         # Handle single string
@@ -283,3 +297,53 @@ def decode_escaped_str(_ctx, _param, value):
         return codecs.decode(value, "unicode_escape")
     except Exception as e:
         raise click.BadParameter(f"Could not decode escape sequences: {e}") from e
+
+
+def overrides_to_benchmarks(*overrides: tuple[str, list[Any]]) -> list[dict[str, Any]]:
+    """
+    Convert a list of (benchmark_name, override_list) tuples into a list of benchmarks
+
+    Resulting benchmark list is as long as the longest override list.
+    None values are omitted.
+
+    Example::
+        >>> overrides_to_benchmarks(
+        ...     ("profile.streams", [1,2,3,4]),
+        ...     ("constraint[0].seconds", [10,20,<BLANK>,30])
+        ... )
+        [
+            {"profile.streams": 1, "constraint[0].seconds": 10}
+            {"profile.streams": 2, "constraint[0].seconds": 20}
+            {"profile.streams": 3}
+            {"profile.streams": 4, "constraint[0].seconds": 30}
+        ]
+    """
+    benchmarks = []
+    for name, values in overrides:
+        for i, value in enumerate(values):
+            if len(benchmarks) <= i:
+                benchmarks.append({})
+            if value is not BLANK:
+                benchmarks[i][name] = value
+    return benchmarks
+
+
+def parse_overrides(ctx, param, value):
+    """
+    Click callback to parse override arguments into a list of benchmark dicts.
+
+    Expects input as multiple occurrences of `--override <key name> <override values>`.
+    """
+    if not value or not isinstance(value, list | tuple):
+        return []
+
+    overrides: list[tuple[str, list[Any]]] = []
+    for k, v in value:
+        values_list = parse_list(ctx, param, v)
+        if values_list is None:
+            continue
+
+        values_parsed = parse_arguments(ctx, param, values_list)
+        overrides.append((k, values_parsed))
+
+    return overrides_to_benchmarks(*overrides)
