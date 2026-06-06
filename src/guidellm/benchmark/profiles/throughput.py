@@ -42,7 +42,7 @@ class ThroughputProfileArgs(ProfileArgs):
             "--profile kind=throughput,max_concurrency=2.0 --rate 3"
 
         Pydantic won't alias the "rate" because it's already seen "max_concurrency", and
-        we'll get a validation error. In this case, the global "--rate" shoulde be
+        we'll get a validation error. In this case, the global "--rate" should be
         ignored, so we remove the "rate" key.
         """
         if isinstance(data, dict) and all(
