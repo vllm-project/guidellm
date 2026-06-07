@@ -106,9 +106,7 @@ class TraceColumn:
 
 def _generate_trace(num_rows: int, columns: list[TraceColumn]) -> str:
     return "\n".join(
-        f"{{{
-            ', '.join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
-        }}}"
+        f"{{{', '.join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)}}}"
         for idx in range(num_rows)
     )
 
