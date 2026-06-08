@@ -117,6 +117,17 @@ class TestOpenAIRequestHandlerFactory:
 class TestRealtimeTranscriptionWSRequestHandler:
     """Realtime WebSocket path handler (``/v1/realtime``)."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_pcm16_chunks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Avoid torchcodec decode when format() PCM-encodes audio.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setattr(
+            "guidellm.backends.openai.request_handlers.pcm16_append_b64_chunks",
+            lambda *a, **k: ["YWFhYQ=="],
+        )
+
     def test_extract_single_audio_requires_one_column(self) -> None:
         handler = RealtimeTranscriptionWSRequestHandler()
         req = GenerationRequest(
@@ -127,6 +138,10 @@ class TestRealtimeTranscriptionWSRequestHandler:
             handler.extract_single_audio(req)
 
     def test_format_builds_body(self) -> None:
+        """format() validates audio and attaches PCM chunks to body.
+
+        ## WRITTEN BY AI ##
+        """
         handler = RealtimeTranscriptionWSRequestHandler()
         req = GenerationRequest(
             request_id="r1",
@@ -142,8 +157,8 @@ class TestRealtimeTranscriptionWSRequestHandler:
             "model": "m1",
             "websocket_path": "/v1/realtime",
             "chunk_samples": 1600,
+            "audio_chunks": ["YWFhYQ=="],
         }
-        assert handler.get_audio_entry() == {"audio": b"x"}
 
     def test_ws_factory_create(self) -> None:
         """OpenAIWSRequestHandlerFactory returns RealtimeTranscriptionWSRequestHandler.
@@ -168,15 +183,6 @@ class TestRealtimeTranscriptionWSRequestHandler:
         """
         with pytest.raises(ValueError, match="No WebSocket handler registered"):
             OpenAIWSRequestHandlerFactory.create("/v1/unknown")
-
-    def test_get_audio_entry_requires_format(self) -> None:
-        """get_audio_entry raises before format() is called.
-
-        ## WRITTEN BY AI ##
-        """
-        handler = RealtimeTranscriptionWSRequestHandler()
-        with pytest.raises(ValueError, match="audio_entry is not set"):
-            handler.get_audio_entry()
 
     def test_add_streaming_event_delta_returns_content(self) -> None:
         """transcription.delta with content returns CONTENT.
@@ -358,7 +364,7 @@ class TestRealtimeTranscriptionWSRequestHandler:
         assert resp.input_metrics.audio_tokens == 5
         assert resp.output_metrics.text_tokens == 1
         assert '"model":"m1"' in resp.request_args
-        assert "audio_entry" not in resp.request_args
+        assert "audio_chunks" not in resp.request_args
 
 
 class TestTextCompletionsRequestHandler:

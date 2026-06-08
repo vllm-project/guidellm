@@ -24,10 +24,14 @@ from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
+from guidellm.utils.audio import pcm16_append_b64_chunks
 from guidellm.utils.imports import json
 from guidellm.utils.registry import RegistryMixin
 
+WS_AUDIO_CHUNKS_BODY_KEY = "audio_chunks"
+
 __all__ = [
+    "WS_AUDIO_CHUNKS_BODY_KEY",
     "AudioRequestHandler",
     "ChatCompletionsRequestHandler",
     "EmbeddingsRequestHandler",
@@ -1248,7 +1252,6 @@ class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
         and usage data from WebSocket event frames.
         """
         self._audio_metrics = AudioRequestHandler()
-        self._audio_entry: dict[str, Any] | None = None
         self._streaming_texts: list[str] = []
         self._streaming_usage: dict[str, int | dict[str, int]] | None = None
 
@@ -1256,19 +1259,6 @@ class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
     def streaming_text(self) -> str:
         """Accumulated transcription text from processed events."""
         return "".join(self._streaming_texts)
-
-    def get_audio_entry(self) -> dict[str, Any]:
-        """
-        Return the audio column entry set by the most recent ``format()`` call.
-
-        :return: Single audio column dict for PCM chunking.
-        :raises ValueError: If ``format()`` has not been called yet.
-        """
-        if self._audio_entry is None:
-            raise ValueError(
-                "audio_entry is not set; call format() before get_audio_entry()"
-            )
-        return self._audio_entry
 
     @staticmethod
     def extract_single_audio(data: GenerationRequest) -> dict[str, Any]:
@@ -1291,19 +1281,20 @@ class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
         """
         Validate the request and build metadata for ``request_args``.
 
-        Validates the audio column once and stores it on the handler for PCM chunking.
+        Validates the audio column once, PCM-encodes it into base64 chunks, and
+        attaches those chunks to ``body`` for the WebSocket backend to send.
 
         :param data: Must contain exactly one ``audio_column`` entry.
         :param response: Not supported (raises if provided).
         :param history: Not supported (raises if provided).
         :param kwargs: Must include ``model`` and ``websocket_path``.
-        :return: Arguments with wire-protocol metadata in ``body``.
+        :return: Arguments with wire-protocol metadata and ``audio_chunks`` in ``body``.
         """
         if history or response:
             raise ValueError(
                 "RealtimeTranscriptionWSRequestHandler does not support multiturn."
             )
-        self._audio_entry = self.extract_single_audio(data)
+        audio_entry = self.extract_single_audio(data)
         model = kwargs.get("model")
         if model is None:
             raise ValueError("model is required for realtime WebSocket format()")
@@ -1313,11 +1304,16 @@ class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
                 "websocket_path is required for realtime WebSocket format()"
             )
         chunk_samples = kwargs.get("chunk_samples", 3200)
+        audio_chunks = pcm16_append_b64_chunks(
+            audio_entry,
+            chunk_samples=chunk_samples,
+        )
         arguments = GenerationRequestArguments()
         arguments.body = {
             "model": model,
             "websocket_path": websocket_path,
             "chunk_samples": chunk_samples,
+            WS_AUDIO_CHUNKS_BODY_KEY: audio_chunks,
         }
         return arguments
 
@@ -1364,9 +1360,12 @@ class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
         inp, outp = self._audio_metrics.extract_metrics(
             self._streaming_usage, full_text
         )
+        body = dict(arguments.body or {})
+        body.pop(WS_AUDIO_CHUNKS_BODY_KEY, None)
+        request_args = arguments.model_copy(update={"body": body or None})
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
+            request_args=request_args.model_dump_json(),
             text=full_text,
             input_metrics=inp,
             output_metrics=outp,
