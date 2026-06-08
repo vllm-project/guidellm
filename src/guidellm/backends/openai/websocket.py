@@ -14,32 +14,34 @@ import asyncio
 import ssl
 import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import ParseResult, urlparse
 
 import httpx
 from pydantic import Field, field_validator
+from websockets.asyncio.client import connect as ws_connect
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from websockets.asyncio.client import ClientConnection
 
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.openai.common import (
     FALLBACK_TIMEOUT,
     build_headers,
+    format_ws_error,
     resolve_validate_kwargs,
 )
 from guidellm.backends.openai.request_handlers import (
-    OpenAIRequestHandlerFactory,
-    RealtimeWebSocketRequestHandler,
+    OpenAIWSRequestHandlerFactory,
+    RealtimeTranscriptionWSRequestHandler,
+    WSEventResult,
 )
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
     RequestInfo,
 )
+from guidellm.utils.audio import pcm16_append_b64_chunks
 from guidellm.utils.imports import json
 
 __all__ = [
@@ -54,45 +56,41 @@ _WS_API_ROUTES = {
 
 _MAX_IGNORED_WS_EVENT_TYPES = 50_000
 
-_AUDIO_EXTRA_HINT = (
-    "Install optional audio extras: pip install 'guidellm[audio]' "
-    "(includes websockets and torchcodec for realtime transcription)."
-)
 
-
-def _require_ws_connect() -> Any:
-    """Import and return the ``websockets`` async connect helper.
-
-    :return: ``websockets.asyncio.client.connect``
-    :raises ImportError: If ``websockets`` is not installed.
+def _record_content_tokens(
+    request_info: RequestInfo,
+    *,
+    content_tokens: int,
+    record_request_iteration: bool,
+) -> bool:
     """
-    try:
-        from websockets.asyncio.client import connect as ws_connect
-    except ImportError as exc:
-        raise ImportError(
-            "The openai_websocket backend requires the 'websockets' package. "
-            + _AUDIO_EXTRA_HINT
-        ) from exc
-    return ws_connect
+    Update request/token timings for a WebSocket content event.
 
+    :param request_info: Mutable timing state for the in-flight request.
+    :param content_tokens: New content tokens from this event (0 for empty deltas).
+    :param record_request_iteration: Whether to increment request iteration counters.
+    :return: True when a prefetch ``(None, request_info)`` yield is needed.
+    """
+    iter_time = time.time()
+    if record_request_iteration:
+        if request_info.timings.first_request_iteration is None:
+            request_info.timings.first_request_iteration = iter_time
+        request_info.timings.last_request_iteration = iter_time
+        request_info.timings.request_iterations += 1
 
-def _ws_error_message(err: Any) -> str:
-    """Format WebSocket ``error`` for exceptions (supports dict payloads)."""
-    if isinstance(err, dict):
-        msg = err.get("message") or err.get("msg")
-        code = err.get("code")
-        parts = [str(p) for p in (code, msg) if p]
-        if parts:
-            return ": ".join(parts)
-        try:
-            raw = json.dumps(err)
-            text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
-            return text[:500]
-        except (TypeError, ValueError):
-            return repr(err)
-    if err is None or err == "":
-        return "WebSocket error"
-    return str(err)
+    if content_tokens <= 0:
+        return False
+
+    if request_info.timings.first_token_iteration is None:
+        request_info.timings.first_token_iteration = iter_time
+        request_info.timings.token_iterations = 0
+        request_info.timings.last_token_iteration = iter_time
+        request_info.timings.token_iterations += content_tokens
+        return True
+
+    request_info.timings.last_token_iteration = iter_time
+    request_info.timings.token_iterations += content_tokens
+    return False
 
 
 def _load_ws_event(raw: str) -> dict[str, Any]:
@@ -207,11 +205,7 @@ class OpenAIWebSocketBackend(Backend):
         """
         Initialize the WebSocket backend from validated args.
 
-        Eagerly resolves the audio extras import so a missing ``guidellm[audio]``
-        installation fails at construction time rather than during the first request.
-
         :param arguments: Typed configuration including target, model, and paths.
-        :raises ImportError: If the ``guidellm[audio]`` extras are not installed.
         """
         super().__init__(arguments)
         self._args = arguments
@@ -223,17 +217,7 @@ class OpenAIWebSocketBackend(Backend):
         )
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
-
-        self._append_pcm16_chunks: Callable[..., Any]
-        try:
-            from guidellm.extras.audio import pcm16_append_b64_chunks
-
-            self._append_pcm16_chunks = pcm16_append_b64_chunks
-        except ImportError as exc:
-            raise ImportError(
-                "The openai_websocket backend requires the audio extras for PCM "
-                "handling used in realtime transcription. " + _AUDIO_EXTRA_HINT
-            ) from exc
+        self._append_pcm16_chunks = pcm16_append_b64_chunks
 
     @property
     def websocket_path(self) -> str:
@@ -398,18 +382,18 @@ class OpenAIWebSocketBackend(Backend):
         """
         Stream one realtime transcription over WebSocket for a single audio column.
 
-        Uses :class:`RealtimeWebSocketRequestHandler` for request arguments and
-        metrics, performs the vLLM-style handshake and chunk protocol, and yields
-        ``None`` for intermediate timing updates followed by a final
-        :class:`~guidellm.schemas.GenerationResponse`.
+        Delegates event interpretation to the registered
+        :class:`~guidellm.backends.openai.request_handlers.OpenAIWSRequestHandler`
+        via ``add_streaming_event`` / ``compile_streaming``, while this method handles
+        only I/O and timing.
 
         :param request: Must contain exactly one ``audio_column`` entry.
-        :param request_info: Timings updated as deltas and final text arrive.
+        :param request_info: Timings updated as events arrive.
         :param history: Not supported; raises ``NotImplementedError`` if non-empty.
         :raises NotImplementedError: If ``history`` is provided.
         :raises RuntimeError: If the client is not started, model is missing, or the
             peer returns an error event.
-        :yields: ``(response_or_none, request_info)`` until ``transcription.done``.
+        :yields: ``(response_or_none, request_info)`` until stream completion.
         """
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
@@ -425,20 +409,17 @@ class OpenAIWebSocketBackend(Backend):
                 "none. Pass --model or ensure the server lists at least one model."
             )
 
-        handler_raw = OpenAIRequestHandlerFactory.create(self.websocket_path)
-        if not isinstance(handler_raw, RealtimeWebSocketRequestHandler):
-            raise TypeError(
-                "Expected RealtimeWebSocketRequestHandler for "
-                f"{self.websocket_path!r}, got {type(handler_raw).__name__}"
-            )
-        handler = handler_raw
+        handler = cast(
+            "RealtimeTranscriptionWSRequestHandler",
+            OpenAIWSRequestHandlerFactory.create(self.websocket_path),
+        )
         arguments = handler.format(
             request,
             model=model_name,
             websocket_path=self.websocket_path,
             chunk_samples=self._args.chunk_samples,
         )
-        audio_entry = handler.extract_single_audio(request)
+        audio_entry = handler.get_audio_entry()
         chunks = self._append_pcm16_chunks(
             audio_entry,
             chunk_samples=self._args.chunk_samples,
@@ -454,7 +435,6 @@ class OpenAIWebSocketBackend(Backend):
 
         ssl_ctx = self._ssl_context()
         ws_headers = build_headers(self._args.api_key)
-        full_text_parts: list[str] = []
 
         try:
             request_info.timings.request_start = time.time()
@@ -464,12 +444,11 @@ class OpenAIWebSocketBackend(Backend):
             }
             if ws_headers:
                 connect_kw["additional_headers"] = ws_headers
-            ws_connect = _require_ws_connect()
             async with ws_connect(self._ws_url(), **connect_kw) as ws:
                 raw_first = await self._recv_ws(ws)
                 first_event = _load_ws_event(raw_first)
                 if first_event.get("type") == "error":
-                    raise RuntimeError(_ws_error_message(first_event.get("error")))
+                    raise RuntimeError(format_ws_error(first_event.get("error")))
                 if first_event.get("type") != "session.created":
                     raise RuntimeError(
                         f"Expected session.created, got {first_event.get('type')!r}"
@@ -492,75 +471,45 @@ class OpenAIWebSocketBackend(Backend):
                 while True:
                     raw = await self._recv_ws(ws)
                     event = _load_ws_event(raw)
-                    et = event.get("type")
-                    if et == "transcription.delta":
-                        iter_time = time.time()
-                        if request_info.timings.first_request_iteration is None:
-                            request_info.timings.first_request_iteration = iter_time
-                        request_info.timings.last_request_iteration = iter_time
-                        request_info.timings.request_iterations += 1
-                        delta = event.get("delta") or ""
-                        full_text_parts.append(delta)
-                        if request_info.timings.first_token_iteration is None:
-                            request_info.timings.first_token_iteration = iter_time
-                            request_info.timings.token_iterations = 0
-                            yield None, request_info
-                        request_info.timings.last_token_iteration = iter_time
-                        request_info.timings.token_iterations += 1 if delta else 0
+                    update = handler.add_streaming_event(event)
 
-                    elif et == "transcription.done":
+                    if update.kind is WSEventResult.STREAM_END:
                         iter_time = time.time()
                         request_info.timings.request_end = iter_time
-                        full_text = event.get("text") or "".join(full_text_parts)
-                        if request_info.timings.first_token_iteration is None:
-                            if request_info.timings.first_request_iteration is None:
-                                request_info.timings.first_request_iteration = iter_time
-                            request_info.timings.last_request_iteration = iter_time
-                            request_info.timings.request_iterations += 1
-                            request_info.timings.first_token_iteration = iter_time
-                            request_info.timings.token_iterations = 0
-                            yield None, request_info
-                            request_info.timings.last_token_iteration = iter_time
-                            request_info.timings.token_iterations += (
-                                1 if full_text else 0
+                        # Done-only path: first-token timing when text exists.
+                        if (
+                            request_info.timings.first_token_iteration is None
+                            and _record_content_tokens(
+                                request_info,
+                                content_tokens=1 if handler.streaming_text else 0,
+                                record_request_iteration=True,
                             )
-                        usage_dict = event.get("usage")
-                        inp, outp = handler.extract_metrics(usage_dict, full_text)
-                        yield (
-                            GenerationResponse(
-                                request_id=request.request_id,
-                                request_args=arguments.model_dump_json(),
-                                text=full_text,
-                                input_metrics=inp,
-                                output_metrics=outp,
-                            ),
-                            request_info,
-                        )
+                        ):
+                            yield None, request_info
                         break
-                    elif et == "error":
-                        raise RuntimeError(_ws_error_message(event.get("error")))
-                    else:
+
+                    if update.kind in (
+                        WSEventResult.CONTENT,
+                        WSEventResult.REQUEST_ITERATION,
+                    ):
+                        if _record_content_tokens(
+                            request_info,
+                            content_tokens=update.content_tokens,
+                            record_request_iteration=True,
+                        ):
+                            yield None, request_info
+                    elif update.kind is WSEventResult.IGNORED:
                         ignored_events += 1
                         if ignored_events > _MAX_IGNORED_WS_EVENT_TYPES:
                             raise RuntimeError(
                                 "Exceeded maximum ignored realtime WebSocket events "
-                                f"without transcription.done (last type={et!r})."
+                                f"(last type={event.get('type')!r})."
                             )
-                        continue
+
+                yield handler.compile_streaming(request, arguments), request_info
 
         except asyncio.CancelledError as err:
-            text_so_far = "".join(full_text_parts)
-            inp, outp = handler.extract_metrics(None, text_so_far or "")
-            yield (
-                GenerationResponse(
-                    request_id=request.request_id,
-                    request_args=arguments.model_dump_json(),
-                    text=text_so_far,
-                    input_metrics=inp,
-                    output_metrics=outp,
-                ),
-                request_info,
-            )
+            yield handler.compile_streaming(request, arguments), request_info
             raise err
         finally:
             if (

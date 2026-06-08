@@ -72,6 +72,7 @@ dependencies = [
     "uvloop>=0.18",
     "torch",
     "more-itertools>=10.8.0",
+    "websockets>=13.0",
 ]
 
 [project.optional-dependencies]
@@ -87,7 +88,6 @@ audio = [
     # Torchcodec 0.13 requires PyTorch >= 2.11
     "torch==2.11.*",
     "torchcodec==0.13.*",
-    "websockets>=13.0",
 ]
 vision = [
     "datasets[vision]",

@@ -13,14 +13,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-try:
-    from websockets.asyncio.server import serve
-    from websockets.exceptions import ConnectionClosed
-except ImportError:
-    pytest.skip(
-        "websockets not installed; install guidellm[audio] for realtime tests",
-        allow_module_level=True,
-    )
+from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosed
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.websocket import (
@@ -102,6 +96,61 @@ async def test_resolve_streams_deltas_and_done() -> None:
     assert final_resp.text == "hi"
     assert final_resp.input_metrics.audio_tokens == 5
     assert final_resp.output_metrics.text_tokens == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_delta_does_not_count_as_ignored_event() -> None:
+    """Empty transcription.delta updates request iteration without token timing.
+
+    ## WRITTEN BY AI ##
+    """
+
+    async def handler(ws: object) -> None:
+        await ws.send(
+            json.dumps({"type": "session.created", "id": "sess-x", "created": 0})
+        )
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg if isinstance(msg, str) else msg.decode())
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
+                break
+        await ws.send(json.dumps({"type": "transcription.delta", "delta": ""}))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "transcription.done",
+                    "text": "ok",
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                }
+            )
+        )
+
+    async with serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        be = _make_ws_backend(
+            target=f"http://127.0.0.1:{port}",
+            model="test-model",
+            validate_backend=False,
+        )
+        await be.process_startup()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": [{"audio": b"fake"}]},
+        )
+        info = RequestInfo(timings=RequestTimings())
+        out: list = []
+        async for item in be.resolve(req, info):
+            out.append(item)
+        await be.process_shutdown()
+
+    assert len(out) == 2
+    _, final_info = out[1]
+    assert final_info.timings.request_iterations >= 1
+    assert final_info.timings.token_iterations == 1
 
 
 @pytest.mark.asyncio

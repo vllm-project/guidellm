@@ -15,13 +15,7 @@ from typing import Any
 
 import pytest
 
-try:
-    from websockets.asyncio.server import serve
-except ImportError:
-    pytest.skip(
-        "websockets not installed; install guidellm[audio] for realtime e2e",
-        allow_module_level=True,
-    )
+from websockets.asyncio.server import serve
 
 from guidellm.backends.openai.websocket import (
     OpenAIWebSocketBackend,
