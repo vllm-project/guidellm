@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from guidellm.utils.imports import json
+
 __all__ = [
     "FALLBACK_TIMEOUT",
     "build_headers",
+    "format_ws_error",
     "resolve_validate_kwargs",
 ]
 
@@ -77,3 +80,27 @@ def resolve_validate_kwargs(
         request_kwargs["method"] = "GET"
 
     return request_kwargs
+
+
+def format_ws_error(err: Any) -> str:
+    """
+    Format a WebSocket error payload into a human-readable message.
+
+    :param err: Error value from a realtime ``error`` event frame.
+    :return: Message suitable for :class:`RuntimeError`.
+    """
+    if isinstance(err, dict):
+        msg = err.get("message") or err.get("msg")
+        code = err.get("code")
+        parts = [str(p) for p in (code, msg) if p]
+        if parts:
+            return ": ".join(parts)
+        try:
+            raw = json.dumps(err)
+            text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+            return text[:500]
+        except (TypeError, ValueError):
+            return repr(err)
+    if err is None or err == "":
+        return "WebSocket error"
+    return str(err)

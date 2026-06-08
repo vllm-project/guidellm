@@ -73,6 +73,7 @@ dependencies = [
     "torch",
     "more-itertools>=10.8.0",
     "typing-extensions>=4.15.0",
+    "websockets>=13.0",
 ]
 
 [project.optional-dependencies]
@@ -88,7 +89,6 @@ audio = [
     # Torchcodec 0.13 requires PyTorch >= 2.11
     "torch==2.11.*",
     "torchcodec==0.13.*",
-    "websockets>=13.0",
 ]
 vision = [
     "datasets[vision]",
