@@ -35,19 +35,8 @@ class ConcurrentProfileArgs(ProfileArgs):
     @model_validator(mode="before")
     @classmethod
     def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
-        """Remove a duplicate rate
-
-        This profile aliases "rate" to "streams"; but if the user types
-
-            "--profile kind=concurrent,streams=2.0 --rate 3"
-
-        Pydantic won't alias the "rate" because it's already seen "streams", and
-        we'll get a validation error. In this case, the global "--rate" should be
-        ignored, so we remove the "rate" key.
-        """
-        if isinstance(data, dict) and all(key in data for key in ("rate", "streams")):
-            data.pop("rate")
-        return data
+        """Check for duplicate rate"""
+        return cls._fail_on_duplicate_rate(data, "streams")
 
     @field_validator("streams", mode="before")
     @classmethod

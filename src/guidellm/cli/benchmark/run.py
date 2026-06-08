@@ -374,8 +374,12 @@ def run(**kwargs):  # noqa: C901, PLR0915, PLR0912
     # Map top-level CLI options to profile
     kwargs["backend_kwargs"] = backend_kwargs
     profile = kwargs.pop("profile", {"kind": "sweep"})
-    rate = kwargs.pop("rate", None)
-    profile["rate"] = rate
+    if rate := kwargs.pop("rate", None):
+        if "rate" in profile:
+            raise click.BadParameter(
+                "Both --rate and --profile rate cannot be specified together."
+            )
+        profile["rate"] = rate
     rampup = kwargs.pop("rampup", None)
     if rampup is not None and "rampup_duration" not in profile:
         profile["rampup_duration"] = rampup

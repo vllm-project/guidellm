@@ -60,6 +60,28 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
 
         return ProfileArgs
 
+    @classmethod
+    def _fail_on_duplicate_rate(cls, data: Any, key: str) -> Any:
+        """Fail if both "rate" and <key> are specified.
+
+        Some profile alias "rate" and a more specific key; if the user enters
+        both, either directly or via the global "--rate" option, we should fail.
+
+        for example:
+
+            "--profile kind=concurrent,streams=2.0 --rate 3"
+            "--profile kind=concurrent,streams=2,rate=3"
+
+        Pydantic won't resolve all cases consistently, so we need to fail explicitly.
+
+        :param data: The data to validate
+        :param key: The key to check for duplicate rate
+        :return: The data
+        """
+        if isinstance(data, dict) and all(key in data for key in ("rate", key)):
+            raise ValueError(f"Both 'rate' and '{key}' cannot be specified.")
+        return data
+
     kind: str = Field(
         description="Profile type discriminator for polymorphic serialization",
     )
