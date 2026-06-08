@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from websockets.asyncio.server import serve
 
 from guidellm.backends.openai.websocket import (
