@@ -23,10 +23,17 @@ from guidellm.backends.openai.websocket import (
 from guidellm.schemas import GenerationRequest, RequestInfo, RequestTimings
 
 
+@pytest.fixture(autouse=True)
+def _patch_pcm16_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Avoid torchcodec decode in unit tests; handler chunks audio in format()."""
+    monkeypatch.setattr(
+        "guidellm.backends.openai.request_handlers.pcm16_append_b64_chunks",
+        lambda *a, **k: ["YWFhYQ=="],
+    )
+
+
 def _make_ws_backend(**kwargs: Any) -> OpenAIWebSocketBackend:
-    be = OpenAIWebSocketBackend(OpenAIWebSocketBackendArgs(**kwargs))
-    be._append_pcm16_chunks = lambda *a, **k: ["YWFhYQ=="]
-    return be
+    return OpenAIWebSocketBackend(OpenAIWebSocketBackendArgs(**kwargs))
 
 
 async def _bounded_ws_recv(ws: object, *, timeout: float = 5.0) -> None:

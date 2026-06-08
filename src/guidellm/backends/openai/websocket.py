@@ -14,7 +14,7 @@ import asyncio
 import ssl
 import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import ParseResult, urlparse
 
 import httpx
@@ -32,8 +32,8 @@ from guidellm.backends.openai.common import (
     resolve_validate_kwargs,
 )
 from guidellm.backends.openai.request_handlers import (
+    WS_AUDIO_CHUNKS_BODY_KEY,
     OpenAIWSRequestHandlerFactory,
-    RealtimeTranscriptionWSRequestHandler,
     WSEventResult,
 )
 from guidellm.schemas import (
@@ -41,7 +41,6 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
 )
-from guidellm.utils.audio import pcm16_append_b64_chunks
 from guidellm.utils.imports import json
 
 __all__ = [
@@ -217,7 +216,6 @@ class OpenAIWebSocketBackend(Backend):
         )
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
-        self._append_pcm16_chunks = pcm16_append_b64_chunks
 
     @property
     def websocket_path(self) -> str:
@@ -409,21 +407,20 @@ class OpenAIWebSocketBackend(Backend):
                 "none. Pass --model or ensure the server lists at least one model."
             )
 
-        handler = cast(
-            "RealtimeTranscriptionWSRequestHandler",
-            OpenAIWSRequestHandlerFactory.create(self.websocket_path),
-        )
+        handler = OpenAIWSRequestHandlerFactory.create(self.websocket_path)
         arguments = handler.format(
             request,
             model=model_name,
             websocket_path=self.websocket_path,
             chunk_samples=self._args.chunk_samples,
         )
-        audio_entry = handler.get_audio_entry()
-        chunks = self._append_pcm16_chunks(
-            audio_entry,
-            chunk_samples=self._args.chunk_samples,
-        )
+        body = arguments.body or {}
+        chunks = body.get(WS_AUDIO_CHUNKS_BODY_KEY)
+        if not isinstance(chunks, list):
+            raise RuntimeError(
+                "Realtime WebSocket handler format() did not provide "
+                f"{WS_AUDIO_CHUNKS_BODY_KEY!r}."
+            )
 
         session_update: dict[str, Any] = {"type": "session.update"}
         extras = self._args.extras or {}
