@@ -25,6 +25,10 @@ from guidellm.utils.mixins import InfoMixin
 __all__ = ["DatasetsIterator", "TorchDataLoader", "TorchDataLoaderArgs"]
 
 
+def _collate_first(batch: list) -> Any:
+    return batch[0]
+
+
 @DataLoaderArgs.register("pytorch")
 class TorchDataLoaderArgs(DataLoaderArgs):
     kind: Literal["pytorch"] = Field(  # type: ignore[assignment]
@@ -181,7 +185,7 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
             dataset=iterator,
             batch_size=1,
             shuffle=config.shuffle,
-            collate_fn=lambda batch: batch[0],
+            collate_fn=_collate_first,
             num_workers=config.num_workers,
             generator=gen,
             **kwargs,
