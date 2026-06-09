@@ -17,6 +17,7 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
 )
+from guidellm.scheduler.constraints import OverSaturationConstraintArgs
 from guidellm.schemas import RequestInfo, RequestTimings
 
 
@@ -330,7 +331,9 @@ class TestOverSaturationConstraintInitializer:
     def valid_instances(self, request):
         """Create OverSaturationConstraintInitializer with valid parameters."""
         constructor_args = request.param
-        instance = OverSaturationConstraintInitializer(**constructor_args)
+        instance = OverSaturationConstraintInitializer(
+            args=OverSaturationConstraintArgs(**constructor_args)
+        )
         return instance, constructor_args
 
     @pytest.mark.smoke
@@ -352,23 +355,30 @@ class TestOverSaturationConstraintInitializer:
         instance, constructor_args = valid_instances
 
         assert instance.type_ == "over_saturation"
-        assert instance.enabled == constructor_args["enabled"]
+        assert instance.args.enabled == constructor_args["enabled"]
 
         if "min_seconds" in constructor_args:
-            assert instance.min_seconds == constructor_args["min_seconds"]
+            assert instance.args.min_seconds == constructor_args["min_seconds"]
         if "max_window_seconds" in constructor_args:
-            assert instance.max_window_seconds == constructor_args["max_window_seconds"]
+            assert (
+                instance.args.max_window_seconds
+                == constructor_args["max_window_seconds"]
+            )
 
     @pytest.mark.sanity
     def test_initialization_invalid(self):
         """Test that initializer rejects invalid parameters."""
         # Invalid type for enabled
         with pytest.raises(ValidationError):
-            OverSaturationConstraintInitializer(enabled="invalid")
+            OverSaturationConstraintInitializer(
+                args=OverSaturationConstraintArgs(enabled="invalid")
+            )
 
         # Invalid type for min_seconds
         with pytest.raises(ValidationError):
-            OverSaturationConstraintInitializer(enabled=True, min_seconds="invalid")
+            OverSaturationConstraintInitializer(
+                args=OverSaturationConstraintArgs(enabled=True, min_seconds="invalid")
+            )
 
     @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
@@ -377,7 +387,7 @@ class TestOverSaturationConstraintInitializer:
         constraint = instance.create_constraint()
 
         assert isinstance(constraint, OverSaturationConstraint)
-        assert constraint.enabled == instance.enabled
+        assert constraint.enabled == instance.args.enabled
 
     @pytest.mark.smoke
     def test_validated_kwargs(self):
@@ -387,33 +397,34 @@ class TestOverSaturationConstraintInitializer:
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation={}
         )
-        # enabled defaults to True in the Pydantic model
-        assert result == {}
+        assert "args" in result
+        assert isinstance(result["args"], OverSaturationConstraintArgs)
+        assert result["args"].enabled is True
 
         # Test with dict input (enabled=False)
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation={"enabled": False}
         )
-        assert result["enabled"] is False
+        assert result["args"].enabled is False
 
         # Test with dict input with min_seconds
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation={"enabled": True, "min_seconds": 20.0}
         )
-        assert result["enabled"] is True
-        assert result["min_seconds"] == 20.0
+        assert result["args"].enabled is True
+        assert result["args"].min_seconds == 20.0
 
         # Test with None (should return enabled=False)
         result = OverSaturationConstraintInitializer.validated_kwargs(
             over_saturation=None
         )
-        assert result["enabled"] is False
+        assert result["args"].enabled is False
 
         # Test with aliases
         result = OverSaturationConstraintInitializer.validated_kwargs(
             detect_saturation={"enabled": True}
         )
-        assert result["enabled"] is True
+        assert result["args"].enabled is True
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -422,10 +433,10 @@ class TestOverSaturationConstraintInitializer:
 
         data = instance.model_dump()
         assert data["type_"] == "over_saturation"
-        assert data["enabled"] == constructor_args["enabled"]
+        assert data["args"]["enabled"] == constructor_args["enabled"]
 
         reconstructed = OverSaturationConstraintInitializer.model_validate(data)
-        assert reconstructed.enabled == instance.enabled
+        assert reconstructed.args.enabled == instance.args.enabled
 
     @pytest.mark.smoke
     def test_factory_registration(self):
@@ -483,7 +494,9 @@ class TestOverSaturationConstraintInitializer:
         assert resolved["detect_saturation"].enabled is True
 
         # Test with instance
-        instance = OverSaturationConstraintInitializer(enabled=False)
+        instance = OverSaturationConstraintInitializer(
+            args=OverSaturationConstraintArgs(enabled=False)
+        )
         constraint_instance = instance.create_constraint()
         resolved = ConstraintsInitializerFactory.resolve(
             {"over_saturation": constraint_instance}

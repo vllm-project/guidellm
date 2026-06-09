@@ -359,12 +359,7 @@ class TestReplayProfile:
 
         profile = await resolve_profile(
             profile=ReplayProfileArgs.model_validate({"kind": "replay", "rate": [2.0]}),
-            constraints={},
-            max_seconds=None,
-            max_requests=2,
-            max_errors=None,
-            max_error_rate=None,
-            max_global_error_rate=None,
+            constraints={"max_requests": 2},
             random_seed=42,
             data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
             data_samples=2,

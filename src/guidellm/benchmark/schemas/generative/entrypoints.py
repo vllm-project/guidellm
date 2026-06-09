@@ -41,6 +41,7 @@ from guidellm.data import (
     DataTokenizerArgs,
 )
 from guidellm.scheduler import StrategyType
+from guidellm.scheduler.constraints import ConstraintArgs
 from guidellm.schemas import StandardBaseModel
 
 __all__ = [
@@ -247,6 +248,10 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         description="Whether to prefer backend response metrics over request metrics",
     )
     # Constraints configuration
+    constraints: list[ConstraintArgs] = Field(
+        default_factory=list,
+        description="List of constraint configurations for benchmark execution",
+    )
     max_seconds: int | float | None = Field(
         default=None, description="Maximum benchmark execution time in seconds"
     )
@@ -271,7 +276,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         ),
     )
 
-    @field_validator("data", "rate", "data_preprocessors", mode="wrap")
+    @field_validator("data", "rate", "data_preprocessors", "constraints", mode="wrap")
     @classmethod
     def single_to_list(
         cls, value: Any, handler: ValidatorFunctionWrapHandler

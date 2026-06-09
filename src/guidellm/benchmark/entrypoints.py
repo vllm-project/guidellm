@@ -11,7 +11,7 @@ validation, data preprocessing, profile constraints, and output format specifica
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -41,6 +41,8 @@ from guidellm.scheduler import (
     ConstraintsInitializerFactory,
     NonDistributedEnvironment,
 )
+from guidellm.scheduler.constraints.args import ConstraintArgs
+from guidellm.scheduler.constraints.factory import constraint_args_to_initializer
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
@@ -260,57 +262,98 @@ async def resolve_request_loader(
     return request_loader
 
 
-def resolve_constraints(constraints: MutableMapping[str, Any]) -> dict[str, Any] | None:
+def resolve_constraints(
+    args: BenchmarkGenerativeTextArgs,
+    **extra_constraints: ConstraintInitializer | Any,
+) -> dict[str, Any]:
     """
-    Resolve the constraints from the provided parameters.
+    Resolve all constraint sources into a unified constraints dictionary.
+
+    Translates flat CLI fields (max_seconds, max_requests, etc.) and the explicit
+    ``constraints`` list from args into a single dict keyed by constraint registry
+    names. Also merges any programmatically provided extra constraints.
+
+    :param args: Benchmark configuration containing constraint fields
+    :param extra_constraints: Additional constraint initializers passed programmatically
+    :return: Dictionary mapping constraint keys to initializers or raw values
     """
+    resolved: dict[str, Any] = {}
 
-    if constraints is None:
-        return None
-
-    if not isinstance(constraints, dict):
-        raise ValueError("Constraints must be a dictionary")
-
-    return {
-        key: (
-            ConstraintsInitializerFactory.deserialize(initializer_dict=val)
-            if isinstance(val, dict)
-            and "type_" in val
-            and not isinstance(val, ConstraintInitializer)
-            else val
-        )
-        for key, val in constraints.items()
+    # 1. Translate flat CLI args into ConstraintArgs and resolve
+    flat_constraint_map: dict[str, dict[str, Any] | None] = {
+        "max_seconds": (
+            {"kind": "max_duration", "max_duration": args.max_seconds}
+            if args.max_seconds is not None
+            else None
+        ),
+        "max_requests": (
+            {"kind": "max_requests", "max_num": args.max_requests}
+            if args.max_requests is not None
+            else None
+        ),
+        "max_errors": (
+            {"kind": "max_errors", "max_errors": args.max_errors}
+            if args.max_errors is not None
+            else None
+        ),
+        "max_error_rate": (
+            {"kind": "max_error_rate", "max_error_rate": args.max_error_rate}
+            if args.max_error_rate is not None
+            else None
+        ),
+        "max_global_error_rate": (
+            {
+                "kind": "max_global_error_rate",
+                "max_error_rate": args.max_global_error_rate,
+            }
+            if args.max_global_error_rate is not None
+            else None
+        ),
+        "over_saturation": (
+            {"kind": "over_saturation", **args.over_saturation}
+            if args.over_saturation is not None
+            else None
+        ),
     }
+
+    for key, constraint_dict in flat_constraint_map.items():
+        if constraint_dict is not None:
+            constraint_args = ConstraintArgs.model_validate(constraint_dict)
+            resolved[key] = constraint_args_to_initializer(constraint_args)
+
+    # 2. Merge explicitly provided ConstraintArgs list from args
+    for constraint_arg in args.constraints:
+        resolved[constraint_arg.constraint_key] = constraint_args_to_initializer(
+            constraint_arg
+        )
+
+    # 3. Merge any programmatic extra constraints (preserving raw values/initializers)
+    for key, val in extra_constraints.items():
+        if isinstance(val, dict) and "type_" in val:
+            resolved[key] = ConstraintsInitializerFactory.deserialize(
+                initializer_dict=val
+            )
+        else:
+            resolved[key] = val
+
+    return resolved
 
 
 async def resolve_profile(
     profile: ProfileArgs | Profile,
-    constraints: MutableMapping[str, ConstraintInitializer | Any],
-    max_seconds: int | float | None,
-    max_requests: int | None,
-    max_errors: int | None,
-    max_error_rate: float | None,
-    max_global_error_rate: float | None,
-    random_seed: int = 42,
-    over_saturation: dict[str, Any] | None = None,
+    constraints: dict[str, Any] | None,
     console: Console | None = None,
+    random_seed: int = 42,
     **profile_kwargs: Any,
 ) -> Profile:
     """
     Resolve and configure a benchmark profile with rate and constraint settings.
 
     Constructs a Profile instance from type identifiers or validates pre-configured
-    profiles. Constraint parameters are merged into the constraints dictionary before
-    profile creation.
+    profiles.
 
     :param profile: Profile type identifier or pre-configured Profile instance
-    :param constraints: Dictionary of constraint initializers for benchmark limits
-    :param max_seconds: Maximum duration in seconds for the benchmark
-    :param max_requests: Maximum number of requests to process
-    :param max_errors: Maximum number of errors before stopping
-    :param max_error_rate: Maximum error rate threshold before stopping
-    :param max_global_error_rate: Maximum global error rate threshold before stopping
-    :param over_saturation: Over-saturation detection configuration (dict)
+    :param constraints: Pre-resolved constraints dictionary for benchmark limits
     :param console: Console instance for progress reporting, or None
     :param random_seed: Seed for reproducible random operations in profile strategies
     :param profile_kwargs: Additional profile-specific arguments such as data and
@@ -323,17 +366,6 @@ async def resolve_profile(
         if console
         else None
     )
-
-    for key, val in {
-        "max_seconds": max_seconds,
-        "max_requests": max_requests,
-        "max_errors": max_errors,
-        "max_error_rate": max_error_rate,
-        "max_global_error_rate": max_global_error_rate,
-        "over_saturation": over_saturation,
-    }.items():
-        if val is not None:
-            constraints[key] = val
 
     if not isinstance(profile, Profile):
         profile = ProfileFactory.create(
@@ -435,15 +467,10 @@ async def benchmark_generative_text(
             status="success",
         )
 
+    constraints = resolve_constraints(args, **constraints)
     profile = await resolve_profile(
         profile=args.profile,
         constraints=constraints,
-        max_seconds=args.max_seconds,
-        max_requests=args.max_requests,
-        max_errors=args.max_errors,
-        max_error_rate=args.max_error_rate,
-        max_global_error_rate=args.max_global_error_rate,
-        over_saturation=args.over_saturation,
         console=console,
         random_seed=args.random_seed,
         data=args.data,

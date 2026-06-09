@@ -141,6 +141,7 @@ class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
     ::
         from guidellm.scheduler import (
             MaxNumberConstraint,
+            MaxRequestsConstraintArgs,
             NonDistributedEnvironment,
             RequestInfo,
             SchedulerState,
@@ -150,7 +151,8 @@ class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
         env = NonDistributedEnvironment()
         requests = [f"req_{ind}" for ind in range(5)]
         strategy = SynchronousStrategy()
-        constraints = {"max_num": MaxNumberConstraint(max_num=5)}
+        args = MaxRequestsConstraintArgs(max_num=5)
+        constraints = {"max_num": MaxNumberConstraint(args=args)}
         state = SchedulerState()
 
         local_req, local_strat, local_const = await env.sync_run_params(

@@ -11,8 +11,12 @@ from __future__ import annotations
 import time
 from typing import Any, Literal, cast
 
-from pydantic import Field, field_validator
+from pydantic import Field
 
+from guidellm.scheduler.constraints.args import (
+    ConstraintArgs,
+    PositiveNumOrList,
+)
 from guidellm.scheduler.constraints.constraint import (
     Constraint,
     PydanticConstraintInitializer,
@@ -28,9 +32,57 @@ from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
     "MaxDurationConstraint",
+    "MaxDurationConstraintArgs",
     "MaxNumberConstraint",
+    "MaxRequestsConstraintArgs",
     "RequestsExhaustedConstraint",
 ]
+
+
+@ConstraintArgs.register(["max_duration", "max_seconds"])
+class MaxDurationConstraintArgs(ConstraintArgs):
+    """
+    Arguments for maximum duration constraint.
+
+    Limits benchmark execution time per strategy.
+
+    :cvar kind: Always "max_duration"
+    """
+
+    kind: Literal["max_duration", "max_seconds"] = Field(
+        default="max_duration",
+        description="Constraint type discriminator",
+    )
+    max_duration: PositiveNumOrList = Field(
+        description="Maximum duration in seconds before stopping execution",
+    )
+
+    @property
+    def constraint_key(self) -> str:
+        return "max_seconds"
+
+
+@ConstraintArgs.register(["max_requests", "max_number"])
+class MaxRequestsConstraintArgs(ConstraintArgs):
+    """
+    Arguments for maximum request count constraint.
+
+    Limits the number of requests processed per strategy.
+
+    :cvar kind: Always "max_requests"
+    """
+
+    kind: Literal["max_requests", "max_number"] = Field(
+        default="max_requests",
+        description="Constraint type discriminator",
+    )
+    max_num: PositiveNumOrList = Field(
+        description="Maximum number of requests before stopping execution",
+    )
+
+    @property
+    def constraint_key(self) -> str:
+        return "max_requests"
 
 
 @ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
@@ -46,8 +98,8 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
     """
 
     type_: Literal["max_number"] = "max_number"  # type: ignore[assignment]
-    max_num: int | float | list[int | float] = Field(
-        description="Maximum number of requests allowed before triggering constraint",
+    args: MaxRequestsConstraintArgs = Field(
+        description="Configuration arguments for max request count constraint",
     )
     current_index: int = Field(
         default=-1, description="Current index for list-based max_num values"
@@ -55,7 +107,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
 
     @classmethod
     def validated_kwargs(
-        cls, max_num: int | float | list[int | float], **kwargs
+        cls, max_num: int | float | list[int | float] | None = None, **kwargs
     ) -> dict[str, Any]:
         """
         Validate and process arguments for MaxNumberConstraint creation.
@@ -63,14 +115,17 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         :param max_num: Maximum number of requests to allow
         :param kwargs: Supports max_num, max_number, max_requests, max_req,
             and optional type_
-        :return: Validated dictionary with max_num and type_ fields
+        :return: Validated dictionary with args and runtime state fields
         """
         aliases = ["max_number", "max_num", "max_requests", "max_req"]
         for alias in aliases:
             if max_num is None:
                 max_num = kwargs.get(alias)
 
-        return {"max_num": max_num, "current_index": kwargs.get("current_index", -1)}
+        return {
+            "args": MaxRequestsConstraintArgs(max_num=max_num),  # type: ignore[arg-type]
+            "current_index": kwargs.get("current_index", -1),
+        }
 
     def create_constraint(self, **_kwargs) -> Constraint:
         """
@@ -96,9 +151,9 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_num = (
-            self.max_num
-            if isinstance(self.max_num, int | float)
-            else self.max_num[min(current_index, len(self.max_num) - 1)]
+            self.args.max_num
+            if isinstance(self.args.max_num, int | float)
+            else self.args.max_num[min(current_index, len(self.args.max_num) - 1)]
         )
 
         create_exceeded = state.created_requests >= max_num
@@ -127,25 +182,6 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
             ),
         )
 
-    @field_validator("max_num")
-    @classmethod
-    def _validate_max_num(
-        cls, value: int | float | list[int | float]
-    ) -> int | float | list[int | float]:
-        if not isinstance(value, list):
-            value = [value]
-        for val in value:
-            if not val:
-                raise ValueError(
-                    f"max_num must be set and truthful, received {value} ({val} failed)"
-                )
-            if not isinstance(val, int | float) or val <= 0:
-                raise ValueError(
-                    f"max_num must be a positive num, received {value} ({val} failed)"
-                )
-
-        return value[0] if isinstance(value, list) and len(value) == 1 else value
-
 
 @ConstraintsInitializerFactory.register(
     ["max_duration", "max_dur", "max_sec", "max_seconds", "max_min", "max_minutes"]
@@ -160,8 +196,8 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
     """
 
     type_: Literal["max_duration"] = "max_duration"  # type: ignore[assignment]
-    max_duration: int | float | list[int | float] = Field(
-        description="Maximum duration in seconds before triggering constraint"
+    args: MaxDurationConstraintArgs = Field(
+        description="Configuration arguments for max duration constraint",
     )
     current_index: int = Field(default=-1, description="Current index in duration list")
 
@@ -175,7 +211,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         :param max_duration: Maximum duration in seconds
         :param kwargs: Supports max_duration, max_dur, max_sec, max_seconds,
             max_min, max_minutes, and optional type_
-        :return: Validated dictionary with max_duration and type_ fields
+        :return: Validated dictionary with args and runtime state fields
         """
         seconds_aliases = ["max_dur", "max_sec", "max_seconds"]
         for alias in seconds_aliases:
@@ -188,7 +224,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
                 max_duration = minutes * 60
 
         return {
-            "max_duration": max_duration,
+            "args": MaxDurationConstraintArgs(max_duration=max_duration),  # type: ignore[arg-type]
             "current_index": kwargs.get("current_index", -1),
         }
 
@@ -216,9 +252,11 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_duration = (
-            self.max_duration
-            if isinstance(self.max_duration, int | float)
-            else self.max_duration[min(current_index, len(self.max_duration) - 1)]
+            self.args.max_duration
+            if isinstance(self.args.max_duration, int | float)
+            else self.args.max_duration[
+                min(current_index, len(self.args.max_duration) - 1)
+            ]
         )
 
         start_time = state.start_requests_time or state.start_time
@@ -245,27 +283,6 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
                 stop_time=stop_time,
             ),
         )
-
-    @field_validator("max_duration")
-    @classmethod
-    def _validate_max_duration(
-        cls, value: int | float | list[int | float]
-    ) -> int | float | list[int | float]:
-        if not isinstance(value, list):
-            value = [value]
-        for val in value:
-            if not val:
-                raise ValueError(
-                    "max_duration must be set and truthful, "
-                    f"received {value} ({val} failed)"
-                )
-            if not isinstance(val, int | float) or val <= 0:
-                raise ValueError(
-                    "max_duration must be a positive num,"
-                    f"received {value} ({val} failed)"
-                )
-
-        return value[0] if isinstance(value, list) and len(value) == 1 else value
 
 
 class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):

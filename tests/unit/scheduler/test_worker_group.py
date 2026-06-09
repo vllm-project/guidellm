@@ -24,6 +24,10 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     WorkerProcessGroup,
 )
+from guidellm.scheduler.constraints import (
+    MaxDurationConstraintArgs,
+    MaxRequestsConstraintArgs,
+)
 from guidellm.scheduler.worker_group import WorkerGroupState
 from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.utils.messaging import InterProcessMessaging
@@ -107,13 +111,17 @@ class TestWorkerProcessGroup:
                 "requests": ["request1", "request2", "request3"],
                 "strategy": SynchronousStrategy(),
                 "startup_duration": 0.1,
-                "max_num": MaxNumberConstraint(max_num=10),
+                "max_num": MaxNumberConstraint(
+                    args=MaxRequestsConstraintArgs(max_num=10),
+                ),
             },
             {
                 "requests": ["req_a", "req_b"],
                 "strategy": ConcurrentStrategy(streams=2),
                 "startup_duration": 0.1,
-                "max_num": MaxNumberConstraint(max_num=5),
+                "max_num": MaxNumberConstraint(
+                    args=MaxRequestsConstraintArgs(max_num=5),
+                ),
             },
             {
                 "requests": ["req_x", "req_y", "req_z"],
@@ -124,7 +132,9 @@ class TestWorkerProcessGroup:
                 "requests": ["req_8", "req_9", "req_10"],
                 "strategy": AsyncConstantStrategy(rate=20),
                 "startup_duration": 0.1,
-                "max_duration": MaxDurationConstraint(max_duration=1),
+                "max_duration": MaxDurationConstraint(
+                    args=MaxDurationConstraintArgs(max_duration=1),
+                ),
             },
         ],
         ids=["sync_max", "concurrent_max", "throughput_no_cycle", "constant_duration"],

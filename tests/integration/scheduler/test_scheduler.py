@@ -21,6 +21,7 @@ from guidellm.scheduler import (
     SchedulingStrategy,
     SynchronousStrategy,
 )
+from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
 from guidellm.schemas import RequestInfo
 
 
@@ -100,7 +101,11 @@ class MockBackend(BackendInterface):
         (
             SynchronousStrategy(),
             NonDistributedEnvironment(),
-            {"max_number": MaxNumberConstraint(max_num=100)},
+            {
+                "max_number": MaxNumberConstraint(
+                    args=MaxRequestsConstraintArgs(max_num=100)
+                )
+            },
         ),
     ],
 )

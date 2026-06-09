@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from guidellm.scheduler.constraints.args import ConstraintArgs
 from guidellm.scheduler.constraints.constraint import (
     Constraint,
     ConstraintInitializer,
@@ -19,7 +20,7 @@ from guidellm.scheduler.constraints.constraint import (
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.registry import RegistryMixin
 
-__all__ = ["ConstraintsInitializerFactory"]
+__all__ = ["ConstraintsInitializerFactory", "constraint_args_to_initializer"]
 
 
 class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
@@ -69,6 +70,24 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
                 **initializer_class.validated_kwargs(*args, **kwargs)  # type: ignore[misc]
             )
         )
+
+    @classmethod
+    def create_from_args(cls, args: ConstraintArgs) -> ConstraintInitializer:
+        """
+        Create a constraint initializer from a ``ConstraintArgs`` instance.
+
+        Mirrors ``ProfileFactory.create(args)`` — looks up the initializer
+        class by ``args.kind`` and passes the args object directly.
+
+        :param args: Validated constraint arguments with kind discriminator
+        :return: Configured constraint initializer instance
+        :raises ValueError: If args.kind is not registered in the factory
+        """
+        if cls.registry is None or args.kind not in cls.registry:
+            raise ValueError(f"Unknown constraint kind: {args.kind}")
+
+        initializer_class = cls.registry[args.kind]
+        return initializer_class(args=args)  # type: ignore[operator]
 
     @classmethod
     def serialize(cls, initializer: ConstraintInitializer) -> dict[str, Any]:
@@ -181,3 +200,17 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
                 resolved_constraints[key] = cls.create_constraint(key, val)
 
         return resolved_constraints
+
+
+def constraint_args_to_initializer(args: ConstraintArgs) -> ConstraintInitializer:
+    """
+    Convert a ``ConstraintArgs`` instance to a ``ConstraintInitializer``.
+
+    Delegates to ``ConstraintsInitializerFactory.create_from_args``, which
+    looks up the initializer class by ``args.kind`` and passes the args
+    directly — matching the ``ProfileFactory.create(args)`` pattern.
+
+    :param args: A validated ConstraintArgs instance
+    :return: A constraint initializer ready for ``create_constraint()``
+    """
+    return ConstraintsInitializerFactory.create_from_args(args)
