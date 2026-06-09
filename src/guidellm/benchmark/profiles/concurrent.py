@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, Field, PositiveInt, field_validator
+from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 
 from guidellm.scheduler import (
     ConcurrentStrategy,
+    ConstraintInitializer,
     SchedulingStrategy,
 )
 
@@ -29,6 +31,12 @@ class ConcurrentProfileArgs(ProfileArgs):
         validation_alias=AliasChoices("streams", "rate"),
         description="Concurrent stream counts to execute",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
+        """Check for duplicate rate"""
+        return cls._fail_on_duplicate_rate(data, "streams")
 
     @field_validator("streams", mode="before")
     @classmethod
@@ -64,9 +72,10 @@ class ConcurrentProfile(Profile):
         self,
         args: ConcurrentProfileArgs,
         random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
 
     @property

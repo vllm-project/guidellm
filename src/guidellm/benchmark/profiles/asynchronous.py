@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, PositiveFloat, PositiveInt, field_validator
@@ -9,6 +10,7 @@ from pydantic import Field, PositiveFloat, PositiveInt, field_validator
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
+    ConstraintInitializer,
     SchedulingStrategy,
 )
 
@@ -70,9 +72,10 @@ class AsyncProfile(Profile):
         self,
         args: AsyncProfileArgs,
         random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
         if args.kind in ("async", "constant"):
             self._strategy_type: Literal["constant", "poisson"] = "constant"

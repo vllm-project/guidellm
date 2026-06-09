@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-from pydantic import AliasChoices, Field, PositiveInt, field_validator
+from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
+    ConstraintInitializer,
     SchedulingStrategy,
     SynchronousStrategy,
     ThroughputStrategy,
@@ -40,6 +42,12 @@ class SweepProfileArgs(ProfileArgs):
         default=None,
         description="Maximum concurrent requests to schedule",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
+        """Check for duplicate rate"""
+        return cls._fail_on_duplicate_rate(data, "sweep_size")
 
     @field_validator("sweep_size", mode="before")
     @classmethod
@@ -80,9 +88,10 @@ class SweepProfile(Profile):
         self,
         args: SweepProfileArgs,
         random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
         self.synchronous_rate = -1.0
         self.throughput_rate = -1.0
