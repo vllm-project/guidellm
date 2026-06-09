@@ -37,6 +37,38 @@ def minimal_report() -> GenerativeBenchmarksReport:
     return GenerativeBenchmarksReport(args=args)
 
 
+@pytest.fixture
+def file_path_report(tmp_path: Path) -> GenerativeBenchmarksReport:
+    """
+    Create a report whose benchmark args contain nested Path values.
+
+    ## WRITTEN BY AI ##
+    """
+    args = BenchmarkGenerativeTextArgs.model_validate(
+        {
+            "backend_kwargs": {
+                "kind": "openai_http",
+                "target": "http://localhost:8000/v1",
+                "model": "test-model",
+            },
+            "data": [
+                {
+                    "kind": "json_file",
+                    "path": tmp_path / "data.jsonl",
+                    "load_kwargs": {"split": "train"},
+                }
+            ],
+            "tokenizer": {"kind": "huggingface_auto", "model": "test-model"},
+            "data_column_mapper": {"kind": "generative_column_mapper"},
+            "data_preprocessors": [],
+            "data_finalizer": {"kind": "generative"},
+            "data_loader": {"kind": "pytorch"},
+            "output_dir": tmp_path / "outputs",
+        }
+    )
+    return GenerativeBenchmarksReport(args=args)
+
+
 class TestResolveFormatType:
     """
     Tests that resolve() propagates the format key correctly.
@@ -145,6 +177,42 @@ class TestFinalizeFormats:
         parsed = json.loads(content)
         assert isinstance(parsed, dict)
         assert "args" in parsed
+
+    @pytest.mark.asyncio
+    async def test_finalize_json_serializes_nested_paths(
+        self, tmp_path: Path, file_path_report: GenerativeBenchmarksReport
+    ):
+        """
+        JSON report serialization should convert nested Path values to strings.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=tmp_path, format_type="json"
+        )
+        result_path = await handler.finalize(file_path_report)
+
+        parsed = json.loads(result_path.read_text())
+        assert parsed["args"]["data"][0]["path"] == str(tmp_path / "data.jsonl")
+        assert parsed["args"]["output_dir"] == str(tmp_path / "outputs")
+
+    @pytest.mark.asyncio
+    async def test_finalize_yaml_serializes_nested_paths(
+        self, tmp_path: Path, file_path_report: GenerativeBenchmarksReport
+    ):
+        """
+        YAML report serialization should emit nested Path values as safe strings.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=tmp_path, format_type="yaml"
+        )
+        result_path = await handler.finalize(file_path_report)
+
+        parsed = yaml.safe_load(result_path.read_text())
+        assert parsed["args"]["data"][0]["path"] == str(tmp_path / "data.jsonl")
+        assert parsed["args"]["output_dir"] == str(tmp_path / "outputs")
 
     @pytest.mark.asyncio
     async def test_finalize_explicit_path_respects_extension(
