@@ -78,7 +78,7 @@ __all__ = [
 ]
 
 
-@ConstraintArgs.register(["over_saturation", "detect_saturation"])
+@ConstraintArgs.register("over_saturation")
 class OverSaturationConstraintArgs(ConstraintArgs):
     """
     Arguments for over-saturation detection constraint.
@@ -89,7 +89,7 @@ class OverSaturationConstraintArgs(ConstraintArgs):
     :cvar kind: Always "over_saturation"
     """
 
-    kind: Literal["over_saturation", "detect_saturation"] = Field(
+    kind: Literal["over_saturation"] = Field(
         default="over_saturation",
         description="Constraint type discriminator",
     )
@@ -626,9 +626,7 @@ class OverSaturationConstraint(Constraint):
         )
 
 
-@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
-    ["over_saturation", "detect_saturation"]
-)
+@ConstraintsInitializerFactory.register("over_saturation")
 class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
     """
     Factory for creating OverSaturationConstraint instances from configuration.
@@ -678,25 +676,15 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
         Validate and process arguments for OverSaturationConstraint creation.
 
         Processes flexible input formats to create validated constraint
-        configuration. Supports dictionary inputs for detailed configuration, and
-        alias parameters for compatibility.
+        configuration. Supports dictionary inputs for detailed configuration.
 
         :param over_saturation: Dictionary with configuration parameters
             (min_seconds, max_window_seconds, etc.)
-        :param kwargs: Additional keyword arguments supporting aliases like
-            "detect_saturation" for compatibility, or unpacked dict values when
-            dict is passed to factory
+        :param kwargs: Additional keyword arguments; if constraint parameters are
+            present they are treated as an unpacked dict
         :return: Validated dictionary with args field for initializer creation
         """
-        # Check for aliases in kwargs
-        aliases = ["over_saturation", "detect_saturation"]
         result: dict[str, Any] | None = over_saturation
-
-        for alias in aliases:
-            alias_value = kwargs.get(alias)
-            if alias_value is not None:
-                result = alias_value
-                break
 
         # If over_saturation is None but kwargs contain constraint parameters,
         # treat kwargs as an unpacked dict (happens when dict is passed to factory)

@@ -102,7 +102,7 @@ class MockBackend(BackendInterface):
             SynchronousStrategy(),
             NonDistributedEnvironment(),
             {
-                "max_number": MaxNumberConstraint(
+                "max_requests": MaxNumberConstraint(
                     args=MaxRequestsConstraintArgs(max_num=100)
                 )
             },
@@ -156,15 +156,15 @@ async def test_scheduler_run_integration(
         last_state = state
 
     assert len(received_updates) == num_requests
-    assert len(received_responses) == constraints["max_number"].max_num
-    assert last_state.created_requests == constraints["max_number"].max_num
+    assert len(received_responses) == constraints["max_requests"].max_num
+    assert last_state.created_requests == constraints["max_requests"].max_num
     assert last_state.queued_requests == 0
     assert last_state.processing_requests == 0
-    assert last_state.processed_requests == constraints["max_number"].max_num
+    assert last_state.processed_requests == constraints["max_requests"].max_num
     assert last_state.cancelled_requests == 0
     assert (
         last_state.successful_requests + last_state.errored_requests
-    ) == constraints["max_number"].max_num
+    ) == constraints["max_requests"].max_num
 
     def _request_indices():
         while True:

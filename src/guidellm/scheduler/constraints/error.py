@@ -107,9 +107,7 @@ class MaxGlobalErrorRateConstraintArgs(ConstraintArgs):
     )
 
 
-@ConstraintsInitializerFactory.register(
-    ["max_errors", "max_err", "max_error", "max_errs"]
-)
+@ConstraintsInitializerFactory.register("max_errors")
 class MaxErrorsConstraint(PydanticConstraintInitializer):
     """
     Constraint that limits execution based on absolute error count.
@@ -133,15 +131,9 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         Validate and process arguments for MaxErrorsConstraint creation.
 
         :param max_errors: Maximum number of errors to allow
-        :param kwargs: Supports max_errors, max_err, max_error, max_errs,
-            and optional type_
+        :param kwargs: Additional keyword arguments (optional type_, current_index)
         :return: Validated dictionary with args and runtime state fields
         """
-        aliases = ["max_errors", "max_err", "max_error", "max_errs"]
-        for alias in aliases:
-            if max_errors is None:
-                max_errors = kwargs.get(alias)
-
         return {
             "args": MaxErrorsConstraintArgs(max_errors=max_errors),  # type: ignore[arg-type]
             "current_index": kwargs.get("current_index", -1),
@@ -193,9 +185,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         )
 
 
-@ConstraintsInitializerFactory.register(
-    ["max_error_rate", "max_err_rate", "max_errors_rate"]
-)
+@ConstraintsInitializerFactory.register("max_error_rate")
 class MaxErrorRateConstraint(PydanticConstraintInitializer):
     """
     Constraint that limits execution based on sliding window error rate.
@@ -228,15 +218,10 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         Validate and process arguments for MaxErrorRateConstraint creation.
 
         :param max_error_rate: Maximum error rate to allow
-        :param kwargs: Supports max_error_rate, max_err_rate, max_errors_rate,
-            optional window_size, and optional type_
+        :param kwargs: Additional keyword arguments (optional window_size,
+            type_, current_index)
         :return: Validated dictionary with args and runtime state fields
         """
-        aliases = ["max_error_rate", "max_err_rate", "max_errors_rate"]
-        for alias in aliases:
-            if max_error_rate is None:
-                max_error_rate = kwargs.get(alias)
-
         return {
             "args": MaxErrorRateConstraintArgs(
                 max_error_rate=max_error_rate,  # type: ignore[arg-type]
@@ -311,9 +296,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         )
 
 
-@ConstraintsInitializerFactory.register(
-    ["max_global_error_rate", "max_global_err_rate", "max_global_errors_rate"]
-)
+@ConstraintsInitializerFactory.register("max_global_error_rate")
 class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
     """
     Constraint that limits execution based on global error rate.
@@ -342,18 +325,10 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         Validate and process arguments for MaxGlobalErrorRateConstraint creation.
 
         :param max_error_rate: Maximum error rate to allow
-        :param kwargs: Supports max_global_error_rate, max_global_err_rate,
-            max_global_errors_rate, optional min_processed, and optional type_
+        :param kwargs: Additional keyword arguments (optional min_processed,
+            type_, current_index)
         :return: Validated dictionary with args and runtime state fields
         """
-        for alias in [
-            "max_global_error_rate",
-            "max_global_err_rate",
-            "max_global_errors_rate",
-        ]:
-            if max_error_rate is None:
-                max_error_rate = kwargs.get(alias)
-
         return {
             "args": MaxGlobalErrorRateConstraintArgs(
                 max_error_rate=max_error_rate,  # type: ignore[arg-type]

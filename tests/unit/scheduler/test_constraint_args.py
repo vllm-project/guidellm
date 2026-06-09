@@ -59,9 +59,7 @@ class TestConstraintArgsPolymorphicValidation:
         ("payload", "expected_type"),
         [
             ({"kind": "max_duration", "max_duration": 60}, MaxDurationConstraintArgs),
-            ({"kind": "max_seconds", "max_duration": 60}, MaxDurationConstraintArgs),
             ({"kind": "max_requests", "max_num": 100}, MaxRequestsConstraintArgs),
-            ({"kind": "max_number", "max_num": 100}, MaxRequestsConstraintArgs),
             ({"kind": "max_errors", "max_errors": 5}, MaxErrorsConstraintArgs),
             (
                 {"kind": "max_error_rate", "max_error_rate": 0.5},
@@ -73,10 +71,6 @@ class TestConstraintArgsPolymorphicValidation:
             ),
             (
                 {"kind": "over_saturation", "enabled": True},
-                OverSaturationConstraintArgs,
-            ),
-            (
-                {"kind": "detect_saturation", "enabled": True},
                 OverSaturationConstraintArgs,
             ),
         ],
@@ -252,7 +246,7 @@ class TestConstraintArgsConstraintKey:
     @pytest.mark.parametrize(
         ("args_class", "kwargs", "expected_key"),
         [
-            (MaxDurationConstraintArgs, {"max_duration": 60}, "max_seconds"),
+            (MaxDurationConstraintArgs, {"max_duration": 60}, "max_duration"),
             (MaxRequestsConstraintArgs, {"max_num": 100}, "max_requests"),
             (MaxErrorsConstraintArgs, {"max_errors": 5}, "max_errors"),
             (MaxErrorRateConstraintArgs, {"max_error_rate": 0.5}, "max_error_rate"),
@@ -287,11 +281,11 @@ class TestResolveConstraintsTranslation:
         args = _minimal_args(max_seconds=120, max_requests=500)
         resolved = resolve_constraints(args)
 
-        assert "max_seconds" in resolved
+        assert "max_duration" in resolved
         assert "max_requests" in resolved
-        assert isinstance(resolved["max_seconds"], MaxDurationConstraint)
+        assert isinstance(resolved["max_duration"], MaxDurationConstraint)
         assert isinstance(resolved["max_requests"], MaxNumberConstraint)
-        assert resolved["max_seconds"].args.max_duration == 120
+        assert resolved["max_duration"].args.max_duration == 120
         assert resolved["max_requests"].args.max_num == 500
 
     @pytest.mark.smoke
@@ -320,9 +314,9 @@ class TestResolveConstraintsTranslation:
         )
         resolved = resolve_constraints(args)
 
-        assert "max_seconds" in resolved
+        assert "max_duration" in resolved
         assert "max_errors" in resolved
-        assert isinstance(resolved["max_seconds"], MaxDurationConstraint)
+        assert isinstance(resolved["max_duration"], MaxDurationConstraint)
         assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
 
     @pytest.mark.smoke
@@ -338,7 +332,7 @@ class TestResolveConstraintsTranslation:
             constraints=[{"kind": "max_duration", "max_duration": 300}],
         )
         resolved = resolve_constraints(args)
-        assert resolved["max_seconds"].args.max_duration == 300
+        assert resolved["max_duration"].args.max_duration == 300
 
     @pytest.mark.smoke
     def test_extra_constraints_merged(self):
@@ -349,7 +343,7 @@ class TestResolveConstraintsTranslation:
         """
         args = _minimal_args(max_seconds=60)
         resolved = resolve_constraints(args, max_requests=200)
-        assert "max_seconds" in resolved
+        assert "max_duration" in resolved
         assert "max_requests" in resolved
 
     @pytest.mark.smoke
@@ -386,7 +380,7 @@ class TestResolveConstraintsTranslation:
         resolved = resolve_constraints(args)
         assert len(resolved) == 6
         assert set(resolved.keys()) == {
-            "max_seconds",
+            "max_duration",
             "max_requests",
             "max_errors",
             "max_error_rate",

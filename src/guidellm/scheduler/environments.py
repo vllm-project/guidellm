@@ -152,7 +152,7 @@ class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
         requests = [f"req_{ind}" for ind in range(5)]
         strategy = SynchronousStrategy()
         args = MaxRequestsConstraintArgs(max_num=5)
-        constraints = {"max_num": MaxNumberConstraint(args=args)}
+        constraints = {"max_requests": MaxNumberConstraint(args=args)}
         state = SchedulerState()
 
         local_req, local_strat, local_const = await env.sync_run_params(

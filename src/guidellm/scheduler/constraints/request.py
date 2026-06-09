@@ -39,7 +39,7 @@ __all__ = [
 ]
 
 
-@ConstraintArgs.register(["max_duration", "max_seconds"])
+@ConstraintArgs.register("max_duration")
 class MaxDurationConstraintArgs(ConstraintArgs):
     """
     Arguments for maximum duration constraint.
@@ -49,7 +49,7 @@ class MaxDurationConstraintArgs(ConstraintArgs):
     :cvar kind: Always "max_duration"
     """
 
-    kind: Literal["max_duration", "max_seconds"] = Field(
+    kind: Literal["max_duration"] = Field(
         default="max_duration",
         description="Constraint type discriminator",
     )
@@ -57,12 +57,8 @@ class MaxDurationConstraintArgs(ConstraintArgs):
         description="Maximum duration in seconds before stopping execution",
     )
 
-    @property
-    def constraint_key(self) -> str:
-        return "max_seconds"
 
-
-@ConstraintArgs.register(["max_requests", "max_number"])
+@ConstraintArgs.register("max_requests")
 class MaxRequestsConstraintArgs(ConstraintArgs):
     """
     Arguments for maximum request count constraint.
@@ -72,7 +68,7 @@ class MaxRequestsConstraintArgs(ConstraintArgs):
     :cvar kind: Always "max_requests"
     """
 
-    kind: Literal["max_requests", "max_number"] = Field(
+    kind: Literal["max_requests"] = Field(
         default="max_requests",
         description="Constraint type discriminator",
     )
@@ -80,14 +76,8 @@ class MaxRequestsConstraintArgs(ConstraintArgs):
         description="Maximum number of requests before stopping execution",
     )
 
-    @property
-    def constraint_key(self) -> str:
-        return "max_requests"
 
-
-@ConstraintsInitializerFactory.register(  # type: ignore[arg-type]
-    ["max_number", "max_num", "max_requests", "max_req"]
-)
+@ConstraintsInitializerFactory.register("max_requests")
 class MaxNumberConstraint(PydanticConstraintInitializer):
     """
     Constraint that limits execution based on maximum request counts.
@@ -97,7 +87,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
     tracking based on remaining requests and completion fraction.
     """
 
-    type_: Literal["max_number"] = "max_number"  # type: ignore[assignment]
+    type_: Literal["max_requests"] = "max_requests"  # type: ignore[assignment]
     args: MaxRequestsConstraintArgs = Field(
         description="Configuration arguments for max request count constraint",
     )
@@ -113,15 +103,9 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         Validate and process arguments for MaxNumberConstraint creation.
 
         :param max_num: Maximum number of requests to allow
-        :param kwargs: Supports max_num, max_number, max_requests, max_req,
-            and optional type_
+        :param kwargs: Additional keyword arguments (optional type_, current_index)
         :return: Validated dictionary with args and runtime state fields
         """
-        aliases = ["max_number", "max_num", "max_requests", "max_req"]
-        for alias in aliases:
-            if max_num is None:
-                max_num = kwargs.get(alias)
-
         return {
             "args": MaxRequestsConstraintArgs(max_num=max_num),  # type: ignore[arg-type]
             "current_index": kwargs.get("current_index", -1),
@@ -167,7 +151,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
             request_queuing="stop" if create_exceeded else "continue",
             request_processing="stop_local" if processed_exceeded else "continue",
             metadata={
-                "max_number": max_num,
+                "max_requests": max_num,
                 "create_exceeded": create_exceeded,
                 "processed_exceeded": processed_exceeded,
                 "created_requests": state.created_requests,
@@ -183,9 +167,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         )
 
 
-@ConstraintsInitializerFactory.register(
-    ["max_duration", "max_dur", "max_sec", "max_seconds", "max_min", "max_minutes"]
-)
+@ConstraintsInitializerFactory.register("max_duration")
 class MaxDurationConstraint(PydanticConstraintInitializer):
     """
     Constraint that limits execution based on maximum time duration.
@@ -209,20 +191,9 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         Validate and process arguments for MaxDurationConstraint creation.
 
         :param max_duration: Maximum duration in seconds
-        :param kwargs: Supports max_duration, max_dur, max_sec, max_seconds,
-            max_min, max_minutes, and optional type_
+        :param kwargs: Additional keyword arguments (optional type_, current_index)
         :return: Validated dictionary with args and runtime state fields
         """
-        seconds_aliases = ["max_dur", "max_sec", "max_seconds"]
-        for alias in seconds_aliases:
-            if max_duration is None:
-                max_duration = kwargs.get(alias)
-        minutes_aliases = ["max_min", "max_minutes"]
-        for alias in minutes_aliases:
-            minutes = kwargs.get(alias)
-            if minutes is not None and max_duration is None:
-                max_duration = minutes * 60
-
         return {
             "args": MaxDurationConstraintArgs(max_duration=max_duration),  # type: ignore[arg-type]
             "current_index": kwargs.get("current_index", -1),

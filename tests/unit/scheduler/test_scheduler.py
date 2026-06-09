@@ -146,7 +146,7 @@ class TestScheduler:
             (
                 5,
                 {
-                    "max_number": MaxNumberConstraint(
+                    "max_requests": MaxNumberConstraint(
                         args=MaxRequestsConstraintArgs(max_num=10),
                     ),
                 },
@@ -154,7 +154,7 @@ class TestScheduler:
             (
                 20,
                 {
-                    "max_number": MaxNumberConstraint(
+                    "max_requests": MaxNumberConstraint(
                         args=MaxRequestsConstraintArgs(max_num=25),
                     ),
                 },
@@ -162,7 +162,7 @@ class TestScheduler:
             (
                 1,
                 {
-                    "max_number": MaxNumberConstraint(
+                    "max_requests": MaxNumberConstraint(
                         args=MaxRequestsConstraintArgs(max_num=5),
                     ),
                 },

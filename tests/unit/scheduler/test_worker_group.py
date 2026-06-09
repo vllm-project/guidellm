@@ -111,7 +111,7 @@ class TestWorkerProcessGroup:
                 "requests": ["request1", "request2", "request3"],
                 "strategy": SynchronousStrategy(),
                 "startup_duration": 0.1,
-                "max_num": MaxNumberConstraint(
+                "max_requests": MaxNumberConstraint(
                     args=MaxRequestsConstraintArgs(max_num=10),
                 ),
             },
@@ -119,7 +119,7 @@ class TestWorkerProcessGroup:
                 "requests": ["req_a", "req_b"],
                 "strategy": ConcurrentStrategy(streams=2),
                 "startup_duration": 0.1,
-                "max_num": MaxNumberConstraint(
+                "max_requests": MaxNumberConstraint(
                     args=MaxRequestsConstraintArgs(max_num=5),
                 ),
             },
@@ -397,12 +397,12 @@ class TestWorkerProcessGroup:
                 assert scheduler_state.remaining_fraction is not None
                 assert scheduler_state.remaining_fraction >= 0.0
                 assert scheduler_state.remaining_fraction <= 1.0
-            if constructor_args.get("constraints", {}).get("max_num") is not None:
+            if constructor_args.get("constraints", {}).get("max_requests") is not None:
                 assert scheduler_state.remaining_requests is not None
                 assert scheduler_state.remaining_requests >= 0
                 assert (
                     scheduler_state.remaining_requests
-                    <= constructor_args["constraints"]["max_num"].max_num
+                    <= constructor_args["constraints"]["max_requests"].max_num
                 )
             if constructor_args.get("constraints", {}).get("max_duration") is not None:
                 assert scheduler_state.remaining_duration is not None
@@ -454,10 +454,10 @@ class TestWorkerProcessGroup:
                 constructor_args["constraints"].keys()
             )
             assert scheduler_state.remaining_fraction == 0.0
-            if "max_num" in constructor_args["constraints"]:
-                assert "max_num" in scheduler_state.end_queuing_constraints
-                assert "max_num" in scheduler_state.end_processing_constraints
-                max_num = constructor_args["constraints"]["max_num"].max_num
+            if "max_requests" in constructor_args["constraints"]:
+                assert "max_requests" in scheduler_state.end_queuing_constraints
+                assert "max_requests" in scheduler_state.end_processing_constraints
+                max_num = constructor_args["constraints"]["max_requests"].max_num
                 assert scheduler_state.created_requests == max_num
                 assert scheduler_state.successful_requests == max_num
                 assert scheduler_state.errored_requests == 0

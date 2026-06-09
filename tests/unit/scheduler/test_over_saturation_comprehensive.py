@@ -17,6 +17,7 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
 )
 from guidellm.scheduler.constraints.saturation import (
+    OverSaturationConstraintArgs,
     SlopeChecker,
     approx_t_ppf,
 )
@@ -597,13 +598,15 @@ class TestOverSaturationConstraintInitializerRobustness:
     @pytest.mark.smoke
     def test_initializer_parameter_validation(self):
         """Test parameter validation in initializer."""
-        # Valid parameters
+        # Valid parameters via args
         initializer = OverSaturationConstraintInitializer(
-            enabled=True,
-            min_seconds=5.0,
-            max_window_seconds=30.0,
-            moe_threshold=1.5,
-            confidence=0.95,
+            args=OverSaturationConstraintArgs(
+                enabled=True,
+                min_seconds=5.0,
+                max_window_seconds=30.0,
+                moe_threshold=1.5,
+                confidence=0.95,
+            )
         )
 
         constraint = initializer.create_constraint()
@@ -614,30 +617,30 @@ class TestOverSaturationConstraintInitializerRobustness:
     @pytest.mark.smoke
     def test_initializer_with_extreme_parameters(self):
         """Test initializer with extreme but valid parameters."""
-        # Very permissive settings - only test parameters actually supported
+        # Very permissive settings
         initializer = OverSaturationConstraintInitializer(
-            enabled=True,
-            min_seconds=0.1,
-            max_window_seconds=3600.0,  # 1 hour
+            args=OverSaturationConstraintArgs(
+                enabled=True,
+                min_seconds=0.1,
+                max_window_seconds=3600.0,  # 1 hour
+            )
         )
 
         constraint = initializer.create_constraint()
 
         assert constraint.minimum_duration == 0.1
         assert constraint.maximum_window_seconds == 3600.0
-        # Note: moe_threshold and confidence may have default values
 
     @pytest.mark.smoke
-    def test_initializer_alias_precedence(self):
-        """Test alias precedence in validated_kwargs."""
-        # Multiple aliases provided - should use the explicit one
-        result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation={"enabled": False},  # Explicit parameter
-            detect_saturation={"enabled": True},  # Alias
-        )
+    def test_initializer_validated_kwargs_with_dict(self):
+        """Test validated_kwargs with explicit dict parameter.
 
-        # detect_saturation should override over_saturation
-        assert result == {"enabled": True}
+        ## WRITTEN BY AI ##
+        """
+        result = OverSaturationConstraintInitializer.validated_kwargs(
+            over_saturation={"enabled": False},
+        )
+        assert result["args"].enabled is False
 
     @pytest.mark.smoke
     def test_constraint_creation_with_mock_constraint(self):

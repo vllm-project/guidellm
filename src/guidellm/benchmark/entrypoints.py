@@ -281,7 +281,7 @@ def resolve_constraints(
 
     # 1. Translate flat CLI args into ConstraintArgs and resolve
     flat_constraint_map: dict[str, dict[str, Any] | None] = {
-        "max_seconds": (
+        "max_duration": (
             {"kind": "max_duration", "max_duration": args.max_seconds}
             if args.max_seconds is not None
             else None

@@ -420,11 +420,12 @@ class TestOverSaturationConstraintInitializer:
         )
         assert result["args"].enabled is False
 
-        # Test with aliases
+        # Test with constraint parameters passed as kwargs
         result = OverSaturationConstraintInitializer.validated_kwargs(
-            detect_saturation={"enabled": True}
+            enabled=True, min_seconds=45.0
         )
         assert result["args"].enabled is True
+        assert result["args"].min_seconds == 45.0
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -440,58 +441,54 @@ class TestOverSaturationConstraintInitializer:
 
     @pytest.mark.smoke
     def test_factory_registration(self):
-        """Test that initializer is properly registered with expected aliases."""
-        expected_aliases = [
-            "over_saturation",
-            "detect_saturation",
-        ]
+        """Test that initializer is properly registered.
 
-        for alias in expected_aliases:
-            assert ConstraintsInitializerFactory.is_registered(alias)
-            registered_class = ConstraintsInitializerFactory.get_registered_object(
-                alias
-            )
-            assert registered_class == OverSaturationConstraintInitializer
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("over_saturation")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "over_saturation"
+        )
+        assert registered_class == OverSaturationConstraintInitializer
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize("alias", ["over_saturation", "detect_saturation"])
-    def test_factory_creation_with_aliases(self, alias):
-        """Test factory creation using different aliases."""
-        # Test with dict configuration using kwargs
+    def test_factory_creation(self):
+        """Test factory creation using the registered name.
+
+        ## WRITTEN BY AI ##
+        """
         constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, enabled=True
+            "over_saturation", enabled=True
         )
         assert isinstance(constraint, OverSaturationConstraint)
         assert constraint.enabled is True
 
         # Test with empty dict (uses defaults, enabled=True by default)
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, {})
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            "over_saturation", {}
+        )
         assert isinstance(constraint, OverSaturationConstraint)
         assert constraint.enabled is True
 
         # Test with dict value (enabled=False)
         constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, {"enabled": False}
+            "over_saturation", {"enabled": False}
         )
         assert isinstance(constraint, OverSaturationConstraint)
         assert constraint.enabled is False
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats."""
+        """Test factory resolve methods with various input formats.
+
+        ## WRITTEN BY AI ##
+        """
         # Test with dict config
         resolved = ConstraintsInitializerFactory.resolve(
             {"over_saturation": {"enabled": True}}
         )
         assert isinstance(resolved["over_saturation"], OverSaturationConstraint)
         assert resolved["over_saturation"].enabled is True
-
-        # Test with dict value
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"detect_saturation": {"enabled": True}}
-        )
-        assert isinstance(resolved["detect_saturation"], OverSaturationConstraint)
-        assert resolved["detect_saturation"].enabled is True
 
         # Test with instance
         instance = OverSaturationConstraintInitializer(

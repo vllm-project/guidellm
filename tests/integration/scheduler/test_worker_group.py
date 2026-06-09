@@ -126,7 +126,7 @@ class TestWorkerGroup:
         "constraints_inits",
         [
             {
-                "max_num": MaxNumberConstraint(
+                "max_requests": MaxNumberConstraint(
                     args=MaxRequestsConstraintArgs(max_num=100)
                 )
             },

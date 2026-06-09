@@ -441,46 +441,49 @@ class TestMaxNumberConstraint:
 
     @pytest.mark.smoke
     def test_factory_registration(self):
-        """Test MaxNumberConstraint is properly registered with expected aliases."""
-        expected_aliases = ["max_number", "max_num", "max_requests", "max_req"]
+        """Test MaxNumberConstraint is properly registered.
 
-        for alias in expected_aliases:
-            assert ConstraintsInitializerFactory.is_registered(alias)
-            registered_class = ConstraintsInitializerFactory.get_registered_object(
-                alias
-            )
-            assert registered_class == MaxNumberConstraint
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("max_requests")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "max_requests"
+        )
+        assert registered_class == MaxNumberConstraint
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "alias", ["max_number", "max_num", "max_requests", "max_req"]
-    )
-    def test_factory_creation_with_aliases(self, alias):
-        """Test factory creation using different aliases."""
-        # Test with dict configuration
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, max_num=100)
+    def test_factory_creation(self):
+        """Test factory creation using the registered name.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            "max_requests", max_num=100
+        )
         assert isinstance(constraint, MaxNumberConstraint)
         assert constraint.args.max_num == 100
 
-        # Test with simple value
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, 50)
+        constraint = ConstraintsInitializerFactory.create_constraint("max_requests", 50)
         assert isinstance(constraint, MaxNumberConstraint)
         assert constraint.args.max_num == 50
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats."""
+        """Test factory resolve methods with various input formats.
+
+        ## WRITTEN BY AI ##
+        """
         # Test with dict config
         resolved = ConstraintsInitializerFactory.resolve(
-            {"max_number": {"max_num": 200}}
+            {"max_requests": {"max_num": 200}}
         )
-        assert isinstance(resolved["max_number"], MaxNumberConstraint)
-        assert resolved["max_number"].args.max_num == 200
+        assert isinstance(resolved["max_requests"], MaxNumberConstraint)
+        assert resolved["max_requests"].args.max_num == 200
 
         # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_num": 150})
-        assert isinstance(resolved["max_num"], MaxNumberConstraint)
-        assert resolved["max_num"].args.max_num == 150
+        resolved = ConstraintsInitializerFactory.resolve({"max_requests": 150})
+        assert isinstance(resolved["max_requests"], MaxNumberConstraint)
+        assert resolved["max_requests"].args.max_num == 150
 
         # Test with instance
         instance = MaxNumberConstraint(args=MaxRequestsConstraintArgs(max_num=75))
@@ -652,45 +655,40 @@ class TestMaxDurationConstraint:
 
     @pytest.mark.smoke
     def test_factory_registration(self):
-        """Test MaxDurationConstraint is properly registered with expected aliases."""
-        expected_aliases = [
-            "max_duration",
-            "max_dur",
-            "max_sec",
-            "max_seconds",
-            "max_min",
-            "max_minutes",
-        ]
+        """Test MaxDurationConstraint is properly registered.
 
-        for alias in expected_aliases:
-            assert ConstraintsInitializerFactory.is_registered(alias)
-            registered_class = ConstraintsInitializerFactory.get_registered_object(
-                alias
-            )
-            assert registered_class == MaxDurationConstraint
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("max_duration")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "max_duration"
+        )
+        assert registered_class == MaxDurationConstraint
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "alias",
-        ["max_duration", "max_dur", "max_sec", "max_seconds", "max_min", "max_minutes"],
-    )
-    def test_factory_creation_with_aliases(self, alias):
-        """Test factory creation using different aliases."""
-        # Test with dict configuration
+    def test_factory_creation(self):
+        """Test factory creation using the registered name.
+
+        ## WRITTEN BY AI ##
+        """
         constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, max_duration=60.0
+            "max_duration", max_duration=60.0
         )
         assert isinstance(constraint, MaxDurationConstraint)
         assert constraint.args.max_duration == 60.0
 
-        # Test with simple value
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, 30.0)
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            "max_duration", 30.0
+        )
         assert isinstance(constraint, MaxDurationConstraint)
         assert constraint.args.max_duration == 30.0
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats."""
+        """Test factory resolve methods with various input formats.
+
+        ## WRITTEN BY AI ##
+        """
         # Test with dict config
         resolved = ConstraintsInitializerFactory.resolve(
             {"max_duration": {"max_duration": 120.0}}
@@ -699,16 +697,16 @@ class TestMaxDurationConstraint:
         assert resolved["max_duration"].args.max_duration == 120.0
 
         # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_sec": 90.0})
-        assert isinstance(resolved["max_sec"], MaxDurationConstraint)
-        assert resolved["max_sec"].args.max_duration == 90.0
+        resolved = ConstraintsInitializerFactory.resolve({"max_duration": 90.0})
+        assert isinstance(resolved["max_duration"], MaxDurationConstraint)
+        assert resolved["max_duration"].args.max_duration == 90.0
 
         # Test with instance
         instance = MaxDurationConstraint(
             args=MaxDurationConstraintArgs(max_duration=45.0)
         )
-        resolved = ConstraintsInitializerFactory.resolve({"max_minutes": instance})
-        assert resolved["max_minutes"] is instance
+        resolved = ConstraintsInitializerFactory.resolve({"max_duration": instance})
+        assert resolved["max_duration"] is instance
 
 
 class TestMaxErrorsConstraint:
@@ -847,37 +845,38 @@ class TestMaxErrorsConstraint:
 
     @pytest.mark.smoke
     def test_factory_registration(self):
-        """Test MaxErrorsConstraint is properly registered with expected aliases."""
-        expected_aliases = ["max_errors", "max_err", "max_error", "max_errs"]
+        """Test MaxErrorsConstraint is properly registered.
 
-        for alias in expected_aliases:
-            assert ConstraintsInitializerFactory.is_registered(alias)
-            registered_class = ConstraintsInitializerFactory.get_registered_object(
-                alias
-            )
-            assert registered_class == MaxErrorsConstraint
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("max_errors")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "max_errors"
+        )
+        assert registered_class == MaxErrorsConstraint
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "alias", ["max_errors", "max_err", "max_error", "max_errs"]
-    )
-    def test_factory_creation_with_aliases(self, alias):
-        """Test factory creation using different aliases."""
-        # Test with dict configuration
+    def test_factory_creation(self):
+        """Test factory creation using the registered name.
+
+        ## WRITTEN BY AI ##
+        """
         constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, max_errors=10
+            "max_errors", max_errors=10
         )
         assert isinstance(constraint, MaxErrorsConstraint)
         assert constraint.args.max_errors == 10
 
-        # Test with simple value
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, 5)
+        constraint = ConstraintsInitializerFactory.create_constraint("max_errors", 5)
         assert isinstance(constraint, MaxErrorsConstraint)
         assert constraint.args.max_errors == 5
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats."""
+        """Test factory resolve methods with various input formats.
+
+        ## WRITTEN BY AI ##
+        """
         # Test with dict config
         resolved = ConstraintsInitializerFactory.resolve(
             {"max_errors": {"max_errors": 15}}
@@ -886,14 +885,14 @@ class TestMaxErrorsConstraint:
         assert resolved["max_errors"].args.max_errors == 15
 
         # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_err": 8})
-        assert isinstance(resolved["max_err"], MaxErrorsConstraint)
-        assert resolved["max_err"].args.max_errors == 8
+        resolved = ConstraintsInitializerFactory.resolve({"max_errors": 8})
+        assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
+        assert resolved["max_errors"].args.max_errors == 8
 
         # Test with instance
         instance = MaxErrorsConstraint(args=MaxErrorsConstraintArgs(max_errors=3))
-        resolved = ConstraintsInitializerFactory.resolve({"max_error": instance})
-        assert resolved["max_error"] is instance
+        resolved = ConstraintsInitializerFactory.resolve({"max_errors": instance})
+        assert resolved["max_errors"] is instance
 
 
 class TestMaxErrorRateConstraint:
@@ -1077,38 +1076,41 @@ class TestMaxErrorRateConstraint:
 
     @pytest.mark.smoke
     def test_factory_registration(self):
-        """Test MaxErrorRateConstraint is properly registered with expected aliases."""
-        expected_aliases = ["max_error_rate", "max_err_rate", "max_errors_rate"]
+        """Test MaxErrorRateConstraint is properly registered.
 
-        for alias in expected_aliases:
-            assert ConstraintsInitializerFactory.is_registered(alias)
-            registered_class = ConstraintsInitializerFactory.get_registered_object(
-                alias
-            )
-            assert registered_class == MaxErrorRateConstraint
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("max_error_rate")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "max_error_rate"
+        )
+        assert registered_class == MaxErrorRateConstraint
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "alias", ["max_error_rate", "max_err_rate", "max_errors_rate"]
-    )
-    def test_factory_creation_with_aliases(self, alias):
-        """Test factory creation using different aliases."""
-        # Test with dict configuration
+    def test_factory_creation(self):
+        """Test factory creation using the registered name.
+
+        ## WRITTEN BY AI ##
+        """
         constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, max_error_rate=0.1, window_size=50
+            "max_error_rate", max_error_rate=0.1, window_size=50
         )
         assert isinstance(constraint, MaxErrorRateConstraint)
         assert constraint.args.max_error_rate == 0.1
         assert constraint.args.window_size == 50
 
-        # Test with simple value
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, 0.05)
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            "max_error_rate", 0.05
+        )
         assert isinstance(constraint, MaxErrorRateConstraint)
         assert constraint.args.max_error_rate == 0.05
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats."""
+        """Test factory resolve methods with various input formats.
+
+        ## WRITTEN BY AI ##
+        """
         # Test with dict config
         resolved = ConstraintsInitializerFactory.resolve(
             {"max_error_rate": {"max_error_rate": 0.15, "window_size": 100}}
@@ -1118,16 +1120,16 @@ class TestMaxErrorRateConstraint:
         assert resolved["max_error_rate"].args.window_size == 100
 
         # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_err_rate": 0.08})
-        assert isinstance(resolved["max_err_rate"], MaxErrorRateConstraint)
-        assert resolved["max_err_rate"].args.max_error_rate == 0.08
+        resolved = ConstraintsInitializerFactory.resolve({"max_error_rate": 0.08})
+        assert isinstance(resolved["max_error_rate"], MaxErrorRateConstraint)
+        assert resolved["max_error_rate"].args.max_error_rate == 0.08
 
         # Test with instance
         instance = MaxErrorRateConstraint(
             args=MaxErrorRateConstraintArgs(max_error_rate=0.2, window_size=25)
         )
-        resolved = ConstraintsInitializerFactory.resolve({"max_errors_rate": instance})
-        assert resolved["max_errors_rate"] is instance
+        resolved = ConstraintsInitializerFactory.resolve({"max_error_rate": instance})
+        assert resolved["max_error_rate"] is instance
 
 
 class TestMaxGlobalErrorRateConstraint:
@@ -1329,43 +1331,41 @@ class TestMaxGlobalErrorRateConstraint:
 
     @pytest.mark.smoke
     def test_factory_registration(self):
-        """Test MaxGlobalErrorRateConstraint is properly registered with aliases."""
-        expected_aliases = [
-            "max_global_error_rate",
-            "max_global_err_rate",
-            "max_global_errors_rate",
-        ]
+        """Test MaxGlobalErrorRateConstraint is properly registered.
 
-        for alias in expected_aliases:
-            assert ConstraintsInitializerFactory.is_registered(alias)
-            registered_class = ConstraintsInitializerFactory.get_registered_object(
-                alias
-            )
-            assert registered_class == MaxGlobalErrorRateConstraint
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("max_global_error_rate")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "max_global_error_rate"
+        )
+        assert registered_class == MaxGlobalErrorRateConstraint
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        "alias",
-        ["max_global_error_rate", "max_global_err_rate", "max_global_errors_rate"],
-    )
-    def test_factory_creation_with_aliases(self, alias):
-        """Test factory creation using different aliases."""
-        # Test with dict configuration
+    def test_factory_creation(self):
+        """Test factory creation using the registered name.
+
+        ## WRITTEN BY AI ##
+        """
         constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, max_error_rate=0.1, min_processed=50
+            "max_global_error_rate", max_error_rate=0.1, min_processed=50
         )
         assert isinstance(constraint, MaxGlobalErrorRateConstraint)
         assert constraint.args.max_error_rate == 0.1
         assert constraint.args.min_processed == 50
 
-        # Test with simple value
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, 0.05)
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            "max_global_error_rate", 0.05
+        )
         assert isinstance(constraint, MaxGlobalErrorRateConstraint)
         assert constraint.args.max_error_rate == 0.05
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats."""
+        """Test factory resolve methods with various input formats.
+
+        ## WRITTEN BY AI ##
+        """
         # Test with dict config
         resolved = ConstraintsInitializerFactory.resolve(
             {"max_global_error_rate": {"max_error_rate": 0.12, "min_processed": 100}}
@@ -1377,18 +1377,22 @@ class TestMaxGlobalErrorRateConstraint:
         assert resolved["max_global_error_rate"].args.min_processed == 100
 
         # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_global_err_rate": 0.08})
-        assert isinstance(resolved["max_global_err_rate"], MaxGlobalErrorRateConstraint)
-        assert resolved["max_global_err_rate"].args.max_error_rate == 0.08
+        resolved = ConstraintsInitializerFactory.resolve(
+            {"max_global_error_rate": 0.08}
+        )
+        assert isinstance(
+            resolved["max_global_error_rate"], MaxGlobalErrorRateConstraint
+        )
+        assert resolved["max_global_error_rate"].args.max_error_rate == 0.08
 
         # Test with instance
         instance = MaxGlobalErrorRateConstraint(
             args=MaxGlobalErrorRateConstraintArgs(max_error_rate=0.15, min_processed=75)
         )
         resolved = ConstraintsInitializerFactory.resolve(
-            {"max_global_errors_rate": instance}
+            {"max_global_error_rate": instance}
         )
-        assert resolved["max_global_errors_rate"] is instance
+        assert resolved["max_global_error_rate"] is instance
 
 
 class TestConstraintsInitializerFactory:
@@ -1421,7 +1425,7 @@ class TestConstraintsInitializerFactory:
         )
 
         mixed_spec = {
-            "max_number": max_num_constraint,
+            "max_requests": max_num_constraint,
             "max_duration": max_duration_initializer,
             "max_errors": {"max_errors": 15},
             "max_error_rate": 0.08,
@@ -1431,7 +1435,7 @@ class TestConstraintsInitializerFactory:
 
         assert len(resolved) == 4
         assert all(isinstance(c, Constraint) for c in resolved.values())
-        assert resolved["max_number"] is max_num_constraint
+        assert resolved["max_requests"] is max_num_constraint
         assert isinstance(resolved["max_duration"], MaxDurationConstraint)
         assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
         assert isinstance(resolved["max_error_rate"], MaxErrorRateConstraint)
@@ -1441,7 +1445,7 @@ class TestConstraintsInitializerFactory:
     def test_resolve_with_invalid_key(self):
         """Test that resolve raises ValueError for unregistered keys."""
         invalid_spec = {
-            "max_number": {"max_num": 100},
+            "max_requests": {"max_num": 100},
             "invalid_constraint": {"some_param": 42},
         }
 
@@ -1454,7 +1458,7 @@ class TestConstraintsInitializerFactory:
     def test_functional_constraint_creation(self):
         """Test that created constraints are functionally correct."""
         constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_number", max_num=10
+            "max_requests", max_num=10
         )
         start_time = time.time()
         state = SchedulerState(
