@@ -30,7 +30,7 @@ from pydantic import (
 )
 
 from guidellm.backends import BackendArgs
-from guidellm.benchmark.profiles import Profile
+from guidellm.benchmark.profiles import Profile, ProfileArgs
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
@@ -174,8 +174,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         min_length=1,
     )
     # Benchmark configuration
-    profile: dict[str, Any] = Field(
-        default={"kind": "sweep"},
+    profile: ProfileArgs = Field(
         description="Benchmark profile configuration arguments",
     )
     rate: list[float] | None = Field(

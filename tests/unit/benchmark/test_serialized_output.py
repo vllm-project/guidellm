@@ -27,6 +27,7 @@ def minimal_report() -> GenerativeBenchmarksReport:
                 "model": "test-model",
             },
             "data": [{"kind": "huggingface", "source": "test_data.jsonl"}],
+            "profile": {"kind": "sweep", "rate": [10.0]},
             "tokenizer": {"kind": "huggingface_auto", "model": "test-model"},
             "data_column_mapper": {"kind": "generative_column_mapper"},
             "data_preprocessors": [],
@@ -51,6 +52,7 @@ def file_path_report(tmp_path: Path) -> GenerativeBenchmarksReport:
                 "target": "http://localhost:8000/v1",
                 "model": "test-model",
             },
+            "profile": {"kind": "sweep"},
             "data": [
                 {
                     "kind": "json_file",
