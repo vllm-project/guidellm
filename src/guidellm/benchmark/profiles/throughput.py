@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, Field, PositiveInt, field_validator
+from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 
 from guidellm.scheduler import (
+    ConstraintInitializer,
     SchedulingStrategy,
     ThroughputStrategy,
 )
@@ -29,6 +31,12 @@ class ThroughputProfileArgs(ProfileArgs):
         validation_alias=AliasChoices("max_concurrency", "rate"),
         description="Maximum concurrent requests to schedule",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
+        """Check for duplicate rate"""
+        return cls._fail_on_duplicate_rate(data, "max_concurrency")
 
     @field_validator("max_concurrency", mode="before")
     @classmethod
@@ -66,9 +74,10 @@ class ThroughputProfile(Profile):
         self,
         args: ThroughputProfileArgs,
         random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
-        super().__init__(args, random_seed, constraints)
+        super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
 
     @property

@@ -5,18 +5,18 @@ Profile base class for multi-strategy benchmark execution.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import Generator, MutableMapping
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import (
     ConfigDict,
     Field,
     NonNegativeFloat,
-    model_validator,
 )
 
 from guidellm.scheduler import (
     Constraint,
+    ConstraintInitializer,
     ConstraintsInitializerFactory,
     SchedulingStrategy,
 )
@@ -35,17 +35,6 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
     of profile instances. It inherits from PydanticClassRegistryMixin to enable
     automatic registration of subclasses, allowing for flexible and extensible
     profile configurations.
-
-    NOTES:
-
-    - Several fields are always passed by the CLI but are not relevant to some
-      profiles. In order to "forbid" unknown parameters, we have to handle these
-      here. There are two separate strategies:
-      - a "before" model validator removes the replay specific parameters (data and
-        data_samples), and this validator is overriden by the replay profile.
-      - random_seed is allowed as a "global" even though it's not used by most
-        profiles. Since random_seed is a CLI option used outside of profiles, this
-        seems less "hacky" than the temporary solution for replay.
 
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
@@ -71,6 +60,28 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
 
         return ProfileArgs
 
+    @classmethod
+    def _fail_on_duplicate_rate(cls, data: Any, key: str) -> Any:
+        """Fail if both "rate" and <key> are specified.
+
+        Some profile alias "rate" and a more specific key; if the user enters
+        both, either directly or via the global "--rate" option, we should fail.
+
+        for example:
+
+            "--profile kind=concurrent,streams=2.0 --rate 3"
+            "--profile kind=concurrent,streams=2,rate=3"
+
+        Pydantic won't resolve all cases consistently, so we need to fail explicitly.
+
+        :param data: The data to validate
+        :param key: The key to check for duplicate rate
+        :return: The data
+        """
+        if isinstance(data, dict) and all(key in data for key in ("rate", key)):
+            raise ValueError(f"Both 'rate' and '{key}' cannot be specified.")
+        return data
+
     kind: str = Field(
         description="Profile type discriminator for polymorphic serialization",
     )
@@ -81,20 +92,6 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
         ),
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _remove_replay_params(cls, data: Any) -> Any:
-        """Remove replay specific parameters from the data.
-
-        TODO: This is a temporary solution to remove replay specific parameters from the
-        data so we can use Pydantic to validate the parameters. This is overriden by the
-        replay profile, and will be removed when we have a better solution.
-        """
-        if isinstance(data, dict):
-            data.pop("data", None)
-            data.pop("data_samples", None)
-        return data
-
 
 class ProfileFactory(RegistryMixin["type[Profile]"]):
     @classmethod
@@ -102,12 +99,17 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
         cls,
         args: ProfileArgs,
         random_seed: int,
-        constraints: dict[str, Any] | None = None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None = None,
+        **kwargs: Any,
     ) -> Profile:
         """
         Create profile instances from validated profile arguments.
 
         :param args: Validated profile argument model for the target profile type
+        :param random_seed: Seed for reproducible random operations in profile
+            strategies.
+        :param constraints: Constraints for the profile strategies.
+        :param kwargs: Additional profile-specific configuration parameters
         :return: Configured profile instance for the specified type
         :raises ValueError: If the profile kind is not registered
         """
@@ -121,7 +123,7 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
                 f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
             )
 
-        return profile_class(args, random_seed, constraints)
+        return profile_class(args, random_seed, constraints, **kwargs)
 
     @classmethod
     def registered_names(cls) -> tuple[str, ...]:
@@ -155,17 +157,23 @@ class Profile(ABC):
         self,
         args: ProfileArgs,
         random_seed: int,
-        constraints: dict[str, Any] | None,
+        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
+        **kwargs: Any,
     ):
         """
         Initialize a profile instance.
 
         :param args: Validated profile argument model for this profile type
+        :param random_seed: Seed for reproducible random operations in profile
+            strategies.
+        :param constraints: Constraints for the profile strategies.
+        :param kwargs: Additional profile-specific configuration parameters
         """
+        _ = kwargs  # unused
         self.kind = args.kind
         self.args = args
         self.random_seed = random_seed
-        self.constraints = constraints
+        self.constraints = dict(constraints or {})
         self.completed_strategies: list[SchedulingStrategy] = []
 
     @property
