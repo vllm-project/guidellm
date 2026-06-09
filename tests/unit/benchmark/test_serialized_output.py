@@ -52,6 +52,7 @@ def file_path_report(tmp_path: Path) -> GenerativeBenchmarksReport:
                 "target": "http://localhost:8000/v1",
                 "model": "test-model",
             },
+            "profile": {"kind": "sweep"},
             "data": [
                 {
                     "kind": "json_file",
