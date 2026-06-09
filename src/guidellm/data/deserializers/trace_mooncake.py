@@ -31,7 +31,7 @@ from guidellm.utils.trace_io import load_trace_rows
 __all__ = ["TraceMooncakeDataArgs", "TraceMooncakeDatasetDeserializer"]
 
 
-@DataArgs.register("trace_mooncake")
+@DataArgs.register("mooncake")
 class TraceMooncakeDataArgs(TraceSyntheticDataArgs):
     kind: Literal["trace_mooncake"] = Field(  # type: ignore[assignment]
         default="trace_mooncake",
@@ -75,9 +75,12 @@ def _calculate_required_prompt_tokens(
 
 
 def _generate_token_ids(
-    token_count: int, processor: PreTrainedTokenizerBase, faker: Faker, max_attempts: int = 8
+    token_count: int,
+    processor: PreTrainedTokenizerBase,
+    faker: Faker,
+    max_attempts: int = 8,
 ) -> list[int]:
-    """Generate `amount` synthetic token ids for trace prompt construction."""
+    """Generate `token_count` synthetic token ids for trace prompt construction."""
     margin_of_safety = 2
     attempt = 0
     while attempt < max_attempts:
@@ -102,7 +105,7 @@ def _create_distinct_token_block(
     max_attempts: int = 20,
 ) -> list[int]:
     """Constructs a new token block of `block_size` that does not appear in
-    `sibling_nodes`."""
+    `sibling_token_blocks`."""
     attempt = 0
     while attempt < max_attempts:
         token_ids = _generate_token_ids(block_size, processor, faker)
@@ -182,7 +185,7 @@ def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
         )
 
 
-@DatasetDeserializerFactory.register("trace_mooncake")
+@DatasetDeserializerFactory.register("mooncake")
 class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
     """Mooncake trace format requires a column for timestamps, prompt token counts,
     ouput token counts and lists of hash IDs.
