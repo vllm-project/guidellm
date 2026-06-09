@@ -78,12 +78,11 @@ def _generate_token_ids(
     token_count: int,
     processor: PreTrainedTokenizerBase,
     faker: Faker,
-    max_attempts: int = 8,
 ) -> list[int]:
     """Generate `token_count` synthetic token ids for trace prompt construction."""
     margin_of_safety = 2
     attempt = 0
-    while attempt < max_attempts:
+    while True:
         attempt += 1
         # The Faker.text() can only generate text of at least 5 characters.
         num_chars = max(token_count * margin_of_safety * attempt, 5)
@@ -91,10 +90,6 @@ def _generate_token_ids(
         token_ids = processor.encode(text)
         if len(token_ids) >= token_count:
             return token_ids[:token_count]
-    raise DataNotSupportedError(
-        "Failed to generate enough synthetic prompt tokens for "
-        f"{token_count} tokens after {attempt} attempts"
-    )
 
 
 def _create_distinct_token_block(

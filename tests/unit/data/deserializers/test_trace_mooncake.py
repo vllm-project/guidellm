@@ -31,20 +31,6 @@ def _ascending_processor() -> Mock:
     return proc
 
 
-def _incompetent_processor() -> Mock:
-    """Tokenizer that encodes the entire string as one token. Compatible
-    tokenizers are expected to be capable of generating a large enough
-    token id list to fit the hash id block size."""
-    proc = Mock()
-    proc.encode.side_effect = lambda text: [
-        0,
-    ]
-    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
-        f"tok{i}" for i, _ in enumerate(tokens)
-    )
-    return proc
-
-
 def _compatible_processor() -> Mock:
     """Tokenizer where each whitespace-delimited word is assigned a token
     selected from a range of random integers. This is compatible with most
@@ -344,12 +330,6 @@ class TestTraceMooncakeDatasetDeserializer:
             ),
         )
         config = TraceMooncakeDataArgs(path=trace)
-        with pytest.raises(DataNotSupportedError, match="generate enough"):
-            deserializer(
-                config=config,
-                processor_factory=lambda: _incompetent_processor(),
-                random_seed=42,
-            )
         with pytest.raises(DataNotSupportedError, match="generate distinct"):
             deserializer(
                 config=config,
