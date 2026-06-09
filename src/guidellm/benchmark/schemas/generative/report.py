@@ -101,7 +101,7 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         )
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_type = type_ or file_path.suffix.lower()[1:]
-        model_dict = self.model_dump()
+        model_dict = self.model_dump(mode="json")
         if file_type == "json":
             save_str = json.dumps(model_dict)
         elif file_type in ["yaml", "yml"]:
