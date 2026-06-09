@@ -75,7 +75,7 @@ def _calculate_required_prompt_tokens(
 
 
 def _generate_token_ids(
-    amount: int, processor: PreTrainedTokenizerBase, faker: Faker, max_attempts: int = 8
+    token_count: int, processor: PreTrainedTokenizerBase, faker: Faker, max_attempts: int = 8
 ) -> list[int]:
     """Generate `amount` synthetic token ids for trace prompt construction."""
     margin_of_safety = 2
@@ -83,30 +83,30 @@ def _generate_token_ids(
     while attempt < max_attempts:
         attempt += 1
         # The Faker.text() can only generate text of at least 5 characters.
-        num_chars = max(amount * margin_of_safety * attempt, 5)
+        num_chars = max(token_count * margin_of_safety * attempt, 5)
         text = faker.text(max_nb_chars=num_chars)
         token_ids = processor.encode(text)
-        if len(token_ids) >= amount:
-            return token_ids[:amount]
+        if len(token_ids) >= token_count:
+            return token_ids[:token_count]
     raise DataNotSupportedError(
         "Failed to generate enough synthetic prompt tokens for "
-        f"{amount} tokens after {attempt} attempts"
+        f"{token_count} tokens after {attempt} attempts"
     )
 
 
 def _create_distinct_token_block(
     block_size: int,
-    exhausted_token_blocks: list[list[int]],
+    sibling_token_blocks: list[list[int]],
     processor: PreTrainedTokenizerBase,
     faker: Faker,
-    max_distinctness_attempts: int = 20,
+    max_attempts: int = 20,
 ) -> list[int]:
     """Constructs a new token block of `block_size` that does not appear in
     `sibling_nodes`."""
     attempt = 0
-    while attempt < max_distinctness_attempts:
+    while attempt < max_attempts:
         token_ids = _generate_token_ids(block_size, processor, faker)
-        if token_ids not in exhausted_token_blocks:
+        if token_ids not in sibling_token_blocks:
             return token_ids
         attempt += 1
     raise DataNotSupportedError(
