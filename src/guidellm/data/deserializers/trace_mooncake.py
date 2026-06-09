@@ -11,7 +11,7 @@ import dataclasses
 import math
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from datasets import Dataset, List, Value
 from datasets.exceptions import DatasetGenerationError
@@ -33,6 +33,10 @@ __all__ = ["TraceMooncakeDataArgs", "TraceMooncakeDatasetDeserializer"]
 
 @DataArgs.register("trace_mooncake")
 class TraceMooncakeDataArgs(TraceSyntheticDataArgs):
+    kind: Literal["trace_mooncake"] = Field(  # type: ignore[assignment]
+        default="trace_mooncake",
+        description="Type identifier for the trace Mooncake dataset deserializer.",
+    )
     hash_ids_column: str = Field(
         default="hash_ids",
         description="Column name for lists of hash IDs in the trace file.",
