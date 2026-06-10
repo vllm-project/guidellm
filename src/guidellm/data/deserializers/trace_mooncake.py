@@ -9,12 +9,13 @@ benchmarks.
 
 import dataclasses
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Literal
 
-from datasets import Dataset, List, Value
+from datasets import Dataset, DatasetInfo, Features, IterableDataset, List, Value
 from datasets.exceptions import DatasetGenerationError
+from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -107,7 +108,7 @@ def _create_distinct_token_block(
         if token_ids not in sibling_token_blocks:
             return token_ids
         attempt += 1
-    raise DataNotSupportedError(
+    raise ValueError(
         f"Failed to generate distinct synthetic token block after {attempt} attempts"
     )
 
@@ -180,6 +181,123 @@ def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
         )
 
 
+class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
+    """Custom examples iterable for synthetic prompt generation. Used to avoid
+    pre-generating a prompt for every row in the dataset on load."""
+
+    def __init__(
+        self,
+        config: TraceMooncakeDataArgs,
+        processor: PreTrainedTokenizerBase,
+        random_seed: int = 42,
+    ):
+        super().__init__()
+        self.config = config
+        self.processor = processor
+        self.faker = Faker()
+        self.faker.seed_instance(random_seed)
+        self.trace_rows = _load_formatted_trace_rows(
+            config.path,
+            Column(config.timestamp_column, Value("float")),
+            required_columns=[
+                Column(config.prompt_tokens_column, Value("int32")),
+                Column(config.output_tokens_column, Value("int32")),
+                Column(config.hash_ids_column, List(Value("int32"))),
+            ],
+        )
+        for row in self.trace_rows:
+            _validate_row(row, self.config)
+        self.iteration_count = 0
+
+    def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
+        hash_id_table: list[Any] = []
+        sibling_token_blocks: dict[Any, list[list[int]]] = {}
+        while True:
+            try:
+                row = self.trace_rows[self.iteration_count]
+            except IndexError:
+                break
+
+            ids = row[self.config.hash_ids_column]
+            for idx, hash_id in enumerate(ids):
+                if not _is_in_table(hash_id_table, hash_id):
+                    _resize_to_hold_id(hash_id_table, hash_id)
+                    prev_id = None if idx == 0 else ids[idx - 1]
+                    num_tokens = _calculate_required_prompt_tokens(
+                        row, self.config, hash_id
+                    )
+                    sibling_token_blocks.setdefault(prev_id, [])
+                    hash_id_table[hash_id] = _create_distinct_token_block(
+                        num_tokens,
+                        sibling_token_blocks[prev_id],
+                        self.processor,
+                        self.faker,
+                    )
+                    sibling_token_blocks[prev_id].append(hash_id_table[hash_id])
+            prompt = _create_prompt_from_hash_ids(ids, hash_id_table, self.processor)
+            self.iteration_count += 1
+            yield (
+                self.iteration_count - 1,
+                {
+                    "prompt_tokens_count": row[self.config.prompt_tokens_column],
+                    "output_tokens_count": row[self.config.output_tokens_column],
+                    "prompt": prompt,
+                },
+            )
+
+    @property
+    def is_typed(self) -> bool:
+        return True
+
+    @property
+    def features(self) -> Features:
+        return Features(
+            {
+                "prompt": Value("string"),
+                "prompt_tokens_count": Value("int32"),
+                "output_tokens_count": Value("int32"),
+            }
+        )
+
+    @property
+    def num_shards(self) -> int:
+        return 1
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        """Load the state from a state dict."""
+        self.iteration_count = state_dict.get("iteration_count", 0)
+
+    def _init_state_dict(self):
+        """Initialize the state dict for the iterable."""
+        self._state_dict = {"iteration_count": self.iteration_count}
+        return self._state_dict
+
+
+class _TraceMooncakeDataset(IterableDataset):
+    def __init__(
+        self,
+        config: TraceMooncakeDataArgs,
+        processor: PreTrainedTokenizerBase,
+        random_seed: int = 42,
+    ):
+        self.config = config
+        self.processor = processor
+        self.random_seed = random_seed
+        ex_iterable = _TraceMooncakeExamplesIterable(config, processor, random_seed)
+        super().__init__(
+            ex_iterable=ex_iterable,
+            info=DatasetInfo(
+                description="Mooncake trace dataset generator",
+                features=ex_iterable.features,
+            ),
+        )
+
+    def set_epoch(self, epoch: int):
+        """Set the epoch for the dataset iteration."""
+        if isinstance(self._ex_iterable, _TraceMooncakeExamplesIterable):
+            self._ex_iterable.iteration_count = epoch
+
+
 @DatasetDeserializerFactory.register("mooncake")
 class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
     """Mooncake trace format requires a column for timestamps, prompt token counts,
@@ -199,48 +317,10 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
         config: TraceMooncakeDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset:
+    ) -> IterableDataset:
         if not config.path.is_file():
             raise DataNotSupportedError(
                 f"{type(self).__name__} expects a path to a trace file, "
                 f"got {config.path}"
             )
-        rows = _load_formatted_trace_rows(
-            config.path,
-            Column(config.timestamp_column, Value("float")),
-            required_columns=[
-                Column(config.prompt_tokens_column, Value("int64")),
-                Column(config.output_tokens_column, Value("int64")),
-                Column(config.hash_ids_column, List(Value("int64"))),
-            ],
-        )
-        processor = processor_factory()
-        faker = Faker()
-        faker.seed_instance(random_seed)
-        hash_id_table: list[Any] = []
-        sibling_token_blocks: dict[Any, list[list[int]]] = {}
-        prompts = []
-        for row in rows:
-            _validate_row(row, config)
-            ids = row[config.hash_ids_column]
-            for idx, hash_id in enumerate(ids):
-                if not _is_in_table(hash_id_table, hash_id):
-                    _resize_to_hold_id(hash_id_table, hash_id)
-                    prev_id = None if idx == 0 else ids[idx - 1]
-                    num_tokens = _calculate_required_prompt_tokens(row, config, hash_id)
-                    sibling_token_blocks.setdefault(prev_id, [])
-                    hash_id_table[hash_id] = _create_distinct_token_block(
-                        num_tokens, sibling_token_blocks[prev_id], processor, faker
-                    )
-                    sibling_token_blocks[prev_id].append(hash_id_table[hash_id])
-            prompt = _create_prompt_from_hash_ids(ids, hash_id_table, processor)
-            prompts.append(prompt)
-
-        return Dataset.from_dict(
-            {
-                "prompt": prompts,
-                "prompt_tokens_count": rows[config.prompt_tokens_column],
-                "output_tokens_count": rows[config.output_tokens_column],
-            },
-            **config.load_kwargs,
-        )
+        return _TraceMooncakeDataset(config, processor_factory(), random_seed)

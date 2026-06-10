@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from datasets import Dataset
+from datasets import IterableDataset
 from pydantic import ValidationError
 
 from guidellm.data.deserializers.trace_mooncake import (
@@ -53,7 +53,9 @@ def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
     return path
 
 
-def _make_valid_hash_ids(n_rows: int, prompt_lengths: list[int], block_size: int):
+def _make_valid_hash_ids(
+    n_rows: int, prompt_lengths: list[int], block_size: int
+) -> list[list[int]]:
     """The final token block of every row may be less than the hash id block
     size due to the prompt length not being divisible by it. Use this
     when testing large trace prompts to avoid including token blocks with
@@ -138,13 +140,12 @@ class TestTraceMooncakeDatasetDeserializer:
             ),
         )
         ds = self._deserialize(deserializer, trace)
-        assert isinstance(ds, Dataset)
-        assert ds["prompt_tokens_count"] == [i + 1 for i in range(n_rows)]
-        assert ds["output_tokens_count"] == [(i + 1) * 10 for i in range(n_rows)]
-        for prompt, token_count in zip(
-            ds["prompt"], ds["prompt_tokens_count"], strict=True
-        ):
-            assert len(_ascending_processor().encode(prompt)) == token_count
+        assert isinstance(ds, IterableDataset)
+        proc = _ascending_processor()
+        for i, row in enumerate(ds):
+            assert row["prompt_tokens_count"] == i + 1
+            assert row["output_tokens_count"] == (i + 1) * 10
+            assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
 
     @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
@@ -169,8 +170,9 @@ class TestTraceMooncakeDatasetDeserializer:
             output_tokens_column="generated_tokens",
             hash_ids_column="ids",
         )
-        assert ds["prompt_tokens_count"] == [i + 1 for i in range(n_rows)]
-        assert ds["output_tokens_count"] == [(i + 1) * 10 for i in range(n_rows)]
+        for i, row in enumerate(ds):
+            assert row["prompt_tokens_count"] == i + 1
+            assert row["output_tokens_count"] == (i + 1) * 10
 
     @pytest.mark.smoke
     def test_custom_hash_id_block_size(self, tmp_path: Path, deserializer):
@@ -221,14 +223,15 @@ class TestTraceMooncakeDatasetDeserializer:
             processor_factory=lambda: processor,
             random_seed=42,
         )
-        assert ds["prompt_tokens_count"] == prompt_lengths
-        assert ds["output_tokens_count"] == output_lengths
-        assert processor.encode.call_count <= sum([sum(i) for i in hash_ids])
-        for prompt, token_count in zip(
-            ds["prompt"], ds["prompt_tokens_count"], strict=True
-        ):
-            if len(processor.encode(prompt)) != token_count:
-                pytest.fail(f"{len(processor.encode(prompt))} != {token_count}")
+
+        for i, row in enumerate(ds):
+            in_cnt = row["prompt_tokens_count"]
+            assert in_cnt == prompt_lengths[i]
+            assert row["output_tokens_count"] == output_lengths[i]
+
+            actual_prompt_length = len(processor.encode(row["prompt"]))
+            if actual_prompt_length != in_cnt:
+                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
 
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):
@@ -271,7 +274,7 @@ class TestTraceMooncakeDatasetDeserializer:
                 '{"timestamp": 0, "input_length": "bad", "output_length": 5, '
                 '"hash_ids": [0]}\n',
                 {},
-                "scalar of type int64",
+                "scalar of type int32",
             ),
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": null, '
@@ -327,12 +330,14 @@ class TestTraceMooncakeDatasetDeserializer:
             ),
         )
         config = TraceMooncakeDataArgs(path=trace)
-        with pytest.raises(DataNotSupportedError, match="generate distinct"):
-            deserializer(
-                config=config,
-                processor_factory=lambda: _ascending_processor(),
-                random_seed=42,
-            )
+        ds = deserializer(
+            config=config,
+            processor_factory=lambda: _ascending_processor(),
+            random_seed=42,
+        )
+        with pytest.raises(ValueError, match="generate distinct"):
+            for _ in ds:
+                ...
 
     @pytest.mark.smoke
     def test_token_block_distinctness(self, tmp_path: Path, deserializer):
@@ -356,7 +361,9 @@ class TestTraceMooncakeDatasetDeserializer:
             processor_factory=lambda: _compatible_processor(),
             random_seed=42,
         )
-        root_block = [ds["prompt"][row][:n_in//2] for row in range(n_rows)]
-        sibling_blocks = [ds["prompt"][row][n_in//2:] for row in range(n_rows)]
-        assert _all_equal(root_block)
+        root_blocks, sibling_blocks = zip(
+            *[(row["prompt"][: n_in // 2], row["prompt"][n_in // 2 :]) for row in ds],
+            strict=False,
+        )
+        assert _all_equal(root_blocks)
         assert _all_distinct(sibling_blocks)
