@@ -1208,7 +1208,7 @@ class TestConstraintsInitializerFactory:
             kind: str = unregistered_key
 
         with pytest.raises(
-            ValueError, match=f"Unknown constraint initializer key: {unregistered_key}"
+            ValueError, match=f"Unknown constraint discriminator: {unregistered_key}"
         ):
             ConstraintsInitializerFactory.create(FakeArgs(kind=unregistered_key))
 

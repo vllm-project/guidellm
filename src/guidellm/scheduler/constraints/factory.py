@@ -56,7 +56,7 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         :raises ValueError: If args.kind is not registered in the factory
         """
         if cls.registry is None or args.kind not in cls.registry:
-            raise ValueError(f"Unknown constraint initializer key: {args.kind}")
+            raise ValueError(f"Unknown constraint discriminator: {args.kind}")
 
         initializer_class = cls.registry[args.kind]
         return initializer_class(args=args)  # type: ignore[operator]
