@@ -42,7 +42,6 @@ from guidellm.scheduler import (
     NonDistributedEnvironment,
 )
 from guidellm.scheduler.constraints.args import ConstraintArgs
-from guidellm.scheduler.constraints.factory import constraint_args_to_initializer
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
@@ -319,12 +318,12 @@ def resolve_constraints(
     for key, constraint_dict in flat_constraint_map.items():
         if constraint_dict is not None:
             constraint_args = ConstraintArgs.model_validate(constraint_dict)
-            resolved[key] = constraint_args_to_initializer(constraint_args)
+            resolved[key] = ConstraintsInitializerFactory.create(constraint_args)
 
     # 2. Merge explicitly provided ConstraintArgs list from args
     for constraint_arg in args.constraints:
-        resolved[constraint_arg.constraint_key] = constraint_args_to_initializer(
-            constraint_arg
+        resolved[constraint_arg.constraint_key] = (
+            ConstraintsInitializerFactory.create(constraint_arg)
         )
 
     # 3. Merge any programmatic extra constraints (preserving raw values/initializers)

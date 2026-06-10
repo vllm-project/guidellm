@@ -24,7 +24,7 @@ from .error import (
     MaxGlobalErrorRateConstraint,
     MaxGlobalErrorRateConstraintArgs,
 )
-from .factory import ConstraintsInitializerFactory, constraint_args_to_initializer
+from .factory import ConstraintsInitializerFactory
 from .request import (
     MaxDurationConstraint,
     MaxDurationConstraintArgs,
@@ -60,5 +60,4 @@ __all__ = [
     "RequestsExhaustedConstraint",
     "SerializableConstraintInitializer",
     "UnserializableConstraintInitializer",
-    "constraint_args_to_initializer",
 ]

@@ -1,10 +1,5 @@
 """
-Kind-based constraint argument schemas for benchmark configuration.
-
-Provides a polymorphic ``ConstraintArgs`` base class with ``kind`` discriminator,
-following the same pattern as ``ProfileArgs`` and ``DataArgs``. Concrete
-subclasses live alongside their initializers in ``request.py``, ``error.py``,
-and ``saturation.py``.
+Kind-discriminated constraint argument schemas for benchmark configuration.
 """
 
 from __future__ import annotations

@@ -31,7 +31,6 @@ from .constraints import (
     PydanticConstraintInitializer,
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
-    constraint_args_to_initializer,
 )
 from .environments import Environment, NonDistributedEnvironment
 from .scheduler import Scheduler
@@ -110,5 +109,4 @@ __all__ = [
     "UnserializableConstraintInitializer",
     "WorkerProcess",
     "WorkerProcessGroup",
-    "constraint_args_to_initializer",
 ]

@@ -20,7 +20,7 @@ from guidellm.scheduler.constraints.constraint import (
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.registry import RegistryMixin
 
-__all__ = ["ConstraintsInitializerFactory", "constraint_args_to_initializer"]
+__all__ = ["ConstraintsInitializerFactory"]
 
 
 class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
@@ -47,37 +47,9 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
     """
 
     @classmethod
-    def create(cls, key: str, *args, **kwargs) -> ConstraintInitializer:
-        """
-        Create a constraint initializer for the specified key.
-
-        :param key: Registered constraint initializer key
-        :param args: Positional arguments for initializer creation
-        :param kwargs: Keyword arguments for initializer creation
-        :return: Configured constraint initializer instance
-        :raises ValueError: If the key is not registered in the factory
-        """
-        if cls.registry is None or key not in cls.registry:
-            raise ValueError(f"Unknown constraint initializer key: {key}")
-
-        initializer_class = cls.registry[key]
-
-        return (
-            initializer_class(*args, **kwargs)  # type: ignore[operator]
-            if not isinstance(initializer_class, type)
-            or not issubclass(initializer_class, SerializableConstraintInitializer)
-            else initializer_class(
-                **initializer_class.validated_kwargs(*args, **kwargs)  # type: ignore[misc]
-            )
-        )
-
-    @classmethod
-    def create_from_args(cls, args: ConstraintArgs) -> ConstraintInitializer:
+    def create(cls, args: ConstraintArgs) -> ConstraintInitializer:
         """
         Create a constraint initializer from a ``ConstraintArgs`` instance.
-
-        Mirrors ``ProfileFactory.create(args)`` — looks up the initializer
-        class by ``args.kind`` and passes the args object directly.
 
         :param args: Validated constraint arguments with kind discriminator
         :return: Configured constraint initializer instance
@@ -200,17 +172,3 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
                 resolved_constraints[key] = cls.create_constraint(key, val)
 
         return resolved_constraints
-
-
-def constraint_args_to_initializer(args: ConstraintArgs) -> ConstraintInitializer:
-    """
-    Convert a ``ConstraintArgs`` instance to a ``ConstraintInitializer``.
-
-    Delegates to ``ConstraintsInitializerFactory.create_from_args``, which
-    looks up the initializer class by ``args.kind`` and passes the args
-    directly — matching the ``ProfileFactory.create(args)`` pattern.
-
-    :param args: A validated ConstraintArgs instance
-    :return: A constraint initializer ready for ``create_constraint()``
-    """
-    return ConstraintsInitializerFactory.create_from_args(args)

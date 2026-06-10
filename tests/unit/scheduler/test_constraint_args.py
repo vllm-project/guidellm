@@ -9,13 +9,13 @@ from guidellm.benchmark.entrypoints import resolve_constraints
 from guidellm.benchmark.schemas import BenchmarkGenerativeTextArgs
 from guidellm.scheduler.constraints import (
     ConstraintArgs,
+    ConstraintsInitializerFactory,
     MaxDurationConstraintArgs,
     MaxErrorRateConstraintArgs,
     MaxErrorsConstraintArgs,
     MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
     OverSaturationConstraintArgs,
-    constraint_args_to_initializer,
 )
 from guidellm.scheduler.constraints.error import (
     MaxErrorRateConstraint,
@@ -119,17 +119,17 @@ class TestConstraintArgsPolymorphicValidation:
 
 
 class TestConstraintArgsToInitializerHelper:
-    """Test constraint_args_to_initializer() helper for each subclass."""
+    """Test ConstraintsInitializerFactory.create() helper for each subclass."""
 
     @pytest.mark.smoke
     def test_max_duration_to_initializer(self):
         """
-        constraint_args_to_initializer produces MaxDurationConstraint.
+        ConstraintsInitializerFactory.create produces MaxDurationConstraint.
 
         ## WRITTEN BY AI ##
         """
         args = MaxDurationConstraintArgs(max_duration=300)
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxDurationConstraint)
         assert init.args.max_duration == 300
 
@@ -141,43 +141,43 @@ class TestConstraintArgsToInitializerHelper:
         ## WRITTEN BY AI ##
         """
         args = MaxDurationConstraintArgs(max_duration=[60, 120, 300])
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxDurationConstraint)
         assert init.args.max_duration == [60, 120, 300]
 
     @pytest.mark.smoke
     def test_max_requests_to_initializer(self):
         """
-        constraint_args_to_initializer produces MaxNumberConstraint.
+        ConstraintsInitializerFactory.create produces MaxNumberConstraint.
 
         ## WRITTEN BY AI ##
         """
         args = MaxRequestsConstraintArgs(max_num=1000)
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxNumberConstraint)
         assert init.args.max_num == 1000
 
     @pytest.mark.smoke
     def test_max_errors_to_initializer(self):
         """
-        constraint_args_to_initializer produces MaxErrorsConstraint.
+        ConstraintsInitializerFactory.create produces MaxErrorsConstraint.
 
         ## WRITTEN BY AI ##
         """
         args = MaxErrorsConstraintArgs(max_errors=10)
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxErrorsConstraint)
         assert init.args.max_errors == 10
 
     @pytest.mark.smoke
     def test_max_error_rate_to_initializer(self):
         """
-        constraint_args_to_initializer produces MaxErrorRateConstraint.
+        ConstraintsInitializerFactory.create produces MaxErrorRateConstraint.
 
         ## WRITTEN BY AI ##
         """
         args = MaxErrorRateConstraintArgs(max_error_rate=0.5, window_size=50)
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxErrorRateConstraint)
         assert init.args.max_error_rate == 0.5
         assert init.args.window_size == 50
@@ -190,19 +190,19 @@ class TestConstraintArgsToInitializerHelper:
         ## WRITTEN BY AI ##
         """
         args = MaxErrorRateConstraintArgs(max_error_rate=0.3)
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxErrorRateConstraint)
         assert init.args.window_size == 30  # settings default
 
     @pytest.mark.smoke
     def test_max_global_error_rate_to_initializer(self):
         """
-        constraint_args_to_initializer produces MaxGlobalErrorRateConstraint.
+        ConstraintsInitializerFactory.create produces MaxGlobalErrorRateConstraint.
 
         ## WRITTEN BY AI ##
         """
         args = MaxGlobalErrorRateConstraintArgs(max_error_rate=0.2, min_processed=50)
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxGlobalErrorRateConstraint)
         assert init.args.max_error_rate == 0.2
         assert init.args.min_processed == 50
@@ -210,7 +210,7 @@ class TestConstraintArgsToInitializerHelper:
     @pytest.mark.smoke
     def test_over_saturation_to_initializer(self):
         """
-        constraint_args_to_initializer produces
+        ConstraintsInitializerFactory.create produces
         OverSaturationConstraintInitializer.
 
         ## WRITTEN BY AI ##
@@ -218,7 +218,7 @@ class TestConstraintArgsToInitializerHelper:
         args = OverSaturationConstraintArgs(
             enabled=True, min_seconds=60, max_window_seconds=180
         )
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, OverSaturationConstraintInitializer)
         assert init.args.enabled is True
         assert init.args.min_seconds == 60
@@ -232,7 +232,7 @@ class TestConstraintArgsToInitializerHelper:
         ## WRITTEN BY AI ##
         """
         args = OverSaturationConstraintArgs()
-        init = constraint_args_to_initializer(args)
+        init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, OverSaturationConstraintInitializer)
         assert init.args.enabled is True
         assert init.args.min_seconds == 30.0
