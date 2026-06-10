@@ -141,7 +141,6 @@ class TestTraceMooncakeDatasetDeserializer:
         assert isinstance(ds, Dataset)
         assert ds["prompt_tokens_count"] == [i + 1 for i in range(n_rows)]
         assert ds["output_tokens_count"] == [(i + 1) * 10 for i in range(n_rows)]
-        assert ds["hash_ids"] == [[i + 1] for i in range(n_rows)]
         for prompt, token_count in zip(
             ds["prompt"], ds["prompt_tokens_count"], strict=True
         ):
@@ -172,7 +171,6 @@ class TestTraceMooncakeDatasetDeserializer:
         )
         assert ds["prompt_tokens_count"] == [i + 1 for i in range(n_rows)]
         assert ds["output_tokens_count"] == [(i + 1) * 10 for i in range(n_rows)]
-        assert ds["hash_ids"] == [[i] for i in range(n_rows)]
 
     @pytest.mark.smoke
     def test_custom_hash_id_block_size(self, tmp_path: Path, deserializer):
@@ -225,7 +223,6 @@ class TestTraceMooncakeDatasetDeserializer:
         )
         assert ds["prompt_tokens_count"] == prompt_lengths
         assert ds["output_tokens_count"] == output_lengths
-        assert ds["hash_ids"] == hash_ids
         assert processor.encode.call_count <= sum([sum(i) for i in hash_ids])
         for prompt, token_count in zip(
             ds["prompt"], ds["prompt_tokens_count"], strict=True
@@ -340,13 +337,14 @@ class TestTraceMooncakeDatasetDeserializer:
     @pytest.mark.smoke
     def test_token_block_distinctness(self, tmp_path: Path, deserializer):
         n_rows = 4
+        n_in = 1024
         trace = _write_trace(
             tmp_path,
             _generate_trace(
                 n_rows,
                 [
                     TraceColumn("timestamp", lambda i: i),
-                    TraceColumn("input_length", lambda _: 1024),
+                    TraceColumn("input_length", lambda _: n_in),
                     TraceColumn("output_length", lambda _: 5),
                     TraceColumn("hash_ids", lambda i: [0, i + 1]),
                 ],
@@ -358,7 +356,7 @@ class TestTraceMooncakeDatasetDeserializer:
             processor_factory=lambda: _compatible_processor(),
             random_seed=42,
         )
-        root_block = [ds["hash_ids"][row][0] for row in range(n_rows)]
-        sibling_blocks = [ds["hash_ids"][row][1] for row in range(n_rows)]
+        root_block = [ds["prompt"][row][:n_in//2] for row in range(n_rows)]
+        sibling_blocks = [ds["prompt"][row][n_in//2:] for row in range(n_rows)]
         assert _all_equal(root_block)
         assert _all_distinct(sibling_blocks)

@@ -241,7 +241,6 @@ class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
                 "prompt": prompts,
                 "prompt_tokens_count": rows[config.prompt_tokens_column],
                 "output_tokens_count": rows[config.output_tokens_column],
-                "hash_ids": rows[config.hash_ids_column],
             },
             **config.load_kwargs,
         )
