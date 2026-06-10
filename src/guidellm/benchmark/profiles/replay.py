@@ -16,6 +16,7 @@ from guidellm.scheduler import (
     SchedulingStrategy,
     TraceReplayStrategy,
 )
+from guidellm.scheduler.constraints.request import MaxRequestsConstraintArgs
 from guidellm.utils.trace_io import load_relative_timestamps
 
 from .profile import Profile, ProfileArgs, ProfileFactory
@@ -154,10 +155,11 @@ class ReplayProfile(Profile):
         relative_timestamps = _resolve_relative_timestamps(data, data_samples)
         new_constraints = dict(constraints or {})
         if "max_requests" not in new_constraints:
-            new_constraints.update(
-                ConstraintsInitializerFactory.resolve(
-                    {"max_requests": {"max_num": len(relative_timestamps)}}
-                )
+            constraint_args = MaxRequestsConstraintArgs(
+                max_num=len(relative_timestamps)
+            )
+            new_constraints["max_requests"] = ConstraintsInitializerFactory.create(
+                constraint_args
             )
             self.constraints = new_constraints
 

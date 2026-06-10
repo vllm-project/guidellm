@@ -9,7 +9,7 @@ when to stop benchmark execution due to excessive errors.
 from __future__ import annotations
 
 import time
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from pydantic import Field
 
@@ -123,22 +123,6 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
     )
     current_index: int = Field(default=-1, description="Current index in error list")
 
-    @classmethod
-    def validated_kwargs(
-        cls, max_errors: int | float | list[int | float] | None = None, **kwargs
-    ) -> dict[str, Any]:
-        """
-        Validate and process arguments for MaxErrorsConstraint creation.
-
-        :param max_errors: Maximum number of errors to allow
-        :param kwargs: Additional keyword arguments (optional type_, current_index)
-        :return: Validated dictionary with args and runtime state fields
-        """
-        return {
-            "args": MaxErrorsConstraintArgs(max_errors=max_errors),  # type: ignore[arg-type]
-            "current_index": kwargs.get("current_index", -1),
-        }
-
     def create_constraint(self, **_kwargs) -> Constraint:
         """
         Return self as the constraint instance.
@@ -207,31 +191,6 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
     current_index: int = Field(
         default=-1, description="Current index in the error window"
     )
-
-    @classmethod
-    def validated_kwargs(
-        cls,
-        max_error_rate: int | float | list[int | float] | None = None,
-        **kwargs,
-    ) -> dict[str, Any]:
-        """
-        Validate and process arguments for MaxErrorRateConstraint creation.
-
-        :param max_error_rate: Maximum error rate to allow
-        :param kwargs: Additional keyword arguments (optional window_size,
-            type_, current_index)
-        :return: Validated dictionary with args and runtime state fields
-        """
-        return {
-            "args": MaxErrorRateConstraintArgs(
-                max_error_rate=max_error_rate,  # type: ignore[arg-type]
-                window_size=kwargs.get(
-                    "window_size", settings.constraint_error_window_size
-                ),
-            ),
-            "error_window": kwargs.get("error_window", []),
-            "current_index": kwargs.get("current_index", -1),
-        }
 
     def create_constraint(self, **_kwargs) -> Constraint:
         """
@@ -314,30 +273,6 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
     current_index: int = Field(
         default=-1, description="Current index for list-based max_error_rate values"
     )
-
-    @classmethod
-    def validated_kwargs(
-        cls,
-        max_error_rate: int | float | list[int | float] | None = None,
-        **kwargs,
-    ) -> dict[str, Any]:
-        """
-        Validate and process arguments for MaxGlobalErrorRateConstraint creation.
-
-        :param max_error_rate: Maximum error rate to allow
-        :param kwargs: Additional keyword arguments (optional min_processed,
-            type_, current_index)
-        :return: Validated dictionary with args and runtime state fields
-        """
-        return {
-            "args": MaxGlobalErrorRateConstraintArgs(
-                max_error_rate=max_error_rate,  # type: ignore[arg-type]
-                min_processed=kwargs.get(
-                    "min_processed", settings.constraint_error_min_processed
-                ),
-            ),
-            "current_index": kwargs.get("current_index", -1),
-        }
 
     def create_constraint(self, **_kwargs) -> Constraint:
         """

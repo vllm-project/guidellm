@@ -32,7 +32,7 @@ The OSD algorithm uses statistical slope detection to identify over-saturation:
 
 5. **Constraint Integration**: When over-saturation is detected, the constraint:
    - Stops request queuing to prevent further degradation
-   - Stops processing of existing requests (if enabled)
+   - Stops processing of existing requests (in active mode)
    - Provides detailed metadata about detection state
 
 Key Parameters:
@@ -93,9 +93,13 @@ class OverSaturationConstraintArgs(ConstraintArgs):
         default="over_saturation",
         description="Constraint type discriminator",
     )
-    enabled: bool = Field(
-        default=True,
-        description="Whether to stop the benchmark if over-saturation is detected",
+    mode: Literal["active", "passive"] = Field(
+        default="active",
+        description=(
+            "Whether to stop the benchmark if over-saturation is detected. "
+            "Set to `active` to stop the benchmark if over-saturation is "
+            "detected, and `passive` to only monitor for over-saturation."
+        ),
     )
     min_seconds: int | float = Field(
         default=30.0,
@@ -357,7 +361,7 @@ class OverSaturationConstraint(Constraint):
         minimum_window_size: int = 5,
         confidence: float = 0.95,
         eps: float = 1e-12,
-        enabled: bool = True,
+        mode: Literal["active", "passive"] = "active",
     ) -> None:  # noqa: PLR0913
         """
         Initialize the over-saturation constraint.
@@ -384,8 +388,8 @@ class OverSaturationConstraint(Constraint):
             (default: 0.95)
         :param eps: Epsilon for numerical stability in calculations
             (default: 1e-12)
-        :param enabled: Whether to actually stop when over-saturation is detected
-            (default: True)
+        :param mode: Whether to stop when over-saturation is detected, or only monitor
+            (default: "active")
         """
         self.minimum_duration = minimum_duration
         self.minimum_ttft = minimum_ttft
@@ -395,7 +399,7 @@ class OverSaturationConstraint(Constraint):
         self.moe_threshold = moe_threshold
         self.confidence = confidence
         self.eps = eps
-        self.enabled = enabled
+        self.mode = mode
         self.reset()
 
     @property
@@ -414,7 +418,7 @@ class OverSaturationConstraint(Constraint):
             "minimum_window_size": self.minimum_window_size,
             "moe_threshold": self.moe_threshold,
             "confidence": self.confidence,
-            "enabled": self.enabled,
+            "mode": self.mode,
         }
 
     def reset(self) -> None:
@@ -609,7 +613,7 @@ class OverSaturationConstraint(Constraint):
         concurrent_slope_moe = self.concurrent_slope_checker.margin_of_error
         concurrent_n = self.concurrent_slope_checker.n
 
-        should_stop = is_over_saturated and self.enabled
+        should_stop = is_over_saturated and self.mode == "active"
         return SchedulerUpdateAction(
             request_queuing="stop" if should_stop else "continue",
             request_processing="stop_all" if should_stop else "continue",
@@ -639,7 +643,7 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
 
         from guidellm.scheduler.constraints import OverSaturationConstraintArgs
 
-        args = OverSaturationConstraintArgs(enabled=True, min_seconds=60.0)
+        args = OverSaturationConstraintArgs(mode="active", min_seconds=60.0)
         initializer = OverSaturationConstraintInitializer(args=args)
         constraint = initializer.create_constraint()
     """
@@ -665,49 +669,5 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
             maximum_window_ratio=self.args.maximum_window_ratio,
             minimum_window_size=self.args.minimum_window_size,
             confidence=self.args.confidence,
-            enabled=self.args.enabled,
+            mode=self.args.mode,
         )
-
-    @classmethod
-    def validated_kwargs(
-        cls, over_saturation: dict[str, Any] | None = None, **kwargs
-    ) -> dict[str, Any]:
-        """
-        Validate and process arguments for OverSaturationConstraint creation.
-
-        Processes flexible input formats to create validated constraint
-        configuration. Supports dictionary inputs for detailed configuration.
-
-        :param over_saturation: Dictionary with configuration parameters
-            (min_seconds, max_window_seconds, etc.)
-        :param kwargs: Additional keyword arguments; if constraint parameters are
-            present they are treated as an unpacked dict
-        :return: Validated dictionary with args field for initializer creation
-        """
-        result: dict[str, Any] | None = over_saturation
-
-        # If over_saturation is None but kwargs contain constraint parameters,
-        # treat kwargs as an unpacked dict (happens when dict is passed to factory)
-        if result is None and kwargs:
-            constraint_keys = {
-                "enabled",
-                "min_seconds",
-                "max_window_seconds",
-                "moe_threshold",
-                "minimum_ttft",
-                "maximum_window_ratio",
-                "minimum_window_size",
-                "confidence",
-            }
-            if any(key in kwargs for key in constraint_keys):
-                result = {key: kwargs[key] for key in constraint_keys if key in kwargs}
-
-        if result is None:
-            return {"args": OverSaturationConstraintArgs(enabled=False)}
-
-        if isinstance(result, dict):
-            return {"args": OverSaturationConstraintArgs(**result)}
-        else:
-            raise TypeError(
-                f"over_saturation must be a dict or None, got {type(result).__name__}"
-            )

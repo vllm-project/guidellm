@@ -53,14 +53,14 @@ guidellm benchmark \
   --target http://localhost:8000 \
   --profile kind=concurrent \
   --rate 16 \
-  --over-saturation '{"enabled": true, "min_seconds": 60, "max_window_seconds": 300, "moe_threshold": 1.5}'
+  --over-saturation '{"mode": "active", "min_seconds": 60, "max_window_seconds": 300, "moe_threshold": 1.5}'
 ```
 
 ## Configuration Options
 
 The following parameters can be configured when enabling over-saturation detection:
 
-- **`enabled`** (bool, default: `True`): Whether to stop the benchmark if over-saturation is detected
+- **`mode`** (`"active"` | `"passive"`, default: `"active"`): Controls behavior when over-saturation is detected. `"active"` stops the benchmark, `"passive"` only monitors and reports
 - **`min_seconds`** (float, default: `30.0`): Minimum seconds before checking for over-saturation. This prevents false positives during the initial warm-up phase.
 - **`max_window_seconds`** (float, default: `120.0`): Maximum time window in seconds for data retention. Older data points are automatically pruned to maintain bounded memory usage.
 - **`moe_threshold`** (float, default: `2.0`): Margin of error threshold for slope detection. Lower values make detection more sensitive to degradation.
@@ -95,7 +95,7 @@ Use over-saturation detection to identify the maximum sustainable throughput for
 
 ## Interpreting Results
 
-When over-saturation detection is enabled, the benchmark output includes metadata about the detection state. This metadata is available in the scheduler action metadata and includes:
+When over-saturation detection is configured (in either `"active"` or `"passive"` mode), the benchmark output includes metadata about the detection state. This metadata is available in the scheduler action metadata and includes:
 
 - **`is_over_saturated`** (bool): Whether over-saturation was detected at the time of evaluation
 - **`concurrent_slope`** (float): The calculated slope for concurrent requests
@@ -117,7 +117,7 @@ guidellm benchmark \
   --rate 16 \
   --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
   --max-seconds 300 \
-  --over-saturation '{"enabled": true, "min_seconds": 30, "max_window_seconds": 120}' \
+  --over-saturation '{"mode": "active", "min_seconds": 30, "max_window_seconds": 120}' \
   --outputs json,html
 ```
 

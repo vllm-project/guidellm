@@ -180,7 +180,6 @@ class TestSerializableConstraintInitializer:
     def test_protocol_method_signatures(self):
         """Test SerializableConstraintInitializer protocol has correct signatures."""
         methods = [
-            "validated_kwargs",
             "model_validate",
             "model_dump",
             "create_constraint",
@@ -194,10 +193,6 @@ class TestSerializableConstraintInitializer:
         """Test that SerializableConstraintInitializer can be checked at runtime."""
 
         class ValidSerializableInitializer:
-            @classmethod
-            def validated_kwargs(cls, *args, **kwargs):
-                return kwargs
-
             @classmethod
             def model_validate(cls, **kwargs):
                 return cls()
@@ -230,7 +225,7 @@ class TestPydanticConstraintInitializer:
     def test_abstract_methods(self):
         """Test that PydanticConstraintInitializer has required abstract methods."""
         abstract_methods = PydanticConstraintInitializer.__abstractmethods__
-        expected_methods = {"validated_kwargs", "create_constraint"}
+        expected_methods = {"create_constraint"}
         assert abstract_methods == expected_methods
 
     @pytest.mark.sanity
@@ -269,17 +264,6 @@ class TestUnserializableConstraintInitializer:
         assert isinstance(instance, UnserializableConstraintInitializer)
         assert instance.type_ == "unserializable"
         assert instance.orig_info == constructor_args["orig_info"]
-
-    @pytest.mark.smoke
-    def test_validated_kwargs(self):
-        """Test validated_kwargs class method."""
-        result = UnserializableConstraintInitializer.validated_kwargs(
-            orig_info={"test": "data"}
-        )
-        assert result == {"orig_info": {"test": "data"}}
-
-        result = UnserializableConstraintInitializer.validated_kwargs()
-        assert result == {"orig_info": {}}
 
     @pytest.mark.sanity
     def test_create_constraint_raises(self, valid_instances):
@@ -412,21 +396,6 @@ class TestMaxNumberConstraint:
         assert constraint.args.max_num == constructor_args["max_num"]
 
     @pytest.mark.smoke
-    def test_validated_kwargs(self):
-        """Test MaxNumberConstraint.validated_kwargs class method."""
-        result = MaxNumberConstraint.validated_kwargs(max_num=100)
-        assert result == {
-            "args": MaxRequestsConstraintArgs(max_num=100),
-            "current_index": -1,
-        }
-
-        result = MaxNumberConstraint.validated_kwargs(50.5)
-        assert result == {
-            "args": MaxRequestsConstraintArgs(max_num=50.5),
-            "current_index": -1,
-        }
-
-    @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
         """Test MaxNumberConstraint.create_constraint method."""
         instance, constructor_args = valid_instances
@@ -457,42 +426,20 @@ class TestMaxNumberConstraint:
 
         ## WRITTEN BY AI ##
         """
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_requests", max_num=100
-        )
-        assert isinstance(constraint, MaxNumberConstraint)
-        assert constraint.args.max_num == 100
-
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_requests", max_num=50
-        )
-        assert isinstance(constraint, MaxNumberConstraint)
-        assert constraint.args.max_num == 50
+        args = MaxRequestsConstraintArgs(max_num=100)
+        initializer = ConstraintsInitializerFactory.create(args)
+        assert isinstance(initializer, MaxNumberConstraint)
+        assert initializer.args.max_num == 100
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats.
+        """Test factory resolve methods with initializer instances.
 
         ## WRITTEN BY AI ##
         """
-        # Test with dict config
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_requests": {"max_num": 200}}
-        )
-        assert isinstance(resolved["max_requests"], MaxNumberConstraint)
-        assert resolved["max_requests"].args.max_num == 200
-
-        # Test with dict config (simple field)
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_requests": {"max_num": 150}}
-        )
-        assert isinstance(resolved["max_requests"], MaxNumberConstraint)
-        assert resolved["max_requests"].args.max_num == 150
-
-        # Test with instance
         instance = MaxNumberConstraint(args=MaxRequestsConstraintArgs(max_num=75))
         resolved = ConstraintsInitializerFactory.resolve({"max_requests": instance})
-        assert resolved["max_requests"] is instance
+        assert isinstance(resolved["max_requests"], MaxNumberConstraint)
 
 
 class TestMaxDurationConstraint:
@@ -630,21 +577,6 @@ class TestMaxDurationConstraint:
         assert constraint.args.max_duration == constructor_args["max_duration"]
 
     @pytest.mark.smoke
-    def test_validated_kwargs(self):
-        """Test MaxDurationConstraint.validated_kwargs class method."""
-        result = MaxDurationConstraint.validated_kwargs(max_duration=60.0)
-        assert result == {
-            "args": MaxDurationConstraintArgs(max_duration=60.0),
-            "current_index": -1,
-        }
-
-        result = MaxDurationConstraint.validated_kwargs(30)
-        assert result == {
-            "args": MaxDurationConstraintArgs(max_duration=30),
-            "current_index": -1,
-        }
-
-    @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
         """Test MaxDurationConstraint.create_constraint method."""
         instance, constructor_args = valid_instances
@@ -675,44 +607,22 @@ class TestMaxDurationConstraint:
 
         ## WRITTEN BY AI ##
         """
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_duration", max_duration=60.0
-        )
-        assert isinstance(constraint, MaxDurationConstraint)
-        assert constraint.args.max_duration == 60.0
-
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_duration", max_duration=30.0
-        )
-        assert isinstance(constraint, MaxDurationConstraint)
-        assert constraint.args.max_duration == 30.0
+        args = MaxDurationConstraintArgs(max_duration=60.0)
+        initializer = ConstraintsInitializerFactory.create(args)
+        assert isinstance(initializer, MaxDurationConstraint)
+        assert initializer.args.max_duration == 60.0
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats.
+        """Test factory resolve methods with initializer instances.
 
         ## WRITTEN BY AI ##
         """
-        # Test with dict config
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_duration": {"max_duration": 120.0}}
-        )
-        assert isinstance(resolved["max_duration"], MaxDurationConstraint)
-        assert resolved["max_duration"].args.max_duration == 120.0
-
-        # Test with dict config (simple field)
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_duration": {"max_duration": 90.0}}
-        )
-        assert isinstance(resolved["max_duration"], MaxDurationConstraint)
-        assert resolved["max_duration"].args.max_duration == 90.0
-
-        # Test with instance
         instance = MaxDurationConstraint(
             args=MaxDurationConstraintArgs(max_duration=45.0)
         )
         resolved = ConstraintsInitializerFactory.resolve({"max_duration": instance})
-        assert resolved["max_duration"] is instance
+        assert isinstance(resolved["max_duration"], MaxDurationConstraint)
 
 
 class TestMaxErrorsConstraint:
@@ -822,21 +732,6 @@ class TestMaxErrorsConstraint:
             assert getattr(reconstructed.args, key) == value
 
     @pytest.mark.smoke
-    def test_validated_kwargs(self):
-        """Test MaxErrorsConstraint.validated_kwargs class method."""
-        result = MaxErrorsConstraint.validated_kwargs(max_errors=10)
-        assert result == {
-            "args": MaxErrorsConstraintArgs(max_errors=10),
-            "current_index": -1,
-        }
-
-        result = MaxErrorsConstraint.validated_kwargs(5.5)
-        assert result == {
-            "args": MaxErrorsConstraintArgs(max_errors=5.5),
-            "current_index": -1,
-        }
-
-    @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
         """Test MaxErrorsConstraint.create_constraint method."""
         instance, constructor_args = valid_instances
@@ -867,42 +762,20 @@ class TestMaxErrorsConstraint:
 
         ## WRITTEN BY AI ##
         """
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_errors", max_errors=10
-        )
-        assert isinstance(constraint, MaxErrorsConstraint)
-        assert constraint.args.max_errors == 10
-
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_errors", max_errors=5
-        )
-        assert isinstance(constraint, MaxErrorsConstraint)
-        assert constraint.args.max_errors == 5
+        args = MaxErrorsConstraintArgs(max_errors=10)
+        initializer = ConstraintsInitializerFactory.create(args)
+        assert isinstance(initializer, MaxErrorsConstraint)
+        assert initializer.args.max_errors == 10
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats.
+        """Test factory resolve methods with initializer instances.
 
         ## WRITTEN BY AI ##
         """
-        # Test with dict config
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_errors": {"max_errors": 15}}
-        )
-        assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
-        assert resolved["max_errors"].args.max_errors == 15
-
-        # Test with dict config (simple field)
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_errors": {"max_errors": 8}}
-        )
-        assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
-        assert resolved["max_errors"].args.max_errors == 8
-
-        # Test with instance
         instance = MaxErrorsConstraint(args=MaxErrorsConstraintArgs(max_errors=3))
         resolved = ConstraintsInitializerFactory.resolve({"max_errors": instance})
-        assert resolved["max_errors"] is instance
+        assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
 
 
 class TestMaxErrorRateConstraint:
@@ -1052,25 +925,6 @@ class TestMaxErrorRateConstraint:
             assert getattr(reconstructed.args, key) == value
 
     @pytest.mark.smoke
-    def test_validated_kwargs(self):
-        """Test MaxErrorRateConstraint.validated_kwargs class method."""
-        result = MaxErrorRateConstraint.validated_kwargs(
-            max_error_rate=0.1, window_size=50
-        )
-        assert result == {
-            "args": MaxErrorRateConstraintArgs(max_error_rate=0.1, window_size=50),
-            "error_window": [],
-            "current_index": -1,
-        }
-
-        result = MaxErrorRateConstraint.validated_kwargs(0.05)
-        assert result == {
-            "args": MaxErrorRateConstraintArgs(max_error_rate=0.05, window_size=30),
-            "error_window": [],
-            "current_index": -1,
-        }
-
-    @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
         """Test MaxErrorRateConstraint.create_constraint method."""
         instance, constructor_args = valid_instances
@@ -1102,46 +956,23 @@ class TestMaxErrorRateConstraint:
 
         ## WRITTEN BY AI ##
         """
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_error_rate", max_error_rate=0.1, window_size=50
-        )
-        assert isinstance(constraint, MaxErrorRateConstraint)
-        assert constraint.args.max_error_rate == 0.1
-        assert constraint.args.window_size == 50
-
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_error_rate", max_error_rate=0.05
-        )
-        assert isinstance(constraint, MaxErrorRateConstraint)
-        assert constraint.args.max_error_rate == 0.05
+        args = MaxErrorRateConstraintArgs(max_error_rate=0.1, window_size=50)
+        initializer = ConstraintsInitializerFactory.create(args)
+        assert isinstance(initializer, MaxErrorRateConstraint)
+        assert initializer.args.max_error_rate == 0.1
+        assert initializer.args.window_size == 50
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats.
+        """Test factory resolve methods with initializer instances.
 
         ## WRITTEN BY AI ##
         """
-        # Test with dict config
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_error_rate": {"max_error_rate": 0.15, "window_size": 100}}
-        )
-        assert isinstance(resolved["max_error_rate"], MaxErrorRateConstraint)
-        assert resolved["max_error_rate"].args.max_error_rate == 0.15
-        assert resolved["max_error_rate"].args.window_size == 100
-
-        # Test with dict config (simple field)
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_error_rate": {"max_error_rate": 0.08}}
-        )
-        assert isinstance(resolved["max_error_rate"], MaxErrorRateConstraint)
-        assert resolved["max_error_rate"].args.max_error_rate == 0.08
-
-        # Test with instance
         instance = MaxErrorRateConstraint(
             args=MaxErrorRateConstraintArgs(max_error_rate=0.2, window_size=25)
         )
         resolved = ConstraintsInitializerFactory.resolve({"max_error_rate": instance})
-        assert resolved["max_error_rate"] is instance
+        assert isinstance(resolved["max_error_rate"], MaxErrorRateConstraint)
 
 
 class TestMaxGlobalErrorRateConstraint:
@@ -1307,27 +1138,6 @@ class TestMaxGlobalErrorRateConstraint:
             assert getattr(reconstructed.args, key) == value
 
     @pytest.mark.smoke
-    def test_validated_kwargs(self):
-        """Test MaxGlobalErrorRateConstraint.validated_kwargs class method."""
-        result = MaxGlobalErrorRateConstraint.validated_kwargs(
-            max_error_rate=0.1, min_processed=50
-        )
-        assert result == {
-            "args": MaxGlobalErrorRateConstraintArgs(
-                max_error_rate=0.1, min_processed=50
-            ),
-            "current_index": -1,
-        }
-
-        result = MaxGlobalErrorRateConstraint.validated_kwargs(0.05)
-        assert result == {
-            "args": MaxGlobalErrorRateConstraintArgs(
-                max_error_rate=0.05, min_processed=30
-            ),
-            "current_index": -1,
-        }
-
-    @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
         """Test MaxGlobalErrorRateConstraint.create_constraint method."""
         instance, constructor_args = valid_instances
@@ -1359,52 +1169,27 @@ class TestMaxGlobalErrorRateConstraint:
 
         ## WRITTEN BY AI ##
         """
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_global_error_rate", max_error_rate=0.1, min_processed=50
-        )
-        assert isinstance(constraint, MaxGlobalErrorRateConstraint)
-        assert constraint.args.max_error_rate == 0.1
-        assert constraint.args.min_processed == 50
-
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_global_error_rate", max_error_rate=0.05
-        )
-        assert isinstance(constraint, MaxGlobalErrorRateConstraint)
-        assert constraint.args.max_error_rate == 0.05
+        args = MaxGlobalErrorRateConstraintArgs(max_error_rate=0.1, min_processed=50)
+        initializer = ConstraintsInitializerFactory.create(args)
+        assert isinstance(initializer, MaxGlobalErrorRateConstraint)
+        assert initializer.args.max_error_rate == 0.1
+        assert initializer.args.min_processed == 50
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats.
+        """Test factory resolve methods with initializer instances.
 
         ## WRITTEN BY AI ##
         """
-        # Test with dict config
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_global_error_rate": {"max_error_rate": 0.12, "min_processed": 100}}
-        )
-        assert isinstance(
-            resolved["max_global_error_rate"], MaxGlobalErrorRateConstraint
-        )
-        assert resolved["max_global_error_rate"].args.max_error_rate == 0.12
-        assert resolved["max_global_error_rate"].args.min_processed == 100
-
-        # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"max_global_error_rate": {"max_error_rate": 0.08}}
-        )
-        assert isinstance(
-            resolved["max_global_error_rate"], MaxGlobalErrorRateConstraint
-        )
-        assert resolved["max_global_error_rate"].args.max_error_rate == 0.08
-
-        # Test with instance
         instance = MaxGlobalErrorRateConstraint(
             args=MaxGlobalErrorRateConstraintArgs(max_error_rate=0.15, min_processed=75)
         )
         resolved = ConstraintsInitializerFactory.resolve(
             {"max_global_error_rate": instance}
         )
-        assert resolved["max_global_error_rate"] is instance
+        assert isinstance(
+            resolved["max_global_error_rate"], MaxGlobalErrorRateConstraint
+        )
 
 
 class TestConstraintsInitializerFactory:
@@ -1413,17 +1198,23 @@ class TestConstraintsInitializerFactory:
     @pytest.mark.sanity
     def test_unregistered_key_fails(self):
         """Test that unregistered keys raise ValueError."""
+        from guidellm.scheduler.constraints.args import ConstraintArgs
+
         unregistered_key = "nonexistent_constraint"
         assert not ConstraintsInitializerFactory.is_registered(unregistered_key)
+
+        # Create a mock args with an unregistered kind
+        class FakeArgs(ConstraintArgs):
+            kind: str = unregistered_key
 
         with pytest.raises(
             ValueError, match=f"Unknown constraint initializer key: {unregistered_key}"
         ):
-            ConstraintsInitializerFactory.create_constraint(unregistered_key)
+            ConstraintsInitializerFactory.create(FakeArgs(kind=unregistered_key))
 
     @pytest.mark.smoke
     def test_resolve_mixed_types(self):
-        """Test resolve method with mixed constraint types."""
+        """Test resolve method with constraint and initializer instances."""
         max_num_constraint = MaxNumberConstraint(
             args=MaxRequestsConstraintArgs(max_num=25)
         )
@@ -1434,39 +1225,32 @@ class TestConstraintsInitializerFactory:
         mixed_spec = {
             "max_requests": max_num_constraint,
             "max_duration": max_duration_initializer,
-            "max_errors": {"max_errors": 15},
-            "max_error_rate": {"max_error_rate": 0.08},
         }
 
         resolved = ConstraintsInitializerFactory.resolve(mixed_spec)
 
-        assert len(resolved) == 4
+        assert len(resolved) == 2
         assert all(isinstance(c, Constraint) for c in resolved.values())
         assert resolved["max_requests"] is max_num_constraint
         assert isinstance(resolved["max_duration"], MaxDurationConstraint)
-        assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
-        assert isinstance(resolved["max_error_rate"], MaxErrorRateConstraint)
-        assert resolved["max_error_rate"].args.max_error_rate == 0.08
 
     @pytest.mark.sanity
-    def test_resolve_with_invalid_key(self):
-        """Test that resolve raises ValueError for unregistered keys."""
+    def test_resolve_with_invalid_type(self):
+        """Test that resolve raises TypeError for unsupported value types."""
         invalid_spec = {
-            "max_requests": {"max_num": 100},
-            "invalid_constraint": {"some_param": 42},
+            "max_requests": {"max_num": 100},  # raw dicts are no longer supported
         }
 
-        with pytest.raises(
-            ValueError, match="Unknown constraint initializer key: invalid_constraint"
-        ):
+        with pytest.raises(TypeError, match="unsupported value type"):
             ConstraintsInitializerFactory.resolve(invalid_spec)
 
     @pytest.mark.smoke
     def test_functional_constraint_creation(self):
         """Test that created constraints are functionally correct."""
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_requests", max_num=10
-        )
+        args = MaxRequestsConstraintArgs(max_num=10)
+        initializer = ConstraintsInitializerFactory.create(args)
+        constraint = initializer.create_constraint()
+
         start_time = time.time()
         state = SchedulerState(
             node_id=0,

@@ -70,7 +70,7 @@ class TestConstraintArgsPolymorphicValidation:
                 MaxGlobalErrorRateConstraintArgs,
             ),
             (
-                {"kind": "over_saturation", "enabled": True},
+                {"kind": "over_saturation", "mode": "active"},
                 OverSaturationConstraintArgs,
             ),
         ],
@@ -216,11 +216,11 @@ class TestConstraintArgsToInitializerHelper:
         ## WRITTEN BY AI ##
         """
         args = OverSaturationConstraintArgs(
-            enabled=True, min_seconds=60, max_window_seconds=180
+            mode="active", min_seconds=60, max_window_seconds=180
         )
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, OverSaturationConstraintInitializer)
-        assert init.args.enabled is True
+        assert init.args.mode == "active"
         assert init.args.min_seconds == 60
         assert init.args.max_window_seconds == 180
 
@@ -234,7 +234,7 @@ class TestConstraintArgsToInitializerHelper:
         args = OverSaturationConstraintArgs()
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, OverSaturationConstraintInitializer)
-        assert init.args.enabled is True
+        assert init.args.mode == "active"
         assert init.args.min_seconds == 30.0
         assert init.args.moe_threshold == 2.0
 
@@ -353,13 +353,13 @@ class TestResolveConstraintsTranslation:
 
         ## WRITTEN BY AI ##
         """
-        args = _minimal_args(over_saturation={"enabled": True, "min_seconds": 45})
+        args = _minimal_args(over_saturation={"mode": "active", "min_seconds": 45})
         resolved = resolve_constraints(args)
 
         assert "over_saturation" in resolved
         init = resolved["over_saturation"]
         assert isinstance(init, OverSaturationConstraintInitializer)
-        assert init.args.enabled is True
+        assert init.args.mode == "active"
         assert init.args.min_seconds == 45
 
     @pytest.mark.smoke
@@ -375,7 +375,7 @@ class TestResolveConstraintsTranslation:
             max_errors=10,
             max_error_rate=0.5,
             max_global_error_rate=0.3,
-            over_saturation={"enabled": True},
+            over_saturation={"mode": "active"},
         )
         resolved = resolve_constraints(args)
         assert len(resolved) == 6
@@ -414,7 +414,7 @@ class TestConstraintArgsSerialization:
             {"kind": "max_errors", "max_errors": 10},
             {"kind": "max_error_rate", "max_error_rate": 0.5, "window_size": 20},
             {"kind": "max_global_error_rate", "max_error_rate": 0.3},
-            {"kind": "over_saturation", "enabled": True, "min_seconds": 45},
+            {"kind": "over_saturation", "mode": "active", "min_seconds": 45},
         ],
     )
     def test_model_dump_round_trip(self, payload):

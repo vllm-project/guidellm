@@ -152,7 +152,7 @@ class TestOverSaturationConstraintRobustness:
     @pytest.mark.sanity
     def test_constraint_with_empty_data(self):
         """Test constraint behavior with no data."""
-        constraint = OverSaturationConstraint(minimum_duration=0.0, enabled=True)
+        constraint = OverSaturationConstraint(minimum_duration=0.0, mode="active")
 
         # Should not alert with no data
         assert constraint._check_alert() is False
@@ -165,7 +165,7 @@ class TestOverSaturationConstraintRobustness:
     def test_constraint_with_single_request(self):
         """Test constraint behavior with single request."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=1, enabled=True
+            minimum_duration=0.0, minimum_window_size=1, mode="active"
         )
 
         constraint._add_started({"concurrent_requests": 5, "duration": 1.0})
@@ -179,7 +179,7 @@ class TestOverSaturationConstraintRobustness:
     def test_constraint_with_identical_values(self):
         """Test constraint with identical values (zero variance)."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=3, enabled=True
+            minimum_duration=0.0, minimum_window_size=3, mode="active"
         )
 
         # Add identical values
@@ -197,7 +197,7 @@ class TestOverSaturationConstraintRobustness:
     def test_constraint_extreme_values(self):
         """Test constraint with extreme values."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=3, enabled=True
+            minimum_duration=0.0, minimum_window_size=3, mode="active"
         )
 
         # Add extreme values
@@ -217,7 +217,7 @@ class TestOverSaturationConstraintRobustness:
     def test_constraint_precision_edge_cases(self):
         """Test constraint with floating point precision edge cases."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=3, enabled=True
+            minimum_duration=0.0, minimum_window_size=3, mode="active"
         )
 
         # Very small increments
@@ -240,7 +240,7 @@ class TestOverSaturationConstraintRobustness:
             minimum_duration=0.0,
             maximum_window_seconds=10.0,
             minimum_window_size=5,
-            enabled=True,
+            mode="active",
         )
 
         # Add many requests over time
@@ -270,7 +270,7 @@ class TestOverSaturationConstraintRealisticScenarios:
             minimum_duration=5.0,
             minimum_window_size=10,
             moe_threshold=1.5,
-            enabled=True,
+            mode="active",
         )
 
         # Simulate gradual degradation
@@ -299,7 +299,7 @@ class TestOverSaturationConstraintRealisticScenarios:
             minimum_duration=5.0,
             minimum_window_size=10,
             moe_threshold=1.0,
-            enabled=True,
+            mode="active",
         )
 
         # Normal operations first
@@ -325,7 +325,7 @@ class TestOverSaturationConstraintRealisticScenarios:
             minimum_duration=5.0,
             minimum_window_size=10,
             moe_threshold=2.0,
-            enabled=True,
+            mode="active",
         )
 
         import random
@@ -358,7 +358,7 @@ class TestOverSaturationConstraintRealisticScenarios:
             minimum_duration=5.0,
             minimum_window_size=10,
             maximum_window_seconds=30.0,
-            enabled=True,
+            mode="active",
         )
 
         # Initial degradation
@@ -400,7 +400,7 @@ class TestOverSaturationConstraintIntegration:
             maximum_window_seconds=60.0,
             moe_threshold=1.5,
             confidence=0.90,
-            enabled=True,
+            mode="active",
         )
 
     @pytest.mark.sanity
@@ -501,12 +501,12 @@ class TestOverSaturationConstraintIntegration:
             assert first_stop_second >= 10, "Should not stop before minimum duration"
 
     @pytest.mark.sanity
-    def test_constraint_disabled_never_stops(self):
-        """Test that disabled constraint never stops regardless of load."""
+    def test_constraint_passive_never_stops(self):
+        """Test that passive constraint never stops regardless of load."""
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             minimum_window_size=3,
-            enabled=False,  # Disabled
+            mode="passive",
         )
 
         # Add obviously over-saturated data
@@ -552,7 +552,7 @@ class TestOverSaturationConstraintPerformance:
             minimum_duration=0.0,
             maximum_window_seconds=10.0,
             minimum_window_size=5,
-            enabled=True,
+            mode="active",
         )
 
         # Add many requests
@@ -572,7 +572,7 @@ class TestOverSaturationConstraintPerformance:
     def test_constraint_computational_efficiency(self):
         """Test that constraint operations remain efficient."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=10, enabled=True
+            minimum_duration=0.0, minimum_window_size=10, mode="active"
         )
 
         # Add baseline data
@@ -601,7 +601,7 @@ class TestOverSaturationConstraintInitializerRobustness:
         # Valid parameters via args
         initializer = OverSaturationConstraintInitializer(
             args=OverSaturationConstraintArgs(
-                enabled=True,
+                mode="active",
                 min_seconds=5.0,
                 max_window_seconds=30.0,
                 moe_threshold=1.5,
@@ -610,7 +610,7 @@ class TestOverSaturationConstraintInitializerRobustness:
         )
 
         constraint = initializer.create_constraint()
-        assert constraint.enabled is True
+        assert constraint.mode == "active"
         assert constraint.minimum_duration == 5.0
         assert constraint.maximum_window_seconds == 30.0
 
@@ -620,7 +620,7 @@ class TestOverSaturationConstraintInitializerRobustness:
         # Very permissive settings
         initializer = OverSaturationConstraintInitializer(
             args=OverSaturationConstraintArgs(
-                enabled=True,
+                mode="active",
                 min_seconds=0.1,
                 max_window_seconds=3600.0,  # 1 hour
             )
@@ -632,20 +632,9 @@ class TestOverSaturationConstraintInitializerRobustness:
         assert constraint.maximum_window_seconds == 3600.0
 
     @pytest.mark.smoke
-    def test_initializer_validated_kwargs_with_dict(self):
-        """Test validated_kwargs with explicit dict parameter.
-
-        ## WRITTEN BY AI ##
-        """
-        result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation={"enabled": False},
-        )
-        assert result["args"].enabled is False
-
-    @pytest.mark.smoke
     def test_constraint_creation_with_mock_constraint(self):
         """Test constraint creation with mocked constraint for isolation."""
-        constraint = OverSaturationConstraint(enabled=True)
+        constraint = OverSaturationConstraint(mode="active")
         # Set up constraint state to simulate over-saturation
         constraint.ttft_slope_checker.slope = 1.5
         constraint.ttft_slope_checker.margin_of_error = 0.3
@@ -684,7 +673,7 @@ class TestOverSaturationEdgeCasesAndRegression:
     @pytest.mark.sanity
     def test_detector_with_malformed_request_data(self):
         """Test detector requires proper request data structure."""
-        constraint = OverSaturationConstraint(minimum_duration=0.0, enabled=True)
+        constraint = OverSaturationConstraint(minimum_duration=0.0, mode="active")
 
         # Missing fields should raise KeyError
         with pytest.raises(KeyError):
@@ -712,7 +701,7 @@ class TestOverSaturationEdgeCasesAndRegression:
         """Test constraint handles missing timings data gracefully."""
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
-            enabled=True,
+            mode="active",
         )
 
         start_time = time.time()
@@ -740,7 +729,7 @@ class TestOverSaturationEdgeCasesAndRegression:
     def test_detector_concurrent_modification_safety(self):
         """Test detector behavior under concurrent-like modifications."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=3, enabled=True
+            minimum_duration=0.0, minimum_window_size=3, mode="active"
         )
 
         # Add requests
@@ -782,7 +771,7 @@ class TestOverSaturationEdgeCasesAndRegression:
     @pytest.mark.sanity
     def test_detector_reset_clears_all_state(self):
         """Test that detector reset completely clears state."""
-        constraint = OverSaturationConstraint(minimum_duration=0.0, enabled=True)
+        constraint = OverSaturationConstraint(minimum_duration=0.0, mode="active")
 
         # Add data and trigger computation
         for i in range(20):
@@ -823,7 +812,7 @@ class TestOverSaturationEdgeCasesAndRegression:
         mock_time.return_value = current_time
 
         constraint = OverSaturationConstraint(
-            minimum_duration=25.0, enabled=True
+            minimum_duration=25.0, mode="active"
         )  # Should be met
 
         state = SchedulerState(
@@ -855,7 +844,7 @@ class TestOverSaturationEdgeCasesAndRegression:
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             minimum_ttft=2.0,  # Threshold
-            enabled=True,
+            mode="active",
         )
 
         # Add requests with known TTFT values
@@ -878,7 +867,7 @@ class TestInstantTTFT:
 
     Test the instant TTFT feature for over-saturation detection.
 
-    When instant TTFT is enabled, the worker sends a "first_token"
+    When instant TTFT is active, the worker sends a "first_token"
     status update carrying TTFT timing data before the request completes.
     The constraint extracts TTFT from these updates, deduplicated by request ID.
     """
@@ -890,7 +879,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -922,7 +911,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -966,7 +955,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -994,7 +983,7 @@ class TestInstantTTFT:
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             maximum_window_ratio=1.0,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -1029,7 +1018,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -1062,7 +1051,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -1097,7 +1086,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -1120,15 +1109,15 @@ class TestInstantTTFT:
         assert constraint.ttft_slope_checker.n == 1
 
     @pytest.mark.sanity
-    def test_first_token_does_not_stop_when_disabled(self):
+    def test_first_token_does_not_stop_when_passive(self):
         """## WRITTEN BY AI ##
-        first_token never triggers stop when enabled=False.
+        first_token never triggers stop when mode is passive.
         """
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            enabled=False,
+            mode="passive",
         )
         start_time = time.time()
         state = SchedulerState(

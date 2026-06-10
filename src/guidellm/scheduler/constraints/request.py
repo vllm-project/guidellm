@@ -95,22 +95,6 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         default=-1, description="Current index for list-based max_num values"
     )
 
-    @classmethod
-    def validated_kwargs(
-        cls, max_num: int | float | list[int | float] | None = None, **kwargs
-    ) -> dict[str, Any]:
-        """
-        Validate and process arguments for MaxNumberConstraint creation.
-
-        :param max_num: Maximum number of requests to allow
-        :param kwargs: Additional keyword arguments (optional type_, current_index)
-        :return: Validated dictionary with args and runtime state fields
-        """
-        return {
-            "args": MaxRequestsConstraintArgs(max_num=max_num),  # type: ignore[arg-type]
-            "current_index": kwargs.get("current_index", -1),
-        }
-
     def create_constraint(self, **_kwargs) -> Constraint:
         """
         Return self as the constraint instance.
@@ -182,22 +166,6 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         description="Configuration arguments for max duration constraint",
     )
     current_index: int = Field(default=-1, description="Current index in duration list")
-
-    @classmethod
-    def validated_kwargs(
-        cls, max_duration: int | float | list[int | float] | None = None, **kwargs
-    ) -> dict[str, Any]:
-        """
-        Validate and process arguments for MaxDurationConstraint creation.
-
-        :param max_duration: Maximum duration in seconds
-        :param kwargs: Additional keyword arguments (optional type_, current_index)
-        :return: Validated dictionary with args and runtime state fields
-        """
-        return {
-            "args": MaxDurationConstraintArgs(max_duration=max_duration),  # type: ignore[arg-type]
-            "current_index": kwargs.get("current_index", -1),
-        }
 
     def create_constraint(self, **_kwargs) -> Constraint:
         """

@@ -308,7 +308,7 @@ __all__ = ["run"]
     help=(
         "Enable over-saturation detection. "
         "Pass a JSON dict with configuration "
-        '(e.g., \'{"enabled": true, "min_seconds": 30}\'). '
+        '(e.g., \'{"mode": "active", "min_seconds": 30}\'). '
         "Defaults to None (disabled)."
     ),
 )
@@ -317,7 +317,7 @@ __all__ = ["run"]
     "--default-over-saturation",
     "over_saturation",
     callback=cli_tools.parse_arguments,
-    flag_value='{"enabled": true}',
+    flag_value='{"mode": "active"}',
     help="Enable over-saturation detection with default settings.",
 )
 def run(**kwargs):  # noqa: C901, PLR0915, PLR0912

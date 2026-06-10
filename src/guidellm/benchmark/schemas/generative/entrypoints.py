@@ -271,7 +271,7 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         default=None,
         description=(
             "Over-saturation detection configuration. A dict with configuration "
-            "parameters (enabled, min_seconds, max_window_seconds, "
+            "parameters (mode, min_seconds, max_window_seconds, "
             "moe_threshold, etc.)."
         ),
     )

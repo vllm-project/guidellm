@@ -124,7 +124,7 @@ class TestReplayProfile:
         assert isinstance(profile, ReplayProfile)
         assert profile.args.time_scale == expected_scale
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            args=MaxRequestsConstraintArgs(max_num=3), current_index=0
+            args=MaxRequestsConstraintArgs(max_num=3), current_index=-1
         )
 
     @pytest.mark.sanity
@@ -166,7 +166,7 @@ class TestReplayProfile:
         )
 
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            args=MaxRequestsConstraintArgs(max_num=3), current_index=0
+            args=MaxRequestsConstraintArgs(max_num=3), current_index=-1
         )
 
     @pytest.mark.smoke
@@ -250,7 +250,7 @@ class TestReplayProfile:
         profile = _replay_profile(data=[TraceSyntheticDataArgs(path=trace)])
 
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            args=MaxRequestsConstraintArgs(max_num=27), current_index=0
+            args=MaxRequestsConstraintArgs(max_num=27), current_index=-1
         )
 
     @pytest.mark.smoke
@@ -347,7 +347,7 @@ class TestReplayProfile:
         )
 
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            args=MaxRequestsConstraintArgs(max_num=2), current_index=0
+            args=MaxRequestsConstraintArgs(max_num=2), current_index=-1
         )
 
     @pytest.mark.smoke
