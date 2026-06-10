@@ -36,6 +36,7 @@ from guidellm.scheduler.constraints import (
     MaxDurationConstraintArgs,
     MaxErrorRateConstraintArgs,
     MaxErrorsConstraintArgs,
+    MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
@@ -147,7 +148,7 @@ class TestWorkerGroup:
             },
             {
                 "max_global_error_rate": MaxGlobalErrorRateConstraint(
-                    args=MaxErrorRateConstraintArgs(max_error_rate=0.1)
+                    args=MaxGlobalErrorRateConstraintArgs(max_error_rate=0.1)
                 )
             },
         ],
