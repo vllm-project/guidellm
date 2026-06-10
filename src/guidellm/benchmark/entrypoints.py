@@ -322,8 +322,8 @@ def resolve_constraints(
 
     # 2. Merge explicitly provided ConstraintArgs list from args
     for constraint_arg in args.constraints:
-        resolved[constraint_arg.constraint_key] = (
-            ConstraintsInitializerFactory.create(constraint_arg)
+        resolved[constraint_arg.constraint_key] = ConstraintsInitializerFactory.create(
+            constraint_arg
         )
 
     # 3. Merge any programmatic extra constraints (preserving raw values/initializers)

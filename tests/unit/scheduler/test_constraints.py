@@ -463,7 +463,9 @@ class TestMaxNumberConstraint:
         assert isinstance(constraint, MaxNumberConstraint)
         assert constraint.args.max_num == 100
 
-        constraint = ConstraintsInitializerFactory.create_constraint("max_requests", 50)
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            "max_requests", max_num=50
+        )
         assert isinstance(constraint, MaxNumberConstraint)
         assert constraint.args.max_num == 50
 
@@ -480,8 +482,10 @@ class TestMaxNumberConstraint:
         assert isinstance(resolved["max_requests"], MaxNumberConstraint)
         assert resolved["max_requests"].args.max_num == 200
 
-        # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_requests": 150})
+        # Test with dict config (simple field)
+        resolved = ConstraintsInitializerFactory.resolve(
+            {"max_requests": {"max_num": 150}}
+        )
         assert isinstance(resolved["max_requests"], MaxNumberConstraint)
         assert resolved["max_requests"].args.max_num == 150
 
@@ -678,7 +682,7 @@ class TestMaxDurationConstraint:
         assert constraint.args.max_duration == 60.0
 
         constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_duration", 30.0
+            "max_duration", max_duration=30.0
         )
         assert isinstance(constraint, MaxDurationConstraint)
         assert constraint.args.max_duration == 30.0
@@ -696,8 +700,10 @@ class TestMaxDurationConstraint:
         assert isinstance(resolved["max_duration"], MaxDurationConstraint)
         assert resolved["max_duration"].args.max_duration == 120.0
 
-        # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_duration": 90.0})
+        # Test with dict config (simple field)
+        resolved = ConstraintsInitializerFactory.resolve(
+            {"max_duration": {"max_duration": 90.0}}
+        )
         assert isinstance(resolved["max_duration"], MaxDurationConstraint)
         assert resolved["max_duration"].args.max_duration == 90.0
 
@@ -867,7 +873,9 @@ class TestMaxErrorsConstraint:
         assert isinstance(constraint, MaxErrorsConstraint)
         assert constraint.args.max_errors == 10
 
-        constraint = ConstraintsInitializerFactory.create_constraint("max_errors", 5)
+        constraint = ConstraintsInitializerFactory.create_constraint(
+            "max_errors", max_errors=5
+        )
         assert isinstance(constraint, MaxErrorsConstraint)
         assert constraint.args.max_errors == 5
 
@@ -884,8 +892,10 @@ class TestMaxErrorsConstraint:
         assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
         assert resolved["max_errors"].args.max_errors == 15
 
-        # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_errors": 8})
+        # Test with dict config (simple field)
+        resolved = ConstraintsInitializerFactory.resolve(
+            {"max_errors": {"max_errors": 8}}
+        )
         assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
         assert resolved["max_errors"].args.max_errors == 8
 
@@ -1100,7 +1110,7 @@ class TestMaxErrorRateConstraint:
         assert constraint.args.window_size == 50
 
         constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_error_rate", 0.05
+            "max_error_rate", max_error_rate=0.05
         )
         assert isinstance(constraint, MaxErrorRateConstraint)
         assert constraint.args.max_error_rate == 0.05
@@ -1119,8 +1129,10 @@ class TestMaxErrorRateConstraint:
         assert resolved["max_error_rate"].args.max_error_rate == 0.15
         assert resolved["max_error_rate"].args.window_size == 100
 
-        # Test with simple value
-        resolved = ConstraintsInitializerFactory.resolve({"max_error_rate": 0.08})
+        # Test with dict config (simple field)
+        resolved = ConstraintsInitializerFactory.resolve(
+            {"max_error_rate": {"max_error_rate": 0.08}}
+        )
         assert isinstance(resolved["max_error_rate"], MaxErrorRateConstraint)
         assert resolved["max_error_rate"].args.max_error_rate == 0.08
 
@@ -1355,7 +1367,7 @@ class TestMaxGlobalErrorRateConstraint:
         assert constraint.args.min_processed == 50
 
         constraint = ConstraintsInitializerFactory.create_constraint(
-            "max_global_error_rate", 0.05
+            "max_global_error_rate", max_error_rate=0.05
         )
         assert isinstance(constraint, MaxGlobalErrorRateConstraint)
         assert constraint.args.max_error_rate == 0.05
@@ -1378,7 +1390,7 @@ class TestMaxGlobalErrorRateConstraint:
 
         # Test with simple value
         resolved = ConstraintsInitializerFactory.resolve(
-            {"max_global_error_rate": 0.08}
+            {"max_global_error_rate": {"max_error_rate": 0.08}}
         )
         assert isinstance(
             resolved["max_global_error_rate"], MaxGlobalErrorRateConstraint
@@ -1407,11 +1419,6 @@ class TestConstraintsInitializerFactory:
         with pytest.raises(
             ValueError, match=f"Unknown constraint initializer key: {unregistered_key}"
         ):
-            ConstraintsInitializerFactory.create(unregistered_key)
-
-        with pytest.raises(
-            ValueError, match=f"Unknown constraint initializer key: {unregistered_key}"
-        ):
             ConstraintsInitializerFactory.create_constraint(unregistered_key)
 
     @pytest.mark.smoke
@@ -1428,7 +1435,7 @@ class TestConstraintsInitializerFactory:
             "max_requests": max_num_constraint,
             "max_duration": max_duration_initializer,
             "max_errors": {"max_errors": 15},
-            "max_error_rate": 0.08,
+            "max_error_rate": {"max_error_rate": 0.08},
         }
 
         resolved = ConstraintsInitializerFactory.resolve(mixed_spec)

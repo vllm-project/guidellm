@@ -11,13 +11,17 @@ from pydantic import BaseModel, Field
 
 from guidellm.scheduler import (
     BackendInterface,
+    MaxDurationConstraint,
     MaxNumberConstraint,
     NonDistributedEnvironment,
     Scheduler,
     SchedulerState,
     SynchronousStrategy,
 )
-from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
+from guidellm.scheduler.constraints import (
+    MaxDurationConstraintArgs,
+    MaxRequestsConstraintArgs,
+)
 from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 from tests.unit.testing_utils import async_timeout
@@ -256,7 +260,9 @@ class TestScheduler:
             strategy=strategy,
             env=env,
             max_number=MaxNumberConstraint(args=MaxRequestsConstraintArgs(max_num=5)),
-            max_duration=5.0,  # Should be converted to constraint
+            max_duration=MaxDurationConstraint(
+                args=MaxDurationConstraintArgs(max_duration=5.0)
+            ),
         ):
             results.append((response, request, info, state))
 

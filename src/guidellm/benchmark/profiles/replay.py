@@ -156,7 +156,7 @@ class ReplayProfile(Profile):
         if "max_requests" not in new_constraints:
             new_constraints.update(
                 ConstraintsInitializerFactory.resolve(
-                    {"max_requests": len(relative_timestamps)}
+                    {"max_requests": {"max_num": len(relative_timestamps)}}
                 )
             )
             self.constraints = new_constraints
