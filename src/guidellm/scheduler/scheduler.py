@@ -10,9 +10,13 @@ various scenarios including LLM inference benchmarking.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any, Generic
+from typing import Generic
 
-from guidellm.scheduler.constraints import Constraint, ConstraintsInitializerFactory
+from guidellm.scheduler.constraints import (
+    Constraint,
+    ConstraintInitializer,
+    ConstraintsInitializerFactory,
+)
 from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
 from guidellm.scheduler.schemas import (
     BackendInterface,
@@ -64,7 +68,7 @@ class Scheduler(
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         env: Environment[RequestT, ResponseT] | None,
-        **constraints: Any | dict[str, Any] | Constraint,
+        **constraints: Constraint | ConstraintInitializer,
     ) -> AsyncIterator[
         tuple[
             ResponseT | None,
@@ -107,8 +111,8 @@ class Scheduler(
             # and will ensure clean up before raising the error.
             try:
                 # Setup local run parameters, sync with the environment
-                resolved_constraints = (
-                    ConstraintsInitializerFactory.resolve_constraints(constraints)
+                resolved_constraints = ConstraintsInitializerFactory.resolve(
+                    constraints
                 )
                 (
                     local_requests,

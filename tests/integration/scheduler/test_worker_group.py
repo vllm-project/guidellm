@@ -31,7 +31,14 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     WorkerProcessGroup,
 )
-from guidellm.scheduler.constraints import ConstraintInitializer
+from guidellm.scheduler.constraints import (
+    ConstraintInitializer,
+    MaxDurationConstraintArgs,
+    MaxErrorRateConstraintArgs,
+    MaxErrorsConstraintArgs,
+    MaxGlobalErrorRateConstraintArgs,
+    MaxRequestsConstraintArgs,
+)
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestTimings
 
@@ -119,11 +126,31 @@ class TestWorkerGroup:
     @pytest.mark.parametrize(
         "constraints_inits",
         [
-            {"max_num": MaxNumberConstraint(max_num=100)},
-            {"max_duration": MaxDurationConstraint(max_duration=0.5)},
-            {"max_errors": MaxErrorsConstraint(max_errors=20)},
-            {"max_error_rate": MaxErrorRateConstraint(max_error_rate=0.1)},
-            {"max_global_error_rate": MaxGlobalErrorRateConstraint(max_error_rate=0.1)},
+            {
+                "max_requests": MaxNumberConstraint(
+                    args=MaxRequestsConstraintArgs(max_num=100)
+                )
+            },
+            {
+                "max_duration": MaxDurationConstraint(
+                    args=MaxDurationConstraintArgs(max_duration=0.5)
+                )
+            },
+            {
+                "max_errors": MaxErrorsConstraint(
+                    args=MaxErrorsConstraintArgs(max_errors=20)
+                )
+            },
+            {
+                "max_error_rate": MaxErrorRateConstraint(
+                    args=MaxErrorRateConstraintArgs(max_error_rate=0.1)
+                )
+            },
+            {
+                "max_global_error_rate": MaxGlobalErrorRateConstraint(
+                    args=MaxGlobalErrorRateConstraintArgs(max_error_rate=0.1)
+                )
+            },
         ],
     )
     async def test_lifecycle(

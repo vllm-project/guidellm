@@ -17,6 +17,7 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
 )
+from guidellm.scheduler.constraints import OverSaturationConstraintArgs
 from guidellm.schemas import RequestInfo, RequestTimings
 
 
@@ -33,7 +34,7 @@ class TestOverSaturationConstraintInternal:
     def valid_instances(self, request):
         """Create OverSaturationConstraint instances with valid parameters."""
         constructor_args = request.param
-        instance = OverSaturationConstraint(**constructor_args, enabled=True)
+        instance = OverSaturationConstraint(**constructor_args, mode="active")
         return instance, constructor_args
 
     @pytest.mark.smoke
@@ -48,7 +49,7 @@ class TestOverSaturationConstraintInternal:
     @pytest.mark.smoke
     def test_initialization_defaults(self):
         """Test that OverSaturationConstraint has correct default values."""
-        constraint = OverSaturationConstraint(enabled=True)
+        constraint = OverSaturationConstraint(mode="active")
 
         assert constraint.minimum_duration == 30.0
         assert constraint.minimum_ttft == 2.5
@@ -81,7 +82,7 @@ class TestOverSaturationConstraintInternal:
             minimum_duration=0.0,
             maximum_window_seconds=100.0,
             maximum_window_ratio=0.5,
-            enabled=True,
+            mode="active",
         )
         start_time = time.time()
 
@@ -114,13 +115,13 @@ class TestOverSaturationConstraint:
     def constraint(self):
         """Create a constraint for testing."""
         return OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=3, enabled=True
+            minimum_duration=0.0, minimum_window_size=3, mode="active"
         )
 
     @pytest.fixture(
         params=[
-            {"enabled": True},
-            {"enabled": False},
+            {"mode": "active"},
+            {"mode": "passive"},
         ]
     )
     def valid_instances(self, request):
@@ -142,7 +143,7 @@ class TestOverSaturationConstraint:
     @pytest.mark.smoke
     def test_protocol_method_signature(self):
         """Test that OverSaturationConstraint has the correct method signature."""
-        constraint = OverSaturationConstraint(enabled=True)
+        constraint = OverSaturationConstraint(mode="active")
         call_method = constraint.__call__
         sig = inspect.signature(call_method)
 
@@ -154,7 +155,7 @@ class TestOverSaturationConstraint:
         """Test OverSaturationConstraint initialization with valid parameters."""
         constraint, constructor_args = valid_instances
 
-        assert constraint.enabled == constructor_args["enabled"]
+        assert constraint.mode == constructor_args["mode"]
 
     @pytest.mark.sanity
     def test_constraint_returns_continue_when_not_saturated(self, constraint):
@@ -216,7 +217,7 @@ class TestOverSaturationConstraint:
 
     @pytest.mark.sanity
     def test_constraint_stops_when_over_saturated(self, constraint):
-        """Test constraint stops when over-saturated and flag is enabled."""
+        """Test constraint stops when over-saturated and mode is active."""
         start_time = time.time()
 
         # Simulate over-saturation by creating positive slopes through constraint calls
@@ -282,12 +283,12 @@ class TestOverSaturationConstraint:
         assert "is_over_saturated" in action.metadata
 
     @pytest.mark.sanity
-    def test_constraint_never_stops_when_flag_disabled(self):
-        """Test constraint never stops when enabled is False."""
+    def test_constraint_never_stops_when_mode_passive(self):
+        """Test constraint never stops when mode is passive."""
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             minimum_window_size=3,
-            enabled=False,
+            mode="passive",
         )
         start_time = time.time()
 
@@ -306,7 +307,7 @@ class TestOverSaturationConstraint:
             scheduler_start_time=start_time,
         )
 
-        # Even if over-saturated, should continue when flag is False
+        # Even if over-saturated, should continue in passive mode
         action = constraint(state, request)
         assert isinstance(action, SchedulerUpdateAction)
         assert action.request_queuing == "continue"
@@ -318,10 +319,10 @@ class TestOverSaturationConstraintInitializer:
 
     @pytest.fixture(
         params=[
-            {"enabled": True},
-            {"enabled": False},
+            {"mode": "active"},
+            {"mode": "passive"},
             {
-                "enabled": True,
+                "mode": "active",
                 "min_seconds": 10.0,
                 "max_window_seconds": 60.0,
             },
@@ -330,7 +331,9 @@ class TestOverSaturationConstraintInitializer:
     def valid_instances(self, request):
         """Create OverSaturationConstraintInitializer with valid parameters."""
         constructor_args = request.param
-        instance = OverSaturationConstraintInitializer(**constructor_args)
+        instance = OverSaturationConstraintInitializer(
+            args=OverSaturationConstraintArgs(**constructor_args)
+        )
         return instance, constructor_args
 
     @pytest.mark.smoke
@@ -352,23 +355,30 @@ class TestOverSaturationConstraintInitializer:
         instance, constructor_args = valid_instances
 
         assert instance.type_ == "over_saturation"
-        assert instance.enabled == constructor_args["enabled"]
+        assert instance.args.mode == constructor_args["mode"]
 
         if "min_seconds" in constructor_args:
-            assert instance.min_seconds == constructor_args["min_seconds"]
+            assert instance.args.min_seconds == constructor_args["min_seconds"]
         if "max_window_seconds" in constructor_args:
-            assert instance.max_window_seconds == constructor_args["max_window_seconds"]
+            assert (
+                instance.args.max_window_seconds
+                == constructor_args["max_window_seconds"]
+            )
 
     @pytest.mark.sanity
     def test_initialization_invalid(self):
         """Test that initializer rejects invalid parameters."""
-        # Invalid type for enabled
+        # Invalid value for mode
         with pytest.raises(ValidationError):
-            OverSaturationConstraintInitializer(enabled="invalid")
+            OverSaturationConstraintInitializer(
+                args=OverSaturationConstraintArgs(mode="invalid")
+            )
 
         # Invalid type for min_seconds
         with pytest.raises(ValidationError):
-            OverSaturationConstraintInitializer(enabled=True, min_seconds="invalid")
+            OverSaturationConstraintInitializer(
+                args=OverSaturationConstraintArgs(mode="active", min_seconds="invalid")
+            )
 
     @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
@@ -377,43 +387,7 @@ class TestOverSaturationConstraintInitializer:
         constraint = instance.create_constraint()
 
         assert isinstance(constraint, OverSaturationConstraint)
-        assert constraint.enabled == instance.enabled
-
-    @pytest.mark.smoke
-    def test_validated_kwargs(self):
-        """Test validated_kwargs method with various inputs."""
-
-        # Test with empty dict (uses defaults, enabled=True by default)
-        result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation={}
-        )
-        # enabled defaults to True in the Pydantic model
-        assert result == {}
-
-        # Test with dict input (enabled=False)
-        result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation={"enabled": False}
-        )
-        assert result["enabled"] is False
-
-        # Test with dict input with min_seconds
-        result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation={"enabled": True, "min_seconds": 20.0}
-        )
-        assert result["enabled"] is True
-        assert result["min_seconds"] == 20.0
-
-        # Test with None (should return enabled=False)
-        result = OverSaturationConstraintInitializer.validated_kwargs(
-            over_saturation=None
-        )
-        assert result["enabled"] is False
-
-        # Test with aliases
-        result = OverSaturationConstraintInitializer.validated_kwargs(
-            detect_saturation={"enabled": True}
-        )
-        assert result["enabled"] is True
+        assert constraint.mode == instance.args.mode
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):
@@ -422,68 +396,47 @@ class TestOverSaturationConstraintInitializer:
 
         data = instance.model_dump()
         assert data["type_"] == "over_saturation"
-        assert data["enabled"] == constructor_args["enabled"]
+        assert data["args"]["mode"] == constructor_args["mode"]
 
         reconstructed = OverSaturationConstraintInitializer.model_validate(data)
-        assert reconstructed.enabled == instance.enabled
+        assert reconstructed.args.mode == instance.args.mode
 
     @pytest.mark.smoke
     def test_factory_registration(self):
-        """Test that initializer is properly registered with expected aliases."""
-        expected_aliases = [
-            "over_saturation",
-            "detect_saturation",
-        ]
+        """Test that initializer is properly registered.
 
-        for alias in expected_aliases:
-            assert ConstraintsInitializerFactory.is_registered(alias)
-            registered_class = ConstraintsInitializerFactory.get_registered_object(
-                alias
-            )
-            assert registered_class == OverSaturationConstraintInitializer
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("over_saturation")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "over_saturation"
+        )
+        assert registered_class == OverSaturationConstraintInitializer
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize("alias", ["over_saturation", "detect_saturation"])
-    def test_factory_creation_with_aliases(self, alias):
-        """Test factory creation using different aliases."""
-        # Test with dict configuration using kwargs
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, enabled=True
-        )
-        assert isinstance(constraint, OverSaturationConstraint)
-        assert constraint.enabled is True
+    def test_factory_creation(self):
+        """Test factory creation using ConstraintArgs.
 
-        # Test with empty dict (uses defaults, enabled=True by default)
-        constraint = ConstraintsInitializerFactory.create_constraint(alias, {})
-        assert isinstance(constraint, OverSaturationConstraint)
-        assert constraint.enabled is True
+        ## WRITTEN BY AI ##
+        """
+        args = OverSaturationConstraintArgs(mode="active")
+        initializer = ConstraintsInitializerFactory.create(args)
+        assert isinstance(initializer, OverSaturationConstraintInitializer)
+        assert initializer.args.mode == "active"
 
-        # Test with dict value (enabled=False)
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            alias, {"enabled": False}
-        )
+        constraint = initializer.create_constraint()
         assert isinstance(constraint, OverSaturationConstraint)
-        assert constraint.enabled is False
+        assert constraint.mode == "active"
 
     @pytest.mark.smoke
     def test_factory_resolve_methods(self):
-        """Test factory resolve methods with various input formats."""
-        # Test with dict config
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"over_saturation": {"enabled": True}}
-        )
-        assert isinstance(resolved["over_saturation"], OverSaturationConstraint)
-        assert resolved["over_saturation"].enabled is True
+        """Test factory resolve methods with initializer instances.
 
-        # Test with dict value
-        resolved = ConstraintsInitializerFactory.resolve(
-            {"detect_saturation": {"enabled": True}}
+        ## WRITTEN BY AI ##
+        """
+        instance = OverSaturationConstraintInitializer(
+            args=OverSaturationConstraintArgs(mode="passive")
         )
-        assert isinstance(resolved["detect_saturation"], OverSaturationConstraint)
-        assert resolved["detect_saturation"].enabled is True
-
-        # Test with instance
-        instance = OverSaturationConstraintInitializer(enabled=False)
         constraint_instance = instance.create_constraint()
         resolved = ConstraintsInitializerFactory.resolve(
             {"over_saturation": constraint_instance}
@@ -493,9 +446,10 @@ class TestOverSaturationConstraintInitializer:
     @pytest.mark.smoke
     def test_functional_constraint_creation(self):
         """Test that created constraints are functionally correct."""
-        constraint = ConstraintsInitializerFactory.create_constraint(
-            "over_saturation", enabled=True
-        )
+        args = OverSaturationConstraintArgs(mode="active")
+        initializer = ConstraintsInitializerFactory.create(args)
+        constraint = initializer.create_constraint()
+
         start_time = time.time()
         state = SchedulerState(
             node_id=0,

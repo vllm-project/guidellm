@@ -15,6 +15,7 @@ from guidellm.scheduler import (
     SchedulerState,
     SynchronousStrategy,
 )
+from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
 from guidellm.schemas import RequestInfo
 from guidellm.utils.mixins import InfoMixin
 
@@ -187,7 +188,11 @@ class TestNonDistributedEnvironment:
             (
                 ["request1", "request2"],
                 SynchronousStrategy(),
-                {"max_requests": MaxNumberConstraint(max_num=10)},
+                {
+                    "max_requests": MaxNumberConstraint(
+                        args=MaxRequestsConstraintArgs(max_num=10),
+                    ),
+                },
             ),
             (
                 [],
@@ -197,12 +202,20 @@ class TestNonDistributedEnvironment:
             (
                 ["single_request"],
                 SynchronousStrategy(),
-                {"max_requests": MaxNumberConstraint(max_num=1)},
+                {
+                    "max_requests": MaxNumberConstraint(
+                        args=MaxRequestsConstraintArgs(max_num=1),
+                    ),
+                },
             ),
             (
                 range(5),
                 SynchronousStrategy(),
-                {"max_requests": MaxNumberConstraint(max_num=5)},
+                {
+                    "max_requests": MaxNumberConstraint(
+                        args=MaxRequestsConstraintArgs(max_num=5),
+                    ),
+                },
             ),
         ],
         ids=[

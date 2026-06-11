@@ -131,12 +131,8 @@ class SerializableConstraintInitializer(Protocol):
     ::
         class SerializableInitializer:
             @classmethod
-            def validated_kwargs(cls, **kwargs) -> dict[str, Any]:
-                return {"max_requests": kwargs.get("max_requests", 100)}
-
-            @classmethod
             def model_validate(cls, data: dict) -> ConstraintInitializer:
-                return cls(**cls.validated_kwargs(**data))
+                return cls(**data)
 
             def model_dump(self) -> dict[str, Any]:
                 return {"type_": "max_requests", "max_requests": self.max_requests}
@@ -144,16 +140,6 @@ class SerializableConstraintInitializer(Protocol):
             def create_constraint(self) -> Constraint:
                 # ... create constraint
     """
-
-    @classmethod
-    def validated_kwargs(cls, *args, **kwargs) -> dict[str, Any]:
-        """
-        Validate and process arguments for constraint creation.
-
-        :param args: Positional arguments for constraint configuration
-        :param kwargs: Keyword arguments for constraint configuration
-        :return: Validated parameter dictionary for constraint creation
-        """
 
     @classmethod
     def model_validate(cls, **kwargs) -> ConstraintInitializer:
@@ -218,24 +204,6 @@ class PydanticConstraintInitializer(StandardBaseModel, ABC, InfoMixin):
         """
         return self.model_dump()
 
-    @classmethod
-    @abstractmethod
-    def validated_kwargs(cls, *args, **kwargs) -> dict[str, Any]:
-        """
-        Validate and process arguments for constraint creation.
-
-        Must be implemented by subclasses to handle their specific parameter patterns
-        and validation requirements. This method processes raw input (booleans, dicts,
-        etc.) and converts them into validated parameter dictionaries suitable for
-        constraint initialization.
-
-        :param args: Positional arguments passed to the constraint
-        :param kwargs: Keyword arguments passed to the constraint
-        :return: Validated dictionary of parameters for constraint creation
-        :raises NotImplementedError: Must be implemented by subclasses
-        """
-        ...
-
     @abstractmethod
     def create_constraint(self, **kwargs) -> Constraint:
         """
@@ -281,19 +249,6 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
         default_factory=dict,
         description="Original constraint information before serialization failure",
     )
-
-    @classmethod
-    def validated_kwargs(
-        cls, orig_info: dict[str, Any] | None = None, **_kwargs
-    ) -> dict[str, Any]:
-        """
-        Validate arguments for unserializable constraint creation.
-
-        :param orig_info: Original constraint information before serialization failure
-        :param kwargs: Additional arguments (ignored)
-        :return: Validated parameters for unserializable constraint creation
-        """
-        return {"orig_info": orig_info or {}}
 
     def create_constraint(self, **_kwargs) -> Constraint:
         """

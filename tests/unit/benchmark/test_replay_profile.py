@@ -10,7 +10,11 @@ from guidellm.benchmark.entrypoints import resolve_profile
 from guidellm.benchmark.profiles import ProfileFactory, ReplayProfile
 from guidellm.benchmark.profiles.replay import ReplayProfileArgs
 from guidellm.data.deserializers import TraceSyntheticDataArgs
-from guidellm.scheduler import MaxNumberConstraint, TraceReplayStrategy
+from guidellm.scheduler import (
+    MaxNumberConstraint,
+    MaxRequestsConstraintArgs,
+    TraceReplayStrategy,
+)
 
 
 def _trace_path(tmp_path: Path, lines: list[str] | None = None) -> Path:
@@ -120,7 +124,7 @@ class TestReplayProfile:
         assert isinstance(profile, ReplayProfile)
         assert profile.args.time_scale == expected_scale
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            type_="max_number", max_num=3, current_index=0
+            args=MaxRequestsConstraintArgs(max_num=3), current_index=-1
         )
 
     @pytest.mark.sanity
@@ -162,7 +166,7 @@ class TestReplayProfile:
         )
 
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            type_="max_number", max_num=3, current_index=0
+            args=MaxRequestsConstraintArgs(max_num=3), current_index=-1
         )
 
     @pytest.mark.smoke
@@ -246,7 +250,7 @@ class TestReplayProfile:
         profile = _replay_profile(data=[TraceSyntheticDataArgs(path=trace)])
 
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            type_="max_number", max_num=27, current_index=0
+            args=MaxRequestsConstraintArgs(max_num=27), current_index=-1
         )
 
     @pytest.mark.smoke
@@ -308,10 +312,16 @@ class TestReplayProfile:
         profile = _replay_profile(
             data=[TraceSyntheticDataArgs(path=trace)],
             data_samples=3,
-            constraints={"max_requests": 10, "max_seconds": 0.25},
+            constraints={
+                "max_requests": {"max_num": 10},
+                "max_duration": {"max_duration": 0.25},
+            },
         )
 
-        assert profile.constraints == {"max_requests": 10, "max_seconds": 0.25}
+        assert profile.constraints == {
+            "max_requests": {"max_num": 10},
+            "max_duration": {"max_duration": 0.25},
+        }
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("data_samples", [0, -1])
@@ -337,7 +347,7 @@ class TestReplayProfile:
         )
 
         assert profile.constraints["max_requests"] == MaxNumberConstraint(
-            type_="max_number", max_num=2, current_index=0
+            args=MaxRequestsConstraintArgs(max_num=2), current_index=-1
         )
 
     @pytest.mark.smoke
@@ -359,12 +369,7 @@ class TestReplayProfile:
 
         profile = await resolve_profile(
             profile=ReplayProfileArgs.model_validate({"kind": "replay", "rate": [2.0]}),
-            constraints={},
-            max_seconds=None,
-            max_requests=2,
-            max_errors=None,
-            max_error_rate=None,
-            max_global_error_rate=None,
+            constraints={"max_requests": {"max_num": 2}},
             random_seed=42,
             data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
             data_samples=2,
@@ -372,7 +377,7 @@ class TestReplayProfile:
 
         assert isinstance(profile, ReplayProfile)
         assert profile.args.time_scale == 2.0
-        assert profile.constraints["max_requests"] == 2
+        assert profile.constraints["max_requests"] == {"max_num": 2}
 
     @pytest.mark.smoke
     def test_next_strategy_returns_trace_then_none(self, tmp_path: Path):

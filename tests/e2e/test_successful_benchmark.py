@@ -69,7 +69,7 @@ def test_max_seconds_benchmark(server: VllmSimServer, tmp_path: Path):
     benchmark = report["benchmarks"][0]
 
     # Check that the max duration constraint was triggered
-    assert_constraint_triggered(benchmark, "max_seconds", {"duration_exceeded": True})
+    assert_constraint_triggered(benchmark, "max_duration", {"duration_exceeded": True})
 
     # Validate successful requests have all expected fields
     successful_requests = benchmark["requests"]["successful"]

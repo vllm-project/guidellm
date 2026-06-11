@@ -2,21 +2,20 @@
 Factory for creating and managing constraint initializers.
 
 Provides centralized access to registered constraint types with support for
-creating constraints from configuration dictionaries, simple values, or
-pre-configured instances.
+creating constraints from configuration dictionaries or pre-configured instances.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from guidellm.scheduler.constraints.args import ConstraintArgs
 from guidellm.scheduler.constraints.constraint import (
     Constraint,
     ConstraintInitializer,
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["ConstraintsInitializerFactory"]
@@ -27,8 +26,8 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
     Registry factory for creating and managing constraint initializers.
 
     Provides centralized access to registered constraint types with support for
-    creating constraints from configuration dictionaries, simple values, or
-    pre-configured instances. Handles constraint resolution and type validation
+    creating constraints from ``ConstraintArgs`` instances or pre-configured
+    initializer instances. Handles constraint resolution and type validation
     for the scheduler constraint system.
 
     Example:
@@ -42,49 +41,25 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
                 return lambda state, request: SchedulerUpdateAction()
 
         # Create and use constraint
-        constraint = ConstraintsInitializerFactory.create_constraint("new_constraint")
+        args = NewConstraintArgs(kind="new_constraint")
+        initializer = ConstraintsInitializerFactory.create(args)
+        constraint = initializer.create_constraint()
     """
 
     @classmethod
-    def create(cls, key: str, *args, **kwargs) -> ConstraintInitializer:
+    def create(cls, args: ConstraintArgs) -> ConstraintInitializer:
         """
-        Create a constraint initializer for the specified key.
+        Create a constraint initializer from a ``ConstraintArgs`` instance.
 
-        :param key: Registered constraint initializer key
-        :param args: Positional arguments for initializer creation
-        :param kwargs: Keyword arguments for initializer creation
+        :param args: Validated constraint arguments with kind discriminator
         :return: Configured constraint initializer instance
-        :raises ValueError: If the key is not registered in the factory
+        :raises ValueError: If args.kind is not registered in the factory
         """
-        if cls.registry is None or key not in cls.registry:
-            raise ValueError(f"Unknown constraint initializer key: {key}")
+        if cls.registry is None or args.kind not in cls.registry:
+            raise ValueError(f"Unknown constraint discriminator: {args.kind}")
 
-        initializer_class = cls.registry[key]
-
-        return (
-            initializer_class(*args, **kwargs)  # type: ignore[operator]
-            if not isinstance(initializer_class, type)
-            or not issubclass(initializer_class, SerializableConstraintInitializer)
-            else initializer_class(
-                **initializer_class.validated_kwargs(*args, **kwargs)  # type: ignore[misc]
-            )
-        )
-
-    @classmethod
-    def serialize(cls, initializer: ConstraintInitializer) -> dict[str, Any]:
-        """
-        Serialize constraint initializer to dictionary format.
-
-        :param initializer: Constraint initializer to serialize
-        :return: Dictionary representation or unserializable placeholder
-        """
-        if isinstance(initializer, SerializableConstraintInitializer):
-            return initializer.model_dump()
-        else:
-            unserializable = UnserializableConstraintInitializer(
-                orig_info=InfoMixin.extract_from_obj(initializer)
-            )
-            return unserializable.model_dump()
+        initializer_class = cls.registry[args.kind]
+        return initializer_class(args=args)  # type: ignore[operator]
 
     @classmethod
     def deserialize(
@@ -117,32 +92,20 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         )
 
     @classmethod
-    def create_constraint(cls, key: str, *args, **kwargs) -> Constraint:
-        """
-        Create a constraint instance for the specified key.
-
-        :param key: Registered constraint initializer key
-        :param args: Positional arguments for constraint creation
-        :param kwargs: Keyword arguments for constraint creation
-        :return: Configured constraint function ready for evaluation
-        :raises ValueError: If the key is not registered in the factory
-        """
-        return cls.create(key, *args, **kwargs).create_constraint()
-
-    @classmethod
     def resolve(
         cls,
         initializers: dict[
             str,
-            Any | dict[str, Any] | Constraint | ConstraintInitializer,
+            Constraint | ConstraintInitializer,
         ],
     ) -> dict[str, Constraint]:
         """
-        Resolve mixed constraint specifications to callable constraints.
+        Resolve constraint initializers to callable constraints.
 
-        :param initializers: Dictionary mapping constraint keys to specifications
+        :param initializers: Dictionary mapping constraint keys to specifications.
+            Values must be Constraint instances or ConstraintInitializer instances.
         :return: Dictionary mapping constraint keys to callable functions
-        :raises ValueError: If any key is not registered in the factory
+        :raises TypeError: If a value is not a supported type
         """
         constraints = {}
 
@@ -151,33 +114,11 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
                 constraints[key] = val
             elif isinstance(val, ConstraintInitializer):
                 constraints[key] = val.create_constraint()
-            elif isinstance(val, dict):
-                constraints[key] = cls.create_constraint(key, **val)
             else:
-                constraints[key] = cls.create_constraint(key, val)
+                raise TypeError(
+                    f"Constraint '{key}' has unsupported value type "
+                    f"{type(val).__name__}. Expected a Constraint instance or "
+                    f"ConstraintInitializer instance."
+                )
 
         return constraints
-
-    @classmethod
-    def resolve_constraints(
-        cls,
-        constraints: dict[str, Any | dict[str, Any] | Constraint],
-    ) -> dict[str, Constraint]:
-        """
-        Resolve constraints from mixed constraint specifications.
-
-        :param constraints: Dictionary mapping constraint keys to specifications
-        :return: Dictionary mapping constraint keys to callable functions
-        :raises ValueError: If any constraint key is not registered
-        """
-        resolved_constraints = {}
-
-        for key, val in constraints.items():
-            if isinstance(val, Constraint):
-                resolved_constraints[key] = val
-            elif isinstance(val, dict):
-                resolved_constraints[key] = cls.create_constraint(key, **val)
-            else:
-                resolved_constraints[key] = cls.create_constraint(key, val)
-
-        return resolved_constraints

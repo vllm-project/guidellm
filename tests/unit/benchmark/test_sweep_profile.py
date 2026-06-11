@@ -58,12 +58,6 @@ class TestSweepProfileArgs:
                 {"kind": "sweep", "rate": [7.0, 8.0]}
             ),
             constraints={},
-            max_seconds=None,
-            max_requests=None,
-            max_errors=None,
-            max_error_rate=None,
-            max_global_error_rate=None,
-            random_seed=42,
         )
         assert isinstance(profile, SweepProfile)
         assert profile.args.sweep_size == 7

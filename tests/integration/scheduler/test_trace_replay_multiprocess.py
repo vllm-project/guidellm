@@ -31,6 +31,7 @@ from guidellm.data.preprocessors.mappers import (
 from guidellm.scheduler import (
     BackendInterface,
     MaxNumberConstraint,
+    MaxRequestsConstraintArgs,
     TraceReplayStrategy,
     WorkerProcessGroup,
 )
@@ -160,7 +161,9 @@ async def test_trace_replay_multiprocess_from_trace_file(tmp_path: Path):
         backend=FastMockBackend(resolve_delay=RESOLVE_DELAY),
         requests=requests,
         strategy=strategy,
-        max_number=MaxNumberConstraint(max_num=NUM_REQUESTS),
+        max_number=MaxNumberConstraint(
+            args=MaxRequestsConstraintArgs(max_num=NUM_REQUESTS)
+        ),
     )
 
     settings_by_index: dict[int, RequestSettings] = {}
