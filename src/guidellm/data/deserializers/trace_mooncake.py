@@ -210,11 +210,13 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
         self.iteration_count = 0
 
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
+        self.iteration_count += 1
+        row_idx = 0
         hash_id_table: list[Any] = []
         sibling_token_blocks: dict[Any, list[list[int]]] = {}
         while True:
             try:
-                row = self.trace_rows[self.iteration_count]
+                row = self.trace_rows[row_idx]
             except IndexError:
                 break
 
@@ -236,14 +238,13 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
                     sibling_token_blocks[prev_id].append(hash_id_table[hash_id])
             prompt = _create_prompt_from_hash_ids(ids, hash_id_table, self.processor)
             yield (
-                self.iteration_count,
+                row_idx,
                 {
                     "prompt_tokens_count": row[self.config.prompt_tokens_column],
                     "output_tokens_count": row[self.config.output_tokens_column],
                     "prompt": prompt,
                 },
             )
-            self.iteration_count += 1
 
     @property
     def is_typed(self) -> bool:
