@@ -247,6 +247,7 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
                     "prompt": prompt,
                 },
             )
+            row_idx += 1
 
     @property
     def is_typed(self) -> bool:
