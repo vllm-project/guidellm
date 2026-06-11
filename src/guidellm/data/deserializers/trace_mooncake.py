@@ -34,8 +34,8 @@ __all__ = ["TraceMooncakeDataArgs", "TraceMooncakeDatasetDeserializer"]
 
 @DataArgs.register("mooncake")
 class TraceMooncakeDataArgs(TraceSyntheticDataArgs):
-    kind: Literal["trace_mooncake"] = Field(  # type: ignore[assignment]
-        default="trace_mooncake",
+    kind: Literal["mooncake"] = Field(  # type: ignore[assignment]
+        default="mooncake",
         description="Type identifier for the trace Mooncake dataset deserializer.",
     )
     hash_ids_column: str = Field(
