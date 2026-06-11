@@ -235,15 +235,15 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
                     )
                     sibling_token_blocks[prev_id].append(hash_id_table[hash_id])
             prompt = _create_prompt_from_hash_ids(ids, hash_id_table, self.processor)
-            self.iteration_count += 1
             yield (
-                self.iteration_count - 1,
+                self.iteration_count,
                 {
                     "prompt_tokens_count": row[self.config.prompt_tokens_column],
                     "output_tokens_count": row[self.config.output_tokens_column],
                     "prompt": prompt,
                 },
             )
+            self.iteration_count += 1
 
     @property
     def is_typed(self) -> bool:
