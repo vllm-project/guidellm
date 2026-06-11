@@ -6,6 +6,7 @@ Reads a trace file (timestamp, input_length, output_length, hash_ids) and yields
 row per line with a synthetic prompt matching the requested input_length for replay
 benchmarks.
 """
+from __future__ import annotations
 
 import dataclasses
 import math
@@ -17,6 +18,7 @@ from datasets import Dataset, DatasetInfo, Features, IterableDataset, List, Valu
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
+import numpy as np
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
@@ -266,6 +268,22 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
     @property
     def num_shards(self) -> int:
         return 1
+
+    def shuffle_data_sources(
+        self,
+        generator: np.random.Generator,  # noqa: ARG002
+    ) -> _TraceMooncakeExamplesIterable:
+        """Returns self as sharding is not implemented yet."""
+        return self
+
+    def shard_data_sources(
+        self,
+        num_shards: int,  # noqa: ARG002
+        index: int,  # noqa: ARG002
+        contiguous: bool = True,  # noqa: ARG002
+    ) -> _TraceMooncakeExamplesIterable:
+        """Returns self as sharding is not implemented yet."""
+        return self
 
     def load_state_dict(self, state_dict: dict) -> None:
         """Load the state from a state dict."""
