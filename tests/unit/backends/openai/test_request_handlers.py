@@ -14,9 +14,12 @@ from guidellm.backends.openai.request_handlers import (
     EmbeddingsRequestHandler,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    OpenAIWSRequestHandlerFactory,
     PoolingRequestHandler,
+    RealtimeTranscriptionWSRequestHandler,
     ResponsesRequestHandler,
     TextCompletionsRequestHandler,
+    WSEventResult,
 )
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.utils.registry import RegistryMixin
@@ -109,6 +112,259 @@ class TestOpenAIRequestHandlerFactory:
         """
         with pytest.raises(ValueError, match="No response handler registered"):
             OpenAIRequestHandlerFactory.create("invalid_type")
+
+
+class TestRealtimeTranscriptionWSRequestHandler:
+    """Realtime WebSocket path handler (``/v1/realtime``)."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_pcm16_chunks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Avoid torchcodec decode when format() PCM-encodes audio.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setattr(
+            "guidellm.backends.openai.request_handlers.pcm16_append_b64_chunks",
+            lambda *a, **k: ["YWFhYQ=="],
+        )
+
+    def test_extract_single_audio_requires_one_column(self) -> None:
+        handler = RealtimeTranscriptionWSRequestHandler()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": []},
+        )
+        with pytest.raises(ValueError, match="exactly one audio_column"):
+            handler.extract_single_audio(req)
+
+    def test_format_builds_body(self) -> None:
+        """format() validates audio and attaches PCM chunks to body.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": [{"audio": b"x"}]},
+        )
+        args = handler.format(
+            req,
+            model="m1",
+            websocket_path="/v1/realtime",
+            chunk_samples=1600,
+        )
+        assert args.body == {
+            "model": "m1",
+            "websocket_path": "/v1/realtime",
+            "chunk_samples": 1600,
+            "audio_chunks": ["YWFhYQ=="],
+        }
+
+    def test_ws_factory_create(self) -> None:
+        """OpenAIWSRequestHandlerFactory returns RealtimeTranscriptionWSRequestHandler.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = OpenAIWSRequestHandlerFactory.create("/v1/realtime")
+        assert isinstance(handler, RealtimeTranscriptionWSRequestHandler)
+
+    def test_http_factory_rejects_realtime_path(self) -> None:
+        """Realtime path is registered on the WS factory only.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="No response handler registered"):
+            OpenAIRequestHandlerFactory.create("/v1/realtime")
+
+    def test_ws_factory_rejects_unknown_path(self) -> None:
+        """Unknown WS paths raise ValueError from the WS factory.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="No WebSocket handler registered"):
+            OpenAIWSRequestHandlerFactory.create("/v1/unknown")
+
+    def test_add_streaming_event_delta_returns_content(self) -> None:
+        """transcription.delta with content returns CONTENT.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        result = handler.add_streaming_event(
+            {"type": "transcription.delta", "delta": "hi"}
+        )
+        assert result.kind is WSEventResult.CONTENT
+        assert result.content_tokens == 1
+        assert handler.streaming_text == "hi"
+
+    def test_add_streaming_event_empty_delta_returns_request_iteration(self) -> None:
+        """Empty transcription.delta returns REQUEST_ITERATION.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        result = handler.add_streaming_event(
+            {"type": "transcription.delta", "delta": ""}
+        )
+        assert result.kind is WSEventResult.REQUEST_ITERATION
+        assert result.content_tokens == 0
+        assert handler.streaming_text == ""
+
+    def test_add_streaming_event_done_returns_stream_end(self) -> None:
+        """transcription.done returns STREAM_END and stores usage.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        handler.add_streaming_event({"type": "transcription.delta", "delta": "a"})
+        result = handler.add_streaming_event(
+            {
+                "type": "transcription.done",
+                "text": "hello",
+                "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+            }
+        )
+        assert result.kind is WSEventResult.STREAM_END
+        assert handler._streaming_usage == {
+            "prompt_tokens": 5,
+            "completion_tokens": 1,
+        }
+        assert handler.streaming_text == "hello"
+
+    def test_add_streaming_event_done_without_text_joins_deltas(self) -> None:
+        """transcription.done without text keeps accumulated deltas.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        handler.add_streaming_event({"type": "transcription.delta", "delta": "hel"})
+        handler.add_streaming_event({"type": "transcription.delta", "delta": "lo"})
+        handler.add_streaming_event(
+            {
+                "type": "transcription.done",
+                "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+            }
+        )
+        assert handler.streaming_text == "hello"
+
+    def test_add_streaming_event_done_only_sets_text(self) -> None:
+        """Single transcription.done event sets text without prior deltas.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        handler.add_streaming_event(
+            {
+                "type": "transcription.done",
+                "text": "only",
+                "usage": {"prompt_tokens": 2, "completion_tokens": 1},
+            }
+        )
+        assert handler.streaming_text == "only"
+
+    def test_add_streaming_event_error_raises(self) -> None:
+        """error events raise RuntimeError.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        with pytest.raises(RuntimeError, match="401: auth failed"):
+            handler.add_streaming_event(
+                {"type": "error", "error": {"message": "auth failed", "code": "401"}}
+            )
+
+    @pytest.mark.parametrize(
+        ("error_payload", "expected"),
+        [
+            (None, "WebSocket error"),
+            ("", "WebSocket error"),
+            ("plain failure", "plain failure"),
+            ({"code": "500"}, "500"),
+        ],
+        ids=["none", "empty", "plain_string", "code_only"],
+    )
+    def test_add_streaming_event_error_formats_payload(
+        self, error_payload: object, expected: str
+    ) -> None:
+        """format_ws_error branches are surfaced through error events.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        with pytest.raises(RuntimeError, match=expected):
+            handler.add_streaming_event({"type": "error", "error": error_payload})
+
+    def test_add_streaming_event_unknown_returns_ignored(self) -> None:
+        """Unrecognized event types return IGNORED.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        result = handler.add_streaming_event({"type": "noise.event"})
+        assert result.kind is WSEventResult.IGNORED
+        assert result.content_tokens == 0
+        assert handler.streaming_text == ""
+        assert handler._streaming_usage is None
+
+    def test_compile_streaming_partial_without_done(self) -> None:
+        """compile_streaming works with deltas only (cancel/partial path).
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": [{"audio": b"x"}]},
+        )
+        args = handler.format(
+            req,
+            model="m1",
+            websocket_path="/v1/realtime",
+            chunk_samples=1600,
+        )
+        handler.add_streaming_event({"type": "transcription.delta", "delta": "partial"})
+        resp = handler.compile_streaming(req, args)
+        assert resp.text == "partial"
+        assert resp.request_id == "r1"
+        assert handler._streaming_usage is None
+        assert resp.input_metrics.audio_tokens is None
+        assert resp.output_metrics.text_tokens is None
+
+    def test_compile_streaming_builds_response(self) -> None:
+        """compile_streaming assembles text and metrics.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": [{"audio": b"x"}]},
+        )
+        args = handler.format(
+            req,
+            model="m1",
+            websocket_path="/v1/realtime",
+            chunk_samples=1600,
+        )
+        handler.add_streaming_event({"type": "transcription.delta", "delta": "hi"})
+        handler.add_streaming_event(
+            {
+                "type": "transcription.done",
+                "text": "hi",
+                "usage": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 1,
+                    "total_tokens": 6,
+                },
+            }
+        )
+        resp = handler.compile_streaming(req, args)
+        assert resp.text == "hi"
+        assert resp.request_id == "r1"
+        assert resp.input_metrics.audio_tokens == 5
+        assert resp.output_metrics.text_tokens == 1
+        assert '"model":"m1"' in resp.request_args
+        assert "audio_chunks" not in resp.request_args
 
 
 class TestTextCompletionsRequestHandler:

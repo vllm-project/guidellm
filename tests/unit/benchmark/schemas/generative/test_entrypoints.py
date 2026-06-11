@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from guidellm.backends.backend import BackendArgs
 from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+from guidellm.backends.openai.websocket import OpenAIWebSocketBackendArgs
 from guidellm.benchmark.schemas.generative.entrypoints import (
     BenchmarkGenerativeTextArgs,
 )
@@ -62,6 +63,37 @@ class TestBackendArgsTransformation:
         assert isinstance(args.backend_kwargs, OpenAIHTTPBackendArgs)
         assert args.backend_kwargs.target == "http://localhost:9000"
         assert args.backend_kwargs.model == "test_model"
+
+    def test_openai_websocket_backend_kwargs_validates(self) -> None:
+        """WebSocket backend accepts ``request_format`` (CLI --request-format)."""
+        args = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "kind": "openai_websocket",
+                    "target": "http://localhost:8000",
+                    "model": "rt-model",
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+        assert args.backend_kwargs.kind == "openai_websocket"
+        assert isinstance(args.backend_kwargs, OpenAIWebSocketBackendArgs)
+        assert args.backend_kwargs.target == "http://localhost:8000"
+        assert args.backend_kwargs.model == "rt-model"
+        assert args.backend_kwargs.request_format == "/v1/realtime"
+
+        with_format = BenchmarkGenerativeTextArgs.model_validate(
+            {
+                "backend_kwargs": {
+                    "kind": "openai_websocket",
+                    "target": "http://localhost:8000",
+                    "model": "rt-model",
+                    "request_format": "/v1/realtime",
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+        assert with_format.backend_kwargs.request_format == "/v1/realtime"
 
     def test_dict_with_request_format(self):
         """

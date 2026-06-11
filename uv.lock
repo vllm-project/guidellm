@@ -843,6 +843,7 @@ dependencies = [
     { name = "torch", version = "2.11.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "transformers" },
     { name = "uvloop" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -1006,6 +1007,7 @@ requires-dist = [
     { name = "types-toml", marker = "extra == 'dev'" },
     { name = "uvloop", specifier = ">=0.18" },
     { name = "uvloop", marker = "extra == 'perf'" },
+    { name = "websockets", specifier = ">=13.0" },
 ]
 provides-extras = ["all", "recommended", "perf", "tokenizers", "audio", "vision", "dev"]
 
