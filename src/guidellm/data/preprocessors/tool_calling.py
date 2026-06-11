@@ -6,14 +6,25 @@ Handles HuggingFace datasets where prompts are stored as OpenAI-format
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import Field
 
 from guidellm.data.preprocessors.preprocessor import (
+    DataPreprocessorArgs,
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
 
-__all__ = ["ToolCallingMessageExtractor"]
+__all__ = ["ToolCallingMessageExtractor", "ToolCallingMessageExtractorArgs"]
+
+
+@DataPreprocessorArgs.register("tool_calling_message_extractor")
+class ToolCallingMessageExtractorArgs(DataPreprocessorArgs):
+    kind: Literal["tool_calling_message_extractor"] = Field(
+        default="tool_calling_message_extractor",
+        description="Type identifier for the preprocessor.",
+    )
 
 
 @PreprocessorRegistry.register("tool_calling_message_extractor")
