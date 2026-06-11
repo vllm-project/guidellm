@@ -189,6 +189,15 @@ __all__ = ["run"]
     ),
 )
 @click.option(
+    "--output-extras",
+    callback=cli_tools.parse_arguments,
+    default=BenchmarkGenerativeTextArgs.get_default("output_extras"),
+    help=(
+        "JSON string of additional metadata to include in all output reports. "
+        'E.g., \'{"tag": "my_tag", "hardware": "A100"}\''
+    ),
+)
+@click.option(
     "--output-path",
     type=click.Path(),
     default=None,

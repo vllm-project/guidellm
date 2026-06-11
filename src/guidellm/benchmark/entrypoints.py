@@ -479,7 +479,7 @@ async def benchmark_generative_text(
         outputs=args.outputs, output_dir=args.output_dir, console=console
     )
 
-    report = GenerativeBenchmarksReport(args=args)
+    report = GenerativeBenchmarksReport(args=args, extras=args.output_extras)
     if console:
         console.print_update(
             title="Setup complete, starting benchmarks...", status="success"
