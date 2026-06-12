@@ -28,6 +28,7 @@ from .synthetic import (
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
+from .trace_mooncake import TraceMooncakeDataArgs, TraceMooncakeDatasetDeserializer
 from .trace_synthetic import TraceSyntheticDataArgs, TraceSyntheticDatasetDeserializer
 
 __all__ = [
@@ -54,6 +55,8 @@ __all__ = [
     "SyntheticTextDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
+    "TraceMooncakeDataArgs",
+    "TraceMooncakeDatasetDeserializer",
     "TraceSyntheticDataArgs",
     "TraceSyntheticDatasetDeserializer",
 ]
