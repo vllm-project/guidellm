@@ -4,12 +4,14 @@ import functools
 from typing import Any, get_args, get_origin
 
 import click
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+from pydantic_core import ErrorDetails
 
 from guidellm.schemas import PydanticClassRegistryMixin
 from guidellm.utils.cli import parse_arguments
 
 __all__ = [
+    "format_validation_errors",
     "registry_option",
     "registry_options_from_model",
 ]
@@ -263,3 +265,57 @@ def registry_options_from_model(model: type[BaseModel], group_key: str | None = 
         return wrapper
 
     return decorator
+
+
+def _error_to_message(err: ErrorDetails) -> str:
+    """
+    Format a single pydantic validation error into a human-readable message.
+
+    Includes the full location path, such as
+    ``data[0].synthetic_text.output_tokens``, so callers can identify which
+    nested subfield failed rather than only the top-level CLI option.
+
+    :param err: A pydantic error dict as returned by ``ValidationError.errors()``
+    :return: Formatted error string including the failing field path
+    """
+    loc = err.get("loc", ())
+    msg = err.get("msg", "validation error")
+    if not loc:
+        return msg
+
+    path = str(loc[0])
+    for component in loc[1:]:
+        if isinstance(component, int):
+            path += f"[{component}]"
+        else:
+            path += f".{component}"
+
+    return f"{msg} (at '{path}')"
+
+
+def _errors_to_message(errs: list[ErrorDetails]) -> str:
+    """
+    Combine one or more pydantic error dicts into a single click-friendly message.
+
+    :param errs: Pydantic error dicts as returned by ``ValidationError.errors()``
+    :return: Single error message; multiple errors are rendered as a bullet list
+    """
+    formatted = [_error_to_message(e) for e in errs]
+    if len(formatted) == 1:
+        return formatted[0]
+    return "\n  - " + "\n  - ".join(formatted)
+
+
+def format_validation_errors(
+    ctx: click.Context,
+    err: ValidationError,
+    base_class: type[BaseModel] | None = None,
+) -> click.BadParameter:
+    """
+    Translate a pydantic ValidationError into a click.BadParameter error.
+    """
+    errs = err.errors(include_url=False, include_context=True, include_input=True)
+    first_loc = errs[0]["loc"]
+    top_field = str(first_loc[0]) if first_loc else ""
+    param_name = "--" + top_field.replace("_", "-")
+    return click.BadParameter(_errors_to_message(errs), ctx=ctx, param_hint=param_name)
