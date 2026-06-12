@@ -224,7 +224,7 @@ guidellm benchmark --scenario chat --target http://localhost:8000
 
 ### Benchmark Controls
 
-Warm-up, cooldown, and maximum limits help ensure stable, repeatable measurements. This example runs a concurrent benchmark with 16 parallel requests, using 10% warm-up and cooldown periods to exclude initialization and shutdown effects, while limiting the test to stop if more than 5 errors occur.
+Warmup, cooldown, and maximum limits help ensure stable, repeatable measurements. This example runs a concurrent benchmark with 16 parallel requests, using 10% warmup and cooldown periods to exclude initialization and shutdown effects, while limiting the test to stop if more than 5 errors occur.
 
 ```bash
 guidellm benchmark \
@@ -240,10 +240,10 @@ guidellm benchmark \
 
 **Key parameters:**
 
-- `--warmup`: Warm-up specification - values between 0 and 1 represent a percentage of total requests/time, values ≥1 represent absolute request or time units
-- `--cooldown`: Cooldown specification - same format as warm-up; excludes final portion of benchmark from analysis to avoid shutdown effects
-- `--max-seconds`: Maximum duration in seconds per benchmark before automatic termination
-- `--max-requests`: Maximum number of requests per benchmark before automatic termination
+- `--warmup`: Warmup specification - values between 0 and 1 represent a percentage of total requests/time, values ≥1 represent absolute request or time units
+- `--cooldown`: Cooldown specification - same format as warmup; excludes final portion of benchmark from analysis to avoid shutdown effects
+- `--max-seconds`: Maximum duration in seconds for each benchmark before automatic termination
+- `--max-requests`: Maximum number of requests for each benchmark before automatic termination
 - `--max-errors`: Maximum number of individual errors before stopping the benchmark entirely
 - `--data`: Data to use for benchmarking - synthetic data with 256 input and 128 output tokens
 - `--detect-saturation`: Enable over-saturation detection to automatically stop benchmarks when the model becomes over-saturated (see also `--over-saturation` for more advanced control)
