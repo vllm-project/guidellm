@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+
 import click
 from pydantic import ValidationError
-from rich import print as pprint
 
 import guidellm.utils.cli as cli_tools
+from guidellm.benchmark import (
+    GenerativeConsoleBenchmarkerProgress,
+    benchmark_generative_text,
+)
 from guidellm.benchmark.schemas.entrypoints import BenchmarkArgs, BenchmarkScenario
 from guidellm.utils.click_pydantic import (
     format_validation_errors,
     registry_options_from_model,
 )
+from guidellm.utils.console import Console
 
 __all__ = [
     "run",
@@ -63,6 +69,12 @@ def run(**kwargs):  # noqa: C901, PLR0915
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
 
+    disable_console = kwargs.pop("disable_console", False)
+    disable_console_interactive = (
+        kwargs.pop("disable_console_interactive", False) or disable_console
+    )
+    console = Console() if not disable_console else None
+
     try:
         args = BenchmarkScenario.create(
             spec=kwargs.get("spec", {}),
@@ -73,4 +85,14 @@ def run(**kwargs):  # noqa: C901, PLR0915
         # Translate pydantic validation error to click argument error
         raise format_validation_errors(ctx, err, base_class=BenchmarkScenario) from err
 
-    pprint(f"Running benchmark with args: {args}")
+    asyncio.run(
+        benchmark_generative_text(
+            args=args,
+            progress=(
+                GenerativeConsoleBenchmarkerProgress()
+                if not disable_console_interactive
+                else None
+            ),
+            console=console,
+        )
+    )
