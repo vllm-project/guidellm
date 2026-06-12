@@ -13,6 +13,14 @@ video, and audio generation tasks.
 
 from __future__ import annotations
 
+from .accumulator import (
+    GenerativeBenchmarkAccumulator,
+    GenerativeBenchmarkTimings,
+    GenerativeMetricsAccumulator,
+    GenerativeRequestsAccumulator,
+    RunningMetricStats,
+    SchedulerMetricsAccumulator,
+)
 from .base import (
     Benchmark,
     BenchmarkAccumulator,
@@ -20,25 +28,18 @@ from .base import (
     BenchmarkConfig,
     BenchmarkT,
 )
-from .generative import (
-    BenchmarkGenerativeTextArgs,
+from .benchmark import GenerativeBenchmark
+from .entrypoints import BenchmarkGenerativeTextArgs
+from .metrics import (
     GenerativeAudioMetricsSummary,
-    GenerativeBenchmark,
-    GenerativeBenchmarkAccumulator,
-    GenerativeBenchmarkMetadata,
-    GenerativeBenchmarksReport,
-    GenerativeBenchmarkTimings,
     GenerativeImageMetricsSummary,
     GenerativeMetrics,
-    GenerativeMetricsAccumulator,
     GenerativeMetricsSummary,
-    GenerativeRequestsAccumulator,
     GenerativeTextMetricsSummary,
     GenerativeVideoMetricsSummary,
-    RunningMetricStats,
     SchedulerMetrics,
-    SchedulerMetricsAccumulator,
 )
+from .report import GenerativeBenchmarkMetadata, GenerativeBenchmarksReport
 
 __all__ = [
     "Benchmark",

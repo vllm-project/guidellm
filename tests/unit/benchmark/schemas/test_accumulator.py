@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from guidellm.benchmark.schemas.generative.accumulator import (
+from guidellm.benchmark.schemas.accumulator import (
     GenerativeRequestsAccumulator,
 )
 from guidellm.schemas import GenerativeRequestStats, RequestInfo, UsageMetrics

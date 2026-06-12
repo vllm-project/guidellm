@@ -15,7 +15,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from guidellm.benchmark.schemas.generative.accumulator import (
+from guidellm.benchmark.schemas.accumulator import (
     GenerativeBenchmarkAccumulator,
 )
 from guidellm.scheduler import SchedulerState

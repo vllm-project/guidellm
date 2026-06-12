@@ -22,7 +22,7 @@ def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:
     """
     from datasets import Dataset
 
-    from guidellm.data.finalizers.generative import GenerativeRequestFinalizerConfig
+    from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
     from guidellm.data.preprocessors.mappers import (
         GenerativeColumnMapper,
         GenerativeColumnMapperArgs,
@@ -33,7 +33,7 @@ def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:
     mapper = GenerativeColumnMapper(GenerativeColumnMapperArgs())
     mapper.setup_data([dataset])
 
-    finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerConfig())
+    finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
     mapped_turns = mapper([{"dataset": row}])
     return finalizer(mapped_turns)
 

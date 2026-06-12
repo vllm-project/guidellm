@@ -9,7 +9,6 @@ from collections.abc import Generator, MutableMapping
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import (
-    ConfigDict,
     Field,
     NonNegativeFloat,
 )
@@ -20,7 +19,7 @@ from guidellm.scheduler import (
     ConstraintsInitializerFactory,
     SchedulingStrategy,
 )
-from guidellm.schemas import PydanticClassRegistryMixin
+from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 from guidellm.utils.registry import RegistryMixin
 
 if TYPE_CHECKING:
@@ -39,12 +38,7 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
 
-    model_config = ConfigDict(
-        extra="forbid",
-        serialize_by_alias=True,
-        ser_json_bytes="base64",
-        val_json_bytes="base64",
-    )
+    model_config = standard_model_config()
 
     schema_discriminator: ClassVar[str] = "kind"
 

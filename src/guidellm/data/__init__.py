@@ -4,7 +4,12 @@ from .deserializers import (
     DatasetDeserializerFactory,
 )
 from .entrypoints import create_data_loader, process_dataset
-from .finalizers import DatasetFinalizer, FinalizerRegistry
+from .finalizers import (
+    DatasetFinalizer,
+    FinalizerRegistry,
+    GenerativeRequestFinalizer,
+    GenerativeRequestFinalizerArgs,
+)
 from .loaders import DataLoader, DataLoaderRegistry, TorchDataLoaderArgs
 from .preprocessors import (
     DataDependentPreprocessor,
@@ -38,6 +43,8 @@ __all__ = [
     "FinalizerRegistry",
     "GenerativeDatasetColumnType",
     "GenerativeRequestCollator",
+    "GenerativeRequestFinalizer",
+    "GenerativeRequestFinalizerArgs",
     "PreprocessorRegistry",
     "ProcessorFactory",
     "ShortPromptStrategy",
