@@ -842,6 +842,7 @@ dependencies = [
     { name = "torch", version = "2.11.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.11.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "transformers" },
+    { name = "typing-extensions" },
     { name = "uvloop" },
 ]
 
@@ -1004,6 +1005,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = "~=6.0.1" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = "~=2.32.0" },
     { name = "types-toml", marker = "extra == 'dev'" },
+    { name = "typing-extensions", specifier = ">=4.15.0" },
     { name = "uvloop", specifier = ">=0.18" },
     { name = "uvloop", marker = "extra == 'perf'" },
 ]
