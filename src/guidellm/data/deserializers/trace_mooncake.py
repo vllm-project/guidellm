@@ -6,6 +6,7 @@ Reads a trace file (timestamp, input_length, output_length, hash_ids) and yields
 row per line with a synthetic prompt matching the requested input_length for replay
 benchmarks.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -14,11 +15,11 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 from datasets import Dataset, DatasetInfo, Features, IterableDataset, List, Value
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
-import numpy as np
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
