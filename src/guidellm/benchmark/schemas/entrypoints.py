@@ -10,28 +10,25 @@ for persistent storage and reproduction of benchmark configurations.
 
 from __future__ import annotations
 
-import inspect
 import json
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from pydantic import (
     AliasChoices,
     AliasGenerator,
+    ConfigDict,
     Field,
-    NonNegativeFloat,
-    ValidationError,
-    ValidatorFunctionWrapHandler,
-    field_serializer,
-    field_validator,
+    model_validator,
 )
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from guidellm.backends import BackendArgs
-from guidellm.benchmark.profiles import Profile, ProfileArgs
+from guidellm.benchmark.profiles import ProfileArgs
 from guidellm.benchmark.scenarios import get_builtin_scenarios
-from guidellm.benchmark.schemas.base import TransientPhaseConfig
+from guidellm.benchmark.schemas.output import BenchmarkOutputArgs
+from guidellm.benchmark.schemas.random import RandomArgs
 from guidellm.data import (
     DataArgs,
     DataFinalizerArgs,
@@ -39,16 +36,122 @@ from guidellm.data import (
     DataPreprocessorArgs,
     DataTokenizerArgs,
 )
-from guidellm.scheduler import StrategyType
 from guidellm.scheduler.constraints import ConstraintArgs
 from guidellm.schemas import StandardBaseModel, standard_model_config
+from guidellm.utils.arg_string import ArgStringParser
 
 __all__ = [
-    "BenchmarkGenerativeTextArgs",
+    "BenchmarkArgs",
+    "BenchmarkMetadata",
+    "BenchmarkScenario",
 ]
 
 
-class BenchmarkGenerativeTextArgs(StandardBaseModel):
+def args_model_config() -> ConfigDict:
+    return standard_model_config(
+        extra="forbid",
+        validate_default=True,
+        validate_by_alias=True,
+        validate_by_name=True,
+        alias_generator=AliasGenerator(
+            # Support field names with hyphens
+            validation_alias=lambda field_name: AliasChoices(
+                field_name, field_name.replace("_", "-")
+            ),
+        ),
+    )
+
+
+def default_kind(kind: str) -> dict[str, Any]:
+    """Default factory for argument models to set the 'kind' field."""
+    return {"kind": kind}
+
+
+def default_kind_list(*kinds: str) -> list[dict[str, Any]]:
+    """Default factory for lists of argument models to set the 'kind' field."""
+    return [default_kind(kind) for kind in kinds]
+
+
+class BenchmarkArgs(StandardBaseModel):
+    """Common benchmark configuration arguments."""
+
+    model_config = args_model_config()
+
+    backend: BackendArgs = Field(
+        default_factory=lambda: default_kind("openai_http"),
+        description="Backend configuration arguments",
+        json_schema_extra={"argument_alias": "backend"},
+    )
+    profile: ProfileArgs = Field(
+        default_factory=lambda: default_kind("sweep"),
+        description="Benchmark profile configuration arguments",
+        json_schema_extra={"argument_alias": "profile"},
+    )
+    constraints: list[ConstraintArgs] = Field(
+        description="List of constraints to enforce during benchmark execution",
+        default_factory=list,
+        json_schema_extra={"argument_alias": "constraint"},
+    )
+    tokenizer: DataTokenizerArgs = Field(
+        default_factory=lambda: default_kind("huggingface_auto"),
+        description="Tokenizer configuration arguments",
+        json_schema_extra={"argument_alias": "tokenizer"},
+    )
+    data: list[DataArgs] = Field(
+        description="List of dataset sources or data files",
+        min_length=1,
+        json_schema_extra={"argument_alias": "data"},
+    )
+    data_column_mapper: DataPreprocessorArgs = Field(
+        default_factory=lambda: default_kind("generative_column_mapper"),
+        description="Column mapping preprocessor for dataset fields",
+        json_schema_extra={"argument_alias": "data_column_mapper"},
+    )
+    data_preprocessors: list[DataPreprocessorArgs] = Field(
+        default_factory=lambda: default_kind_list("encode_media"),
+        description="List of dataset preprocessors to apply in order",
+        json_schema_extra={"argument_alias": "data_preprocessor"},
+    )
+    data_finalizer: DataFinalizerArgs = Field(
+        default_factory=lambda: default_kind("generative"),
+        description="Finalizer for preparing data samples into requests",
+        json_schema_extra={"argument_alias": "data_finalizer"},
+    )
+    data_loader: DataLoaderArgs = Field(
+        default_factory=lambda: default_kind("pytorch"),
+        description="Dataloader configuration arguments",
+        json_schema_extra={"argument_alias": "data_loader"},
+    )
+    seed: RandomArgs = Field(
+        default_factory=lambda: default_kind("static"),
+        description="Random configuration for reproducibility (e.g., seed value)",
+        json_schema_extra={"argument_alias": "seed"},
+    )
+    outputs: list[BenchmarkOutputArgs] = Field(
+        default_factory=list,
+        description="Benchmark outputs",
+        json_schema_extra={"argument_alias": "output"},
+    )
+
+
+class BenchmarkMetadata(StandardBaseModel):
+    """
+    Metadata about the benchmark scenario.
+
+    Contains information such as name, description, and tags that describe the
+    benchmark scenario. This metadata is used for reporting and organizational
+    purposes but does not affect benchmark execution.
+    """
+
+    model_config = args_model_config()
+
+    labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Key-value pairs of metadata labels describing the benchmark.",
+    )
+
+
+class BenchmarkScenario(BaseSettings):
     """
     Configuration arguments for generative text benchmark execution.
 
@@ -75,10 +178,16 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
         )
     """
 
+    model_config = SettingsConfigDict(
+        env_prefix="GUIDELLM_",
+        env_nested_delimiter="_",
+        validate_default=True,
+    )
+
     @classmethod
     def create(
         cls, scenario: Path | str | None, **kwargs: dict[str, Any]
-    ) -> BenchmarkGenerativeTextArgs:
+    ) -> BenchmarkArgs:
         """
         Create benchmark args from scenario file and keyword arguments.
 
@@ -123,181 +232,68 @@ class BenchmarkGenerativeTextArgs(StandardBaseModel):
 
         return cls.model_validate(constructor_kwargs)
 
-    @classmethod
-    def get_default(cls: type[BenchmarkGenerativeTextArgs], field: str) -> Any:
+    def get_benchmarks(self) -> list[BenchmarkArgs]:
         """
-        Retrieve default value for a model field.
+        Get list of benchmark argument instances for each individual benchmark.
 
-        Extracts the default value from field metadata, handling both static defaults
-        and factory functions.
+        Combines global arguments with individual benchmark overrides to produce a
+        list of fully configured benchmark argument instances for execution.
 
-        :param field: Field name to retrieve default value for
-        :return: Default value for the field
-        :raises ValueError: If field does not exist
+        :return: List of benchmark argument instances
         """
-        if field not in cls.model_fields:
-            raise ValueError(f"Field '{field}' not found in {cls.__name__}")
+        parser = ArgStringParser(allow_overwrite=True)
+        benchmarks = []
+        for benchmark_override in self.benchmarks:
+            if benchmark_override is None:
+                benchmarks.append(self.spec.model_copy(deep=True))
+            else:
+                # Create a copy of the common args to apply overrides to
+                benchmark_args = self.spec.model_dump(mode="python")
+                for key, value in benchmark_override.items():
+                    parser.set(benchmark_args, key, value)
+                benchmarks.append(BenchmarkArgs.model_validate(benchmark_args))
 
-        field_info = cls.model_fields[field]
-        factory = field_info.default_factory
+        return benchmarks
 
-        if factory is None:
-            return field_info.default
-
-        # NOTE: Signature inspection is not currently supported for builtin factories
-        if (
-            factory in (str, int, float, bool, list, dict)
-            or len(inspect.signature(factory).parameters) == 0
-        ):
-            return factory()  # type: ignore[call-arg]
-        else:
-            return factory({})  # type: ignore[call-arg]
-
-    model_config = standard_model_config(
-        extra="ignore",
-        validate_by_alias=True,
-        validate_by_name=True,
-        alias_generator=AliasGenerator(
-            # Support field names with hyphens
-            validation_alias=lambda field_name: AliasChoices(
-                field_name, field_name.replace("_", "-")
-            ),
-        ),
+    metadata: BenchmarkMetadata = Field(
+        default_factory=BenchmarkMetadata,
+        description="Metadata describing the benchmark scenario.",
     )
-
-    data: list[DataArgs] = Field(
-        description="List of dataset sources or data files",
-        default_factory=list,
+    spec: BenchmarkArgs = Field(
+        default_factory=BenchmarkArgs,
+        description="Global configuration parameters for benchmark execution.",
+    )
+    benchmarks: list[dict[str, Any] | None] = Field(
+        default_factory=lambda: [None],
+        description="Individual benchmark overrides",
         min_length=1,
     )
-    # Benchmark configuration
-    profile: ProfileArgs = Field(
-        description="Benchmark profile configuration arguments",
-    )
-    rate: list[float] | None = Field(
-        default=None, description="Request rate(s) for rate-based scheduling"
-    )
-    # Backend configuration
-    backend_kwargs: BackendArgs = Field(
-        description="Backend configuration arguments",
-    )
-    # Data configuration
-    tokenizer: DataTokenizerArgs = Field(
-        description="Tokenizer configuration arguments",
-    )
-    data_column_mapper: DataPreprocessorArgs = Field(
-        description="Column mapping preprocessor for dataset fields",
-    )
-    data_preprocessors: list[DataPreprocessorArgs] = Field(
-        description="List of dataset preprocessors to apply in order",
-    )
-    data_finalizer: DataFinalizerArgs = Field(
-        description="Finalizer for preparing data samples into requests",
-    )
-    data_collator: Callable | Literal["generative"] | None = Field(
-        default="generative", description="Data collator for batch processing"
-    )
-    data_loader: DataLoaderArgs = Field(
-        description="Dataloader configuration arguments",
-    )
-    random_seed: int = Field(default=42, description="Random seed for reproducibility")
-    # Output configuration
-    outputs: list[str] | tuple[str] = Field(
-        default_factory=lambda: ["json", "csv"],
-        description=(
-            "The aliases of the output types to create with their default filenames "
-            "the file names and extensions of the output types to create"
-        ),
-    )
-    output_dir: str | Path = Field(
-        default_factory=Path.cwd,
-        description="The directory path to save file output types in",
-    )
-    # Benchmarker configuration
-    sample_requests: int | None = Field(
-        default=None,
-        description="Number of requests to sample for detailed metrics (None for all)",
-    )
-    warmup: int | float | dict | TransientPhaseConfig | None = Field(
-        default=None,
-        description=(
-            "Warmup phase config: time or requests before measurement starts "
-            "(overlapping requests count toward measurement)"
-        ),
-    )
-    cooldown: int | float | dict | TransientPhaseConfig | None = Field(
-        default=None,
-        description=(
-            "Cooldown phase config: time or requests after measurement ends "
-            "(overlapping requests count toward measurement)"
-        ),
-    )
-    rampup: NonNegativeFloat = Field(
-        default=0.0,
-        description=(
-            "The time, in seconds, to ramp up the request rate over. "
-            "Only applicable for Throughput/Concurrent strategies"
-        ),
-    )
-    prefer_response_metrics: bool = Field(
-        default=True,
-        description="Whether to prefer backend response metrics over request metrics",
-    )
-    # Constraints configuration
-    constraints: list[ConstraintArgs] = Field(
-        default_factory=list,
-        description="List of constraint configurations for benchmark execution",
-    )
-    max_seconds: int | float | None = Field(
-        default=None, description="Maximum benchmark execution time in seconds"
-    )
-    max_requests: int | None = Field(
-        default=None, description="Maximum number of requests to execute"
-    )
-    max_errors: int | None = Field(
-        default=None, description="Maximum number of errors before stopping"
-    )
-    max_error_rate: float | None = Field(
-        default=None, description="Maximum error rate (0-1) before stopping"
-    )
-    max_global_error_rate: float | None = Field(
-        default=None, description="Maximum global error rate (0-1) before stopping"
-    )
-    over_saturation: dict[str, Any] | None = Field(
-        default=None,
-        description=(
-            "Over-saturation detection configuration. A dict with configuration "
-            "parameters (mode, min_seconds, max_window_seconds, "
-            "moe_threshold, etc.)."
-        ),
-    )
 
-    @field_validator("data", "rate", "data_preprocessors", "constraints", mode="wrap")
+    @model_validator(mode="before")
     @classmethod
-    def single_to_list(
-        cls, value: Any, handler: ValidatorFunctionWrapHandler
-    ) -> list[Any]:
+    def insert_first_benchmark(cls, data: Any) -> Any:
         """
-        Ensures field is always a list.
+        Inserts the first benchmark into the common args.
 
-        :param value: Input value for the 'data' field
-        :return: List of data sources
+        This allows users to ommit fields from the common args if they have overrides
+        in the first benchmark.
         """
-        try:
-            return handler(value)
-        except ValidationError as err:
-            # If validation fails, try wrapping the value in a list
-            if err.errors()[0]["type"] == "list_type":
-                return handler([value])
-            else:
-                raise
+        if not isinstance(data, dict):
+            return data
 
-    @field_serializer("output_dir")
-    def serialize_output_dir(self, output_dir: str | Path) -> str | None:
-        """Serialize output_dir to string."""
-        return str(output_dir) if output_dir is not None else None
+        if "benchmarks" not in data or not data["benchmarks"]:
+            # No benchmarks provided, insert a blank one
+            data["benchmarks"] = [None]
 
-    @field_serializer("profile")
-    def serialize_profile(self, profile: StrategyType | Profile) -> str:
-        """Serialize profile to type string."""
-        return profile if isinstance(profile, str) else str(profile)
+        first_benchmark: dict[str, Any] | None = data["benchmarks"][0]
+        if isinstance(first_benchmark, dict) and first_benchmark:
+            # Ensure "spec" field exists for the parser to insert into
+            data["spec"] = data.get("spec", {})
+            parser = ArgStringParser(allow_overwrite=True)
+
+            # Insert the first benchmark into the common args
+            # Create fields recursively.
+            for key, value in first_benchmark.items():
+                parser.set(data["spec"], key, value)
+
+        return data

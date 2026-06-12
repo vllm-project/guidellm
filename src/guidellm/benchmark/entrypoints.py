@@ -26,7 +26,6 @@ from guidellm.benchmark.outputs import (
 from guidellm.benchmark.profiles import Profile, ProfileArgs, ProfileFactory
 from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 from guidellm.benchmark.schemas import (
-    BenchmarkGenerativeTextArgs,
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,

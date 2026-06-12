@@ -29,7 +29,7 @@ from .base import (
     BenchmarkT,
 )
 from .benchmark import GenerativeBenchmark
-from .entrypoints import BenchmarkGenerativeTextArgs
+from .entrypoints import BenchmarkArgs, BenchmarkMetadata, BenchmarkScenario
 from .metrics import (
     GenerativeAudioMetricsSummary,
     GenerativeImageMetricsSummary,
@@ -39,14 +39,20 @@ from .metrics import (
     GenerativeVideoMetricsSummary,
     SchedulerMetrics,
 )
+from .output import BenchmarkOutputArgs, JSONBenchmarkOutputArgs
+from .random import RandomArgs, StaticRandomArgs
 from .report import GenerativeBenchmarkMetadata, GenerativeBenchmarksReport
 
 __all__ = [
     "Benchmark",
     "BenchmarkAccumulator",
     "BenchmarkAccumulatorT",
+    "BenchmarkArgs",
+    "BenchmarkCommonArgs",
     "BenchmarkConfig",
-    "BenchmarkGenerativeTextArgs",
+    "BenchmarkMetadata",
+    "BenchmarkOutputArgs",
+    "BenchmarkScenario",
     "BenchmarkT",
     "GenerativeAudioMetricsSummary",
     "GenerativeBenchmark",
@@ -61,7 +67,10 @@ __all__ = [
     "GenerativeRequestsAccumulator",
     "GenerativeTextMetricsSummary",
     "GenerativeVideoMetricsSummary",
+    "JSONBenchmarkOutputArgs",
+    "RandomArgs",
     "RunningMetricStats",
     "SchedulerMetrics",
     "SchedulerMetricsAccumulator",
+    "StaticRandomArgs",
 ]

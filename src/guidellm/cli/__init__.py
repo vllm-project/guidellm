@@ -25,10 +25,10 @@ from __future__ import annotations
 
 import click
 
-from .benchmark import benchmark
 from .config import config
 from .mock_server import mock_server
 from .preprocess import preprocess
+from .run import run
 
 __all__ = ["cli"]
 
@@ -42,5 +42,5 @@ def cli():
 # Register all commands and groups
 cli.add_command(config)
 cli.add_command(mock_server)
-cli.add_command(benchmark)
 cli.add_command(preprocess)
+cli.add_command(run)

@@ -20,9 +20,7 @@ import yaml
 from pydantic import Field
 
 from guidellm.benchmark.schemas.benchmark import GenerativeBenchmark
-from guidellm.benchmark.schemas.entrypoints import (
-    BenchmarkGenerativeTextArgs,
-)
+from guidellm.benchmark.schemas.entrypoints import BenchmarkArgs
 from guidellm.schemas import StandardBaseModel
 
 __all__ = ["GenerativeBenchmarkMetadata", "GenerativeBenchmarksReport"]
@@ -34,12 +32,12 @@ class GenerativeBenchmarkMetadata(StandardBaseModel):
     """
 
     # Make sure to update version when making breaking changes to report schema
-    version: Literal[1] = Field(
+    version: Literal[2] = Field(
         description=(
             "Version of the benchmark report schema, increments "
             "whenever there is a breaking change to the output format"
         ),
-        default=1,
+        default=2,
     )
     guidellm_version: str = Field(
         description="Version of the guidellm package used for the benchmark",
@@ -73,7 +71,7 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         description="Metadata about the benchmark report and execution environment",
         default_factory=GenerativeBenchmarkMetadata,
     )
-    args: BenchmarkGenerativeTextArgs = Field(
+    config: BenchmarkArgs = Field(
         description="Benchmark arguments used for all benchmarks in the report"
     )
     benchmarks: list[GenerativeBenchmark] = Field(
