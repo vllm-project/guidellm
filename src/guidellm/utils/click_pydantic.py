@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 from typing import Any, get_args, get_origin
 
 import click
 from pydantic import BaseModel, ValidationError
-from pydantic_core import ErrorDetails
 
 from guidellm.schemas import PydanticClassRegistryMixin
 from guidellm.utils.cli import parse_arguments
@@ -267,7 +267,7 @@ def registry_options_from_model(model: type[BaseModel], group_key: str | None = 
     return decorator
 
 
-def _error_to_message(err: ErrorDetails) -> str:
+def _error_to_message(loc: tuple, msg: str) -> str:
     """
     Format a single pydantic validation error into a human-readable message.
 
@@ -278,8 +278,6 @@ def _error_to_message(err: ErrorDetails) -> str:
     :param err: A pydantic error dict as returned by ``ValidationError.errors()``
     :return: Formatted error string including the failing field path
     """
-    loc = err.get("loc", ())
-    msg = err.get("msg", "validation error")
     if not loc:
         return msg
 
@@ -293,17 +291,46 @@ def _error_to_message(err: ErrorDetails) -> str:
     return f"{msg} (at '{path}')"
 
 
-def _errors_to_message(errs: list[ErrorDetails]) -> str:
-    """
-    Combine one or more pydantic error dicts into a single click-friendly message.
+def _resolve_param_name(
+    loc: tuple[str | int, ...],
+    base_class: type[BaseModel],
+) -> tuple[tuple[str | int, ...], str]:
+    current_model = base_class
 
-    :param errs: Pydantic error dicts as returned by ``ValidationError.errors()``
-    :return: Single error message; multiple errors are rendered as a bullet list
-    """
-    formatted = [_error_to_message(e) for e in errs]
-    if len(formatted) == 1:
-        return formatted[0]
-    return "\n  - " + "\n  - ".join(formatted)
+    for i, component in enumerate(loc):
+        if isinstance(component, int):
+            continue
+
+        fields = current_model.model_fields
+        if component not in fields:
+            raise KeyError("Key does not exist")
+
+        field_info = fields[component]
+        extra = field_info.json_schema_extra
+        if isinstance(extra, dict):
+            alias = extra.get("argument_alias")
+            if alias is not None:
+                return loc[i:], str(alias)
+
+        annotation = field_info.annotation
+        if get_origin(annotation) is list:
+            args = get_args(annotation)
+            annotation = args[0] if args else None
+
+        if annotation is None:
+            raise KeyError("Key does not exist")
+
+        try:
+            is_model = issubclass(annotation, BaseModel)
+        except TypeError as e:
+            raise KeyError("Key is not a model") from e
+
+        if not is_model:
+            raise KeyError("Key does not exist")
+
+        current_model = annotation
+
+    raise KeyError("Key does not exist")
 
 
 def format_validation_errors(
@@ -312,10 +339,36 @@ def format_validation_errors(
     base_class: type[BaseModel] | None = None,
 ) -> click.BadParameter:
     """
-    Translate a pydantic ValidationError into a click.BadParameter error.
+    Translate a pydantic ``ValidationError`` into a ``click.BadParameter`` error.
+
+    Includes the top-level field names and full location paths, such as
+    ``data[0].synthetic_text.output_tokens``, so callers can identify which
+    nested subfield failed rather than only the top-level CLI option.
+
+    :param ctx: The active Click context
+    :param err: The pydantic validation error to translate
+    :param base_class: Optional root model class for resolving argument aliases
+    :return: A ``click.BadParameter`` with a formatted message and param hint
     """
     errs = err.errors(include_url=False, include_context=True, include_input=True)
-    first_loc = errs[0]["loc"]
-    top_field = str(first_loc[0]) if first_loc else ""
-    param_name = "--" + top_field.replace("_", "-")
-    return click.BadParameter(_errors_to_message(errs), ctx=ctx, param_hint=param_name)
+
+    param_names = set()
+    msgs = []
+    for e in errs:
+        loc = e.get("loc", ())
+        msg = e.get("msg", "validation error")
+
+        top_field: str | None = None
+        if len(loc) > 0:
+            if base_class is not None:
+                with contextlib.suppress(KeyError):
+                    loc, top_field = _resolve_param_name(loc, base_class)
+            top_field = top_field or str(loc[0]) or None
+
+            if top_field:
+                param_names.add("--" + top_field.replace("_", "-"))
+
+        msgs.append(_error_to_message(loc, msg))
+
+    error_msg = "".join(f"\n  - {msg}" for msg in msgs)
+    return click.BadParameter(error_msg, ctx=ctx, param_hint=list(param_names))
