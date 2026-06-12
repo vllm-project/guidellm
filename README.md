@@ -144,7 +144,7 @@ The console provides a lightweight summary with high-level statistics for each b
 
 This file is the authoritative record of the entire benchmark session. It includes configuration, metadata, per-benchmark statistics, and sample request entries with individual request timings. Use it for debugging, deeper analysis, or loading into Python with `GenerativeBenchmarksReport`.
 
-Alternatively, a yaml version of this file can be generated for easier human readability with the same content as `benchmarks.json` using the `--outputs yaml` argument.
+Alternatively, a YAML version of this file can be generated for easier human readability with the same content as `benchmarks.json` using the `--outputs yaml` argument.
 
 **benchmarks.csv**
 
@@ -160,7 +160,7 @@ GuideLLM supports a wide range of LLM benchmarking workflows. The examples below
 
 ### Load Patterns
 
-Simmulating different applications requires different traffic shapes. This example demonstrates rate-based load testing using a constant profile at 10 requests per second, running for 20 seconds with synthetic data of 128 prompt tokens and 256 output tokens.
+Simulating different applications requires different traffic shapes. This example demonstrates rate-based load testing using a constant profile at 10 requests per second, running for 20 seconds with synthetic data of 128 prompt tokens and 256 output tokens.
 
 ```bash
 guidellm benchmark \
@@ -190,14 +190,14 @@ guidellm benchmark run \
 
 **Key parameters:**
 
-- `--data`: Data source specification — pass `kind=synthetic_text,prompt_tokens=...,output_tokens=...` for synthetic data, `kind=huggingface,source=DATASET_ID` for HuggingFace datasets (with optional `load_kwargs` for dataset loading args), `kind=json_file,path=...` / `kind=csv_file,path=...` / `kind=text_file,path=...` for local files, or `kind=trace_synthetic,path=...` for trace replay files. Can be specified multiple times for multiple data sources.
+- `--data`: Data source specification — pass `kind=synthetic_text,prompt_tokens=...,output_tokens=...` for synthetic data, `kind=huggingface,source=DATASET_ID` for HuggingFace datasets (with optional `load_kwargs` for dataset loading args), `kind=json_file,path=...` / `kind=csv_file,path=...` / `kind=text_file,path=...` for local files, or `kind=trace_synthetic,path=...` for trace replay files. Can be specified multiple times for multiple data sources
 - `--data-column-mapper`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `text_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
 - `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
 - `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths
 
 ### Request Types and API Targets
 
-You can benchmark chat completions, text completions, or other supported request types. This example configures the benchmark to test chat completions API using a custom dataset file, with GuideLLM automatically formatting requests to match the chat completions schema.
+You can benchmark chat completions, text completions, or other supported request types. This example configures the benchmark to test the chat completions API using a custom dataset file, with GuideLLM automatically formatting requests to match the chat completions schema.
 
 ```bash
 guidellm benchmark \
@@ -208,7 +208,7 @@ guidellm benchmark \
 
 **Key parameters:**
 
-- `--request-type`: Specifies the API endpoint format - options include `chat_completions` (chat API format), `completions` (text completion format), `audio_transcription` (audio transcription), and `audio_translation` (audio translation).
+- `--request-type`: Specifies the API endpoint format - options include `chat_completions` (chat API format), `completions` (text completion format), `audio_transcription` (audio transcription), and `audio_translation` (audio translation)
 
 ### Using Scenarios
 
@@ -224,7 +224,7 @@ guidellm benchmark --scenario chat --target http://localhost:8000
 
 ### Benchmark Controls
 
-Warm-up, cooldown, and maximum limits help ensure stable, repeatable measurements. This example runs a concurrent benchmark with 16 parallel requests, using 10% warmup and cooldown periods to exclude initialization and shutdown effects, while limiting the test to stop if more than 5 errors occur.
+Warm-up, cooldown, and maximum limits help ensure stable, repeatable measurements. This example runs a concurrent benchmark with 16 parallel requests, using 10% warm-up and cooldown periods to exclude initialization and shutdown effects, while limiting the test to stop if more than 5 errors occur.
 
 ```bash
 guidellm benchmark \
@@ -240,9 +240,9 @@ guidellm benchmark \
 
 **Key parameters:**
 
-- `--warmup`: Warm-up specification - values between 0 and 1 represent a percentage of total requests/time, values ≥1 represent absolute request or time units.
-- `--cooldown`: Cool-down specification - same format as warmup, excludes final portion of benchmark from analysis to avoid shutdown effects
-- `--max-seconds`: Maximum duration in seconds for each benchmark before automatic termination
+- `--warmup`: Warm-up specification - values between 0 and 1 represent a percentage of total requests/time, values ≥1 represent absolute request or time units
+- `--cooldown`: Cooldown specification - same format as warm-up; excludes final portion of benchmark from analysis to avoid shutdown effects
+- `--max-seconds`: Maximum duration in seconds per benchmark before automatic termination
 - `--max-requests`: Maximum number of requests per benchmark before automatic termination
 - `--max-errors`: Maximum number of individual errors before stopping the benchmark entirely
 - `--data`: Data to use for benchmarking - synthetic data with 256 input and 128 output tokens
