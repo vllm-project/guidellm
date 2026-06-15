@@ -27,6 +27,7 @@ from .base import (
     BenchmarkAccumulatorT,
     BenchmarkConfig,
     BenchmarkT,
+    TransientPhaseConfig,
 )
 from .benchmark import GenerativeBenchmark
 from .entrypoints import BenchmarkArgs, BenchmarkMetadata, BenchmarkScenario
@@ -40,6 +41,7 @@ from .metrics import (
     SchedulerMetrics,
 )
 from .output import BenchmarkOutputArgs, JSONBenchmarkOutputArgs
+from .profiles import ProfileArgs
 from .random import RandomArgs, StaticRandomArgs
 from .report import GenerativeBenchmarkMetadata, GenerativeBenchmarksReport
 
@@ -67,9 +69,11 @@ __all__ = [
     "GenerativeTextMetricsSummary",
     "GenerativeVideoMetricsSummary",
     "JSONBenchmarkOutputArgs",
+    "ProfileArgs",
     "RandomArgs",
     "RunningMetricStats",
     "SchedulerMetrics",
     "SchedulerMetricsAccumulator",
     "StaticRandomArgs",
+    "TransientPhaseConfig",
 ]

@@ -6,85 +6,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator, MutableMapping
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any
 
-from pydantic import (
-    Field,
-    NonNegativeFloat,
-)
-
+from guidellm.benchmark.schemas import Benchmark, ProfileArgs
 from guidellm.scheduler import (
     Constraint,
     ConstraintInitializer,
     ConstraintsInitializerFactory,
     SchedulingStrategy,
 )
-from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 from guidellm.utils.registry import RegistryMixin
-
-if TYPE_CHECKING:
-    from guidellm.benchmark.schemas import Benchmark
-
-
-class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
-    """
-    Base class for profile creation arguments.
-
-    This class serves as a base for defining argument models used in the creation
-    of profile instances. It inherits from PydanticClassRegistryMixin to enable
-    automatic registration of subclasses, allowing for flexible and extensible
-    profile configurations.
-
-    :cvar schema_discriminator: Field name for polymorphic deserialization
-    """
-
-    model_config = standard_model_config()
-
-    schema_discriminator: ClassVar[str] = "kind"
-
-    @classmethod
-    def __pydantic_schema_base_type__(cls) -> type[ProfileArgs]:
-        """
-        Return base type for polymorphic validation hierarchy.
-
-        :return: Base ProfileArgs class for schema validation
-        """
-        if cls.__name__ == "ProfileArgs":
-            return cls
-
-        return ProfileArgs
-
-    @classmethod
-    def _fail_on_duplicate_rate(cls, data: Any, key: str) -> Any:
-        """Fail if both "rate" and <key> are specified.
-
-        Some profile alias "rate" and a more specific key; if the user enters
-        both, either directly or via the global "--rate" option, we should fail.
-
-        for example:
-
-            "--profile kind=concurrent,streams=2.0 --rate 3"
-            "--profile kind=concurrent,streams=2,rate=3"
-
-        Pydantic won't resolve all cases consistently, so we need to fail explicitly.
-
-        :param data: The data to validate
-        :param key: The key to check for duplicate rate
-        :return: The data
-        """
-        if isinstance(data, dict) and all(key in data for key in ("rate", key)):
-            raise ValueError(f"Both 'rate' and '{key}' cannot be specified.")
-        return data
-
-    kind: str = Field(
-        description="Profile type discriminator for polymorphic serialization",
-    )
-    rampup_duration: NonNegativeFloat = Field(
-        default=0.0,
-        description=(
-            "Duration in seconds to ramp up the targeted scheduling rate, if applicable"
-        ),
-    )
 
 
 class ProfileFactory(RegistryMixin["type[Profile]"]):

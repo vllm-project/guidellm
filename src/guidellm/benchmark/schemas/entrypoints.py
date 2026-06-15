@@ -25,9 +25,9 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from guidellm.backends import BackendArgs
-from guidellm.benchmark.profiles import ProfileArgs
 from guidellm.benchmark.scenarios import get_builtin_scenarios
 from guidellm.benchmark.schemas.output import BenchmarkOutputArgs
+from guidellm.benchmark.schemas.profiles import ProfileArgs
 from guidellm.benchmark.schemas.random import RandomArgs
 from guidellm.data import (
     DataArgs,

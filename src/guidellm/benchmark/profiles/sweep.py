@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 
+from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -17,7 +18,7 @@ from guidellm.scheduler import (
     ThroughputStrategy,
 )
 
-from .profile import Profile, ProfileArgs, ProfileFactory
+from .profile import Profile, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

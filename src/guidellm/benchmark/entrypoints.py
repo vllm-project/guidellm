@@ -23,7 +23,7 @@ from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,
 )
-from guidellm.benchmark.profiles import Profile, ProfileArgs, ProfileFactory
+from guidellm.benchmark.profiles import Profile, ProfileFactory
 from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 from guidellm.benchmark.schemas import (
     BenchmarkArgs,
@@ -32,8 +32,8 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
+    ProfileArgs,
 )
-from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.data import (
     DataLoader,
     create_data_loader,

@@ -37,6 +37,7 @@ __all__ = [
     "BenchmarkAccumulatorT",
     "BenchmarkConfig",
     "BenchmarkT",
+    "TransientPhaseConfig",
 ]
 
 BenchmarkAccumulatorT = TypeVar(
@@ -156,7 +157,10 @@ class TransientPhaseConfig(StandardBaseModel):
         return duration, requests
 
     def compute_transition_time(
-        self, info: RequestInfo, state: SchedulerState, period: Literal["start", "end"]
+        self,
+        info: RequestInfo,
+        state: SchedulerState,
+        period: Literal["start", "end"],
     ) -> tuple[bool, float | None]:
         """
         Determine transition timestamp for entering or exiting phase.

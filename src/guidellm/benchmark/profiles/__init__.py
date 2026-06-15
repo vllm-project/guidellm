@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from .asynchronous import AsyncProfile, AsyncProfileArgs
 from .concurrent import ConcurrentProfile, ConcurrentProfileArgs
-from .profile import Profile, ProfileArgs, ProfileFactory
+from .profile import Profile, ProfileFactory
 from .replay import ReplayProfile, ReplayProfileArgs
 from .sweep import SweepProfile, SweepProfileArgs
 from .synchronous import SynchronousProfile, SynchronousProfileArgs
@@ -25,7 +25,6 @@ __all__ = [
     "ConcurrentProfile",
     "ConcurrentProfileArgs",
     "Profile",
-    "ProfileArgs",
     "ProfileFactory",
     "ReplayProfile",
     "ReplayProfileArgs",
