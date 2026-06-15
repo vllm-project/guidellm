@@ -32,8 +32,6 @@ _CODEC_TO_FORMAT: dict[str, str] = {
     "opus": "ogg",
 }
 
-_wav_fallback_state = {"warned": False}
-
 
 def _codec_to_format(codec: str) -> str | None:
     """
@@ -103,13 +101,7 @@ def encode_audio(
             audio_format = _codec_to_format(source_codec)
         if audio_format is None:
             audio_format = "wav"
-            if not _wav_fallback_state["warned"]:
-                _wav_fallback_state["warned"] = True
-                logger.warning(
-                    "Could not detect source audio codec; "
-                    "falling back to WAV encoding. "
-                    "Set audio_format explicitly to suppress this warning."
-                )
+            logger.debug("Falling back to WAV audio formatting")
 
     bitrate_val = (
         int(bitrate.rstrip("k")) * 1000 if bitrate.endswith("k") else int(bitrate)
@@ -124,24 +116,25 @@ def encode_audio(
         mono=mono,
     )
 
-    # Use source file name when available, otherwise build from resolved format
-    if isinstance(audio, str | Path):
-        resolved_file_name = get_file_name(audio)
-    elif file_name is not None:
-        resolved_file_name = file_name
-    else:
-        resolved_file_name = f"audio.{format_val}"
-
     return {
         "type": "audio_file",
         "audio": encoded_audio,
-        "file_name": resolved_file_name,
+        "file_name": get_file_name(audio)
+        if isinstance(audio, str | Path)
+        else file_name,
         "format": audio_format,
         "mimetype": f"audio/{format_val}",
         "audio_samples": samples.sample_rate,
         "audio_seconds": samples.duration_seconds,
         "audio_bytes": len(encoded_audio),
     }
+
+
+def decode_audio(audio: bytes):
+    audio_samples, _ = _decode_audio(audio)
+    # torchcodec decodes audio on CPU, so .data is always
+    # a CPU torch.Tensor. .cpu() is a no-op on CPU tensors.
+    return audio_samples.data.cpu().numpy()
 
 
 def _decode_audio(  # noqa: C901, PLR0912, PLR0915

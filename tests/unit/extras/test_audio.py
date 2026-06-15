@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 import torch
-from loguru import logger
 
 from guidellm.utils import audio as _audio_mod
 
@@ -49,14 +48,6 @@ def real_wav_file():
 
     if temp_path.exists():
         temp_path.unlink()
-
-
-@pytest.fixture(autouse=True)
-def _reset_wav_fallback_warning():
-    """Reset the module-level warn-once flag between tests."""
-    _audio_mod._wav_fallback_state["warned"] = False
-    yield
-    _audio_mod._wav_fallback_state["warned"] = False
 
 
 def test_encode_audio_with_tensor_input(sample_audio_tensor):
@@ -314,50 +305,6 @@ def test_codec_detection_from_mp3_bytes(sample_audio_tensor):
 
     assert result["format"] == "mp3"
     assert result["mimetype"] == "audio/mp3"
-
-
-def test_fallback_to_wav_for_raw_tensor(sample_audio_tensor):
-    """
-    Raw float tensor has no codec info -- should fall back to WAV and
-    emit a warning.
-
-    ## WRITTEN BY AI ##
-    """
-    messages: list[str] = []
-    sink_id = logger.add(lambda msg: messages.append(str(msg)), level="WARNING")
-
-    try:
-        result = _audio_mod.encode_audio(
-            audio=sample_audio_tensor,
-            sample_rate=16000,
-        )
-    finally:
-        logger.remove(sink_id)
-
-    assert result["format"] == "wav"
-    assert result["mimetype"] == "audio/wav"
-    assert result["file_name"] == "audio.wav"
-    assert any("falling back to WAV" in m for m in messages)
-
-
-def test_warn_once_on_fallback(sample_audio_tensor):
-    """
-    The WAV fallback warning should only fire once per process (reset
-    between tests via fixture).
-
-    ## WRITTEN BY AI ##
-    """
-    messages: list[str] = []
-    sink_id = logger.add(lambda msg: messages.append(str(msg)), level="WARNING")
-
-    try:
-        _audio_mod.encode_audio(audio=sample_audio_tensor, sample_rate=16000)
-        _audio_mod.encode_audio(audio=sample_audio_tensor, sample_rate=16000)
-    finally:
-        logger.remove(sink_id)
-
-    warning_count = sum(1 for m in messages if "falling back to WAV" in m)
-    assert warning_count == 1
 
 
 def test_explicit_format_overrides_codec(real_wav_file):
