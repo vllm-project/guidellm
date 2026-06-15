@@ -269,12 +269,12 @@ class TestTraceSyntheticDatasetDeserializer:
             (
                 '{"timestamp": "bad", "input_length": 10, "output_length": 5}\n',
                 {},
-                "could not convert",
+                "scalar of type float",
             ),
             (
                 '{"timestamp": 0, "input_length": "bad", "output_length": 5}\n',
                 {},
-                "invalid literal",
+                "scalar of type int32",
             ),
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": null}\n',

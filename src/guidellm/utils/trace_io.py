@@ -7,18 +7,51 @@ Used by replay profiles and the trace_synthetic deserializer.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
-from datasets import Dataset, load_dataset
+from datasets import Dataset, Value, load_dataset
+
+from guidellm.data.deserializers.deserializer import DataNotSupportedError
 
 __all__ = ["load_relative_timestamps", "load_trace_rows"]
 
 
+@dataclasses.dataclass
+class TraceColumn:
+    """Holds metadata for trace file columns in a HuggingFace Dataset."""
+
+    name: str
+    feature_type: Value
+
+
+def get_column_names(columns: list[TraceColumn]) -> list[str]:
+    return [c.name for c in columns]
+
+
+def validate_trace_path(path: Path | str) -> Path:
+    path = Path(path)
+    suffix = path.suffix.lower()
+    if suffix != ".jsonl":
+        raise ValueError(f"Unsupported trace file format: {suffix}")
+    if path.stat().st_size == 0:
+        raise ValueError(f"Trace file is empty or has no valid rows: {path}")
+    return path
+
+
+def check_and_raise_missing_columns(
+    required_columns: list[str], actual_columns: list[str]
+) -> None:
+    missing = [c for c in required_columns if c not in actual_columns]
+    if missing:
+        raise KeyError(f"Trace row missing required columns: {missing}")
+
+
 def load_trace_rows(
     path: Path | str,
-    required_columns: list[str] | None = None,
-    timestamp_column: str | None = None,
+    timestamp_column: TraceColumn,
+    required_columns: list[TraceColumn] | None = None,
     **data_kwargs: Any,
 ) -> Dataset:
     """
@@ -27,41 +60,45 @@ def load_trace_rows(
     Supports .jsonl only (one JSON object per line).
     If required_columns is set, every column must exist in the dataset;
     otherwise KeyError is raised with a descriptive message.
-    If timestamp_column is set, rows are sorted by that column.
+    Rows are sorted by timestamp_column.
 
     :param path: Path to the trace file.
-    :param required_columns: Optional list of column/field names that each row
-        must have.
-    :param timestamp_column: Optional timestamp column used to sort trace rows.
+    :param timestamp_column: Timestamp column used to sort trace rows.
+    :param required_columns: Optional list of column/fields that each row must have.
     :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
     :return: HuggingFace Dataset (iterable as dicts, column-accessible).
+    :raises DataNotSupportedError: For any of the following reasons:
+    - The dataset is empty or has no valid rows
+    - A required column or timestamp_column contains a NoneType
+    - A required column or timestamp_column failed during cast to feature type
+
     :raises KeyError: If a required column is missing in the dataset.
     :raises ValueError: If the file format is not .jsonl.
     """
-    path = Path(path)
-    suffix = path.suffix.lower()
-    if suffix != ".jsonl":
-        raise ValueError(f"Unsupported trace file format: {suffix}")
-    if path.stat().st_size == 0:
-        raise ValueError(f"Trace file is empty or has no valid rows: {path}")
-
+    if required_columns is None:
+        required_columns = []
+    if timestamp_column not in required_columns:
+        required_columns = [*required_columns, timestamp_column]
+    path = validate_trace_path(path)
     trace_dataset = load_dataset(
         "json", data_files=str(path), split="train", **data_kwargs
     )
-
-    required_columns = required_columns or []
-    if timestamp_column and timestamp_column not in required_columns:
-        required_columns = [*required_columns, timestamp_column]
-
     if required_columns:
-        missing = [c for c in required_columns if c not in trace_dataset.column_names]
-        if missing:
-            raise KeyError(f"Trace row missing required columns: {missing}")
+        check_and_raise_missing_columns(
+            get_column_names(required_columns), trace_dataset.column_names
+        )
 
-    if timestamp_column:
-        trace_dataset = trace_dataset.sort(timestamp_column)
+    if not trace_dataset:
+        raise DataNotSupportedError(f"Trace file is empty or has no valid rows: {path}")
+    for col in required_columns:
+        if trace_dataset.data[col.name].null_count != 0:
+            raise DataNotSupportedError(f"NoneType found in {col}")
+        try:
+            trace_dataset.cast_column(col.name, col.feature_type)
+        except ValueError as e:
+            raise DataNotSupportedError(str(e)) from e
 
-    return trace_dataset
+    return trace_dataset.sort(timestamp_column.name)
 
 
 def load_relative_timestamps(
@@ -77,11 +114,11 @@ def load_relative_timestamps(
     :param path: Path to the trace file.
     :param timestamp_column: Name of the column/field containing the timestamp.
     :return: List of relative timestamps in seconds (first is 0.0).
-    :raises ValueError: If the trace file is empty or has no valid rows.
     """
-    trace_dataset = load_trace_rows(path, timestamp_column=timestamp_column)
-    if len(trace_dataset) == 0:
-        raise ValueError(f"Trace file is empty or has no valid rows: {path}")
+    trace_dataset = load_trace_rows(
+        path,
+        TraceColumn(name=timestamp_column, feature_type=Value("float")),
+    )
     timestamps = [float(t) for t in trace_dataset[timestamp_column]]
     t0 = timestamps[0]
     return [t - t0 for t in timestamps]

@@ -9,14 +9,12 @@ benchmarks.
 
 from __future__ import annotations
 
-import dataclasses
 import math
 from collections.abc import Callable, Iterable
-from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from datasets import Dataset, DatasetInfo, Features, IterableDataset, List, Value
+from datasets import DatasetInfo, Features, IterableDataset, List, Value
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
@@ -30,7 +28,7 @@ from guidellm.data.deserializers.deserializer import (
 )
 from guidellm.data.deserializers.trace_synthetic import TraceSyntheticDataArgs
 from guidellm.data.schemas import DataArgs
-from guidellm.utils.trace_io import load_trace_rows
+from guidellm.utils.trace_io import TraceColumn, load_trace_rows
 
 __all__ = ["TraceMooncakeDataArgs", "TraceMooncakeDatasetDeserializer"]
 
@@ -137,38 +135,6 @@ def _create_prompt_from_hash_ids(
     return prompt
 
 
-@dataclasses.dataclass
-class Column:
-    name: str
-    feature_type: Value
-
-
-def _load_formatted_trace_rows(
-    path: Path,
-    timestamp_column: Column,
-    required_columns: list[Column],
-) -> Dataset:
-    """Load a trace file and format the columns."""
-    try:
-        rows = load_trace_rows(
-            path,
-            [col.name for col in required_columns],
-            timestamp_column.name,
-        )
-    except (DatasetGenerationError, KeyError, ValueError) as e:
-        raise DataNotSupportedError(str(e)) from e
-    if not rows:
-        raise DataNotSupportedError("Trace file is empty")
-    for col in [timestamp_column] + required_columns:
-        if rows.data[col.name].null_count != 0:
-            raise DataNotSupportedError(f"NoneType found in {col}")
-        try:
-            rows.cast_column(col.name, col.feature_type)
-        except ValueError as e:
-            raise DataNotSupportedError(str(e)) from e
-    return rows
-
-
 def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
     n_in = row[config.prompt_tokens_column]
     n_out = row[config.output_tokens_column]
@@ -205,15 +171,18 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
         self.processor = processor
         self.faker = Faker()
         self.faker.seed_instance(random_seed)
-        self.trace_rows = _load_formatted_trace_rows(
-            config.path,
-            Column(config.timestamp_column, Value("float")),
-            required_columns=[
-                Column(config.prompt_tokens_column, Value("int32")),
-                Column(config.output_tokens_column, Value("int32")),
-                Column(config.hash_ids_column, List(Value("int32"))),
-            ],
-        )
+        try:
+            self.trace_rows = load_trace_rows(
+                config.path,
+                TraceColumn(config.timestamp_column, Value("float")),
+                required_columns=[
+                    TraceColumn(config.prompt_tokens_column, Value("int32")),
+                    TraceColumn(config.output_tokens_column, Value("int32")),
+                    TraceColumn(config.hash_ids_column, List(Value("int32"))),
+                ],
+            )
+        except (DatasetGenerationError, KeyError, ValueError) as e:
+            raise DataNotSupportedError(str(e)) from e
         for row in self.trace_rows:
             _validate_row(row, self.config)
         self.iteration_count = 0

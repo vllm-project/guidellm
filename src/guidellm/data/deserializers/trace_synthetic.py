@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
-from datasets import Dataset
+from datasets import Dataset, Value
 from datasets.exceptions import DatasetGenerationError
 from faker import Faker
 from pydantic import Field, field_serializer
@@ -23,7 +23,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import DataArgs
-from guidellm.utils.trace_io import load_trace_rows
+from guidellm.utils.trace_io import TraceColumn, load_trace_rows
 
 __all__ = ["TraceSyntheticDataArgs", "TraceSyntheticDatasetDeserializer"]
 
@@ -106,38 +106,6 @@ def _create_prompt(
     return _decode_prompt(processor, prompt_token_ids)
 
 
-def _load_trace_rows(
-    path: Path,
-    timestamp_column: str,
-    prompt_tokens_column: str,
-    output_tokens_column: str,
-) -> list[dict[str, Any]]:
-    """Load trace file into list of dicts with timestamp, prompt_tokens,
-    output_tokens."""
-    try:
-        raw = load_trace_rows(
-            path,
-            required_columns=[
-                prompt_tokens_column,
-                output_tokens_column,
-            ],
-            timestamp_column=timestamp_column,
-        )
-    except (DatasetGenerationError, KeyError, ValueError) as e:
-        raise DataNotSupportedError(str(e)) from e
-    try:
-        return [
-            {
-                "timestamp": float(row[timestamp_column]),
-                "prompt_tokens": int(row[prompt_tokens_column]),
-                "output_tokens": int(row[output_tokens_column]),
-            }
-            for row in raw
-        ]
-    except (TypeError, ValueError) as e:
-        raise DataNotSupportedError(str(e)) from e
-
-
 @DataArgs.register("trace_synthetic")
 class TraceSyntheticDataArgs(DataArgs):
     """Model for synthetic trace dataset deserializer arguments."""
@@ -188,24 +156,27 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
                 "TraceSyntheticDatasetDeserializer expects a path to a trace file, "
                 f"got {path}"
             )
-        rows = _load_trace_rows(
-            path,
-            config.timestamp_column,
-            config.prompt_tokens_column,
-            config.output_tokens_column,
-        )
-        if not rows:
-            raise DataNotSupportedError("Trace file is empty")
+        try:
+            rows = load_trace_rows(
+                config.path,
+                TraceColumn(config.timestamp_column, Value("float")),
+                required_columns=[
+                    TraceColumn(config.prompt_tokens_column, Value("int32")),
+                    TraceColumn(config.output_tokens_column, Value("int32")),
+                ],
+            )
+        except (DatasetGenerationError, KeyError, ValueError) as e:
+            raise DataNotSupportedError(str(e)) from e
 
         processor = processor_factory()
         faker = Faker()
         faker.seed_instance(random_seed)
-        max_prompt_tokens = max(row["prompt_tokens"] for row in rows)
+        max_prompt_tokens = max(row[config.prompt_tokens_column] for row in rows)
         base_prompt_token_ids = _create_base_prompt_token_ids(
             processor, faker, max_prompt_tokens
         )
 
-        timestamps = [row["timestamp"] for row in rows]
+        timestamps = [row[config.timestamp_column] for row in rows]
         t0 = timestamps[0]
         relative_timestamps = [t - t0 for t in timestamps]
 
@@ -213,8 +184,8 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
         prompt_tokens_counts: list[int] = []
         output_tokens_counts: list[int] = []
         for i, row in enumerate(rows):
-            n_in = row["prompt_tokens"]
-            n_out = row["output_tokens"]
+            n_in = row[config.prompt_tokens_column]
+            n_out = row[config.output_tokens_column]
             if n_in < 0 or n_out < 0:
                 raise DataNotSupportedError(
                     "Trace token counts must be non-negative, got "

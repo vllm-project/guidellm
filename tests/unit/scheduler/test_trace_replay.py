@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from datasets.exceptions import DatasetGenerationError
 
+from guidellm.data.deserializers import DataNotSupportedError
 from guidellm.scheduler import SchedulingStrategy, TraceReplayStrategy
 from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.utils.trace_io import load_relative_timestamps
@@ -71,8 +72,8 @@ class TestLoadRelativeTimestamps:
             (
                 ".jsonl",
                 '{"timestamp": "bad", "input_length": 10, "output_length": 100}\n',
-                ValueError,
-                "could not convert",
+                DataNotSupportedError,
+                "Failed to parse string",
             ),
             (
                 ".jsonl",
