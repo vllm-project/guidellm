@@ -11,11 +11,8 @@ validation, data preprocessing, profile constraints, and output format specifica
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypeVar
-
-from typing_extensions import TypeAliasType
 
 from guidellm.backends import Backend, BackendArgs
 from guidellm.benchmark.benchmarker import Benchmarker
@@ -55,18 +52,6 @@ __all__ = [
     "benchmark_generative_text",
     "reimport_benchmarks_report",
 ]
-
-
-# Type Aliases
-
-OutputFormatT = TypeAliasType(
-    "OutputFormatT",
-    tuple[str, ...]
-    | list[str]
-    | Mapping[str, str | dict[str, Any] | GenerativeBenchmarkerOutput]
-    | None,
-)
-"""Output format specification as strings, mappings, or configured output instances"""
 
 
 # Helper Functions
@@ -344,15 +329,13 @@ async def resolve_profile(
 
 
 async def resolve_output_formats(
-    outputs: list[str] | tuple[str],
-    output_dir: str | Path | None,
+    outputs: list[BenchmarkOutputArgs],
     console: Console | None = None,
 ) -> dict[str, GenerativeBenchmarkerOutput]:
     """
     Resolve output format specifications into configured output handler instances.
 
-    :param outputs: Specification of desired output files/types
-    :param output_dir: Base path for output file generation, or None for default
+    :param outputs: List of BenchmarkOutputArgs specifying output kind and path
     :param console: Console instance for progress reporting, or None
     :return: Dictionary mapping format names to configured output handler instances
     """
@@ -360,9 +343,9 @@ async def resolve_output_formats(
         console.print_update_step(title="Resolving output formats") if console else None
     )
 
-    resolved = GenerativeBenchmarkerOutput.resolve(
-        outputs=outputs, output_dir=output_dir
-    )
+    resolved: dict[str, GenerativeBenchmarkerOutput] = {}
+    for output_arg in outputs:
+        resolved[output_arg.kind] = GenerativeBenchmarkerOutput.resolve(output_arg)
 
     if console_step:
         console_step.finish(
@@ -436,7 +419,7 @@ async def benchmark_generative_text(
         data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(
-        outputs=args.outputs, output_dir=args.output_dir, console=console
+        outputs=benchmark_args.outputs, console=console
     )
 
     report = GenerativeBenchmarksReport(config=benchmark_args)
@@ -489,14 +472,14 @@ async def benchmark_generative_text(
 async def reimport_benchmarks_report(
     file: Path,
     output_path: Path | None,
-    output_formats: OutputFormatT = ("console", "json", "html", "csv"),
+    output_formats: tuple[str, ...] | list[str] = ("console", "json", "html", "csv"),
 ) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
     """
     Load and re-export an existing benchmarks report in specified output formats.
 
     :param file: Path to the existing benchmark report file to load
     :param output_path: Base path for output file generation, or None for default
-    :param output_formats: Specification of desired output formats for the report
+    :param output_formats: Output format kind strings to resolve and finalize
     :return: Tuple of loaded GenerativeBenchmarksReport and dictionary of output
         results
     """
@@ -511,15 +494,17 @@ async def reimport_benchmarks_report(
             f" loaded {len(report.benchmarks)} benchmark(s)"
         )
 
-    resolved_output_formats = await resolve_output_formats(
-        output_formats,  # type: ignore[arg-type]
-        output_path,
-        console=console,
-    )
-    output_format_results = {}
-    for key, output in resolved_output_formats.items():
-        output_result = await output.finalize(report)
-        output_format_results[key] = output_result
+    base_path = Path(output_path) if output_path else Path.cwd()
+    output_args: list[BenchmarkOutputArgs] = []
+    for fmt in output_formats:
+        data: dict[str, Any] = {"kind": fmt}
+        data["path"] = base_path / f"benchmarks.{fmt}"
+        output_args.append(BenchmarkOutputArgs.model_validate(data))
+
+    output_format_results: dict[str, Any] = {}
+    for args in output_args:
+        output = GenerativeBenchmarkerOutput.resolve(args)
+        output_format_results[args.kind] = await output.finalize(report)
 
     for key, value in output_format_results.items():
         console.print_update(title=f"  {key:<8}: {value}", status="debug")

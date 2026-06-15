@@ -13,17 +13,28 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
-from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.benchmark.schemas import BenchmarkOutputArgs, GenerativeBenchmarksReport
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
 from guidellm.utils.console import Console
 from guidellm.utils.functions import safe_format_number, safe_format_timestamp
 
-__all__ = ["GenerativeBenchmarkerConsole"]
+__all__ = [
+    "ConsoleBenchmarkOutputArgs",
+    "GenerativeBenchmarkerConsole",
+]
+
+
+@BenchmarkOutputArgs.register("console")
+class ConsoleBenchmarkOutputArgs(BenchmarkOutputArgs):
+    kind: Literal["console"] = Field(
+        default="console",
+        description="The kind of output.",
+    )
 
 
 StatTypesAlias = Literal["mean", "median", "p95"]
@@ -196,13 +207,14 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
     """
 
     @classmethod
-    def validated_kwargs(cls, *_args, **_kwargs) -> dict[str, Any]:
+    def from_args(cls, _args: BenchmarkOutputArgs) -> GenerativeBenchmarkerConsole:
         """
-        Validate and return keyword arguments for initialization.
+        Create a console output formatter from output arguments.
 
-        :return: Empty dict as no additional kwargs are required
+        :param _args: Output configuration (unused for console output)
+        :return: Configured console output formatter
         """
-        return {}
+        return cls()
 
     console: Console = Field(
         default_factory=Console,

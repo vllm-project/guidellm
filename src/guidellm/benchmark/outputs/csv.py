@@ -18,11 +18,31 @@ from typing import Annotated, Any, ClassVar, Literal
 from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
-from guidellm.benchmark.schemas import GenerativeBenchmark, GenerativeBenchmarksReport
+from guidellm.benchmark.schemas import (
+    BenchmarkOutputArgs,
+    GenerativeBenchmark,
+    GenerativeBenchmarksReport,
+)
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
 from guidellm.utils.functions import safe_format_timestamp
 
-__all__ = ["GenerativeBenchmarkerCSV"]
+__all__ = [
+    "CSVBenchmarkOutputArgs",
+    "GenerativeBenchmarkerCSV",
+]
+
+
+@BenchmarkOutputArgs.register("csv")
+class CSVBenchmarkOutputArgs(BenchmarkOutputArgs):
+    kind: Literal["csv"] = Field(
+        default="csv",
+        description="The kind of output.",
+    )
+    path: Path = Field(
+        default=Path("./benchmarks.csv"),
+        description="The file to save the output to.",
+    )
+
 
 TIMESTAMP_FORMAT: Annotated[str, "Format string for timestamp output in CSV files"] = (
     "%Y-%m-%d %H:%M:%S"
@@ -79,22 +99,14 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
     DEFAULT_FILE: ClassVar[str] = "benchmarks.csv"
 
     @classmethod
-    def validated_kwargs(
-        cls, output_path: str | Path | None, **_kwargs
-    ) -> dict[str, Any]:
+    def from_args(cls, args: BenchmarkOutputArgs) -> GenerativeBenchmarkerCSV:
         """
-        Validate and normalize constructor keyword arguments.
+        Create a CSV output formatter from output arguments.
 
-        :param output_path: Path for CSV output file or directory
-        :param _kwargs: Additional keyword arguments (ignored)
-        :return: Normalized keyword arguments dictionary
+        :param args: Output configuration with path
+        :return: Configured CSV output formatter
         """
-        new_kwargs = {}
-        if output_path is not None:
-            new_kwargs["output_path"] = (
-                Path(output_path) if not isinstance(output_path, Path) else output_path
-            )
-        return new_kwargs
+        return cls(output_path=args.path)  # type: ignore[arg-type]
 
     output_path: Path = Field(
         default_factory=lambda: Path.cwd(),

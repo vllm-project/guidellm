@@ -18,7 +18,7 @@ from collections import defaultdict
 from copy import deepcopy
 from math import ceil
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from loguru import logger
 from pydantic import BaseModel, Field, computed_field
@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, computed_field
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
     BenchmarkArgs,
+    BenchmarkOutputArgs,
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
@@ -34,7 +35,22 @@ from guidellm.settings import settings
 from guidellm.utils.dict import recursive_key_update
 from guidellm.utils.text import camelize_str, load_text
 
-__all__ = ["GenerativeBenchmarkerHTML"]
+__all__ = [
+    "GenerativeBenchmarkerHTML",
+    "HTMLBenchmarkOutputArgs",
+]
+
+
+@BenchmarkOutputArgs.register("html")
+class HTMLBenchmarkOutputArgs(BenchmarkOutputArgs):
+    kind: Literal["html"] = Field(
+        default="html",
+        description="The kind of output.",
+    )
+    path: Path = Field(
+        default=Path("./benchmarks.html"),
+        description="The file to save the output to.",
+    )
 
 
 @GenerativeBenchmarkerOutput.register("html")
@@ -62,21 +78,14 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
     )
 
     @classmethod
-    def validated_kwargs(
-        cls, output_path: str | Path | None, **_kwargs
-    ) -> dict[str, Any]:
+    def from_args(cls, args: BenchmarkOutputArgs) -> GenerativeBenchmarkerHTML:
         """
-        Validate and normalize output path argument.
+        Create an HTML output formatter from output arguments.
 
-        :param output_path: Output file or directory path for the HTML report
-        :return: Dictionary containing validated output_path if provided
+        :param args: Output configuration with path
+        :return: Configured HTML output formatter
         """
-        validated: dict[str, Any] = {}
-        if output_path is not None:
-            validated["output_path"] = (
-                Path(output_path) if not isinstance(output_path, Path) else output_path
-            )
-        return validated
+        return cls(output_path=args.path)  # type: ignore[arg-type]
 
     async def finalize(self, report: GenerativeBenchmarksReport) -> Path:
         """

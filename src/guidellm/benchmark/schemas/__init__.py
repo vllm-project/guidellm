@@ -40,7 +40,7 @@ from .metrics import (
     GenerativeVideoMetricsSummary,
     SchedulerMetrics,
 )
-from .output import BenchmarkOutputArgs, JSONBenchmarkOutputArgs
+from .output import BenchmarkOutputArgs
 from .profiles import ProfileArgs
 from .random import RandomArgs, StaticRandomArgs
 from .report import GenerativeBenchmarkMetadata, GenerativeBenchmarksReport
@@ -68,7 +68,6 @@ __all__ = [
     "GenerativeRequestsAccumulator",
     "GenerativeTextMetricsSummary",
     "GenerativeVideoMetricsSummary",
-    "JSONBenchmarkOutputArgs",
     "ProfileArgs",
     "RandomArgs",
     "RunningMetricStats",
