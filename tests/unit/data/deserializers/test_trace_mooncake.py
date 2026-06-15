@@ -86,13 +86,13 @@ def _all_distinct(items: list):
 
 
 @dataclasses.dataclass
-class TraceColumn:
+class TraceColumnGenerator:
     name: str
     # Function with row index as the one argument
     data_generator: Callable[[int], Any]
 
 
-def _generate_trace(num_rows: int, columns: list[TraceColumn]) -> str:
+def _generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
     return "\n".join(
         "{"
         + ", ".join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
@@ -132,10 +132,10 @@ class TestTraceMooncakeDatasetDeserializer:
             _generate_trace(
                 n_rows,
                 [
-                    TraceColumn("timestamp", lambda i: n_rows - i),
-                    TraceColumn("input_length", lambda i: n_rows - i),
-                    TraceColumn("output_length", lambda i: (n_rows - i) * 10),
-                    TraceColumn("hash_ids", lambda i: [n_rows - i]),
+                    TraceColumnGenerator("timestamp", lambda i: n_rows - i),
+                    TraceColumnGenerator("input_length", lambda i: n_rows - i),
+                    TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
+                    TraceColumnGenerator("hash_ids", lambda i: [n_rows - i]),
                 ],
             ),
         )
@@ -155,10 +155,10 @@ class TestTraceMooncakeDatasetDeserializer:
             _generate_trace(
                 n_rows,
                 [
-                    TraceColumn("ts", lambda i: i),
-                    TraceColumn("input_tokens", lambda i: i + 1),
-                    TraceColumn("generated_tokens", lambda i: (i + 1) * 10),
-                    TraceColumn("ids", lambda i: [i]),
+                    TraceColumnGenerator("ts", lambda i: i),
+                    TraceColumnGenerator("input_tokens", lambda i: i + 1),
+                    TraceColumnGenerator("generated_tokens", lambda i: (i + 1) * 10),
+                    TraceColumnGenerator("ids", lambda i: [i]),
                 ],
             ),
         )
@@ -183,12 +183,12 @@ class TestTraceMooncakeDatasetDeserializer:
             _generate_trace(
                 n_rows,
                 [
-                    TraceColumn("timestamp", lambda i: i),
-                    TraceColumn("input_length", lambda _: n_in),
-                    TraceColumn("output_length", lambda i: i + 1),
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: n_in),
+                    TraceColumnGenerator("output_length", lambda i: i + 1),
                     # Would throw a DataNotSupportedError with default block size 512
                     # See row validation in trace_mooncake.py
-                    TraceColumn("hash_ids", lambda _: [0, 1, 2, 3, 4]),
+                    TraceColumnGenerator("hash_ids", lambda _: [0, 1, 2, 3, 4]),
                 ],
             ),
         )
@@ -209,10 +209,10 @@ class TestTraceMooncakeDatasetDeserializer:
             _generate_trace(
                 n_rows,
                 [
-                    TraceColumn("timestamp", lambda i: timestamps[i]),
-                    TraceColumn("input_length", lambda i: prompt_lengths[i]),
-                    TraceColumn("output_length", lambda i: output_lengths[i]),
-                    TraceColumn("hash_ids", lambda i: hash_ids[i]),
+                    TraceColumnGenerator("timestamp", lambda i: timestamps[i]),
+                    TraceColumnGenerator("input_length", lambda i: prompt_lengths[i]),
+                    TraceColumnGenerator("output_length", lambda i: output_lengths[i]),
+                    TraceColumnGenerator("hash_ids", lambda i: hash_ids[i]),
                 ],
             ),
         )
@@ -322,10 +322,10 @@ class TestTraceMooncakeDatasetDeserializer:
             _generate_trace(
                 n_rows,
                 [
-                    TraceColumn("timestamp", lambda i: i),
-                    TraceColumn("input_length", lambda _: 1024),
-                    TraceColumn("output_length", lambda _: 5),
-                    TraceColumn("hash_ids", lambda i: [0, i + 1]),
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: 1024),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: [0, i + 1]),
                 ],
             ),
         )
@@ -348,10 +348,10 @@ class TestTraceMooncakeDatasetDeserializer:
             _generate_trace(
                 n_rows,
                 [
-                    TraceColumn("timestamp", lambda i: i),
-                    TraceColumn("input_length", lambda _: n_in),
-                    TraceColumn("output_length", lambda _: 5),
-                    TraceColumn("hash_ids", lambda i: [0, i + 1]),
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: n_in),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: [0, i + 1]),
                 ],
             ),
         )
