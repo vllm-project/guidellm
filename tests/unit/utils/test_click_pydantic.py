@@ -8,7 +8,11 @@ import click
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from guidellm.utils.click_pydantic import _resolve_param_name, format_validation_errors
+from guidellm.utils.click_pydantic import (
+    _error_to_message,
+    _resolve_param_name,
+    format_validation_errors,
+)
 
 
 class _Inner(BaseModel):
@@ -228,3 +232,33 @@ class TestFormatValidationErrors:
         msg = result.format_message()
         assert "--alpha" in msg
         assert "--beta" in msg
+
+
+@pytest.mark.sanity
+class TestErrorToMessage:
+    """Tests for _error_to_message path formatting helper.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def test_includes_indices_and_field_path(self):
+        """Integer loc components render as ``[i]`` and strings as ``.name``.
+
+        ## WRITTEN BY AI ##
+        """
+        formatted = _error_to_message(
+            ("data", 0, "synthetic_text", "output_tokens"),
+            "Field required",
+        )
+        assert formatted == "Field required (at 'data[0].synthetic_text.output_tokens')"
+
+    def test_handles_top_level_only_path(self):
+        """A single-element loc produces a readable message without trailing separator.
+
+        ## WRITTEN BY AI ##
+        """
+        formatted = _error_to_message(
+            ("rate",),
+            "Input should be a valid number",
+        )
+        assert formatted == "Input should be a valid number (at 'rate')"

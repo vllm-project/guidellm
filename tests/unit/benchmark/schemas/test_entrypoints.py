@@ -1,8 +1,8 @@
 """
-Unit tests for backend_kwargs transformation to typed BackendArgs instances.
+Unit tests for backend transformation to typed BackendArgs instances.
 
 Tests the automatic conversion of backend configuration from dict-based
-backend_kwargs into properly typed BackendArgs instances during model validation.
+backend into properly typed BackendArgs instances during model validation.
 
 ### WRITTEN BY AI ###
 """
@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from guidellm.backends.backend import BackendArgs
 from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
 from guidellm.benchmark.schemas.entrypoints import (
-    BenchmarkGenerativeTextArgs,
+    BenchmarkArgs,
 )
 
 # Conditionally import VLLM backend args if available
@@ -25,7 +25,7 @@ except ImportError:
     VLLMPythonBackendArgs = None  # type: ignore[assignment, misc]
     HAS_VLLM = False
 
-# Minimal required data pipeline fields for BenchmarkGenerativeTextArgs
+# Minimal required data pipeline fields for BenchmarkArgs
 _PIPELINE_DEFAULTS = {
     "data": [{"kind": "synthetic_text", "prompt_tokens": 256, "output_tokens": 128}],
     "tokenizer": {"kind": "huggingface_auto", "model": "gpt2"},
@@ -39,17 +39,17 @@ _PIPELINE_DEFAULTS = {
 
 @pytest.mark.sanity
 class TestBackendArgsTransformation:
-    """Test transformation of backend_kwargs from dict to typed BackendArgs."""
+    """Test transformation of backend from dict to typed BackendArgs."""
 
-    def test_dict_backend_kwargs_transformed(self):
+    def test_dict_backend_transformed(self):
         """
-        Test that dict backend_kwargs with kind field is transformed to BackendArgs.
+        Test that dict backend with kind field is transformed to BackendArgs.
 
         ### WRITTEN BY AI ###
         """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_http",
                     "target": "http://localhost:9000",
                     "model": "test_model",
@@ -58,10 +58,10 @@ class TestBackendArgsTransformation:
             }
         )
 
-        # Verify backend_kwargs is typed OpenAIHTTPBackendArgs
-        assert isinstance(args.backend_kwargs, OpenAIHTTPBackendArgs)
-        assert args.backend_kwargs.target == "http://localhost:9000"
-        assert args.backend_kwargs.model == "test_model"
+        # Verify backend is typed OpenAIHTTPBackendArgs
+        assert isinstance(args.backend, OpenAIHTTPBackendArgs)
+        assert args.backend.target == "http://localhost:9000"
+        assert args.backend.model == "test_model"
 
     def test_dict_with_request_format(self):
         """
@@ -69,9 +69,9 @@ class TestBackendArgsTransformation:
 
         ### WRITTEN BY AI ###
         """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_http",
                     "target": "http://localhost:9000",
                     "model": "test_model",
@@ -81,20 +81,20 @@ class TestBackendArgsTransformation:
             }
         )
 
-        assert isinstance(args.backend_kwargs, OpenAIHTTPBackendArgs)
-        assert args.backend_kwargs.target == "http://localhost:9000"
-        assert args.backend_kwargs.model == "test_model"
-        assert args.backend_kwargs.request_format == "/v1/completions"
+        assert isinstance(args.backend, OpenAIHTTPBackendArgs)
+        assert args.backend.target == "http://localhost:9000"
+        assert args.backend.model == "test_model"
+        assert args.backend.request_format == "/v1/completions"
 
     def test_serialization_round_trip(self):
         """
-        Test that serialization and deserialization preserves typed backend_kwargs.
+        Test that serialization and deserialization preserves typed backend.
 
         ### WRITTEN BY AI ###
         """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_http",
                     "target": "http://localhost:9000",
                     "model": "test_model",
@@ -103,23 +103,23 @@ class TestBackendArgsTransformation:
             }
         )
 
-        serialized_kwargs = args.backend_kwargs.model_dump()
+        serialized_backend = args.backend.model_dump()
 
-        assert isinstance(serialized_kwargs, dict)
-        assert serialized_kwargs["kind"] == "openai_http"
-        assert serialized_kwargs["target"] == "http://localhost:9000"
-        assert serialized_kwargs["model"] == "test_model"
+        assert isinstance(serialized_backend, dict)
+        assert serialized_backend["kind"] == "openai_http"
+        assert serialized_backend["target"] == "http://localhost:9000"
+        assert serialized_backend["model"] == "test_model"
 
-        args2 = BenchmarkGenerativeTextArgs.model_validate(
+        args2 = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": serialized_kwargs,
+                "backend": serialized_backend,
                 **_PIPELINE_DEFAULTS,
             }
         )
 
-        assert isinstance(args2.backend_kwargs, OpenAIHTTPBackendArgs)
-        assert args2.backend_kwargs.target == "http://localhost:9000"
-        assert args2.backend_kwargs.model == "test_model"
+        assert isinstance(args2.backend, OpenAIHTTPBackendArgs)
+        assert args2.backend.target == "http://localhost:9000"
+        assert args2.backend.model == "test_model"
 
     def test_validation_error_missing_required_field(self):
         """
@@ -128,9 +128,9 @@ class TestBackendArgsTransformation:
         ### WRITTEN BY AI ###
         """
         with pytest.raises(ValidationError) as exc_info:
-            BenchmarkGenerativeTextArgs.model_validate(
+            BenchmarkArgs.model_validate(
                 {
-                    "backend_kwargs": {
+                    "backend": {
                         "kind": "openai_http",
                         "model": "test_model",
                         # Missing 'target'
@@ -150,9 +150,9 @@ class TestBackendArgsTransformation:
         ### WRITTEN BY AI ###
         """
         with pytest.raises(ValidationError) as exc_info:
-            BenchmarkGenerativeTextArgs.model_validate(
+            BenchmarkArgs.model_validate(
                 {
-                    "backend_kwargs": {
+                    "backend": {
                         "kind": "openai_http",
                         "target": "http://localhost:9000",
                         "model": "test_model",
@@ -173,9 +173,9 @@ class TestBackendArgsTransformation:
 
         ### WRITTEN BY AI ###
         """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "vllm_python",
                     "model": "facebook/opt-125m",
                 },
@@ -184,8 +184,8 @@ class TestBackendArgsTransformation:
         )
 
         assert VLLMPythonBackendArgs is not None
-        assert isinstance(args.backend_kwargs, VLLMPythonBackendArgs)
-        assert args.backend_kwargs.model == "facebook/opt-125m"
+        assert isinstance(args.backend, VLLMPythonBackendArgs)
+        assert args.backend.model == "facebook/opt-125m"
 
     @pytest.mark.skipif(not HAS_VLLM, reason="VLLM not installed")
     def test_vllm_backend_rejects_target(self):
@@ -195,9 +195,9 @@ class TestBackendArgsTransformation:
         ### WRITTEN BY AI ###
         """
         with pytest.raises(ValidationError) as exc_info:
-            BenchmarkGenerativeTextArgs.model_validate(
+            BenchmarkArgs.model_validate(
                 {
-                    "backend_kwargs": {
+                    "backend": {
                         "kind": "vllm_python",
                         "target": "http://localhost:9000",
                         "model": "facebook/opt-125m",
@@ -210,35 +210,38 @@ class TestBackendArgsTransformation:
         assert len(errors) > 0
         assert any("target" in str(err).lower() for err in errors)
 
-    def test_empty_dict_backend_kwargs(self):
+    def test_empty_dict_backend(self):
         """
-        Test handling of empty dict backend_kwargs (missing kind field).
+        Test handling of empty dict backend (missing kind field).
 
         ### WRITTEN BY AI ###
         """
         with pytest.raises(ValidationError):
-            BenchmarkGenerativeTextArgs.model_validate(
+            BenchmarkArgs.model_validate(
                 {
-                    "backend_kwargs": {},
+                    "backend": {},
                     **_PIPELINE_DEFAULTS,
                 }
             )
 
-    def test_default_backend_kwargs(self):
+    def test_default_backend(self):
         """
-        Test that missing backend_kwargs fails validation (required field).
+        Test that missing backend uses default (openai_http) when target is provided.
 
         ### WRITTEN BY AI ###
         """
-        with pytest.raises(ValidationError):
-            BenchmarkGenerativeTextArgs.model_validate(
-                {
-                    # No backend_kwargs provided
-                    **_PIPELINE_DEFAULTS,
-                }
-            )
+        args = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+        assert isinstance(args.backend, OpenAIHTTPBackendArgs)
 
-    def test_already_typed_backend_kwargs_via_aliased_dump(self):
+    def test_already_typed_backend_via_aliased_dump(self):
         """
         Test that already-typed BackendArgs can be passed via dict dump.
 
@@ -248,26 +251,26 @@ class TestBackendArgsTransformation:
             target="http://localhost:9000", model="test_model"
         )
 
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": backend_args.model_dump(),
+                "backend": backend_args.model_dump(),
                 **_PIPELINE_DEFAULTS,
             }
         )
 
-        assert isinstance(args.backend_kwargs, OpenAIHTTPBackendArgs)
-        assert args.backend_kwargs.target == "http://localhost:9000"
-        assert args.backend_kwargs.model == "test_model"
+        assert isinstance(args.backend, OpenAIHTTPBackendArgs)
+        assert args.backend.target == "http://localhost:9000"
+        assert args.backend.model == "test_model"
 
-    def test_backend_kwargs_is_backendargs_subclass(self):
+    def test_backend_is_backendargs_subclass(self):
         """
-        Test that backend_kwargs is always a BackendArgs subclass after validation.
+        Test that backend is always a BackendArgs subclass after validation.
 
         ### WRITTEN BY AI ###
         """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_http",
                     "target": "http://localhost:9000",
                     "model": "test_model",
@@ -276,8 +279,8 @@ class TestBackendArgsTransformation:
             }
         )
 
-        assert isinstance(args.backend_kwargs, BackendArgs)
-        assert isinstance(args.backend_kwargs, OpenAIHTTPBackendArgs)
+        assert isinstance(args.backend, BackendArgs)
+        assert isinstance(args.backend, OpenAIHTTPBackendArgs)
 
     def test_api_key_is_securestr(self):
         """
@@ -285,9 +288,9 @@ class TestBackendArgsTransformation:
 
         ### WRITTEN BY AI ###
         """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_http",
                     "target": "http://localhost:9000",
                     "model": "test_model",
@@ -297,9 +300,9 @@ class TestBackendArgsTransformation:
             }
         )
 
-        assert isinstance(args.backend_kwargs, OpenAIHTTPBackendArgs)
-        assert args.backend_kwargs.api_key is not None
-        assert args.backend_kwargs.api_key.get_secret_value() == "secret123"
+        assert isinstance(args.backend, OpenAIHTTPBackendArgs)
+        assert args.backend.api_key is not None
+        assert args.backend.api_key.get_secret_value() == "secret123"
 
     def test_serialization_masks_api_key(self):
         """
@@ -307,9 +310,9 @@ class TestBackendArgsTransformation:
 
         ### WRITTEN BY AI ###
         """
-        args = BenchmarkGenerativeTextArgs.model_validate(
+        args = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_http",
                     "target": "http://localhost:9000",
                     "model": "test_model",
@@ -321,8 +324,8 @@ class TestBackendArgsTransformation:
 
         serialized = args.model_dump()
 
-        assert "api_key" in serialized["backend_kwargs"]
-        assert serialized["backend_kwargs"]["api_key"] != "secret123"
+        assert "api_key" in serialized["backend"]
+        assert serialized["backend"]["api_key"] != "secret123"
 
     def test_different_backend_types(self):
         """
@@ -330,9 +333,9 @@ class TestBackendArgsTransformation:
 
         ### WRITTEN BY AI ###
         """
-        args_openai = BenchmarkGenerativeTextArgs.model_validate(
+        args_openai = BenchmarkArgs.model_validate(
             {
-                "backend_kwargs": {
+                "backend": {
                     "kind": "openai_http",
                     "target": "http://localhost:8000",
                     "model": "gpt-3.5-turbo",
@@ -340,12 +343,12 @@ class TestBackendArgsTransformation:
                 **_PIPELINE_DEFAULTS,
             }
         )
-        assert isinstance(args_openai.backend_kwargs, OpenAIHTTPBackendArgs)
+        assert isinstance(args_openai.backend, OpenAIHTTPBackendArgs)
 
         if HAS_VLLM:
-            args_vllm = BenchmarkGenerativeTextArgs.model_validate(
+            args_vllm = BenchmarkArgs.model_validate(
                 {
-                    "backend_kwargs": {
+                    "backend": {
                         "kind": "vllm_python",
                         "model": "facebook/opt-125m",
                     },
@@ -353,4 +356,4 @@ class TestBackendArgsTransformation:
                 }
             )
             assert VLLMPythonBackendArgs is not None
-            assert isinstance(args_vllm.backend_kwargs, VLLMPythonBackendArgs)
+            assert isinstance(args_vllm.backend, VLLMPythonBackendArgs)

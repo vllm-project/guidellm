@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import resolve_constraints
-from guidellm.benchmark.schemas import BenchmarkGenerativeTextArgs
+from guidellm.benchmark.schemas import BenchmarkArgs
 from guidellm.scheduler.constraints import (
     ConstraintArgs,
     ConstraintsInitializerFactory,
@@ -31,15 +31,15 @@ from guidellm.scheduler.constraints.saturation import (
 )
 
 
-def _minimal_args(**overrides) -> BenchmarkGenerativeTextArgs:
+def _minimal_args(**overrides) -> BenchmarkArgs:
     """
-    Create a minimal valid BenchmarkGenerativeTextArgs for testing.
+    Create a minimal valid BenchmarkArgs for testing.
 
     ## WRITTEN BY AI ##
     """
     base = {
         "data": [{"kind": "synthetic_text", "prompt_tokens": 10, "output_tokens": 10}],
-        "backend_kwargs": {"kind": "openai_http", "target": "http://localhost:8000"},
+        "backend": {"kind": "openai_http", "target": "http://localhost:8000"},
         "profile": {"kind": "sweep"},
         "tokenizer": {"kind": "huggingface_auto"},
         "data_column_mapper": {"kind": "generative_column_mapper"},
@@ -48,7 +48,7 @@ def _minimal_args(**overrides) -> BenchmarkGenerativeTextArgs:
         "data_loader": {"kind": "pytorch"},
     }
     base.update(overrides)
-    return BenchmarkGenerativeTextArgs.model_validate(base)
+    return BenchmarkArgs.model_validate(base)
 
 
 class TestConstraintArgsPolymorphicValidation:
@@ -272,13 +272,18 @@ class TestResolveConstraintsTranslation:
     """Test the resolve_constraints translation layer."""
 
     @pytest.mark.smoke
-    def test_flat_args_translated(self):
+    def test_constraints_list_resolved(self):
         """
-        Flat CLI fields are translated to constraint initializers.
+        Constraints list entries are resolved to constraint initializers.
 
         ## WRITTEN BY AI ##
         """
-        args = _minimal_args(max_seconds=120, max_requests=500)
+        args = _minimal_args(
+            constraints=[
+                {"kind": "max_duration", "max_duration": 120},
+                {"kind": "max_requests", "max_num": 500},
+            ]
+        )
         resolved = resolve_constraints(args)
 
         assert "max_duration" in resolved
@@ -289,9 +294,9 @@ class TestResolveConstraintsTranslation:
         assert resolved["max_requests"].args.max_num == 500
 
     @pytest.mark.smoke
-    def test_none_flat_args_excluded(self):
+    def test_no_constraints_returns_empty(self):
         """
-        None-valued flat CLI fields are not included in resolved constraints.
+        No constraints produces an empty resolved dict.
 
         ## WRITTEN BY AI ##
         """
@@ -320,40 +325,29 @@ class TestResolveConstraintsTranslation:
         assert isinstance(resolved["max_errors"], MaxErrorsConstraint)
 
     @pytest.mark.smoke
-    def test_explicit_constraints_override_flat_args(self):
-        """
-        Explicit constraints list takes precedence over flat CLI fields
-        (since it's processed after flat args).
-
-        ## WRITTEN BY AI ##
-        """
-        args = _minimal_args(
-            max_seconds=60,
-            constraints=[{"kind": "max_duration", "max_duration": 300}],
-        )
-        resolved = resolve_constraints(args)
-        assert resolved["max_duration"].args.max_duration == 300
-
-    @pytest.mark.smoke
     def test_extra_constraints_merged(self):
         """
         Programmatic extra_constraints are merged into the result.
 
         ## WRITTEN BY AI ##
         """
-        args = _minimal_args(max_seconds=60)
+        args = _minimal_args(constraints=[{"kind": "max_duration", "max_duration": 60}])
         resolved = resolve_constraints(args, max_requests=200)
         assert "max_duration" in resolved
         assert "max_requests" in resolved
 
     @pytest.mark.smoke
-    def test_over_saturation_flat_arg(self):
+    def test_over_saturation_via_constraints_list(self):
         """
-        over_saturation dict from flat args is correctly translated.
+        over_saturation passed via constraints list is correctly resolved.
 
         ## WRITTEN BY AI ##
         """
-        args = _minimal_args(over_saturation={"mode": "active", "min_seconds": 45})
+        args = _minimal_args(
+            constraints=[
+                {"kind": "over_saturation", "mode": "active", "min_seconds": 45}
+            ]
+        )
         resolved = resolve_constraints(args)
 
         assert "over_saturation" in resolved
@@ -363,19 +357,21 @@ class TestResolveConstraintsTranslation:
         assert init.args.min_seconds == 45
 
     @pytest.mark.smoke
-    def test_all_flat_args_together(self):
+    def test_all_constraint_types_together(self):
         """
-        All flat constraint args are translated simultaneously.
+        All constraint types are resolved simultaneously via constraints list.
 
         ## WRITTEN BY AI ##
         """
         args = _minimal_args(
-            max_seconds=120,
-            max_requests=1000,
-            max_errors=10,
-            max_error_rate=0.5,
-            max_global_error_rate=0.3,
-            over_saturation={"mode": "active"},
+            constraints=[
+                {"kind": "max_duration", "max_duration": 120},
+                {"kind": "max_requests", "max_num": 1000},
+                {"kind": "max_errors", "max_errors": 10},
+                {"kind": "max_error_rate", "max_error_rate": 0.5},
+                {"kind": "max_global_error_rate", "max_error_rate": 0.3},
+                {"kind": "over_saturation", "mode": "active"},
+            ]
         )
         resolved = resolve_constraints(args)
         assert len(resolved) == 6
@@ -389,13 +385,13 @@ class TestResolveConstraintsTranslation:
         }
 
     @pytest.mark.smoke
-    def test_single_constraint_wrapped_in_list(self):
+    def test_single_constraint_in_list(self):
         """
-        A single constraint dict is auto-wrapped into a list by the validator.
+        A single constraint dict in a list is correctly resolved.
 
         ## WRITTEN BY AI ##
         """
-        args = _minimal_args(constraints={"kind": "max_requests", "max_num": 50})
+        args = _minimal_args(constraints=[{"kind": "max_requests", "max_num": 50}])
         assert len(args.constraints) == 1
         resolved = resolve_constraints(args)
         assert "max_requests" in resolved
