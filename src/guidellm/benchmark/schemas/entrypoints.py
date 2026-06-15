@@ -77,52 +77,52 @@ class BenchmarkArgs(StandardBaseModel):
 
     model_config = args_model_config()
 
-    backend: BackendArgs = Field(
+    backend: BackendArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("openai_http"),
         description="Backend configuration arguments",
         json_schema_extra={"argument_alias": "backend"},
     )
-    profile: ProfileArgs = Field(
+    profile: ProfileArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("sweep"),
         description="Benchmark profile configuration arguments",
         json_schema_extra={"argument_alias": "profile"},
     )
-    constraints: list[ConstraintArgs] = Field(
+    constraints: list[ConstraintArgs] = Field(  # type: ignore[assignment]
         description="List of constraints to enforce during benchmark execution",
         default_factory=list,
         json_schema_extra={"argument_alias": "constraint"},
     )
-    tokenizer: DataTokenizerArgs = Field(
+    tokenizer: DataTokenizerArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("huggingface_auto"),
         description="Tokenizer configuration arguments",
         json_schema_extra={"argument_alias": "tokenizer"},
     )
-    data: list[DataArgs] = Field(
+    data: list[DataArgs] = Field(  # type: ignore[assignment]
         description="List of dataset sources or data files",
         min_length=1,
         json_schema_extra={"argument_alias": "data"},
     )
-    data_column_mapper: DataPreprocessorArgs = Field(
+    data_column_mapper: DataPreprocessorArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("generative_column_mapper"),
         description="Column mapping preprocessor for dataset fields",
         json_schema_extra={"argument_alias": "data_column_mapper"},
     )
-    data_preprocessors: list[DataPreprocessorArgs] = Field(
-        default_factory=lambda: default_kind_list("encode_media"),
+    data_preprocessors: list[DataPreprocessorArgs] = Field(  # type: ignore[assignment]
+        default_factory=lambda: default_kind_list("encode_media"),  # type: ignore[arg-type]
         description="List of dataset preprocessors to apply in order",
         json_schema_extra={"argument_alias": "data_preprocessor"},
     )
-    data_finalizer: DataFinalizerArgs = Field(
+    data_finalizer: DataFinalizerArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("generative"),
         description="Finalizer for preparing data samples into requests",
         json_schema_extra={"argument_alias": "data_finalizer"},
     )
-    data_loader: DataLoaderArgs = Field(
+    data_loader: DataLoaderArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("pytorch"),
         description="Dataloader configuration arguments",
         json_schema_extra={"argument_alias": "data_loader"},
     )
-    seed: RandomArgs = Field(
+    seed: RandomArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("static"),
         description="Random configuration for reproducibility (e.g., seed value)",
         json_schema_extra={"argument_alias": "seed"},
@@ -259,11 +259,11 @@ class BenchmarkScenario(BaseSettings):
         description="Metadata describing the benchmark scenario.",
     )
     spec: BenchmarkArgs = Field(
-        default_factory=BenchmarkArgs,
+        default_factory=BenchmarkArgs,  # type: ignore[arg-type]
         description="Global configuration parameters for benchmark execution.",
     )
     benchmarks: list[dict[str, Any] | None] = Field(
-        default_factory=lambda: [None],
+        default_factory=lambda: [None],  # type: ignore[arg-type]
         description="Individual benchmark overrides",
         min_length=1,
     )

@@ -189,7 +189,7 @@ def overrides_to_benchmarks(*overrides: tuple[str, list[Any]]) -> list[dict[str,
             {"profile.streams": 4, "constraint[0].seconds": 30}
         ]
     """
-    benchmarks = []
+    benchmarks: list[dict[str, Any]] = []
     for name, values in overrides:
         for i, value in enumerate(values):
             if len(benchmarks) <= i:

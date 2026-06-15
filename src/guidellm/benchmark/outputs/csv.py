@@ -106,7 +106,10 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         :param args: Output configuration with path
         :return: Configured CSV output formatter
         """
-        return cls(output_path=args.path)  # type: ignore[arg-type]
+        if not isinstance(args, CSVBenchmarkOutputArgs):
+            raise ValueError(f"Expected CSVBenchmarkOutputArgs, got {type(args)}")
+
+        return cls(output_path=args.path)
 
     output_path: Path = Field(
         default_factory=lambda: Path.cwd(),

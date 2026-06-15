@@ -85,7 +85,10 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
         :param args: Output configuration with path
         :return: Configured HTML output formatter
         """
-        return cls(output_path=args.path)  # type: ignore[arg-type]
+        if not isinstance(args, HTMLBenchmarkOutputArgs):
+            raise TypeError(f"Expected HTMLBenchmarkOutputArgs, got {type(args)}")
+
+        return cls(output_path=args.path)
 
     async def finalize(self, report: GenerativeBenchmarksReport) -> Path:
         """

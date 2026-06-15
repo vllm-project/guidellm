@@ -81,7 +81,10 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
         :param args: Output configuration with path and kind (json or yaml)
         :return: Configured serialized output formatter
         """
-        return cls(output_path=args.path, format_type=args.kind)  # type: ignore[arg-type]
+        if not isinstance(args, JSONBenchmarkOutputArgs | YAMLBenchmarkOutputArgs):
+            raise ValueError(f"Invalid args type: {type(args)}.")
+
+        return cls(output_path=args.path, format_type=args.kind)
 
     async def finalize(self, report: GenerativeBenchmarksReport) -> Path:
         """

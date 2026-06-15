@@ -7,7 +7,6 @@ import click
 from guidellm.utils.default_group import DefaultGroupHandler
 
 from .from_file import from_file
-from .run import run
 
 __all__ = ["benchmark"]
 
@@ -22,5 +21,4 @@ def benchmark():
 
 
 # Register subcommands
-benchmark.add_command(run)
 benchmark.add_command(from_file)
