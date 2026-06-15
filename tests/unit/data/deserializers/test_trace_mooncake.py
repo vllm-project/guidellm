@@ -148,6 +148,27 @@ class TestTraceMooncakeDatasetDeserializer:
             assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
 
     @pytest.mark.smoke
+    def test_emits_relative_timestamp_column_sorted_from_trace(
+        self, tmp_path: Path, deserializer
+    ):
+        n_rows = 5
+        trace = _write_trace(
+            tmp_path,
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumnGenerator("timestamp", lambda i: i + 3),
+                    TraceColumnGenerator("input_length", lambda i: i + 1),
+                    TraceColumnGenerator("output_length", lambda i: (i + 1) * 10),
+                    TraceColumnGenerator("hash_ids", lambda i: [i]),
+                ],
+            ),
+        )
+        ds = self._deserialize(deserializer, trace)
+        for i, row in enumerate(ds):
+            assert row["relative_timestamp"] == i
+
+    @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
         n_rows = 3
         trace = _write_trace(
