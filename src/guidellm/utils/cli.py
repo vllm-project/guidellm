@@ -3,7 +3,11 @@ from typing import Any
 
 import click
 import yaml
-from typing_extensions import Sentinel
+
+# NOTE: Sentinel is sentinel in newer (unreleased) version of typing_extensions
+# which matches the accepted version of PEP 661 in Python 3.15+
+# NOTE: Not sure why but mypy doesn't recognize Sentinel as a type
+from typing_extensions import Sentinel  # type: ignore[attr-defined]
 
 from guidellm.utils import arg_string
 
