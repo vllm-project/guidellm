@@ -44,18 +44,18 @@ def _fake_sampling_params(**kwargs):
     return SimpleNamespace(**kwargs)
 
 
-def _mock_audio_decode_result(audio_array: np.ndarray) -> Mock:
+def _mock_audio_decode_result(audio_array: np.ndarray) -> tuple[Mock, str]:
     """
     Build a mock torchcodec AudioSamples whose .data behaves like a CPU
     torch.Tensor: .data.cpu() returns self, .data.cpu().numpy() returns
-    the given numpy array.
+    the given numpy array. Returns a tuple matching _decode_audio's signature.
     """
     mock_data = Mock()
     mock_data.cpu.return_value = mock_data
     mock_data.numpy.return_value = audio_array
     result = Mock()
     result.data = mock_data
-    return result
+    return result, "pcm_s16le"
 
 
 @pytest.fixture

@@ -10,6 +10,7 @@ import torch
 # CRITICAL: Use 'import ... as libs' pattern to preserve lazy loading
 # This defers errors until attributes are actually accessed
 import guidellm.extras.audio as libs
+from guidellm.logger import logger
 
 __all__ = [
     "encode_audio",
@@ -21,6 +22,29 @@ def is_url(text: Any) -> bool:
     return isinstance(text, str) and text.startswith(("http://", "https://"))
 
 
+# Maps torchcodec codec names to encoder-compatible container format strings.
+# PCM variants (pcm_s16le, pcm_f32le, etc.) are handled separately via prefix.
+_CODEC_TO_FORMAT: dict[str, str] = {
+    "flac": "flac",
+    "mp3": "mp3",
+    "vorbis": "ogg",
+    "aac": "aac",
+    "opus": "ogg",
+}
+
+
+def _codec_to_format(codec: str) -> str | None:
+    """
+    Map a torchcodec codec name to an encoder-compatible container format.
+
+    :param codec: Codec string from ``AudioDecoder.metadata.codec``.
+    :return: Container format string, or None if the codec is unrecognized.
+    """
+    if codec.startswith("pcm_"):
+        return "wav"
+    return _CODEC_TO_FORMAT.get(codec)
+
+
 def encode_audio(
     audio: libs.AudioDecoder
     | bytes
@@ -30,11 +54,11 @@ def encode_audio(
     | torch.Tensor
     | dict[str, Any],
     sample_rate: int | None = None,
-    file_name: str = "audio.wav",
+    file_name: str | None = None,
     encode_sample_rate: int = 16000,
     max_duration: float | None = None,
     mono: bool = True,
-    audio_format: str = "mp3",
+    audio_format: str | None = None,
     bitrate: str = "64k",
 ) -> dict[
     Literal[
@@ -49,8 +73,35 @@ def encode_audio(
     ],
     str | int | float | bytes | None,
 ]:
-    """Decode audio (if necessary) and re-encode to specified format."""
-    samples = _decode_audio(audio, sample_rate=sample_rate, max_duration=max_duration)
+    """
+    Decode audio (if necessary) and re-encode to specified format.
+
+    If ``audio_format`` is not provided, the format is detected from the
+    source codec (via torchcodec metadata). When detection is not possible
+    (e.g. raw float tensors), falls back to WAV with a one-time warning.
+
+    :param audio: Audio input in any supported form.
+    :param sample_rate: Sample rate hint for raw decoded audio.
+    :param file_name: Override file name in output metadata. Defaults to a
+        name derived from the resolved format.
+    :param encode_sample_rate: Target sample rate for the encoded output.
+    :param max_duration: Truncate audio to this duration in seconds.
+    :param mono: Convert to mono if True.
+    :param audio_format: Target encoding format. If None, detected from source.
+    :param bitrate: Bitrate for lossy formats like mp3.
+    :return: Dict containing encoded audio bytes and metadata.
+    """
+    samples, source_codec = _decode_audio(
+        audio, sample_rate=sample_rate, max_duration=max_duration
+    )
+
+    # Resolve format: explicit > codec-detected > WAV fallback
+    if audio_format is None:
+        if source_codec:
+            audio_format = _codec_to_format(source_codec)
+        if audio_format is None:
+            audio_format = "wav"
+            logger.debug("Falling back to WAV audio formatting")
 
     bitrate_val = (
         int(bitrate.rstrip("k")) * 1000 if bitrate.endswith("k") else int(bitrate)
@@ -79,7 +130,14 @@ def encode_audio(
     }
 
 
-def _decode_audio(  # noqa: C901, PLR0912
+def decode_audio(audio: bytes):
+    audio_samples, _ = _decode_audio(audio)
+    # torchcodec decodes audio on CPU, so .data is always
+    # a CPU torch.Tensor. .cpu() is a no-op on CPU tensors.
+    return audio_samples.data.cpu().numpy()
+
+
+def _decode_audio(  # noqa: C901, PLR0912, PLR0915
     audio: libs.AudioDecoder
     | bytes
     | str
@@ -89,8 +147,12 @@ def _decode_audio(  # noqa: C901, PLR0912
     | dict[str, Any],
     sample_rate: int | None = None,
     max_duration: float | None = None,
-) -> libs.AudioSamples:
-    """Decode audio from various input types into AudioSamples."""
+) -> tuple[libs.AudioSamples, str | None]:
+    """
+    Decode audio from various input types into AudioSamples.
+
+    :return: Tuple of (decoded samples, detected codec string or None).
+    """
     # If input is a dict, unwrap it into a function call
     if isinstance(audio, dict):
         sample_rate = audio.get("sample_rate", audio.get("sampling_rate", sample_rate))
@@ -118,11 +180,14 @@ def _decode_audio(  # noqa: C901, PLR0912
         )
 
     data: torch.Tensor | bytes
+    codec: str | None = None
+
     # HF datasets return AudioDecoder for audio column
     if isinstance(audio, libs.AudioDecoder):
+        codec = audio.metadata.codec
         samples = audio.get_samples_played_in_range(stop_seconds=max_duration)
     elif isinstance(audio, torch.Tensor):
-        # If float stream assume decoded audio
+        # If float stream assume decoded audio -- no codec info available
         if torch.is_floating_point(audio):
             if sample_rate is None:
                 raise ValueError("Sample rate must be set for decoded audio")
@@ -149,6 +214,7 @@ def _decode_audio(  # noqa: C901, PLR0912
                 source=audio,
                 sample_rate=sample_rate,
             )
+            codec = decoder.metadata.codec
             samples = decoder.get_samples_played_in_range(stop_seconds=max_duration)
 
         else:
@@ -160,6 +226,7 @@ def _decode_audio(  # noqa: C901, PLR0912
             source=audio,
             sample_rate=sample_rate,
         )
+        codec = decoder.metadata.codec
         samples = decoder.get_samples_played_in_range(stop_seconds=max_duration)
 
     # If str or Path, assume file path or URL to encoded audio
@@ -175,18 +242,19 @@ def _decode_audio(  # noqa: C901, PLR0912
         decoder = libs.AudioDecoder(
             source=data,
         )
+        codec = decoder.metadata.codec
         samples = decoder.get_samples_played_in_range(stop_seconds=max_duration)
     else:
         raise ValueError(f"Unsupported audio type: {type(audio)}")
 
-    return samples
+    return samples, codec
 
 
 def _encode_audio(
     samples: libs.AudioSamples,
     resample_rate: int | None = None,
     bitrate: int = 64000,
-    audio_format: str = "mp3",
+    audio_format: str = "wav",
     mono: bool = True,
 ) -> bytes:
     encoder = libs.AudioEncoder(

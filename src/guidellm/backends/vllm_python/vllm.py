@@ -302,11 +302,8 @@ class VLLMPythonBackend(Backend):
                     try:
                         # Decode raw audio bytes into an array since vLLM audio models
                         # expect either raw numpy arrays or specific tensor formats
-                        audio_samples = audio._decode_audio(audio_bytes)  # noqa: SLF001
-                        # torchcodec decodes audio on CPU, so .data is always
-                        # a CPU torch.Tensor. .cpu() is a no-op on CPU tensors.
-                        audio_array = audio_samples.data.cpu().numpy()
-                        multi_modal_data["audio"] = audio_array
+                        audio_data = audio.decode_audio(audio_bytes)
+                        multi_modal_data["audio"] = audio_data
                     except (ValueError, TypeError, OSError, RuntimeError) as exc:
                         raise ValueError(
                             f"Failed to decode audio from audio_column for vLLM: {exc}"

@@ -992,10 +992,8 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         Sets up internal state for accumulating streaming response data including
         audio buffers, text chunks, and usage metrics.
         """
+        super().__init__()
         self.streaming_buffer: bytearray = bytearray()
-        self.streaming_texts: list[str] = []
-        self.streaming_usage: dict[str, int | dict[str, int]] | None = None
-        self.streaming_response_id: str | None = None
 
     def format(
         self,

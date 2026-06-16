@@ -71,7 +71,7 @@ Supported arguments include:
 
 - "sample_rate": The sample rate of the input audio data. Only required if it cannot be inferred (e.g., for raw numpy/torch arrays).
 - "encode_sample_rate": Target sample rate for the audio sent to the API. (default: 16000 Hz).
-- "audio_format": File format for the payload. Supported formats are "wav", "mp3", and "flac" (default: "mp3").
+- "audio_format": File format for the payload. Supported formats are "wav", "mp3", and "flac". If not specified, the format is auto-detected from the source audio codec. When detection is not possible (e.g., raw arrays), defaults to "wav".
 - "bitrate": Bitrate for lossy formats like mp3 (default: "64k").
 - "max_duration": If specified, audio longer than this duration (in seconds) will be truncated.
 - "mono": Whether to convert audio to mono (default: True).
