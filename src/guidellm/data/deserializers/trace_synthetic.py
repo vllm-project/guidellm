@@ -267,7 +267,7 @@ class _TraceSyntheticDataset(IterableDataset):
         super().__init__(
             ex_iterable=ex_iterable,
             info=DatasetInfo(
-                description="Mooncake trace dataset generator",
+                description="Synthetic trace dataset generator",
                 features=ex_iterable.features,
             ),
         )
