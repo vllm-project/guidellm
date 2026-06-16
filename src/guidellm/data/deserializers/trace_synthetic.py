@@ -7,12 +7,14 @@ line with a synthetic prompt matching the requested input_length for replay benc
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from datasets import Dataset, Value
+import numpy as np
+from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.exceptions import DatasetGenerationError
+from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
 from pydantic import Field, field_serializer
 from transformers import PreTrainedTokenizerBase
@@ -106,6 +108,16 @@ def _create_prompt(
     return _decode_prompt(processor, prompt_token_ids)
 
 
+def _validate_row(row: dict, config: TraceSyntheticDataArgs) -> None:
+    n_in = row[config.prompt_tokens_column]
+    n_out = row[config.output_tokens_column]
+    if n_in < 0 or n_out < 0:
+        raise DataNotSupportedError(
+            f"Trace token counts must be non-negative, got "
+            f"input_length={n_in}, output_length={n_out}"
+        )
+
+
 @DataArgs.register("trace_synthetic")
 class TraceSyntheticDataArgs(DataArgs):
     """Model for synthetic trace dataset deserializer arguments."""
@@ -135,6 +147,137 @@ class TraceSyntheticDataArgs(DataArgs):
         return str(path)
 
 
+class _TraceSyntheticExamplesIterable(_BaseExamplesIterable):
+    """Custom examples iterable for synthetic prompt generation. Used to avoid
+    pre-generating a prompt for every row in the dataset on load."""
+
+    def __init__(
+        self,
+        config: TraceSyntheticDataArgs,
+        processor: PreTrainedTokenizerBase,
+        random_seed: int = 42,
+    ):
+        super().__init__()
+        self.config = config
+        self.processor = processor
+        self.faker = Faker()
+        self.faker.seed_instance(random_seed)
+        try:
+            self.trace_rows = load_trace_rows(
+                config.path,
+                TraceColumn(config.timestamp_column, Value("float")),
+                required_columns=[
+                    TraceColumn(config.prompt_tokens_column, Value("int32")),
+                    TraceColumn(config.output_tokens_column, Value("int32")),
+                ],
+            )
+        except (DatasetGenerationError, KeyError, ValueError) as e:
+            raise DataNotSupportedError(str(e)) from e
+        
+        max_prompt_tokens = max(row[config.prompt_tokens_column] for row in self.trace_rows)
+        self.base_prompt_token_ids = _create_base_prompt_token_ids(
+            self.processor, self.faker, max_prompt_tokens
+        )
+        for row in self.trace_rows:
+            _validate_row(row, self.config)
+        self.iteration_count = 0
+
+    def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
+        self.iteration_count += 1
+        row_idx = 0
+        while True:
+            try:
+                row = self.trace_rows[row_idx]
+            except IndexError:
+                break
+
+            n_in = row[self.config.prompt_tokens_column]
+            prompt = _create_prompt(
+                self.processor, n_in, self.base_prompt_token_ids, request_index=row_idx
+            )
+            timestamps = self.trace_rows[self.config.timestamp_column]
+            relative_timestamp = timestamps[row_idx] - timestamps[0]
+            yield (
+                row_idx,
+                {
+                    "prompt_tokens_count": row[self.config.prompt_tokens_column],
+                    "output_tokens_count": row[self.config.output_tokens_column],
+                    "prompt": prompt,
+                    "relative_timestamp": relative_timestamp,
+                },
+            )
+            row_idx += 1
+
+    @property
+    def is_typed(self) -> bool:
+        return True
+
+    @property
+    def features(self) -> Features:
+        return Features(
+            {
+                "prompt": Value("string"),
+                "prompt_tokens_count": Value("int32"),
+                "output_tokens_count": Value("int32"),
+                "relative_timestamp": Value("float"),
+            }
+        )
+
+    @property
+    def num_shards(self) -> int:
+        return 1
+
+    def shuffle_data_sources(
+        self,
+        generator: np.random.Generator,  # noqa: ARG002
+    ) -> _TraceSyntheticExamplesIterable:
+        """Returns self as sharding is not implemented yet."""
+        return self
+
+    def shard_data_sources(
+        self,
+        num_shards: int,  # noqa: ARG002
+        index: int,  # noqa: ARG002
+        contiguous: bool = True,  # noqa: ARG002
+    ) -> _TraceSyntheticExamplesIterable:
+        """Returns self as sharding is not implemented yet."""
+        return self
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        """Load the state from a state dict."""
+        self.iteration_count = state_dict.get("iteration_count", 0)
+
+    def _init_state_dict(self):
+        """Initialize the state dict for the iterable."""
+        self._state_dict = {"iteration_count": self.iteration_count}
+        return self._state_dict
+
+
+class _TraceSyntheticDataset(IterableDataset):
+    def __init__(
+        self,
+        config: TraceSyntheticDataArgs,
+        processor: PreTrainedTokenizerBase,
+        random_seed: int = 42,
+    ):
+        self.config = config
+        self.processor = processor
+        self.random_seed = random_seed
+        ex_iterable = _TraceSyntheticExamplesIterable(config, processor, random_seed)
+        super().__init__(
+            ex_iterable=ex_iterable,
+            info=DatasetInfo(
+                description="Mooncake trace dataset generator",
+                features=ex_iterable.features,
+            ),
+        )
+
+    def set_epoch(self, epoch: int):
+        """Set the epoch for the dataset iteration."""
+        if isinstance(self._ex_iterable, _TraceSyntheticExamplesIterable):
+            self._ex_iterable.iteration_count = epoch
+
+
 @DatasetDeserializerFactory.register("trace_synthetic")
 class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
     """
@@ -150,60 +293,10 @@ class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
         config: TraceSyntheticDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset:
-        if not (path := config.path).exists() or not path.is_file():
+    ) -> IterableDataset:
+        if not config.path.is_file():
             raise DataNotSupportedError(
-                "TraceSyntheticDatasetDeserializer expects a path to a trace file, "
-                f"got {path}"
+                f"{type(self).__name__} expects a path to a trace file, "
+                f"got {config.path}"
             )
-        try:
-            rows = load_trace_rows(
-                config.path,
-                TraceColumn(config.timestamp_column, Value("float")),
-                required_columns=[
-                    TraceColumn(config.prompt_tokens_column, Value("int32")),
-                    TraceColumn(config.output_tokens_column, Value("int32")),
-                ],
-            )
-        except (DatasetGenerationError, KeyError, ValueError) as e:
-            raise DataNotSupportedError(str(e)) from e
-
-        processor = processor_factory()
-        faker = Faker()
-        faker.seed_instance(random_seed)
-        max_prompt_tokens = max(row[config.prompt_tokens_column] for row in rows)
-        base_prompt_token_ids = _create_base_prompt_token_ids(
-            processor, faker, max_prompt_tokens
-        )
-
-        timestamps = [row[config.timestamp_column] for row in rows]
-        t0 = timestamps[0]
-        relative_timestamps = [t - t0 for t in timestamps]
-
-        prompts: list[str] = []
-        prompt_tokens_counts: list[int] = []
-        output_tokens_counts: list[int] = []
-        for i, row in enumerate(rows):
-            n_in = row[config.prompt_tokens_column]
-            n_out = row[config.output_tokens_column]
-            if n_in < 0 or n_out < 0:
-                raise DataNotSupportedError(
-                    "Trace token counts must be non-negative, got "
-                    f"input_length={n_in}, output_length={n_out}"
-                )
-            prompt = _create_prompt(
-                processor, n_in, base_prompt_token_ids, request_index=i
-            )
-            prompts.append(prompt)
-            prompt_tokens_counts.append(n_in)
-            output_tokens_counts.append(n_out)
-
-        return Dataset.from_dict(
-            {
-                "prompt": prompts,
-                "prompt_tokens_count": prompt_tokens_counts,
-                "output_tokens_count": output_tokens_counts,
-                "relative_timestamp": relative_timestamps,
-            },
-            **config.load_kwargs,
-        )
+        return _TraceSyntheticDataset(config, processor_factory(), random_seed)

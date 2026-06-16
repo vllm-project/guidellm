@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from datasets import Dataset
+from datasets import IterableDataset
 from pydantic import ValidationError
 
 from guidellm.data.deserializers.trace_synthetic import (
@@ -36,17 +36,13 @@ class TestTraceSyntheticDatasetDeserializer:
         return TraceSyntheticDatasetDeserializer()
 
     def _deserialize(self, deserializer, data, **kwargs):
-        col_kwargs = {
-            k: v
-            for k, v in kwargs.items()
-            if k in ("timestamp_column", "prompt_tokens_column", "output_tokens_column")
-        }
-        try:
-            config = TraceSyntheticDataArgs(path=data, **col_kwargs)
-        except ValidationError as e:
-            raise DataNotSupportedError(
-                f"Expected a path to a trace file, got {data!r}"
-            ) from e
+        field_names = (
+            "timestamp_column",
+            "prompt_tokens_column",
+            "output_tokens_column",
+        )
+        col_kwargs = {k: v for k, v in kwargs.items() if k in field_names}
+        config = TraceSyntheticDataArgs(path=data, **col_kwargs)
         return deserializer(
             config=config,
             processor_factory=_mock_processor,
@@ -67,13 +63,14 @@ class TestTraceSyntheticDatasetDeserializer:
 
         ds = self._deserialize(deserializer, trace)
 
-        assert isinstance(ds, Dataset)
-        assert ds["prompt_tokens_count"] == [1, 2, 3, 0]
-        assert ds["output_tokens_count"] == [10, 20, 30, 40]
-        for prompt, token_count in zip(
-            ds["prompt"], ds["prompt_tokens_count"], strict=True
-        ):
-            assert len(_mock_processor().encode(prompt)) == token_count
+        assert isinstance(ds, IterableDataset)
+        expected_prompt_count = [1, 2, 3, 0]
+        expected_output_count = [10, 20, 30, 40]
+        proc = _mock_processor()
+        for i, row in enumerate(ds):
+            assert row["prompt_tokens_count"] == expected_prompt_count[i]
+            assert row["output_tokens_count"] == expected_output_count[i]
+            assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
 
     @pytest.mark.smoke
     def test_emits_relative_timestamp_column_sorted_from_trace(
@@ -94,9 +91,9 @@ class TestTraceSyntheticDatasetDeserializer:
 
         ds = self._deserialize(deserializer, trace)
 
-        assert ds["relative_timestamp"] == pytest.approx(
-            [0.0, 0.0, 3.0, 3.0, 6.0], abs=1e-9
-        )
+        expected = [0.0, 0.0, 3.0, 3.0, 6.0]
+        for i, row in enumerate(ds):
+            assert row["relative_timestamp"] == pytest.approx(expected[i], abs=1e-9)
 
     @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
@@ -114,8 +111,11 @@ class TestTraceSyntheticDatasetDeserializer:
             output_tokens_column="generated_tokens",
         )
 
-        assert ds["prompt_tokens_count"] == [2, 4]
-        assert ds["output_tokens_count"] == [20, 40]
+        expected_prompt_count = [2, 4]
+        expected_output_count = [20, 40]
+        for i, row in enumerate(ds):
+            assert row["prompt_tokens_count"] == expected_prompt_count[i]
+            assert row["output_tokens_count"] == expected_output_count[i]
 
     @pytest.mark.smoke
     def test_generates_large_trace_prompts_from_reusable_base(
@@ -230,17 +230,19 @@ class TestTraceSyntheticDatasetDeserializer:
             random_seed=42,
         )
 
-        assert ds["prompt_tokens_count"] == prompt_lengths
-        assert ds["output_tokens_count"] == output_lengths
         assert processor.encode.call_count <= len(prompt_lengths) + 4
-        for prompt, token_count in zip(
-            ds["prompt"], ds["prompt_tokens_count"], strict=True
-        ):
-            assert len(_mock_processor().encode(prompt)) == token_count
+        for i, row in enumerate(ds):
+            in_cnt = row["prompt_tokens_count"]
+            assert in_cnt == prompt_lengths[i]
+            assert row["output_tokens_count"] == output_lengths[i]
+
+            actual_prompt_length = len(processor.encode(row["prompt"]))
+            if actual_prompt_length != in_cnt:
+                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
 
     @pytest.mark.smoke
     def test_rejects_invalid_data(self, deserializer):
-        with pytest.raises(DataNotSupportedError, match="path to a trace file"):
+        with pytest.raises(ValidationError, match="not a valid path"):
             self._deserialize(deserializer, 123)
 
     @pytest.mark.sanity

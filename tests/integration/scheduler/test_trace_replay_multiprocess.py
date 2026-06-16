@@ -75,13 +75,12 @@ def _requests_from_trace(
 
     conversations: list[list[GenerationRequest]] = []
     relative_timestamps: list[float] = []
-    for index in range(len(dataset)):
-        row = {column: dataset[column][index] for column in dataset.column_names}
+    for idx, row in enumerate(dataset):
         mapped = mapper([{"dataset": row}])
         requests = finalizer(mapped)
         assert len(requests) == 1
         request = requests[0]
-        request.request_id = f"req_{index}"
+        request.request_id = f"req_{idx}"
         conversations.append([request])
         offset = request.settings.relative_timestamp
         assert offset is not None
