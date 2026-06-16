@@ -156,9 +156,7 @@ class ReplayProfile(Profile):
         relative_timestamps = _resolve_relative_timestamps(data, data_samples)
         new_constraints = dict(constraints or {})
         if "max_requests" not in new_constraints:
-            constraint_args = MaxRequestsConstraintArgs(
-                max_num=len(relative_timestamps)
-            )
+            constraint_args = MaxRequestsConstraintArgs(count=len(relative_timestamps))
             new_constraints["max_requests"] = ConstraintsInitializerFactory.create(
                 constraint_args
             )
