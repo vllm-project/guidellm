@@ -23,6 +23,7 @@ from .memory import (
     InMemoryItemListDataArgs,
     InMemoryItemListDatasetDeserializer,
 )
+from .multi_image import MultiImageDataArgs, MultiImageDatasetDeserializer
 from .synthetic import (
     SyntheticTextDataArgs,
     SyntheticTextDataset,
@@ -49,6 +50,8 @@ __all__ = [
     "InMemoryItemListDataArgs",
     "InMemoryItemListDatasetDeserializer",
     "JSONFileDatasetDeserializer",
+    "MultiImageDataArgs",
+    "MultiImageDatasetDeserializer",
     "ParquetFileDatasetDeserializer",
     "SyntheticTextDataArgs",
     "SyntheticTextDataset",
