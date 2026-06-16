@@ -197,6 +197,7 @@ exclude = ["build", "dist", "env", ".venv*"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+line-ending = "lf"
 
 [tool.ruff.lint]
 ignore = [
