@@ -28,8 +28,13 @@ from .synthetic import (
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
-from .trace_mooncake import TraceMooncakeDataArgs, TraceMooncakeDatasetDeserializer
-from .trace_synthetic import TraceSyntheticDataArgs, TraceSyntheticDatasetDeserializer
+from .trace_common import (
+    TraceDataArgs,
+    TraceDataset,
+    TraceDatasetDeserializer,
+)
+from .trace_mooncake import MooncakeTraceFormatArgs
+from .trace_synthetic import MinimalTraceFormatArgs
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
@@ -49,14 +54,15 @@ __all__ = [
     "InMemoryItemListDataArgs",
     "InMemoryItemListDatasetDeserializer",
     "JSONFileDatasetDeserializer",
+    "MinimalTraceFormatArgs",
+    "MooncakeTraceFormatArgs",
     "ParquetFileDatasetDeserializer",
     "SyntheticTextDataArgs",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
-    "TraceMooncakeDataArgs",
-    "TraceMooncakeDatasetDeserializer",
-    "TraceSyntheticDataArgs",
-    "TraceSyntheticDatasetDeserializer",
+    "TraceDataArgs",
+    "TraceDataset",
+    "TraceDatasetDeserializer",
 ]

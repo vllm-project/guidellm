@@ -1,5 +1,5 @@
 """
-Trace file deserializer that generates synthetic prompts per row.
+OUTDATED: Trace file deserializer that generates synthetic prompts per row.
 
 Reads a trace file (timestamp, input_length, output_length) and yields one row per
 line with a synthetic prompt matching the requested input_length for replay benchmarks.
@@ -7,27 +7,23 @@ line with a synthetic prompt matching the requested input_length for replay benc
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from pathlib import Path
+from collections.abc import Iterable
 from typing import Any, Literal
 
 import numpy as np
-from datasets import DatasetInfo, Features, IterableDataset, Value
+from datasets import Features, Value
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
-from pydantic import Field, field_serializer
+from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.deserializers.deserializer import (
-    DataNotSupportedError,
-    DatasetDeserializer,
-    DatasetDeserializerFactory,
-)
+from guidellm.data.deserializers.deserializer import DataNotSupportedError
+from guidellm.data.deserializers.trace_common import TraceDataArgs
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.trace_io import TraceColumn, load_trace_rows
 
-__all__ = ["TraceSyntheticDataArgs", "TraceSyntheticDatasetDeserializer"]
+__all__ = ["MinimalTraceFormatArgs"]
 
 
 def _encode_prompt(
@@ -108,7 +104,7 @@ def _create_prompt(
     return _decode_prompt(processor, prompt_token_ids)
 
 
-def _validate_row(row: dict, config: TraceSyntheticDataArgs) -> None:
+def _validate_row(row: dict, config: MinimalTraceFormatArgs) -> None:
     n_in = row[config.prompt_tokens_column]
     n_out = row[config.output_tokens_column]
     if n_in < 0 or n_out < 0:
@@ -118,42 +114,13 @@ def _validate_row(row: dict, config: TraceSyntheticDataArgs) -> None:
         )
 
 
-@DataArgs.register("trace_synthetic")
-class TraceSyntheticDataArgs(DataArgs):
-    """Model for synthetic trace dataset deserializer arguments."""
-
-    kind: Literal["trace_synthetic"] = Field(
-        default="trace_synthetic",
-        description="Type identifier for the trace synthetic dataset deserializer.",
-    )
-    path: Path = Field(description="Path to the trace file.")
-    timestamp_column: str = Field(
-        default="timestamp",
-        description="Column name for timestamps in the trace file.",
-    )
-    prompt_tokens_column: str = Field(
-        default="input_length",
-        description="Column name for prompt token counts in the trace file.",
-    )
-    output_tokens_column: str = Field(
-        default="output_length",
-        description="Column name for output token counts in the trace file.",
-    )
-
-    @field_serializer("path")
-    @classmethod
-    def serialize_path(cls, path: Path) -> str:
-        """Serialize path as a string because Path is not JSON serializable."""
-        return str(path)
-
-
-class _TraceSyntheticExamplesIterable(_BaseExamplesIterable):
+class _MinimalFormatExamplesIterable(_BaseExamplesIterable):
     """Custom examples iterable for synthetic prompt generation. Used to avoid
     pre-generating a prompt for every row in the dataset on load."""
 
     def __init__(
         self,
-        config: TraceSyntheticDataArgs,
+        config: MinimalTraceFormatArgs,
         processor: PreTrainedTokenizerBase,
         random_seed: int = 42,
     ):
@@ -173,8 +140,10 @@ class _TraceSyntheticExamplesIterable(_BaseExamplesIterable):
             )
         except (DatasetGenerationError, KeyError, ValueError) as e:
             raise DataNotSupportedError(str(e)) from e
-        
-        max_prompt_tokens = max(row[config.prompt_tokens_column] for row in self.trace_rows)
+
+        max_prompt_tokens = max(
+            row[config.prompt_tokens_column] for row in self.trace_rows
+        )
         self.base_prompt_token_ids = _create_base_prompt_token_ids(
             self.processor, self.faker, max_prompt_tokens
         )
@@ -230,7 +199,7 @@ class _TraceSyntheticExamplesIterable(_BaseExamplesIterable):
     def shuffle_data_sources(
         self,
         generator: np.random.Generator,  # noqa: ARG002
-    ) -> _TraceSyntheticExamplesIterable:
+    ) -> _MinimalFormatExamplesIterable:
         """Returns self as sharding is not implemented yet."""
         return self
 
@@ -239,7 +208,7 @@ class _TraceSyntheticExamplesIterable(_BaseExamplesIterable):
         num_shards: int,  # noqa: ARG002
         index: int,  # noqa: ARG002
         contiguous: bool = True,  # noqa: ARG002
-    ) -> _TraceSyntheticExamplesIterable:
+    ) -> _MinimalFormatExamplesIterable:
         """Returns self as sharding is not implemented yet."""
         return self
 
@@ -253,50 +222,12 @@ class _TraceSyntheticExamplesIterable(_BaseExamplesIterable):
         return self._state_dict
 
 
-class _TraceSyntheticDataset(IterableDataset):
-    def __init__(
-        self,
-        config: TraceSyntheticDataArgs,
-        processor: PreTrainedTokenizerBase,
-        random_seed: int = 42,
-    ):
-        self.config = config
-        self.processor = processor
-        self.random_seed = random_seed
-        ex_iterable = _TraceSyntheticExamplesIterable(config, processor, random_seed)
-        super().__init__(
-            ex_iterable=ex_iterable,
-            info=DatasetInfo(
-                description="Synthetic trace dataset generator",
-                features=ex_iterable.features,
-            ),
-        )
+@DataArgs.register("trace_synthetic")
+class MinimalTraceFormatArgs(TraceDataArgs):
+    """TODO"""
 
-    def set_epoch(self, epoch: int):
-        """Set the epoch for the dataset iteration."""
-        if isinstance(self._ex_iterable, _TraceSyntheticExamplesIterable):
-            self._ex_iterable.iteration_count = epoch
-
-
-@DatasetDeserializerFactory.register("trace_synthetic")
-class TraceSyntheticDatasetDeserializer(DatasetDeserializer):
-    """
-    Load a trace file and generate a synthetic prompt per row.
-
-    Trace file must have timestamp, and columns for prompt and output token counts
-    (default: input_length, output_length). Each row becomes one request with
-    a synthetic prompt of the requested input length.
-    """
-
-    def __call__(
-        self,
-        config: TraceSyntheticDataArgs,
-        processor_factory: Callable[[], PreTrainedTokenizerBase],
-        random_seed: int,
-    ) -> IterableDataset:
-        if not config.path.is_file():
-            raise DataNotSupportedError(
-                f"{type(self).__name__} expects a path to a trace file, "
-                f"got {config.path}"
-            )
-        return _TraceSyntheticDataset(config, processor_factory(), random_seed)
+    format: Literal["minimal"] = Field(
+        default="minimal",
+        description="Type identifier for the minimal trace format.",
+    )
+    ex_iterable = _MinimalFormatExamplesIterable

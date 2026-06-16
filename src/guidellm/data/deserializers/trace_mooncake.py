@@ -1,4 +1,5 @@
 """
+OUTDATED:
 Trace deserializer for Mooncake formatted files that generates synthetic prompts per
 row.
 
@@ -10,47 +11,23 @@ benchmarks.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from typing import Any, Literal
 
 import numpy as np
-from datasets import DatasetInfo, Features, IterableDataset, List, Value
+from datasets import Features, List, Value
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.deserializers.deserializer import (
-    DataNotSupportedError,
-    DatasetDeserializer,
-    DatasetDeserializerFactory,
-)
-from guidellm.data.deserializers.trace_synthetic import TraceSyntheticDataArgs
+from guidellm.data.deserializers.deserializer import DataNotSupportedError
+from guidellm.data.deserializers.trace_common import TraceDataArgs
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.trace_io import TraceColumn, load_trace_rows
 
-__all__ = ["TraceMooncakeDataArgs", "TraceMooncakeDatasetDeserializer"]
-
-
-@DataArgs.register("mooncake")
-class TraceMooncakeDataArgs(TraceSyntheticDataArgs):
-    """Model for Mooncake trace dataset deserializer arguments."""
-
-    kind: Literal["mooncake"] = Field(  # type: ignore[assignment]
-        default="mooncake",
-        description="Type identifier for the trace Mooncake dataset deserializer.",
-    )
-    hash_ids_column: str = Field(
-        default="hash_ids",
-        description="Column name for lists of hash IDs in the trace file.",
-    )
-    hash_id_block_size: int = Field(
-        gt=0,
-        # Default used in Mooncake's paper https://arxiv.org/pdf/2407.00079
-        default=512,
-        description="Amount of tokens represented by one hash ID.",
-    )
+__all__ = ["MooncakeTraceFormatArgs"]
 
 
 def _is_in_table(hash_id_table: list[Any], hash_id: int) -> bool:
@@ -67,7 +44,7 @@ def _resize_to_hold_id(hash_id_table: list[Any], hash_id: int) -> None:
 
 
 def _calculate_required_prompt_tokens(
-    row: dict, config: TraceMooncakeDataArgs, hash_id: int
+    row: dict, config: MooncakeTraceFormatArgs, hash_id: int
 ) -> int:
     """Returns the number of prompt tokens needed to satisfy the row input length.
     This will be less than the block_size if the input length is not divisible by it
@@ -135,7 +112,7 @@ def _create_prompt_from_hash_ids(
     return prompt
 
 
-def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
+def _validate_row(row: dict, config: MooncakeTraceFormatArgs) -> None:
     n_in = row[config.prompt_tokens_column]
     n_out = row[config.output_tokens_column]
     n_blocks = len(row[config.hash_ids_column])
@@ -154,15 +131,13 @@ def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
         )
 
 
-class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
-    """Custom examples iterable for synthetic prompt generation.
-
-    Used to avoid pre-generating a prompt for every row in the dataset on load.
-    """
+class _MooncakeFormatExamplesIterable(_BaseExamplesIterable):
+    """Custom examples iterable for synthetic prompt generation. Used to avoid
+    pre-generating a prompt for every row in the dataset on load."""
 
     def __init__(
         self,
-        config: TraceMooncakeDataArgs,
+        config: MooncakeTraceFormatArgs,
         processor: PreTrainedTokenizerBase,
         random_seed: int = 42,
     ):
@@ -250,7 +225,7 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
     def shuffle_data_sources(
         self,
         generator: np.random.Generator,  # noqa: ARG002
-    ) -> _TraceMooncakeExamplesIterable:
+    ) -> _MooncakeFormatExamplesIterable:
         """Returns self as sharding is not implemented yet."""
         return self
 
@@ -259,7 +234,7 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
         num_shards: int,  # noqa: ARG002
         index: int,  # noqa: ARG002
         contiguous: bool = True,  # noqa: ARG002
-    ) -> _TraceMooncakeExamplesIterable:
+    ) -> _MooncakeFormatExamplesIterable:
         """Returns self as sharding is not implemented yet."""
         return self
 
@@ -273,56 +248,20 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
         return self._state_dict
 
 
-class _TraceMooncakeDataset(IterableDataset):
-    def __init__(
-        self,
-        config: TraceMooncakeDataArgs,
-        processor: PreTrainedTokenizerBase,
-        random_seed: int = 42,
-    ):
-        self.config = config
-        self.processor = processor
-        self.random_seed = random_seed
-        ex_iterable = _TraceMooncakeExamplesIterable(config, processor, random_seed)
-        super().__init__(
-            ex_iterable=ex_iterable,
-            info=DatasetInfo(
-                description="Mooncake trace dataset generator",
-                features=ex_iterable.features,
-            ),
-        )
-
-    def set_epoch(self, epoch: int):
-        """Set the epoch for the dataset iteration."""
-        if isinstance(self._ex_iterable, _TraceMooncakeExamplesIterable):
-            self._ex_iterable.iteration_count = epoch
-
-
-@DatasetDeserializerFactory.register("mooncake")
-class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
-    """Mooncake trace format deserializer
-
-    The Mooncake trace format requires a column for timestamps, prompt token counts,
-    ouput token counts and lists of hash IDs.
-
-    Hash IDs are globally unique identifiers based on the current and previous token
-    blocks in a prompt. The relationships of IDs forms a tree, where every first ID
-    in a prompt has a parent node of `None`. Parent nodes can have an unbounded
-    number of children. Two hash IDs can represent identical blocks of tokens so long
-    as they do not share the same parent (previous ID). For more details, see section 4
-    of https://arxiv.org/pdf/2407.00079.
-
-    Generated prompts match the prompt token count of the row."""
-
-    def __call__(
-        self,
-        config: TraceMooncakeDataArgs,
-        processor_factory: Callable[[], PreTrainedTokenizerBase],
-        random_seed: int,
-    ) -> IterableDataset:
-        if not config.path.is_file():
-            raise DataNotSupportedError(
-                f"{type(self).__name__} expects a path to a trace file, "
-                f"got {config.path}"
-            )
-        return _TraceMooncakeDataset(config, processor_factory(), random_seed)
+@DataArgs.register("mooncake")
+class MooncakeTraceFormatArgs(TraceDataArgs):
+    format: Literal["mooncake"] = Field(
+        default="mooncake",
+        description="Type identifier for the trace Mooncake dataset deserializer.",
+    )
+    hash_ids_column: str = Field(
+        default="hash_ids",
+        description="Column name for lists of hash IDs in the trace file.",
+    )
+    hash_id_block_size: int = Field(
+        gt=0,
+        # Default used in Mooncake's paper https://arxiv.org/pdf/2407.00079
+        default=512,
+        description="Amount of tokens represented by one hash ID.",
+    )
+    ex_iterable = _MooncakeFormatExamplesIterable
