@@ -103,7 +103,7 @@ class MockBackend(BackendInterface):
             NonDistributedEnvironment(),
             {
                 "max_requests": MaxNumberConstraint(
-                    args=MaxRequestsConstraintArgs(max_num=100)
+                    args=MaxRequestsConstraintArgs(count=100)
                 )
             },
         ),
