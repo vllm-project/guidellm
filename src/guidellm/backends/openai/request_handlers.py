@@ -174,10 +174,7 @@ def _check_streaming_error(data: Any) -> None:
         return
     if isinstance(error, dict):
         message = (
-            error.get("message")
-            or error.get("type")
-            or error.get("code")
-            or str(error)
+            error.get("message") or error.get("type") or error.get("code") or str(error)
         )
     else:
         message = str(error)
@@ -215,7 +212,7 @@ def _wrap_reasoning(reasoning_text: str | None, mode: bool | str) -> str | None:
     """Apply the configured reasoning format to reasoning text.
 
     :param reasoning_text: Raw reasoning text from the model response.
-    :param mode: Wrapping mode — False disables, True uses the default
+    :param mode: Wrapping mode â€” False disables, True uses the default
         ``<think>...</think>`` template, a string is used as a format
         template containing ``{reasoning}``.
     :return: Formatted reasoning string, or None when disabled or no text.
@@ -514,7 +511,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
         if text is None:
-            # text not applicable (e.g. tool-call-only) — exclude from aggregation
+            # text not applicable (e.g. tool-call-only) â€” exclude from aggregation
             text_words = None
             text_chars = None
         else:
@@ -1100,7 +1097,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
         """
         if text is None:
-            # text not applicable (e.g. tool-call-only) — exclude from aggregation
+            # text not applicable (e.g. tool-call-only) â€” exclude from aggregation
             text_words = None
             text_chars = None
         else:
@@ -1708,7 +1705,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         # for multimodal breakdowns, mirroring chat completions'
         # "prompt_tokens_details"/"completion_tokens_details".
         if text is None:
-            # text not applicable — exclude from aggregation
+            # text not applicable â€” exclude from aggregation
             text_words = None
             text_chars = None
         else:

@@ -444,9 +444,7 @@ class TestTextCompletionsRequestHandler:
         successful empty generation.
         """
         instance = valid_instances
-        with pytest.raises(
-            ValueError, match="Streaming response returned an error"
-        ):
+        with pytest.raises(ValueError, match="Streaming response returned an error"):
             instance.extract_line_data(line)
 
     @pytest.mark.smoke
