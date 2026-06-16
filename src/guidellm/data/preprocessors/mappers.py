@@ -16,7 +16,6 @@ from guidellm.data.schemas import (
     DatasetType,
     GenerativeDatasetColumnType,
 )
-from guidellm.logger import logger
 
 __all__ = [
     "GenerativeColumnMapper",
@@ -250,11 +249,19 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         )
 
         if not self.datasets_column_mappings:
-            logger.warning(
-                "GenerativeColumnMapper found no matching columns. "
-                "Requested mappings: {}. "
-                "Every row will produce an empty result.",
-                self.input_mappings or "default mappings",
+            available_columns: list[str] = []
+            for dataset in datasets:
+                columns = getattr(dataset, "column_names", None)
+                if columns:
+                    available_columns.extend(columns)
+            raise ValueError(
+                "GenerativeColumnMapper found no mappable columns in the "
+                f"dataset(s) (columns: {available_columns}). "
+                f"Requested mappings: {self.input_mappings or 'default mappings'}. "
+                "Without at least one mapped column every row produces an empty "
+                "result and the benchmark would hang with no requests sent. "
+                "Rename a column to a recognized name (e.g. 'prompt') or pass "
+                "an explicit column mapping."
             )
 
 
