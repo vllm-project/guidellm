@@ -11,6 +11,7 @@ validation, data preprocessing, profile constraints, and output format specifica
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -357,6 +358,97 @@ async def resolve_output_formats(
     return resolved
 
 
+_SKIP_FIELDS: frozenset[str] = frozenset({"profile"})
+_PROFILE_RATE_FIELDS: frozenset[str] = frozenset({"rate", "streams"})
+
+
+def _assert_fields_equal(
+    objects: list[Any],
+    field_names: Iterable[str],
+    skip: frozenset[str],
+    context: str,
+) -> None:
+    """
+    Raise :class:`NotImplementedError` if any field in *field_names* differs
+    across *objects* (skipping names in *skip*).
+
+    :param objects: Homogeneous list of Pydantic model instances to compare
+    :param field_names: Field names to check
+    :param skip: Field names to exclude from comparison
+    :param context: Label used in the error message (e.g. ``"benchmark"``)
+    """
+    base = objects[0]
+    for field_name in field_names:
+        if field_name in skip:
+            continue
+        base_val = base.__dict__[field_name]
+        for other in objects[1:]:
+            if other.__dict__[field_name] != base_val:
+                raise NotImplementedError(
+                    f"Differing {context} field '{field_name}' cannot be merged. "
+                    "Currently only rate can be modified with overrides."
+                )
+
+
+def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArgs:
+    """
+    Collapse multiple benchmark argument sets into a single instance.
+
+    NOTE: This is a temporary workaround to support the new config format with the
+    existing initization flow. This method will be removed once we support arbitrarily
+    overriding any fields in spec (or at least handle supported overrides better).
+
+    Temporary adapter that bridges the new multi-benchmark configuration format
+    to the old single-benchmark internal pipeline.  All fields must be equal
+    across the provided benchmarks except for recognised rate-like profile
+    fields (see ``_PROFILE_RATE_FIELDS``), which are flattened into one list.
+
+    :param benchmarks: One or more benchmark argument instances to merge
+    :return: A single, merged ``BenchmarkArgs`` ready for execution
+    :raises NotImplementedError: If any non-rate field differs across benchmarks
+    """
+    if len(benchmarks) == 1:
+        return benchmarks[0]
+
+    # Use this for determining correct field kinds
+    # `kind` should not chnage between benchmarks
+    base = benchmarks[0]
+
+    _assert_fields_equal(
+        benchmarks, BenchmarkArgs.model_fields, _SKIP_FIELDS, "benchmark"
+    )
+
+    # BEGIN: profile hack
+    profiles = [b.profile for b in benchmarks]
+    profile_cls = type(base.profile)
+    _assert_fields_equal(
+        profiles, profile_cls.model_fields, _PROFILE_RATE_FIELDS, "profile"
+    )
+
+    # Get the correct "rate" field for the profile
+    rate_field = next(
+        (f for f in _PROFILE_RATE_FIELDS if f in profile_cls.model_fields),
+        None,
+    )
+    if rate_field is None:
+        return base
+
+    merged_rates: list[Any] = []
+    for bench in benchmarks:
+        val = bench.profile.__dict__[rate_field]
+        if isinstance(val, list | tuple):
+            merged_rates.extend(val)
+        else:
+            merged_rates.append(val)
+
+    profile_dump = base.profile.model_dump()
+    profile_dump[rate_field] = merged_rates
+    merged_profile = profile_cls.model_validate(profile_dump)
+    # END: profile hack
+
+    return base.model_copy(update={"profile": merged_profile})
+
+
 # Main Entrypoints Functions
 
 
@@ -381,7 +473,7 @@ async def benchmark_generative_text(
     :return: Tuple of GenerativeBenchmarksReport and dictionary of output format
         results
     """
-    benchmark_args = args.get_benchmarks()[0]
+    benchmark_args = resolve_to_single_benchmark(args.get_benchmarks())
 
     backend, model = await resolve_backend(
         backend_args=benchmark_args.backend,
