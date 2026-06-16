@@ -22,6 +22,7 @@ from pydantic import (
     Field,
     model_validator,
 )
+from pydantic.utils import deep_update
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from guidellm.backends import BackendArgs
@@ -226,8 +227,10 @@ class BenchmarkScenario(BaseSettings):
                 scenario_data = scenario_data["args"]
             constructor_kwargs.update(scenario_data)
 
+        # NOTE In the future replace deep_update with a more intelligent merging
+        #      strategy that accounts for changes to `kind`.
         # Apply overrides from kwargs
-        constructor_kwargs.update(kwargs)
+        constructor_kwargs = deep_update(constructor_kwargs, kwargs)
 
         return cls.model_validate(constructor_kwargs)
 

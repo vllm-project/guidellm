@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import click
 from pydantic import ValidationError
@@ -11,6 +12,7 @@ from guidellm.benchmark import (
     BenchmarkScenario,
     GenerativeConsoleBenchmarkerProgress,
     benchmark_generative_text,
+    get_builtin_scenarios,
 )
 from guidellm.utils.click_pydantic import (
     format_validation_errors,
@@ -33,13 +35,22 @@ __all__ = [
 )
 @registry_options_from_model(model=BenchmarkArgs, group_key="spec")
 @click.option(
-    "--scenario",
     "--config",
+    "--scenario",
     "-c",
-    type=click.Path(exists=True, dir_okay=False, path_type=str),
+    type=cli_tools.Union(
+        click.Path(
+            exists=True,
+            readable=True,
+            file_okay=True,
+            dir_okay=False,
+            path_type=Path,
+        ),
+        click.Choice(tuple(get_builtin_scenarios().keys())),
+    ),
     help=(
-        "Path to a benchmark scenario file (YAML or JSON) "
-        "that defines the benchmark configuration"
+        "Builtin scenario name or path to config file. "
+        "CLI options override scenario settings."
     ),
 )
 @click.option(
@@ -80,7 +91,7 @@ def run(**kwargs):  # noqa: C901, PLR0915
         args = BenchmarkScenario.create(
             spec=kwargs.get("spec", {}),
             benchmarks=kwargs.get("benchmarks", []),
-            scenario=kwargs.get("scenario"),
+            scenario=kwargs.get("config"),
         )
     except ValidationError as err:
         # Translate pydantic validation error to click argument error
