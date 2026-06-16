@@ -112,7 +112,7 @@ class TestWorkerProcessGroup:
                 "strategy": SynchronousStrategy(),
                 "startup_duration": 0.1,
                 "max_requests": MaxNumberConstraint(
-                    args=MaxRequestsConstraintArgs(max_num=10),
+                    args=MaxRequestsConstraintArgs(count=10),
                 ),
             },
             {
@@ -120,7 +120,7 @@ class TestWorkerProcessGroup:
                 "strategy": ConcurrentStrategy(streams=2),
                 "startup_duration": 0.1,
                 "max_requests": MaxNumberConstraint(
-                    args=MaxRequestsConstraintArgs(max_num=5),
+                    args=MaxRequestsConstraintArgs(count=5),
                 ),
             },
             {
@@ -133,7 +133,7 @@ class TestWorkerProcessGroup:
                 "strategy": AsyncConstantStrategy(rate=20),
                 "startup_duration": 0.1,
                 "max_duration": MaxDurationConstraint(
-                    args=MaxDurationConstraintArgs(max_duration=1),
+                    args=MaxDurationConstraintArgs(seconds=1),
                 ),
             },
         ],

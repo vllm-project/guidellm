@@ -128,10 +128,10 @@ class TestConstraintArgsToInitializerHelper:
 
         ## WRITTEN BY AI ##
         """
-        args = MaxDurationConstraintArgs(max_duration=300)
+        args = MaxDurationConstraintArgs(seconds=300)
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxDurationConstraint)
-        assert init.args.max_duration == 300
+        assert init.args.seconds == 300
 
     @pytest.mark.smoke
     def test_max_duration_list_values(self):
@@ -140,10 +140,10 @@ class TestConstraintArgsToInitializerHelper:
 
         ## WRITTEN BY AI ##
         """
-        args = MaxDurationConstraintArgs(max_duration=[60, 120, 300])
+        args = MaxDurationConstraintArgs(seconds=[60, 120, 300])
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxDurationConstraint)
-        assert init.args.max_duration == [60, 120, 300]
+        assert init.args.seconds == [60, 120, 300]
 
     @pytest.mark.smoke
     def test_max_requests_to_initializer(self):
@@ -152,10 +152,10 @@ class TestConstraintArgsToInitializerHelper:
 
         ## WRITTEN BY AI ##
         """
-        args = MaxRequestsConstraintArgs(max_num=1000)
+        args = MaxRequestsConstraintArgs(count=1000)
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxNumberConstraint)
-        assert init.args.max_num == 1000
+        assert init.args.count == 1000
 
     @pytest.mark.smoke
     def test_max_errors_to_initializer(self):
@@ -164,10 +164,10 @@ class TestConstraintArgsToInitializerHelper:
 
         ## WRITTEN BY AI ##
         """
-        args = MaxErrorsConstraintArgs(max_errors=10)
+        args = MaxErrorsConstraintArgs(count=10)
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxErrorsConstraint)
-        assert init.args.max_errors == 10
+        assert init.args.count == 10
 
     @pytest.mark.smoke
     def test_max_error_rate_to_initializer(self):
@@ -176,11 +176,11 @@ class TestConstraintArgsToInitializerHelper:
 
         ## WRITTEN BY AI ##
         """
-        args = MaxErrorRateConstraintArgs(max_error_rate=0.5, window_size=50)
+        args = MaxErrorRateConstraintArgs(rate=0.5, window=50)
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxErrorRateConstraint)
-        assert init.args.max_error_rate == 0.5
-        assert init.args.window_size == 50
+        assert init.args.rate == 0.5
+        assert init.args.window == 50
 
     @pytest.mark.smoke
     def test_max_error_rate_default_window_size(self):
@@ -189,10 +189,10 @@ class TestConstraintArgsToInitializerHelper:
 
         ## WRITTEN BY AI ##
         """
-        args = MaxErrorRateConstraintArgs(max_error_rate=0.3)
+        args = MaxErrorRateConstraintArgs(rate=0.3)
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxErrorRateConstraint)
-        assert init.args.window_size == 30  # settings default
+        assert init.args.window == 30  # settings default
 
     @pytest.mark.smoke
     def test_max_global_error_rate_to_initializer(self):
@@ -201,11 +201,11 @@ class TestConstraintArgsToInitializerHelper:
 
         ## WRITTEN BY AI ##
         """
-        args = MaxGlobalErrorRateConstraintArgs(max_error_rate=0.2, min_processed=50)
+        args = MaxGlobalErrorRateConstraintArgs(rate=0.2, minimum=50)
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxGlobalErrorRateConstraint)
-        assert init.args.max_error_rate == 0.2
-        assert init.args.min_processed == 50
+        assert init.args.rate == 0.2
+        assert init.args.minimum == 50
 
     @pytest.mark.smoke
     def test_over_saturation_to_initializer(self):
@@ -290,8 +290,8 @@ class TestResolveConstraintsTranslation:
         assert "max_requests" in resolved
         assert isinstance(resolved["max_duration"], MaxDurationConstraint)
         assert isinstance(resolved["max_requests"], MaxNumberConstraint)
-        assert resolved["max_duration"].args.max_duration == 120
-        assert resolved["max_requests"].args.max_num == 500
+        assert resolved["max_duration"].args.seconds == 120
+        assert resolved["max_requests"].args.count == 500
 
     @pytest.mark.smoke
     def test_no_constraints_returns_empty(self):
