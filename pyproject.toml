@@ -86,11 +86,12 @@ dependencies = [
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision,plot]"]
+all = ["guidellm[perf,tokenizers,audio,vision,plot,litellm]"]
 recommended = ["guidellm[perf,tokenizers]"]
 # Feature Extras
 plot = ["matplotlib>=3.10.9"]
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
+litellm = ["litellm>=1.80.0,<1.87.0"]
 tokenizers = ["tiktoken", "blobfile", "mistral-common"]
 audio = [
     # Version with stable aarch64 CPU-only wheels
