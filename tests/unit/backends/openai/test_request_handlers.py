@@ -428,6 +428,29 @@ class TestTextCompletionsRequestHandler:
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
+        "line",
+        [
+            'data: {"error": {"message": "TimeoutError", "type": '
+            '"GatewayTimeout", "code": 504}}',
+            'data: {"error": "boom"}',
+        ],
+    )
+    def test_extract_line_data_streaming_error(self, valid_instances, line):
+        """Streaming SSE error payloads must surface as request failures.
+
+        Some OpenAI-compatible servers return HTTP 200 and report errors via
+        the stream body (e.g. vLLM's ``create_streaming_error_response``)
+        rather than an HTTP status, which would otherwise be recorded as a
+        successful empty generation.
+        """
+        instance = valid_instances
+        with pytest.raises(
+            ValueError, match="Streaming response returned an error"
+        ):
+            instance.extract_line_data(line)
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
         ("response", "expected_choices", "expected_usage"),
         [
             (

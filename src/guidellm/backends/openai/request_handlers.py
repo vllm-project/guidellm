@@ -152,6 +152,38 @@ class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
         return handler_cls()
 
 
+def _check_streaming_error(data: Any) -> None:
+    """Raise when a streaming SSE payload conveys a server-side error.
+
+    Some OpenAI-compatible servers (e.g. vLLM's
+    ``create_streaming_error_response``) return HTTP 200 and report failures
+    through the stream body as ``data: {"error": {...}}`` followed by
+    ``data: [DONE]``. Without this check the error payload is ignored, the
+    request is recorded as a successful but empty generation, and timing
+    metrics (TTFT, ITL) are reported as zero. Raising ``ValueError`` follows
+    the same convention as other request-level failures so the worker marks
+    the request as errored.
+
+    :param data: Parsed JSON payload from a single streaming line.
+    :raises ValueError: If the payload contains a non-empty ``error`` field.
+    """
+    if not isinstance(data, dict):
+        return
+    error = data.get("error")
+    if not error:
+        return
+    if isinstance(error, dict):
+        message = (
+            error.get("message")
+            or error.get("type")
+            or error.get("code")
+            or str(error)
+        )
+    else:
+        message = str(error)
+    raise ValueError(f"Streaming response returned an error: {message}")
+
+
 def _apply_tool_call_metrics(
     output_metrics: UsageMetrics,
     tool_call_count: int,
@@ -454,7 +486,9 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         line = line[len("data:") :].strip()
 
-        return json.loads(line)
+        data = json.loads(line)
+        _check_streaming_error(data)
+        return data
 
     def extract_choices_and_usage(
         self, response: dict
@@ -1432,7 +1466,9 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         if line == "data: [DONE]":
             return None
 
-        return json.loads(line[len("data:") :].strip())
+        data = json.loads(line[len("data:") :].strip())
+        _check_streaming_error(data)
+        return data
 
     @staticmethod
     def _responses_item_to_tool_call(item: dict[str, Any]) -> ToolCall:
