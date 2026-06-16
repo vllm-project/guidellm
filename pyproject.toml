@@ -76,10 +76,11 @@ dependencies = [
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision]"]
+all = ["guidellm[perf,tokenizers,audio,vision,litellm]"]
 recommended = ["guidellm[perf,tokenizers]"]
 # Feature Extras
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
+litellm = ["litellm>=1.80.0,<1.87.0"]
 tokenizers = ["tiktoken", "blobfile", "mistral-common"]
 audio = [
     # Version with stable aarch64 CPU-only wheels
