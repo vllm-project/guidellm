@@ -327,12 +327,12 @@ def pcm16_append_b64_chunks(
     if isinstance(audio_item, dict):
         if "audio" in audio_item:
             decode_sr = _sample_rate_hint_from_audio_column_dict(audio_item)
-            samples = _decode_audio(
+            samples, _ = _decode_audio(
                 audio_item["audio"],
                 sample_rate=decode_sr,
             )
         elif "data" in audio_item or "url" in audio_item:
-            samples = _decode_audio(audio_item)
+            samples, _ = _decode_audio(audio_item)
         else:
             raise ValueError(
                 "audio_column dict must include 'audio', 'data', or 'url' "
@@ -340,7 +340,7 @@ def pcm16_append_b64_chunks(
                 f"got keys {list(audio_item)!r}"
             )
     else:
-        samples = _decode_audio(audio_item)
+        samples, _ = _decode_audio(audio_item)
 
     # Ensure channel-first shape, then downmix to mono for realtime PCM input.
     data = samples.data
