@@ -32,8 +32,9 @@ from .schemas import (
     Benchmark,
     BenchmarkAccumulator,
     BenchmarkAccumulatorT,
+    BenchmarkArgs,
     BenchmarkConfig,
-    BenchmarkGenerativeTextArgs,
+    BenchmarkScenario,
     BenchmarkT,
     GenerativeAudioMetricsSummary,
     GenerativeBenchmark,
@@ -53,13 +54,19 @@ from .schemas import (
     SchedulerMetricsAccumulator,
 )
 
+# Rebuild schemas one more time before
+# export to catch any nested field changes
+BenchmarkArgs.model_rebuild(force=True)
+BenchmarkScenario.model_rebuild(force=True)
+
 __all__ = [
     "AsyncProfile",
     "Benchmark",
     "BenchmarkAccumulator",
     "BenchmarkAccumulatorT",
+    "BenchmarkArgs",
     "BenchmarkConfig",
-    "BenchmarkGenerativeTextArgs",
+    "BenchmarkScenario",
     "BenchmarkT",
     "Benchmarker",
     "BenchmarkerProgress",

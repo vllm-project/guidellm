@@ -10,28 +10,35 @@ from guidellm.__main__ import cli
 
 @pytest.mark.smoke
 def test_benchmark_run_with_backend_args():
+    """
+    Test that CLI invocation with new-style options parses correctly.
+
+    The command will fail because it can't connect to the server,
+    but it should pass argument parsing without errors.
+
+    ## WRITTEN BY AI ##
+    """
     runner = CliRunner()
     result = runner.invoke(
         cli,
         [
-            "benchmark",
             "run",
-            "--backend-args",
-            '{"headers": {"Authorization": "Bearer my-token"}, "verify": false}',
-            "--target",
-            "http://localhost:9",
+            "--backend",
+            "openai_http",
+            "target=http://localhost:9,verify=false",
             "--data",
+            "synthetic_text",
             "prompt_tokens=1,output_tokens=1",
             "--profile",
-            "kind=constant",
-            "--rate",
-            "1",
-            "--max-requests",
-            "1",
+            "constant",
+            "rate=1",
+            "--constraint",
+            "max_requests",
+            "max_num=1",
         ],
     )
     # This will fail because it can't connect to the server,
-    # but it will pass the header parsing, which is what we want to test.
+    # but it will pass the argument parsing, which is what we want to test.
     assert result.exit_code != 0
     assert "Invalid header format" not in result.output
 
@@ -42,6 +49,8 @@ def test_cli_backend_args_header_removal(mock_benchmark_func, tmp_path: Path):
     """
     Tests that --backend-args from the CLI correctly overrides scenario
     values and that `null` correctly removes a header.
+
+    ## WRITTEN BY AI ##
     """
     scenario_path = tmp_path / "scenario.json"
 

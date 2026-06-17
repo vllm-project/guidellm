@@ -10,14 +10,42 @@ explicit file path specifications for report serialization.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
-from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.benchmark.schemas import BenchmarkOutputArgs, GenerativeBenchmarksReport
 
-__all__ = ["GenerativeBenchmarkerSerialized"]
+__all__ = [
+    "GenerativeBenchmarkerSerialized",
+    "JSONBenchmarkOutputArgs",
+    "YAMLBenchmarkOutputArgs",
+]
+
+
+@BenchmarkOutputArgs.register("json")
+class JSONBenchmarkOutputArgs(BenchmarkOutputArgs):
+    kind: Literal["json"] = Field(
+        default="json",
+        description="The kind of output.",
+    )
+    path: Path = Field(
+        default=Path("./benchmarks.json"),
+        description="The file to save the output to.",
+    )
+
+
+@BenchmarkOutputArgs.register("yaml")
+class YAMLBenchmarkOutputArgs(BenchmarkOutputArgs):
+    kind: Literal["yaml"] = Field(
+        default="yaml",
+        description="The kind of output.",
+    )
+    path: Path = Field(
+        default=Path("./benchmarks.yaml"),
+        description="The file to save the output to.",
+    )
 
 
 @GenerativeBenchmarkerOutput.register(["json", "yaml"])
@@ -46,28 +74,17 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
     )
 
     @classmethod
-    def validated_kwargs(
-        cls,
-        output_path: str | Path | None,
-        format_key: str | None = None,
-        **_kwargs,
-    ) -> dict[str, Any]:
+    def from_args(cls, args: BenchmarkOutputArgs) -> GenerativeBenchmarkerSerialized:
         """
-        Validate and normalize output path keyword arguments.
+        Create a serialized output formatter from output arguments.
 
-        :param output_path: Directory or file path for serialization output
-        :param format_key: The registry key used to resolve this output type
-        :param _kwargs: Additional keyword arguments (ignored)
-        :return: Dictionary of validated keyword arguments for class initialization
+        :param args: Output configuration with path and kind (json or yaml)
+        :return: Configured serialized output formatter
         """
-        validated: dict[str, Any] = {}
-        if output_path is not None:
-            validated["output_path"] = (
-                Path(output_path) if not isinstance(output_path, Path) else output_path
-            )
-        if format_key in ("json", "yaml"):
-            validated["format_type"] = format_key
-        return validated
+        if not isinstance(args, JSONBenchmarkOutputArgs | YAMLBenchmarkOutputArgs):
+            raise ValueError(f"Invalid args type: {type(args)}.")
+
+        return cls(output_path=args.path, format_type=args.kind)
 
     async def finalize(self, report: GenerativeBenchmarksReport) -> Path:
         """
