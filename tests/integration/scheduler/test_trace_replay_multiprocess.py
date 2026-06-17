@@ -16,10 +16,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from guidellm.data.deserializers.trace_synthetic import (
-    TraceSyntheticDataArgs,
-    TraceSyntheticDatasetDeserializer,
-)
+from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
+from guidellm.data.deserializers.trace_synthetic import MinimalTraceFormatArgs
 from guidellm.data.finalizers.generative import (
     GenerativeRequestFinalizer,
     GenerativeRequestFinalizerArgs,
@@ -62,9 +60,9 @@ def _write_trace(path: Path, lines: list[str]) -> Path:
 def _requests_from_trace(
     trace_path: Path,
 ) -> tuple[list[list[GenerationRequest]], list[float]]:
-    deserializer = TraceSyntheticDatasetDeserializer()
+    deserializer = TraceDatasetDeserializer()
     dataset = deserializer(
-        config=TraceSyntheticDataArgs(path=trace_path),
+        config=MinimalTraceFormatArgs(path=trace_path),
         processor_factory=_mock_processor,
         random_seed=42,
     )

@@ -7,10 +7,8 @@ import pytest
 from datasets import IterableDataset
 from pydantic import ValidationError
 
-from guidellm.data.deserializers.trace_synthetic import (
-    TraceSyntheticDataArgs,
-    TraceSyntheticDatasetDeserializer,
-)
+from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
+from guidellm.data.deserializers.trace_synthetic import MinimalTraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
 
 
@@ -30,10 +28,10 @@ def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
     return path
 
 
-class TestTraceSyntheticDatasetDeserializer:
+class TestMinimalTraceFormat:
     @pytest.fixture
-    def deserializer(self) -> TraceSyntheticDatasetDeserializer:
-        return TraceSyntheticDatasetDeserializer()
+    def deserializer(self) -> TraceDatasetDeserializer:
+        return TraceDatasetDeserializer()
 
     def _deserialize(self, deserializer, data, **kwargs):
         field_names = (
@@ -42,7 +40,7 @@ class TestTraceSyntheticDatasetDeserializer:
             "output_tokens_column",
         )
         col_kwargs = {k: v for k, v in kwargs.items() if k in field_names}
-        config = TraceSyntheticDataArgs(path=data, **col_kwargs)
+        config = MinimalTraceFormatArgs(path=data, **col_kwargs)
         return deserializer(
             config=config,
             processor_factory=_mock_processor,
@@ -223,7 +221,7 @@ class TestTraceSyntheticDatasetDeserializer:
         )
         processor = _mock_processor()
 
-        config = TraceSyntheticDataArgs(path=trace)
+        config = MinimalTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
             processor_factory=lambda: processor,

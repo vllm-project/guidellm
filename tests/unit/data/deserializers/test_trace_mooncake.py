@@ -11,10 +11,8 @@ import pytest
 from datasets import IterableDataset
 from pydantic import ValidationError
 
-from guidellm.data.deserializers.trace_mooncake import (
-    TraceMooncakeDataArgs,
-    TraceMooncakeDatasetDeserializer,
-)
+from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
+from guidellm.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
 
 
@@ -103,8 +101,8 @@ def _generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
 
 class TestTraceMooncakeDatasetDeserializer:
     @pytest.fixture
-    def deserializer(self) -> TraceMooncakeDatasetDeserializer:
-        return TraceMooncakeDatasetDeserializer()
+    def deserializer(self) -> TraceDatasetDeserializer:
+        return TraceDatasetDeserializer()
 
     def _deserialize(self, deserializer, data, **kwargs):
         field_names = (
@@ -115,7 +113,7 @@ class TestTraceMooncakeDatasetDeserializer:
             "hash_id_block_size",
         )
         col_kwargs = {k: v for k, v in kwargs.items() if k in field_names}
-        config = TraceMooncakeDataArgs(path=data, **col_kwargs)
+        config = MooncakeTraceFormatArgs(path=data, **col_kwargs)
         return deserializer(
             config=config,
             processor_factory=_ascending_processor,
@@ -223,7 +221,7 @@ class TestTraceMooncakeDatasetDeserializer:
         output_lengths = [random.randint(3, 800) for _ in range(n_rows)]
         times = [0.0, 0.5, 1.0, 2.0]
         timestamps = [times[int(i / n_rows * len(times))] for i in range(n_rows)]
-        block_size = TraceMooncakeDataArgs(path=tmp_path).hash_id_block_size
+        block_size = MooncakeTraceFormatArgs(path=tmp_path).hash_id_block_size
         hash_ids = _make_valid_hash_ids(n_rows, prompt_lengths, block_size)
         trace = _write_trace(
             tmp_path,
@@ -238,7 +236,7 @@ class TestTraceMooncakeDatasetDeserializer:
             ),
         )
         processor = _ascending_processor()
-        config = TraceMooncakeDataArgs(path=trace)
+        config = MooncakeTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
             processor_factory=lambda: processor,
@@ -350,7 +348,7 @@ class TestTraceMooncakeDatasetDeserializer:
                 ],
             ),
         )
-        config = TraceMooncakeDataArgs(path=trace)
+        config = MooncakeTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
             processor_factory=lambda: _ascending_processor(),
@@ -376,7 +374,7 @@ class TestTraceMooncakeDatasetDeserializer:
                 ],
             ),
         )
-        config = TraceMooncakeDataArgs(path=trace)
+        config = MooncakeTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
             processor_factory=lambda: _compatible_processor(),
