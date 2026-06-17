@@ -129,7 +129,7 @@ class BenchmarkArgs(StandardBaseModel):
         json_schema_extra={"argument_alias": "seed"},
     )
     outputs: list[BenchmarkOutputArgs] = Field(
-        default_factory=list,
+        default_factory=lambda: default_kind_list("json", "csv"),  # type: ignore[arg-type]
         description="Benchmark outputs",
         json_schema_extra={"argument_alias": "output"},
     )
