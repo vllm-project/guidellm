@@ -58,19 +58,19 @@ class TestConstraintArgsPolymorphicValidation:
     @pytest.mark.parametrize(
         ("payload", "expected_type"),
         [
-            ({"kind": "max_duration", "max_duration": 60}, MaxDurationConstraintArgs),
-            ({"kind": "max_requests", "max_num": 100}, MaxRequestsConstraintArgs),
-            ({"kind": "max_errors", "max_errors": 5}, MaxErrorsConstraintArgs),
+            ({"kind": "max_duration", "seconds": 60}, MaxDurationConstraintArgs),
+            ({"kind": "max_requests", "count": 100}, MaxRequestsConstraintArgs),
+            ({"kind": "max_errors", "count": 5}, MaxErrorsConstraintArgs),
             (
-                {"kind": "max_error_rate", "max_error_rate": 0.5},
+                {"kind": "max_error_rate", "rate": 0.5},
                 MaxErrorRateConstraintArgs,
             ),
             (
-                {"kind": "max_global_error_rate", "max_error_rate": 0.3},
+                {"kind": "max_global_error_rate", "rate": 0.3},
                 MaxGlobalErrorRateConstraintArgs,
             ),
             (
-                {"kind": "over_saturation", "mode": "active"},
+                {"kind": "over_saturation", "mode": "enforce"},
                 OverSaturationConstraintArgs,
             ),
         ],
@@ -114,7 +114,7 @@ class TestConstraintArgsPolymorphicValidation:
         """
         with pytest.raises(ValidationError):
             ConstraintArgs.model_validate(
-                {"kind": "max_duration", "max_duration": 60, "bogus_field": True}
+                {"kind": "max_duration", "seconds": 60, "bogus_field": True}
             )
 
 
@@ -216,11 +216,11 @@ class TestConstraintArgsToInitializerHelper:
         ## WRITTEN BY AI ##
         """
         args = OverSaturationConstraintArgs(
-            mode="active", min_seconds=60, max_window_seconds=180
+            mode="enforce", min_seconds=60, max_window_seconds=180
         )
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, OverSaturationConstraintInitializer)
-        assert init.args.mode == "active"
+        assert init.args.mode == "enforce"
         assert init.args.min_seconds == 60
         assert init.args.max_window_seconds == 180
 
@@ -234,7 +234,7 @@ class TestConstraintArgsToInitializerHelper:
         args = OverSaturationConstraintArgs()
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, OverSaturationConstraintInitializer)
-        assert init.args.mode == "active"
+        assert init.args.mode == "enforce"
         assert init.args.min_seconds == 30.0
         assert init.args.moe_threshold == 2.0
 
@@ -246,13 +246,13 @@ class TestConstraintArgsConstraintKey:
     @pytest.mark.parametrize(
         ("args_class", "kwargs", "expected_key"),
         [
-            (MaxDurationConstraintArgs, {"max_duration": 60}, "max_duration"),
-            (MaxRequestsConstraintArgs, {"max_num": 100}, "max_requests"),
-            (MaxErrorsConstraintArgs, {"max_errors": 5}, "max_errors"),
-            (MaxErrorRateConstraintArgs, {"max_error_rate": 0.5}, "max_error_rate"),
+            (MaxDurationConstraintArgs, {"seconds": 60}, "max_duration"),
+            (MaxRequestsConstraintArgs, {"count": 100}, "max_requests"),
+            (MaxErrorsConstraintArgs, {"count": 5}, "max_errors"),
+            (MaxErrorRateConstraintArgs, {"rate": 0.5}, "max_error_rate"),
             (
                 MaxGlobalErrorRateConstraintArgs,
-                {"max_error_rate": 0.3},
+                {"rate": 0.3},
                 "max_global_error_rate",
             ),
             (OverSaturationConstraintArgs, {}, "over_saturation"),
@@ -280,8 +280,8 @@ class TestResolveConstraintsTranslation:
         """
         args = _minimal_args(
             constraints=[
-                {"kind": "max_duration", "max_duration": 120},
-                {"kind": "max_requests", "max_num": 500},
+                {"kind": "max_duration", "seconds": 120},
+                {"kind": "max_requests", "count": 500},
             ]
         )
         resolved = resolve_constraints(args)
@@ -313,8 +313,8 @@ class TestResolveConstraintsTranslation:
         """
         args = _minimal_args(
             constraints=[
-                {"kind": "max_duration", "max_duration": 60},
-                {"kind": "max_errors", "max_errors": 3},
+                {"kind": "max_duration", "seconds": 60},
+                {"kind": "max_errors", "count": 3},
             ]
         )
         resolved = resolve_constraints(args)
@@ -331,7 +331,7 @@ class TestResolveConstraintsTranslation:
 
         ## WRITTEN BY AI ##
         """
-        args = _minimal_args(constraints=[{"kind": "max_duration", "max_duration": 60}])
+        args = _minimal_args(constraints=[{"kind": "max_duration", "seconds": 60}])
         resolved = resolve_constraints(args, max_requests=200)
         assert "max_duration" in resolved
         assert "max_requests" in resolved
@@ -345,7 +345,7 @@ class TestResolveConstraintsTranslation:
         """
         args = _minimal_args(
             constraints=[
-                {"kind": "over_saturation", "mode": "active", "min_seconds": 45}
+                {"kind": "over_saturation", "mode": "enforce", "min_seconds": 45}
             ]
         )
         resolved = resolve_constraints(args)
@@ -353,7 +353,7 @@ class TestResolveConstraintsTranslation:
         assert "over_saturation" in resolved
         init = resolved["over_saturation"]
         assert isinstance(init, OverSaturationConstraintInitializer)
-        assert init.args.mode == "active"
+        assert init.args.mode == "enforce"
         assert init.args.min_seconds == 45
 
     @pytest.mark.smoke
@@ -365,12 +365,12 @@ class TestResolveConstraintsTranslation:
         """
         args = _minimal_args(
             constraints=[
-                {"kind": "max_duration", "max_duration": 120},
-                {"kind": "max_requests", "max_num": 1000},
-                {"kind": "max_errors", "max_errors": 10},
-                {"kind": "max_error_rate", "max_error_rate": 0.5},
-                {"kind": "max_global_error_rate", "max_error_rate": 0.3},
-                {"kind": "over_saturation", "mode": "active"},
+                {"kind": "max_duration", "seconds": 120},
+                {"kind": "max_requests", "count": 1000},
+                {"kind": "max_errors", "count": 10},
+                {"kind": "max_error_rate", "rate": 0.5},
+                {"kind": "max_global_error_rate", "rate": 0.3},
+                {"kind": "over_saturation", "mode": "enforce"},
             ]
         )
         resolved = resolve_constraints(args)
@@ -391,11 +391,11 @@ class TestResolveConstraintsTranslation:
 
         ## WRITTEN BY AI ##
         """
-        args = _minimal_args(constraints=[{"kind": "max_requests", "max_num": 50}])
+        args = _minimal_args(constraints=[{"kind": "max_requests", "count": 50}])
         assert len(args.constraints) == 1
         resolved = resolve_constraints(args)
         assert "max_requests" in resolved
-        assert resolved["max_requests"].args.max_num == 50
+        assert resolved["max_requests"].args.count == 50
 
 
 class TestConstraintArgsSerialization:
@@ -405,12 +405,12 @@ class TestConstraintArgsSerialization:
     @pytest.mark.parametrize(
         "payload",
         [
-            {"kind": "max_duration", "max_duration": 120},
-            {"kind": "max_requests", "max_num": 500},
-            {"kind": "max_errors", "max_errors": 10},
-            {"kind": "max_error_rate", "max_error_rate": 0.5, "window_size": 20},
-            {"kind": "max_global_error_rate", "max_error_rate": 0.3},
-            {"kind": "over_saturation", "mode": "active", "min_seconds": 45},
+            {"kind": "max_duration", "seconds": 120},
+            {"kind": "max_requests", "count": 500},
+            {"kind": "max_errors", "count": 10},
+            {"kind": "max_error_rate", "rate": 0.5, "window": 20},
+            {"kind": "max_global_error_rate", "rate": 0.3},
+            {"kind": "over_saturation", "mode": "enforce", "min_seconds": 45},
         ],
     )
     def test_model_dump_round_trip(self, payload):

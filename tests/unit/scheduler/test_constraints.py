@@ -309,7 +309,7 @@ class TestUnserializableConstraintInitializer:
 class TestMaxNumberConstraint:
     """Test the MaxNumberConstraint implementation."""
 
-    @pytest.fixture(params=[{"max_num": 100}, {"max_num": 50.5}, {"max_num": 1}])
+    @pytest.fixture(params=[{"count": 100}, {"count": 50.5}, {"count": 1}])
     def valid_instances(self, request):
         constructor_args = request.param
         instance = MaxNumberConstraint(
@@ -357,7 +357,7 @@ class TestMaxNumberConstraint:
         instance, constructor_args = valid_instances
         start_time = time.time()
 
-        for num_requests in range(0, int(constructor_args["max_num"]) * 2 + 1, 1):
+        for num_requests in range(0, int(constructor_args["count"]) * 2 + 1, 1):
             state = SchedulerState(
                 start_time=start_time,
                 created_requests=num_requests,
@@ -381,7 +381,7 @@ class TestMaxNumberConstraint:
             assert data["args"][key] == value
 
         reconstructed = MaxNumberConstraint.model_validate(data)
-        assert reconstructed.args.count == instance.args.max_num
+        assert reconstructed.args.count == instance.args.count
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed.args, key) == value
@@ -393,7 +393,7 @@ class TestMaxNumberConstraint:
 
         constraint = instance.create_constraint()
         assert isinstance(constraint, MaxNumberConstraint)
-        assert constraint.args.count == constructor_args["max_num"]
+        assert constraint.args.count == constructor_args["count"]
 
     @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
@@ -404,7 +404,7 @@ class TestMaxNumberConstraint:
 
         assert isinstance(constraint, MaxNumberConstraint)
         assert constraint is not instance  # Should return a copy
-        assert constraint.args.count == instance.args.max_num
+        assert constraint.args.count == instance.args.count
         assert instance.current_index == original_index + 1  # Original is incremented
         assert constraint.current_index == original_index + 1  # Copy has incremented
 
@@ -445,9 +445,7 @@ class TestMaxNumberConstraint:
 class TestMaxDurationConstraint:
     """Test the MaxDurationConstraint implementation."""
 
-    @pytest.fixture(
-        params=[{"max_duration": 2.0}, {"max_duration": 1}, {"max_duration": 0.5}]
-    )
+    @pytest.fixture(params=[{"seconds": 2.0}, {"seconds": 1}, {"seconds": 0.5}])
     def valid_instances(self, request):
         constructor_args = request.param
         instance = MaxDurationConstraint(
@@ -497,7 +495,7 @@ class TestMaxDurationConstraint:
         instance, constructor_args = valid_instances
         start_time = time.time()
 
-        max_duration = constructor_args["max_duration"]
+        max_duration = constructor_args["seconds"]
         sleep_interval = max_duration * 0.05
         target_duration = max_duration * 1.5
 
@@ -560,7 +558,7 @@ class TestMaxDurationConstraint:
             assert data["args"][key] == value
 
         reconstructed = MaxDurationConstraint.model_validate(data)
-        assert reconstructed.args.seconds == instance.args.max_duration
+        assert reconstructed.args.seconds == instance.args.seconds
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed.args, key) == value
@@ -572,7 +570,7 @@ class TestMaxDurationConstraint:
 
         constraint = instance.create_constraint()
         assert isinstance(constraint, MaxDurationConstraint)
-        assert constraint.args.seconds == constructor_args["max_duration"]
+        assert constraint.args.seconds == constructor_args["seconds"]
 
     @pytest.mark.smoke
     def test_create_constraint(self, valid_instances):
@@ -583,7 +581,7 @@ class TestMaxDurationConstraint:
 
         assert isinstance(constraint, MaxDurationConstraint)
         assert constraint is not instance  # Should return a copy
-        assert constraint.args.seconds == instance.args.max_duration
+        assert constraint.args.seconds == instance.args.seconds
         assert instance.current_index == original_index + 1  # Original is incremented
         assert constraint.current_index == original_index + 1  # Copy has incremented
 
@@ -624,7 +622,7 @@ class TestMaxDurationConstraint:
 class TestMaxErrorsConstraint:
     """Test the MaxErrorsConstraint implementation."""
 
-    @pytest.fixture(params=[{"max_errors": 10}, {"max_errors": 5.5}, {"max_errors": 1}])
+    @pytest.fixture(params=[{"count": 10}, {"count": 5.5}, {"count": 1}])
     def valid_instances(self, request):
         constructor_args = request.param
         instance = MaxErrorsConstraint(args=MaxErrorsConstraintArgs(**constructor_args))
@@ -672,7 +670,7 @@ class TestMaxErrorsConstraint:
         instance, constructor_args = valid_instances
         start_time = time.time()
 
-        for num_errors in range(int(constructor_args["max_errors"] * 2)):
+        for num_errors in range(int(constructor_args["count"] * 2)):
             created_requests = (num_errors + 1) * 2
             processed_requests = num_errors + 1
             state = SchedulerState(
@@ -692,7 +690,7 @@ class TestMaxErrorsConstraint:
             )
             action = instance(state, request)
             assert isinstance(action, SchedulerUpdateAction)
-            errors_exceeded = num_errors >= constructor_args["max_errors"]
+            errors_exceeded = num_errors >= constructor_args["count"]
             if not errors_exceeded:
                 assert action.request_queuing == "continue"
                 assert action.request_processing == "continue"
@@ -702,7 +700,7 @@ class TestMaxErrorsConstraint:
 
             assert isinstance(action.metadata, dict)
             expected_metadata = {
-                "max_errors": constructor_args["max_errors"],
+                "max_errors": constructor_args["count"],
                 "errors_exceeded": errors_exceeded,
                 "current_errors": num_errors,
             }
@@ -722,7 +720,7 @@ class TestMaxErrorsConstraint:
             assert data["args"][key] == value
 
         reconstructed = MaxErrorsConstraint.model_validate(data)
-        assert reconstructed.args.count == instance.args.max_errors
+        assert reconstructed.args.count == instance.args.count
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed.args, key) == value
@@ -736,7 +734,7 @@ class TestMaxErrorsConstraint:
 
         assert isinstance(constraint, MaxErrorsConstraint)
         assert constraint is not instance
-        assert constraint.args.count == instance.args.max_errors
+        assert constraint.args.count == instance.args.count
         assert instance.current_index == original_index + 1
         assert constraint.current_index == original_index + 1
 
@@ -779,9 +777,9 @@ class TestMaxErrorRateConstraint:
 
     @pytest.fixture(
         params=[
-            {"max_error_rate": 0.1, "window_size": 40},
-            {"max_error_rate": 0.5, "window_size": 50},
-            {"max_error_rate": 0.05, "window_size": 55},
+            {"rate": 0.1, "window": 40},
+            {"rate": 0.5, "window": 50},
+            {"rate": 0.05, "window": 55},
         ]
     )
     def valid_instances(self, request):
@@ -837,8 +835,8 @@ class TestMaxErrorRateConstraint:
         instance, constructor_args = valid_instances
         start_time = time.time()
 
-        max_error_rate = constructor_args["max_error_rate"]
-        window_size = constructor_args["window_size"]
+        max_error_rate = constructor_args["rate"]
+        window_size = constructor_args["window"]
         safety_factor = 1.5
         total_errors = 0
         error_window = []
@@ -910,8 +908,8 @@ class TestMaxErrorRateConstraint:
             assert data["args"][key] == value
 
         reconstructed = MaxErrorRateConstraint.model_validate(data)
-        assert reconstructed.args.rate == instance.args.max_error_rate
-        assert reconstructed.args.window == instance.args.window_size
+        assert reconstructed.args.rate == instance.args.rate
+        assert reconstructed.args.window == instance.args.window
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed.args, key) == value
@@ -925,8 +923,8 @@ class TestMaxErrorRateConstraint:
 
         assert isinstance(constraint, MaxErrorRateConstraint)
         assert constraint is not instance  # Should return a copy
-        assert constraint.args.rate == instance.args.max_error_rate
-        assert constraint.args.window == instance.args.window_size
+        assert constraint.args.rate == instance.args.rate
+        assert constraint.args.window == instance.args.window
         assert instance.current_index == original_index + 1  # Original is incremented
         assert constraint.current_index == original_index + 1  # Copy has incremented
 
@@ -972,9 +970,9 @@ class TestMaxGlobalErrorRateConstraint:
 
     @pytest.fixture(
         params=[
-            {"max_error_rate": 0.1, "min_processed": 50},
-            {"max_error_rate": 0.2, "min_processed": 100},
-            {"max_error_rate": 0.05, "min_processed": 31},
+            {"rate": 0.1, "minimum": 50},
+            {"rate": 0.2, "minimum": 100},
+            {"rate": 0.05, "minimum": 31},
         ]
     )
     def valid_instances(self, request):
@@ -1039,8 +1037,8 @@ class TestMaxGlobalErrorRateConstraint:
         instance, constructor_args = valid_instances
         start_time = time.time()
 
-        max_error_rate = constructor_args["max_error_rate"]
-        min_processed = constructor_args["min_processed"]
+        max_error_rate = constructor_args["rate"]
+        min_processed = constructor_args["minimum"]
         safety_factor = 1.5
         total_requests = min_processed * 2
         total_errors = 0
@@ -1117,8 +1115,8 @@ class TestMaxGlobalErrorRateConstraint:
             assert data["args"][key] == value
 
         reconstructed = MaxGlobalErrorRateConstraint.model_validate(data)
-        assert reconstructed.args.rate == instance.args.max_error_rate
-        assert reconstructed.args.minimum == instance.args.min_processed
+        assert reconstructed.args.rate == instance.args.rate
+        assert reconstructed.args.minimum == instance.args.minimum
 
         for key, value in constructor_args.items():
             assert getattr(reconstructed.args, key) == value
@@ -1132,8 +1130,8 @@ class TestMaxGlobalErrorRateConstraint:
 
         assert isinstance(constraint, MaxGlobalErrorRateConstraint)
         assert constraint is not instance  # Should return a copy
-        assert constraint.args.rate == instance.args.max_error_rate
-        assert constraint.args.minimum == instance.args.min_processed
+        assert constraint.args.rate == instance.args.rate
+        assert constraint.args.minimum == instance.args.minimum
         assert instance.current_index == original_index + 1  # Original is incremented
         assert constraint.current_index == original_index + 1  # Copy has incremented
 
@@ -1224,7 +1222,7 @@ class TestConstraintsInitializerFactory:
     def test_resolve_with_invalid_type(self):
         """Test that resolve raises TypeError for unsupported value types."""
         invalid_spec = {
-            "max_requests": {"max_num": 100},  # raw dicts are no longer supported
+            "max_requests": {"count": 100},  # raw dicts are no longer supported
         }
 
         with pytest.raises(TypeError, match="unsupported value type"):

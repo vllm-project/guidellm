@@ -400,7 +400,7 @@ class TestOverSaturationConstraintIntegration:
             maximum_window_seconds=60.0,
             moe_threshold=1.5,
             confidence=0.90,
-            mode="active",
+            mode="enforce",
         )
 
     @pytest.mark.sanity
@@ -552,7 +552,7 @@ class TestOverSaturationConstraintPerformance:
             minimum_duration=0.0,
             maximum_window_seconds=10.0,
             minimum_window_size=5,
-            mode="active",
+            mode="enforce",
         )
 
         # Add many requests
@@ -572,7 +572,7 @@ class TestOverSaturationConstraintPerformance:
     def test_constraint_computational_efficiency(self):
         """Test that constraint operations remain efficient."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=10, mode="active"
+            minimum_duration=0.0, minimum_window_size=10, mode="enforce"
         )
 
         # Add baseline data
@@ -601,7 +601,7 @@ class TestOverSaturationConstraintInitializerRobustness:
         # Valid parameters via args
         initializer = OverSaturationConstraintInitializer(
             args=OverSaturationConstraintArgs(
-                mode="active",
+                mode="enforce",
                 min_seconds=5.0,
                 max_window_seconds=30.0,
                 moe_threshold=1.5,
@@ -610,7 +610,7 @@ class TestOverSaturationConstraintInitializerRobustness:
         )
 
         constraint = initializer.create_constraint()
-        assert constraint.mode == "active"
+        assert constraint.mode == "enforce"
         assert constraint.minimum_duration == 5.0
         assert constraint.maximum_window_seconds == 30.0
 
@@ -620,7 +620,7 @@ class TestOverSaturationConstraintInitializerRobustness:
         # Very permissive settings
         initializer = OverSaturationConstraintInitializer(
             args=OverSaturationConstraintArgs(
-                mode="active",
+                mode="enforce",
                 min_seconds=0.1,
                 max_window_seconds=3600.0,  # 1 hour
             )
@@ -634,7 +634,7 @@ class TestOverSaturationConstraintInitializerRobustness:
     @pytest.mark.smoke
     def test_constraint_creation_with_mock_constraint(self):
         """Test constraint creation with mocked constraint for isolation."""
-        constraint = OverSaturationConstraint(mode="active")
+        constraint = OverSaturationConstraint(mode="enforce")
         # Set up constraint state to simulate over-saturation
         constraint.ttft_slope_checker.slope = 1.5
         constraint.ttft_slope_checker.margin_of_error = 0.3
@@ -673,7 +673,7 @@ class TestOverSaturationEdgeCasesAndRegression:
     @pytest.mark.sanity
     def test_detector_with_malformed_request_data(self):
         """Test detector requires proper request data structure."""
-        constraint = OverSaturationConstraint(minimum_duration=0.0, mode="active")
+        constraint = OverSaturationConstraint(minimum_duration=0.0, mode="enforce")
 
         # Missing fields should raise KeyError
         with pytest.raises(KeyError):
@@ -701,7 +701,7 @@ class TestOverSaturationEdgeCasesAndRegression:
         """Test constraint handles missing timings data gracefully."""
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
-            mode="active",
+            mode="enforce",
         )
 
         start_time = time.time()
@@ -729,7 +729,7 @@ class TestOverSaturationEdgeCasesAndRegression:
     def test_detector_concurrent_modification_safety(self):
         """Test detector behavior under concurrent-like modifications."""
         constraint = OverSaturationConstraint(
-            minimum_duration=0.0, minimum_window_size=3, mode="active"
+            minimum_duration=0.0, minimum_window_size=3, mode="enforce"
         )
 
         # Add requests
@@ -771,7 +771,7 @@ class TestOverSaturationEdgeCasesAndRegression:
     @pytest.mark.sanity
     def test_detector_reset_clears_all_state(self):
         """Test that detector reset completely clears state."""
-        constraint = OverSaturationConstraint(minimum_duration=0.0, mode="active")
+        constraint = OverSaturationConstraint(minimum_duration=0.0, mode="enforce")
 
         # Add data and trigger computation
         for i in range(20):
@@ -812,7 +812,7 @@ class TestOverSaturationEdgeCasesAndRegression:
         mock_time.return_value = current_time
 
         constraint = OverSaturationConstraint(
-            minimum_duration=25.0, mode="active"
+            minimum_duration=25.0, mode="enforce"
         )  # Should be met
 
         state = SchedulerState(
@@ -844,7 +844,7 @@ class TestOverSaturationEdgeCasesAndRegression:
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             minimum_ttft=2.0,  # Threshold
-            mode="active",
+            mode="enforce",
         )
 
         # Add requests with known TTFT values
@@ -879,7 +879,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            mode="active",
+            mode="enforce",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -911,7 +911,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            mode="active",
+            mode="enforce",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -955,7 +955,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            mode="active",
+            mode="enforce",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -983,7 +983,7 @@ class TestInstantTTFT:
         constraint = OverSaturationConstraint(
             minimum_duration=0.0,
             maximum_window_ratio=1.0,
-            mode="active",
+            mode="enforce",
         )
         start_time = time.time()
         state = SchedulerState(
@@ -1018,7 +1018,7 @@ class TestInstantTTFT:
             minimum_duration=0.0,
             minimum_window_size=3,
             maximum_window_ratio=1.0,
-            mode="active",
+            mode="enforce",
         )
         start_time = time.time()
         state = SchedulerState(

@@ -52,7 +52,7 @@ def test_over_saturated_benchmark(server: VllmSimServer, tmp_path: Path):
     client.start_benchmark(
         rate=rate,
         max_seconds=20,
-        over_saturation={"mode": "active", "min_seconds": 0},
+        over_saturation={"mode": "enforce", "min_seconds": 0},
         extra_env={
             "GOMAXPROCS": "1",
         },
@@ -97,7 +97,7 @@ def test_over_saturated_benchmark_with_dict_config(
         rate=rate,
         max_seconds=20,
         over_saturation={
-            "mode": "active",
+            "mode": "enforce",
             "min_seconds": 0,
             "max_window_seconds": 120.0,
             "moe_threshold": 2.0,
