@@ -1,4 +1,4 @@
-"""Tests for ``guidellm benchmark run`` CLI error translation."""
+"""Tests for ``guidellm run`` CLI error translation."""
 
 import pytest
 from click.testing import CliRunner
@@ -21,14 +21,13 @@ def test_run_reports_nested_field_path_on_missing_subfield():
     result = runner.invoke(
         cli,
         [
-            "benchmark",
             "run",
-            "--target",
-            "http://localhost:9",
             "--data",
-            "kind=synthetic_text",
-            "--max-requests",
-            "1",
+            "synthetic_text",
+            "",
+            "--constraint",
+            "max_requests",
+            "max_num=1",
         ],
     )
 
@@ -50,14 +49,13 @@ def test_run_allows_synthetic_text_without_output_tokens():
     result = runner.invoke(
         cli,
         [
-            "benchmark",
             "run",
-            "--target",
-            "http://localhost:9",
             "--data",
-            "kind=synthetic_text,prompt_tokens=128",
-            "--max-requests",
-            "1",
+            "synthetic_text",
+            "prompt_tokens=128",
+            "--constraint",
+            "max_requests",
+            "max_num=1",
         ],
     )
 

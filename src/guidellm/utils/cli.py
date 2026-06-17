@@ -1,24 +1,28 @@
 import codecs
-import json
 from typing import Any
 
 import click
 import yaml
-from pydantic_core import ErrorDetails
+
+# NOTE: Sentinel is sentinel in newer (unreleased) version of typing_extensions
+# which matches the accepted version of PEP 661 in Python 3.15+
+# NOTE: Not sure why but mypy doesn't recognize Sentinel as a type
+from typing_extensions import Sentinel  # type: ignore[attr-defined]
 
 from guidellm.utils import arg_string
 
 __all__ = [
+    "BLANK",
     "Union",
     "decode_escaped_str",
-    "format_list_arg",
-    "format_validation_error",
-    "format_validation_errors",
-    "parse_json",
+    "overrides_to_benchmarks",
+    "parse_arguments",
     "parse_list",
-    "parse_list_floats",
+    "parse_overrides",
     "set_if_not_default",
 ]
+
+BLANK = Sentinel("BLANK")
 
 
 def parse_list(ctx, param, value) -> list[str] | None:
@@ -46,7 +50,14 @@ def parse_list(ctx, param, value) -> list[str] | None:
 
     if isinstance(value, str) and "," in value:
         # Handle comma-separated strings
-        return [item.strip() for item in value.split(",") if item.strip()]
+        result = []
+        for item in value.split(","):
+            stripped = item.strip()
+            if stripped:
+                result.append(stripped)
+            else:
+                result.append(BLANK)
+        return result
 
     if isinstance(value, str):
         # Handle single string
@@ -54,105 +65,6 @@ def parse_list(ctx, param, value) -> list[str] | None:
 
     # Fall back to returning as a single-item list
     return [value]
-
-
-def parse_list_floats(ctx, param, value):
-    str_list = parse_list(ctx, param, value)
-    if str_list is None:
-        return None
-
-    item = None  # For error reporting
-    try:
-        return [float(item) for item in str_list]
-    except ValueError as err:
-        # Raise a Click error if any part isn't a valid float
-        raise click.BadParameter(
-            f"Input '{value}' is not a valid comma-separated list "
-            f"of floats/ints. Failed on {item} Error: {err}"
-        ) from err
-
-
-def format_validation_error(err: ErrorDetails) -> str:
-    """
-    Format a single pydantic validation error into a human-readable message.
-
-    Includes the full location path, such as
-    ``data[0].synthetic_text.output_tokens``, so callers can identify which
-    nested subfield failed rather than only the top-level CLI option.
-
-    :param err: A pydantic error dict as returned by ``ValidationError.errors()``
-    :return: Formatted error string including the failing field path
-    """
-    loc = err.get("loc", ())
-    msg = err.get("msg", "validation error")
-    if not loc:
-        return msg
-
-    path = str(loc[0])
-    for component in loc[1:]:
-        if isinstance(component, int):
-            path += f"[{component}]"
-        else:
-            path += f".{component}"
-
-    return f"{msg} (at '{path}')"
-
-
-def format_validation_errors(errs: list[ErrorDetails]) -> str:
-    """
-    Combine one or more pydantic error dicts into a single click-friendly message.
-
-    :param errs: Pydantic error dicts as returned by ``ValidationError.errors()``
-    :return: Single error message; multiple errors are rendered as a bullet list
-    """
-    formatted = [format_validation_error(e) for e in errs]
-    if len(formatted) == 1:
-        return formatted[0]
-    return "\n  - " + "\n  - ".join(formatted)
-
-
-def parse_json(ctx, param, value):  # noqa: ARG001, C901, PLR0911
-    if isinstance(value, dict):
-        return value
-
-    if value is None or value == [None]:
-        return None
-
-    if isinstance(value, str) and not value.strip():
-        return None
-
-    if isinstance(value, list | tuple):
-        return [parse_json(ctx, param, val) for val in value]
-
-    if "{" not in value and "}" not in value and "=" in value:
-        # Treat it as a key=value pair if it doesn't look like JSON.
-        result = {}
-        for pair in value.split(","):
-            if "=" not in pair:
-                raise click.BadParameter(
-                    f"{param.name} must be a valid JSON string or key=value pairs."
-                )
-            key, val = pair.split("=", 1)
-            result[key.strip()] = val.strip()
-        return result
-
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError as err:
-        # If json parsing fails, check if it looks like a plain string
-        if "{" not in value and "}" not in value:
-            return value
-
-        raise click.BadParameter(f"{param.name} must be a valid JSON string.") from err
-
-
-def parse_json_list(ctx, param, value):
-    list_value = parse_list(ctx, param, value)
-
-    if list_value is None:
-        return None
-
-    return [parse_json(ctx, param, item) for item in list_value]
 
 
 def parse_arguments(
@@ -203,29 +115,6 @@ def set_if_not_default(ctx: click.Context, **kwargs) -> dict[str, Any]:
             values[k] = v
 
     return values
-
-
-def format_list_arg(
-    value: Any, default: Any = None, simplify_single: bool = False
-) -> list[Any] | Any:
-    """
-    Format a multi-argument value for display.
-
-    :param value: The value to format, which can be a single value or a list/tuple.
-    :param default: The default value to set if the value is non truthy.
-    :param simplify_single: If True and the value is a single-item list/tuple,
-        return the single item instead of a list.
-    :return: Formatted list of values, or single value if simplify_single and applicable
-    """
-    if not value:
-        return default
-
-    if isinstance(value, tuple):
-        value = list(value)
-    elif not isinstance(value, list):
-        value = [value]
-
-    return value if not simplify_single or len(value) != 1 else value[0]
 
 
 class Union(click.ParamType):
@@ -283,3 +172,53 @@ def decode_escaped_str(_ctx, _param, value):
         return codecs.decode(value, "unicode_escape")
     except Exception as e:
         raise click.BadParameter(f"Could not decode escape sequences: {e}") from e
+
+
+def overrides_to_benchmarks(*overrides: tuple[str, list[Any]]) -> list[dict[str, Any]]:
+    """
+    Convert a list of (benchmark_name, override_list) tuples into a list of benchmarks
+
+    Resulting benchmark list is as long as the longest override list.
+    None values are omitted.
+
+    Example::
+        >>> overrides_to_benchmarks(
+        ...     ("profile.streams", [1,2,3,4]),
+        ...     ("constraint[0].seconds", [10,20,<BLANK>,30])
+        ... )
+        [
+            {"profile.streams": 1, "constraint[0].seconds": 10}
+            {"profile.streams": 2, "constraint[0].seconds": 20}
+            {"profile.streams": 3}
+            {"profile.streams": 4, "constraint[0].seconds": 30}
+        ]
+    """
+    benchmarks: list[dict[str, Any]] = []
+    for name, values in overrides:
+        for i, value in enumerate(values):
+            if len(benchmarks) <= i:
+                benchmarks.append({})
+            if value is not BLANK:
+                benchmarks[i][name] = value
+    return benchmarks
+
+
+def parse_overrides(ctx, param, value):
+    """
+    Click callback to parse override arguments into a list of benchmark dicts.
+
+    Expects input as multiple occurrences of `--override <key name> <override values>`.
+    """
+    if not value or not isinstance(value, list | tuple):
+        return []
+
+    overrides: list[tuple[str, list[Any]]] = []
+    for k, v in value:
+        values_list = parse_list(ctx, param, v)
+        if values_list is None:
+            continue
+
+        values_parsed = parse_arguments(ctx, param, values_list)
+        overrides.append((k, values_parsed))
+
+    return overrides_to_benchmarks(*overrides)

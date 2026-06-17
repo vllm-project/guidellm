@@ -7,13 +7,14 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, model_validator
 
+from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
     ConstraintInitializer,
     SchedulingStrategy,
     SynchronousStrategy,
 )
 
-from .profile import Profile, ProfileArgs, ProfileFactory
+from .profile import Profile, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

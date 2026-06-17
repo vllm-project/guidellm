@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
+from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.data import DataArgs
 from guidellm.data.deserializers import TraceSyntheticDataArgs
 from guidellm.scheduler import (
@@ -19,7 +20,7 @@ from guidellm.scheduler import (
 from guidellm.scheduler.constraints.request import MaxRequestsConstraintArgs
 from guidellm.utils.trace_io import load_relative_timestamps
 
-from .profile import Profile, ProfileArgs, ProfileFactory
+from .profile import Profile, ProfileFactory
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

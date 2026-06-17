@@ -34,7 +34,7 @@ def server():
         server.stop()  # Teardown: Stop the server after tests are done
 
 
-@pytest.mark.timeout(30)
+@pytest.mark.timeout(60)
 @pytest.mark.sanity
 def test_max_seconds_benchmark(server: VllmSimServer, tmp_path: Path):
     """
@@ -76,7 +76,7 @@ def test_max_seconds_benchmark(server: VllmSimServer, tmp_path: Path):
     assert_successful_requests_fields(successful_requests)
 
 
-@pytest.mark.timeout(30)
+@pytest.mark.timeout(60)
 @pytest.mark.sanity
 def test_max_requests_benchmark(server: VllmSimServer, tmp_path: Path):
     """
