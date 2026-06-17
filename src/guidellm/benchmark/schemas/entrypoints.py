@@ -38,7 +38,11 @@ from guidellm.data import (
     DataTokenizerArgs,
 )
 from guidellm.scheduler.constraints import ConstraintArgs
-from guidellm.schemas import StandardBaseModel, standard_model_config
+from guidellm.schemas import (
+    ReloadableBaseModel,
+    StandardBaseModel,
+    standard_model_config,
+)
 from guidellm.utils.arg_string import ArgStringParser
 
 __all__ = [
@@ -73,7 +77,7 @@ def default_kind_list(*kinds: str) -> list[dict[str, Any]]:
     return [default_kind(kind) for kind in kinds]
 
 
-class BenchmarkArgs(StandardBaseModel):
+class BenchmarkArgs(ReloadableBaseModel):
     """Common benchmark configuration arguments."""
 
     model_config = args_model_config()
@@ -152,7 +156,7 @@ class BenchmarkMetadata(StandardBaseModel):
     )
 
 
-class BenchmarkScenario(BaseSettings):
+class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
     """
     Configuration arguments for generative text benchmark execution.
 
