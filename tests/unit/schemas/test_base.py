@@ -162,7 +162,7 @@ class TestReloadableBaseModel:
             mock.patch.object(TestModel, "model_rebuild") as mock_rebuild,
             mock.patch.object(TestModel, "reload_parent_schemas") as mock_parents,
         ):
-            TestModel.reload_schema()
+            TestModel.reload_schema(parents=True)
             mock_rebuild.assert_called_once_with(force=True)
             mock_parents.assert_called_once()
 

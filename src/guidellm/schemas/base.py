@@ -76,7 +76,7 @@ class ReloadableBaseModel(BaseModel):
     model_config = standard_model_config(extra="ignore")
 
     @classmethod
-    def reload_schema(cls, parents: bool = True) -> None:
+    def reload_schema(cls, parents: bool = False) -> None:
         """
         Reload the class schema with updated registry information.
 
