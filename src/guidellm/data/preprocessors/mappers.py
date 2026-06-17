@@ -252,7 +252,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             raise ValueError(
                 "GenerativeColumnMapper found no matching columns. "
                 f"Requested mappings: {self.input_mappings or 'default mappings'}. "
-                "Every row would produce an empty result."
+                "Every row will produce an empty result."
             )
 
 
