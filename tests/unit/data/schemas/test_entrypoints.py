@@ -6,6 +6,8 @@ Unit tests for guidellm.data.schemas.entrypoints module.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -15,6 +17,8 @@ import guidellm.data.finalizers  # noqa: F401
 import guidellm.data.loaders  # noqa: F401
 import guidellm.data.preprocessors  # noqa: F401
 from guidellm.data.deserializers.huggingface import HuggingFaceDataArgs
+from guidellm.data.deserializers.trace_common import TraceDataArgs
+from guidellm.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
 from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
 from guidellm.data.loaders.torch import TorchDataLoaderArgs
 from guidellm.data.preprocessors.mappers import GenerativeColumnMapperArgs
@@ -93,6 +97,18 @@ class TestDataArgsPolymorphicDispatch:
         assert isinstance(result, HuggingFaceDataArgs)
         assert result.kind == "huggingface"
         assert result.source == "my_dataset"
+
+    @pytest.mark.smoke
+    def test_mooncake_trace_format_dispatch(self, tmp_path: Path):
+        """DataArgs.model_validate dispatches to TraceDataArgs, which subsequently
+        dispatches the format argument to MooncakeTraceFormatDataArgs."""
+        result = DataArgs.model_validate(
+            {"kind": "trace", "format": {"kind": "mooncake"}, "path": tmp_path}
+        )
+        assert isinstance(result, TraceDataArgs)
+        assert result.kind == "trace"
+        assert isinstance(result.format, MooncakeTraceFormatArgs)
+        assert result.format.kind == "mooncake"
 
     @pytest.mark.sanity
     def test_unknown_kind_raises(self):
