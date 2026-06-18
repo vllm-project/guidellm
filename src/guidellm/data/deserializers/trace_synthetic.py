@@ -17,42 +17,13 @@ from guidellm.data.deserializers.trace_common import (
     TraceDataArgs,
     TraceFormatBase,
     TraceFormatRegistry,
+    decode_prompt,
+    generate_token_ids,
 )
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.trace_io import TraceColumn
 
 __all__ = ["MinimalTraceFormatArgs"]
-
-
-def _decode_prompt(
-    processor: PreTrainedTokenizerBase,
-    token_ids: list[int],
-) -> str:
-    """Decode token ids into a prompt string."""
-    decoded = processor.decode(token_ids, skip_special_tokens=True)
-    if isinstance(decoded, list):
-        return decoded[0] if decoded else ""
-    return decoded
-
-
-def _generate_token_ids(
-    token_count: int,
-    processor: PreTrainedTokenizerBase,
-    faker: Faker,
-) -> list[int]:
-    """Generate `token_count` synthetic token ids for trace prompt construction."""
-    # Ideally, `margin_of_safety` should be set to slighty more than
-    # the average number of characters used by tokenizers to form one token.
-    margin_of_safety = 8
-    attempt = 0
-    while True:
-        attempt += 1
-        # The Faker.text() can only generate text of at least 5 characters.
-        num_chars = max(token_count * margin_of_safety * attempt, 5)
-        text = faker.text(max_nb_chars=num_chars)
-        token_ids = processor.encode(text)
-        if len(token_ids) >= token_count:
-            return token_ids[:token_count]
 
 
 @DataArgs.register("trace_minimal")
@@ -92,7 +63,7 @@ class MinimalTraceFormat(TraceFormatBase):
         processor: PreTrainedTokenizerBase,
         faker: Faker,
     ) -> str:
-        token_ids = _generate_token_ids(
+        token_ids = generate_token_ids(
             row[config.prompt_tokens_column], processor, faker
         )
-        return _decode_prompt(processor, token_ids)
+        return decode_prompt(processor, token_ids)

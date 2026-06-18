@@ -23,6 +23,8 @@ from guidellm.data.deserializers.trace_common import (
     TraceDataArgs,
     TraceFormatBase,
     TraceFormatRegistry,
+    decode_prompt,
+    generate_token_ids,
 )
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.trace_io import TraceColumn
@@ -55,26 +57,6 @@ def _calculate_required_prompt_tokens(
     return config.hash_id_block_size
 
 
-def _generate_token_ids(
-    token_count: int,
-    processor: PreTrainedTokenizerBase,
-    faker: Faker,
-) -> list[int]:
-    """Generate `token_count` synthetic token ids for trace prompt construction."""
-    # Ideally, `margin_of_safety` should be set to slighty more than
-    # the average number of characters used by tokenizers to form one token.
-    margin_of_safety = 8
-    attempt = 0
-    while True:
-        attempt += 1
-        # The Faker.text() can only generate text of at least 5 characters.
-        num_chars = max(token_count * margin_of_safety * attempt, 5)
-        text = faker.text(max_nb_chars=num_chars)
-        token_ids = processor.encode(text)
-        if len(token_ids) >= token_count:
-            return token_ids[:token_count]
-
-
 def _create_distinct_token_block(
     block_size: int,
     sibling_token_blocks: list[list[int]],
@@ -86,7 +68,7 @@ def _create_distinct_token_block(
     `sibling_token_blocks`."""
     attempt = 0
     while attempt < max_attempts:
-        token_ids = _generate_token_ids(block_size, processor, faker)
+        token_ids = generate_token_ids(block_size, processor, faker)
         if token_ids not in sibling_token_blocks:
             return token_ids
         attempt += 1
@@ -106,10 +88,7 @@ def _create_prompt_from_hash_ids(
     prompt_token_ids = [
         token for hash_id in hash_ids for token in hash_id_table[hash_id]
     ]
-    prompt = processor.decode(prompt_token_ids, skip_special_tokens=True)
-    if isinstance(prompt, list):
-        return prompt[0] if prompt else ""
-    return prompt
+    return decode_prompt(processor, prompt_token_ids)
 
 
 @DataArgs.register("mooncake")
