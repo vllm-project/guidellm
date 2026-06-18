@@ -92,14 +92,13 @@ ______________________________________________________________________
 ## 🚀 2. Running Benchmarks
 
 ```bash
-guidellm benchmark \
---target "http://localhost:8000/" \
---model "tweet-summary-0" \
---processor "${local_path}/Qwen2.5-1.5B-Instruct" \
---profile kind=sweep \
---max-seconds 10 \
---max-requests 10 \
---data "kind=synthetic_text,prompt_tokens=128,output_tokens=56"
+guidellm run \
+  --backend openai_http "target=http://localhost:8000/,model=tweet-summary-0" \
+  --tokenizer huggingface_auto "model=${local_path}/Qwen2.5-1.5B-Instruct" \
+  --profile sweep "" \
+  --constraint max_duration "seconds=10" \
+  --constraint max_requests "count=10" \
+  --data synthetic_text "prompt_tokens=128,output_tokens=56"
 ```
 
 ______________________________________________________________________

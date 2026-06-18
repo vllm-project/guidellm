@@ -91,10 +91,10 @@ Or run the latest container from [ghcr.io/vllm-project/guidellm](https://github.
 podman run \
   --rm -it \
   -v "./results:/results:rw" \
-  -e GUIDELLM_TARGET=http://localhost:8000 \
-  -e GUIDELLM_PROFILE=sweep \
-  -e GUIDELLM_MAX_SECONDS=30 \
-  -e GUIDELLM_DATA="kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
+  -e GUIDELLM_BACKEND='{"kind": "openai_http", "target": "http://localhost:8000"}' \
+  -e GUIDELLM_PROFILE='{"kind": "sweep"}' \
+  -e GUIDELLM_CONSTRAINTS='[{"kind": "max_duration", "max_duration": 30}]' \
+  -e GUIDELLM_DATA='[{"kind": "synthetic_text", "prompt_tokens": 256, "output_tokens": 128}]' \
   ghcr.io/vllm-project/guidellm:latest
 ```
 
@@ -113,11 +113,11 @@ Verify the server is running at `http://localhost:8000`.
 Run a sweep that identifies the maximum performance and maximum rates for the model:
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --profile kind=sweep \
-  --max-seconds 30 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile sweep "" \
+  --constraint max_duration "max_duration=30" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128"
 ```
 
 You will see progress updates and per-benchmark summaries during the run, as given below:
@@ -144,7 +144,7 @@ The console provides a lightweight summary with high-level statistics for each b
 
 This file is the authoritative record of the entire benchmark session. It includes configuration, metadata, per-benchmark statistics, and sample request entries with individual request timings. Use it for debugging, deeper analysis, or loading into Python with `GenerativeBenchmarksReport`.
 
-Alternatively, a YAML version of this file can be generated for easier human readability with the same content as `benchmarks.json` using the `--outputs yaml` argument.
+Alternatively, a YAML version of this file can be generated for easier human readability with the same content as `benchmarks.json` using `--output yaml "path=benchmarks.yaml"`.
 
 **benchmarks.csv**
 
@@ -156,97 +156,93 @@ The HTML report provides a visual summary of results, including charts of latenc
 
 ## Common Use Cases and Configurations
 
-GuideLLM supports a wide range of LLM benchmarking workflows. The examples below show how to run typical scenarios and highlight the parameters that matter most. For a complete list of arguments, details, and options, run `guidellm benchmark run --help`
+GuideLLM supports a wide range of LLM benchmarking workflows. The examples below show how to run typical scenarios and highlight the parameters that matter most. For a complete list of arguments, details, and options, run `guidellm run --help`.
+
+Each registry-backed option uses the form `--<option> <TYPE> <CONFIG>`, where `CONFIG` is key=value pairs, JSON, or YAML.
 
 ### Load Patterns
 
 Simulating different applications requires different traffic shapes. This example demonstrates rate-based load testing using a constant profile at 10 requests per second, running for 20 seconds with synthetic data of 128 prompt tokens and 256 output tokens.
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=constant \
-  --rate 10 \
-  --max-seconds 20 \
-  --data "kind=synthetic_text,prompt_tokens=128,output_tokens=256"
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile constant "rate=10" \
+  --constraint max_duration "max_duration=20" \
+  --data synthetic_text "prompt_tokens=128,output_tokens=256"
 ```
 
 **Key parameters:**
 
-- `--profile`: Defines the traffic pattern - GuideLLM supports various scheduling profiles including `synchronous` (sequential requests), `concurrent` (parallel users), `throughput` (maximum capacity), `constant` (fixed requests/sec), `poisson` (randomized requests/sec), or `sweep` (automatic rate exploration)
-- `--rate`: The numeric rate value whose meaning depends on profile - for `sweep` it's the number of benchmarks, for `concurrent` it's simultaneous requests, for `constant`/`poisson` it's requests per second
-- `--max-seconds`: Maximum duration in seconds for each benchmark run (can also use `--max-requests` to limit by request count instead)
+- `--profile`: Defines the traffic pattern — `synchronous`, `concurrent`, `throughput`, `constant`, `poisson`, or `sweep`
+- `--profile constant "rate=10"`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `throughput`, use `max_concurrency=`
+- `--constraint max_duration` or `--constraint max_requests`: Limit each strategy by time or request count
 
 ### Dataset Sources
 
 GuideLLM supports HuggingFace datasets, local files, and synthetic data. This example loads the CNN DailyMail dataset from HuggingFace and maps the article column to prompts while using the summary token count column to determine output lengths.
 
 ```bash
-guidellm benchmark run \
-  --target http://localhost:8000 \
-  --data '{"kind": "huggingface", "source": "abisee/cnn_dailymail", "load_kwargs": {"name": "3.0.0"}}' \
-  --data-column-mapper '{"column_mappings": {"text_column": "article"}}'
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --data huggingface '{"source": "abisee/cnn_dailymail", "load_kwargs": {"name": "3.0.0"}}' \
+  --data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "article"}}'
 ```
 
 **Key parameters:**
 
-- `--data`: Data source specification — pass `kind=synthetic_text,prompt_tokens=...,output_tokens=...` for synthetic data, `kind=huggingface,source=DATASET_ID` for HuggingFace datasets (with optional `load_kwargs` for dataset loading args), `kind=json_file,path=...` / `kind=csv_file,path=...` / `kind=text_file,path=...` for local files, or `kind=trace_synthetic,path=...` for trace replay files. Can be specified multiple times for multiple data sources
-- `--data-column-mapper`: JSON object of arguments for dataset creation - commonly used to specify column mappings like `text_column`, `output_tokens_count_column`, or HuggingFace dataset parameters
-- `--data-samples`: Number of samples to use from the dataset - use `-1` (default) for all samples with dynamic generation, or specify a positive integer to limit sample count
-- `--processor`: Tokenizer or processor name used for generating synthetic data - if not provided and required for the dataset, automatically loads from the model; accepts HuggingFace model IDs or local paths
+- `--data`: Data type plus config — `synthetic_text`, `huggingface`, `json_file`, `csv_file`, `text_file`, `trace_synthetic`, and others. Repeat for multiple sources.
+- `--data-column-mapper`: Column mapping preprocessor and JSON config for fields such as `text_column` or `output_tokens_count_column`
+- `--data-loader pytorch "samples=1000"`: Limit how many rows are loaded (`-1` for all)
+- `--tokenizer huggingface_auto "model=gpt2"`: Tokenizer for synthetic data or local token counting
 
 ### Request Types and API Targets
 
 You can benchmark chat completions, text completions, or other supported request types. This example configures the benchmark to test the chat completions API using a custom dataset file, with GuideLLM automatically formatting requests to match the chat completions schema.
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --request-type chat_completions \
-  --data "kind=json_file,path=path/to/data.json"
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,request_format=/v1/chat/completions" \
+  --data json_file "path=path/to/data.json"
 ```
 
 **Key parameters:**
 
-- `--request-type`: Specifies the API endpoint format - options include `chat_completions` (chat API format), `completions` (text completion format), `audio_transcription` (audio transcription), and `audio_translation` (audio translation)
+- `--backend`: Backend type and connection settings, including `request_format` for the API endpoint (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/audio/transcriptions`, and others)
 
 ### Using Scenarios
 
 Built-in scenarios bundle schedules, dataset settings, and request formatting to standardize common testing patterns. This example uses the pre-configured chat scenario which includes appropriate defaults for chat model evaluation, with any additional CLI arguments overriding the scenario's settings.
 
 ```bash
-guidellm benchmark --scenario chat --target http://localhost:8000
+guidellm run \
+  --config chat \
+  --backend openai_http "target=http://localhost:8000"
 ```
 
 **Key parameters:**
 
-- `--scenario`: Built-in scenario name or path to a custom scenario configuration file - built-in options include pre-configured testing patterns for common use cases; CLI options passed alongside this will override the scenario's default settings
+- `--config` (alias `--scenario`, `-c`): Built-in scenario name or path to a custom scenario file. CLI options override scenario defaults.
 
 ### Benchmark Controls
 
 Warmup, cooldown, and maximum limits help ensure stable, repeatable measurements. This example runs a concurrent benchmark with 16 parallel requests, using 10% warmup and cooldown periods to exclude initialization and shutdown effects, while limiting the test to stop if more than 5 errors occur.
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=concurrent \
-  --rate 16 \
-  --warmup 0.1 \
-  --cooldown 0.1 \
-  --max-errors 5 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --detect-saturation
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile concurrent "streams=16,warmup=0.1,cooldown=0.1" \
+  --constraint max_errors "max_errors=5" \
+  --constraint over_saturation "" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128"
 ```
 
 **Key parameters:**
 
-- `--warmup`: Warmup specification - values between 0 and 1 represent a percentage of total requests/time, values ≥1 represent absolute request or time units
-- `--cooldown`: Cooldown specification - same format as warmup; excludes final portion of benchmark from analysis to avoid shutdown effects
-- `--max-seconds`: Maximum duration in seconds for each benchmark before automatic termination
-- `--max-requests`: Maximum number of requests for each benchmark before automatic termination
-- `--max-errors`: Maximum number of individual errors before stopping the benchmark entirely
-- `--data`: Data to use for benchmarking - synthetic data with 256 input and 128 output tokens
-- `--detect-saturation`: Enable over-saturation detection to automatically stop benchmarks when the model becomes over-saturated (see also `--over-saturation` for more advanced control)
+- `--profile`: Profile config supports `warmup` and `cooldown` (percentage or absolute units)
+- `--constraint max_duration` / `--constraint max_requests`: Stop each strategy by time or request count
+- `--constraint max_errors`: Stop when total errors exceed the threshold
+- `--constraint over_saturation`: Enable over-saturation detection (empty config uses defaults)
 
 ## Development and Contribution
 

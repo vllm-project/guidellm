@@ -6,7 +6,7 @@ When a tool-call turn completes, GuideLLM appends a tool result to the conversat
 
 ## Supported Request Formats
 
-Tool calling is supported with both `/v1/chat/completions` and `/v1/responses`. The CLI examples in this guide default to `/v1/chat/completions`, but all features work identically with `--request-format /v1/responses`. The only difference is in how tool call history is represented in follow-up requests:
+Tool calling is supported with both `/v1/chat/completions` and `/v1/responses`. The CLI examples in this guide default to `/v1/chat/completions`, but all features work identically with `request_format=/v1/responses` in the backend configuration. The only difference is in how tool call history is represented in follow-up requests:
 
 - **`/v1/chat/completions`** uses `role: "assistant"` messages with a `tool_calls` array, followed by `role: "tool"` messages carrying tool results.
 - **`/v1/responses`** uses `function_call` items in the `input` array, followed by `function_call_output` items.
@@ -36,27 +36,21 @@ Tool definitions are always provided through the data pipeline rather than as a 
 **1. Synthetic data** -- set `tool_call_turns` (and optionally `tools`) in the data configuration:
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "Qwen/Qwen3-0.6B" \
-  --request-format /v1/chat/completions \
-  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2}' \
-  --max-requests 30 \
-  --profile kind=constant \
-  --rate 1
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions" \
+  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
+  --constraint max_requests "count=30" \
+  --profile constant "rate=1"
 ```
 
 To specify non-contiguous tool-call turns, pass a list of 0-based turn indices:
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "Qwen/Qwen3-0.6B" \
-  --request-format /v1/chat/completions \
-  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 4, "tool_call_turns": [0, 2]}' \
-  --max-requests 30 \
-  --profile kind=constant \
-  --rate 1
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions" \
+  --data synthetic_text '{"prompt_tokens": 200, "output_tokens": 100, "turns": 4, "tool_call_turns": [0, 2]}' \
+  --constraint max_requests "count=30" \
+  --profile constant "rate=1"
 ```
 
 Synthetic data configuration fields for tool calling:
@@ -64,7 +58,7 @@ Synthetic data configuration fields for tool calling:
 | Field                        | Type               | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------------- | ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tool_call_turns`            | `int \| list[int]` | `0`     | Which turns include tool definitions and expect tool-call responses. An int N means "the first N turns"; a list of ints specifies explicit 0-based turn indices (e.g. `[0, 2]`). Normalized to a sorted list internally. When `0` or `[]`, no tool calling.                                                                                                                                                                                                                       |
-| `tools`                      | `list`             | `None`  | Tool definitions in either [Chat Completions](https://platform.openai.com/docs/api-reference/chat/create#chat-create-tools) format (nested `function` key) or [Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) format (flat). GuideLLM auto-converts to match the `--request-format` at request time. Using the format that matches your target endpoint is recommended. When `None`, a built-in placeholder tool is used. |
+| `tools`                      | `list`             | `None`  | Tool definitions in either [Chat Completions](https://platform.openai.com/docs/api-reference/chat/create#chat-create-tools) format (nested `function` key) or [Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) format (flat). GuideLLM auto-converts to match the backend `request_format` at request time. Using the format that matches your target endpoint is recommended. When `None`, a built-in placeholder tool is used. |
 | `tool_response_tokens`       | `int`              | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                                                                                                                                                                                                                                                                                        |
 | `tool_response_tokens_stdev` | `int`              | `None`  | Standard deviation for tool response token count.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `tool_response_tokens_min`   | `int`              | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -75,14 +69,11 @@ Note: The token count is for the content of a field of the mock tool call respon
 **Configuring tool response content** -- by default, tool results use a short placeholder (`{"status": "ok"}`). This default can be changed via the `GUIDELLM__DEFAULT_SYNTHETIC_TOOL_RESPONSE` environment variable. For more realistic benchmarks, set `tool_response_tokens` to generate variable-length JSON responses:
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "Qwen/Qwen3-0.6B" \
-  --request-format /v1/chat/completions \
-  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2, "tool_response_tokens": 50}' \
-  --max-requests 30 \
-  --profile kind=constant \
-  --rate 1
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions" \
+  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2,tool_response_tokens=50" \
+  --constraint max_requests "count=30" \
+  --profile constant "rate=1"
 ```
 
 The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
@@ -90,52 +81,50 @@ The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response
 **2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --data "madroid/glaive-function-calling-openai" \
-  --data-column-mapper '{"text_column": "messages", "tools_column": "tools"}' \
-  --data-preprocessors "tool_calling_message_extractor,encode_media" \
-  --max-requests 50 \
-  --profile kind=constant \
-  --rate 1
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --data huggingface "source=madroid/glaive-function-calling-openai" \
+  --data-column-mapper generative_column_mapper '{"text_column": "messages", "tools_column": "tools"}' \
+  --data-preprocessor tool_calling_message_extractor "" \
+  --data-preprocessor encode_media "" \
+  --constraint max_requests "count=50" \
+  --profile constant "rate=1"
 ```
 
-The `tool_calling_message_extractor` preprocessor must be explicitly enabled via `--data-preprocessors` (it is not included by default). It parses each row's `messages` array and extracts prompts, system messages, and tool results into the appropriate columns. If the dataset has no tool result messages, the placeholder (`{"status": "ok"}`) is used as a fallback.
+The `tool_calling_message_extractor` preprocessor must be explicitly enabled via `--data-preprocessor` (it is not included by default). It parses each row's `messages` array and extracts prompts, system messages, and tool results into the appropriate columns. If the dataset has no tool result messages, the placeholder (`{"status": "ok"}`) is used as a fallback.
 
 ## Tool Choice and Missing Tool Call Behavior
 
-Two backend settings control how tool-call turns are handled at runtime. Both are configured via `--backend-kwargs`:
+Two backend settings control how tool-call turns are handled at runtime. Both are configured in the `--backend` config:
 
 | Setting                      | Values                                         | Default      | Description                                                                                                                                 |
 | ---------------------------- | ---------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `extras.body.tool_choice`    | `required`, `auto`, `none`                     | `required`   | Sent as the `tool_choice` API parameter on turns that expect a tool call. The handler automatically strips `tool_choice` on non-tool turns. |
 | `tool_call_missing_behavior` | `ignore_continue`, `ignore_stop`, `error_stop` | `error_stop` | What the backend does when a tool call was expected but the model produced plain text instead.                                              |
 
-**Setting `tool_choice` via `--backend-kwargs`:**
+**Setting `tool_choice` via backend config:**
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2}' \
-  --backend-kwargs '{"extras": {"body": {"tool_choice": "auto"}}}' \
-  --max-requests 30
+guidellm run \
+  --backend openai_http 'target=http://localhost:8000,extras={"body": {"tool_choice": "auto"}}' \
+  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
+  --constraint max_requests "count=30"
 ```
 
-**Setting `tool_call_missing_behavior` via `--backend-kwargs`:**
+**Setting `tool_call_missing_behavior` via backend config:**
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "tool_call_turns": 2}' \
-  --backend-kwargs '{"tool_call_missing_behavior": "ignore_continue", "extras": {"body": {"tool_choice": "auto"}}}' \
-  --max-requests 30
+guidellm run \
+  --backend openai_http 'target=http://localhost:8000,tool_call_missing_behavior=ignore_continue,extras={"body": {"tool_choice": "auto"}}' \
+  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
+  --constraint max_requests "count=30"
 ```
 
 **`tool_choice` implications:**
 
 - `required` (default) -- the model **must** produce a tool call. This gives the most predictable benchmarks and the fewest errors, since the server constrains the output to valid tool call JSON. Use this when you don't want to rely on the model choosing to use tools. However, it may slow down the server due to forcing the server to choose low-probability options.
 - `auto` -- the model decides whether to call a tool. Useful for testing how often a model chooses to invoke tools, but increases the chance of missing tool calls (see `tool_call_missing_behavior`).
-- `none` -- tools are present in the request but the model cannot call them. This value is not set automatically by the pipeline (non-tool turns omit tools entirely); it is only useful when explicitly configured via `--backend-kwargs` alongside a global `tools` definition in extras.
+- `none` -- tools are present in the request but the model cannot call them. This value is not set automatically by the pipeline (non-tool turns omit tools entirely); it is only useful when explicitly configured in the backend config alongside a global `tools` definition in extras.
 
 Note that `required` vs `auto` can also result in different model behavior. For example, the Qwen models only show their pre-tool-call thinking with `auto`.
 
@@ -174,4 +163,4 @@ Plain-text turns are unaffected and continue to respect `output_tokens` / `ignor
 - **Non-contiguous tool turns** (e.g. `tool_call_turns=[0, 2]` with `turns=4`) are supported. Only the specified turns expect tool calls; other turns produce plain text.
 - **Tool definitions on non-tool turns** are not included in the request. The data pipeline only attaches `tools_column` to turns that expect a tool call, so non-tool turns are sent as plain chat completions without tools or `tool_choice`.
 - **Mixed datasets** where only some rows have a `tools_column` work correctly. Rows without tools are treated as plain text conversations; rows with tools follow the tool-call flow.
-- **Rate-limited profiles** (e.g. `--profile constant --rate 1`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.
+- **Rate-limited profiles** (e.g. `--profile constant "rate=1"`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.

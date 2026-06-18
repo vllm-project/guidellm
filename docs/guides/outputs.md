@@ -2,16 +2,20 @@
 
 GuideLLM provides flexible options for outputting benchmark results, catering to both console-based summaries and file-based detailed reports. This document outlines the supported output types, their configurations, and how to utilize them effectively.
 
-For all of the output formats, `--output-extras` can be used to include additional information. This could include tags, metadata, hardware details, and other relevant information that can be useful for analysis. This must be supplied as a JSON encoded string. For example:
+## CLI output configuration
+
+Outputs use the typed CLI pattern. Repeat `--output` for each format:
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --profile kind=sweep \
-  --max-seconds 30 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --output-extras '{"tag": "my_tag", "metadata": {"key": "value"}}'
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=results/benchmark.json" \
+  --output csv "path=results/benchmark.csv" \
+  --output html "path=results/benchmark.html"
 ```
+
+Supported output types: `json`, `yaml`, `csv`, `html`, and `console`. Each accepts a `path` parameter (defaults vary by type; for example `benchmarks.json` for JSON).
 
 ## Console Output
 
@@ -26,26 +30,26 @@ By default, GuideLLM displays benchmark results and progress directly in the con
 
 ### Disabling Console Output
 
-To disable the progress outputs to the console, use the `disable-progress` flag when running the `guidellm benchmark` command. For example:
+To disable interactive progress updates, use `--disable-console-interactive` (alias `--disable-progress`):
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --profile kind=sweep \
-  --max-seconds 30 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --disable-progress
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile sweep "" \
+  --constraint max_duration "seconds=30" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --disable-console-interactive
 ```
 
-To disable console output, use the `--disable-console-outputs` flag when running the `guidellm benchmark` command. For example:
+To disable all console output, use `--disable-console` (alias `--disable-console-outputs`):
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --profile kind=sweep \
-  --max-seconds 30 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --disable-console-outputs
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile sweep "" \
+  --constraint max_duration "seconds=30" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --disable-console
 ```
 
 ## File-Based Outputs
@@ -62,87 +66,32 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 
 ### Configuring File Outputs
 
-- **Output Directory**: Use the `--output-dir` argument to specify the directory for saving the results. By default, files are saved in the current directory.
-- **Output Formats**: Use the `--outputs` argument to specify which formats or exact file names (with supported file extensions, e.g. `benchmarks.json`) to generate. By default, JSON, CSV, and HTML are generated.
-- **Sampling**: To limit the size of the output files and number of detailed request samples included, you can configure sampling options using the `--sample-requests` argument.
+- **Output path**: Pass `path=` in each `--output` config. Use an explicit filename to control the destination, or a directory-style path as supported by each output type.
+- **Multiple formats**: Repeat `--output` with different types.
 
 #### Example commands to save results in specific formats:
 
-The `--outputs` parameter accepts output formats in the following ways:
-
-**Command Line:**
-
 ```bash
-# Comma-separated format aliases (recommended)
---outputs json,csv,html
-
-# Or using multiple flags
---outputs json --outputs csv --outputs html
+# JSON, CSV, and HTML to a results directory
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile sweep "" \
+  --constraint max_duration "seconds=30" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=results/benchmark.json" \
+  --output csv "path=results/benchmark.csv" \
+  --output html "path=results/benchmark.html"
 ```
 
-**Environment Variables:**
+**Example: Single output format**
 
 ```bash
-# Comma-separated values for environment variables
--e GUIDELLM_OUTPUTS=json,csv,html
-```
-
-#### Examples
-
-**Example 1: Comma-separated format aliases (recommended)**
-
-```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --profile kind=sweep \
-  --max-seconds 30 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --output-dir "results/" \
-  --outputs json,csv,html \
-  --sample-requests 20
-```
-
-**Example 2: Multiple flags for each format**
-
-```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --profile kind=sweep \
-  --max-seconds 30 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --output-dir "results/" \
-  --outputs json \
-  --outputs csv \
-  --outputs html \
-  --sample-requests 20
-```
-
-**Example 3: Using environment variables with Docker/Podman**
-
-```bash
-podman run --rm -it --network=host \
-  -v "/tmp/results:/results:z" \
-  -e GUIDELLM_TARGET=http://localhost:8000 \
-  -e GUIDELLM_PROFILE=sweep \
-  -e GUIDELLM_MAX_SECONDS=30 \
-  -e GUIDELLM_DATA="kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  -e GUIDELLM_OUTPUT_DIR=/results \
-  -e GUIDELLM_OUTPUTS=json,csv,html \
-  -e GUIDELLM_SAMPLE_REQUESTS=20 \
-  ghcr.io/vllm-project/guidellm:latest
-```
-
-**Example 4: Single output format**
-
-```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --profile kind=sweep \
-  --max-seconds 30 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --output-dir "results/" \
-  --outputs json \
-  --sample-requests 20
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile sweep "" \
+  --constraint max_duration "seconds=30" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=results/benchmark.json"
 ```
 
 ### Reloading Results

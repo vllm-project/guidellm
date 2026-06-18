@@ -32,28 +32,38 @@ When over-saturation is detected, the constraint automatically stops request que
 
 ## Usage
 
+Over-saturation is configured with the `over_saturation` constraint type:
+
+```bash
+--constraint over_saturation <CONFIG>
+```
+
 ### Basic Usage
 
 Enable over-saturation detection with default settings:
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=throughput \
-  --rate 10 \
-  --detect-saturation
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile throughput "max_concurrency=10" \
+  --constraint over_saturation ""
 ```
 
 ### Advanced Configuration
 
-Configure detection parameters using a JSON dictionary:
+Configure detection parameters in the constraint config string:
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=concurrent \
-  --rate 16 \
-  --over-saturation '{"mode": "active", "min_seconds": 60, "max_window_seconds": 300, "moe_threshold": 1.5}'
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile concurrent "streams=16" \
+  --constraint over_saturation "mode=enforce,min_seconds=60,max_window_seconds=300,moe_threshold=1.5"
+```
+
+Or with JSON:
+
+```bash
+--constraint over_saturation '{"mode": "enforce", "min_seconds": 60, "max_window_seconds": 300, "moe_threshold": 1.5}'
 ```
 
 ## Configuration Options
@@ -78,11 +88,10 @@ Over-saturation detection is particularly useful in the following scenarios:
 When testing how your system handles increasing load, over-saturation detection automatically stops benchmarks once the system can no longer keep up, preventing wasted compute time on invalid results.
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=sweep \
-  --rate 5 \
-  --detect-saturation
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile sweep "sweep_size=5" \
+  --constraint over_saturation ""
 ```
 
 ### Cost-Effective Benchmarking
@@ -111,14 +120,14 @@ These metrics can help you understand why over-saturation was detected and fine-
 ## Example: Complete Benchmark with Over-Saturation Detection
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=concurrent \
-  --rate 16 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --max-seconds 300 \
-  --over-saturation '{"mode": "active", "min_seconds": 30, "max_window_seconds": 120}' \
-  --outputs json,html
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile concurrent "streams=16" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --constraint max_duration "seconds=300" \
+  --constraint over_saturation "mode=enforce,min_seconds=30,max_window_seconds=120" \
+  --output json "path=benchmark.json" \
+  --output html "path=benchmark.html"
 ```
 
 This example:

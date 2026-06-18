@@ -24,7 +24,7 @@ Finally, ensure you have a dataset with supported audio files for benchmarking. 
 
 ## Processing Options
 
-All of the standard arguments for benchmarking apply to audio tasks as well, such as `--profile`, `--rate`, and `--max-requests`, among others. There are a few additional options that help control audio-specific data handling and request formatting.
+All of the standard arguments for benchmarking apply to audio tasks as well, such as `--profile`, profile rate parameters, and `--constraint max_requests count=<n>`, among others. There are a few additional options that help control audio-specific data handling and request formatting.
 
 ### Data Loading
 
@@ -106,10 +106,10 @@ For example, to specify French as the target language for an audio translation r
 
 #### "stream"
 
-Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Use `--backend-kwargs`:
+Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
 
 ```bash
---backend-kwargs '{"stream": false}'
+--backend openai_http "target=http://localhost:8000,stream=false"
 ```
 
 ## Expected Results
@@ -151,23 +151,21 @@ This benchmark tests Automatic Speech Recognition (ASR) models, such as Whisper,
 **Command:**
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --request-type audio_transcriptions \
-  --profile kind=synchronous \
-  --max-requests 20 \
-  --data ‘{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}’ \
-  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,request_format=/v1/audio/transcriptions" \
+  --profile synchronous "" \
+  --constraint max_requests "count=20" \
+  --data huggingface "source=openslr/librispeech_asr,load_kwargs={name: clean, split: test}" \
+  --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "audio"}}'
 ```
 
 **Key Parameters**
 
-- `--target`: The base URL of the inference server (e.g., [http://localhost:8000](http://localhost:8000/)).
-- `--request-type`: Specifies the API endpoint type, here audio_transcriptions for ASR.
-- `--profile`: The load generation profile. synchronous runs requests sequentially.
-- `--max-requests`: Limits the benchmark to 20 total requests.
-- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "clean" config and "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
-- `--data-column-mapper`: Maps the dataset’s audio column to GuideLLM’s audio_column to ensure correct processing.
+- `--backend`: Server URL and `request_format=/v1/audio/transcriptions` for ASR
+- `--profile synchronous`: Run requests sequentially
+- `--constraint max_requests count=20`: Limits the benchmark to 20 total requests
+- `--data`: HuggingFace dataset with `load_kwargs` selecting the "clean" config and "test" split
+- `--data-column-mapper`: Maps the dataset's audio column to GuideLLM's `audio_column`
 
 The above command benchmarks the audio/transcriptions endpoint on the target server using audio from the LibriSpeech dataset for ASR. It will result in an output similar to the following:
 
@@ -206,25 +204,21 @@ This benchmark tests audio translation models like Whisper at converting audio i
 **Command:**
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --request-type audio_translations \
-  --request-formatter-kwargs '{"extras": {"body": {"language": "fr"}}}' \
-  --profile kind=synchronous \
-  --max-requests 20 \
-  --data '{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
-  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"audio\"}}"
+guidellm run \
+  --backend openai_http 'target=http://localhost:8000,request_format=/v1/audio/translations,extras={"body": {"language": "fr"}}' \
+  --profile synchronous "" \
+  --constraint max_requests "count=20" \
+  --data huggingface "source=openslr/librispeech_asr,load_kwargs={name: clean, split: test}" \
+  --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "audio"}}'
 ```
 
 **Key Parameters:**
 
-- `--target`: The URL of the inference server.
-- `--request-type`: audio_translations for the translation endpoint.
-- `--request-formatter-kwargs`: Injects additional parameters into the request body. Here, it sets the target language to French (fr).
-- `--profile`: synchronous execution mode.
-- `--max-requests`: Limits the test to 20 requests.
-- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "clean" config and "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
-- `--data-column-mapper`: Identifies the audio column for audio processing.
+- `--backend`: Server URL, translation endpoint, and target language via `extras.body`
+- `--profile synchronous`: Sequential execution mode
+- `--constraint max_requests count=20`: Limits the test to 20 requests
+- `--data`: HuggingFace dataset with `load_kwargs` for the "clean" config and "test" split
+- `--data-column-mapper`: Identifies the audio column for audio processing
 
 The above command benchmarks the audio/translations endpoint on the target server using audio from the LibriSpeech dataset and requesting translations to French. It will result in an output similar to the following:
 
@@ -264,24 +258,22 @@ This benchmark tests models that can handle audio inputs in a conversational for
 **Command:**
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --request-type chat_completions \
-  --profile kind=synchronous \
-  --max-requests 20 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --data '{"kind": "huggingface", "source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
-  --data-column-mapper "{\"column_mappings\": {\"audio_column\": \"1.audio\", \"text_column\": \"0.prompt\"}}"
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,request_format=/v1/chat/completions" \
+  --profile synchronous "" \
+  --constraint max_requests "count=20" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --data huggingface "source=openslr/librispeech_asr,load_kwargs={name: clean, split: test}" \
+  --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "1.audio", "text_column": "0.prompt"}}'
 ```
 
 **Key Parameters**
 
-- `--target`: The server URL.
-- `--request-type`: chat_completions, supporting multimodal inputs (audio + text).
-- `--profile`: synchronous execution.
-- `--max-requests`: Limits to 20 requests.
-- `--data`: Specified twice — first for synthetic prompts (`kind=synthetic_text`), second for real audio from `openslr/librispeech_asr` (`kind=huggingface` with `load_kwargs` for dataset config).
-- `--data-column-mapper`: Maps audio from dataset index 1 (`"1.audio"`, LibriSpeech) and text from dataset index 0 (`"0.prompt"`, synthetic prompts) into each request.
+- `--backend`: Server URL and chat completions endpoint for multimodal inputs
+- `--profile synchronous`: Sequential execution
+- `--constraint max_requests count=20`: Limits to 20 requests
+- `--data`: Synthetic prompts plus LibriSpeech audio from HuggingFace
+- `--data-column-mapper`: Maps audio from dataset index 1 and text from dataset index 0
 
 The above command benchmarks the chat/completions endpoint on the target server using the prompt text from the synthetic dataset and audio from the LibriSpeech dataset. It will result in an output similar to the following:
 

@@ -80,22 +80,26 @@ GuideLLM supports multiple output formats that can be customized:
 - **HTML**: Interactive HTML report with tables and visualizations
 - **Console**: Terminal output displayed during execution
 
-To specify which formats to generate, use the `--outputs` argument:
+To specify which formats to generate, use repeated `--output` options:
 
 ```bash
-guidellm benchmark --target "http://localhost:8000" --outputs json csv
+guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=results/benchmarks.json" \
+  --output csv "path=results/summary.csv"
 ```
 
-The `--outputs` argument additionally accepts full file names to further customize/differentiate outputs:
-
 ```bash
-guidellm benchmark --target "http://localhost:8000" --outputs results/benchmarks.json results/summary.csv
-```
+guidellm run \
+  --backend openai_http "target=http://server1:8000" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=model1/benchmarks.json"
 
-To change the output directory, use the `--output-dir` argument:
-
-```bash
-guidellm benchmark --target "http://localhost:8000" --output-dir results/
+guidellm run \
+  --backend openai_http "target=http://server2:8000" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=model2/benchmarks.json"
 ```
 
 ### Programmatic Analysis
@@ -148,8 +152,15 @@ When analyzing your results, focus on these key indicators:
 Run benchmarks with different models or hardware configurations, then compare:
 
 ```bash
-guidellm benchmark --target "http://server1:8000" --output-dir model1/
-guidellm benchmark --target "http://server2:8000" --output-dir model2/
+guidellm run \
+  --backend openai_http "target=http://server1:8000" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=model1/benchmarks.json"
+
+guidellm run \
+  --backend openai_http "target=http://server2:8000" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --output json "path=model2/benchmarks.json"
 ```
 
 ### Cost Optimization

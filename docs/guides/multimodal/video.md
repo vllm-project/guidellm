@@ -21,7 +21,7 @@ Finally, ensure you have a dataset with supported video files for benchmarking. 
 
 ## Processing Options
 
-All of the standard arguments for benchmarking apply to video tasks as well, such as `--profile`, `--rate`, and `--max-requests`, among others. There are a few additional options that help control video-specific data handling and request formatting.
+All of the standard arguments for benchmarking apply to video tasks as well, such as `--profile`, profile rate parameters, and `--constraint max_requests count=<n>`, among others. There are a few additional options that help control video-specific data handling and request formatting.
 
 ### Data Loading
 
@@ -92,10 +92,10 @@ For example, to specify a specific system prompt or other body parameter:
 
 #### "stream"
 
-Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Use `--backend-kwargs`:
+Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
 
 ```bash
---backend-kwargs '{"stream": false}'
+--backend openai_http "target=http://localhost:8000,stream=false"
 ```
 
 ## Expected Results
@@ -137,23 +137,19 @@ This benchmark tests Video-Language Models for their ability to answer questions
 **Command:**
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --model "Qwen/Qwen3-VL-2B-Instruct" \
-  --request-type chat_completions \
-  --profile kind=synchronous \
-  --max-requests 50 \
-  --data ‘{"kind": "huggingface", "source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}’ \
-  --data-column-mapper ‘{"column_mappings": {"video_column": "url", "text_column": "question"}}’
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions" \
+  --profile synchronous "" \
+  --constraint max_requests "count=50" \
+  --data huggingface "source=lmms-lab/Video-MME,load_kwargs={split: test}" \
+  --data-column-mapper generative_column_mapper '{"column_mappings": {"video_column": "url", "text_column": "question"}}'
 ```
 
 **Key Parameters**
 
-- `--target`: The base URL of the inference server.
-- `--model`: The model name to use for requests.
-- `--request-type`: chat_completions, supporting multimodal inputs.
-- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
-- `--data-column-mapper`: Maps the dataset’s `url` column (containing the video link) to `video_column` and `question` to `text_column`.
+- `--backend`: Server URL, model, and chat completions endpoint
+- `--data`: HuggingFace dataset with `load_kwargs` selecting the "test" split
+- `--data-column-mapper`: Maps the dataset's `url` column to `video_column` and `question` to `text_column`
 
 ### 2. Video Captioning
 
@@ -162,14 +158,12 @@ This benchmark tests the model's ability to describe a video without a specific 
 **Command:**
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --model "Qwen/Qwen3-VL-2B-Instruct" \
-  --request-type chat_completions \
-  --profile kind=synchronous \
-  --max-requests 50 \
-  --data '{"kind": "huggingface", "source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}' \
-  --data-column-mapper '{"column_mappings": {"video_column": "url"}}'
+guidellm run \
+  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions" \
+  --profile synchronous "" \
+  --constraint max_requests "count=50" \
+  --data huggingface "source=lmms-lab/Video-MME,load_kwargs={split: test}" \
+  --data-column-mapper generative_column_mapper '{"column_mappings": {"video_column": "url"}}'
 ```
 
 **Key Parameters:**

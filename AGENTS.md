@@ -92,20 +92,20 @@ Running benchmarks requires an active model server. Here are some example comman
 
 ```bash
 # Quick sweep benchmark
-uv run guidellm benchmark run \
-  --target http://localhost:8000 \
-  --profile kind=sweep \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --min-requests 1000
+uv run guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile sweep "" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --constraint max_requests "max_num=1000"
 
 # Production-like benchmark with specific dataset
-uv run guidellm benchmark run \
-  --target http://localhost:8000 \
-  --profile kind=constant \
-  --rate 10,20 \
-  --data "kind=huggingface,source=openai/gsm8k" \
-  --max-seconds 300 \
-  --outputs "benchmark.json,report.csv"
+uv run guidellm run \
+  --backend openai_http "target=http://localhost:8000" \
+  --profile constant "rate=10,20" \
+  --data huggingface "source=openai/gsm8k" \
+  --constraint max_duration "max_duration=300" \
+  --output json "path=benchmark.json" \
+  --output csv "path=report.csv"
 ```
 
 ## Resources

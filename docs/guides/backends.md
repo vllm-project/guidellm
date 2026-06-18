@@ -2,6 +2,22 @@
 
 GuideLLM is designed to work with OpenAI-compatible HTTP servers, enabling seamless integration with a variety of generative AI backends. This compatibility ensures that users can evaluate and optimize their large language model (LLM) deployments efficiently. While the current focus is on OpenAI-compatible servers, we welcome contributions to expand support for other backends, including additional server implementations and Python interfaces.
 
+## CLI backend configuration
+
+Backends are configured with the typed CLI pattern:
+
+```bash
+guidellm run --backend <TYPE> <CONFIG>
+```
+
+For HTTP servers, use `openai_http` and pass connection settings in the config string:
+
+```bash
+--backend openai_http "target=http://localhost:8000,model=meta-llama/Meta-Llama-3.1-8B-Instruct"
+```
+
+The config string accepts key=value pairs, JSON, or YAML. Common `openai_http` parameters include `target`, `model`, `request_format`, `api_key`, `stream`, `verify`, `timeout`, and nested `extras` for request body, headers, and query parameters.
+
 ## Supported Backends
 
 ### OpenAI-Compatible HTTP Servers
@@ -74,42 +90,44 @@ Local servers like vLLM typically don't require an API key unless you've explici
 
 ### Configuring the API Key
 
-To provide an API key when running benchmarks, use the `--backend-kwargs` option:
+To provide an API key when running benchmarks, pass it in the backend configuration:
 
 ```bash
-guidellm benchmark \
-  --target "https://api.openai.com/v1" \
-  --backend-kwargs '{"api_key": "sk-..."}' \
-  --model "gpt-3.5-turbo" \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128"
+guidellm run \
+  --backend openai_http "target=https://api.openai.com/v1,api_key=sk-...,model=gpt-3.5-turbo" \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128"
+```
+
+Or with JSON:
+
+```bash
+--backend openai_http '{"target": "https://api.openai.com/v1", "api_key": "sk-...", "model": "gpt-3.5-turbo"}'
 ```
 
 The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP requests to the backend server.
 
 > [!IMPORTANT]\
-> For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend-kwargs`.
+> For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend`.
 
 ## Passing Sampling Parameters
 
-By default, GuideLLM does not set sampling parameters such as `temperature`, `top_p`, or `top_k` in its requests to the backend server. If you need to control these parameters during benchmarking, you can pass them using the `--backend-kwargs` option with the `extras` field.
+By default, GuideLLM does not set sampling parameters such as `temperature`, `top_p`, or `top_k` in its requests to the backend server. If you need to control these parameters during benchmarking, pass them through the backend `extras` field.
 
 The `extras` field accepts a `body` key whose values are merged directly into the API request body sent to the backend server. This means any parameter supported by the OpenAI completions or chat completions API (or your backend's extensions) can be passed through.
 
 ### Example: Setting temperature, top_p, and top_k
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000/v1" \
-  --model "meta-llama/Meta-Llama-3.1-8B-Instruct" \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --backend-kwargs '{"extras": {"body": {"temperature": 0.6, "top_p": 0.95, "top_k": 20}}}'
+guidellm run \
+  --backend openai_http 'target=http://localhost:8000/v1,model=meta-llama/Meta-Llama-3.1-8B-Instruct,extras={"body": {"temperature": 0.6, "top_p": 0.95, "top_k": 20}}' \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128"
 ```
 
 This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
 
 ### How It Works
 
-The `--backend-kwargs` option accepts a JSON string that is passed as keyword arguments to the backend constructor. The `extras` field within that JSON maps to a `GenerationRequestArguments` object that supports the following sub-fields:
+The `--backend` config is parsed into keyword arguments for the backend constructor. The `extras` field within that config maps to a `GenerationRequestArguments` object that supports the following sub-fields:
 
 - `body`: A dictionary of key-value pairs merged into the HTTP request body. Use this for sampling parameters like `temperature`, `top_p`, `top_k`, `repetition_penalty`, etc.
 - `headers`: A dictionary of additional HTTP headers to include in requests.
@@ -118,15 +136,10 @@ The `--backend-kwargs` option accepts a JSON string that is passed as keyword ar
 ### Example: Combining sampling parameters with other backend options
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000/v1" \
-  --model "meta-llama/Meta-Llama-3.1-8B-Instruct" \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --backend-kwargs '{"api_key": "sk-...", "extras": {"body": {"temperature": 0.8, "top_p": 0.9}}}'
+guidellm run \
+  --backend openai_http 'target=http://localhost:8000/v1,model=meta-llama/Meta-Llama-3.1-8B-Instruct,api_key=sk-...,extras={"body": {"temperature": 0.8, "top_p": 0.9}}' \
+  --data synthetic_text "prompt_tokens=256,output_tokens=128"
 ```
-
-> [!NOTE]\
-> The `--backend-args` flag is a legacy alias for `--backend-kwargs`. Both are accepted.
 
 ## Expanding Backend Support
 
