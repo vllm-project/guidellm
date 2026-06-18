@@ -93,12 +93,12 @@ class OverSaturationConstraintArgs(ConstraintArgs):
         default="over_saturation",
         description="Constraint type discriminator",
     )
-    mode: Literal["active", "passive"] = Field(
-        default="active",
+    mode: Literal["enforce", "monitor"] = Field(
+        default="enforce",
         description=(
             "Whether to stop the benchmark if over-saturation is detected. "
-            "Set to `active` to stop the benchmark if over-saturation is "
-            "detected, and `passive` to only monitor for over-saturation."
+            "Set to `enforce` to stop the benchmark if over-saturation is "
+            "detected, and `monitor` to only report over-saturation."
         ),
     )
     min_seconds: int | float = Field(
@@ -361,7 +361,7 @@ class OverSaturationConstraint(Constraint):
         minimum_window_size: int = 5,
         confidence: float = 0.95,
         eps: float = 1e-12,
-        mode: Literal["active", "passive"] = "active",
+        mode: Literal["enforce", "monitor"] = "enforce",
     ) -> None:  # noqa: PLR0913
         """
         Initialize the over-saturation constraint.
@@ -643,7 +643,7 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
 
         from guidellm.scheduler.constraints import OverSaturationConstraintArgs
 
-        args = OverSaturationConstraintArgs(mode="active", min_seconds=60.0)
+        args = OverSaturationConstraintArgs(mode="enforce", min_seconds=60.0)
         initializer = OverSaturationConstraintInitializer(args=args)
         constraint = initializer.create_constraint()
     """

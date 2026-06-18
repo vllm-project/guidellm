@@ -53,7 +53,7 @@ class MaxDurationConstraintArgs(ConstraintArgs):
         default="max_duration",
         description="Constraint type discriminator",
     )
-    max_duration: PositiveNumOrList = Field(
+    seconds: PositiveNumOrList = Field(
         description="Maximum duration in seconds before stopping execution",
     )
 
@@ -72,7 +72,7 @@ class MaxRequestsConstraintArgs(ConstraintArgs):
         default="max_requests",
         description="Constraint type discriminator",
     )
-    max_num: PositiveNumOrList = Field(
+    count: PositiveNumOrList = Field(
         description="Maximum number of requests before stopping execution",
     )
 
@@ -119,9 +119,9 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_num = (
-            self.args.max_num
-            if isinstance(self.args.max_num, int | float)
-            else self.args.max_num[min(current_index, len(self.args.max_num) - 1)]
+            self.args.count
+            if isinstance(self.args.count, int | float)
+            else self.args.count[min(current_index, len(self.args.count) - 1)]
         )
 
         create_exceeded = state.created_requests >= max_num
@@ -191,11 +191,9 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_duration = (
-            self.args.max_duration
-            if isinstance(self.args.max_duration, int | float)
-            else self.args.max_duration[
-                min(current_index, len(self.args.max_duration) - 1)
-            ]
+            self.args.seconds
+            if isinstance(self.args.seconds, int | float)
+            else self.args.seconds[min(current_index, len(self.args.seconds) - 1)]
         )
 
         start_time = state.start_requests_time or state.start_time
