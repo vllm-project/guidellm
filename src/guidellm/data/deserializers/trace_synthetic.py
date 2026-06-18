@@ -15,8 +15,11 @@ from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.trace_common import (
     TraceDataArgs,
-    TraceFormatArgs,
+    TraceFormatBase,
+    TraceFormatRegistry,
 )
+from guidellm.data.schemas import DataArgs
+from guidellm.utils.trace_io import TraceColumn
 
 __all__ = ["MinimalTraceFormatArgs"]
 
@@ -52,22 +55,40 @@ def _generate_token_ids(
             return token_ids[:token_count]
 
 
-@TraceFormatArgs.register("minimal")
-class MinimalTraceFormatArgs(TraceFormatArgs):
+@DataArgs.register("trace_minimal")
+class MinimalTraceFormatArgs(TraceDataArgs):
     """TODO"""
 
-    kind: Literal["minimal"] = Field(
-        default="minimal",
+    kind: Literal["trace_minimal"] = Field(
+        default="trace_minimal",
         description="Type identifier for the minimal trace format.",
     )
+
+
+@TraceFormatRegistry.register("trace_minimal")
+class MinimalTraceFormat(TraceFormatBase):
+    """TODO"""
+
+    @staticmethod
+    def required_columns(
+        config: MinimalTraceFormatArgs,  # noqa: ARG004
+    ) -> list[TraceColumn]:
+        return []
+
+    @staticmethod
+    def validate_row(
+        config: MinimalTraceFormatArgs,  # noqa: ARG004
+        row: dict,  # noqa: ARG004
+    ) -> None:
+        return
 
     @classmethod
     def create_prompt(
         cls,
-        row: dict,  # noqa: ARG002
-        config: TraceDataArgs,  # noqa: ARG002
-        processor: PreTrainedTokenizerBase,  # noqa: ARG002
-        faker: Faker,  # noqa: ARG002
+        config: MinimalTraceFormatArgs,
+        row: dict,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
     ) -> str:
         token_ids = _generate_token_ids(
             row[config.prompt_tokens_column], processor, faker

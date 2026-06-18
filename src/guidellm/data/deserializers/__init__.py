@@ -32,7 +32,8 @@ from .trace_common import (
     TraceDataArgs,
     TraceDataset,
     TraceDatasetDeserializer,
-    TraceFormatArgs,
+    TraceFormatBase,
+    TraceFormatRegistry,
 )
 from .trace_mooncake import MooncakeTraceFormatArgs
 from .trace_synthetic import MinimalTraceFormatArgs
@@ -66,5 +67,6 @@ __all__ = [
     "TraceDataArgs",
     "TraceDataset",
     "TraceDatasetDeserializer",
-    "TraceFormatArgs",
+    "TraceFormatBase",
+    "TraceFormatRegistry",
 ]

@@ -3,14 +3,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import Any
 
 import numpy as np
 from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
-from pydantic import Field, field_serializer, field_validator
+from pydantic import Field, field_serializer
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -19,42 +19,26 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import DataArgs
-from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
+from guidellm.utils.registry import RegistryMixin
 from guidellm.utils.trace_io import TraceColumn, load_trace_rows
 
 __all__ = [
     "TraceDataArgs",
     "TraceDataset",
     "TraceDatasetDeserializer",
-    "TraceFormatArgs",
+    "TraceFormatBase",
+    "TraceFormatRegistry",
 ]
 
 
-class TraceFormatArgs(PydanticClassRegistryMixin["TraceFormatArgs"], ABC):
-    model_config = standard_model_config()
-    schema_discriminator: ClassVar[str] = "kind"
+class TraceFormatBase(ABC):
+    @staticmethod
+    @abstractmethod
+    def required_columns(config) -> list[TraceColumn]: ...  # noqa: ARG004
 
-    @classmethod
-    def __pydantic_schema_base_type__(cls) -> type[TraceFormatArgs]:
-        """Return base type for polymorphic validation hierarchy.
-
-        :return: Base Profile class for schema validation"""
-        if cls.__name__ == "TraceFormatArgs":
-            return cls
-        return TraceFormatArgs
-
-    kind: str = Field(
-        description="Type identifier for the format arguments.",
-    )
-
-    required_columns: ClassVar[list[TraceColumn]] = []
-
-    @classmethod
-    def validate_row(
-        cls,
-        row: dict,  # noqa: ARG002
-        config: TraceDataArgs,  # noqa: ARG002
-    ) -> None:
+    @staticmethod
+    @abstractmethod
+    def validate_row(config, row: dict) -> None:
         """Called within `trace_common.TraceExamplesIterable` on initialization,
         immediately after doing its own checks on the row."""
 
@@ -62,24 +46,29 @@ class TraceFormatArgs(PydanticClassRegistryMixin["TraceFormatArgs"], ABC):
     @abstractmethod
     def create_prompt(
         cls,
-        row: dict,  # noqa: ARG002
-        config: TraceDataArgs,  # noqa: ARG002
-        processor: PreTrainedTokenizerBase,  # noqa: ARG002
-        faker: Faker,  # noqa: ARG002
+        config,
+        row: dict,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
     ) -> str:
         """Called within `trace_common.TraceExamplesIterable` on each iteration.
         Returns a generated synthetic prompt."""
 
 
-@DataArgs.register("trace")
-class TraceDataArgs(DataArgs):
-    kind: Literal["trace"] = Field(
-        default="trace",
+class TraceFormatRegistry(RegistryMixin[TraceFormatBase]):
+    @classmethod
+    def dispatch(cls, config: TraceDataArgs) -> TraceFormatBase:
+        format_from_type = cls.get_registered_object(config.kind)
+        if format_from_type is None:
+            raise DataNotSupportedError(
+                f"Format type '{config.kind}' is not registered."
+            )
+        return format_from_type
+
+
+class TraceDataArgs(DataArgs, ABC):
+    kind: str = Field(
         description="Type identifier for the trace dataset deserializer.",
-    )
-    format: TraceFormatArgs = Field(
-        description="Format the trace file adhers to, "
-        "including its specific configuration arguments."
     )
     path: Path = Field(description="Path to the trace file.")
     timestamp_column: str = Field(
@@ -94,13 +83,6 @@ class TraceDataArgs(DataArgs):
         default="output_length",
         description="Column name for output token counts in the trace file.",
     )
-
-    @field_validator("format", mode="before")
-    @classmethod
-    def validate_format(cls, format: Any) -> TraceFormatArgs:
-        """Validates format against `TraceFormatArgs`. Returns
-        the subclass format which `TraceFormatArgs` dispatched to on success."""
-        return TraceFormatArgs.model_validate(format)
 
     @field_serializer("path")
     @classmethod
@@ -131,6 +113,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     ):
         super().__init__()
         self.config = config
+        self.format = TraceFormatRegistry.dispatch(self.config)
         self.processor = processor
         self.faker = Faker()
         self.faker.seed_instance(random_seed)
@@ -141,7 +124,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 required_columns=[
                     TraceColumn(config.prompt_tokens_column, Value("int32")),
                     TraceColumn(config.output_tokens_column, Value("int32")),
-                    *self.config.format.required_columns,
+                    *self.format.required_columns(self.config),
                 ],
             )
         except (DatasetGenerationError, KeyError, ValueError) as e:
@@ -149,7 +132,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
 
         for row in self.trace_rows:
             _validate_row(row, self.config)
-            self.config.format.validate_row(row, self.config)
+            self.format.validate_row(self.config, row)
         self.iteration_count = 0
 
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
@@ -161,8 +144,8 @@ class TraceExamplesIterable(_BaseExamplesIterable):
             except IndexError:
                 break
 
-            prompt = self.config.format.create_prompt(
-                row, self.config, self.processor, self.faker
+            prompt = self.format.create_prompt(
+                self.config, row, self.processor, self.faker
             )
             timestamps = self.trace_rows[self.config.timestamp_column]
             relative_timestamp = timestamps[row_idx] - timestamps[0]
