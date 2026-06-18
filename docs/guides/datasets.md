@@ -437,7 +437,7 @@ guidellm preprocess dataset \
 
 | Option                            | Description                                                                                                                             |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `--data-args <JSON>`              | JSON string of arguments to pass to dataset loading. See [Data Arguments Overview](#data-arguments-overview) for details. |
+| `--data-args <JSON>`              | JSON string of arguments to pass to dataset loading. See [Data Arguments Overview](#data-arguments-overview) for details.               |
 | `--include-prefix-in-token-count` | Include prefix tokens in prompt token count calculation (flag). When enabled, prefix trimming is disabled and the prefix is kept as-is. |
 | `--random-seed <NUMBER>`          | Random seed for reproducible token sampling (default: 42).                                                                              |
 | `--push-to-hub`                   | Push the processed dataset to Hugging Face Hub (flag).                                                                                  |
