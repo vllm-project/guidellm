@@ -24,7 +24,6 @@ from guidellm.utils.trace_io import TraceColumn, load_trace_rows
 
 __all__ = [
     "TraceDataArgs",
-    "TraceDataset",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",

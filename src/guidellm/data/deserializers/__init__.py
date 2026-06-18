@@ -30,7 +30,6 @@ from .synthetic import (
 )
 from .trace_common import (
     TraceDataArgs,
-    TraceDataset,
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
@@ -65,7 +64,6 @@ __all__ = [
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
     "TraceDataArgs",
-    "TraceDataset",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
