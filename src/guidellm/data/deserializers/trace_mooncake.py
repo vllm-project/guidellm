@@ -134,12 +134,16 @@ class MooncakeTraceFormatArgs(TraceDataArgs):
 
 @TraceFormatRegistry.register("mooncake")
 class MooncakeTraceFormat(TraceFormatBase):
-    @staticmethod
-    def required_columns(config: MooncakeTraceFormatArgs) -> list[TraceColumn]:
+    """TODO"""
+
+    def __init__(self) -> None:
+        self.hash_id_table: list[Any] = []
+        self.sibling_token_blocks: dict[Any, list[list[int]]] = {}
+
+    def required_columns(self, config: MooncakeTraceFormatArgs) -> list[TraceColumn]:
         return [TraceColumn(config.hash_ids_column, List(Value("int32")))]
 
-    @staticmethod
-    def validate_row(config: MooncakeTraceFormatArgs, row: dict) -> None:
+    def validate_row(self, config: MooncakeTraceFormatArgs, row: dict) -> None:
         n_in = row[config.prompt_tokens_column]
         n_blocks = len(row[config.hash_ids_column])
         for hash_id in row[config.hash_ids_column]:
@@ -153,12 +157,8 @@ class MooncakeTraceFormat(TraceFormatBase):
                 f"{config.hash_id_block_size} does not match given {n_blocks} blocks"
             )
 
-    hash_id_table: list[Any] = []
-    sibling_token_blocks: dict[Any, list[list[int]]] = {}
-
-    @classmethod
     def create_prompt(
-        cls,
+        self,
         config: MooncakeTraceFormatArgs,
         row: dict,
         processor: PreTrainedTokenizerBase,
@@ -166,16 +166,16 @@ class MooncakeTraceFormat(TraceFormatBase):
     ) -> str:
         ids = row[config.hash_ids_column]
         for idx, hash_id in enumerate(ids):
-            if not _is_in_table(cls.hash_id_table, hash_id):
-                _resize_to_hold_id(cls.hash_id_table, hash_id)
+            if not _is_in_table(self.hash_id_table, hash_id):
+                _resize_to_hold_id(self.hash_id_table, hash_id)
                 prev_id = None if idx == 0 else ids[idx - 1]
                 num_tokens = _calculate_required_prompt_tokens(config, row, hash_id)
-                cls.sibling_token_blocks.setdefault(prev_id, [])
-                cls.hash_id_table[hash_id] = _create_distinct_token_block(
+                self.sibling_token_blocks.setdefault(prev_id, [])
+                self.hash_id_table[hash_id] = _create_distinct_token_block(
                     num_tokens,
-                    cls.sibling_token_blocks[prev_id],
+                    self.sibling_token_blocks[prev_id],
                     processor,
                     faker,
                 )
-                cls.sibling_token_blocks[prev_id].append(cls.hash_id_table[hash_id])
-        return _create_prompt_from_hash_ids(ids, cls.hash_id_table, processor)
+                self.sibling_token_blocks[prev_id].append(self.hash_id_table[hash_id])
+        return _create_prompt_from_hash_ids(ids, self.hash_id_table, processor)

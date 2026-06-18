@@ -69,22 +69,24 @@ class MinimalTraceFormatArgs(TraceDataArgs):
 class MinimalTraceFormat(TraceFormatBase):
     """TODO"""
 
-    @staticmethod
+    def __init__(self) -> None:
+        pass
+
     def required_columns(
-        config: MinimalTraceFormatArgs,  # noqa: ARG004
+        self,
+        config: MinimalTraceFormatArgs,  # noqa: ARG002
     ) -> list[TraceColumn]:
         return []
 
-    @staticmethod
     def validate_row(
-        config: MinimalTraceFormatArgs,  # noqa: ARG004
-        row: dict,  # noqa: ARG004
+        self,
+        config: MinimalTraceFormatArgs,  # noqa: ARG002
+        row: dict,  # noqa: ARG002
     ) -> None:
         return
 
-    @classmethod
     def create_prompt(
-        cls,
+        self,
         config: MinimalTraceFormatArgs,
         row: dict,
         processor: PreTrainedTokenizerBase,

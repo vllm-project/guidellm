@@ -28,18 +28,24 @@ def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
     return path
 
 
+def _get_from_kwargs(keys, kwargs) -> dict:
+    return {k: v for k, v in kwargs.items() if k in keys}
+
+
 class TestMinimalTraceFormat:
     @pytest.fixture
     def deserializer(self) -> TraceDatasetDeserializer:
         return TraceDatasetDeserializer()
 
     def _deserialize(self, deserializer, data, **kwargs):
-        field_names = (
-            "timestamp_column",
-            "prompt_tokens_column",
-            "output_tokens_column",
+        col_kwargs = _get_from_kwargs(
+            (
+                "timestamp_column",
+                "prompt_tokens_column",
+                "output_tokens_column",
+            ),
+            kwargs,
         )
-        col_kwargs = {k: v for k, v in kwargs.items() if k in field_names}
         config = MinimalTraceFormatArgs(path=data, **col_kwargs)
         return deserializer(
             config=config,

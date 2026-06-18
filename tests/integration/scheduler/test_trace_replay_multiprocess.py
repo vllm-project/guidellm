@@ -16,8 +16,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
-from guidellm.data.deserializers.trace_synthetic import MinimalTraceFormatArgs
+from guidellm.data.deserializers import (
+    MinimalTraceFormatArgs,
+    TraceDatasetDeserializer,
+)
 from guidellm.data.finalizers.generative import (
     GenerativeRequestFinalizer,
     GenerativeRequestFinalizerArgs,

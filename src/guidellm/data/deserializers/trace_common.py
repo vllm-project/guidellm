@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 from datasets import DatasetInfo, Features, IterableDataset, Value
@@ -31,21 +31,17 @@ __all__ = [
 ]
 
 
-class TraceFormatBase(ABC):
-    @staticmethod
-    @abstractmethod
-    def required_columns(config) -> list[TraceColumn]: ...  # noqa: ARG004
+class TraceFormatBase(Protocol):
+    def __init__(self) -> None: ...
 
-    @staticmethod
-    @abstractmethod
-    def validate_row(config, row: dict) -> None:
+    def required_columns(self, config) -> list[TraceColumn]: ...
+
+    def validate_row(self, config, row: dict) -> None:
         """Called within `trace_common.TraceExamplesIterable` on initialization,
         immediately after doing its own checks on the row."""
 
-    @classmethod
-    @abstractmethod
     def create_prompt(
-        cls,
+        self,
         config,
         row: dict,
         processor: PreTrainedTokenizerBase,
@@ -55,7 +51,7 @@ class TraceFormatBase(ABC):
         Returns a generated synthetic prompt."""
 
 
-class TraceFormatRegistry(RegistryMixin[TraceFormatBase]):
+class TraceFormatRegistry(RegistryMixin[type[TraceFormatBase]]):
     @classmethod
     def dispatch(cls, config: TraceDataArgs) -> TraceFormatBase:
         format_from_type = cls.get_registered_object(config.kind)
@@ -63,7 +59,7 @@ class TraceFormatRegistry(RegistryMixin[TraceFormatBase]):
             raise DataNotSupportedError(
                 f"Format type '{config.kind}' is not registered."
             )
-        return format_from_type
+        return format_from_type()
 
 
 class TraceDataArgs(DataArgs, ABC):
