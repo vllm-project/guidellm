@@ -101,7 +101,7 @@ uv run guidellm run \
 # Production-like benchmark with specific dataset
 uv run guidellm run \
   --backend openai_http "target=http://localhost:8000" \
-  --profile constant "rate=10,20" \
+  --profile constant '{"rate": [10, 20]}' \
   --data huggingface "source=openai/gsm8k" \
   --constraint max_duration "max_duration=300" \
   --output json "path=benchmark.json" \

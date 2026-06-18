@@ -45,7 +45,7 @@ Engine behavior (device, memory, etc.) follows vLLM defaults unless you override
   Example — limit GPU memory use and context length:
 
   ```bash
-  --backend vllm_python 'model=Qwen/Qwen3-0.6B,vllm_config={"gpu_memory_utilization": 0.8, "max_model_len": 4096}'
+  --backend vllm_python '{"model": "Qwen/Qwen3-0.6B", "vllm_config": {"gpu_memory_utilization": 0.8, "max_model_len": 4096}}'
   ```
 
   For the full list of options and their types, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) (CLI form) and the [EngineArgs source](https://github.com/vllm-project/vllm/blob/main/vllm/engine/arg_utils.py) (Python field names for `vllm_config`).

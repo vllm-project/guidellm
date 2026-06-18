@@ -148,11 +148,11 @@ Runs a fixed number of parallel request streams.
 guidellm run --profile concurrent "streams=10"
 ```
 
-| Profile parameter | Description                                   | Example                                                                       |
-| ----------------- | --------------------------------------------- | ----------------------------------------------------------------------------- |
-| `streams`         | Concurrent streams to maintain; may be a list | `--profile concurrent "streams=10"` or `--profile concurrent "streams=16,32"` |
-| `rampup_duration` | Seconds to spread initial requests            | `--profile concurrent "streams=10,rampup_duration=10"`                        |
-| `max_concurrency` | Maximum concurrent requests to schedule       | `--profile concurrent "streams=10,max_concurrency=10"`                        |
+| Profile parameter | Description                                   | Example                                                                              |
+| ----------------- | --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `streams`         | Concurrent streams to maintain; may be a list | `--profile concurrent "streams=10"` or `--profile concurrent '{"streams": [16,32]}'` |
+| `rampup_duration` | Seconds to spread initial requests            | `--profile concurrent "streams=10,rampup_duration=10"`                               |
+| `max_concurrency` | Maximum concurrent requests to schedule       | `--profile concurrent "streams=10,max_concurrency=10"`                               |
 
 #### Constant Profile
 
@@ -161,14 +161,14 @@ Sends asynchronous requests at a fixed rate per second.
 (The profile names `async` and `constant` are aliases.)
 
 ```bash
-guidellm run --profile constant "rate=16,32"
+guidellm run --profile constant '{"rate": [16, 32]}'
 ```
 
-| Profile parameter | Description                                    | Example                                                             |
-| ----------------- | ---------------------------------------------- | ------------------------------------------------------------------- |
-| `rate`            | Requests per second; may be a list             | `--profile constant "rate=10"` or `--profile constant "rate=16,32"` |
-| `rampup_duration` | Seconds to linearly ramp from 0 to target rate | `--profile constant "rate=10,rampup_duration=10"`                   |
-| `max_concurrency` | Maximum concurrent requests to schedule        | `--profile constant "rate=10,max_concurrency=32"`                   |
+| Profile parameter | Description                                    | Example                                                                     |
+| ----------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `rate`            | Requests per second; may be a list             | `--profile constant "rate=10"` or `--profile constant '{"rate": [16, 32]}'` |
+| `rampup_duration` | Seconds to linearly ramp from 0 to target rate | `--profile constant "rate=10,rampup_duration=10"`                           |
+| `max_concurrency` | Maximum concurrent requests to schedule        | `--profile constant "rate=10,max_concurrency=32"`                           |
 
 #### Poisson Profile
 
@@ -178,10 +178,10 @@ Sends asynchronous requests at varying rates using a Poisson distribution around
 guidellm run --profile poisson "rate=16" --seed static "value=42"
 ```
 
-| Profile parameter | Description                             | Example                                          |
-| ----------------- | --------------------------------------- | ------------------------------------------------ |
-| `rate`            | Target rate(s) in requests per second   | `--profile poisson "rate=10"`                    |
-| `max_concurrency` | Maximum concurrent requests to schedule | `--profile poisson "rate=10,max_concurrency=32"` |
+| Profile parameter | Description                             | Example                                                                   |
+| ----------------- | --------------------------------------- | ------------------------------------------------------------------------- |
+| `rate`            | Target rate(s) in requests per second   | `--profile poisson "rate=10"` or `--profile poisson '{"rate": [10, 20]}'` |
+| `max_concurrency` | Maximum concurrent requests to schedule | `--profile poisson "rate=10,max_concurrency=32"`                          |
 
 Use `--seed static "value=42"` for reproducible Poisson scheduling.
 
@@ -214,9 +214,9 @@ Replays trace events using timestamps from a `trace_synthetic` dataset. See [Tra
 guidellm run --profile replay "time_scale=1.0"
 ```
 
-| Profile parameter | Description                                                             | Example                             |
-| ----------------- | ----------------------------------------------------------------------- | ----------------------------------- |
-| `time_scale`      | Time scale for intervals between trace events (not requests per second) | `--profile replay "time_scale=2.0"` |
+| Profile parameter | Description                                   | Example                           |
+| ----------------- | --------------------------------------------- | --------------------------------- |
+| `time_scale`      | Time scale for intervals between trace events | `--profile replay time_scale=2.0` |
 
 ## Data Options
 
@@ -258,7 +258,7 @@ guidellm run \
   --profile replay "time_scale=1.0"
 ```
 
-The profile parameter `time_scale` acts as a time scale for the intervals between trace events, not requests per second: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
+The profile parameter `time_scale` acts as a time scale for the intervals between trace events: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
 
 GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-loader pytorch "samples=1000"` to limit how many trace rows are loaded and replayed. `--constraint max_requests count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
 

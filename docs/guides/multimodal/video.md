@@ -141,7 +141,7 @@ guidellm run \
   --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions" \
   --profile synchronous "" \
   --constraint max_requests "count=50" \
-  --data huggingface "source=lmms-lab/Video-MME,load_kwargs={split: test}" \
+  --data huggingface '{"source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}' \
   --data-column-mapper generative_column_mapper '{"column_mappings": {"video_column": "url", "text_column": "question"}}'
 ```
 
@@ -162,7 +162,7 @@ guidellm run \
   --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions" \
   --profile synchronous "" \
   --constraint max_requests "count=50" \
-  --data huggingface "source=lmms-lab/Video-MME,load_kwargs={split: test}" \
+  --data huggingface '{"source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}' \
   --data-column-mapper generative_column_mapper '{"column_mappings": {"video_column": "url"}}'
 ```
 

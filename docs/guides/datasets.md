@@ -35,7 +35,7 @@ guidellm run \
   --constraint max_requests "count=1000" \
   --data huggingface "source=my/dataset" \
   --data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "prompt"}}' \
-  --tokenizer huggingface_auto "model=path/to/processor,load_kwargs={use_fast: false}" \
+  --tokenizer huggingface_auto '{"model": "path/to/processor", "load_kwargs": {"use_fast": false}}' \
   --data-loader pytorch "shuffle=true"
 ```
 
@@ -111,7 +111,7 @@ guidellm run \
 Pass HuggingFace `load_dataset` options through `load_kwargs`:
 
 ```bash
---data huggingface "source=my/dataset,load_kwargs={split: train}"
+--data huggingface '{"source": "my/dataset", "load_kwargs": {"split": "train"}}'
 ```
 
 #### Notes

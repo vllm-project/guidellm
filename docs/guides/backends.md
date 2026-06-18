@@ -119,7 +119,7 @@ The `extras` field accepts a `body` key whose values are merged directly into th
 
 ```bash
 guidellm run \
-  --backend openai_http 'target=http://localhost:8000/v1,model=meta-llama/Meta-Llama-3.1-8B-Instruct,extras={"body": {"temperature": 0.6, "top_p": 0.95, "top_k": 20}}' \
+  --backend openai_http '{"target": "http://localhost:8000/v1", "model": "meta-llama/Meta-Llama-3.1-8B-Instruct", "extras": {"body": {"temperature": 0.6, "top_p": 0.95, "top_k": 20}}}' \
   --data synthetic_text "prompt_tokens=256,output_tokens=128"
 ```
 
@@ -137,7 +137,7 @@ The `--backend` config is parsed into keyword arguments for the backend construc
 
 ```bash
 guidellm run \
-  --backend openai_http 'target=http://localhost:8000/v1,model=meta-llama/Meta-Llama-3.1-8B-Instruct,api_key=sk-...,extras={"body": {"temperature": 0.8, "top_p": 0.9}}' \
+  --backend openai_http '{"target": "http://localhost:8000/v1", "model": "meta-llama/Meta-Llama-3.1-8B-Instruct", "api_key": "sk-...", "extras": {"body": {"temperature": 0.8, "top_p": 0.9}}}' \
   --data synthetic_text "prompt_tokens=256,output_tokens=128"
 ```
 

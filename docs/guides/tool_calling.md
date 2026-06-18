@@ -106,7 +106,7 @@ Two backend settings control how tool-call turns are handled at runtime. Both ar
 
 ```bash
 guidellm run \
-  --backend openai_http 'target=http://localhost:8000,extras={"body": {"tool_choice": "auto"}}' \
+  --backend openai_http '{"target": "http://localhost:8000", "extras": {"body": {"tool_choice": "auto"}}}' \
   --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
   --constraint max_requests "count=30"
 ```
@@ -115,7 +115,7 @@ guidellm run \
 
 ```bash
 guidellm run \
-  --backend openai_http 'target=http://localhost:8000,tool_call_missing_behavior=ignore_continue,extras={"body": {"tool_choice": "auto"}}' \
+  --backend openai_http '{"target": "http://localhost:8000", "tool_call_missing_behavior": "ignore_continue", "extras": {"body": {"tool_choice": "auto"}}}' \
   --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
   --constraint max_requests "count=30"
 ```

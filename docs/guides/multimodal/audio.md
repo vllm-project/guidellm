@@ -155,7 +155,7 @@ guidellm run \
   --backend openai_http "target=http://localhost:8000,request_format=/v1/audio/transcriptions" \
   --profile synchronous "" \
   --constraint max_requests "count=20" \
-  --data huggingface "source=openslr/librispeech_asr,load_kwargs={name: clean, split: test}" \
+  --data huggingface '{"source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
   --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "audio"}}'
 ```
 
@@ -205,10 +205,10 @@ This benchmark tests audio translation models like Whisper at converting audio i
 
 ```bash
 guidellm run \
-  --backend openai_http 'target=http://localhost:8000,request_format=/v1/audio/translations,extras={"body": {"language": "fr"}}' \
+  --backend openai_http '{"target": "http://localhost:8000", "request_format": "/v1/audio/translations", "extras": {"body": {"language": "fr"}}}' \
   --profile synchronous "" \
   --constraint max_requests "count=20" \
-  --data huggingface "source=openslr/librispeech_asr,load_kwargs={name: clean, split: test}" \
+  --data huggingface '{"source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
   --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "audio"}}'
 ```
 
@@ -263,7 +263,7 @@ guidellm run \
   --profile synchronous "" \
   --constraint max_requests "count=20" \
   --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --data huggingface "source=openslr/librispeech_asr,load_kwargs={name: clean, split: test}" \
+  --data huggingface '{"source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
   --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "1.audio", "text_column": "0.prompt"}}'
 ```
 
