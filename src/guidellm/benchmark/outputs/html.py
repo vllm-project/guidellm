@@ -27,6 +27,7 @@ from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
     BenchmarkArgs,
     BenchmarkOutputArgs,
+    BenchmarkScenario,
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
@@ -311,7 +312,7 @@ def _inject_data(js_data: dict[str, str], html: str) -> str:
 
 
 def _build_ui_data(
-    benchmarks: list[GenerativeBenchmark], args: BenchmarkArgs
+    benchmarks: list[GenerativeBenchmark], config: BenchmarkScenario
 ) -> dict[str, Any]:
     """
     Build complete UI data structure from benchmarks.
@@ -324,8 +325,8 @@ def _build_ui_data(
     :return: Dictionary with run_info, workload_details, and benchmarks sections
     """
     return {
-        "run_info": _build_run_info(benchmarks, args),
-        "workload_details": _build_workload_details(benchmarks, args),
+        "run_info": _build_run_info(benchmarks, config.spec),
+        "workload_details": _build_workload_details(benchmarks, config.spec),
         "benchmarks": _build_benchmarks(benchmarks),
     }
 
