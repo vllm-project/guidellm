@@ -6,8 +6,6 @@ import click
 from more_itertools import partition
 from pydantic import BaseModel
 
-from guidellm.settings import settings
-
 __all_ = [
     "validate_env_vars",
     "list_set_env",
@@ -15,7 +13,10 @@ __all_ = [
 ]
 
 
-def validate_env_vars(ctx: click.Context | None = None) -> tuple[set[str], set[str]]:
+def validate_env_vars(
+    *models: type[BaseModel],
+    ctx: click.Context | None = None,
+) -> tuple[set[str], set[str]]:
     """
     Validate if the given environment variable name is recognized.
 
@@ -26,7 +27,7 @@ def validate_env_vars(ctx: click.Context | None = None) -> tuple[set[str], set[s
     :return: True if the environment variable is valid, False otherwise.
     """
     set_vars = list_set_env()
-    valid_vars = get_valid_env_vars(ctx)
+    valid_vars = get_valid_env_vars(*models, ctx=ctx)
 
     invaild_set_vars, valid_set_vars = partition(
         lambda e: e in valid_vars,
@@ -46,7 +47,8 @@ def list_set_env(prefix: str = "GUIDELLM_") -> set[str]:
 
 
 def get_valid_env_vars(
-    ctx: click.Context | None = None, include_settings: bool = True
+    *models: type[BaseModel],
+    ctx: click.Context | None = None,
 ) -> set[str]:
     """
     Get all valid environment variable names from Click context and Settings.
@@ -62,8 +64,8 @@ def get_valid_env_vars(
     if ctx is not None:
         valid_envs.update(_extract_click_env_vars(ctx))
 
-    if include_settings:
-        valid_envs.update(_extract_settings_env_vars())
+    for model in models:
+        valid_envs.update(_extract_model_env_vars(model))
 
     return valid_envs
 
@@ -104,7 +106,7 @@ def _extract_click_env_vars(ctx: click.Context) -> set[str]:
     return env_vars
 
 
-def _extract_settings_env_vars() -> set[str]:
+def _extract_model_env_vars(model_class: type[BaseModel]) -> set[str]:
     """
     Extract all environment variable names from Pydantic Settings.
 
@@ -112,19 +114,19 @@ def _extract_settings_env_vars() -> set[str]:
 
     :return: Set of environment variable names.
     """
-    config = settings.model_config
+    config = model_class.model_config
     env_prefix = str(config.get("env_prefix", ""))
     env_delimiter = str(config.get("env_nested_delimiter", "__"))
 
     # Walk the settings model fields recursively
-    return _walk_settings_fields(
-        type(settings),
+    return _walk_model_fields(
+        model_class,
         env_prefix,
         env_delimiter,
     )
 
 
-def _walk_settings_fields(
+def _walk_model_fields(
     model_class: type[BaseModel],
     prefix: str,
     delimiter: str,
@@ -168,7 +170,7 @@ def _walk_settings_fields(
             # Recursively walk nested model
             nested_prefix = f"{field_env_name}{delimiter}"
             env_vars.update(
-                _walk_settings_fields(
+                _walk_model_fields(
                     cast("type[BaseModel]", field_type),
                     nested_prefix,
                     delimiter,
