@@ -93,12 +93,12 @@ class OverSaturationConstraintArgs(ConstraintArgs):
         default="over_saturation",
         description="Constraint type discriminator",
     )
-    mode: Literal["active", "passive"] = Field(
-        default="active",
+    mode: Literal["enforce", "monitor"] = Field(
+        default="enforce",
         description=(
             "Whether to stop the benchmark if over-saturation is detected. "
-            "Set to `active` to stop the benchmark if over-saturation is "
-            "detected, and `passive` to only monitor for over-saturation."
+            "Set to `enforce` to stop the benchmark if over-saturation is "
+            "detected, and `monitor` to only report over-saturation."
         ),
     )
     min_seconds: int | float = Field(
@@ -361,7 +361,7 @@ class OverSaturationConstraint(Constraint):
         minimum_window_size: int = 5,
         confidence: float = 0.95,
         eps: float = 1e-12,
-        mode: Literal["active", "passive"] = "active",
+        mode: Literal["enforce", "monitor"] = "enforce",
     ) -> None:  # noqa: PLR0913
         """
         Initialize the over-saturation constraint.
@@ -389,7 +389,7 @@ class OverSaturationConstraint(Constraint):
         :param eps: Epsilon for numerical stability in calculations
             (default: 1e-12)
         :param mode: Whether to stop when over-saturation is detected, or only monitor
-            (default: "active")
+            (default: "enforce")
         """
         self.minimum_duration = minimum_duration
         self.minimum_ttft = minimum_ttft
@@ -613,7 +613,7 @@ class OverSaturationConstraint(Constraint):
         concurrent_slope_moe = self.concurrent_slope_checker.margin_of_error
         concurrent_n = self.concurrent_slope_checker.n
 
-        should_stop = is_over_saturated and self.mode == "active"
+        should_stop = is_over_saturated and self.mode == "enforce"
         return SchedulerUpdateAction(
             request_queuing="stop" if should_stop else "continue",
             request_processing="stop_all" if should_stop else "continue",
@@ -643,7 +643,7 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
 
         from guidellm.scheduler.constraints import OverSaturationConstraintArgs
 
-        args = OverSaturationConstraintArgs(mode="active", min_seconds=60.0)
+        args = OverSaturationConstraintArgs(mode="enforce", min_seconds=60.0)
         initializer = OverSaturationConstraintInitializer(args=args)
         constraint = initializer.create_constraint()
     """

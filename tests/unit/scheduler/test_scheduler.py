@@ -151,7 +151,7 @@ class TestScheduler:
                 5,
                 {
                     "max_requests": MaxNumberConstraint(
-                        args=MaxRequestsConstraintArgs(max_num=10),
+                        args=MaxRequestsConstraintArgs(count=10),
                     ),
                 },
             ),
@@ -159,7 +159,7 @@ class TestScheduler:
                 20,
                 {
                     "max_requests": MaxNumberConstraint(
-                        args=MaxRequestsConstraintArgs(max_num=25),
+                        args=MaxRequestsConstraintArgs(count=25),
                     ),
                 },
             ),
@@ -167,7 +167,7 @@ class TestScheduler:
                 1,
                 {
                     "max_requests": MaxNumberConstraint(
-                        args=MaxRequestsConstraintArgs(max_num=5),
+                        args=MaxRequestsConstraintArgs(count=5),
                     ),
                 },
             ),
@@ -215,7 +215,7 @@ class TestScheduler:
             backend=backend,
             strategy=strategy,
             env=env,
-            max_number=MaxNumberConstraint(args=MaxRequestsConstraintArgs(max_num=10)),
+            max_number=MaxNumberConstraint(args=MaxRequestsConstraintArgs(count=10)),
         ):
             if info.status == "errored":
                 error_count += 1
@@ -259,9 +259,9 @@ class TestScheduler:
             backend=backend,
             strategy=strategy,
             env=env,
-            max_number=MaxNumberConstraint(args=MaxRequestsConstraintArgs(max_num=5)),
+            max_number=MaxNumberConstraint(args=MaxRequestsConstraintArgs(count=5)),
             max_duration=MaxDurationConstraint(
-                args=MaxDurationConstraintArgs(max_duration=5.0)
+                args=MaxDurationConstraintArgs(seconds=5.0)
             ),
         ):
             results.append((response, request, info, state))

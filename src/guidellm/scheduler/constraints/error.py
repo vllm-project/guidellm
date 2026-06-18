@@ -53,7 +53,7 @@ class MaxErrorsConstraintArgs(ConstraintArgs):
         default="max_errors",
         description="Constraint type discriminator",
     )
-    max_errors: PositiveNumOrList = Field(
+    count: PositiveNumOrList = Field(
         description="Maximum number of errors before stopping execution",
     )
 
@@ -72,10 +72,10 @@ class MaxErrorRateConstraintArgs(ConstraintArgs):
         default="max_error_rate",
         description="Constraint type discriminator",
     )
-    max_error_rate: ErrorRateOrList = Field(
+    rate: ErrorRateOrList = Field(
         description="Maximum error rate (0.0 to 1.0) before stopping execution",
     )
-    window_size: int | float = Field(
+    window: int | float = Field(
         default_factory=lambda: settings.constraint_error_window_size,
         gt=0,
         description="Size of sliding window for calculating error rate",
@@ -97,10 +97,10 @@ class MaxGlobalErrorRateConstraintArgs(ConstraintArgs):
         default="max_global_error_rate",
         description="Constraint type discriminator",
     )
-    max_error_rate: ErrorRateOrList = Field(
+    rate: ErrorRateOrList = Field(
         description="Maximum global error rate (0.0 to 1.0) before stopping",
     )
-    min_processed: int | float | None = Field(
+    minimum: int | float | None = Field(
         default_factory=lambda: settings.constraint_error_min_processed,
         gt=0,
         description="Minimum requests processed before applying error rate constraint",
@@ -147,9 +147,9 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_errors = (
-            self.args.max_errors
-            if isinstance(self.args.max_errors, int | float)
-            else self.args.max_errors[min(current_index, len(self.args.max_errors) - 1)]
+            self.args.count
+            if isinstance(self.args.count, int | float)
+            else self.args.count[min(current_index, len(self.args.count) - 1)]
         )
         errors_exceeded = state.errored_requests >= max_errors
         stop_time = (
@@ -215,16 +215,14 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         """
         current_index = max(0, self.current_index)
         max_error_rate = (
-            self.args.max_error_rate
-            if isinstance(self.args.max_error_rate, int | float)
-            else self.args.max_error_rate[
-                min(current_index, len(self.args.max_error_rate) - 1)
-            ]
+            self.args.rate
+            if isinstance(self.args.rate, int | float)
+            else self.args.rate[min(current_index, len(self.args.rate) - 1)]
         )
 
         if request_info.status in ["completed", "errored", "cancelled"]:
             self.error_window.append(request_info.status == "errored")
-            if len(self.error_window) > self.args.window_size:
+            if len(self.error_window) > self.args.window:
                 self.error_window.pop(0)
 
         error_count = sum(self.error_window)
@@ -232,7 +230,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         error_rate = (
             error_count / float(window_requests) if window_requests > 0 else 0.0
         )
-        exceeded_min_processed = state.processed_requests >= self.args.window_size
+        exceeded_min_processed = state.processed_requests >= self.args.window
         exceeded_error_rate = error_rate >= max_error_rate
         exceeded = exceeded_min_processed and exceeded_error_rate
         stop_time = None if not exceeded else request_info.completed_at or time.time()
@@ -242,7 +240,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
             request_processing="stop_all" if exceeded else "continue",
             metadata={
                 "max_error_rate": max_error_rate,
-                "window_size": self.args.window_size,
+                "window_size": self.args.window,
                 "error_count": error_count,
                 "processed_count": state.processed_requests,
                 "current_window_size": len(self.error_window),
@@ -298,16 +296,13 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_error_rate = (
-            self.args.max_error_rate
-            if isinstance(self.args.max_error_rate, int | float)
-            else self.args.max_error_rate[
-                min(current_index, len(self.args.max_error_rate) - 1)
-            ]
+            self.args.rate
+            if isinstance(self.args.rate, int | float)
+            else self.args.rate[min(current_index, len(self.args.rate) - 1)]
         )
 
         exceeded_min_processed = (
-            self.args.min_processed is None
-            or state.processed_requests >= self.args.min_processed
+            self.args.minimum is None or state.processed_requests >= self.args.minimum
         )
         error_rate = (
             state.errored_requests / float(state.processed_requests)
@@ -323,7 +318,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
             request_processing="stop_all" if exceeded else "continue",
             metadata={
                 "max_error_rate": max_error_rate,
-                "min_processed": self.args.min_processed,
+                "min_processed": self.args.minimum,
                 "processed_requests": state.processed_requests,
                 "errored_requests": state.errored_requests,
                 "error_rate": error_rate,
