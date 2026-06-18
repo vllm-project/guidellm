@@ -11,7 +11,7 @@ from guidellm.benchmark.outputs.serialized import (
     YAMLBenchmarkOutputArgs,
 )
 from guidellm.benchmark.schemas import (
-    BenchmarkArgs,
+    BenchmarkScenario,
     GenerativeBenchmarksReport,
 )
 
@@ -19,27 +19,22 @@ from guidellm.benchmark.schemas import (
 @pytest.fixture
 def minimal_report() -> GenerativeBenchmarksReport:
     """
-    Create a minimal GenerativeBenchmarksReport for testing serialization.
-
-    ## WRITTEN BY AI ##
+    Create a GenerativeBenchmarksReport for testing serialization.
     """
-    args = BenchmarkArgs.model_validate(
+    config = BenchmarkScenario.model_validate(
         {
-            "backend": {
-                "kind": "openai_http",
-                "target": "http://localhost:8000/v1",
-                "model": "test-model",
+            "spec": {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000/v1",
+                    "model": "test-model",
+                },
+                "data": [{"kind": "huggingface", "source": "test_data.jsonl"}],
+                "profile": {"kind": "constant", "rate": 10.0},
             },
-            "data": [{"kind": "huggingface", "source": "test_data.jsonl"}],
-            "profile": {"kind": "sweep", "rate": [10.0]},
-            "tokenizer": {"kind": "huggingface_auto", "model": "test-model"},
-            "data_column_mapper": {"kind": "generative_column_mapper"},
-            "data_preprocessors": [],
-            "data_finalizer": {"kind": "generative"},
-            "data_loader": {"kind": "pytorch"},
         }
     )
-    return GenerativeBenchmarksReport(config=args)
+    return GenerativeBenchmarksReport(config=config)
 
 
 @pytest.fixture
@@ -49,26 +44,28 @@ def file_path_report(tmp_path: Path) -> GenerativeBenchmarksReport:
 
     ## WRITTEN BY AI ##
     """
-    args = BenchmarkArgs.model_validate(
+    args = BenchmarkScenario.model_validate(
         {
-            "backend": {
-                "kind": "openai_http",
-                "target": "http://localhost:8000/v1",
-                "model": "test-model",
+            "spec": {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000/v1",
+                    "model": "test-model",
+                },
+                "profile": {"kind": "sweep"},
+                "data": [
+                    {
+                        "kind": "json_file",
+                        "path": tmp_path / "data.jsonl",
+                        "load_kwargs": {"split": "train"},
+                    }
+                ],
+                "tokenizer": {"kind": "huggingface_auto", "model": "test-model"},
+                "data_column_mapper": {"kind": "generative_column_mapper"},
+                "data_preprocessors": [],
+                "data_finalizer": {"kind": "generative"},
+                "data_loader": {"kind": "pytorch"},
             },
-            "profile": {"kind": "sweep"},
-            "data": [
-                {
-                    "kind": "json_file",
-                    "path": tmp_path / "data.jsonl",
-                    "load_kwargs": {"split": "train"},
-                }
-            ],
-            "tokenizer": {"kind": "huggingface_auto", "model": "test-model"},
-            "data_column_mapper": {"kind": "generative_column_mapper"},
-            "data_preprocessors": [],
-            "data_finalizer": {"kind": "generative"},
-            "data_loader": {"kind": "pytorch"},
         }
     )
     return GenerativeBenchmarksReport(config=args)
@@ -195,7 +192,9 @@ class TestFinalizeFormats:
         result_path = await handler.finalize(file_path_report)
 
         parsed = json.loads(result_path.read_text())
-        assert parsed["config"]["data"][0]["path"] == str(tmp_path / "data.jsonl")
+        assert parsed["config"]["spec"]["data"][0]["path"] == str(
+            tmp_path / "data.jsonl"
+        )
 
     @pytest.mark.asyncio
     async def test_finalize_yaml_serializes_nested_paths(
@@ -212,7 +211,9 @@ class TestFinalizeFormats:
         result_path = await handler.finalize(file_path_report)
 
         parsed = yaml.safe_load(result_path.read_text())
-        assert parsed["config"]["data"][0]["path"] == str(tmp_path / "data.jsonl")
+        assert parsed["config"]["spec"]["data"][0]["path"] == str(
+            tmp_path / "data.jsonl"
+        )
 
     @pytest.mark.asyncio
     async def test_finalize_explicit_path_respects_extension(

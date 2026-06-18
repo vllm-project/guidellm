@@ -20,7 +20,7 @@ import yaml
 from pydantic import Field
 
 from guidellm.benchmark.schemas.benchmark import GenerativeBenchmark
-from guidellm.benchmark.schemas.entrypoints import BenchmarkArgs
+from guidellm.benchmark.schemas.entrypoints import BenchmarkScenario
 from guidellm.schemas import StandardBaseModel
 
 __all__ = ["GenerativeBenchmarkMetadata", "GenerativeBenchmarksReport"]
@@ -71,7 +71,7 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         description="Metadata about the benchmark report and execution environment",
         default_factory=GenerativeBenchmarkMetadata,
     )
-    config: BenchmarkArgs = Field(
+    config: BenchmarkScenario = Field(
         description="Benchmark arguments used for all benchmarks in the report"
     )
     benchmarks: list[GenerativeBenchmark] = Field(
