@@ -389,7 +389,7 @@ class OverSaturationConstraint(Constraint):
         :param eps: Epsilon for numerical stability in calculations
             (default: 1e-12)
         :param mode: Whether to stop when over-saturation is detected, or only monitor
-            (default: "active")
+            (default: "enforce")
         """
         self.minimum_duration = minimum_duration
         self.minimum_ttft = minimum_ttft
@@ -613,7 +613,7 @@ class OverSaturationConstraint(Constraint):
         concurrent_slope_moe = self.concurrent_slope_checker.margin_of_error
         concurrent_n = self.concurrent_slope_checker.n
 
-        should_stop = is_over_saturated and self.mode == "active"
+        should_stop = is_over_saturated and self.mode == "enforce"
         return SchedulerUpdateAction(
             request_queuing="stop" if should_stop else "continue",
             request_processing="stop_all" if should_stop else "continue",
