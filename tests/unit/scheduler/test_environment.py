@@ -190,7 +190,7 @@ class TestNonDistributedEnvironment:
                 SynchronousStrategy(),
                 {
                     "max_requests": MaxNumberConstraint(
-                        args=MaxRequestsConstraintArgs(max_num=10),
+                        args=MaxRequestsConstraintArgs(count=10),
                     ),
                 },
             ),
@@ -204,7 +204,7 @@ class TestNonDistributedEnvironment:
                 SynchronousStrategy(),
                 {
                     "max_requests": MaxNumberConstraint(
-                        args=MaxRequestsConstraintArgs(max_num=1),
+                        args=MaxRequestsConstraintArgs(count=1),
                     ),
                 },
             ),
@@ -213,7 +213,7 @@ class TestNonDistributedEnvironment:
                 SynchronousStrategy(),
                 {
                     "max_requests": MaxNumberConstraint(
-                        args=MaxRequestsConstraintArgs(max_num=5),
+                        args=MaxRequestsConstraintArgs(count=5),
                     ),
                 },
             ),
