@@ -23,9 +23,11 @@ from guidellm.data.schemas import (
     DataTokenizerArgs,
 )
 from guidellm.data.tokenizers import TokenizerRegistry
+from guidellm.utils.console import Console
+from guidellm.utils.mixins import InfoMixin
 
 
-def create_data_loader(
+async def create_data_loader(
     loader_config: DataLoaderArgs,
     data_config: list[DataArgs],
     tokenizer_config: DataTokenizerArgs,
@@ -33,6 +35,7 @@ def create_data_loader(
     preprocessors_config: list[DataPreprocessorArgs],
     finalizer_config: DataFinalizerArgs,
     random_seed: int = 42,
+    console: Console | None = None,
 ) -> DataLoader:
     """
     Factory function to create a DataLoader instance based on provided configurations.
@@ -51,6 +54,12 @@ def create_data_loader(
 
     tokenizer_factory = TokenizerRegistry.create(tokenizer_config)
 
+    console_step = (
+        console.print_update_step(title="Deserializing datasets from configuration")
+        if console
+        else None
+    )
+
     datasets: list[DatasetType] = [
         DatasetDeserializerFactory.deserialize(
             config=args,
@@ -60,19 +69,75 @@ def create_data_loader(
         for args in data_config
     ]
 
+    if console_step:
+        console_step.finish(
+            title=f"{len(datasets)} datasets resolved",
+            details=[args.model_dump(mode="json") for args in data_config],
+            status_level="success",
+        )
+
+    console_step = (
+        console.print_update_step(
+            title="Initializing preprocessors from configuration",
+        )
+        if console
+        else None
+    )
+
     preproc_configs = [column_mapper_config] + preprocessors_config
     preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor] = [
         PreprocessorRegistry.create(pre) for pre in preproc_configs
     ]
+
+    if console_step:
+        console_step.finish(
+            title=f"{len(preprocessors)} preprocessors resolved",
+            details=[pre.model_dump(mode="json") for pre in preproc_configs],
+            status_level="success",
+        )
+
+    console_step = (
+        console.print_update_step(
+            title="Initializing finalizer from configuration",
+        )
+        if console
+        else None
+    )
+
     finalizer: DatasetFinalizer = FinalizerRegistry.create(finalizer_config)
 
-    return DataLoaderRegistry.create(
+    if console_step:
+        console_step.finish(
+            title="Finalizer resolved",
+            details=finalizer_config.model_dump(mode="json"),
+            status_level="success",
+        )
+
+    console_step = (
+        console.print_update_step(
+            title="Initializing request loader from configuration",
+        )
+        if console
+        else None
+    )
+
+    data_loader = DataLoaderRegistry.create(
         config=loader_config,
         datasets=datasets,
         preprocessors=preprocessors,
         finalizer=finalizer,
         random_seed=rng.getrandbits(32),
     )
+
+    if console_step:
+        samples = loader_config.samples if loader_config.samples > 0 else "inf"
+        console_step.finish(
+            title=(f"Request loader resolved with {samples} unique requests"),
+            details=InfoMixin.extract_from_obj(data_loader),
+            status_level="success",
+        )
+
+    return data_loader
 
 
 def process_dataset(

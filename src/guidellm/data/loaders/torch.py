@@ -176,7 +176,7 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
             preprocessors=preprocessors,
             finalizer=finalizer,
         )
-        self._info: dict[str, Any] = config.model_dump()
+        self._info: dict[str, Any] = config.model_dump(mode="json")
         self.epoch = 0
 
         gen = torch.Generator()
