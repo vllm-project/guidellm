@@ -93,15 +93,13 @@ class GuidellmClient:
         ]
 
         if max_seconds is not None:
-            cmd_parts.append(f'--constraint max_duration "max_duration={max_seconds}"')
+            cmd_parts.append(f'--constraint max_duration "seconds={max_seconds}"')
 
         if max_requests is not None:
-            cmd_parts.append(f'--constraint max_requests "max_num={max_requests}"')
+            cmd_parts.append(f'--constraint max_requests "count={max_requests}"')
 
         if max_error_rate is not None:
-            cmd_parts.append(
-                f'--constraint max_error_rate "max_error_rate={max_error_rate}"'
-            )
+            cmd_parts.append(f'--constraint max_error_rate "rate={max_error_rate}"')
 
         if over_saturation is not None:
             if not isinstance(over_saturation, dict):
