@@ -71,7 +71,11 @@ class _RegistryParamType(click.ParamType):
         return value
 
 
-def _make_common_field_callback(is_list: bool):
+def _make_common_field_callback(
+    is_list: bool,
+    discriminator: str,
+    registry_type: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
+):
     """
     Create a Click callback that parses a config string into a dict.
 
@@ -79,8 +83,24 @@ def _make_common_field_callback(is_list: bool):
     ``kind=constant,rate=10``, parsed by :func:`parse_arguments`.
 
     :param is_list: Whether the field is a list type (``multiple=True``)
+    :param discriminator: The discriminator field name (e.g. ``"kind"``)
+    :param registry_type: The registry subclass for error messages
     :return: A Click callback function
     """
+
+    def _parse_and_check(
+        ctx: click.Context, param: click.Parameter, raw: str
+    ) -> dict[str, Any]:
+        parsed = parse_arguments(ctx, param, raw)
+        if isinstance(parsed, dict) and discriminator not in parsed:
+            names = registry_type.registered_names()
+            choices = ", ".join(names) if names else "(none registered)"
+            raise click.BadParameter(
+                f"missing required key '{discriminator}'. Valid options: {choices}",
+                ctx=ctx,
+                param=param,
+            )
+        return parsed
 
     def callback(
         ctx: click.Context,
@@ -90,11 +110,11 @@ def _make_common_field_callback(is_list: bool):
         if is_list:
             if not value:
                 return None
-            return [parse_arguments(ctx, param, v) for v in value]
+            return [_parse_and_check(ctx, param, v) for v in value]
 
         if value is None:
             return None
-        return parse_arguments(ctx, param, value)
+        return _parse_and_check(ctx, param, value)
 
     return callback
 
@@ -169,7 +189,9 @@ def registry_option(
     kwargs: dict[str, Any] = {
         "type": param_type,
         "multiple": multiple,
-        "callback": _make_common_field_callback(multiple),
+        "callback": _make_common_field_callback(
+            multiple, registry.schema_discriminator, registry
+        ),
         "expose_value": True,
         "is_eager": False,
         **extra,
