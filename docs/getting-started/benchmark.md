@@ -21,26 +21,26 @@ After [starting a server](server.md), you're ready to run benchmarks to evaluate
 
 ## CLI option format
 
-GuideLLM benchmark options use a **type plus parameters** pattern. Each registry-backed option takes a type name and a configuration string:
+GuideLLM benchmark options use a **single-parameter** pattern. Each registry-backed option takes one configuration string with `kind=<type>` and other key=value pairs:
 
 ```bash
-guidellm run --<option> <TYPE> <CONFIG>
+guidellm run --<option> kind=<TYPE>,key=value,...
 ```
 
-`<CONFIG>` can be key=value pairs (`prompt_tokens=256,output_tokens=128`), JSON, or YAML. Repeat an option to supply multiple values (for example, multiple `--data` or `--constraint` entries).
+Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON in the same argument. Repeat an option to supply multiple values (for example, multiple `--data` or `--constraint` entries).
 
 Common options:
 
 | Option          | Purpose                      | Example                                                       |
 | --------------- | ---------------------------- | ------------------------------------------------------------- |
-| `--backend`     | Server or in-process backend | `--backend openai_http "target=http://localhost:8000"`        |
-| `--profile`     | Scheduling strategy          | `--profile constant "rate=10"`                                |
-| `--constraint`  | Stop conditions (repeatable) | `--constraint max_duration "seconds=60"`                      |
-| `--data`        | Dataset source (repeatable)  | `--data synthetic_text "prompt_tokens=256,output_tokens=128"` |
-| `--tokenizer`   | Tokenizer for token counting | `--tokenizer huggingface_auto "model=gpt2"`                   |
-| `--seed`        | Random seed                  | `--seed static "value=42"`                                    |
-| `--output`      | Result files (repeatable)    | `--output json "path=benchmarks.json"`                        |
-| `--data-loader` | Loading and sampling         | `--data-loader pytorch "samples=1000"`                        |
+| `--backend`     | Server or in-process backend | `--backend kind=openai_http,target=http://localhost:8000`        |
+| `--profile`     | Scheduling strategy          | `--profile kind=constant,rate=10`                                |
+| `--constraint`  | Stop conditions (repeatable) | `--constraint kind=max_duration,seconds=60`                      |
+| `--data`        | Dataset source (repeatable)  | `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128` |
+| `--tokenizer`   | Tokenizer for token counting | `--tokenizer kind=huggingface_auto,model=gpt2`                   |
+| `--seed`        | Random seed                  | `--seed kind=static,value=42`                                    |
+| `--output`      | Result files (repeatable)    | `--output kind=json,path=benchmarks.json`                        |
+| `--data-loader` | Loading and sampling         | `--data-loader kind=pytorch,samples=1000`                        |
 
 Load a saved scenario with `--config` (alias `--scenario`, `-c`). CLI options override scenario values.
 
@@ -50,9 +50,9 @@ To run a benchmark against your local vLLM server with default settings:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --constraint max_duration "seconds=60"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --constraint kind=max_duration,seconds=60
 ```
 
 This command:
@@ -77,21 +77,21 @@ GuideLLM offers a wide range of configuration options to customize your benchmar
 
 | Parameter       | Description                           | Example                                                                                 |
 | --------------- | ------------------------------------- | --------------------------------------------------------------------------------------- |
-| `--backend`     | Backend type and connection settings  | `--backend openai_http "target=http://localhost:8000,model=Meta-Llama-3.1-8B-Instruct"` |
-| `--data`        | Data type and configuration           | `--data synthetic_text "prompt_tokens=256,output_tokens=128"`                           |
-| `--profile`     | Benchmark profile type and parameters | `--profile sweep "sweep_size=10"`                                                       |
-| `--constraint`  | Execution limits (repeatable)         | `--constraint max_requests "count=1000"`                                                |
-| `--seed`        | Random seed for reproducibility       | `--seed static "value=42"`                                                              |
-| `--data-loader` | Sample count and loader settings      | `--data-loader pytorch "samples=1000"`                                                  |
-| `--output`      | Output format and path (repeatable)   | `--output json "path=results/benchmark.json"`                                           |
-| `--tokenizer`   | Tokenizer for token counting          | `--tokenizer huggingface_auto "model=gpt2"`                                             |
+| `--backend`     | Backend type and connection settings  | `--backend kind=openai_http,target=http://localhost:8000,model=Meta-Llama-3.1-8B-Instruct` |
+| `--data`        | Data type and configuration           | `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`                           |
+| `--profile`     | Benchmark profile type and parameters | `--profile kind=sweep,sweep_size=10`                                                       |
+| `--constraint`  | Execution limits (repeatable)         | `--constraint kind=max_requests,count=1000`                                                |
+| `--seed`        | Random seed for reproducibility       | `--seed kind=static,value=42`                                                              |
+| `--data-loader` | Sample count and loader settings      | `--data-loader kind=pytorch,samples=1000`                                                  |
+| `--output`      | Output format and path (repeatable)   | `--output kind=json,path=results/benchmark.json`                                           |
+| `--tokenizer`   | Tokenizer for token counting          | `--tokenizer kind=huggingface_auto,model=gpt2`                                             |
 
 ### Random seed (`--seed`)
 
 The random seed is used for any operation in GuideLLM that involves randomness, such as synthetic data generation or Poisson strategy scheduling. By default it is a fixed value, so rerunning GuideLLM with the same arguments should produce the same results:
 
 ```bash
---seed static "value=42"
+--seed kind=static,value=42
 ```
 
 ### Constraints (`--constraint`)
@@ -100,27 +100,27 @@ Constraints control when each strategy in a profile stops. Add one or more `--co
 
 | Constraint type         | Config parameter         | Example                                                      |
 | ----------------------- | ------------------------ | ------------------------------------------------------------ |
-| `max_duration`          | `max_duration` (seconds) | `--constraint max_duration "seconds=30"`                     |
-| `max_requests`          | `max_num`                | `--constraint max_requests "count=1000"`                     |
-| `max_errors`            | `max_errors`             | `--constraint max_errors "count=10"`                         |
-| `max_error_rate`        | `max_error_rate`         | `--constraint max_error_rate "rate=0.05"`                    |
-| `max_global_error_rate` | `max_global_error_rate`  | `--constraint max_global_error_rate "rate=0.05"`             |
-| `over_saturation`       | detection parameters     | `--constraint over_saturation "min_seconds=30,mode=enforce"` |
+| `max_duration`          | `max_duration` (seconds) | `--constraint kind=max_duration,seconds=30`                     |
+| `max_requests`          | `max_num`                | `--constraint kind=max_requests,count=1000`                     |
+| `max_errors`            | `max_errors`             | `--constraint kind=max_errors,count=10`                         |
+| `max_error_rate`        | `max_error_rate`         | `--constraint kind=max_error_rate,rate=0.05`                    |
+| `max_global_error_rate` | `max_global_error_rate`  | `--constraint kind=max_global_error_rate,rate=0.05`             |
+| `over_saturation`       | detection parameters     | `--constraint kind=over_saturation,min_seconds=30,mode=enforce` |
 
-For example, `--constraint max_requests "count=1000"` with `--profile sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint max_duration "seconds=30"` with `--profile concurrent '{"streams": [10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
+For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
 
 See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details.
 
 ### Benchmark Profiles (`--profile`)
 
-GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the config string after the type name.
+GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same configuration string after `kind=<type>`.
 
 #### Synchronous Profile
 
 Runs requests one at a time (sequential).
 
 ```bash
-guidellm run --profile synchronous ""
+guidellm run --profile kind=synchronous
 ```
 
 | Profile parameter | Description       | Example |
@@ -132,27 +132,27 @@ guidellm run --profile synchronous ""
 Attempts to discover the server's maximum throughput by continually making requests in parallel.
 
 ```bash
-guidellm run --profile throughput "max_concurrency=10"
+guidellm run --profile kind=throughput,max_concurrency=10
 ```
 
 | Profile parameter | Description                              | Example                                                        |
 | ----------------- | ---------------------------------------- | -------------------------------------------------------------- |
-| `max_concurrency` | Number of concurrent request streams     | `--profile throughput "max_concurrency=10"`                    |
-| `rampup_duration` | Seconds to ramp up to maximum throughput | `--profile throughput "max_concurrency=10,rampup_duration=10"` |
+| `max_concurrency` | Number of concurrent request streams     | `--profile kind=throughput,max_concurrency=10`                    |
+| `rampup_duration` | Seconds to ramp up to maximum throughput | `--profile kind=throughput,max_concurrency=10,rampup_duration=10` |
 
 #### Concurrent Profile
 
 Runs a fixed number of parallel request streams.
 
 ```bash
-guidellm run --profile concurrent "streams=10"
+guidellm run --profile kind=concurrent,streams=10
 ```
 
 | Profile parameter | Description                                   | Example                                                                              |
 | ----------------- | --------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `streams`         | Concurrent streams to maintain; may be a list | `--profile concurrent "streams=10"` or `--profile concurrent '{"streams": [16,32]}'` |
-| `rampup_duration` | Seconds to spread initial requests            | `--profile concurrent "streams=10,rampup_duration=10"`                               |
-| `max_concurrency` | Maximum concurrent requests to schedule       | `--profile concurrent "streams=10,max_concurrency=10"`                               |
+| `streams`         | Concurrent streams to maintain; may be a list | `--profile kind=concurrent,streams=10` or `--profile '{"kind":"concurrent","streams":[16,32]}'` |
+| `rampup_duration` | Seconds to spread initial requests            | `--profile kind=concurrent,streams=10,rampup_duration=10`                               |
+| `max_concurrency` | Maximum concurrent requests to schedule       | `--profile kind=concurrent,streams=10,max_concurrency=10`                               |
 
 #### Constant Profile
 
@@ -161,29 +161,29 @@ Sends asynchronous requests at a fixed rate per second.
 (The profile names `async` and `constant` are aliases.)
 
 ```bash
-guidellm run --profile constant '{"rate": [16, 32]}'
+guidellm run --profile '{"kind":"constant","rate":[16,32]}'
 ```
 
 | Profile parameter | Description                                    | Example                                                                     |
 | ----------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
-| `rate`            | Requests per second; may be a list             | `--profile constant "rate=10"` or `--profile constant '{"rate": [16, 32]}'` |
-| `rampup_duration` | Seconds to linearly ramp from 0 to target rate | `--profile constant "rate=10,rampup_duration=10"`                           |
-| `max_concurrency` | Maximum concurrent requests to schedule        | `--profile constant "rate=10,max_concurrency=32"`                           |
+| `rate`            | Requests per second; may be a list             | `--profile kind=constant,rate=10` or `--profile '{"kind":"constant","rate":[16,32]}'` |
+| `rampup_duration` | Seconds to linearly ramp from 0 to target rate | `--profile kind=constant,rate=10,rampup_duration=10`                           |
+| `max_concurrency` | Maximum concurrent requests to schedule        | `--profile kind=constant,rate=10,max_concurrency=32`                           |
 
 #### Poisson Profile
 
 Sends asynchronous requests at varying rates using a Poisson distribution around the specified target rate(s). This probabilistic pattern is useful for simulating more realistic real-world traffic patterns.
 
 ```bash
-guidellm run --profile poisson "rate=16" --seed static "value=42"
+guidellm run --profile kind=poisson,rate=16 --seed kind=static,value=42
 ```
 
 | Profile parameter | Description                             | Example                                                                   |
 | ----------------- | --------------------------------------- | ------------------------------------------------------------------------- |
-| `rate`            | Target rate(s) in requests per second   | `--profile poisson "rate=10"` or `--profile poisson '{"rate": [10, 20]}'` |
-| `max_concurrency` | Maximum concurrent requests to schedule | `--profile poisson "rate=10,max_concurrency=32"`                          |
+| `rate`            | Target rate(s) in requests per second   | `--profile kind=poisson,rate=10` or `--profile '{"kind":"poisson","rate":[10,20]}'` |
+| `max_concurrency` | Maximum concurrent requests to schedule | `--profile kind=poisson,rate=10,max_concurrency=32`                          |
 
-Use `--seed static "value=42"` for reproducible Poisson scheduling.
+Use `--seed kind=static,value=42` for reproducible Poisson scheduling.
 
 #### Sweep Profile
 
@@ -196,27 +196,27 @@ The sweep profile applies a sequence of benchmark strategies to find the optimal
 For example, to run a sweep with 10 strategies, 10 seconds of rampup, and a strategy type of `poisson`:
 
 ```bash
-guidellm run --profile sweep "sweep_size=10,rampup_duration=10,strategy_type=poisson"
+guidellm run --profile kind=sweep,sweep_size=10,rampup_duration=10,strategy_type=poisson
 ```
 
 | Profile parameter | Description                                                                | Example                                              |
 | ----------------- | -------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `sweep_size`      | Number of strategies in the sweep (including synchronous and throughput)   | `--profile sweep "sweep_size=10"`                    |
-| `rampup_duration` | Rate rampup duration in seconds for throughput and constant strategy steps | `--profile sweep "sweep_size=10,rampup_duration=10"` |
-| `strategy_type`   | Strategy type for interpolated steps (`constant` or `poisson`)             | `--profile sweep "strategy_type=poisson"`            |
-| `max_concurrency` | Maximum concurrent requests to schedule                                    | `--profile sweep "max_concurrency=10"`               |
+| `sweep_size`      | Number of strategies in the sweep (including synchronous and throughput)   | `--profile kind=sweep,sweep_size=10`                    |
+| `rampup_duration` | Rate rampup duration in seconds for throughput and constant strategy steps | `--profile kind=sweep,sweep_size=10,rampup_duration=10` |
+| `strategy_type`   | Strategy type for interpolated steps (`constant` or `poisson`)             | `--profile kind=sweep,strategy_type=poisson`            |
+| `max_concurrency` | Maximum concurrent requests to schedule                                    | `--profile kind=sweep,max_concurrency=10`               |
 
 #### Replay Profile
 
 Replays trace events using timestamps from a `trace_synthetic` dataset. See [Trace Replay Benchmarking](#trace-replay-benchmarking-beta) below for data setup.
 
 ```bash
-guidellm run --profile replay "time_scale=1.0"
+guidellm run --profile kind=replay,time_scale=1.0
 ```
 
 | Profile parameter | Description                                   | Example                           |
 | ----------------- | --------------------------------------------- | --------------------------------- |
-| `time_scale`      | Time scale for intervals between trace events | `--profile replay time_scale=2.0` |
+| `time_scale`      | Time scale for intervals between trace events | `--profile kind=replay,time_scale=2.0` |
 
 ## Data Options
 
@@ -231,9 +231,9 @@ For example, to benchmark with a prompt length of 100 tokens and an output lengt
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data synthetic_text "prompt_tokens=100,output_tokens=50" \
-  --profile constant "rate=5"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=synthetic_text,prompt_tokens=100,output_tokens=50 \
+  --profile kind=constant,rate=5
 ```
 
 You can customize synthetic data generation with additional parameters such as standard deviation, minimum, and maximum values. See the [Datasets Synthetic data documentation](../guides/datasets.md#synthetic-data) for more details.
@@ -253,22 +253,22 @@ Run with the `replay` profile:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data trace_synthetic "path=path/to/trace.jsonl" \
-  --profile replay "time_scale=1.0"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=trace_synthetic,path=path/to/trace.jsonl \
+  --profile kind=replay,time_scale=1.0
 ```
 
 The profile parameter `time_scale` acts as a time scale for the intervals between trace events: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
 
-GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-loader pytorch "samples=1000"` to limit how many trace rows are loaded and replayed. `--constraint max_requests count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
+GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
 
 If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data trace_synthetic "path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length" \
-  --profile replay "time_scale=1.0"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
+  --profile kind=replay,time_scale=1.0
 ```
 
 For very small prompts (roughly under 15 tokens, depending on the tokenizer), GuideLLM may not have enough room to include the full per-row unique prefix. Different rows can then produce similar or identical prompts, which reduces cache resistance in replay benchmarks.
@@ -279,18 +279,18 @@ While synthetic data is convenient for quick tests, you can benchmark with real-
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data json_file "path=/path/to/your/dataset.json" \
-  --profile constant "rate=5"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=json_file,path=/path/to/your/dataset.json \
+  --profile kind=constant,rate=5
 ```
 
 You can also use datasets from HuggingFace:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data huggingface "source=garage-bAInd/Open-Platypus" \
-  --profile constant "rate=5"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=huggingface,source=garage-bAInd/Open-Platypus \
+  --profile kind=constant,rate=5
 ```
 
 ## Output Options
@@ -299,11 +299,11 @@ By default, complete results are saved to `benchmarks.json` and `benchmarks.csv`
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=results/benchmark.json" \
-  --output csv "path=results/benchmark.csv" \
-  --output html "path=results/benchmark.html"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=results/benchmark.json \
+  --output kind=csv,path=results/benchmark.csv \
+  --output kind=html,path=results/benchmark.html
 ```
 
 Learn more about output options in the [Outputs documentation](../guides/outputs.md).

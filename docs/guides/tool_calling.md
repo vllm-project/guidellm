@@ -37,20 +37,20 @@ Tool definitions are always provided through the data pipeline rather than as a 
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions" \
-  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
-  --constraint max_requests "count=30" \
-  --profile constant "rate=1"
+  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2 \
+  --constraint kind=max_requests,count=30 \
+  --profile kind=constant,rate=1
 ```
 
 To specify non-contiguous tool-call turns, pass a list of 0-based turn indices:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions" \
-  --data synthetic_text '{"prompt_tokens": 200, "output_tokens": 100, "turns": 4, "tool_call_turns": [0, 2]}' \
-  --constraint max_requests "count=30" \
-  --profile constant "rate=1"
+  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions \
+  --data '{"kind":"synthetic_text","prompt_tokens":200,"output_tokens":100,"turns":4,"tool_call_turns":[0,2]}' \
+  --constraint kind=max_requests,count=30 \
+  --profile kind=constant,rate=1
 ```
 
 Synthetic data configuration fields for tool calling:
@@ -70,10 +70,10 @@ Note: The token count is for the content of a field of the mock tool call respon
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions" \
-  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2,tool_response_tokens=50" \
-  --constraint max_requests "count=30" \
-  --profile constant "rate=1"
+  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2,tool_response_tokens=50 \
+  --constraint kind=max_requests,count=30 \
+  --profile kind=constant,rate=1
 ```
 
 The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
@@ -82,13 +82,13 @@ The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data huggingface "source=madroid/glaive-function-calling-openai" \
-  --data-column-mapper generative_column_mapper '{"text_column": "messages", "tools_column": "tools"}' \
-  --data-preprocessor tool_calling_message_extractor "" \
-  --data-preprocessor encode_media "" \
-  --constraint max_requests "count=50" \
-  --profile constant "rate=1"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=huggingface,source=madroid/glaive-function-calling-openai \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"messages","tools_column":"tools"}}' \
+  --data-preprocessor kind=tool_calling_message_extractor \
+  --data-preprocessor kind=encode_media \
+  --constraint kind=max_requests,count=50 \
+  --profile kind=constant,rate=1
 ```
 
 The `tool_calling_message_extractor` preprocessor must be explicitly enabled via `--data-preprocessor` (it is not included by default). It parses each row's `messages` array and extracts prompts, system messages, and tool results into the appropriate columns. If the dataset has no tool result messages, the placeholder (`{"status": "ok"}`) is used as a fallback.
@@ -106,18 +106,18 @@ Two backend settings control how tool-call turns are handled at runtime. Both ar
 
 ```bash
 guidellm run \
-  --backend openai_http '{"target": "http://localhost:8000", "extras": {"body": {"tool_choice": "auto"}}}' \
-  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
-  --constraint max_requests "count=30"
+  --backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"tool_choice":"auto"}}}' \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2 \
+  --constraint kind=max_requests,count=30
 ```
 
 **Setting `tool_call_missing_behavior` via backend config:**
 
 ```bash
 guidellm run \
-  --backend openai_http '{"target": "http://localhost:8000", "tool_call_missing_behavior": "ignore_continue", "extras": {"body": {"tool_choice": "auto"}}}' \
-  --data synthetic_text "prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2" \
-  --constraint max_requests "count=30"
+  --backend '{"kind":"openai_http","target":"http://localhost:8000","tool_call_missing_behavior":"ignore_continue","extras":{"body":{"tool_choice":"auto"}}}' \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2 \
+  --constraint kind=max_requests,count=30
 ```
 
 **`tool_choice` implications:**
@@ -163,4 +163,4 @@ Plain-text turns are unaffected and continue to respect `output_tokens` / `ignor
 - **Non-contiguous tool turns** (e.g. `tool_call_turns=[0, 2]` with `turns=4`) are supported. Only the specified turns expect tool calls; other turns produce plain text.
 - **Tool definitions on non-tool turns** are not included in the request. The data pipeline only attaches `tools_column` to turns that expect a tool call, so non-tool turns are sent as plain chat completions without tools or `tool_choice`.
 - **Mixed datasets** where only some rows have a `tools_column` work correctly. Rows without tools are treated as plain text conversations; rows with tools follow the tool-call flow.
-- **Rate-limited profiles** (e.g. `--profile constant "rate=1"`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.
+- **Rate-limited profiles** (e.g. `--profile kind=constant,rate=1`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.

@@ -21,7 +21,7 @@ Finally, ensure you have a dataset with supported video files for benchmarking. 
 
 ## Processing Options
 
-All of the standard arguments for benchmarking apply to video tasks as well, such as `--profile`, profile rate parameters, and `--constraint max_requests count=<n>`, among others. There are a few additional options that help control video-specific data handling and request formatting.
+All of the standard arguments for benchmarking apply to video tasks as well, such as `--profile`, profile rate parameters, and `--constraint kind=max_requests,count=<n>`, among others. There are a few additional options that help control video-specific data handling and request formatting.
 
 ### Data Loading
 
@@ -42,13 +42,13 @@ When specifying the dataset, generally, you will want to map the specific video 
 To specify the mapping, use the `--data-column-mapper` argument with a JSON string that specifies an existing column name for `video_column`. For example, if your dataset has a video column named `url`, you would use:
 
 ```bash
---data-column-mapper '{"column_mappings": {"video_column": "url"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"video_column": "url"}}'
 ```
 
 If you are combining multiple datasets (e.g., for prompts and video), prepend the column name with the dataset index (starting at 0) or the dataset alias followed by a dot. For example, if the video column is in the second dataset (index 1):
 
 ```bash
---data-column-mapper '{"column_mappings": {"1.video_column": "url"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"1.video_column": "url"}}'
 ```
 
 ### Request Formatting
@@ -95,7 +95,7 @@ For example, to specify a specific system prompt or other body parameter:
 Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
 
 ```bash
---backend openai_http "target=http://localhost:8000,stream=false"
+--backend kind=openai_http,target=http://localhost:8000,stream=false
 ```
 
 ## Expected Results
@@ -138,11 +138,11 @@ This benchmark tests Video-Language Models for their ability to answer questions
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions" \
-  --profile synchronous "" \
-  --constraint max_requests "count=50" \
-  --data huggingface '{"source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}' \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"video_column": "url", "text_column": "question"}}'
+  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=50 \
+  --data '{"kind":"huggingface","source":"lmms-lab/Video-MME","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"video_column":"url","text_column":"question"}}'
 ```
 
 **Key Parameters**
@@ -159,11 +159,11 @@ This benchmark tests the model's ability to describe a video without a specific 
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions" \
-  --profile synchronous "" \
-  --constraint max_requests "count=50" \
-  --data huggingface '{"source": "lmms-lab/Video-MME", "load_kwargs": {"split": "test"}}' \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"video_column": "url"}}'
+  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=50 \
+  --data '{"kind":"huggingface","source":"lmms-lab/Video-MME","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"video_column":"url"}}'
 ```
 
 **Key Parameters:**

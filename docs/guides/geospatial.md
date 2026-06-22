@@ -25,11 +25,11 @@ To benchmark a geospatial model, set `request_format=/pooling` in the backend co
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling" \
-  --data huggingface "source=flood_detection_dataset.jsonl" \
-  --data-column-mapper pooling_column_mapper "" \
-  --constraint max_requests "count=10" \
-  --output json "path=results.json"
+  --backend kind=openai_http,target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling \
+  --data kind=huggingface,source=flood_detection_dataset.jsonl \
+  --data-column-mapper kind=pooling_column_mapper \
+  --constraint kind=max_requests,count=10 \
+  --output kind=json,path=results.json
 ```
 
 ## Dataset Format
@@ -98,11 +98,11 @@ To know more about serving TerraTorch models in vLLM follow the available [docum
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling" \
-  --data huggingface "source=flood_detection_dataset.jsonl" \
-  --data-column-mapper pooling_column_mapper "" \
-  --constraint max_requests "count=100" \
-  --output json "path=results.json"
+  --backend kind=openai_http,target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling \
+  --data kind=huggingface,source=flood_detection_dataset.jsonl \
+  --data-column-mapper kind=pooling_column_mapper \
+  --constraint kind=max_requests,count=100 \
+  --output kind=json,path=results.json
 ```
 
 ## Comparison with vLLM Bench
@@ -129,11 +129,11 @@ vllm bench serve \
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling" \
-  --data huggingface "source=flood_detection_dataset.jsonl" \
-  --data-column-mapper pooling_column_mapper "" \
-  --constraint max_requests "count=10" \
-  --output json "path=results.json"
+  --backend kind=openai_http,target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling \
+  --data kind=huggingface,source=flood_detection_dataset.jsonl \
+  --data-column-mapper kind=pooling_column_mapper \
+  --constraint kind=max_requests,count=10 \
+  --output kind=json,path=results.json
 ```
 
 ## See Also

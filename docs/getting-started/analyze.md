@@ -84,22 +84,22 @@ To specify which formats to generate, use repeated `--output` options:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=results/benchmarks.json" \
-  --output csv "path=results/summary.csv"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=results/benchmarks.json \
+  --output kind=csv,path=results/summary.csv
 ```
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://server1:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=model1/benchmarks.json"
+  --backend kind=openai_http,target=http://server1:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=model1/benchmarks.json
 
 guidellm run \
-  --backend openai_http "target=http://server2:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=model2/benchmarks.json"
+  --backend kind=openai_http,target=http://server2:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=model2/benchmarks.json
 ```
 
 ### Programmatic Analysis
@@ -153,14 +153,14 @@ Run benchmarks with different models or hardware configurations, then compare:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://server1:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=model1/benchmarks.json"
+  --backend kind=openai_http,target=http://server1:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=model1/benchmarks.json
 
 guidellm run \
-  --backend openai_http "target=http://server2:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=model2/benchmarks.json"
+  --backend kind=openai_http,target=http://server2:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=model2/benchmarks.json
 ```
 
 ### Cost Optimization

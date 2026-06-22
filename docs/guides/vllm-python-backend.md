@@ -24,10 +24,10 @@ Run a benchmark with the vLLM Python backend:
 
 ```bash
 guidellm run \
-  --backend vllm_python "model=Qwen/Qwen3-0.6B" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --profile constant "rate=3" \
-  --constraint max_duration "seconds=20"
+  --backend kind=vllm_python,model=Qwen/Qwen3-0.6B \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=constant,rate=3 \
+  --constraint kind=max_duration,seconds=20
 ```
 
 Engine behavior (device, memory, etc.) follows vLLM defaults unless you override it via `vllm_config` in the backend configuration. When running without a GPU (e.g. the GuideLLM + vLLM container without GPU access), the backend automatically uses the CPU device unless you set `device` in `vllm_config`. For engine configuration options, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/).
@@ -45,7 +45,7 @@ Engine behavior (device, memory, etc.) follows vLLM defaults unless you override
   Example — limit GPU memory use and context length:
 
   ```bash
-  --backend vllm_python '{"model": "Qwen/Qwen3-0.6B", "vllm_config": {"gpu_memory_utilization": 0.8, "max_model_len": 4096}}'
+  --backend '{"kind":"vllm_python","model":"Qwen/Qwen3-0.6B","vllm_config":{"gpu_memory_utilization":0.8,"max_model_len":4096}}'
   ```
 
   For the full list of options and their types, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) (CLI form) and the [EngineArgs source](https://github.com/vllm-project/vllm/blob/main/vllm/engine/arg_utils.py) (Python field names for `vllm_config`).

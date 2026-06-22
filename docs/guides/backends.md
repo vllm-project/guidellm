@@ -4,19 +4,19 @@ GuideLLM is designed to work with OpenAI-compatible HTTP servers, enabling seaml
 
 ## CLI backend configuration
 
-Backends are configured with the typed CLI pattern:
+Backends are configured with the single-parameter CLI pattern:
 
 ```bash
-guidellm run --backend <TYPE> <CONFIG>
+guidellm run --backend kind=<TYPE>,key=value,...
 ```
 
-For HTTP servers, use `openai_http` and pass connection settings in the config string:
+For HTTP servers, pass `kind=openai_http` and connection settings in the same configuration string:
 
 ```bash
---backend openai_http "target=http://localhost:8000,model=meta-llama/Meta-Llama-3.1-8B-Instruct"
+--backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Meta-Llama-3.1-8B-Instruct
 ```
 
-The config string accepts key=value pairs, JSON, or YAML. Common `openai_http` parameters include `target`, `model`, `request_format`, `api_key`, `stream`, `verify`, `timeout`, and nested `extras` for request body, headers, and query parameters.
+Flat settings use comma-separated key=value pairs; nested settings use serialized JSON. Common `openai_http` parameters include `target`, `model`, `request_format`, `api_key`, `stream`, `verify`, `timeout`, and nested `extras` for request body, headers, and query parameters.
 
 ## Supported Backends
 
@@ -94,14 +94,14 @@ To provide an API key when running benchmarks, pass it in the backend configurat
 
 ```bash
 guidellm run \
-  --backend openai_http "target=https://api.openai.com/v1,api_key=sk-...,model=gpt-3.5-turbo" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128"
+  --backend kind=openai_http,target=https://api.openai.com/v1,api_key=sk-...,model=gpt-3.5-turbo \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
 
 Or with JSON:
 
 ```bash
---backend openai_http '{"target": "https://api.openai.com/v1", "api_key": "sk-...", "model": "gpt-3.5-turbo"}'
+--backend '{"kind":"openai_http","target":"https://api.openai.com/v1","api_key":"sk-...","model":"gpt-3.5-turbo"}'
 ```
 
 The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP requests to the backend server.
@@ -119,8 +119,8 @@ The `extras` field accepts a `body` key whose values are merged directly into th
 
 ```bash
 guidellm run \
-  --backend openai_http '{"target": "http://localhost:8000/v1", "model": "meta-llama/Meta-Llama-3.1-8B-Instruct", "extras": {"body": {"temperature": 0.6, "top_p": 0.95, "top_k": 20}}}' \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128"
+  --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","extras":{"body":{"temperature":0.6,"top_p":0.95,"top_k":20}}}' \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
 
 This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
@@ -137,8 +137,8 @@ The `--backend` config is parsed into keyword arguments for the backend construc
 
 ```bash
 guidellm run \
-  --backend openai_http '{"target": "http://localhost:8000/v1", "model": "meta-llama/Meta-Llama-3.1-8B-Instruct", "api_key": "sk-...", "extras": {"body": {"temperature": 0.8, "top_p": 0.9}}}' \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128"
+  --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","api_key":"sk-...","extras":{"body":{"temperature":0.8,"top_p":0.9}}}' \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
 
 ## Expanding Backend Support

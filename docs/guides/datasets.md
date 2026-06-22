@@ -4,13 +4,13 @@ GuideLLM supports various dataset configurations to enable benchmarking and eval
 
 ## Data Arguments Overview
 
-Dataset and processing options use the **type plus parameters** CLI pattern:
+Dataset and processing options use the **single-parameter** CLI pattern:
 
 ```bash
-guidellm run --data <TYPE> <CONFIG> [other options...]
+guidellm run --data kind=<TYPE>,key=value,... [other options...]
 ```
 
-Repeat `--data` to combine multiple sources. Configuration strings accept key=value pairs, JSON, or YAML.
+Repeat `--data` to combine multiple sources. Use comma-separated key=value pairs for flat settings, or serialized JSON when any value is nested.
 
 ### Dataset Source and Type
 The following arguments configure datasets and their processing:
@@ -22,15 +22,15 @@ The following arguments configure datasets and their processing:
   - `trace_synthetic` — loads a JSONL trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `loader_kwargs`:
-- loader_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data huggingface "source=my/dataset,loader_kwargs.split=test"`.
+- loader_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","loader_kwargs":{"split":"test"}}'`.
 
 ### Data Loader
-You can specify the type of data loader with `--loader <CONFIG>`. The only current type is `pytorch`:
-- `--loader pytorch "samples=1000,num_workers=4,shuffle=true"`
+You can specify the data loader with `--loader` or `--data-loader` and a configuration string. The only current type is `pytorch`:
+- `--data-loader kind=pytorch,samples=1000,num_workers=4,shuffle=true`
 
 ### Tokenizer
-You can specify the tokenizer with `--tokenizer <CONFIG>`. The only current type is `huggingface_auto`:
-- `--tokenizer huggingface_auto "model=path/to/processor,load_kwargs.use_fast=false"`
+You can specify the tokenizer with `--tokenizer` and a configuration string. The only current type is `huggingface_auto`:
+- `--tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}'`
 
 If your dataset uses non-standard column names, you can use `--data-column-mapper` to map your columns to GuideLLM's expected column names. This is particularly useful when:
 1. Your dataset uses different column names (e.g., `question` instead of `prompt`, `instruction` instead of `text_column`)
@@ -41,7 +41,7 @@ If your dataset uses non-standard column names, you can use `--data-column-mappe
 The `--data-column-mapper` accepts a string mapping column types to column names:
 
 ```bash
---data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "prompt"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}'
 ```
 
 ### Preprocessors
@@ -51,19 +51,19 @@ With `--data-preprocessor` you can control the GuideLLM preprocessors to apply: 
 With `--data-finalizer` you can control how dataset rows are converted to requests (default: `generative`).
 
 ### Random Seed
-Use `--seed <CONFIG>` to control how sequences (in scheduling and synthetic data generation) are randomized: For example, `--seed static "value=42"`.
+Use `--seed` with a configuration string to control how sequences (in scheduling and synthetic data generation) are randomized: For example, `--seed kind=static,value=42`.
 
 ### Example Usage
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile throughput "" \
-  --constraint max_requests "count=1000" \
-  --data huggingface "source=my/dataset,load_kwargs.split=test" \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "prompt"}}' \
-  --tokenizer huggingface_auto '{"model": "path/to/processor", "load_kwargs": {"use_fast": false}}' \
-  --data-loader pytorch "shuffle=true"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}' \
+  --tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}' \
+  --data-loader kind=pytorch,shuffle=true
 ```
 
 ## Dataset Types
@@ -78,20 +78,20 @@ Synthetic datasets allow you to generate data on the fly with customizable param
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile throughput "" \
-  --constraint max_requests "count=1000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
 
 Or using a JSON config string:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile throughput "" \
-  --constraint max_requests "count=1000" \
-  --data synthetic_text '{"prompt_tokens": 256, "output_tokens": 128}'
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128}'
 ```
 
 #### Configuration Options
@@ -109,7 +109,7 @@ guidellm run \
 
 #### Notes
 
-- A tokenizer is required. By default, the model from the backend is used. If unavailable, use `--tokenizer huggingface_auto "model=<path-or-id>"` to specify a directory or Hugging Face model ID containing the tokenizer files.
+- A tokenizer is required. By default, the model from the backend is used. If unavailable, use `--tokenizer kind=huggingface_auto,model=<path-or-id>` to specify a directory or Hugging Face model ID containing the tokenizer files.
 
 ### Hugging Face Datasets
 
@@ -119,33 +119,33 @@ GuideLLM supports datasets from the Hugging Face Hub or local directories that f
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile throughput "" \
-  --constraint max_requests "count=1000" \
-  --data huggingface "source=garage-bAInd/Open-Platypus"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=huggingface,source=garage-bAInd/Open-Platypus
 ```
 
 Or using a local dataset directory:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile throughput "" \
-  --constraint max_requests "count=1000" \
-  --data huggingface "source=path/to/dataset"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=huggingface,source=path/to/dataset
 ```
 
 Pass HuggingFace `load_dataset` options through `load_kwargs`:
 
 ```bash
---data huggingface '{"source": "my/dataset", "load_kwargs": {"split": "train"}}'
+--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"train"}}'
 ```
 
 #### Notes
 
 - Hugging Face datasets can be specified by ID, a local directory, or a path to a local Python file.
 - A supported Hugging Face datasets format is defined as one that can be loaded using the `datasets` library with the `load_dataset` function and therefore it is representable as a `Dataset`, `DatasetDict`, `IterableDataset`, or `IterableDatasetDict`. More information on the supported data types and additional args for the underlying use of `load_dataset` can be found in the [Hugging Face datasets documentation](https://huggingface.co/docs/datasets/en/loading#hugging-face-hub).
-- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer huggingface_auto "model=..."`. If not set, the tokenizer will be set to the model passed in or retrieved from the backend.
+- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer kind=huggingface_auto,model=...`. If not set, the tokenizer will be set to the model passed in or retrieved from the backend.
 
 ### File-Based Datasets
 
@@ -188,21 +188,21 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
   ```bash
   guidellm run \
-    --backend openai_http "target=http://localhost:8000" \
-    --profile replay "time_scale=1.0" \
-    --data trace_synthetic "path=path/to/trace.jsonl"
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay,time_scale=1.0 \
+    --data kind=trace_synthetic,path=path/to/trace.jsonl
   ```
 
   If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
 
   ```bash
   guidellm run \
-    --backend openai_http "target=http://localhost:8000" \
-    --profile replay "time_scale=1.0" \
-    --data trace_synthetic "path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length"
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay,time_scale=1.0 \
+    --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
   ```
 
-  For replay, `time_scale` on the profile is a time scale for the intervals between trace events rather than requests per second. Use `--data-loader pytorch "samples=1000"` to limit how many trace rows are loaded and replayed. Use `--constraint max_requests count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
+  For replay, `time_scale` on the profile is a time scale for the intervals between trace events rather than requests per second. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
 
   Very small `input_length` values (roughly under 15 tokens, depending on the tokenizer) may not leave enough room for the full per-row unique prefix in the synthetic prompt. This can make prompts more similar across rows and weaken cache resistance. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking) for details.
 
@@ -228,11 +228,11 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile throughput "" \
-  --constraint max_requests "count=1000" \
-  --data json_file "path=path/to/dataset.json" \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "prompt"}}'
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=json_file,path=path/to/dataset.json \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}'
 ```
 
 Replace `json_file` with `csv_file`, `text_file`, `parquet_file`, `arrow_file`, or `hdf5_file` for other formats.
@@ -292,7 +292,7 @@ benchmark_generative_text(data=data, ...)
 - For dictionaries, all columns must have the same number of samples.
 - For lists of dictionaries, all items must have the same keys.
 - For lists of items, all elements must be of the same type.
-- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer huggingface_auto "model=..."`. If not set, the tokenizer will be set to the model passed in or retrieved from the server.
+- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer kind=huggingface_auto,model=...`. If not set, the tokenizer will be set to the model passed in or retrieved from the server.
 
 ## Preprocessing Datasets
 
@@ -413,7 +413,7 @@ guidellm preprocess dataset \
     "processed.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
-    --data-column-mapper '{"column_mappings": {"text_column": "user_query", "prefix_column": "system_message"}}'
+    --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "user_query", "prefix_column": "system_message"}}'
 ```
 
 **Example: Multiple datasets**
@@ -421,7 +421,7 @@ guidellm preprocess dataset \
 If you're working with multiple datasets and need to specify which dataset's columns to use, you can use the format `<dataset_index>.<column_name>` or `<dataset_name>.<column_name>`:
 
 ```bash
---data-column-mapper '{"column_mappings": {"text_column": "0.prompt", "prefix_column": "1.system"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "0.prompt", "prefix_column": "1.system"}}'
 ```
 
 ### Handling Short Prompts
@@ -479,7 +479,7 @@ guidellm preprocess dataset \
     "processed_dataset.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
-    --data-column-mapper '{"column_mappings": {"text_column": "user_question", "prefix_column": "system_instruction"}}'
+    --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "user_question", "prefix_column": "system_instruction"}}'
 ```
 
 **Example 2: Preprocessing with distribution and short prompt handling**

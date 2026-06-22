@@ -4,15 +4,15 @@ GuideLLM provides flexible options for outputting benchmark results, catering to
 
 ## CLI output configuration
 
-Outputs use the typed CLI pattern. Repeat `--output` for each format:
+Outputs use the single-parameter CLI pattern. Repeat `--output` for each format:
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=results/benchmark.json" \
-  --output csv "path=results/benchmark.csv" \
-  --output html "path=results/benchmark.html"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=results/benchmark.json \
+  --output kind=csv,path=results/benchmark.csv \
+  --output kind=html,path=results/benchmark.html
 ```
 
 Supported output types: `json`, `yaml`, `csv`, `html`, and `console`. Each accepts a `path` parameter (defaults vary by type; for example `benchmarks.json` for JSON).
@@ -34,10 +34,10 @@ To disable interactive progress updates, use `--disable-console-interactive` (al
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile sweep "" \
-  --constraint max_duration "seconds=30" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=30 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --disable-console-interactive
 ```
 
@@ -45,10 +45,10 @@ To disable all console output, use `--disable-console` (alias `--disable-console
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile sweep "" \
-  --constraint max_duration "seconds=30" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=30 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --disable-console
 ```
 
@@ -74,24 +74,24 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 ```bash
 # JSON, CSV, and HTML to a results directory
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile sweep "" \
-  --constraint max_duration "seconds=30" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=results/benchmark.json" \
-  --output csv "path=results/benchmark.csv" \
-  --output html "path=results/benchmark.html"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=30 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=results/benchmark.json \
+  --output kind=csv,path=results/benchmark.csv \
+  --output kind=html,path=results/benchmark.html
 ```
 
 **Example: Single output format**
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile sweep "" \
-  --constraint max_duration "seconds=30" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --output json "path=results/benchmark.json"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=30 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json,path=results/benchmark.json
 ```
 
 ### Reloading Results

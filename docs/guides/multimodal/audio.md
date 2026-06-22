@@ -24,7 +24,7 @@ Finally, ensure you have a dataset with supported audio files for benchmarking. 
 
 ## Processing Options
 
-All of the standard arguments for benchmarking apply to audio tasks as well, such as `--profile`, profile rate parameters, and `--constraint max_requests count=<n>`, among others. There are a few additional options that help control audio-specific data handling and request formatting.
+All of the standard arguments for benchmarking apply to audio tasks as well, such as `--profile`, profile rate parameters, and `--constraint kind=max_requests,count=<n>`, among others. There are a few additional options that help control audio-specific data handling and request formatting.
 
 ### Data Loading
 
@@ -45,13 +45,13 @@ When specifying the dataset, generally, you will want to map the specific audio 
 To specify the mapping, use the `--data-column-mapper` argument with a JSON string that specifies an existing column name for audio_column. For example, if your dataset has an audio column named speech_data, you would use:
 
 ```bash
---data-column-mapper '{"column_mappings": {"audio_column": "speech_data"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"audio_column": "speech_data"}}'
 ```
 
 If you are combining multiple datasets (e.g., for prompts and audio), prepend the column name with the dataset index (starting at 0) or the dataset alias followed by a dot. For example, if the audio column is in the second dataset (index 1):
 
 ```bash
---data-column-mapper '{"column_mappings": {"1.audio_column": "speech_data"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"1.audio_column": "speech_data"}}'
 ```
 
 ### Request Formatting
@@ -109,7 +109,7 @@ For example, to specify French as the target language for an audio translation r
 Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
 
 ```bash
---backend openai_http "target=http://localhost:8000,stream=false"
+--backend kind=openai_http,target=http://localhost:8000,stream=false
 ```
 
 ## Expected Results
@@ -152,18 +152,18 @@ This benchmark tests Automatic Speech Recognition (ASR) models, such as Whisper,
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,request_format=/v1/audio/transcriptions" \
-  --profile synchronous "" \
-  --constraint max_requests "count=20" \
-  --data huggingface '{"source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "audio"}}'
+  --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/audio/transcriptions \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=20 \
+  --data '{"kind":"huggingface","source":"openslr/librispeech_asr","load_kwargs":{"name":"clean","split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"audio_column":"audio"}}'
 ```
 
 **Key Parameters**
 
 - `--backend`: Server URL and `request_format=/v1/audio/transcriptions` for ASR
 - `--profile synchronous`: Run requests sequentially
-- `--constraint max_requests count=20`: Limits the benchmark to 20 total requests
+- `--constraint kind=max_requests,count=20`: Limits the benchmark to 20 total requests
 - `--data`: HuggingFace dataset with `load_kwargs` selecting the "clean" config and "test" split
 - `--data-column-mapper`: Maps the dataset's audio column to GuideLLM's `audio_column`
 
@@ -205,18 +205,18 @@ This benchmark tests audio translation models like Whisper at converting audio i
 
 ```bash
 guidellm run \
-  --backend openai_http '{"target": "http://localhost:8000", "request_format": "/v1/audio/translations", "extras": {"body": {"language": "fr"}}}' \
-  --profile synchronous "" \
-  --constraint max_requests "count=20" \
-  --data huggingface '{"source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "audio"}}'
+  --backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/translations","extras":{"body":{"language":"fr"}}}' \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=20 \
+  --data '{"kind":"huggingface","source":"openslr/librispeech_asr","load_kwargs":{"name":"clean","split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"audio_column":"audio"}}'
 ```
 
 **Key Parameters:**
 
 - `--backend`: Server URL, translation endpoint, and target language via `extras.body`
 - `--profile synchronous`: Sequential execution mode
-- `--constraint max_requests count=20`: Limits the test to 20 requests
+- `--constraint kind=max_requests,count=20`: Limits the test to 20 requests
 - `--data`: HuggingFace dataset with `load_kwargs` for the "clean" config and "test" split
 - `--data-column-mapper`: Identifies the audio column for audio processing
 
@@ -259,19 +259,19 @@ This benchmark tests models that can handle audio inputs in a conversational for
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,request_format=/v1/chat/completions" \
-  --profile synchronous "" \
-  --constraint max_requests "count=20" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128" \
-  --data huggingface '{"source": "openslr/librispeech_asr", "load_kwargs": {"name": "clean", "split": "test"}}' \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"audio_column": "1.audio", "text_column": "0.prompt"}}'
+  --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/chat/completions \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=20 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --data '{"kind":"huggingface","source":"openslr/librispeech_asr","load_kwargs":{"name":"clean","split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"audio_column":"1.audio","text_column":"0.prompt"}}'
 ```
 
 **Key Parameters**
 
 - `--backend`: Server URL and chat completions endpoint for multimodal inputs
 - `--profile synchronous`: Sequential execution
-- `--constraint max_requests count=20`: Limits to 20 requests
+- `--constraint kind=max_requests,count=20`: Limits to 20 requests
 - `--data`: Synthetic prompts plus LibriSpeech audio from HuggingFace
 - `--data-column-mapper`: Maps audio from dataset index 1 and text from dataset index 0
 
