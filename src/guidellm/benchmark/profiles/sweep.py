@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -17,6 +18,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     ThroughputStrategy,
 )
+from guidellm.utils.imports import json
 
 from .profile import Profile, ProfileFactory
 
@@ -59,6 +61,9 @@ class SweepProfileArgs(ProfileArgs):
         The CLI passes ``rate`` as a list of floats; sweep uses the first entry
         as the number of strategies to run.
         """
+        if isinstance(value, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                value = json.loads(value)
         if isinstance(value, list | tuple):
             if not value:
                 raise ValueError(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -13,6 +14,7 @@ from guidellm.scheduler import (
     ConstraintInitializer,
     SchedulingStrategy,
 )
+from guidellm.utils.imports import json
 
 from .profile import Profile, ProfileFactory
 
@@ -46,6 +48,9 @@ class ConcurrentProfileArgs(ProfileArgs):
         Convert streams to a list of integers from either a single number or a list of
         numbers.
         """
+        if isinstance(value, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                value = json.loads(value)
         if not value:
             raise ValueError("streams (rate) requires at least one value")
         if isinstance(value, list | tuple):

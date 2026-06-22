@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -18,6 +19,7 @@ from guidellm.scheduler import (
     TraceReplayStrategy,
 )
 from guidellm.scheduler.constraints.request import MaxRequestsConstraintArgs
+from guidellm.utils.imports import json
 from guidellm.utils.trace_io import load_relative_timestamps
 
 from .profile import Profile, ProfileFactory
@@ -111,6 +113,9 @@ class ReplayProfileArgs(ProfileArgs):
         """
         Accept global ``--rate`` list values as time scale.
         """
+        if isinstance(value, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                value = json.loads(value)
         if isinstance(value, list | tuple):
             if not value:
                 raise ValueError(

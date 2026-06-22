@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -13,6 +14,7 @@ from guidellm.scheduler import (
     SchedulingStrategy,
     ThroughputStrategy,
 )
+from guidellm.utils.imports import json
 
 from .profile import Profile, ProfileFactory
 
@@ -48,6 +50,9 @@ class ThroughputProfileArgs(ProfileArgs):
         The CLI passes ``rate`` as a list of floats; throughput uses the first entry
         as the maximum concurrency.
         """
+        if isinstance(value, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                value = json.loads(value)
         if not value:
             raise ValueError("max_concurrency (rate) requires at least one value")
         if isinstance(value, list | tuple):
