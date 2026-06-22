@@ -51,7 +51,7 @@
     "@types/react-dom": "^18.0.11",
     "@types/testing-library__jest-dom": "^5.14.9",
     "cross-fetch": "^4.1.0",
-    "cypress": "^13.13.3",
+    "cypress": "^15.17.0",
     "eslint": "^8.0.0",
     "eslint-config-next": "13.4.0",
     "eslint-config-prettier": "^8.5.0",
