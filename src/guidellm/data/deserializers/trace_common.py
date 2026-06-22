@@ -1,3 +1,9 @@
+"""Trace file deserializer that generates synthetic prompts per row.
+
+Reads a trace file (consisting of at least the columns timestamp, input_length,
+output_length) and yields one row per line with a synthetic prompt matching the
+requested input_length for replay benchmarks."""
+
 from __future__ import annotations
 
 from abc import ABC
@@ -95,6 +101,9 @@ class TraceFormatRegistry(RegistryMixin[type[TraceFormatBase]]):
 
 
 class TraceDataArgs(DataArgs, ABC):
+    """Abstract class meant to be inherited by a trace format.
+    For testing, use `trace_minimal.MinimalTraceFormatArgs` instead."""
+
     kind: str = Field(
         description="Type identifier for the trace dataset deserializer.",
     )
@@ -257,7 +266,7 @@ class TraceDataset(IterableDataset):
 
 @DatasetDeserializerFactory.register("trace_file")
 class TraceDatasetDeserializer(DatasetDeserializer):
-    """TODO"""
+    """Dataset deserializer for all trace formats."""
 
     def __call__(
         self,

@@ -1,11 +1,10 @@
 """
-OUTDATED:
-Trace deserializer for Mooncake formatted files that generates synthetic prompts per
-row.
+The Mooncake trace format and data arguments. 
 
 Reads a trace file (timestamp, input_length, output_length, hash_ids) and yields one
 row per line with a synthetic prompt matching the requested input_length for replay
-benchmarks.
+benchmarks. Checks for distinctness between hash IDs that share the
+same previous hash ID.
 """
 
 from __future__ import annotations
@@ -93,8 +92,6 @@ def _create_prompt_from_hash_ids(
 
 @DataArgs.register("mooncake")
 class MooncakeTraceFormatArgs(TraceDataArgs):
-    """TODO"""
-
     kind: Literal["mooncake"] = Field(
         default="mooncake",
         description="Type identifier for the trace Mooncake dataset deserializer.",
@@ -113,7 +110,17 @@ class MooncakeTraceFormatArgs(TraceDataArgs):
 
 @TraceFormatRegistry.register("mooncake")
 class MooncakeTraceFormat(TraceFormatBase):
-    """TODO"""
+    """Mooncake trace format requires a column for timestamps, prompt token counts,
+    ouput token counts and lists of hash IDs.
+
+    Hash IDs are globally unique identifiers based on the current and previous token
+    blocks in a prompt. The relationships of IDs forms a tree, where every first ID
+    in a prompt has a parent node of `None`. Parent nodes can have an unbounded
+    number of children. Two hash IDs can represent identical blocks of tokens so long
+    as they do not share the same parent (previous ID). For more details, see section 4
+    of https://arxiv.org/pdf/2407.00079.
+
+    Generated prompts match the prompt token count of the row."""
 
     def __init__(self) -> None:
         self.hash_id_table: list[Any] = []

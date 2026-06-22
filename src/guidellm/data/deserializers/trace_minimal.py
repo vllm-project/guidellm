@@ -1,5 +1,7 @@
 """
-OUTDATED: Trace file deserializer that generates synthetic prompts per row.
+A minimal trace file format primarily used for testing. Designed to do the bare minimum
+needed to complete a fully functioning trace deserializer with synthetic prompt
+generation.
 
 Reads a trace file (timestamp, input_length, output_length) and yields one row per
 line with a synthetic prompt matching the requested input_length for replay benchmarks.
@@ -28,8 +30,6 @@ __all__ = ["MinimalTraceFormatArgs"]
 
 @DataArgs.register("trace_minimal")
 class MinimalTraceFormatArgs(TraceDataArgs):
-    """TODO"""
-
     kind: Literal["trace_minimal"] = Field(
         default="trace_minimal",
         description="Type identifier for the minimal trace format.",
@@ -38,8 +38,6 @@ class MinimalTraceFormatArgs(TraceDataArgs):
 
 @TraceFormatRegistry.register("trace_minimal")
 class MinimalTraceFormat(TraceFormatBase):
-    """TODO"""
-
     def __init__(self) -> None:
         pass
 
