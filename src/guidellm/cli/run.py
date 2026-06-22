@@ -90,7 +90,9 @@ def run(**kwargs):  # noqa: C901, PLR0915
     console = Console() if not disable_console else None
 
     if console:
-        invalid_set_envs, valid_set_envs = validate_env_vars(Settings, BenchmarkArgs)
+        invalid_set_envs, valid_set_envs = validate_env_vars(
+            Settings, BenchmarkScenario
+        )
 
         if valid_set_envs:
             console.print_update(
