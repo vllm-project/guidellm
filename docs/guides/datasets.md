@@ -12,19 +12,46 @@ guidellm run --data <TYPE> <CONFIG> [other options...]
 
 Repeat `--data` to combine multiple sources. Configuration strings accept key=value pairs, JSON, or YAML.
 
+### Dataset Source and Type
 The following arguments configure datasets and their processing:
 
-- `--data`: Dataset source and type. Accepted types:
+- Dataset source and type. Accepted types:
   - `synthetic_text` — generates synthetic prompts on the fly. Required field: `prompt_tokens`. Optional: `output_tokens`, `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
   - `trace_synthetic` — loads a JSONL trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
-- `--data-loader`: Data loading and sampling. Type `pytorch` supports `samples` (default `-1` for all), `num_workers`, and `shuffle`.
-- `--tokenizer`: Tokenizer for token counting. Type `huggingface_auto` (alias `hf_auto`) accepts `model` and optional `load_kwargs` for the tokenizer constructor.
-- `--data-column-mapper`: Column mapping preprocessor (for example `generative_column_mapper` with JSON config).
-- `--data-preprocessor`: Preprocessors to apply (repeatable; for example `encode_media`, `tool_calling_message_extractor`).
-- `--data-finalizer`: Finalizer that converts dataset rows to requests (default: `generative`).
-- `--seed`: Random seed via `--seed static "value=42"`.
+
+In addition, you can specify additional arguments to the dataset loading with the data argument `loader_kwargs`:
+- loader_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data huggingface "source=my/dataset,loader_kwargs.split=test"`.
+
+### Data Loader
+You can specify the type of data loader with `--loader <CONFIG>`. The only current type is `pytorch`:
+- `--loader pytorch "samples=1000,num_workers=4,shuffle=true"`
+
+### Tokenizer
+You can specify the tokenizer with `--tokenizer <CONFIG>`. The only current type is `huggingface_auto`:
+- `--tokenizer huggingface_auto "model=path/to/processor,load_kwargs.use_fast=false"`
+
+If your dataset uses non-standard column names, you can use `--data-column-mapper` to map your columns to GuideLLM's expected column names. This is particularly useful when:
+1. Your dataset uses different column names (e.g., `question` instead of `prompt`, `instruction` instead of `text_column`)
+2. You have multiple datasets and need to specify which dataset's columns to use
+3. Your dataset has system prompts or prefixes in a separate column
+
+### Column Mapping
+The `--data-column-mapper` accepts a string mapping column types to column names:
+
+```bash
+--data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "prompt"}}'
+```
+
+### Preprocessors
+With `--data-preprocessor` you can control the GuideLLM preprocessors to apply: preprocessors include `encode_media`, `tool_calling_message_extractor`, `turn_pivot`.
+
+### Data Finalizer
+With `--data-finalizer` you can control how dataset rows are converted to requests (default: `generative`).
+
+### Random Seed
+Use `--seed <CONFIG>` to control how sequences (in scheduling and synthetic data generation) are randomized: For example, `--seed static "value=42"`.
 
 ### Example Usage
 
@@ -33,7 +60,7 @@ guidellm run \
   --backend openai_http "target=http://localhost:8000" \
   --profile throughput "" \
   --constraint max_requests "count=1000" \
-  --data huggingface "source=my/dataset" \
+  --data huggingface "source=my/dataset,load_kwargs.split=test" \
   --data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "prompt"}}' \
   --tokenizer huggingface_auto '{"model": "path/to/processor", "load_kwargs": {"use_fast": false}}' \
   --data-loader pytorch "shuffle=true"
@@ -214,7 +241,6 @@ Replace `json_file` with `csv_file`, `text_file`, `parquet_file`, `arrow_file`, 
 
 - Ensure the file format matches the expected structure for the dataset and is listed as a supported format.
 - The `--data-column-mapper` argument can be used to specify additional parameters for parsing the dataset, such as the prompt column name or the split to use.
-- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer huggingface_auto "model=..."`. If not set, the tokenizer will be set to the model passed in or retrieved from the server.
 - More information on the supported formats and additional args for the underlying use of `load_dataset` can be found in the [Hugging Face datasets documentation](https://huggingface.co/docs/datasets/en/loading#local-and-remote-files).
 
 ### In-Memory Datasets

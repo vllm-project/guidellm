@@ -253,7 +253,7 @@ To use TurnPivot in the CLI, specify it as a data preprocessor:
 ```
 
 > [!WARNING]\
-> In the current CLI design, setting `--data-preprocessor` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
+> Setting `--data-preprocessor` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
 
 ## Examples
 
