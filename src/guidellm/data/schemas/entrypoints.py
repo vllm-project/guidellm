@@ -49,7 +49,6 @@ class DataLoaderArgs(
 
     kind: str = Field(
         description="Type identifier for the data loader configuration.",
-        examples=["pytorch"],
     )
     samples: int = Field(
         default=-1,
@@ -57,7 +56,6 @@ class DataLoaderArgs(
             "Number of data samples to generate. If -1, the data loader will "
             "generate indefinitely until the dataset is exhausted."
         ),
-        examples=[-1, 100, 1000],
     )
 
 
@@ -93,16 +91,7 @@ class DataArgs(
 
     kind: str = Field(
         description="Type identifier for the data arguments configuration.",
-        examples=[
-            "text_file",
-            "csv_file",
-            "json_file",
-            "parquet_file",
-            "arrow_file",
-            "hdf5_file",
-            "db_file",
-            "tar_file",
-        ],
+        examples=["text_file", "csv_file"],
     )
     load_kwargs: dict[str, Any] = Field(
         default_factory=dict,
@@ -147,12 +136,7 @@ class DataPreprocessorArgs(
 
     kind: str = Field(
         description="Type identifier for the data preprocessor arguments.",
-        examples=[
-            "generative_column_mapper",
-            "pooling_column_mapper",
-            "tool_calling_message_extractor",
-            "turn_pivot",
-        ],
+        examples=["generative_column_mapper", "pooling_column_mapper"],
     )
 
 

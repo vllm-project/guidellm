@@ -82,20 +82,11 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         description=(
             "Request format for desired API endpoint of the OpenAI-compatible server."
         ),
-        examples=[
-            "/v1/chat/completions",
-            "/v1/completions",
-            "/v1/embeddings",
-            "/v1/responses",
-            "/v1/audio/transcriptions",
-            "/v1/audio/translations",
-            "/pooling",
-        ],
     )
     api_key: SecretStr | None = Field(
         default=None,
         description="HTTP Bearer token API key for authentication to server",
-        examples=["my-api-key"],
+        examples=["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"],
     )
     api_routes: dict[str, str] = Field(
         default_factory=dict,
@@ -108,12 +99,9 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         examples=[
             {
                 "/v1/chat/completions": "/v1/chat/completions",
-                "/v1/completions": "/v1/completions",
                 "/v1/embeddings": "/v1/embeddings",
                 "/v1/responses": "/v1/responses",
-                "/v1/audio/transcriptions": "/v1/audio/transcriptions",
                 "/v1/audio/translations": "/v1/audio/translations",
-                "/pooling": "/pooling",
             }
         ],
     )
@@ -130,37 +118,26 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     http2: bool = Field(
         default=True,
         description="Enable HTTP/2 protocol.",
-        examples=[True],
     )
     follow_redirects: bool = Field(
         default=True,
         description="Follow HTTP redirect response headers automatically.",
-        examples=[True],
     )
     verify: bool = Field(
         default=False,
         description="Verify the server's TLS certificate.",
-        examples=[True],
     )
     validate_backend: bool = Field(
         default=True,
         description="Send a health check request to validate backend configuration.",
-        examples=[True],
     )
     stream: bool = Field(
         default=True,
         description="Use streaming responses for generation requests when supported.",
-        examples=[True],
     )
     extras: GenerationRequestArguments | None = Field(
         default=None,
         description="Additional parameters to include in generation requests.",
-        examples=[
-            {
-                "temperature": 0.5,
-                "max_tokens": 100,
-            }
-        ],
     )
     max_tokens: int | None = Field(
         default=None,
@@ -174,7 +151,6 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "Use server-side conversation history (previous_response_id) for "
             "multi-turn requests. Only supported with /v1/responses."
         ),
-        examples=[True],
     )
     tool_call_missing_behavior: Literal[
         "ignore_continue", "ignore_stop", "error_stop"
@@ -186,11 +162,6 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "ignore_stop (cancel remaining turns), error_stop (error and "
             "cancel remaining turns)."
         ),
-        examples=[
-            "ignore_continue",
-            "ignore_stop",
-            "error_stop",
-        ],
     )
     multiturn_reasoning: bool | str = Field(
         default=False,
@@ -201,7 +172,6 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "'<think>{reasoning}</think>'). A string value is used as a "
             "format template and must contain the '{reasoning}' placeholder text."
         ),
-        examples=[True],
     )
 
     @field_validator("multiturn_reasoning", mode="after")

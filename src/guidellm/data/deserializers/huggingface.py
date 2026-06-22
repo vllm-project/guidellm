@@ -37,7 +37,6 @@ class HuggingFaceDataArgs(DataArgs):
     kind: Literal["huggingface", "hf"] = Field(
         default="huggingface",
         description="Type identifier for the Hugging Face dataset deserializer.",
-        examples=["huggingface", "hf"],
     )
     source: str | Dataset | IterableDataset | DatasetDict | IterableDatasetDict = Field(
         validation_alias=AliasChoices("source", "src", "from", "path", "name"),
@@ -47,12 +46,7 @@ class HuggingFaceDataArgs(DataArgs):
             "Path to a local dataset directory or a local .py dataset script, or a "
             "dataset identifier from the Hugging Face Hub."
         ),
-        examples=[
-            "wikimedia/structured-wikipedia",
-            "./dataset.json",
-            "my/dataset.arrow",
-            "my/dataset.hdf5",
-        ],
+        examples=["wikimedia/structured-wikipedia", "./dataset.json"],
     )
 
 

@@ -54,29 +54,10 @@ class FileDataArgs(DataArgs):
     ] = Field(
         default="text_file",
         description="Type identifier for the data arguments configuration.",
-        examples=[
-            "text_file",
-            "csv_file",
-            "json_file",
-            "parquet_file",
-            "arrow_file",
-            "hdf5_file",
-            "db_file",
-            "tar_file",
-        ],
     )
     path: Path = Field(
         description="Path to the data file.",
-        examples=[
-            "data.txt",
-            "data.csv",
-            "data.json",
-            "data.parquet",
-            "data.arrow",
-            "data.hdf5",
-            "data.db",
-            "data.tar",
-        ],
+        examples=["data.txt"],
     )
 
 

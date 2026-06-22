@@ -74,15 +74,12 @@ class VLLMPythonBackendArgs(BackendArgs):
             "(use tokenizer default), or a path to / inline Jinja2 chat template."
         ),
         examples=[
-            "plain",
-            "default-template",
             "/path/to/chat_template.jinja2",
         ],
     )
     stream: bool = Field(
         default=True,
         description="Whether to stream responses from the backend.",
-        examples=[True],
     )
     image_placeholder: str = Field(
         default="<image>",
@@ -90,7 +87,6 @@ class VLLMPythonBackendArgs(BackendArgs):
             "Placeholder string for image items in multimodal prompts. "
             "Used when injecting placeholders for multimodal data."
         ),
-        examples=["<image>"],
     )
     audio_placeholder: str = Field(
         default="<|audio|>",
@@ -98,7 +94,6 @@ class VLLMPythonBackendArgs(BackendArgs):
             "Placeholder string for audio items in multimodal prompts. "
             "Used when injecting placeholders for multimodal data."
         ),
-        examples=["<|audio|>"],
     )
 
     @model_validator(mode="after")

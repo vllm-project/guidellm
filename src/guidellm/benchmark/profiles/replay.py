@@ -91,13 +91,11 @@ class ReplayProfileArgs(ProfileArgs):
     kind: Literal["replay"] = Field(
         default="replay",
         description="Profile type discriminator for trace replay scheduling",
-        examples=["replay"],
     )
     time_scale: float = Field(
         default=1.0,
         gt=0,
         description="Scale factor applied to relative timestamps",
-        examples=[0.5, 1.0, 2.0],
     )
 
 

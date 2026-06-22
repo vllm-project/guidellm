@@ -31,7 +31,6 @@ class SweepProfileArgs(ProfileArgs):
     kind: Literal["sweep"] = Field(
         default="sweep",
         description="Profile type discriminator for sweep scheduling",
-        examples=["sweep"],
     )
     sweep_size: int = Field(
         default=10,
@@ -41,7 +40,6 @@ class SweepProfileArgs(ProfileArgs):
     strategy_type: Literal["constant", "poisson"] = Field(
         default="constant",
         description="Type of strategy to use for the asynchronous sweep",
-        examples=["constant", "poisson"],
     )
     max_concurrency: PositiveInt | None = Field(
         default=None,

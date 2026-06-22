@@ -37,7 +37,6 @@ class RandomArgs(PydanticClassRegistryMixin["RandomArgs"], ABC):
 
     kind: str = Field(
         description="The kind of random configuration to use.",
-        examples=["static"],
     )
 
 
@@ -46,10 +45,8 @@ class StaticRandomArgs(RandomArgs):
     kind: Literal["static"] = Field(
         default="static",
         description="The kind of random configuration to use.",
-        examples=["static"],
     )
     value: int = Field(
         default=42,
         description="The value to use for static random configuration.",
-        examples=[42],
     )

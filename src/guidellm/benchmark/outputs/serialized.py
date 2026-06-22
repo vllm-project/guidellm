@@ -75,12 +75,10 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
     output_path: Path = Field(
         default_factory=lambda: Path.cwd(),
         description="Directory or file path for saving the serialized report",
-        examples=["./", "./benchmarks/"],
     )
     format_type: Literal["json", "yaml"] = Field(
         default="json",
         description="Serialization format, used to determine the default filename",
-        examples=["json", "yaml"],
     )
 
     @classmethod

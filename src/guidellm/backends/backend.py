@@ -58,7 +58,7 @@ class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
 
     kind: str = Field(
         description="Identify the desired backend implementation.",
-        examples=["openai_http", "vllm_python"],
+        examples=["openai_http"],
     )
 
 

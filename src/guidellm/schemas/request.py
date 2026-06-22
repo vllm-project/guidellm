@@ -53,6 +53,12 @@ class GenerationRequestArguments(StandardBaseDict):
     body: dict[str, Any] | None = Field(
         default=None,
         description="Content to include in the main request body.",
+        examples=[
+            {
+                "temperature": 0.5,
+                "max_tokens": 100,
+            }
+        ],
     )
     files: dict[str, Any] | None = Field(
         default=None,

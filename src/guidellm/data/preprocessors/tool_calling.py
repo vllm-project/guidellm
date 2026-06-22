@@ -26,7 +26,6 @@ class ToolCallingMessageExtractorArgs(DataPreprocessorArgs):
     kind: Literal["tool_calling_message_extractor"] = Field(
         default="tool_calling_message_extractor",
         description="Type identifier for the preprocessor.",
-        examples=["tool_calling_message_extractor"],
     )
 
 

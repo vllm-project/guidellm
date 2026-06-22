@@ -103,7 +103,7 @@ class BenchmarkArgs(ReloadableBaseModel):
     )
     constraints: list[ConstraintArgs] = Field(  # type: ignore[assignment]
         description="Execution constraints to enforce during benchmark execution",
-        examples=[{"kind": "max_concurrent", "value": 10}],
+        examples=[{"kind": "max_requests", "value": 10}],
         default_factory=list,
         json_schema_extra={"argument_alias": "constraint"},
     )
@@ -161,7 +161,6 @@ class BenchmarkArgs(ReloadableBaseModel):
         description="Benchmark output formats and paths.",
         examples=[
             {"kind": "json", "filename": "benchmarks.json"},
-            {"kind": "csv", "filename": "benchmarks.csv"},
         ],
         json_schema_extra={"argument_alias": "output"},
     )

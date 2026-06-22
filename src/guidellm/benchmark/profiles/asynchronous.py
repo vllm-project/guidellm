@@ -30,7 +30,6 @@ class AsyncProfileArgs(ProfileArgs):
     kind: Literal["async", "constant", "poisson"] = Field(
         default="async",
         description="Profile type discriminator for asynchronous scheduling",
-        examples=["async", "constant", "poisson"],
     )
     rate: list[PositiveFloat] = Field(
         description="Request scheduling rates in requests per second",

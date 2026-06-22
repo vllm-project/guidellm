@@ -54,12 +54,11 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
 
     kind: str = Field(
         description="Profile type discriminator",
-        examples=["concurrent", "synchronous", "asynchronous", "throughput", "sweep"],
+        examples=["concurrent", "synchronous"],
     )
     rampup_duration: NonNegativeFloat = Field(
         default=0.0,
         description=("Duration in seconds to ramp up the targeted scheduling rate"),
-        examples=[0.0, 0.5, 1.0, 2.0],
     )
     warmup: TransientPhaseConfig = Field(
         default_factory=TransientPhaseConfig,

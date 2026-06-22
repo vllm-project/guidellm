@@ -41,7 +41,6 @@ class GenerativeColumnMapperArgs(DataPreprocessorArgs):
     kind: Literal["generative_column_mapper", "pooling_column_mapper"] = Field(
         default="generative_column_mapper",
         description="Type identifier for the generative column mapper preprocessor.",
-        examples=["generative_column_mapper", "pooling_column_mapper"],
     )
     column_mappings: dict[str, str | list[str]] | None = Field(
         default=None,

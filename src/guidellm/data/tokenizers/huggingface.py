@@ -18,7 +18,6 @@ class HuggingFaceTokenizerArgs(DataTokenizerArgs):
     kind: Literal["huggingface_auto", "hf_auto"] = Field(
         default="huggingface_auto",
         description="Type identifier for the HuggingFace tokenizer.",
-        examples=["huggingface_auto", "hf_auto"],
     )
     load_kwargs: dict[str, Any] = Field(
         default_factory=dict,

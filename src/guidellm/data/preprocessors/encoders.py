@@ -22,7 +22,6 @@ class MediaEncoderArgs(DataPreprocessorArgs):
     kind: Literal["encode_media"] = Field(
         default="encode_media",
         description="Type identifier for the media encoder preprocessor.",
-        examples=[{"kind": "encode_media"}],
     )
     audio_kwargs: dict[str, Any] = Field(
         default_factory=dict,

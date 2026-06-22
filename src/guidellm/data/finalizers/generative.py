@@ -22,7 +22,6 @@ class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
     kind: Literal["generative"] = Field(
         default="generative",
         description="Type identifier for the generative request finalizer.",
-        examples=["generative"],
     )
 
 

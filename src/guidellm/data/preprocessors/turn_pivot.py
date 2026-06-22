@@ -20,7 +20,6 @@ class TurnPivotArgs(DataPreprocessorArgs):
     kind: Literal["turn_pivot"] = Field(
         default="turn_pivot",
         description="Type identifier for the turn pivot preprocessor.",
-        examples=["turn_pivot"],
     )
 
 

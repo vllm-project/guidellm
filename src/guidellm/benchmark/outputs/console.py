@@ -36,7 +36,6 @@ class ConsoleBenchmarkOutputArgs(BenchmarkOutputArgs):
     kind: Literal["console"] = Field(
         default="console",
         description="The kind of output.",
-        examples=["console"],
     )
 
 

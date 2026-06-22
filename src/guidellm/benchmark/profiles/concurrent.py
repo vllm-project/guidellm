@@ -29,7 +29,6 @@ class ConcurrentProfileArgs(ProfileArgs):
     kind: Literal["concurrent"] = Field(
         default="concurrent",
         description="Profile type discriminator for concurrent scheduling",
-        examples=["concurrent"],
     )
     streams: list[PositiveInt] = Field(
         description="Concurrent stream counts to execute",

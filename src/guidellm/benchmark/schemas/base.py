@@ -96,7 +96,7 @@ class TransientPhaseConfig(StandardBaseModel):
             "interpretation depends on mode. Takes precedence over value when target "
             "mode is available, otherwise falls back to value"
         ),
-        examples=[0.0, 0.5, 1.0],
+        examples=[0.0, 0.5],
         lt=1.0,
     )
     value: NonNegativeInt | NonNegativeFloat | None = Field(
@@ -106,7 +106,7 @@ class TransientPhaseConfig(StandardBaseModel):
             "interpretation depends on mode. Used when percent is unset or "
             "target mode unavailable"
         ),
-        examples=[1.0, 2.0, 3.0],
+        examples=[1.0, 2.0],
     )
     mode: Literal[
         "duration", "requests", "prefer_duration", "prefer_requests", "both"
@@ -117,7 +117,6 @@ class TransientPhaseConfig(StandardBaseModel):
             "count-based phases, 'prefer_duration'/'prefer_requests' for fallback "
             "behavior, 'both' requires satisfying both conditions"
         ),
-        examples=["duration", "requests", "prefer_duration", "prefer_requests", "both"],
     )
 
     def compute_limits(
