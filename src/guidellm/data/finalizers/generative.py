@@ -65,6 +65,7 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
                     GenerationRequest(
                         columns=injection_columns,
                         turn_type="tool_response_injection",
+                        output_metrics=request.output_metrics,
                     )
                 )
             else:
