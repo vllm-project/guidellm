@@ -73,6 +73,7 @@ dependencies = [
     "torch",
     "more-itertools>=10.8.0",
     "typing-extensions>=4.15.0",
+    "websockets>=13.0",
 ]
 
 [project.optional-dependencies]

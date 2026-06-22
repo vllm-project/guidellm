@@ -323,3 +323,89 @@ def test_explicit_format_overrides_codec(real_wav_file):
 
     assert result["format"] == "mp3"
     assert result["mimetype"] == "audio/mp3"
+
+
+@patch("guidellm.utils.audio._decode_audio")
+def test_pcm16_append_b64_chunks_rejects_unknown_dict_keys(mock_decode):
+    """## WRITTEN BY AI ##"""
+    mock_decode.side_effect = AssertionError("_decode_audio should not run")
+    with pytest.raises(ValueError, match="audio_column dict"):
+        _audio_mod.pcm16_append_b64_chunks({"foo": 1})
+
+
+@patch("guidellm.utils.audio._decode_audio")
+def test_pcm16_append_b64_chunks_splits_into_multiple_base64_chunks(mock_decode):
+    """## WRITTEN BY AI ##"""
+    samples = MagicMock()
+    samples.data = torch.zeros(1, 5000)
+    samples.sample_rate = 16000
+    mock_decode.return_value = (samples, "pcm_s16le")
+
+    out = _audio_mod.pcm16_append_b64_chunks({"audio": b"x"}, chunk_samples=3200)
+
+    assert len(out) == 2
+    assert all(isinstance(chunk_b64, str) for chunk_b64 in out)
+
+
+@patch("guidellm.utils.audio._decode_audio")
+def test_pcm16_append_b64_chunks_empty_wave_raises(mock_decode):
+    """## WRITTEN BY AI ##"""
+    samples = MagicMock()
+    samples.data = torch.zeros(1, 0)
+    samples.sample_rate = 16000
+    mock_decode.return_value = (samples, "pcm_s16le")
+
+    with pytest.raises(ValueError, match="no PCM"):
+        _audio_mod.pcm16_append_b64_chunks({"audio": b"x"})
+
+
+@patch("guidellm.utils.audio._decode_audio")
+def test_pcm16_append_b64_chunks_downmixes_stereo(mock_decode):
+    """## WRITTEN BY AI ##"""
+    samples = MagicMock()
+    samples.data = torch.randn(2, 200)
+    samples.sample_rate = 16000
+    mock_decode.return_value = (samples, "pcm_s16le")
+
+    out = _audio_mod.pcm16_append_b64_chunks({"audio": b"x"}, chunk_samples=100)
+
+    assert len(out) >= 1
+
+
+@patch("guidellm.utils.audio._decode_audio")
+def test_pcm16_append_b64_chunks_audio_dict_passes_outer_sample_rate(mock_decode):
+    """## WRITTEN BY AI ##"""
+    samples = MagicMock()
+    samples.data = torch.zeros(1, 100)
+    samples.sample_rate = 16000
+    mock_decode.return_value = (samples, "pcm_s16le")
+
+    _audio_mod.pcm16_append_b64_chunks({"audio": b"x", "sample_rate": 8000})
+
+    mock_decode.assert_called_once()
+    assert mock_decode.call_args.kwargs.get("sample_rate") == 8000
+
+
+@patch("guidellm.utils.audio._decode_audio")
+def test_pcm16_append_b64_chunks_sampling_rate_alias(mock_decode):
+    """## WRITTEN BY AI ##"""
+    samples = MagicMock()
+    samples.data = torch.zeros(1, 50)
+    samples.sample_rate = 16000
+    mock_decode.return_value = (samples, "pcm_s16le")
+
+    _audio_mod.pcm16_append_b64_chunks({"audio": b"x", "sampling_rate": 44100})
+
+    assert mock_decode.call_args.kwargs.get("sample_rate") == 44100
+
+
+@patch("guidellm.utils.audio._decode_audio")
+def test_pcm16_append_b64_chunks_invalid_decoder_sample_rate_raises(mock_decode):
+    """## WRITTEN BY AI ##"""
+    samples = MagicMock()
+    samples.data = torch.zeros(1, 10)
+    samples.sample_rate = 0
+    mock_decode.return_value = (samples, "pcm_s16le")
+
+    with pytest.raises(ValueError, match="invalid sample_rate"):
+        _audio_mod.pcm16_append_b64_chunks({"audio": b"x"})

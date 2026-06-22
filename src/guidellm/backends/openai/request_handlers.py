@@ -12,29 +12,41 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Any, Protocol, cast
 
 from more_itertools import roundrobin
 
+from guidellm.backends.openai.common import format_ws_error
 from guidellm.scheduler import HistoryT
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.request import GenerationRequestArguments
 from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
+from guidellm.utils.audio import pcm16_append_b64_chunks
 from guidellm.utils.imports import json
 from guidellm.utils.registry import RegistryMixin
 
+WS_AUDIO_CHUNKS_BODY_KEY = "audio_chunks"
+
 __all__ = [
+    "WS_AUDIO_CHUNKS_BODY_KEY",
     "AudioRequestHandler",
     "ChatCompletionsRequestHandler",
     "EmbeddingsRequestHandler",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "OpenAIWSRequestHandler",
+    "OpenAIWSRequestHandlerFactory",
     "PoolingRequestHandler",
+    "RealtimeTranscriptionWSRequestHandler",
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
     "ToolCall",
     "ToolCallFunction",
+    "WSEventResult",
+    "WSStreamingEventResult",
 ]
 
 
@@ -179,6 +191,106 @@ def _check_streaming_error(data: Any) -> None:
     else:
         message = str(error)
     raise ValueError(f"Streaming response returned an error: {message}")
+
+
+class WSEventResult(Enum):
+    """Classification of a processed WebSocket streaming event."""
+
+    STREAM_END = auto()
+    CONTENT = auto()
+    REQUEST_ITERATION = auto()
+    IGNORED = auto()
+
+
+@dataclass(frozen=True)
+class WSStreamingEventResult:
+    """
+    Result of processing one WebSocket JSON event frame.
+
+    :param kind: How the backend should update timings and loop control.
+    :param content_tokens: New content tokens when ``kind`` is ``CONTENT``.
+    """
+
+    kind: WSEventResult
+    content_tokens: int = 0
+
+
+class OpenAIWSRequestHandler(Protocol):
+    """
+    Protocol for WebSocket-based streaming request handlers.
+
+    Defines the interface for handlers that interpret JSON event frames from a
+    WebSocket connection, accumulate streaming state, and compile a final response.
+    Mirrors the HTTP handler lifecycle (format -> stream -> compile) but uses
+    structured event dicts instead of SSE text lines.
+    """
+
+    def format(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        """
+        Format and validate the generation request for the WebSocket endpoint.
+
+        :param data: The generation request to format
+        :param response: Optional previous response for multi-turn
+        :param history: Optional conversation history
+        :param kwargs: Additional keyword arguments (model, websocket_path, etc.)
+        :return: The formatted request arguments with metadata
+        """
+        ...
+
+    def add_streaming_event(self, event: dict[str, Any]) -> WSStreamingEventResult:
+        """
+        Process one JSON event frame from the WebSocket.
+
+        :param event: Parsed JSON dict from a WebSocket text frame
+        :return: Classified result for timing updates and loop control
+        :raises RuntimeError: On server error events
+        """
+        ...
+
+    @property
+    def streaming_text(self) -> str:
+        """Accumulated transcription text from processed events."""
+        ...
+
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        """
+        Assemble accumulated streaming state into a final GenerationResponse.
+
+        Called after the event loop completes (normal or cancelled).
+
+        :param request: Original generation request
+        :param arguments: Request arguments from format()
+        :return: Standardized GenerationResponse with extracted metrics
+        """
+        ...
+
+
+class OpenAIWSRequestHandlerFactory(RegistryMixin["type[OpenAIWSRequestHandler]"]):
+    """Factory for registering and creating WebSocket request handlers by path."""
+
+    @classmethod
+    def create(cls, request_type: str) -> OpenAIWSRequestHandler:
+        """
+        Create a WebSocket request handler for the given request path.
+
+        :param request_type: The WebSocket path (e.g., "/v1/realtime")
+        :return: Instantiated handler implementing OpenAIWSRequestHandler
+        :raises ValueError: When no handler is registered for the path
+        """
+        handler_cls = cls.get_registered_object(request_type)
+        if not handler_cls:
+            raise ValueError(
+                f"No WebSocket handler registered for type '{request_type}'."
+            )
+        return handler_cls()
 
 
 def _apply_tool_call_metrics(
@@ -1118,6 +1230,145 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             text_tokens=(usage_metrics.get("completion_tokens") or 0),
             text_words=text_words,
             text_characters=text_chars,
+        )
+
+
+@OpenAIWSRequestHandlerFactory.register("/v1/realtime")
+class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
+    """
+    WebSocket handler for realtime audio transcription (``/v1/realtime``).
+
+    Concrete :class:`OpenAIWSRequestHandler` for vLLM realtime transcription:
+    validates audio input in ``format()``, interprets transcription events in
+    ``add_streaming_event()``, and assembles the final ``GenerationResponse``
+    with audio metrics in ``compile_streaming()``.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize streaming state for one realtime transcription request.
+
+        Sets up audio metrics extraction and accumulators for transcription text
+        and usage data from WebSocket event frames.
+        """
+        self._audio_metrics = AudioRequestHandler()
+        self._streaming_texts: list[str] = []
+        self._streaming_usage: dict[str, int | dict[str, int]] | None = None
+
+    @property
+    def streaming_text(self) -> str:
+        """Accumulated transcription text from processed events."""
+        return "".join(self._streaming_texts)
+
+    @staticmethod
+    def extract_single_audio(data: GenerationRequest) -> dict[str, Any]:
+        """Return the single ``audio_column`` entry required for realtime streaming."""
+        audio_columns = data.columns.get("audio_column", [])
+        if len(audio_columns) != 1:
+            raise ValueError(
+                "Realtime WebSocket transcription expects exactly one audio_column "
+                f"entry; got {len(audio_columns)}."
+            )
+        return audio_columns[0]
+
+    def format(
+        self,
+        data: GenerationRequest,
+        response: GenerationResponse | None = None,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        **kwargs: Any,
+    ) -> GenerationRequestArguments:
+        """
+        Validate the request and build metadata for ``request_args``.
+
+        Validates the audio column once, PCM-encodes it into base64 chunks, and
+        attaches those chunks to ``body`` for the WebSocket backend to send.
+
+        :param data: Must contain exactly one ``audio_column`` entry.
+        :param response: Not supported (raises if provided).
+        :param history: Not supported (raises if provided).
+        :param kwargs: Must include ``model`` and ``websocket_path``.
+        :return: Arguments with wire-protocol metadata and ``audio_chunks`` in ``body``.
+        """
+        if history or response:
+            raise ValueError(
+                "RealtimeTranscriptionWSRequestHandler does not support multiturn."
+            )
+        audio_entry = self.extract_single_audio(data)
+        model = kwargs.get("model")
+        if model is None:
+            raise ValueError("model is required for realtime WebSocket format()")
+        websocket_path = kwargs.get("websocket_path")
+        if websocket_path is None:
+            raise ValueError(
+                "websocket_path is required for realtime WebSocket format()"
+            )
+        chunk_samples = kwargs.get("chunk_samples", 3200)
+        audio_chunks = pcm16_append_b64_chunks(
+            audio_entry,
+            chunk_samples=chunk_samples,
+        )
+        arguments = GenerationRequestArguments()
+        arguments.body = {
+            "model": model,
+            "websocket_path": websocket_path,
+            "chunk_samples": chunk_samples,
+            WS_AUDIO_CHUNKS_BODY_KEY: audio_chunks,
+        }
+        return arguments
+
+    def add_streaming_event(self, event: dict[str, Any]) -> WSStreamingEventResult:
+        """
+        Process one JSON event from the vLLM realtime WebSocket.
+
+        :param event: Parsed JSON dict from a WebSocket text frame.
+        :return: Classified streaming update for the generic WS backend loop.
+        :raises RuntimeError: On ``error`` type events.
+        """
+        event_type = event.get("type")
+        if event_type == "transcription.delta":
+            delta = event.get("delta") or ""
+            self._streaming_texts.append(delta)
+            if delta:
+                return WSStreamingEventResult(
+                    kind=WSEventResult.CONTENT, content_tokens=1
+                )
+            return WSStreamingEventResult(kind=WSEventResult.REQUEST_ITERATION)
+        if event_type == "transcription.done":
+            self._streaming_usage = event.get("usage")
+            final_text = event.get("text")
+            # Server may send only ``text`` on done, replacing accumulated deltas.
+            if final_text:
+                self._streaming_texts = [final_text]
+            return WSStreamingEventResult(kind=WSEventResult.STREAM_END)
+        if event_type == "error":
+            err = event.get("error")
+            raise RuntimeError(format_ws_error(err))
+        return WSStreamingEventResult(kind=WSEventResult.IGNORED)
+
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        """
+        Assemble accumulated transcription text and usage into a response.
+
+        :param request: Original generation request.
+        :param arguments: Request arguments from format().
+        :return: Final GenerationResponse with audio metrics.
+        """
+        full_text = self.streaming_text
+        inp, outp = self._audio_metrics.extract_metrics(
+            self._streaming_usage, full_text
+        )
+        body = dict(arguments.body or {})
+        body.pop(WS_AUDIO_CHUNKS_BODY_KEY, None)
+        request_args = arguments.model_copy(update={"body": body or None})
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=request_args.model_dump_json(),
+            text=full_text,
+            input_metrics=inp,
+            output_metrics=outp,
         )
 
 

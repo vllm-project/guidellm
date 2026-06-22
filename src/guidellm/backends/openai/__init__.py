@@ -4,9 +4,14 @@ from .request_handlers import (
     ChatCompletionsRequestHandler,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    OpenAIWSRequestHandler,
+    OpenAIWSRequestHandlerFactory,
     ResponsesRequestHandler,
     TextCompletionsRequestHandler,
+    WSEventResult,
+    WSStreamingEventResult,
 )
+from .websocket import OpenAIWebSocketBackend, OpenAIWebSocketBackendArgs
 
 __all__ = [
     "AudioRequestHandler",
@@ -14,6 +19,12 @@ __all__ = [
     "OpenAIHTTPBackend",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "OpenAIWSRequestHandler",
+    "OpenAIWSRequestHandlerFactory",
+    "OpenAIWebSocketBackend",
+    "OpenAIWebSocketBackendArgs",
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
+    "WSEventResult",
+    "WSStreamingEventResult",
 ]
