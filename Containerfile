@@ -94,4 +94,4 @@ LABEL io.k8s.display-name="GuideLLM" \
 COPY --chown=1001:0 --from=builder /opt/app-root /opt/app-root
 
 ENTRYPOINT [ "/opt/app-root/bin/guidellm" ]
-CMD [ "benchmark", "run" ]
+CMD [ "run" ]

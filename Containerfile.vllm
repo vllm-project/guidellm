@@ -50,4 +50,4 @@ VOLUME /results
 USER 1001:0
 
 ENTRYPOINT [ "guidellm" ]
-CMD [ "benchmark", "run" ]
+CMD [ "run" ]
