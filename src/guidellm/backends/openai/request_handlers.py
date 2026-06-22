@@ -902,7 +902,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                         prior_response.tool_calls, tool_response_columns
                     )
                 )
-            if res and res.text:
+            if res is not None and res.text is not None:
                 wrapped = _wrap_reasoning(res.reasoning_text, multiturn_reasoning)
                 content = res.text
                 if wrapped:
@@ -944,7 +944,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                         "tool_calls": [tc.model_dump() for tc in res.tool_calls],
                     }
                 )
-            elif res and (res.text or wrapped):
+            elif res is not None and (res.text is not None or wrapped):
                 content = res.text or ""
                 if wrapped:
                     content = wrapped + content
@@ -1577,7 +1577,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                         req.columns.get("tool_response_column", []),
                     )
                 )
-            if res and res.text:
+            if res is not None and res.text is not None:
                 wrapped = _wrap_reasoning(res.reasoning_text, multiturn_reasoning)
                 content = res.text
                 if wrapped:
@@ -1606,7 +1606,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 # function_call_output items come from the injection turn.
                 for tc in res.tool_calls:
                     items.append(self._tool_call_to_responses_item(tc))
-            elif res and (res.text or wrapped):
+            elif res is not None and (res.text is not None or wrapped):
                 content = res.text or ""
                 if wrapped:
                     content = wrapped + content

@@ -1480,8 +1480,9 @@ class TestChatCompletionsRequestHandler:
     ):
         """
         When multiturn_reasoning=False (default) and the prior
-        response has reasoning_text but no regular text content, no
-        assistant message should be injected.
+        response has reasoning_text but empty text content, an
+        assistant message with empty content should still be included
+        to preserve alternating user/assistant structure.
 
         ## WRITTEN BY AI ##
         """
@@ -1508,7 +1509,65 @@ class TestChatCompletionsRequestHandler:
         assistant_msgs = [
             m for m in result.body["messages"] if m.get("role") == "assistant"
         ]
-        assert len(assistant_msgs) == 0
+        assert len(assistant_msgs) == 1
+        assert assistant_msgs[0]["content"] == ""
+
+    @pytest.mark.sanity
+    def test_format_preserves_empty_assistant_in_multi_turn_history(
+        self, valid_instances
+    ):
+        """
+        When a prior turn produced an empty text response (e.g. reasoning
+        model exhausted token budget), the assistant message must still appear
+        in the history to prevent consecutive user messages.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        turn1_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        turn1_response = GenerationResponse(
+            request_id="t1",
+            request_args=None,
+            text="Hi there!",
+        )
+        turn2_request = GenerationRequest(
+            columns={"text_column": ["Tell me more"]},
+        )
+        turn2_response = GenerationResponse(
+            request_id="t2",
+            request_args=None,
+            text="",
+            reasoning_text="Let me think about this...",
+        )
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["Continue"]},
+        )
+        result = instance.format(
+            current_request,
+            history=[
+                (turn1_request, turn1_response),
+                (turn2_request, turn2_response),
+            ],
+        )
+
+        messages = result.body["messages"]
+        roles = [m["role"] for m in messages]
+
+        # Verify no consecutive user messages
+        for j in range(len(roles) - 1):
+            assert not (
+                roles[j] == "user" and roles[j + 1] == "user"
+            ), f"Consecutive user messages at indices {j} and {j+1}: {roles}"
+
+        # Verify the empty assistant response is present
+        assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+        assert len(assistant_msgs) == 2
+        assert assistant_msgs[0]["content"] == "Hi there!"
+        assert assistant_msgs[1]["content"] == ""
 
     @pytest.mark.sanity
     def test_format_includes_reasoning_with_custom_template(self, valid_instances):
@@ -3490,8 +3549,9 @@ class TestResponsesRequestHandler:
     ):
         """
         When multiturn_reasoning=False (default) and the prior
-        response has reasoning_text but no regular text content, no
-        assistant input item should be injected.
+        response has reasoning_text but empty text content, an
+        assistant input item with empty content should still be
+        included to preserve alternating user/assistant structure.
 
         ## WRITTEN BY AI ##
         """
@@ -3515,7 +3575,65 @@ class TestResponsesRequestHandler:
         assistant_items = [
             item for item in result.body["input"] if item.get("role") == "assistant"
         ]
-        assert len(assistant_items) == 0
+        assert len(assistant_items) == 1
+        assert assistant_items[0]["content"] == ""
+
+    @pytest.mark.sanity
+    def test_format_preserves_empty_assistant_in_multi_turn_history(
+        self, valid_instances
+    ):
+        """
+        When a prior turn produced an empty text response (e.g. reasoning
+        model exhausted token budget), the assistant input item must still
+        appear in the history to prevent consecutive user items.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        turn1_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        turn1_response = GenerationResponse(
+            request_id="t1",
+            request_args=None,
+            text="Hi there!",
+        )
+        turn2_request = GenerationRequest(
+            columns={"text_column": ["Tell me more"]},
+        )
+        turn2_response = GenerationResponse(
+            request_id="t2",
+            request_args=None,
+            text="",
+            reasoning_text="Let me think about this...",
+        )
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["Continue"]},
+        )
+        result = instance.format(
+            current_request,
+            history=[
+                (turn1_request, turn1_response),
+                (turn2_request, turn2_response),
+            ],
+        )
+
+        items = result.body["input"]
+        roles = [item["role"] for item in items if "role" in item]
+
+        # Verify no consecutive user items
+        for j in range(len(roles) - 1):
+            assert not (
+                roles[j] == "user" and roles[j + 1] == "user"
+            ), f"Consecutive user items at indices {j} and {j+1}: {roles}"
+
+        # Verify the empty assistant response is present
+        assistant_items = [item for item in items if item.get("role") == "assistant"]
+        assert len(assistant_items) == 2
+        assert assistant_items[0]["content"] == "Hi there!"
+        assert assistant_items[1]["content"] == ""
 
     @pytest.mark.sanity
     def test_format_includes_reasoning_with_custom_template(self, valid_instances):
