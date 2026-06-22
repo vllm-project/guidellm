@@ -23,11 +23,9 @@ def test_run_reports_nested_field_path_on_missing_subfield():
         [
             "run",
             "--data",
-            "synthetic_text",
-            "",
+            "kind=synthetic_text",
             "--constraint",
-            "max_requests",
-            "max_num=1",
+            "kind=max_requests,max_num=1",
         ],
     )
 
@@ -51,11 +49,9 @@ def test_run_allows_synthetic_text_without_output_tokens():
         [
             "run",
             "--data",
-            "synthetic_text",
-            "prompt_tokens=128",
+            "kind=synthetic_text,prompt_tokens=128",
             "--constraint",
-            "max_requests",
-            "max_num=1",
+            "kind=max_requests,max_num=1",
         ],
     )
 

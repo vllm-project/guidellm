@@ -17,44 +17,42 @@ __all__ = [
 ]
 
 
-class _RegistryChoiceConfig(click.ParamType):
+class _RegistryParamType(click.ParamType):
     """
-    Custom two-value Click parameter type for ``<discriminator> <config>`` pairs.
+    Click parameter type for registry-backed config strings.
 
-    The first value is validated against the registered names of a
-    ``PydanticClassRegistryMixin`` subclass. The second value is a free-form
-    config string (JSON, YAML, or key=value) displayed as ``CONFIG``.
+    Accepts a single comma-separated key=value string such as
+    ``kind=constant,rate=10``.  The metavar lists the discriminator field
+    and its registered choices so ``--help`` is informative.
 
-    :param registry_type: The ``PydanticClassRegistryMixin`` subclass to
-        pull valid discriminator names from
+    :param registry_type: The ``PydanticClassRegistryMixin`` subclass whose
+        registered names populate the metavar
+    :param discriminator: The discriminator field name (e.g. ``"kind"``)
     """
 
-    name = "CHOICE CONFIG"
+    name = "CONFIG"
 
-    def __init__(self, registry_type: type[PydanticClassRegistryMixin]) -> None:  # type: ignore[type-arg]
+    def __init__(
+        self,
+        registry_type: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
+        discriminator: str,
+    ) -> None:
         self._registry_type = registry_type
-        if registry_type.registry is not None:
-            self.registry_choices: click.Choice | None = click.Choice(
-                list(registry_type.registered_names())
-            )
-        else:
-            self.registry_choices = None
+        self._discriminator = discriminator
 
-    def get_metavar(self, param: click.Parameter, ctx: click.Context) -> str:
+    def get_metavar(self, param: click.Parameter, ctx: click.Context) -> str:  # noqa: ARG002
         """
-        Return a metavar string like ``{openai_http|vllm_python} CONFIG``.
-
-        Falls back to ``KIND CONFIG`` when no registry entries exist yet.
+        Return a metavar like ``kind=[constant|sweep|...],...``.
 
         :param param: The Click parameter
         :param ctx: The Click context
         :return: Formatted metavar string
         """
-        if self.registry_choices is not None:
-            choice_meta = self.registry_choices.get_metavar(param, ctx)
-        else:
-            choice_meta = "KIND"
-        return f"{choice_meta} CONFIG"
+        registry = self._registry_type.registry
+        if registry:
+            names = "|".join(self._registry_type.registered_names())
+            return f"{self._discriminator}=[{names}],..."
+        return f"{self._discriminator}=KIND,..."
 
     def convert(
         self,
@@ -63,7 +61,7 @@ class _RegistryChoiceConfig(click.ParamType):
         ctx: click.Context | None,  # noqa: ARG002
     ) -> Any:
         """
-        Pass through raw values; discriminator validation happens in the callback.
+        Pass through raw values; validation is handled by Pydantic.
 
         :param value: The raw value from Click
         :param param: The Click parameter
@@ -73,33 +71,16 @@ class _RegistryChoiceConfig(click.ParamType):
         return value
 
 
-def _make_common_field_callback(
-    discriminator: str,
-    is_list: bool,
-    choice_type: _RegistryChoiceConfig,
-):
+def _make_common_field_callback(is_list: bool):
     """
-    Create a Click callback that parses ``<discriminator_value> <config>`` pairs.
+    Create a Click callback that parses a config string into a dict.
 
-    The discriminator value is validated against the registry's
-    ``click.Choice`` type when available.
+    The input string is a comma-separated key=value string such as
+    ``kind=constant,rate=10``, parsed by :func:`parse_arguments`.
 
-    :param discriminator: The discriminator field name (e.g. ``"kind"``)
     :param is_list: Whether the field is a list type (``multiple=True``)
-    :param choice_type: The ``_RegistryChoiceConfig`` instance for discriminator
-        validation
     :return: A Click callback function
     """
-
-    def _parse_pair(
-        ctx: click.Context, param: click.Parameter, disc_value: str, config_str: str
-    ) -> dict[str, Any]:
-        if choice_type.registry_choices is not None:
-            disc_value = choice_type.registry_choices.convert(disc_value, param, ctx)
-        parsed = parse_arguments(ctx, param, config_str)
-        if isinstance(parsed, dict):
-            return {discriminator: disc_value, **parsed}
-        return {discriminator: disc_value}
 
     def callback(
         ctx: click.Context,
@@ -109,15 +90,11 @@ def _make_common_field_callback(
         if is_list:
             if not value:
                 return None
-            return [
-                _parse_pair(ctx, param, disc_value, config_str)
-                for disc_value, config_str in value
-            ]
+            return [parse_arguments(ctx, param, v) for v in value]
 
         if value is None:
             return None
-        disc_value, config_str = value
-        return _parse_pair(ctx, param, disc_value, config_str)
+        return parse_arguments(ctx, param, value)
 
     return callback
 
@@ -174,29 +151,25 @@ def registry_option(
     """
     Click option decorator for ``PydanticClassRegistryMixin``-backed fields.
 
-    Produces a ``--name <discriminator_value> <config>`` option whose value is
-    parsed into ``{schema_discriminator: disc_value, **parsed_config}``.
+    Produces a ``--name <config>`` option where ``<config>`` is a single
+    comma-separated key=value string (e.g. ``kind=constant,rate=10``).
 
     :param param_decls: Click-style parameter declarations (e.g. ``"--output"``,
         ``"--output", "outputs"``)
     :param registry: A ``PydanticClassRegistryMixin`` subclass whose registered
-        names populate a ``click.Choice`` for the first argument
+        names populate the metavar
     :param multiple: When ``True``, the option may be repeated and values are
         collected into a list of dicts
-    :param help: Help text shown in ``--help``
     :param extra: Additional keyword arguments forwarded to ``click.option``
     :return: A decorator that adds the option to a Click command
     """
-    choice_type = _RegistryChoiceConfig(registry)
+    param_type = _RegistryParamType(registry, registry.schema_discriminator)
+    if multiple and "help" in extra:
+        extra["help"] = f"{extra['help']}  [repeatable]"
     kwargs: dict[str, Any] = {
-        "nargs": 2,
-        "type": choice_type,
+        "type": param_type,
         "multiple": multiple,
-        "callback": _make_common_field_callback(
-            registry.schema_discriminator,
-            multiple,
-            choice_type,
-        ),
+        "callback": _make_common_field_callback(multiple),
         "expose_value": True,
         "is_eager": False,
         **extra,
@@ -213,15 +186,13 @@ def registry_options_from_model(model: type[BaseModel], group_key: str | None = 
     ``click.option`` decorators for each registry-backed field.
 
     Each field in the model that has a ``schema_discriminator`` attribute gets a
-    CLI option in the form ``--field <discriminator_value> <config>``. All parsed
-    values are aggregated into a ``common`` kwarg passed to the decorated function.
-
-    The discriminator value is validated against the registry's known names via
-    ``click.Choice``. Non-list fields use Click's default last-wins behavior
-    when specified more than once.
+    CLI option accepting a single comma-separated key=value string (e.g.
+    ``--profile kind=constant,rate=10``).  All parsed values are aggregated
+    into a group kwarg passed to the decorated function.
 
     :param model: A Pydantic model class whose fields are
         ``PydanticClassRegistryMixin`` subclasses or lists of them
+    :param group_key: Optional key under which to group all registry values
     :return: A decorator that adds click options and wraps the function
     """
     field_specs = _introspect_registry_fields(model)

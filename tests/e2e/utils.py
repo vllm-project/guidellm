@@ -69,37 +69,26 @@ class GuidellmClient:
         :param extra_env: Additional environment variables to set
         """
         guidellm_exe = get_guidellm_executable()
-
-        # Parse data string into discriminator + config
-        data_parts = [p.strip() for p in data.split(",")]
-        data_kind = "synthetic_text"
-        data_config_parts = []
-        for part in data_parts:
-            if part.startswith("kind="):
-                data_kind = part.split("=", 1)[1]
-            else:
-                data_config_parts.append(part)
-        data_config = ",".join(data_config_parts)
-
         output_path = self.output_dir / self.outputs
 
-        # Build command components
         cmd_parts = [
             *([f"{k}={v}" for k, v in extra_env.items()] if extra_env else []),
             "HF_HOME=" + str(self.output_dir / "huggingface_cache"),
             f"{guidellm_exe} run",
-            f'--backend openai_http "target={self.target}"',
-            f'--profile {profile} "rate={rate}"',
+            f'--backend "kind=openai_http,target={self.target}"',
+            f'--profile "kind={profile},rate={rate}"',
         ]
 
         if max_seconds is not None:
-            cmd_parts.append(f'--constraint max_duration "seconds={max_seconds}"')
+            cmd_parts.append(f'--constraint "kind=max_duration,seconds={max_seconds}"')
 
         if max_requests is not None:
-            cmd_parts.append(f'--constraint max_requests "count={max_requests}"')
+            cmd_parts.append(f'--constraint "kind=max_requests,count={max_requests}"')
 
         if max_error_rate is not None:
-            cmd_parts.append(f'--constraint max_error_rate "rate={max_error_rate}"')
+            cmd_parts.append(
+                f'--constraint "kind=max_error_rate,rate={max_error_rate}"'
+            )
 
         if over_saturation is not None:
             if not isinstance(over_saturation, dict):
@@ -108,16 +97,16 @@ class GuidellmClient:
                     f"got {type(over_saturation)}"
                 )
             if over_saturation == {}:
-                cmd_parts.append('--constraint over_saturation ""')
+                cmd_parts.append("--constraint kind=over_saturation")
             else:
                 config_str = ",".join(f"{k}={v}" for k, v in over_saturation.items())
-                cmd_parts.append(f'--constraint over_saturation "{config_str}"')
+                cmd_parts.append(f'--constraint "kind=over_saturation,{config_str}"')
 
         cmd_parts.extend(
             [
-                f'--data {data_kind} "{data_config}"',
-                f'--tokenizer huggingface_auto "model={processor}"',
-                f'--output json "path={output_path}"',
+                f'--data "{data}"',
+                f'--tokenizer "kind=huggingface_auto,model={processor}"',
+                f'--output "kind=json,path={output_path}"',
                 "--disable-console",
             ]
         )
