@@ -1,5 +1,5 @@
 """
-The Mooncake trace format and data arguments. 
+The Mooncake trace format and data arguments.
 
 Reads a trace file (timestamp, input_length, output_length, hash_ids) and yields one
 row per line with a synthetic prompt matching the requested input_length for replay

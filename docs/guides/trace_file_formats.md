@@ -15,10 +15,10 @@ These are passed to the `--data` argument as `kind=[format]`:
 
 All trace formats can accept the following optional data arguments:
 
-| Argument | Default | Description |
-| --- | --- | --- |
-| `timestamp_column` | "timestamp" | Column name for timestamps in the trace file |
-| `prompt_tokens_column` | "input_length" | Column name for prompt token counts in the trace file |
+| Argument               | Default         | Description                                           |
+| ---------------------- | --------------- | ----------------------------------------------------- |
+| `timestamp_column`     | "timestamp"     | Column name for timestamps in the trace file          |
+| `prompt_tokens_column` | "input_length"  | Column name for prompt token counts in the trace file |
 | `output_tokens_column` | "output_length" | Column name for output token counts in the trace file |
 
 These are passed through the `--data` argument like below:
@@ -38,7 +38,7 @@ guidellm benchmark \
 
 The Mooncake format expects an additional column for hash IDs. During prompt generation, hash IDs sharing the same previous ID are required to represent dinstinct blocks of token ids.
 
-| Argument | Default | Description |
-| --- | --- | --- |
-| `hash_ids_column` | "hash_ids" | Column name for lists of hash IDs in the trace file |
-| `hash_id_block_size` | 512 | Amount of tokens represented by one hash ID |
+| Argument             | Default    | Description                                         |
+| -------------------- | ---------- | --------------------------------------------------- |
+| `hash_ids_column`    | "hash_ids" | Column name for lists of hash IDs in the trace file |
+| `hash_id_block_size` | 512        | Amount of tokens represented by one hash ID         |
