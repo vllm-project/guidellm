@@ -195,7 +195,7 @@ guidellm run --profile kind=sweep,sweep_size=10,rampup_duration=10,strategy_type
 
 #### Replay Profile
 
-Replays trace events using timestamps from a `trace_synthetic` dataset. See [Trace Replay Benchmarking](#trace-replay-benchmarking-beta) below for data setup.
+Replays trace events using timestamps from a trace file dataset. See [Trace Replay Benchmarking](#trace-replay-benchmarking-beta) below for data setup.
 
 ```bash
 guidellm run --profile kind=replay,time_scale=1.0
@@ -225,9 +225,9 @@ guidellm run \
 
 You can customize synthetic data generation with additional parameters such as standard deviation, minimum, and maximum values. See the [Datasets Synthetic data documentation](../guides/datasets.md#synthetic-data) for more details.
 
-### Trace Replay Benchmarking (beta)
+### Trace Replay Benchmarking
 
-For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL and are loaded with the `trace_synthetic` data type. By default, each row uses `timestamp`, `input_length`, and `output_length` fields. Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
+For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL and are loaded with a supported [trace file format](../guides/trace_file_formats.md#supported-formats). Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
 
 ```json
 {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -241,7 +241,7 @@ Run with the `replay` profile:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_synthetic,path=path/to/trace.jsonl \
+  --data kind=trace_minimal,path=path/to/trace.jsonl \
   --profile kind=replay,time_scale=1.0
 ```
 
@@ -249,16 +249,16 @@ The replay profile parameter `time_scale` acts as a scaling factor for the inter
 
 GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
 
-If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
+Every format by default looks for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
+  --data kind=trace_minimal,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
   --profile kind=replay,time_scale=1.0
 ```
 
-For very small prompts (roughly under 15 tokens, depending on the tokenizer), GuideLLM may not have enough room to include the full per-row unique prefix. Different rows can then produce similar or identical prompts, which reduces cache resistance in replay benchmarks.
+This functionality extends to columns required by specific formats. These additional columns and other format-specific arguments are described in the [Trace File Formats documentation](../guides/trace_file_formats.md)
 
 ### Working with Real Data
 
