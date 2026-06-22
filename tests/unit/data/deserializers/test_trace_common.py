@@ -190,6 +190,16 @@ class TestTraceDatasetDeserializer:
                 "out",
             ),
             (
+                '{"timestamp": 0, "input_length": -1, "output_length": 5}\n',
+                {},
+                "non-negative",
+            ),
+            (
+                '{"timestamp": 0, "input_length": 10, "output_length": -1}\n',
+                {},
+                "non-negative",
+            ),
+            (
                 '{"timestamp": "bad", "input_length": 10, "output_length": 5}\n',
                 {},
                 "scalar of type float",
