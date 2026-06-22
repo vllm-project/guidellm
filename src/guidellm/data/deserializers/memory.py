@@ -117,7 +117,7 @@ class InMemoryItemListDataArgs(DataArgs):
     )
     data: list[str | int | float | bool | None] = Field(
         description="In-memory list of primitive items for the dataset deserializer.",
-        examples=[1, 2, 3, 4, 5],
+        examples=[[1, 2, 3, 4, 5]],
     )
     column_name: str = Field(
         default="data",

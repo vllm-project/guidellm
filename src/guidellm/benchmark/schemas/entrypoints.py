@@ -98,7 +98,7 @@ class BenchmarkArgs(ReloadableBaseModel):
     profile: ProfileArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("sweep"),
         description="Profile configuration to control benchmark execution.",
-        examples=[{"kind": "sweep", "rate": [10.0]}],
+        examples=[{"kind": "sweep", "sweep_size": [10.0]}],
         json_schema_extra={"argument_alias": "profile"},
     )
     constraints: list[ConstraintArgs] = Field(  # type: ignore[assignment]
@@ -323,13 +323,8 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
         ),
         min_length=1,
         examples=[
-            [
-                {
-                    "profile": {"rate": [10.0, 20.0]},
-                    "constraints": [{"kind": "max_duration", "seconds": 10}],
-                }
-            ],
-            [{"profile": {"rate": [20.0], "max_concurrency": [10, 20]}}],
+            {"profile.rate": 10.0, "constraints[0].seconds": 10},
+            {"profile.rate": 20.0, "constraints[0].seconds": 20},
         ],
     )
 
