@@ -844,6 +844,7 @@ dependencies = [
     { name = "transformers" },
     { name = "typing-extensions" },
     { name = "uvloop" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -1008,6 +1009,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4.15.0" },
     { name = "uvloop", specifier = ">=0.18" },
     { name = "uvloop", marker = "extra == 'perf'" },
+    { name = "websockets", specifier = ">=13.0" },
 ]
 provides-extras = ["all", "recommended", "perf", "tokenizers", "audio", "vision", "dev"]
 

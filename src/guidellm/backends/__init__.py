@@ -16,6 +16,8 @@ from .openai import (
     OpenAIHTTPBackend,
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
+    OpenAIWebSocketBackend,
+    OpenAIWebSocketBackendArgs,
     TextCompletionsRequestHandler,
 )
 from .vllm_python import VLLMPythonBackend, VLLMResponseHandler
@@ -28,6 +30,8 @@ __all__ = [
     "OpenAIHTTPBackend",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
+    "OpenAIWebSocketBackend",
+    "OpenAIWebSocketBackendArgs",
     "TextCompletionsRequestHandler",
     "VLLMPythonBackend",
     "VLLMResponseHandler",

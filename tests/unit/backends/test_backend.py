@@ -458,6 +458,25 @@ class TestBackend:
         assert backend.kind == "my_backend"
 
     @pytest.mark.smoke
+    def test_openai_websocket_backend_registered(self):
+        """WebSocket OpenAI backend is registered and constructible."""
+        from guidellm.backends.openai import (
+            OpenAIWebSocketBackend,
+            OpenAIWebSocketBackendArgs,
+        )
+
+        assert Backend.is_registered("openai_websocket")
+        assert (
+            BackendArgs.get_registered_object("openai_websocket")
+            is OpenAIWebSocketBackendArgs
+        )
+
+        backend = Backend.create(
+            OpenAIWebSocketBackendArgs(target="http://localhost:9000")
+        )
+        assert isinstance(backend, OpenAIWebSocketBackend)
+        assert backend.kind == "openai_websocket"
+
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""
         from guidellm.backends.openai import OpenAIHTTPBackend
