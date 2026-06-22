@@ -13,6 +13,7 @@ guidellm run --data kind=<TYPE>,key=value,... [other options...]
 Repeat `--data` to combine multiple sources. Use comma-separated key=value pairs for flat settings, or serialized JSON when any value is nested.
 
 ### Dataset Source and Type
+
 The following arguments configure datasets and their processing:
 
 - Dataset source and type. Accepted types:
@@ -22,22 +23,29 @@ The following arguments configure datasets and their processing:
   - `trace_synthetic` — loads a JSONL trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `loader_kwargs`:
+
 - loader_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","loader_kwargs":{"split":"test"}}'`.
 
 ### Data Loader
+
 You can specify the data loader with `--loader` or `--data-loader` and a configuration string. The only current type is `pytorch`:
+
 - `--data-loader kind=pytorch,samples=1000,num_workers=4,shuffle=true`
 
 ### Tokenizer
+
 You can specify the tokenizer with `--tokenizer` and a configuration string. The only current type is `huggingface_auto`:
+
 - `--tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}'`
 
 If your dataset uses non-standard column names, you can use `--data-column-mapper` to map your columns to GuideLLM's expected column names. This is particularly useful when:
+
 1. Your dataset uses different column names (e.g., `question` instead of `prompt`, `instruction` instead of `text_column`)
 2. You have multiple datasets and need to specify which dataset's columns to use
 3. Your dataset has system prompts or prefixes in a separate column
 
 ### Column Mapping
+
 The `--data-column-mapper` accepts a string mapping column types to column names:
 
 ```bash
@@ -45,12 +53,15 @@ The `--data-column-mapper` accepts a string mapping column types to column names
 ```
 
 ### Preprocessors
+
 With `--data-preprocessor` you can control the GuideLLM preprocessors to apply: preprocessors include `encode_media`, `tool_calling_message_extractor`, `turn_pivot`.
 
 ### Data Finalizer
+
 With `--data-finalizer` you can control how dataset rows are converted to requests (default: `generative`).
 
 ### Random Seed
+
 Use `--seed` with a configuration string to control how sequences (in scheduling and synthetic data generation) are randomized: For example, `--seed kind=static,value=42`.
 
 ### Example Usage
