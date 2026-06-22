@@ -33,7 +33,6 @@ __all__ = [
         "Configuration can be loaded from a scenario file or specified via options."
     ),
 )
-@registry_options_from_model(model=BenchmarkArgs, group_key="spec")
 @click.option(
     "--config",
     "--scenario",
@@ -53,6 +52,7 @@ __all__ = [
         "CLI options override scenario settings."
     ),
 )
+@registry_options_from_model(model=BenchmarkArgs, group_key="spec")
 @click.option(
     "--override",
     "benchmarks",
