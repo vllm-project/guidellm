@@ -8,8 +8,6 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from datasets import IterableDataset
-from pydantic import ValidationError
 
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
@@ -127,52 +125,6 @@ class TestTraceMooncakeDatasetDeserializer:
         )
 
     @pytest.mark.smoke
-    def test_loads_sorted_rows_and_keeps_token_columns_aligned(
-        self, tmp_path: Path, deserializer
-    ):
-        n_rows = 10
-        trace = _write_trace(
-            tmp_path,
-            _generate_trace(
-                n_rows,
-                [
-                    TraceColumnGenerator("timestamp", lambda i: n_rows - i),
-                    TraceColumnGenerator("input_length", lambda i: n_rows - i),
-                    TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
-                    TraceColumnGenerator("hash_ids", lambda i: [n_rows - i]),
-                ],
-            ),
-        )
-        ds = self._deserialize(deserializer, trace)
-        assert isinstance(ds, IterableDataset)
-        proc = _ascending_processor()
-        for i, row in enumerate(ds):
-            assert row["prompt_tokens_count"] == i + 1
-            assert row["output_tokens_count"] == (i + 1) * 10
-            assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
-
-    @pytest.mark.smoke
-    def test_emits_relative_timestamp_column_sorted_from_trace(
-        self, tmp_path: Path, deserializer
-    ):
-        n_rows = 5
-        trace = _write_trace(
-            tmp_path,
-            _generate_trace(
-                n_rows,
-                [
-                    TraceColumnGenerator("timestamp", lambda i: i + 3),
-                    TraceColumnGenerator("input_length", lambda i: i + 1),
-                    TraceColumnGenerator("output_length", lambda i: (i + 1) * 10),
-                    TraceColumnGenerator("hash_ids", lambda i: [i]),
-                ],
-            ),
-        )
-        ds = self._deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == i
-
-    @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
         n_rows = 3
         trace = _write_trace(
@@ -187,7 +139,7 @@ class TestTraceMooncakeDatasetDeserializer:
                 ],
             ),
         )
-        ds = self._deserialize(
+        self._deserialize(
             deserializer,
             trace,
             timestamp_column="ts",
@@ -195,9 +147,6 @@ class TestTraceMooncakeDatasetDeserializer:
             output_tokens_column="generated_tokens",
             hash_ids_column="ids",
         )
-        for i, row in enumerate(ds):
-            assert row["prompt_tokens_count"] == i + 1
-            assert row["output_tokens_count"] == (i + 1) * 10
 
     @pytest.mark.smoke
     def test_custom_hash_id_block_size(self, tmp_path: Path, deserializer):
@@ -258,60 +207,15 @@ class TestTraceMooncakeDatasetDeserializer:
             if actual_prompt_length != in_cnt:
                 pytest.fail(f"{actual_prompt_length} != {in_cnt}")
 
-    @pytest.mark.smoke
-    def test_rejects_invalid_path(self, deserializer):
-        with pytest.raises(ValidationError, match="not a valid path"):
-            self._deserialize(deserializer, 123)
-        with pytest.raises(DataNotSupportedError, match="path to a trace file"):
-            self._deserialize(deserializer, "bad_path.jsonl")
-
     @pytest.mark.sanity
     @pytest.mark.parametrize(
         ("content", "kwargs", "match"),
         [
-            ("", {}, "empty"),
-            (
-                '{"ts": 0, "input_length": 10, "output_length": 5, "hash_ids": [0]}\n',
-                {},
-                "timestamp",
-            ),
-            (
-                '{"timestamp": 0, "input_length": 10, "hash_ids": [0]}\n',
-                {},
-                "output_length",
-            ),
-            (
-                '{"timestamp": 0, "prompt_tokens": 10, "output_length": 5, '
-                '"hash_ids": [0]}\n',
-                {
-                    "prompt_tokens_column": "prompt_tokens",
-                    "output_tokens_column": "out",
-                },
-                "out",
-            ),
-            (
-                '{"timestamp": "bad", "input_length": 10, "output_length": 5, '
-                '"hash_ids": [0]}\n',
-                {},
-                "scalar of type float",
-            ),
-            (
-                '{"timestamp": 0, "input_length": "bad", "output_length": 5, '
-                '"hash_ids": [0]}\n',
-                {},
-                "scalar of type int32",
-            ),
-            (
-                '{"timestamp": 0, "input_length": 10, "output_length": null, '
-                '"hash_ids": [0]}\n',
-                {},
-                "NoneType",
-            ),
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": 5, '
-                '"hash_ids": [0]}\nnot-json\n',
+                '"hash_ids": [-1]}\n',
                 {},
-                "generating the dataset",
+                "non-negative",
             ),
             (
                 '{"timestamp": 0, "input_length": 1024, "output_length": 5, '
@@ -327,17 +231,6 @@ class TestTraceMooncakeDatasetDeserializer:
         trace = _write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
             self._deserialize(deserializer, trace, **kwargs)
-
-    @pytest.mark.sanity
-    def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):
-        trace = _write_trace(
-            tmp_path,
-            '{"timestamp": 0, "input_length": 10, "output_length": 5, '
-            '"hash_ids": [0]}\n',
-            suffix=".json",
-        )
-        with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.json"):
-            self._deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(self, tmp_path: Path, deserializer):

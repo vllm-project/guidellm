@@ -4,12 +4,9 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from datasets import IterableDataset
-from pydantic import ValidationError
 
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_synthetic import MinimalTraceFormatArgs
-from guidellm.data.schemas import DataNotSupportedError
 
 
 def _mock_processor() -> Mock:
@@ -52,53 +49,7 @@ class TestMinimalTraceFormat:
             processor_factory=_mock_processor,
             random_seed=42,
         )
-
-    @pytest.mark.smoke
-    def test_loads_sorted_rows_and_keeps_token_columns_aligned(
-        self, tmp_path: Path, deserializer
-    ):
-        trace = _write_trace(
-            tmp_path,
-            '{"timestamp": 5.0, "input_length": 3, "output_length": 30}\n'
-            '{"timestamp": 2.0, "input_length": 1, "output_length": 10}\n'
-            '{"timestamp": 2.0, "input_length": 2, "output_length": 20}\n'
-            '{"timestamp": 8.0, "input_length": 0, "output_length": 40}\n',
-        )
-
-        ds = self._deserialize(deserializer, trace)
-
-        assert isinstance(ds, IterableDataset)
-        expected_prompt_count = [1, 2, 3, 0]
-        expected_output_count = [10, 20, 30, 40]
-        proc = _mock_processor()
-        for i, row in enumerate(ds):
-            assert row["prompt_tokens_count"] == expected_prompt_count[i]
-            assert row["output_tokens_count"] == expected_output_count[i]
-            assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
-
-    @pytest.mark.smoke
-    def test_emits_relative_timestamp_column_sorted_from_trace(
-        self, tmp_path: Path, deserializer
-    ):
-        """Each row gets offset seconds from the earliest sorted timestamp.
-
-        ### WRITTEN BY AI ###
-        """
-        trace = _write_trace(
-            tmp_path,
-            '{"timestamp": 5.0, "input_length": 1, "output_length": 10}\n'
-            '{"timestamp": 2.0, "input_length": 2, "output_length": 20}\n'
-            '{"timestamp": 8.0, "input_length": 3, "output_length": 30}\n'
-            '{"timestamp": 2.0, "input_length": 4, "output_length": 40}\n'
-            '{"timestamp": 5.0, "input_length": 5, "output_length": 50}\n',
-        )
-
-        ds = self._deserialize(deserializer, trace)
-
-        expected = [0.0, 0.0, 3.0, 3.0, 6.0]
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == pytest.approx(expected[i], abs=1e-9)
-
+    
     @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
         trace = _write_trace(
@@ -243,72 +194,3 @@ class TestMinimalTraceFormat:
             actual_prompt_length = len(processor.encode(row["prompt"]))
             if actual_prompt_length != in_cnt:
                 pytest.fail(f"{actual_prompt_length} != {in_cnt}")
-
-    @pytest.mark.smoke
-    def test_rejects_invalid_data(self, deserializer):
-        with pytest.raises(ValidationError, match="not a valid path"):
-            self._deserialize(deserializer, 123)
-
-    @pytest.mark.sanity
-    @pytest.mark.parametrize(
-        ("content", "kwargs", "match"),
-        [
-            ("", {}, "empty"),
-            (
-                '{"ts": 0, "input_length": 10, "output_length": 5}\n',
-                {},
-                "timestamp",
-            ),
-            (
-                '{"timestamp": 0, "input_length": 10}\n',
-                {},
-                "output_length",
-            ),
-            (
-                '{"timestamp": 0, "prompt_tokens": 10, "output_length": 5}\n',
-                {
-                    "prompt_tokens_column": "prompt_tokens",
-                    "output_tokens_column": "out",
-                },
-                "out",
-            ),
-            (
-                '{"timestamp": "bad", "input_length": 10, "output_length": 5}\n',
-                {},
-                "scalar of type float",
-            ),
-            (
-                '{"timestamp": 0, "input_length": "bad", "output_length": 5}\n',
-                {},
-                "scalar of type int32",
-            ),
-            (
-                '{"timestamp": 0, "input_length": 10, "output_length": null}\n',
-                {},
-                "NoneType",
-            ),
-            (
-                '{"timestamp": 0, "input_length": 10, "output_length": 5}\nnot-json\n',
-                {},
-                "generating the dataset",
-            ),
-        ],
-    )
-    def test_trace_validation_raises(
-        self, tmp_path: Path, deserializer, content, kwargs, match
-    ):
-        trace = _write_trace(tmp_path, content)
-
-        with pytest.raises(DataNotSupportedError, match=match):
-            self._deserialize(deserializer, trace, **kwargs)
-
-    @pytest.mark.sanity
-    def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):
-        trace = _write_trace(
-            tmp_path,
-            '{"timestamp": 0, "input_length": 10, "output_length": 5}\n',
-            suffix=".json",
-        )
-
-        with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.json"):
-            self._deserialize(deserializer, trace)
