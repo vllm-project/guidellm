@@ -12,7 +12,7 @@ __all__ = ["benchmark"]
 
 
 @click.group(
-    help="Run a benchmark or load a previously saved benchmark report.",
+    help="Load a previously saved benchmark report.",
     cls=DefaultGroupHandler,
     default="run",
 )
