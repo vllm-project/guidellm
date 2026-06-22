@@ -25,18 +25,21 @@ if TYPE_CHECKING:
 
 @ProfileArgs.register(["async", "constant", "poisson"])
 class AsyncProfileArgs(ProfileArgs):
-    """Pydantic model for Async profile creation arguments."""
+    """Pydantic model for asynchronous profile creation arguments."""
 
     kind: Literal["async", "constant", "poisson"] = Field(
         default="async",
-        description="Profile type discriminator for polymorphic serialization",
+        description="Profile type discriminator for asynchronous scheduling",
+        examples=["async", "constant", "poisson"],
     )
     rate: list[PositiveFloat] = Field(
         description="Request scheduling rates in requests per second",
+        examples=[1.0, [1.0, 2.0, 3.0]],
     )
     max_concurrency: PositiveInt | None = Field(
         default=None,
         description="Maximum concurrent requests to schedule",
+        examples=[10],
     )
 
     @field_validator("rate", mode="before")

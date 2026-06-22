@@ -36,11 +36,29 @@ DatasetColumnValue: TypeAlias = tuple[int, str]
     ]
 )
 class GenerativeColumnMapperArgs(DataPreprocessorArgs):
+    """Model for generative column mapper preprocessor arguments."""
+
     kind: Literal["generative_column_mapper", "pooling_column_mapper"] = Field(
         default="generative_column_mapper",
         description="Type identifier for the generative column mapper preprocessor.",
+        examples=["generative_column_mapper", "pooling_column_mapper"],
     )
-    column_mappings: dict[str, str | list[str]] | None = None
+    column_mappings: dict[str, str | list[str]] | None = Field(
+        default=None,
+        description="Mappings for the column names.",
+        examples=[
+            {
+                "prompt_tokens_count_column": [
+                    "prompt_tokens_count",
+                    "input_tokens_count",
+                ],
+                "output_tokens_count_column": [
+                    "output_tokens_count",
+                    "completion_tokens_count",
+                ],
+            }
+        ],
+    )
 
 
 @PreprocessorRegistry.register("generative_column_mapper")

@@ -31,9 +31,12 @@ __all__ = [
 
 @BenchmarkOutputArgs.register("console")
 class ConsoleBenchmarkOutputArgs(BenchmarkOutputArgs):
+    """Base class for console benchmark output arguments."""
+
     kind: Literal["console"] = Field(
         default="console",
         description="The kind of output.",
+        examples=["console"],
     )
 
 
@@ -437,8 +440,6 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             values,
             title="Request Token Statistics (Completed Requests)",
         )
-
-    def print_request_latency_table(self, report: GenerativeBenchmarksReport):
         """
         Print request latency metrics table.
 

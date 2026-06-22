@@ -61,11 +61,13 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         description="Type identifier for the backend configuration.",
     )
     target: str = Field(
-        description="Base URL of the OpenAI-compatible server",
+        description="Base URL of an OpenAI-compatible inference server",
+        examples=["http://localhost:8000"],
     )
     model: str = Field(
         default_factory=str,
-        description="Model identifier for generation requests",
+        description="Huggingface model identifier or local path to a model",
+        examples=["gpt-4o", "Qwen/Qwen3-0.6B"],
     )
     request_format: Literal[
         "/v1/completions",
@@ -77,11 +79,23 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         "/pooling",
     ] = Field(
         default="/v1/chat/completions",
-        description="Request format for OpenAI-compatible server.",
+        description=(
+            "Request format for desired API endpoint of the OpenAI-compatible server."
+        ),
+        examples=[
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/embeddings",
+            "/v1/responses",
+            "/v1/audio/transcriptions",
+            "/v1/audio/translations",
+            "/pooling",
+        ],
     )
     api_key: SecretStr | None = Field(
         default=None,
-        description="API key for authentication (for Bearer auth)",
+        description="HTTP Bearer token API key for authentication to server",
+        examples=["my-api-key"],
     )
     api_routes: dict[str, str] = Field(
         default_factory=dict,
@@ -91,43 +105,68 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "like '/v1/completions' and values should be the corresponding "
             "endpoint paths relative to the target URL."
         ),
+        examples=[
+            {
+                "/v1/chat/completions": "/v1/chat/completions",
+                "/v1/completions": "/v1/completions",
+                "/v1/embeddings": "/v1/embeddings",
+                "/v1/responses": "/v1/responses",
+                "/v1/audio/transcriptions": "/v1/audio/transcriptions",
+                "/v1/audio/translations": "/v1/audio/translations",
+                "/pooling": "/pooling",
+            }
+        ],
     )
     timeout: float | None = Field(
         default=None,
-        description="Request timeout in seconds for reading response.",
+        description="Request timeout in seconds when reading a server response.",
+        examples=[10.0],
     )
     timeout_connect: float | None = Field(
         default=FALLBACK_TIMEOUT,
-        description="Request timeout in seconds for establishing connection.",
+        description="Request timeout in seconds for establishing server connection.",
+        examples=[10.0],
     )
     http2: bool = Field(
         default=True,
         description="Enable HTTP/2 protocol.",
+        examples=[True],
     )
     follow_redirects: bool = Field(
         default=True,
-        description="Follow HTTP redirects automatically.",
+        description="Follow HTTP redirect response headers automatically.",
+        examples=[True],
     )
     verify: bool = Field(
         default=False,
         description="Verify the server's TLS certificate.",
+        examples=[True],
     )
     validate_backend: bool = Field(
         default=True,
         description="Send a health check request to validate backend configuration.",
+        examples=[True],
     )
     stream: bool = Field(
         default=True,
         description="Use streaming responses for generation requests when supported.",
+        examples=[True],
     )
     extras: GenerationRequestArguments | None = Field(
         default=None,
         description="Additional parameters to include in generation requests.",
+        examples=[
+            {
+                "temperature": 0.5,
+                "max_tokens": 100,
+            }
+        ],
     )
     max_tokens: int | None = Field(
         default=None,
         validation_alias=AliasChoices("max_tokens", "max_completion_tokens"),
         description="Maximum number of tokens to request in any response.",
+        examples=[1024],
     )
     server_history: bool = Field(
         default=False,
@@ -135,17 +174,23 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "Use server-side conversation history (previous_response_id) for "
             "multi-turn requests. Only supported with /v1/responses."
         ),
+        examples=[True],
     )
     tool_call_missing_behavior: Literal[
         "ignore_continue", "ignore_stop", "error_stop"
     ] = Field(
         default="error_stop",
         description=(
-            "What happens when a tool call is expected but the model does not "
+            "Specify behavior when a tool call is expected but the model does not "
             "produce one. Options: ignore_continue (continue to next turn), "
             "ignore_stop (cancel remaining turns), error_stop (error and "
             "cancel remaining turns)."
         ),
+        examples=[
+            "ignore_continue",
+            "ignore_stop",
+            "error_stop",
+        ],
     )
     multiturn_reasoning: bool | str = Field(
         default=False,
@@ -154,8 +199,9 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "conversation history. False disables (default). True wraps "
             "reasoning in <think>...</think> tags (equivalent to the string "
             "'<think>{reasoning}</think>'). A string value is used as a "
-            "format template and must contain '{reasoning}'."
+            "format template and must contain the '{reasoning}' placeholder text."
         ),
+        examples=[True],
     )
 
     @field_validator("multiturn_reasoning", mode="after")

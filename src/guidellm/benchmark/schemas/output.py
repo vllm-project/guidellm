@@ -13,8 +13,7 @@ __all__ = [
 
 
 class BenchmarkOutputArgs(PydanticClassRegistryMixin["BenchmarkOutputArgs"], ABC):
-    """
-    Base class for output creation arguments.
+    """Base class for output creation arguments.
 
     This class serves as a base for defining argument models used in the creation
     of output instances. It inherits from PydanticClassRegistryMixin to enable

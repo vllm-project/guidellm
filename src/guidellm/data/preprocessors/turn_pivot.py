@@ -15,9 +15,12 @@ __all__ = ["TurnPivot"]
 
 
 class TurnPivotArgs(DataPreprocessorArgs):
+    """Model for turn pivot preprocessor arguments."""
+
     kind: Literal["turn_pivot"] = Field(
         default="turn_pivot",
         description="Type identifier for the turn pivot preprocessor.",
+        examples=["turn_pivot"],
     )
 
 

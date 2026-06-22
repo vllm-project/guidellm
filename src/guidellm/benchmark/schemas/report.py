@@ -54,8 +54,7 @@ class GenerativeBenchmarkMetadata(StandardBaseModel):
 
 
 class GenerativeBenchmarksReport(StandardBaseModel):
-    """
-    Container for multiple benchmark results with load/save functionality.
+    """Container for multiple benchmark results with load/save functionality.
 
     Aggregates multiple generative benchmark executions into a single report,
     providing persistence through JSON and YAML file formats. Enables result

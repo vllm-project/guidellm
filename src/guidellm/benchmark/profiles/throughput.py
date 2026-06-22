@@ -26,10 +26,12 @@ class ThroughputProfileArgs(ProfileArgs):
 
     kind: Literal["throughput"] = Field(
         default="throughput",
-        description="Profile type discriminator for polymorphic serialization",
+        description="Profile type discriminator for throughput scheduling",
+        examples=["throughput"],
     )
     max_concurrency: PositiveInt | None = Field(
         description="Maximum concurrent requests to schedule",
+        examples=[10],
     )
 
 

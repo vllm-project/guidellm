@@ -84,57 +84,85 @@ class BenchmarkArgs(ReloadableBaseModel):
 
     backend: BackendArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("openai_http"),
-        description="Backend configuration arguments",
+        description=(
+            "Backend configuration to define how to send requests to the model."
+        ),
+        examples=[
+            {
+                "kind": "openai_http",
+                "target": "http://localhost:8000/v1",
+            }
+        ],
         json_schema_extra={"argument_alias": "backend"},
     )
     profile: ProfileArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("sweep"),
-        description="Benchmark profile configuration arguments",
+        description="Profile configuration to control benchmark execution.",
+        examples=[{"kind": "sweep", "rate": [10.0]}],
         json_schema_extra={"argument_alias": "profile"},
     )
     constraints: list[ConstraintArgs] = Field(  # type: ignore[assignment]
-        description="List of constraints to enforce during benchmark execution",
+        description="Execution constraints to enforce during benchmark execution",
+        examples=[{"kind": "max_concurrent", "value": 10}],
         default_factory=list,
         json_schema_extra={"argument_alias": "constraint"},
     )
     tokenizer: DataTokenizerArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("huggingface_auto"),
-        description="Tokenizer configuration arguments",
+        description="Tokenizer configuration",
+        examples=[{"kind": "huggingface_auto"}],
         json_schema_extra={"argument_alias": "tokenizer"},
     )
     data: list[DataArgs] = Field(  # type: ignore[assignment]
-        description="List of dataset sources or data files",
+        description="List of dataset sources to use in the benchmarks",
+        examples=[
+            {"kind": "synthetic_text", "prompt_tokens": 100, "output_tokens": 100},
+            {
+                "kind": "huggingface",
+                "source": "my/dataset",
+                "load_kwargs": {"split": "test", "name": "my_dataset"},
+            },
+        ],
         min_length=1,
         json_schema_extra={"argument_alias": "data"},
     )
     data_column_mapper: DataPreprocessorArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("generative_column_mapper"),
-        description="Column mapping preprocessor for dataset fields",
+        description="Specify how to map dataset columns into prompts and outputs.",
+        examples=[{"kind": "generative_column_mapper"}],
         json_schema_extra={"argument_alias": "data_column_mapper"},
     )
     data_preprocessors: list[DataPreprocessorArgs] = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind_list("encode_media"),  # type: ignore[arg-type]
-        description="List of dataset preprocessors to apply in order",
+        description="List of dataset preprocessors to apply to the datasets.",
+        examples=[{"kind": "encode_media"}],
         json_schema_extra={"argument_alias": "data_preprocessor"},
     )
     data_finalizer: DataFinalizerArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("generative"),
         description="Finalizer for preparing data samples into requests",
+        examples=[{"kind": "generative"}],
         json_schema_extra={"argument_alias": "data_finalizer"},
     )
     data_loader: DataLoaderArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("pytorch"),
-        description="Dataloader configuration arguments",
+        description="Specify how to load the datasets into memory.",
+        examples=[{"kind": "pytorch"}],
         json_schema_extra={"argument_alias": "data_loader"},
     )
     seed: RandomArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("static"),
         description="Random configuration for reproducibility (e.g., seed value)",
+        examples=[{"kind": "static", "value": 42}],
         json_schema_extra={"argument_alias": "seed"},
     )
     outputs: list[BenchmarkOutputArgs] = Field(
         default_factory=lambda: default_kind_list("json", "csv"),  # type: ignore[arg-type]
-        description="Benchmark outputs",
+        description="Benchmark output formats and paths.",
+        examples=[
+            {"kind": "json", "filename": "benchmarks.json"},
+            {"kind": "csv", "filename": "benchmarks.csv"},
+        ],
         json_schema_extra={"argument_alias": "output"},
     )
 
@@ -152,7 +180,11 @@ class BenchmarkMetadata(StandardBaseModel):
 
     labels: dict[str, str] = Field(
         default_factory=dict,
-        description="Key-value pairs of metadata labels describing the benchmark.",
+        description=(
+            "Key-value pairs of metadata labels which will be written to the "
+            "output reports."
+        ),
+        examples=[{"name": "benchmark", "description": "Benchmark description"}],
     )
 
 
@@ -263,16 +295,43 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
 
     metadata: BenchmarkMetadata = Field(
         default_factory=BenchmarkMetadata,
-        description="Metadata describing the benchmark scenario.",
+        description=(
+            "User metadata to describe the benchmark run. This data is written "
+            "to the output file but not otherwise used by GuideLLM)."
+        ),
+        examples=[
+            {"labels": {"name": "benchmark", "description": "Benchmark description"}}
+        ],
     )
     spec: BenchmarkArgs = Field(
         default_factory=BenchmarkArgs,  # type: ignore[arg-type]
         description="Global configuration parameters for benchmark execution.",
+        examples=[
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000/v1",
+                },
+                "data": [{"kind": "synthetic_text"}],
+            }
+        ],
     )
     benchmarks: list[dict[str, Any] | None] = Field(
         default_factory=lambda: [None],  # type: ignore[arg-type]
-        description="Individual benchmark overrides",
+        description=(
+            "Individual benchmark parameter overrides. This allows overriding "
+            "parameters and constraints for each benchmark run by a profile."
+        ),
         min_length=1,
+        examples=[
+            [
+                {
+                    "profile": {"rate": [10.0, 20.0]},
+                    "constraints": [{"kind": "max_duration", "seconds": 10}],
+                }
+            ],
+            [{"profile": {"rate": [20.0], "max_concurrency": [10, 20]}}],
+        ],
     )
 
     @model_validator(mode="before")

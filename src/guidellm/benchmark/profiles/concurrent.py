@@ -28,10 +28,12 @@ class ConcurrentProfileArgs(ProfileArgs):
 
     kind: Literal["concurrent"] = Field(
         default="concurrent",
-        description="Profile type discriminator for polymorphic serialization",
+        description="Profile type discriminator for concurrent scheduling",
+        examples=["concurrent"],
     )
     streams: list[PositiveInt] = Field(
         description="Concurrent stream counts to execute",
+        examples=[[1, 2, 3], 10],
     )
 
     @field_validator("streams", mode="before")

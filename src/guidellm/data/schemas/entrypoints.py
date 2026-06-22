@@ -49,6 +49,7 @@ class DataLoaderArgs(
 
     kind: str = Field(
         description="Type identifier for the data loader configuration.",
+        examples=["pytorch"],
     )
     samples: int = Field(
         default=-1,
@@ -56,6 +57,7 @@ class DataLoaderArgs(
             "Number of data samples to generate. If -1, the data loader will "
             "generate indefinitely until the dataset is exhausted."
         ),
+        examples=[-1, 100, 1000],
     )
 
 
@@ -63,8 +65,7 @@ class DataArgs(
     PydanticClassRegistryMixin["DataArgs"],
     ABC,
 ):
-    """
-    Base class for data loading and processing argument models.
+    """Base class for data loading and processing argument models.
 
     This class serves as a base for defining argument models related to data loading
     and processing. It inherits from PydanticClassRegistryMixin to enable automatic
@@ -92,13 +93,24 @@ class DataArgs(
 
     kind: str = Field(
         description="Type identifier for the data arguments configuration.",
+        examples=[
+            "text_file",
+            "csv_file",
+            "json_file",
+            "parquet_file",
+            "arrow_file",
+            "hdf5_file",
+            "db_file",
+            "tar_file",
+        ],
     )
     load_kwargs: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Additional arguments for data loading. These arguements are passed to the "
-            "datasets library when loading the dataset."
+            "Additional arguments for data loading. These arguements are "
+            "passed to the datasets library when loading the dataset."
         ),
+        examples=[{"format": "csv"}],
     )
 
 
@@ -135,6 +147,12 @@ class DataPreprocessorArgs(
 
     kind: str = Field(
         description="Type identifier for the data preprocessor arguments.",
+        examples=[
+            "generative_column_mapper",
+            "pooling_column_mapper",
+            "tool_calling_message_extractor",
+            "turn_pivot",
+        ],
     )
 
 
@@ -171,6 +189,7 @@ class DataFinalizerArgs(
 
     kind: str = Field(
         description="Type identifier for the data finalizer arguments.",
+        examples=["generative"],
     )
 
 
@@ -207,12 +226,14 @@ class DataTokenizerArgs(
 
     kind: str = Field(
         description="Type identifier for the data tokenizer arguments.",
+        examples=["huggingface"],
     )
     model: str | None = Field(
         default=None,
         description=(
-            "Optional model name or path for the tokenizer. This field can be used by "
-            "tokenizer implementations that require a model specification, such as "
-            "HuggingFace tokenizers."
+            "Optional model name or path for the tokenizer. This field can be "
+            "used by tokenizer implementations that require a model specification, "
+            "such as HuggingFace tokenizers."
         ),
+        examples=["gpt2"],
     )

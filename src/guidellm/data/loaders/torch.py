@@ -31,13 +31,17 @@ def _collate_first(batch: list) -> Any:
 
 @DataLoaderArgs.register("pytorch")
 class TorchDataLoaderArgs(DataLoaderArgs):
+    """Model for PyTorch data loader arguments."""
+
     kind: Literal["pytorch"] = Field(  # type: ignore[assignment]
         default="pytorch",
         description="Type identifier for the generative data loader.",
+        examples=["pytorch"],
     )
     shuffle: bool = Field(
         default=False,
         description="Shuffle data rows at every epoch.",
+        examples=[True, False],
     )
     num_workers: int = Field(
         default=1,
@@ -45,6 +49,7 @@ class TorchDataLoaderArgs(DataLoaderArgs):
             "Number of worker processes for data loading. If 0, data loading "
             "will be performed in the main process."
         ),
+        examples=[1, 2, 3],
     )
 
 

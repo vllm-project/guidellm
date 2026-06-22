@@ -47,7 +47,8 @@ class VLLMPythonBackendArgs(BackendArgs):
         description="Backend type identifier for VLLM Python backend.",
     )
     model: str = Field(
-        description="Model identifier or path for VLLM to load",
+        description="Huggingface model identifier or filesystem path for VLLM to load",
+        examples=["meta-llama/Llama-2-7b-chat-hf"],
     )
     vllm_config: dict[str, Any] = Field(
         default_factory=dict,
@@ -58,18 +59,30 @@ class VLLMPythonBackendArgs(BackendArgs):
             "and can be set here or via the top-level 'model' field; if set in both "
             "places, the top-level 'model' field takes precedence."
         ),
+        examples=[
+            {
+                "tensor_parallel_size": 1,
+                "gpu_memory_utilization": 0.9,
+            }
+        ],
     )
     request_format: Literal["plain", "default-template"] | str = Field(
         default="default-template",
         description=(
             "Request format for VLLM Python backend. "
-            "Valid values: 'plain' (no chat template), 'default-template' "
+            "Valid values are 'plain' (no chat template), 'default-template' "
             "(use tokenizer default), or a path to / inline Jinja2 chat template."
         ),
+        examples=[
+            "plain",
+            "default-template",
+            "/path/to/chat_template.jinja2",
+        ],
     )
     stream: bool = Field(
         default=True,
         description="Whether to stream responses from the backend.",
+        examples=[True],
     )
     image_placeholder: str = Field(
         default="<image>",
@@ -77,6 +90,7 @@ class VLLMPythonBackendArgs(BackendArgs):
             "Placeholder string for image items in multimodal prompts. "
             "Used when injecting placeholders for multimodal data."
         ),
+        examples=["<image>"],
     )
     audio_placeholder: str = Field(
         default="<|audio|>",
@@ -84,6 +98,7 @@ class VLLMPythonBackendArgs(BackendArgs):
             "Placeholder string for audio items in multimodal prompts. "
             "Used when injecting placeholders for multimodal data."
         ),
+        examples=["<|audio|>"],
     )
 
     @model_validator(mode="after")

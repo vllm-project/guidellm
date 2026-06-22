@@ -44,13 +44,17 @@ __all__ = [
 
 @BenchmarkOutputArgs.register("html")
 class HTMLBenchmarkOutputArgs(BenchmarkOutputArgs):
+    """Model for HTML benchmark output arguments."""
+
     kind: Literal["html"] = Field(
         default="html",
         description="The kind of output.",
+        examples=["html"],
     )
     path: Path = Field(
         default=Path("./benchmarks.html"),
         description="The file to save the output to.",
+        examples=["./benchmarks.html"],
     )
 
 
@@ -76,6 +80,7 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
             "Directory or file path for saving the HTML report, "
             "defaults to current working directory"
         ),
+        examples=["./benchmarks.html"],
     )
 
     @classmethod

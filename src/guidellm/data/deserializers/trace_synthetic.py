@@ -140,26 +140,28 @@ def _load_trace_rows(
 
 @DataArgs.register("trace_synthetic")
 class TraceSyntheticDataArgs(DataArgs):
-    """
-    DataArgs for TraceSyntheticDatasetDeserializer.
-    """
+    """Model for synthetic trace dataset deserializer arguments."""
 
     kind: Literal["trace_synthetic"] = Field(
         default="trace_synthetic",
         description="Type identifier for the trace synthetic dataset deserializer.",
+        examples=["trace_synthetic"],
     )
     path: Path = Field(description="Path to the trace file.")
     timestamp_column: str = Field(
         default="timestamp",
         description="Column name for timestamps in the trace file.",
+        examples=["timestamp"],
     )
     prompt_tokens_column: str = Field(
         default="input_length",
         description="Column name for prompt token counts in the trace file.",
+        examples=["input_length"],
     )
     output_tokens_column: str = Field(
         default="output_length",
         description="Column name for output token counts in the trace file.",
+        examples=["output_length"],
     )
 
     @field_serializer("path")

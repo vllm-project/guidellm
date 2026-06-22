@@ -17,13 +17,12 @@ __all__ = [
 
 @DataFinalizerArgs.register("generative")
 class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
-    """
-    Configuration for the GenerativeRequestFinalizer.
-    """
+    """Model for generative request finalizer arguments."""
 
     kind: Literal["generative"] = Field(
         default="generative",
         description="Type identifier for the generative request finalizer.",
+        examples=["generative"],
     )
 
 
