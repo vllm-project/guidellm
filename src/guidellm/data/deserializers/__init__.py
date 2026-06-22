@@ -36,8 +36,8 @@ from .trace_common import (
     decode_prompt,
     generate_token_ids,
 )
+from .trace_minimal import MinimalTraceFormatArgs
 from .trace_mooncake import MooncakeTraceFormatArgs
-from .trace_synthetic import MinimalTraceFormatArgs
 
 __all__ = [
     "ArrowFileDatasetDeserializer",

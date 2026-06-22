@@ -101,7 +101,7 @@ def _get_from_kwargs(keys, kwargs) -> dict:
     return {k: v for k, v in kwargs.items() if k in keys}
 
 
-class TestTraceMooncakeDatasetDeserializer:
+class TestMooncakeTraceFormat:
     @pytest.fixture
     def deserializer(self) -> TraceDatasetDeserializer:
         return TraceDatasetDeserializer()

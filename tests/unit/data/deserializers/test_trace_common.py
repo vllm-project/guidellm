@@ -1,5 +1,5 @@
-from collections.abc import Callable
 import dataclasses
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -17,7 +17,7 @@ from guidellm.data.deserializers.trace_common import (
     decode_prompt,
     generate_token_ids,
 )
-from guidellm.data.deserializers.trace_synthetic import MinimalTraceFormatArgs
+from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 
 
 def _mock_processor() -> Mock:
@@ -50,7 +50,7 @@ def test_decode_prompt(token_ids, expected):
         (0, []),
         (1, [0]),
         (10, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
-        (1000, [i for i in range(1000)]),
+        (1000, list(range(1000))),
     ],
 )
 def test_generate_token_ids(token_count, expected):
@@ -94,7 +94,7 @@ def _get_from_kwargs(keys, kwargs) -> dict:
     return {k: v for k, v in kwargs.items() if k in keys}
 
 
-class TestTraceDatasetDeserializer():
+class TestTraceDatasetDeserializer:
     @pytest.fixture
     def deserializer(self) -> TraceDatasetDeserializer:
         return TraceDatasetDeserializer()
@@ -158,7 +158,7 @@ class TestTraceDatasetDeserializer():
         ds = self._deserialize(deserializer, trace)
         for i, row in enumerate(ds):
             assert row["relative_timestamp"] == i
-    
+
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):
         with pytest.raises(ValidationError, match="not a valid path"):
@@ -212,7 +212,7 @@ class TestTraceDatasetDeserializer():
         trace = _write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
             self._deserialize(deserializer, trace, **kwargs)
-    
+
     @pytest.mark.sanity
     def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):
         trace = _write_trace(

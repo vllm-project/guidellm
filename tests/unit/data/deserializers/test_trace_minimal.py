@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import dataclasses
-from pathlib import Path
 import random
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
-from guidellm.data.deserializers.trace_synthetic import MinimalTraceFormatArgs
+from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 
 
 def _mock_processor() -> Mock:
@@ -69,7 +69,7 @@ class TestMinimalTraceFormat:
             processor_factory=_mock_processor,
             random_seed=42,
         )
-    
+
     @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
         trace = _write_trace(
