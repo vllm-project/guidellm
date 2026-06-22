@@ -440,6 +440,8 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             values,
             title="Request Token Statistics (Completed Requests)",
         )
+
+    def print_request_latency_table(self, report: GenerativeBenchmarksReport):
         """
         Print request latency metrics table.
 
