@@ -117,6 +117,9 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "tool_result",
             "tool_output",
         ],
+        "turn_type_column": [
+            "turn_type",
+        ],
         "relative_timestamp_column": ["relative_timestamp"],
     }
     column_name_pattern: str = (

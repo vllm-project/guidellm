@@ -9,6 +9,13 @@ from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegist
 from guidellm.data.schemas import DataFinalizerArgs
 from guidellm.schemas import GenerationRequest, RequestSettings, UsageMetrics
 
+TurnType = Literal[
+    "standard",
+    "client_tool_call",
+    "tool_response_injection",
+    "server_tool_call",
+]
+
 __all__ = [
     "GenerativeRequestFinalizer",
     "GenerativeRequestFinalizerArgs",
@@ -23,6 +30,13 @@ class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
         default="generative",
         description="Type identifier for the generative request finalizer.",
     )
+    tool_call_mode: Literal["client", "server"] = Field(
+        default="client",
+        description="How to handle turns with tool definitions. "
+        "'client' (default) creates client_tool_call + injection turns. "
+        "'server' creates server_tool_call turns (no injection, "
+        "tools are server-managed).",
+    )
 
 
 @FinalizerRegistry.register("generative")
@@ -36,7 +50,26 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
         self.config = config
 
     def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
-        return [self.finalize_turn(item) for item in items]
+        results: list[GenerationRequest] = []
+        for item in items:
+            request = self.finalize_turn(item)
+            if request.turn_type == "client_tool_call":
+                # Split tool-calling turns: the tool_response_column moves
+                # to a separate injection turn that follows the tool call.
+                tool_response_data = request.columns.pop("tool_response_column", [])
+                injection_columns: dict[str, list[Any]] = {}
+                if tool_response_data:
+                    injection_columns["tool_response_column"] = tool_response_data
+                results.append(request)
+                results.append(
+                    GenerationRequest(
+                        columns=injection_columns,
+                        turn_type="tool_response_injection",
+                    )
+                )
+            else:
+                results.append(request)
+        return results
 
     def finalize_turn(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]
@@ -120,14 +153,30 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
                     input_metrics.audio_bytes or 0
                 ) + audio_bytes
 
-        # A turn expects a tool call if it has tool definitions.
-        # Which turns carry tools_column is controlled by the data pipeline
-        # (synthetic generator or dataset columns).
-        expects_tool_call = bool(columns.get("tools_column"))
+        # Resolve turn type with priority:
+        # 1. Explicit turn_type_column (from synthetic server_tool_call_turns
+        #    or hand-crafted datasets)
+        # 2. tools_column presence + tool_call_mode config
+        # 3. Default to "standard"
+        turn_type_values = columns.get("turn_type_column", [])
+        turn_type: TurnType
+        if turn_type_values and turn_type_values[0]:
+            turn_type = turn_type_values[0]
+        elif columns.get("tools_column"):
+            if self.config.tool_call_mode == "server":
+                turn_type = "server_tool_call"
+                # Tools are server-managed; strip data-provided definitions
+                # so the request handler doesn't inject them.
+                columns.pop("tools_column", None)
+                columns.pop("tool_response_column", None)
+            else:
+                turn_type = "client_tool_call"
+        else:
+            turn_type = "standard"
 
         return GenerationRequest(
             columns=columns,
-            expects_tool_call=expects_tool_call,
+            turn_type=turn_type,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
             settings=self._request_settings_from_columns(columns),

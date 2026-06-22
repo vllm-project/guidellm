@@ -111,9 +111,9 @@ class GenerationResponse(StandardBaseModel):
             # those are not valid.  Preserve tool_call_count=0 when the
             # request expected a tool call so errored-request statistics
             # still contribute to the tool call metrics table.
-            expected_tool_call = request.expects_tool_call
+            is_tool_call_turn = request.turn_type == "client_tool_call"
             request.output_metrics = UsageMetrics()
-            if expected_tool_call:
+            if is_tool_call_turn:
                 request.output_metrics.tool_call_count = 0
 
         base_input = request.input_metrics if prefer_response else self.input_metrics
@@ -138,7 +138,7 @@ class GenerationResponse(StandardBaseModel):
         # the request errored or the model produced none with ignore_continue),
         # set tool_call_count=0 so the metrics table still appears.
         if (
-            request.expects_tool_call
+            request.turn_type == "client_tool_call"
             and output_metrics_dict.get("tool_call_count") is None
         ):
             output_metrics_dict["tool_call_count"] = 0

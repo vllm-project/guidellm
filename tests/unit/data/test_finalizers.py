@@ -305,8 +305,9 @@ class TestFinalizerRegistry:
         assert isinstance(result, list)
 
 
-class TestFinalizerExpectsToolCall:
-    """Verify GenerativeRequestFinalizer sets expects_tool_call correctly.
+class TestFinalizerTurnType:
+    """Verify GenerativeRequestFinalizer sets turn_type correctly
+    and splits tool-calling turns into tool_call + injection pairs.
 
     ## WRITTEN BY AI ##
     """
@@ -319,23 +320,32 @@ class TestFinalizerExpectsToolCall:
         return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     @pytest.mark.smoke
-    def test_expects_tool_call_matches_tools_column_presence(self, finalizer):
-        """expects_tool_call is True only on turns that have tools_column.
+    def test_tool_turn_produces_tool_call_plus_injection(self, finalizer):
+        """A turn with tools_column produces a tool_call request followed
+        by a tool_response_injection request.
 
         ## WRITTEN BY AI ##
         """
         items = [
-            {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
+            {
+                "text_column": ["hello"],
+                "tools_column": ['[{"type": "function"}]'],
+                "tool_response_column": ['{"status": "ok"}'],
+            },
             {"text_column": ["world"]},
         ]
         results = finalizer(items)
 
-        assert results[0].expects_tool_call is True
-        assert results[1].expects_tool_call is False
+        assert len(results) == 3
+        assert results[0].turn_type == "client_tool_call"
+        assert "tool_response_column" not in results[0].columns
+        assert results[1].turn_type == "tool_response_injection"
+        assert results[1].columns["tool_response_column"] == ['{"status": "ok"}']
+        assert results[2].turn_type == "standard"
 
     @pytest.mark.smoke
-    def test_all_turns_with_tools_all_expect_tool_call(self, finalizer):
-        """When every turn has tools_column, every turn expects a tool call.
+    def test_all_turns_with_tools_all_produce_pairs(self, finalizer):
+        """When every turn has tools_column, each produces a pair.
 
         ## WRITTEN BY AI ##
         """
@@ -345,12 +355,15 @@ class TestFinalizerExpectsToolCall:
         ]
         results = finalizer(items)
 
-        assert results[0].expects_tool_call is True
-        assert results[1].expects_tool_call is True
+        assert len(results) == 4
+        assert results[0].turn_type == "client_tool_call"
+        assert results[1].turn_type == "tool_response_injection"
+        assert results[2].turn_type == "client_tool_call"
+        assert results[3].turn_type == "tool_response_injection"
 
     @pytest.mark.sanity
-    def test_expects_tool_call_false_without_tools(self, finalizer):
-        """Turns without tools_column have expects_tool_call=False.
+    def test_standard_turns_without_tools(self, finalizer):
+        """Turns without tools_column have turn_type='standard' and no split.
 
         ## WRITTEN BY AI ##
         """
@@ -360,12 +373,13 @@ class TestFinalizerExpectsToolCall:
         ]
         results = finalizer(items)
 
-        assert results[0].expects_tool_call is False
-        assert results[1].expects_tool_call is False
+        assert len(results) == 2
+        assert results[0].turn_type == "standard"
+        assert results[1].turn_type == "standard"
 
     @pytest.mark.sanity
-    def test_single_turn_with_tools_expects_tool_call(self, finalizer):
-        """A single-turn conversation with tools has expects_tool_call=True.
+    def test_single_turn_with_tools_produces_pair(self, finalizer):
+        """A single-turn conversation with tools produces a pair.
 
         ## WRITTEN BY AI ##
         """
@@ -373,7 +387,242 @@ class TestFinalizerExpectsToolCall:
             {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
         ]
         results = finalizer(items)
-        assert results[0].expects_tool_call is True
+        assert len(results) == 2
+        assert results[0].turn_type == "client_tool_call"
+        assert results[1].turn_type == "tool_response_injection"
+
+
+class TestFinalizerTurnTypeColumn:
+    """Verify turn_type_column overrides automatic turn type inference.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def finalizer(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+
+    @pytest.mark.smoke
+    def test_turn_type_column_sets_server_tool_call(self, finalizer):
+        """turn_type_column="server_tool_call" overrides default inference.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {
+                "text_column": ["hello"],
+                "turn_type_column": ["server_tool_call"],
+            },
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 1
+        assert results[0].turn_type == "server_tool_call"
+
+    @pytest.mark.smoke
+    def test_turn_type_column_takes_priority_over_tools_column(self, finalizer):
+        """turn_type_column takes priority even when tools_column is present.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {
+                "text_column": ["hello"],
+                "tools_column": ['[{"type": "function"}]'],
+                "turn_type_column": ["server_tool_call"],
+            },
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 1
+        assert results[0].turn_type == "server_tool_call"
+
+    @pytest.mark.sanity
+    def test_server_tool_call_no_injection_turn(self, finalizer):
+        """server_tool_call turns do not produce injection turns.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {
+                "text_column": ["hello"],
+                "turn_type_column": ["server_tool_call"],
+            },
+            {
+                "text_column": ["world"],
+            },
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 2
+        assert results[0].turn_type == "server_tool_call"
+        assert results[1].turn_type == "standard"
+
+    @pytest.mark.sanity
+    def test_empty_turn_type_column_falls_through(self, finalizer):
+        """Empty turn_type_column falls back to tools_column inference.
+
+        ## WRITTEN BY AI ##
+        """
+        items = [
+            {
+                "text_column": ["hello"],
+                "turn_type_column": [],
+                "tools_column": ['[{"type": "function"}]'],
+            },
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 2
+        assert results[0].turn_type == "client_tool_call"
+        assert results[1].turn_type == "tool_response_injection"
+
+
+class TestFinalizerToolCallMode:
+    """Verify tool_call_mode config controls turn type for tools_column turns.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_tool_call_mode_client_default(self):
+        """Default tool_call_mode is 'client'.
+
+        ## WRITTEN BY AI ##
+        """
+        config = GenerativeRequestFinalizerArgs()
+        assert config.tool_call_mode == "client"
+
+    @pytest.mark.smoke
+    def test_tool_call_mode_client_produces_client_tool_call(self):
+        """tool_call_mode='client' produces client_tool_call + injection.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(
+            GenerativeRequestFinalizerArgs(tool_call_mode="client")
+        )
+        items = [
+            {
+                "text_column": ["hello"],
+                "tools_column": ['[{"type": "function"}]'],
+                "tool_response_column": ['{"status": "ok"}'],
+            },
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 2
+        assert results[0].turn_type == "client_tool_call"
+        assert results[1].turn_type == "tool_response_injection"
+
+    @pytest.mark.smoke
+    def test_tool_call_mode_server_produces_server_tool_call(self):
+        """tool_call_mode='server' produces server_tool_call without injection.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(
+            GenerativeRequestFinalizerArgs(tool_call_mode="server")
+        )
+        items = [
+            {
+                "text_column": ["hello"],
+                "tools_column": ['[{"type": "function"}]'],
+                "tool_response_column": ['{"status": "ok"}'],
+            },
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 1
+        assert results[0].turn_type == "server_tool_call"
+
+    @pytest.mark.sanity
+    def test_tool_call_mode_server_strips_tool_columns(self):
+        """tool_call_mode='server' strips tools_column and tool_response_column.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(
+            GenerativeRequestFinalizerArgs(tool_call_mode="server")
+        )
+        items = [
+            {
+                "text_column": ["hello"],
+                "tools_column": ['[{"type": "function"}]'],
+                "tool_response_column": ['{"status": "ok"}'],
+            },
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 1
+        assert "tools_column" not in results[0].columns
+        assert "tool_response_column" not in results[0].columns
+
+    @pytest.mark.sanity
+    def test_tool_call_mode_server_no_effect_on_standard_turns(self):
+        """tool_call_mode='server' has no effect on turns without tools_column.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(
+            GenerativeRequestFinalizerArgs(tool_call_mode="server")
+        )
+        items = [
+            {"text_column": ["hello"]},
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 1
+        assert results[0].turn_type == "standard"
+
+    @pytest.mark.sanity
+    def test_tool_call_mode_server_mixed_turns(self):
+        """tool_call_mode='server' with mixed tool/non-tool turns.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(
+            GenerativeRequestFinalizerArgs(tool_call_mode="server")
+        )
+        items = [
+            {
+                "text_column": ["tool turn"],
+                "tools_column": ['[{"type": "function"}]'],
+            },
+            {"text_column": ["standard turn"]},
+        ]
+        results = finalizer(items)
+
+        assert len(results) == 2
+        assert results[0].turn_type == "server_tool_call"
+        assert results[1].turn_type == "standard"
+
+    @pytest.mark.sanity
+    def test_turn_type_column_overrides_tool_call_mode(self):
+        """turn_type_column takes priority over tool_call_mode config.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(
+            GenerativeRequestFinalizerArgs(tool_call_mode="server")
+        )
+        items = [
+            {
+                "text_column": ["hello"],
+                "tools_column": ['[{"type": "function"}]'],
+                "turn_type_column": ["client_tool_call"],
+            },
+        ]
+        results = finalizer(items)
+
+        # turn_type_column says client_tool_call, so it should create
+        # a client_tool_call + injection pair despite server mode
+        assert len(results) == 2
+        assert results[0].turn_type == "client_tool_call"
+        assert results[1].turn_type == "tool_response_injection"
 
 
 class TestGenerativeRequestFinalizerRequestSettings:

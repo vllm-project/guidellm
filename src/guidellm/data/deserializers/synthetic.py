@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import math
 from collections.abc import Callable, Iterator
 from random import Random
@@ -126,15 +125,19 @@ class SyntheticTextDataArgs(DataArgs):
         examples=[30],
     )
     turns: int = Field(
-        description="The number of turns in the conversation.",
+        description="The number of user turns in the conversation. "
+        "Each tool-calling user turn automatically generates an additional "
+        "tool_response_injection request, so the total request count per "
+        "conversation is turns + len(tool_call_turns).",
         gt=0,
         default=1,
     )
     tool_call_turns: list[int] = Field(
-        description="Which turns should include tool definitions and expect "
-        "tool-call responses. An int N means 'the first N turns'; a list "
-        "of ints specifies explicit 0-based turn indices (e.g. [0, 2]). "
-        "Normalized to a sorted list after validation. "
+        description="Which user turns should include tool definitions and "
+        "expect tool-call responses. Indices are 0-based into the user "
+        "turns (not the expanded request list). An int N means 'the "
+        "first N user turns'; a list of ints specifies explicit indices "
+        "(e.g. [0, 2]). Normalized to a sorted list after validation. "
         "When 0 or [] (default), no tool calling is configured.",
         default_factory=list,
         examples=[1, [0, 1]],
@@ -185,6 +188,16 @@ class SyntheticTextDataArgs(DataArgs):
         default=None,
         examples=[20],
     )
+    server_tool_call_turns: list[int] = Field(
+        description="Which user turns use server-side tool calling. "
+        "These turns are marked as server_tool_call so tool_choice='none' "
+        "is not applied, letting the server use its configured tools. "
+        "No injection turn is created. Must not overlap with "
+        "tool_call_turns. Indices are 0-based into user turns. "
+        "An int N means 'the first N user turns'; a list of ints "
+        "specifies explicit indices (e.g. [0, 2]).",
+        default_factory=list,
+    )
 
     prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
         description="Buckets for the prefix tokens distribution.",
@@ -216,13 +229,19 @@ class SyntheticTextDataArgs(DataArgs):
 
         return self
 
-    @field_validator("tool_call_turns", mode="before")
+    @field_validator("tool_call_turns", "server_tool_call_turns", mode="before")
     @classmethod
-    def _coerce_tool_call_turns(cls, v: int | list[int]) -> list[int]:
-        """Convert an int N to [0, ..., N-1]; pass lists through sorted."""
+    def _coerce_tool_call_turns(cls, v: int | str | list[int]) -> list[int]:
+        """Convert an int N to [0, ..., N-1]; pass lists through sorted.
+
+        The string ``"all"`` is converted to the sentinel ``[-1]`` which is
+        expanded to all turn indices by :meth:`_validate_tool_call_turn_indices`
+        once ``self.turns`` is available.
+        """
         if isinstance(v, str):
-            with contextlib.suppress(json.JSONDecodeError, ValueError):
-                v = json.loads(v)
+            if v != "all":
+                raise ValueError(f"tool_call_turns string must be 'all', got {v!r}")
+            return [-1]
         if isinstance(v, int):
             if v < 0:
                 raise ValueError("tool_call_turns int must be >= 0")
@@ -233,12 +252,33 @@ class SyntheticTextDataArgs(DataArgs):
 
     @model_validator(mode="after")
     def _validate_tool_call_turn_indices(self) -> SyntheticTextDataArgs:
-        """Ensure all tool_call_turns indices are within [0, turns)."""
+        """Ensure all tool call turn indices are within [0, turns) and don't overlap.
+
+        The sentinel ``[-1]`` (produced by ``"all"``) is expanded to
+        ``list(range(self.turns))`` before validation.
+        """
+        # Expand "all" sentinel for both fields
+        if self.tool_call_turns == [-1]:
+            self.tool_call_turns = list(range(self.turns))
+        if self.server_tool_call_turns == [-1]:
+            self.server_tool_call_turns = list(range(self.turns))
+
         for idx in self.tool_call_turns:
             if idx < 0 or idx >= self.turns:
                 raise ValueError(
                     f"tool_call_turns index {idx} out of range [0, {self.turns})"
                 )
+        for idx in self.server_tool_call_turns:
+            if idx < 0 or idx >= self.turns:
+                raise ValueError(
+                    f"server_tool_call_turns index {idx} out of range [0, {self.turns})"
+                )
+        overlap = set(self.tool_call_turns) & set(self.server_tool_call_turns)
+        if overlap:
+            raise ValueError(
+                f"tool_call_turns and server_tool_call_turns must not overlap; "
+                f"overlapping indices: {sorted(overlap)}"
+            )
         return self
 
 
@@ -291,8 +331,9 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         prefix_iter = self._create_prefix_iter(faker, rand)
         samples_count = 0
 
-        # Resolve tool definitions for tool-call turns
+        # Resolve tool definitions for client-side tool-call turns
         tool_call_turns_set = set(self.config.tool_call_turns)
+        server_tool_call_turns_set = set(self.config.server_tool_call_turns)
         tools_defs: list[dict[str, Any]] | None = None
         if tool_call_turns_set:
             tools_defs = self.config.tools or DEFAULT_SYNTHETIC_TOOLS
@@ -341,6 +382,9 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                             settings.default_synthetic_tool_response
                         )
 
+                if turn in server_tool_call_turns_set:
+                    row[f"turn_type_{turn}"] = "server_tool_call"
+
                 samples_count += 1
 
             yield samples_count, row
@@ -363,6 +407,9 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 # to keep the HuggingFace Features schema simple.
                 features[f"tools_{i}"] = Value("large_string")
                 features[f"tool_response_{i}"] = Value("large_string")
+
+            if i in set(self.config.server_tool_call_turns):
+                features[f"turn_type_{i}"] = Value("string")
 
         return Features(features)
 

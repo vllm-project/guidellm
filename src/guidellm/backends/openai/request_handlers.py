@@ -63,7 +63,6 @@ class OpenAIRequestHandler(Protocol):
     def format(
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
@@ -71,7 +70,8 @@ class OpenAIRequestHandler(Protocol):
         Format the generation request into the appropriate structure for
         the backend API.
 
-        :param request: The generation request to format
+        :param data: The generation request to format
+        :param history: Prior (request, response) pairs in the conversation
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
@@ -435,24 +435,16 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
     def format(  # noqa: C901
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
         """
         Format the text completion generation request into the appropriate structure.
 
-        :param request: The generation request to format
+        :param data: The generation request to format
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
-        prev_requests: list[GenerationRequestArguments] = []
-        if history:
-            # NOTE: Does not include history to avoid infinite recursion
-            prev_requests = [
-                self.format(req, response=res, **kwargs) for req, res in history
-            ]
-
         arguments: GenerationRequestArguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works better setting this field here
 
@@ -482,21 +474,20 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             arguments.model_combine(kwargs["extras"])
 
         ## Build prompt ##
-        prompts = []
+        prompts: list[str] = []
 
-        # Include previous requests
-        for req in prev_requests:
-            if req.body and "prompt" in req.body:
-                prompts.append(req.body["prompt"])
+        # Include history: previous prompts and their responses
+        if history:
+            for req, res in history:
+                prompts.extend(req.columns.get("prefix_column", []))
+                prompts.extend(req.columns.get("text_column", []))
+                if res and res.text:
+                    prompts.append(res.text)
 
         # Include prefix
         prompts.extend(data.columns.get("prefix_column", []))
         # Include text column
         prompts.extend(data.columns.get("text_column", []))
-
-        # Include the response to the current prompt
-        if response and response.text:
-            prompts.append(response.text)
 
         if prompts:
             arguments.body["prompt"] = " ".join(prompts)
@@ -775,12 +766,15 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         messages: list[dict[str, Any]] = []
         for idx, tc in enumerate(tool_calls):
+            # The OpenAI spec allows the server to do multiple tool calls.
+            # If the quantity of calls exceeds those in the dataset, inject the
+            # default synthetic tool response.
             raw_content = (
                 tool_response_columns[idx]
                 if idx < len(tool_response_columns)
                 else settings.default_synthetic_tool_response
             )
-            # orjson.dumps returns bytes; ensure content is a string.
+            # The project JSON utils can return bytes or string; ensure string.
             content = (
                 raw_content.decode("utf-8")
                 if isinstance(raw_content, bytes)
@@ -817,9 +811,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if tools_column:
             tools_value = tools_column[0]
             # JSON-serialized tool definitions (e.g. from synthetic data
-            # generators that store tools as strings for HuggingFace
-            # Features compatibility).  orjson produces bytes; stdlib
-            # json produces str.
+            # generators that store tools as strings for HuggingFace Features
+            # compatibility). The project JSON utils can return bytes or str.
             if isinstance(tools_value, str | bytes):
                 tools_value = json.loads(tools_value)
             if isinstance(tools_value, list):
@@ -833,9 +826,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             body.pop("tool_choice", None)
             return
 
-        # Override tool_choice to "none" on turns that don't expect tool calls,
-        # so the model produces a plain text response instead.
-        if not data.expects_tool_call:
+        # Standard and injection turns should not produce tool calls even
+        # when tool definitions are in the body (e.g. from extras).
+        # Future server_tool_call turns intentionally skip this override
+        # so the server remains free to use tools.
+        if data.turn_type in ("standard", "tool_response_injection"):
             body["tool_choice"] = "none"
 
         # Tool calling requires the model to stop naturally after producing
@@ -843,16 +838,123 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # break the server's constrained decoding grammar.
         # max_completion_tokens would truncate output mid-JSON and corrupt
         # the arguments sent in conversation history on follow-up turns.
-        if data.expects_tool_call:
+        if data.turn_type == "client_tool_call":
             body.pop("ignore_eos", None)
             body.pop("stop", None)
             body.pop("max_completion_tokens", None)
             body.pop("max_tokens", None)
 
+    def _build_history_messages(
+        self,
+        history: HistoryT[GenerationRequest, GenerationResponse],
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """Build the messages array from completed conversation turns.
+
+        :param history: Completed (request, response) pairs.
+        :param kwargs: Forwarded config (``multiturn_reasoning``, etc.).
+        :return: Flat list of message dicts ready to extend into the body.
+        """
+        messages: list[dict[str, Any]] = []
+        for idx, (req, res) in enumerate(history):
+            # Passes in the prior response so that past data can be included,
+            # like for tool calling.
+            prior_response = history[idx - 1][1] if idx > 0 else None
+            messages.extend(
+                self._build_turn_messages(req, res, prior_response, **kwargs)
+            )
+        return messages
+
+    def _build_turn_messages(  # noqa: C901
+        self,
+        req: GenerationRequest,
+        res: GenerationResponse | None,
+        prior_response: GenerationResponse | None,
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """Build messages for a single history turn.
+
+        Dispatches on ``req.turn_type``:
+
+        * ``"client_tool_call"``: user content + assistant tool_calls (no tool
+          response messages — those come from the following injection turn).
+        * ``"tool_response_injection"``: tool-role messages built from
+          ``prior_response.tool_calls`` IDs + this turn's
+          ``tool_response_column``, then the assistant text response.
+        * ``"standard"``: user content + assistant text response.
+
+        :param req: The request for this history turn.
+        :param res: The response the server gave for this turn.
+        :param prior_response: The response from the immediately preceding
+            history turn (used by injection turns for ``tool_call_id``s).
+        :param kwargs: Forwarded config (``multiturn_reasoning``, etc.).
+        :return: List of message dicts for this turn.
+        """
+        messages: list[dict[str, Any]] = []
+        multiturn_reasoning = kwargs.get("multiturn_reasoning", False)
+
+        if req.turn_type == "tool_response_injection":
+            # Injection turn: tool-role messages then assistant text.
+            if prior_response and prior_response.tool_calls:
+                tool_response_columns = req.columns.get("tool_response_column", [])
+                messages.extend(
+                    self._build_tool_response_messages(
+                        prior_response.tool_calls, tool_response_columns
+                    )
+                )
+            if res and res.text:
+                wrapped = _wrap_reasoning(res.reasoning_text, multiturn_reasoning)
+                content = res.text
+                if wrapped:
+                    content = wrapped + content
+                messages.append({"role": "assistant", "content": content})
+        else:
+            # Standard or tool_call turn: system + user content.
+            prefix = " ".join(req.columns.get("prefix_column", []))
+            if prefix:
+                messages.append({"role": "system", "content": prefix})
+
+            prompts = [
+                self._format_prompts(req.columns.get(col, []), col)
+                for col in (
+                    "text_column",
+                    "image_column",
+                    "video_column",
+                    "audio_column",
+                )
+            ]
+            user_content = list(roundrobin(*prompts))
+            if user_content:
+                messages.append({"role": "user", "content": user_content})
+
+            # Assistant response for history replay.
+            wrapped = _wrap_reasoning(
+                res.reasoning_text if res else None, multiturn_reasoning
+            )
+            if res and res.tool_calls:
+                # Tool-call turn: assistant with tool_calls only.
+                # Tool response messages come from the injection turn.
+                assistant_content = res.text
+                if wrapped:
+                    assistant_content = wrapped + (assistant_content or "")
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_content,
+                        "tool_calls": [tc.model_dump() for tc in res.tool_calls],
+                    }
+                )
+            elif res and (res.text or wrapped):
+                content = res.text or ""
+                if wrapped:
+                    content = wrapped + content
+                messages.append({"role": "assistant", "content": content})
+
+        return messages
+
     def format(  # noqa: C901, PLR0912, PLR0915
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
@@ -860,18 +962,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Format the chat completion generation request into the appropriate structure.
 
         :param data: The generation request to format
-        :param response: Optional prior response for multi-turn history
         :param history: Prior (request, response) pairs in the conversation
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
-        prev_requests: list[GenerationRequestArguments] = []
-        if history:
-            # NOTE: Does not include history to avoid infinite recursion
-            prev_requests = [
-                self.format(req, response=res, **kwargs) for req, res in history
-            ]
-
         arguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works best with body assigned here
 
@@ -904,60 +998,43 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if kwargs.get("extras"):
             arguments.model_combine(kwargs["extras"])
 
-        # Build messages
-        arguments.body["messages"] = []
-
-        # Include previous requests
-        for req in prev_requests:
-            if req.body and "messages" in req.body:
-                arguments.body["messages"].extend(req.body["messages"])
-
-        # Build the system prompt
-        prefix = " ".join(data.columns.get("prefix_column", []))
-        if prefix:
-            arguments.body["messages"].append({"role": "system", "content": prefix})
-
-        # Build each prompt then combine into a single user message
-        prompts = [
-            self._format_prompts(data.columns.get(col, []), col)
-            for col in ("text_column", "image_column", "video_column", "audio_column")
-        ]
-        user_content = list(roundrobin(*prompts))
-        if user_content:
-            arguments.body["messages"].append({"role": "user", "content": user_content})
-
-        # Append the prior assistant response to the message history.
-        # For tool call responses, include the assistant's tool_calls and
-        # synthetic tool result messages so the model sees the full
-        # multi-turn exchange.  For plain text responses, just add content.
-        # When multiturn_reasoning is enabled, prepend wrapped reasoning
-        # text to the assistant content so the model sees its own CoT.
-        multiturn_reasoning = kwargs.get("multiturn_reasoning", False)
-        wrapped_reasoning = _wrap_reasoning(
-            response.reasoning_text if response else None, multiturn_reasoning
+        # Build messages from history
+        arguments.body["messages"] = (
+            self._build_history_messages(history, **kwargs) if history else []
         )
-        if response and response.tool_calls:
-            assistant_content = response.text
-            if wrapped_reasoning:
-                assistant_content = wrapped_reasoning + (assistant_content or "")
-            arguments.body["messages"].append(
-                {
-                    "role": "assistant",
-                    "content": assistant_content,
-                    "tool_calls": [tc.model_dump() for tc in response.tool_calls],
-                }
-            )
-            tool_response_columns = data.columns.get("tool_response_column", [])
-            arguments.body["messages"].extend(
-                self._build_tool_response_messages(
-                    response.tool_calls, tool_response_columns
+
+        # Build the current turn's messages
+        if data.turn_type == "tool_response_injection":
+            # Injection turn: send tool results back to the server.
+            # tool_call_ids come from the last history entry's response.
+            prior_response = history[-1][1] if history else None
+            if prior_response and prior_response.tool_calls:
+                tool_response_columns = data.columns.get("tool_response_column", [])
+                arguments.body["messages"].extend(
+                    self._build_tool_response_messages(
+                        prior_response.tool_calls, tool_response_columns
+                    )
                 )
-            )
-        elif response and (response.text or wrapped_reasoning):
-            content = response.text or ""
-            if wrapped_reasoning:
-                content = wrapped_reasoning + content
-            arguments.body["messages"].append({"role": "assistant", "content": content})
+        else:
+            # Standard or tool_call turn: system prompt + user content.
+            prefix = " ".join(data.columns.get("prefix_column", []))
+            if prefix:
+                arguments.body["messages"].append({"role": "system", "content": prefix})
+
+            prompts = [
+                self._format_prompts(data.columns.get(col, []), col)
+                for col in (
+                    "text_column",
+                    "image_column",
+                    "video_column",
+                    "audio_column",
+                )
+            ]
+            user_content = list(roundrobin(*prompts))
+            if user_content:
+                arguments.body["messages"].append(
+                    {"role": "user", "content": user_content}
+                )
 
         # Inject tool definitions and apply tool-call-specific overrides.
         self._apply_tool_call_overrides(arguments.body, data)
@@ -1143,7 +1220,6 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
     def format(
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:  # noqa: C901
@@ -1151,11 +1227,11 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         Format the audio transcription generation request into the
         appropriate structure.
 
-        :param request: The generation request to format
+        :param data: The generation request to format
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
         """
-        if history or response:
+        if history:
             raise ValueError("AudioRequestHandler does not support multiturn.")
 
         arguments = GenerationRequestArguments(files={})
@@ -1448,74 +1524,128 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 )
         return formatted_data
 
-    def _build_input_items(
+    def _build_history_input_items(
         self,
-        data: GenerationRequest,
-        response: GenerationResponse | None,
-        prev_requests: list[GenerationRequestArguments],
-        *,
-        multiturn_reasoning: bool | str = False,
+        history: HistoryT[GenerationRequest, GenerationResponse],
+        **kwargs,
     ) -> list[dict[str, Any]]:
-        """Build the ``input`` array for the Responses API.
+        """Build the ``input`` array from completed conversation turns.
 
-        The Responses API uses a flat ``input`` list of role-tagged message
-        dicts (with nested content parts like ``input_text``, ``input_image``)
-        instead of chat completions' ``messages`` array.
+        Iterates through history with neighbor access so that injection
+        turns can pull ``tool_call_id``s from the preceding turn's response.
 
-        :param multiturn_reasoning: When truthy, prepend wrapped reasoning text
-            to assistant content in the conversation history.
+        :param history: Completed (request, response) pairs.
+        :param kwargs: Forwarded config (``multiturn_reasoning``, etc.).
+        :return: Flat list of input item dicts.
         """
-        input_items: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
+        for idx, (req, res) in enumerate(history):
+            prior_response = history[idx - 1][1] if idx > 0 else None
+            items.extend(
+                self._build_turn_input_items(req, res, prior_response, **kwargs)
+            )
+        return items
 
-        for req in prev_requests:
-            if req.body and "input" in req.body:
-                prev_input = req.body["input"]
-                if isinstance(prev_input, list):
-                    input_items.extend(prev_input)
+    def _build_turn_input_items(  # noqa: C901
+        self,
+        req: GenerationRequest,
+        res: GenerationResponse | None,
+        prior_response: GenerationResponse | None,
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """Build input items for a single history turn.
 
-        prompts = [
-            self._format_prompts(data.columns.get(col, []), col)
-            for col in ("text_column", "image_column", "video_column", "audio_column")
-        ]
-        content_parts = list(roundrobin(*prompts))
-        if content_parts:
-            input_items.append({"role": "user", "content": content_parts})
+        Dispatches on ``req.turn_type`` analogously to the chat completions
+        handler's ``_build_turn_messages``.
 
-        # Replay the prior assistant response. For tool call responses,
-        # include the function_call items and synthetic function_call_output
-        # items so the model sees the full multi-turn exchange.
-        wrapped_reasoning = _wrap_reasoning(
-            response.reasoning_text if response else None, multiturn_reasoning
-        )
-        if response and response.tool_calls:
-            for tc in response.tool_calls:
-                input_items.append(self._tool_call_to_responses_item(tc))
-            tool_response_columns = data.columns.get("tool_response_column", [])
-            for tc_idx, tc in enumerate(response.tool_calls):
-                raw_content = (
-                    tool_response_columns[tc_idx]
-                    if tc_idx < len(tool_response_columns)
-                    else settings.default_synthetic_tool_response
+        :param req: The request for this history turn.
+        :param res: The response the server gave for this turn.
+        :param prior_response: Response from the preceding history turn
+            (used by injection turns for ``call_id``s).
+        :param kwargs: Forwarded config (``multiturn_reasoning``, etc.).
+        :return: List of input item dicts for this turn.
+        """
+        items: list[dict[str, Any]] = []
+        multiturn_reasoning = kwargs.get("multiturn_reasoning", False)
+
+        if req.turn_type == "tool_response_injection":
+            # Injection turn: function_call_output items then assistant text.
+            if prior_response and prior_response.tool_calls:
+                items.extend(
+                    self._build_function_call_outputs(
+                        prior_response.tool_calls,
+                        req.columns.get("tool_response_column", []),
+                    )
                 )
-                output_content = (
-                    raw_content.decode("utf-8")
-                    if isinstance(raw_content, bytes)
-                    else raw_content
+            if res and res.text:
+                wrapped = _wrap_reasoning(res.reasoning_text, multiturn_reasoning)
+                content = res.text
+                if wrapped:
+                    content = wrapped + content
+                items.append({"role": "assistant", "content": content})
+        else:
+            # Standard or tool_call turn: user content.
+            prompts = [
+                self._format_prompts(req.columns.get(col, []), col)
+                for col in (
+                    "text_column",
+                    "image_column",
+                    "video_column",
+                    "audio_column",
                 )
-                input_items.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": tc.id,
-                        "output": output_content,
-                    }
-                )
-        elif response and (response.text or wrapped_reasoning):
-            content = response.text or ""
-            if wrapped_reasoning:
-                content = wrapped_reasoning + content
-            input_items.append({"role": "assistant", "content": content})
+            ]
+            content_parts = list(roundrobin(*prompts))
+            if content_parts:
+                items.append({"role": "user", "content": content_parts})
 
-        return input_items
+            wrapped = _wrap_reasoning(
+                res.reasoning_text if res else None, multiturn_reasoning
+            )
+            if res and res.tool_calls:
+                # Tool-call turn: function_call items only.
+                # function_call_output items come from the injection turn.
+                for tc in res.tool_calls:
+                    items.append(self._tool_call_to_responses_item(tc))
+            elif res and (res.text or wrapped):
+                content = res.text or ""
+                if wrapped:
+                    content = wrapped + content
+                items.append({"role": "assistant", "content": content})
+
+        return items
+
+    @staticmethod
+    def _build_function_call_outputs(
+        tool_calls: list[ToolCall],
+        tool_response_columns: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Build ``function_call_output`` items from tool calls and response data.
+
+        :param tool_calls: Tool call objects supplying ``call_id``s.
+        :param tool_response_columns: Per-call response content from the
+            dataset, falling back to the default synthetic response.
+        :return: List of ``function_call_output`` dicts.
+        """
+        outputs: list[dict[str, Any]] = []
+        for idx, tc in enumerate(tool_calls):
+            raw_content = (
+                tool_response_columns[idx]
+                if idx < len(tool_response_columns)
+                else settings.default_synthetic_tool_response
+            )
+            content = (
+                raw_content.decode("utf-8")
+                if isinstance(raw_content, bytes)
+                else raw_content
+            )
+            outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": tc.id,
+                    "output": content,
+                }
+            )
+        return outputs
 
     @staticmethod
     def _apply_tool_call_overrides(
@@ -1552,32 +1682,25 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             body.pop("tool_choice", None)
             return
 
-        if not data.expects_tool_call:
+        if data.turn_type in ("standard", "tool_response_injection"):
             body["tool_choice"] = "none"
 
         # Tool calling requires the model to stop naturally after producing
         # valid JSON; ignore_eos would force generation past that point.
         # max_output_tokens would truncate output mid-JSON and corrupt
         # the arguments sent in conversation history on follow-up turns.
-        if data.expects_tool_call:
+        if data.turn_type == "client_tool_call":
             body.pop("ignore_eos", None)
             body.pop("stop", None)
             body.pop("max_output_tokens", None)
 
-    def format(
+    def format(  # noqa: C901
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
     ) -> GenerationRequestArguments:
         use_server_history = kwargs.get("server_history") and history
-
-        prev_requests: list[GenerationRequestArguments] = []
-        if history and not use_server_history:
-            prev_requests = [
-                self.format(req, response=res, **kwargs) for req, res in history
-            ]
 
         arguments = GenerationRequestArguments()
         arguments.body = {}
@@ -1611,12 +1734,39 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         if prefix:
             arguments.body["instructions"] = prefix
 
-        arguments.body["input"] = self._build_input_items(
-            data,
-            response,
-            prev_requests,
-            multiturn_reasoning=kwargs.get("multiturn_reasoning", False),
-        )
+        # Build input items from history
+        input_items: list[dict[str, Any]] = []
+        if history and not use_server_history:
+            input_items = self._build_history_input_items(history, **kwargs)
+
+        # Build the current turn's input items.
+        # When server_history is active, _apply_server_history handles
+        # function_call_output injection, so skip it here.
+        if data.turn_type == "tool_response_injection" and not use_server_history:
+            prior_response = history[-1][1] if history else None
+            if prior_response and prior_response.tool_calls:
+                input_items.extend(
+                    self._build_function_call_outputs(
+                        prior_response.tool_calls,
+                        data.columns.get("tool_response_column", []),
+                    )
+                )
+        elif data.turn_type != "tool_response_injection":
+            # Standard or tool_call turn: user content.
+            prompts = [
+                self._format_prompts(data.columns.get(col, []), col)
+                for col in (
+                    "text_column",
+                    "image_column",
+                    "video_column",
+                    "audio_column",
+                )
+            ]
+            content_parts = list(roundrobin(*prompts))
+            if content_parts:
+                input_items.append({"role": "user", "content": content_parts})
+
+        arguments.body["input"] = input_items
 
         # Server-side history: reference the previous response by ID and
         # include any tool outputs the server cannot know (tool execution
@@ -1624,7 +1774,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         # response needs function_call_output items; subsequent turns have
         # no tool_calls on the last response so this branch is skipped.
         if use_server_history:
-            self._apply_server_history(arguments.body, history)  # type: ignore[arg-type]
+            self._apply_server_history(arguments.body, history, data)  # type: ignore[arg-type]
 
         self._apply_tool_call_overrides(arguments.body, data)
 
@@ -1760,67 +1910,37 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         self,
         body: dict[str, Any],
         history: HistoryT[GenerationRequest, GenerationResponse],
+        current_request: GenerationRequest,
     ) -> None:
         """Apply server-side history fields to the request body.
 
-        Sets ``previous_response_id`` from the last response in history and
-        prepends ``function_call_output`` items when the last response
-        contained tool calls (since tool execution is client-side and the
-        server cannot infer those results).
+        Sets ``previous_response_id`` from the last response in history.
+        For injection turns, prepends ``function_call_output`` items using
+        the injection turn's ``tool_response_column`` and the preceding
+        response's tool call IDs.
 
         :param body: The mutable request body dict being built.
         :param history: The conversation history up to this point.
+        :param current_request: The current request being formatted.
         """
-        last_request, last_response = history[-1]
+        _, last_response = history[-1]
         if last_response and last_response.response_id:
             body["previous_response_id"] = last_response.response_id
-        # Tool call responses need to be manually added from history because they are
-        # stored on the prior request, rather than the current request.
-        if last_response and last_response.tool_calls:
+        # For injection turns the tool_response_column lives on the
+        # current request and the tool_call IDs come from the last
+        # history entry's response.
+        if (
+            current_request.turn_type == "tool_response_injection"
+            and last_response
+            and last_response.tool_calls
+        ):
             body["input"] = (
-                self._build_tool_outputs_from_history(last_request, last_response)
+                self._build_function_call_outputs(
+                    last_response.tool_calls,
+                    current_request.columns.get("tool_response_column", []),
+                )
                 + body["input"]
             )
-
-    @staticmethod
-    def _build_tool_outputs_from_history(
-        prev_request: GenerationRequest,
-        prev_response: GenerationResponse,
-    ) -> list[dict[str, Any]]:
-        """Build ``function_call_output`` items for server-history follow-ups.
-
-        When using server-side history (``previous_response_id``), the server
-        already stores the model's ``function_call`` outputs but cannot know
-        what the tools returned (tool execution is client-side).  This method
-        produces the minimal ``function_call_output`` items needed to complete
-        the tool-calling cycle.
-
-        :param prev_request: The request whose response triggered tool calls.
-            Its ``tool_response_column`` supplies per-call response content.
-        :param prev_response: The response containing tool calls.
-        :return: List of ``function_call_output`` dicts for the ``input`` array.
-        """
-        tool_response_columns = prev_request.columns.get("tool_response_column", [])
-        outputs: list[dict[str, Any]] = []
-        for idx, tc in enumerate(prev_response.tool_calls):  # type: ignore[arg-type]
-            raw_content = (
-                tool_response_columns[idx]
-                if idx < len(tool_response_columns)
-                else settings.default_synthetic_tool_response
-            )
-            content = (
-                raw_content.decode("utf-8")
-                if isinstance(raw_content, bytes)
-                else raw_content
-            )
-            outputs.append(
-                {
-                    "type": "function_call_output",
-                    "call_id": tc.id,
-                    "output": content,
-                }
-            )
-        return outputs
 
     def _handle_streaming_function_call(
         self, event_type: str, data: dict[str, Any]
@@ -2032,7 +2152,6 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
     def format(
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,  # noqa: ARG002
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,  # noqa: ARG002
         **kwargs: Any,
     ) -> GenerationRequestArguments:
@@ -2040,7 +2159,6 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
         Format the pooling generation request into the appropriate structure.
 
         :param data: The generation request to format
-        :param response: Optional previous response (unused for pooling)
         :param history: Optional request/response history (unused for pooling)
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
@@ -2091,7 +2209,6 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
     def format(
         self,
         data: GenerationRequest,
-        response: GenerationResponse | None = None,  # noqa: ARG002
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,  # noqa: ARG002
         **kwargs: Any,
     ) -> GenerationRequestArguments:
@@ -2099,7 +2216,6 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         Format the embeddings generation request.
 
         :param data: The generation request to format
-        :param response: Previous response (unused for embeddings)
         :param history: Request/response history (unused for embeddings)
         :param **kwargs: Additional keyword arguments (model, encoding_format, etc.)
         :return: The formatted request arguments
