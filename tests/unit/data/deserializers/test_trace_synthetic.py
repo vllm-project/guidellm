@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+import dataclasses
 from pathlib import Path
+import random
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -23,6 +27,22 @@ def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
     path = tmp_path / f"trace{suffix}"
     path.write_text(content)
     return path
+
+
+@dataclasses.dataclass
+class TraceColumnGenerator:
+    name: str
+    # Function with row index as the one argument
+    data_generator: Callable[[int], Any]
+
+
+def _generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
+    return "\n".join(
+        "{"
+        + ", ".join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
+        + "}"
+        for idx in range(num_rows)
+    )
 
 
 def _get_from_kwargs(keys, kwargs) -> dict:
@@ -76,108 +96,24 @@ class TestMinimalTraceFormat:
     def test_generates_large_trace_prompts_from_reusable_base(
         self, tmp_path: Path, deserializer
     ):
-        prompt_lengths = [
-            6755,
-            7319,
-            7234,
-            2287,
-            9013,
-            6506,
-            4824,
-            3119,
-            23090,
-            3135,
-            26874,
-            10487,
-            17448,
-            6253,
-            6725,
-            13538,
-            87162,
-            6166,
-            6320,
-            2007,
-            3174,
-            3131,
-            3159,
-            6820,
-            3154,
-            9416,
-            7460,
-        ]
-        output_lengths = [
-            500,
-            490,
-            794,
-            316,
-            3,
-            3,
-            173,
-            20,
-            453,
-            19,
-            458,
-            402,
-            610,
-            3,
-            32,
-            71,
-            402,
-            24,
-            548,
-            354,
-            19,
-            23,
-            20,
-            26,
-            21,
-            145,
-            3,
-        ]
-        timestamps = [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.5,
-            0.5,
-            0.5,
-            0.5,
-            0.5,
-            0.5,
-            0.5,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            2.0,
-            2.0,
-            2.0,
-            2.0,
-        ]
+        random.seed(0)
+        n_rows = 25
+        prompt_lengths = [random.randint(2000, 100000) for _ in range(n_rows)]
+        output_lengths = [random.randint(3, 800) for _ in range(n_rows)]
+        times = [0.0, 0.5, 1.0, 2.0]
+        timestamps = [times[int(i / n_rows * len(times))] for i in range(n_rows)]
         trace = _write_trace(
             tmp_path,
-            "\n".join(
-                (
-                    f'{{"timestamp": {timestamp}, '
-                    f'"input_length": {prompt_length}, '
-                    f'"output_length": {output_length}}}'
-                )
-                for timestamp, prompt_length, output_length in zip(
-                    timestamps, prompt_lengths, output_lengths, strict=True
-                )
+            _generate_trace(
+                n_rows,
+                [
+                    TraceColumnGenerator("timestamp", lambda i: timestamps[i]),
+                    TraceColumnGenerator("input_length", lambda i: prompt_lengths[i]),
+                    TraceColumnGenerator("output_length", lambda i: output_lengths[i]),
+                ],
             ),
         )
         processor = _mock_processor()
-
         config = MinimalTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
