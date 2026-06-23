@@ -985,7 +985,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choice: dict[str, dict] = choices[0] if choices else {}
         message = choice.get("message", {})
         text = message.get("content")
-        reasoning_text = message.get("reasoning") or None
+        reasoning_text = (
+            message.get("reasoning") or message.get("reasoning_content") or None
+        )
         raw_tool_calls = message.get("tool_calls")
         if text is None and not raw_tool_calls:
             text = ""  # Edge case: null content and no tools
@@ -1036,7 +1038,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         # Reasoning tokens trigger TTFT (updated=True) but are not
         # considered "content" for the TTFOT metric.
-        if reasoning := delta.get("reasoning"):
+        if reasoning := (delta.get("reasoning") or delta.get("reasoning_content")):
             self.streaming_reasoning_texts.append(reasoning)
             updated = True
         if content := delta.get("content"):
