@@ -828,8 +828,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         # Standard and injection turns should not produce tool calls even
         # when tool definitions are in the body (e.g. from extras).
-        # Future server_tool_call turns intentionally skip this override
-        # so the server remains free to use tools.
         if data.turn_type in ("standard", "tool_response_injection"):
             body["tool_choice"] = "none"
 
