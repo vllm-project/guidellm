@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
@@ -28,14 +28,6 @@ class SynchronousProfileArgs(ProfileArgs):
         default="synchronous",
         description="Profile type discriminator for polymorphic serialization",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _ensure_no_rate(cls, data: Any) -> Any:
-        """Validate that user didn't provide a rate."""
-        if isinstance(data, dict) and data.get("rate"):
-            raise ValueError("Synchonous profile does not accept a rate parameter.")
-        return data
 
 
 @ProfileFactory.register("synchronous")

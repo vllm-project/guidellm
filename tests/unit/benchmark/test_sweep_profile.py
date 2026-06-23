@@ -16,14 +16,14 @@ class TestSweepProfileArgs:
         ("payload", "expected"),
         [
             ({"kind": "sweep", "sweep_size": 5}, 5),
-            ({"kind": "sweep", "rate": [8.0]}, 8),
-            ({"kind": "sweep", "rate": [12]}, 12),
-            ({"kind": "sweep", "rate": [10.0, 20.0]}, 10),
+            ({"kind": "sweep", "sweep_size": 8}, 8),
+            ({"kind": "sweep", "sweep_size": 12}, 12),
+            ({"kind": "sweep", "sweep_size": 10}, 10),
         ],
     )
-    def test_sweep_size_accepts_scalar_or_rate_list(self, payload, expected):
+    def test_sweep_size_validates(self, payload, expected):
         """
-        Validate sweep_size from sweep_size or global rate list.
+        Validate sweep_size from explicit sweep_size field.
 
         ## WRITTEN BY AI ##
         """
@@ -31,14 +31,14 @@ class TestSweepProfileArgs:
         assert args.sweep_size == expected
 
     @pytest.mark.smoke
-    def test_profile_create_from_rate_list(self):
+    def test_profile_create_from_sweep_size(self):
         """
-        Create sweep profile when resolve_profile passes rate as a list.
+        Create sweep profile when sweep_size is provided explicitly.
 
         ## WRITTEN BY AI ##
         """
         profile = ProfileFactory.create(
-            SweepProfileArgs.model_validate({"kind": "sweep", "rate": [6.0]}),
+            SweepProfileArgs.model_validate({"kind": "sweep", "sweep_size": 6}),
             42,
             {},
         )
@@ -47,30 +47,18 @@ class TestSweepProfileArgs:
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
-    async def test_resolve_profile_coerces_rate_list(self):
+    async def test_resolve_profile_passes_sweep_size(self):
         """
-        End-to-end resolve_profile passes list rate into sweep_size.
+        End-to-end resolve_profile passes sweep_size into the profile.
 
         ## WRITTEN BY AI ##
         """
         profile = await resolve_profile(
-            profile=SweepProfileArgs.model_validate(
-                {"kind": "sweep", "rate": [7.0, 8.0]}
-            ),
+            profile=SweepProfileArgs.model_validate({"kind": "sweep", "sweep_size": 7}),
             constraints={},
         )
         assert isinstance(profile, SweepProfile)
         assert profile.args.sweep_size == 7
-
-    @pytest.mark.smoke
-    def test_sweep_size_rejects_empty_rate_list(self):
-        """
-        Reject empty rate list for sweep profile.
-
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValidationError):
-            SweepProfileArgs.model_validate({"kind": "sweep", "rate": []})
 
     @pytest.mark.smoke
     def test_sweep_size_enforces_minimum(self):
@@ -80,4 +68,4 @@ class TestSweepProfileArgs:
         ## WRITTEN BY AI ##
         """
         with pytest.raises(ValidationError):
-            SweepProfileArgs.model_validate({"kind": "sweep", "rate": [1.0]})
+            SweepProfileArgs.model_validate({"kind": "sweep", "sweep_size": 1})

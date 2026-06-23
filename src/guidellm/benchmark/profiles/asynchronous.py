@@ -44,9 +44,9 @@ class AsyncProfileArgs(ProfileArgs):
     def _coerce_rate_to_list(
         cls, value: list[PositiveFloat] | PositiveFloat
     ) -> list[PositiveFloat]:
-        """
-        Convert rates to a list from either a single number or a list of
-        numbers.
+        """Normalize rate to a list of integers.
+
+        Allow single integer or list of integers.
         """
         if isinstance(value, str):
             with contextlib.suppress(json.JSONDecodeError, ValueError):

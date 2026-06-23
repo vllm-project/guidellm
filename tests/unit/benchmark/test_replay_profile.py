@@ -90,14 +90,14 @@ class TestReplayProfile:
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
-        ("rate", "expected_scale"),
+        ("time_scale", "expected_scale"),
         [
             (None, 1.0),
-            ([2.0], 2.0),
+            (2.0, 2.0),
         ],
     )
     def test_profile_create_resolves_time_scale_and_default_max_requests(
-        self, tmp_path: Path, rate, expected_scale
+        self, tmp_path: Path, time_scale, expected_scale
     ):
         """
         Profile.create resolves time scale and default max_requests from trace data.
@@ -116,8 +116,8 @@ class TestReplayProfile:
         payload: dict = {
             "data": [TraceSyntheticDataArgs(path=trace)],
         }
-        if rate is not None:
-            payload["rate"] = rate
+        if time_scale is not None:
+            payload["time_scale"] = time_scale
 
         profile = _replay_profile(**payload)
 
@@ -141,7 +141,7 @@ class TestReplayProfile:
 
         with pytest.raises(ValidationError):
             _replay_profile(
-                rate=[0.0],
+                time_scale=0.0,
                 data=[TraceSyntheticDataArgs(path=trace)],
             )
 
@@ -354,7 +354,7 @@ class TestReplayProfile:
     @pytest.mark.asyncio
     async def test_resolve_profile_passes_replay_specific_kwargs(self, tmp_path: Path):
         """
-        resolve_profile wires replay data, samples, and rate into the profile.
+        resolve_profile wires replay data, samples, and time_scale into the profile.
 
         ## WRITTEN BY AI ##
         """
@@ -368,7 +368,9 @@ class TestReplayProfile:
         )
 
         profile = await resolve_profile(
-            profile=ReplayProfileArgs.model_validate({"kind": "replay", "rate": [2.0]}),
+            profile=ReplayProfileArgs.model_validate(
+                {"kind": "replay", "time_scale": 2.0}
+            ),
             constraints={"max_requests": {"max_num": 2}},
             random_seed=42,
             data=[TraceSyntheticDataArgs(path=trace, timestamp_column="ts")],
@@ -391,7 +393,7 @@ class TestReplayProfile:
             ['{"timestamp": 0, "input_length": 1, "output_length": 1}'],
         )
         profile = _replay_profile(
-            rate=[2.0],
+            time_scale=2.0,
             data=[TraceSyntheticDataArgs(path=trace)],
         )
 
