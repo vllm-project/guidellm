@@ -56,8 +56,7 @@ _TIMED_METRIC_OUTPUT_VALUE_INDEX = 3
 
 
 class SchedulerMetrics(StandardBaseDict):
-    """
-    Scheduler timing and performance statistics.
+    """Scheduler timing and performance statistics.
 
     Tracks overall benchmark timing, request counts by status, and detailed internal
     scheduler performance metrics including queue times, processing delays, and

@@ -14,8 +14,7 @@ __all__ = [
 
 
 class RandomArgs(PydanticClassRegistryMixin["RandomArgs"], ABC):
-    """
-    Base class for random initialization arguments.
+    """Base class for random initialization arguments.
 
     :cvar schema_discriminator: Field name for polymorphic deserialization
     """
@@ -37,15 +36,17 @@ class RandomArgs(PydanticClassRegistryMixin["RandomArgs"], ABC):
         return RandomArgs
 
     kind: str = Field(
-        description="Type identifier for the random configuration.",
+        description="The kind of random configuration to use.",
     )
 
 
 @RandomArgs.register("static")
 class StaticRandomArgs(RandomArgs):
     kind: Literal["static"] = Field(
-        default="static", description="The kind of random configuration to use."
+        default="static",
+        description="The kind of random configuration to use.",
     )
     value: int = Field(
-        default=42, description="The value to use for static random configuration."
+        default=42,
+        description="The value to use for static random configuration.",
     )

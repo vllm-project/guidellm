@@ -44,6 +44,8 @@ __all__ = [
 
 @BenchmarkOutputArgs.register("html")
 class HTMLBenchmarkOutputArgs(BenchmarkOutputArgs):
+    """Model for HTML benchmark output arguments."""
+
     kind: Literal["html"] = Field(
         default="html",
         description="The kind of output.",

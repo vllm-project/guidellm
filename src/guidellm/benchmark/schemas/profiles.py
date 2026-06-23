@@ -26,8 +26,7 @@ __all__ = ["ProfileArgs"]
 
 
 class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
-    """
-    Base class for profile creation arguments.
+    """Base class for profile creation arguments.
 
     This class serves as a base for defining argument models used in the creation
     of profile instances. It inherits from PydanticClassRegistryMixin to enable
@@ -54,21 +53,22 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
         return ProfileArgs
 
     kind: str = Field(
-        description="Profile type discriminator for polymorphic serialization",
+        description="Profile type discriminator",
+        examples=["concurrent", "synchronous"],
     )
     rampup_duration: NonNegativeFloat = Field(
         default=0.0,
-        description=(
-            "Duration in seconds to ramp up the targeted scheduling rate, if applicable"
-        ),
+        description=("Duration in seconds to ramp up the targeted scheduling rate"),
     )
     warmup: TransientPhaseConfig = Field(
         default_factory=TransientPhaseConfig,
-        description="Warmup phase configuration excluding initial transient period",
+        description="Warmup phase to exclude initial transient period",
+        examples=[0.0, 1.0, {"mode": "percent", "percent": 2.0}],
     )
     cooldown: TransientPhaseConfig = Field(
         default_factory=TransientPhaseConfig,
-        description="Cooldown phase configuration excluding final transient period",
+        description="Cooldown phase to exclude final transient period",
+        examples=[0.0, 1.0, {"mode": "duration", "value": 2.0}],
     )
 
     @field_validator("warmup", "cooldown", mode="before")

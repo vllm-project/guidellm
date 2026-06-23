@@ -67,6 +67,8 @@ class SyntheticTextPrefixBucketConfig(BaseModel):
 
 @DataArgs.register("synthetic_text")
 class SyntheticTextDataArgs(DataArgs):
+    """Model for synthetic text dataset deserializer arguments."""
+
     kind: Literal["synthetic_text"] = Field(  # type: ignore[assignment]
         default="synthetic_text",
         description="Type identifier for the synthetic text dataset configuration.",
@@ -74,21 +76,25 @@ class SyntheticTextDataArgs(DataArgs):
     prompt_tokens: int = Field(
         description="The average number of text tokens generated for prompts.",
         gt=0,
+        examples=[30],
     )
     prompt_tokens_stdev: int | None = Field(
         description="The standard deviation of the tokens generated for prompts.",
         gt=0,
         default=None,
+        examples=[3],
     )
     prompt_tokens_min: int | None = Field(
         description="The minimum number of text tokens generated for prompts.",
         gt=0,
         default=None,
+        examples=[10],
     )
     prompt_tokens_max: int | None = Field(
         description="The maximum number of text tokens generated for prompts.",
         gt=0,
         default=None,
+        examples=[30],
     )
     output_tokens: int | None = Field(
         description=(
@@ -99,21 +105,25 @@ class SyntheticTextDataArgs(DataArgs):
         ),
         gt=0,
         default=None,
+        examples=[10],
     )
     output_tokens_stdev: int | None = Field(
         description="The standard deviation of the tokens generated for outputs.",
         gt=0,
         default=None,
+        examples=[3],
     )
     output_tokens_min: int | None = Field(
         description="The minimum number of text tokens generated for outputs.",
         gt=0,
         default=None,
+        examples=[10],
     )
     output_tokens_max: int | None = Field(
         description="The maximum number of text tokens generated for outputs.",
         gt=0,
         default=None,
+        examples=[30],
     )
     turns: int = Field(
         description="The number of turns in the conversation.",
@@ -127,37 +137,61 @@ class SyntheticTextDataArgs(DataArgs):
         "Normalized to a sorted list after validation. "
         "When 0 or [] (default), no tool calling is configured.",
         default_factory=list,
+        examples=[1, [0, 1]],
     )
     tools: list[dict[str, Any]] | None = Field(
         description="Tool definitions in OpenAI format. When tool_call_turns is "
         "non-empty and this is None, a static placeholder tool definition is used.",
         default=None,
+        examples=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_data",
+                    "description": "Retrieve data from the system",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "The query"}
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        ],
     )
     tool_response_tokens: int | None = Field(
         description="Average number of tokens for synthetic tool call responses. "
         "When None (default), a short placeholder response is used.",
         gt=0,
         default=None,
+        examples=[10],
     )
     tool_response_tokens_stdev: int | None = Field(
         description="Standard deviation for tool response token count.",
         gt=0,
         default=None,
+        examples=[1],
     )
     tool_response_tokens_min: int | None = Field(
         description="Minimum number of tokens for tool response.",
         gt=0,
         default=None,
+        examples=[5],
     )
     tool_response_tokens_max: int | None = Field(
         description="Maximum number of tokens for tool response.",
         gt=0,
         default=None,
+        examples=[20],
     )
 
     prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
         description="Buckets for the prefix tokens distribution.",
         default=None,
+        examples=[
+            {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 0},
+        ],
     )
 
     @model_validator(mode="after")

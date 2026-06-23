@@ -13,9 +13,15 @@ __all__ = ["HuggingFaceTokenizer", "HuggingFaceTokenizerArgs"]
 
 @DataTokenizerArgs.register(["huggingface_auto", "hf_auto"])
 class HuggingFaceTokenizerArgs(DataTokenizerArgs):
-    kind: Literal["huggingface_auto", "hf_auto"] = "huggingface_auto"
+    """Model for Hugging Face tokenizer arguments."""
+
+    kind: Literal["huggingface_auto", "hf_auto"] = Field(
+        default="huggingface_auto",
+        description="Type identifier for the HuggingFace tokenizer.",
+    )
     load_kwargs: dict[str, Any] = Field(
         default_factory=dict,
+        examples=[{"use_fast": True, "revision": "main"}],
         description=(
             "Optional additional arguments to pass to the HuggingFace tokenizer's "
             "from_pretrained method, such as 'use_fast' or 'revision'."
@@ -25,6 +31,8 @@ class HuggingFaceTokenizerArgs(DataTokenizerArgs):
 
 @TokenizerRegistry.register(["huggingface_auto", "hf_auto"])
 class HuggingFaceTokenizer(DataTokenizer):
+    """Tokenizer for Hugging Face models."""
+
     def __init__(
         self,
         config: HuggingFaceTokenizerArgs,

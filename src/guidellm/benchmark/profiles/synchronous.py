@@ -26,7 +26,7 @@ class SynchronousProfileArgs(ProfileArgs):
 
     kind: Literal["synchronous"] = Field(
         default="synchronous",
-        description="Profile type discriminator for polymorphic serialization",
+        description="Profile type discriminator for synchronous scheduling",
     )
 
 

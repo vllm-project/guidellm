@@ -32,6 +32,8 @@ __all__ = ["HuggingFaceDatasetDeserializer"]
 
 @DataArgs.register(["huggingface", "hf"])
 class HuggingFaceDataArgs(DataArgs):
+    """Model for Hugging Face dataset deserializer arguments."""
+
     kind: Literal["huggingface", "hf"] = Field(
         default="huggingface",
         description="Type identifier for the Hugging Face dataset deserializer.",
@@ -44,11 +46,14 @@ class HuggingFaceDataArgs(DataArgs):
             "Path to a local dataset directory or a local .py dataset script, or a "
             "dataset identifier from the Hugging Face Hub."
         ),
+        examples=["wikimedia/structured-wikipedia", "./dataset.json"],
     )
 
 
 @DatasetDeserializerFactory.register(["huggingface", "hf"])
 class HuggingFaceDatasetDeserializer(DatasetDeserializer):
+    """Deserializer for Hugging Face datasets."""
+
     def __call__(
         self,
         config: HuggingFaceDataArgs,

@@ -63,8 +63,7 @@ class DataArgs(
     PydanticClassRegistryMixin["DataArgs"],
     ABC,
 ):
-    """
-    Base class for data loading and processing argument models.
+    """Base class for data loading and processing argument models.
 
     This class serves as a base for defining argument models related to data loading
     and processing. It inherits from PydanticClassRegistryMixin to enable automatic
@@ -92,13 +91,15 @@ class DataArgs(
 
     kind: str = Field(
         description="Type identifier for the data arguments configuration.",
+        examples=["text_file", "csv_file"],
     )
     load_kwargs: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Additional arguments for data loading. These arguements are passed to the "
-            "datasets library when loading the dataset."
+            "Additional arguments for data loading. These arguements are "
+            "passed to the datasets library when loading the dataset."
         ),
+        examples=[{"format": "csv"}],
     )
 
 
@@ -135,6 +136,7 @@ class DataPreprocessorArgs(
 
     kind: str = Field(
         description="Type identifier for the data preprocessor arguments.",
+        examples=["generative_column_mapper", "pooling_column_mapper"],
     )
 
 
@@ -171,6 +173,7 @@ class DataFinalizerArgs(
 
     kind: str = Field(
         description="Type identifier for the data finalizer arguments.",
+        examples=["generative"],
     )
 
 
@@ -207,12 +210,14 @@ class DataTokenizerArgs(
 
     kind: str = Field(
         description="Type identifier for the data tokenizer arguments.",
+        examples=["huggingface"],
     )
     model: str | None = Field(
         default=None,
         description=(
-            "Optional model name or path for the tokenizer. This field can be used by "
-            "tokenizer implementations that require a model specification, such as "
-            "HuggingFace tokenizers."
+            "Optional model name or path for the tokenizer. This field can be "
+            "used by tokenizer implementations that require a model specification, "
+            "such as HuggingFace tokenizers."
         ),
+        examples=["gpt2"],
     )

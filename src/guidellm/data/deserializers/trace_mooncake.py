@@ -37,6 +37,8 @@ __all__ = ["TraceMooncakeDataArgs", "TraceMooncakeDatasetDeserializer"]
 
 @DataArgs.register("mooncake")
 class TraceMooncakeDataArgs(TraceSyntheticDataArgs):
+    """Model for Mooncake trace dataset deserializer arguments."""
+
     kind: Literal["mooncake"] = Field(  # type: ignore[assignment]
         default="mooncake",
         description="Type identifier for the trace Mooncake dataset deserializer.",
@@ -187,8 +189,10 @@ def _validate_row(row: dict, config: TraceMooncakeDataArgs) -> None:
 
 
 class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
-    """Custom examples iterable for synthetic prompt generation. Used to avoid
-    pre-generating a prompt for every row in the dataset on load."""
+    """Custom examples iterable for synthetic prompt generation.
+
+    Used to avoid pre-generating a prompt for every row in the dataset on load.
+    """
 
     def __init__(
         self,
@@ -323,7 +327,9 @@ class _TraceMooncakeDataset(IterableDataset):
 
 @DatasetDeserializerFactory.register("mooncake")
 class TraceMooncakeDatasetDeserializer(DatasetDeserializer):
-    """Mooncake trace format requires a column for timestamps, prompt token counts,
+    """Mooncake trace format deserializer
+
+    The Mooncake trace format requires a column for timestamps, prompt token counts,
     ouput token counts and lists of hash IDs.
 
     Hash IDs are globally unique identifiers based on the current and previous token

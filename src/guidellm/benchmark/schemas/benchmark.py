@@ -35,8 +35,7 @@ __all__ = ["GenerativeBenchmark"]
 
 
 class GenerativeBenchmark(Benchmark[GenerativeBenchmarkAccumulator]):
-    """
-    Complete generative AI benchmark results with specialized metrics.
+    """Complete generative AI benchmark results with specialized metrics.
 
     Encapsulates comprehensive performance data from scheduler-driven generative
     workload executions including request-level statistics, token/latency distributions,

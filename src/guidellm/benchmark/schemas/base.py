@@ -50,8 +50,7 @@ BenchmarkT = TypeVar("BenchmarkT", bound="Benchmark")
 
 
 class TransientPhaseConfig(StandardBaseModel):
-    """
-    Configure warmup and cooldown phases for benchmark execution.
+    """Configure warmup and cooldown phases for benchmark execution.
 
     Supports flexible phase definition through percentage or absolute value
     specifications with multiple interpretation modes. Phases can be bounded
@@ -97,6 +96,7 @@ class TransientPhaseConfig(StandardBaseModel):
             "interpretation depends on mode. Takes precedence over value when target "
             "mode is available, otherwise falls back to value"
         ),
+        examples=[0.0, 0.5],
         lt=1.0,
     )
     value: NonNegativeInt | NonNegativeFloat | None = Field(
@@ -106,6 +106,7 @@ class TransientPhaseConfig(StandardBaseModel):
             "interpretation depends on mode. Used when percent is unset or "
             "target mode unavailable"
         ),
+        examples=[1.0, 2.0],
     )
     mode: Literal[
         "duration", "requests", "prefer_duration", "prefer_requests", "both"

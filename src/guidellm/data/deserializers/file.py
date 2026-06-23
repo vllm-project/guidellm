@@ -57,6 +57,7 @@ class FileDataArgs(DataArgs):
     )
     path: Path = Field(
         description="Path to the data file.",
+        examples=["data.txt"],
     )
 
 

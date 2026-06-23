@@ -34,6 +34,8 @@ __all__ = [
 
 @BenchmarkOutputArgs.register("csv")
 class CSVBenchmarkOutputArgs(BenchmarkOutputArgs):
+    """Model for CSV benchmark output arguments."""
+
     kind: Literal["csv"] = Field(
         default="csv",
         description="The kind of output.",

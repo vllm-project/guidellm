@@ -31,6 +31,8 @@ def _collate_first(batch: list) -> Any:
 
 @DataLoaderArgs.register("pytorch")
 class TorchDataLoaderArgs(DataLoaderArgs):
+    """Model for PyTorch data loader arguments."""
+
     kind: Literal["pytorch"] = Field(  # type: ignore[assignment]
         default="pytorch",
         description="Type identifier for the generative data loader.",

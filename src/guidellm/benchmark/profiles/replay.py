@@ -86,11 +86,11 @@ def _resolve_relative_timestamps(
 
 @ProfileArgs.register("replay")
 class ReplayProfileArgs(ProfileArgs):
-    """Pydantic model for replay profile creation arguments."""
+    """Pydantic model for trace replay profile creation arguments."""
 
     kind: Literal["replay"] = Field(
         default="replay",
-        description="Profile type discriminator for polymorphic serialization",
+        description="Profile type discriminator for trace replay scheduling",
     )
     time_scale: float = Field(
         default=1.0,

@@ -140,9 +140,7 @@ def _load_trace_rows(
 
 @DataArgs.register("trace_synthetic")
 class TraceSyntheticDataArgs(DataArgs):
-    """
-    DataArgs for TraceSyntheticDatasetDeserializer.
-    """
+    """Model for synthetic trace dataset deserializer arguments."""
 
     kind: Literal["trace_synthetic"] = Field(
         default="trace_synthetic",
