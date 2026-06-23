@@ -183,8 +183,8 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="GUIDELLM_",
-        env_nested_delimiter="_",
+        env_prefix="GUIDELLM__",
+        env_nested_delimiter="__",
         validate_default=True,
     )
 

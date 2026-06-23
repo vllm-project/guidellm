@@ -14,11 +14,13 @@ from guidellm.benchmark import (
     benchmark_generative_text,
     get_builtin_scenarios,
 )
+from guidellm.settings import Settings
 from guidellm.utils.click_pydantic import (
     format_validation_errors,
     registry_options_from_model,
 )
 from guidellm.utils.console import Console
+from guidellm.utils.env_validator import validate_env_vars
 
 __all__ = [
     "run",
@@ -86,6 +88,31 @@ def run(**kwargs):  # noqa: C901, PLR0915
         kwargs.pop("disable_console_interactive", False) or disable_console
     )
     console = Console() if not disable_console else None
+
+    if console:
+        invalid_set_envs, valid_set_envs = validate_env_vars(
+            Settings, BenchmarkScenario
+        )
+
+        if valid_set_envs:
+            console.print_update(
+                title=(
+                    "The following environment variables are set and will be used "
+                    "by GuideLLM (if not overridden by CLI arguments/config)."
+                ),
+                details=", ".join(valid_set_envs),
+                status="info",
+            )
+        if invalid_set_envs:
+            console.print_update(
+                title=(
+                    "The following environment variables are set "
+                    "but not recognized by GuideLLM. Please verify "
+                    "that the benchmark is configured correctly."
+                ),
+                details=", ".join(invalid_set_envs),
+                status="warning",
+            )
 
     try:
         args = BenchmarkScenario.create(

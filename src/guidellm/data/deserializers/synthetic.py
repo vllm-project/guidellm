@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import math
 from collections.abc import Callable, Iterator
 from random import Random
@@ -185,6 +186,9 @@ class SyntheticTextDataArgs(DataArgs):
     @classmethod
     def _coerce_tool_call_turns(cls, v: int | list[int]) -> list[int]:
         """Convert an int N to [0, ..., N-1]; pass lists through sorted."""
+        if isinstance(v, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                v = json.loads(v)
         if isinstance(v, int):
             if v < 0:
                 raise ValueError("tool_call_turns int must be >= 0")
