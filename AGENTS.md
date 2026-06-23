@@ -102,7 +102,7 @@ uv run guidellm run \
 uv run guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=constant \
-  --data '{"kind":"huggingface","source":"openai/gsm8k","load_kwargs":{"name":"main"}}' \
+  --data '{"kind":"huggingface","source":"openai/gsm8k","load_kwargs":{"name":"main","split":"test"}}' \
   --constraint kind=max_duration,seconds=300 \
   --override profile.rate=10,20 \
   --output kind=json,path=benchmark.json \
