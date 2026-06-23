@@ -49,7 +49,7 @@ class ToolCallingMessageExtractor(DatasetPreprocessor):
             --data-preprocessors tool_calling_message_extractor,encode_media
     """
 
-    def __init__(self, **_: Any) -> None:
+    def __init__(self, config: ToolCallingMessageExtractorArgs, **_: Any) -> None:
         pass
 
     def __call__(  # noqa: C901
