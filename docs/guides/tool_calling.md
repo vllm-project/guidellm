@@ -121,7 +121,9 @@ guidellm run \
 
 The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
 
-**2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
+**2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`.
+
+**JSON-wrapped datasets** -- some HuggingFace datasets store all fields inside a single JSON string column (e.g. `madroid/glaive-function-calling-openai` has a `json` column containing `{"messages": [...], "tools": [...]}`). The column mapper automatically detects this pattern and unwraps the JSON to find the inner columns:
 
 ```bash
 guidellm run \

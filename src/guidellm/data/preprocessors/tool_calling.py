@@ -35,18 +35,20 @@ class ToolCallingMessageExtractor(DatasetPreprocessor):
 
     Many tool calling datasets (e.g. ``madroid/glaive-function-calling-openai``)
     store conversations as a ``messages`` column containing an array of
-    ``{"role": ..., "content": ...}`` dicts.  This preprocessor replaces the
-    ``text_column`` value with the extracted user content, populates
-    ``prefix_column`` with the system prompt when present, and populates
-    ``tool_response_column`` with ``role: "tool"`` response content.
+    message dicts. This preprocessor supports both OpenAI format
+    (``role``/``content``) and ShareGPT format (``from``/``value``).
+
+    It replaces the ``text_column`` value with the extracted user content,
+    populates ``prefix_column`` with the system prompt when present, and
+    populates ``tool_response_column`` with tool response content.
 
     Usage::
 
         guidellm benchmark run \\
-            --data madroid/glaive-function-calling-openai \\
-            --data-column-mapper \\
-                '{"text_column": "messages", "tools_column": "tools"}' \\
-            --data-preprocessors tool_calling_message_extractor,encode_media
+            --data '{"kind": "hf", "source": "..."}' \\
+            --data-column-mapper '{"kind": "generative_column_mapper",
+                "column_mappings": {"text_column": "messages"}}' \\
+            --data-preprocessor kind=tool_calling_message_extractor
     """
 
     def __init__(self, config: ToolCallingMessageExtractorArgs, **_: Any) -> None:
@@ -85,10 +87,31 @@ class ToolCallingMessageExtractor(DatasetPreprocessor):
         return items
 
 
+def _normalize_message(msg: dict[str, Any]) -> tuple[str, str]:
+    """Extract role and content from a message dict, handling multiple formats.
+
+    Supports OpenAI format (role/content) and ShareGPT format (from/value).
+    Normalizes role aliases: ``"human"`` -> ``"user"``.
+
+    :param msg: A single message dict from a conversation array.
+    :return: Tuple of (normalized_role, content).
+    """
+    role = msg.get("role") or msg.get("from") or ""
+    content = msg.get("content") or msg.get("value") or ""
+
+    # Normalize role aliases
+    if role == "human":
+        role = "user"
+
+    return role, content
+
+
 def _extract_from_messages(
     messages: list[dict[str, Any]],
 ) -> tuple[list[str], list[str], list[str]]:
-    """Pull user, system, and tool response content from an OpenAI messages array.
+    """Pull user, system, and tool response content from a messages array.
+
+    Supports both OpenAI format (role/content) and ShareGPT format (from/value).
 
     :return: Tuple of (user_parts, system_parts, tool_response_parts).
     """
@@ -99,8 +122,7 @@ def _extract_from_messages(
     for msg in messages:
         if not isinstance(msg, dict):
             continue
-        role = msg.get("role", "")
-        content = msg.get("content", "")
+        role, content = _normalize_message(msg)
         if not content or not isinstance(content, str):
             continue
 
