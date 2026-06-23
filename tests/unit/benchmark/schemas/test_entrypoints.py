@@ -37,7 +37,7 @@ _PIPELINE_DEFAULTS = {
     "data_preprocessors": [],
     "data_finalizer": {"kind": "generative"},
     "data_loader": {"kind": "pytorch"},
-    "profile": {"kind": "sweep", "rate": [10.0]},
+    "profile": {"kind": "sweep", "sweep_size": 10},
 }
 
 

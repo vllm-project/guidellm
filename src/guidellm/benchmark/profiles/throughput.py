@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
+from pydantic import Field, PositiveInt
 
 from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
@@ -14,7 +13,6 @@ from guidellm.scheduler import (
     SchedulingStrategy,
     ThroughputStrategy,
 )
-from guidellm.utils.imports import json
 
 from .profile import Profile, ProfileFactory
 
@@ -31,38 +29,8 @@ class ThroughputProfileArgs(ProfileArgs):
         description="Profile type discriminator for polymorphic serialization",
     )
     max_concurrency: PositiveInt | None = Field(
-        validation_alias=AliasChoices("max_concurrency", "rate"),
         description="Maximum concurrent requests to schedule",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
-        """Check for duplicate rate"""
-        return cls._fail_on_duplicate_rate(data, "max_concurrency")
-
-    @field_validator("max_concurrency", mode="before")
-    @classmethod
-    def _coerce_max_concurrency_from_rate(cls, value: Any) -> Any:
-        """
-        Accept global ``--rate`` list values as max concurrency.
-
-        The CLI passes ``rate`` as a list of floats; throughput uses the first entry
-        as the maximum concurrency.
-        """
-        if isinstance(value, str):
-            with contextlib.suppress(json.JSONDecodeError, ValueError):
-                value = json.loads(value)
-        if not value:
-            raise ValueError("max_concurrency (rate) requires at least one value")
-        if isinstance(value, list | tuple):
-            return int(value[0])
-        if isinstance(value, int | float) and not isinstance(value, bool):
-            return int(value)
-        raise ValueError(
-            "max_concurrency (rate) must be an integer or a list of numeric values, "
-            f"got {type(value).__name__}"
-        )
 
 
 @ProfileFactory.register("throughput")

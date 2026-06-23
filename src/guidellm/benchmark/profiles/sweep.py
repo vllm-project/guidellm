@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
+from pydantic import Field, PositiveInt
 
 from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
@@ -18,7 +17,6 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     ThroughputStrategy,
 )
-from guidellm.utils.imports import json
 
 from .profile import Profile, ProfileFactory
 
@@ -36,7 +34,6 @@ class SweepProfileArgs(ProfileArgs):
     )
     sweep_size: int = Field(
         default=10,
-        validation_alias=AliasChoices("sweep_size", "rate"),
         description="Number of strategies to generate for the sweep",
         ge=2,
     )
@@ -45,37 +42,6 @@ class SweepProfileArgs(ProfileArgs):
         default=None,
         description="Maximum concurrent requests to schedule",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
-        """Check for duplicate rate"""
-        return cls._fail_on_duplicate_rate(data, "sweep_size")
-
-    @field_validator("sweep_size", mode="before")
-    @classmethod
-    def _coerce_sweep_size_from_rate(cls, value: Any) -> Any:
-        """
-        Accept global ``--rate`` list values as sweep size.
-
-        The CLI passes ``rate`` as a list of floats; sweep uses the first entry
-        as the number of strategies to run.
-        """
-        if isinstance(value, str):
-            with contextlib.suppress(json.JSONDecodeError, ValueError):
-                value = json.loads(value)
-        if isinstance(value, list | tuple):
-            if not value:
-                raise ValueError(
-                    "sweep_size (rate) requires at least one value when given as a list"
-                )
-            value = value[0]
-        if isinstance(value, int | float) and not isinstance(value, bool):
-            return int(value)
-        raise ValueError(
-            "sweep_size (rate) must be an integer or a list of numeric values, "
-            f"got {type(value).__name__}"
-        )
 
 
 @ProfileFactory.register("sweep")

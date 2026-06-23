@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import Field
 
 from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.data import DataArgs
@@ -19,7 +18,6 @@ from guidellm.scheduler import (
     TraceReplayStrategy,
 )
 from guidellm.scheduler.constraints.request import MaxRequestsConstraintArgs
-from guidellm.utils.imports import json
 from guidellm.utils.trace_io import load_relative_timestamps
 
 from .profile import Profile, ProfileFactory
@@ -95,39 +93,10 @@ class ReplayProfileArgs(ProfileArgs):
         description="Profile type discriminator for polymorphic serialization",
     )
     time_scale: float = Field(
-        validation_alias=AliasChoices("time_scale", "rate"),
         default=1.0,
         gt=0,
         description="Scale factor applied to relative timestamps",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
-        """Check for duplicate rate"""
-        return cls._fail_on_duplicate_rate(data, "time_scale")
-
-    @field_validator("time_scale", mode="before")
-    @classmethod
-    def _coerce_time_scale_from_rate(cls, value: Any) -> Any:
-        """
-        Accept global ``--rate`` list values as time scale.
-        """
-        if isinstance(value, str):
-            with contextlib.suppress(json.JSONDecodeError, ValueError):
-                value = json.loads(value)
-        if isinstance(value, list | tuple):
-            if not value:
-                raise ValueError(
-                    "time_scale (rate) requires at least one value when given as a list"
-                )
-            value = value[0]
-        if isinstance(value, int | float) and not isinstance(value, bool):
-            return float(value)
-        raise ValueError(
-            "time_scale (rate) must be an integer or a list of numeric values, "
-            f"got {type(value).__name__}"
-        )
 
 
 @ProfileFactory.register("replay")

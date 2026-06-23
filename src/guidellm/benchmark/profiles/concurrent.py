@@ -6,7 +6,7 @@ import contextlib
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
+from pydantic import Field, PositiveInt, field_validator
 
 from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
@@ -31,34 +31,27 @@ class ConcurrentProfileArgs(ProfileArgs):
         description="Profile type discriminator for polymorphic serialization",
     )
     streams: list[PositiveInt] = Field(
-        validation_alias=AliasChoices("streams", "rate"),
         description="Concurrent stream counts to execute",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _ensure_no_duplicate_rate(cls, data: Any) -> Any:
-        """Check for duplicate rate"""
-        return cls._fail_on_duplicate_rate(data, "streams")
 
     @field_validator("streams", mode="before")
     @classmethod
     def _coerce_streams_to_list(cls, value: Any) -> Any:
-        """
-        Convert streams to a list of integers from either a single number or a list of
-        numbers.
+        """Normalize streams to a list of integers.
+
+        Allow single integer or list of integers.
         """
         if isinstance(value, str):
             with contextlib.suppress(json.JSONDecodeError, ValueError):
                 value = json.loads(value)
         if not value:
-            raise ValueError("streams (rate) requires at least one value")
+            raise ValueError("streams requires at least one value")
         if isinstance(value, list | tuple):
             return [int(stream) for stream in value]
         if isinstance(value, int | float):
             return [int(value)]
         raise ValueError(
-            "streams (rate) must be a number or a list of numeric values, "
+            "streams must be a number or a list of numeric values, "
             f"got {type(value).__name__}"
         )
 
