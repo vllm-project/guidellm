@@ -1559,9 +1559,9 @@ class TestChatCompletionsRequestHandler:
 
         # Verify no consecutive user messages
         for j in range(len(roles) - 1):
-            assert not (
-                roles[j] == "user" and roles[j + 1] == "user"
-            ), f"Consecutive user messages at indices {j} and {j+1}: {roles}"
+            assert not (roles[j] == "user" and roles[j + 1] == "user"), (
+                f"Consecutive user messages at indices {j} and {j + 1}: {roles}"
+            )
 
         # Verify the empty assistant response is present
         assistant_msgs = [m for m in messages if m["role"] == "assistant"]
@@ -3625,9 +3625,9 @@ class TestResponsesRequestHandler:
 
         # Verify no consecutive user items
         for j in range(len(roles) - 1):
-            assert not (
-                roles[j] == "user" and roles[j + 1] == "user"
-            ), f"Consecutive user items at indices {j} and {j+1}: {roles}"
+            assert not (roles[j] == "user" and roles[j + 1] == "user"), (
+                f"Consecutive user items at indices {j} and {j + 1}: {roles}"
+            )
 
         # Verify the empty assistant response is present
         assistant_items = [item for item in items if item.get("role") == "assistant"]

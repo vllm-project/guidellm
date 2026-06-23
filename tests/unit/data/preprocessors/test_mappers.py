@@ -206,10 +206,12 @@ class TestColumnMapperJsonUnwrapping:
 
         ## WRITTEN BY AI ##
         """
-        ds = Dataset.from_dict({
-            "prompt": ["hello", "world"],
-            "tools": [None, None],
-        })
+        ds = Dataset.from_dict(
+            {
+                "prompt": ["hello", "world"],
+                "tools": [None, None],
+            }
+        )
 
         config = GenerativeColumnMapperArgs(
             column_mappings={"text_column": "prompt", "tools_column": "tools"}
@@ -228,9 +230,7 @@ class TestColumnMapperJsonUnwrapping:
         ds = Dataset.from_dict({"prompt": ["hello"]})
         dd = DatasetDict({"train": ds})
 
-        config = GenerativeColumnMapperArgs(
-            column_mappings={"text_column": "prompt"}
-        )
+        config = GenerativeColumnMapperArgs(column_mappings={"text_column": "prompt"})
         mapper = GenerativeColumnMapper(config)
         mapper.setup_data(datasets=[dd])
 
