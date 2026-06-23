@@ -19,7 +19,7 @@ GuideLLM currently supports mocked client-side tool calls (`turn_type="client_to
 
 ## Server-side tool calls
 
-For servers that handle tool execution internally (e.g. OpenAI Responses API with `container_auto`), use `server_tool_call` turns. These behave like standard turns from GuideLLM's perspective -- one request in, one response out -- but they prevent the backend from overriding `tool_choice` to `"none"`, so server-configured tools remain usable.
+For servers that handle tool execution internally (e.g. OpenAI Responses API with `container_auto`, or [OGX](https://github.com/ogx-ai/ogx) with MCP tool groups), use `server_tool_call` turns. These behave like standard turns from GuideLLM's perspective -- one request in, one response out -- but they prevent the backend from overriding `tool_choice` to `"none"`, so server-configured tools remain usable.
 
 No injection turn is created, and GuideLLM does not mock any tool responses. The server runs the full tool-calling loop internally and returns the final text answer. Latency metrics include the server-side tool execution time.
 
@@ -43,25 +43,43 @@ The `"all"` shorthand is equivalent to setting `server_tool_call_turns=N` where 
 For real datasets that contain tool definitions (e.g. a `tools` column), the finalizer's `tool_call_mode` setting controls whether those turns are treated as client-side or server-side tool calls:
 
 - `tool_call_mode="client"` (default) -- turns with tool definitions become `client_tool_call` + `tool_response_injection` pairs. GuideLLM mocks tool responses and sends them back to the server.
-- `tool_call_mode="server"` -- turns with tool definitions become `server_tool_call`. No injection turn is created. Tool definitions from the dataset are stripped; tools are expected to be configured at the backend level via `--backend-kwargs`.
+- `tool_call_mode="server"` -- turns with tool definitions become `server_tool_call`. No injection turn is created. Tool definitions from the dataset are stripped; tools are expected to be configured at the backend level via `--backend` or on the server itself.
+
+**OpenAI Responses API** -- tools are passed in the request body via `extras.body.tools` in the backend configuration:
 
 ```bash
-guidellm benchmark run \
-  --target "https://api.openai.com" \
-  --request-format /v1/responses \
-  --data "madroid/glaive-function-calling-openai" \
-  --data-column-mapper '{"text_column": "messages", "tools_column": "tools"}' \
-  --data-preprocessors "tool_calling_message_extractor,encode_media" \
+guidellm run \
+  --backend '{"kind": "openai_http", "target": "https://api.openai.com", "request_format": "/v1/responses", "extras": {"body": {"tools": [{"type": "shell", "environment": {"type": "container_auto"}}]}}}' \
+  --data '{"kind": "huggingface", "source": "madroid/glaive-function-calling-openai", "load_kwargs": {"split": "train"}}' \
+  --data-column-mapper '{"kind": "generative_column_mapper", "column_mappings": {"text_column": "messages", "tools_column": "tools"}}' \
+  --data-preprocessor kind=tool_calling_message_extractor \
+  --data-preprocessor kind=encode_media \
   --data-finalizer '{"kind": "generative", "tool_call_mode": "server"}' \
-  --backend-kwargs '{"extras": {"body": {"tools": [{"type": "shell", "environment": {"type": "container_auto"}}]}}}' \
-  --max-requests 50
+  --constraint '{"kind": "max_requests", "count": 50}' \
+  --profile '{"kind": "constant", "rate": 1}'
 ```
 
-Tools are always configured at the backend level for server-side tool calls via `--backend-kwargs`. The model decides per-turn whether to invoke them.
+**OGX (Llama Stack)** -- an open-source, OpenAI-compatible agentic server that handles tool execution server-side via its `/v1/responses` orchestration loop. Tools are configured on the OGX server (MCP tool groups, built-in tools), so no `extras.body.tools` is needed in the GuideLLM command:
+
+```bash
+guidellm run \
+  --backend '{"kind": "openai_http", "target": "http://localhost:8321", "request_format": "/v1/responses"}' \
+  --data '{"kind": "huggingface", "source": "madroid/glaive-function-calling-openai", "load_kwargs": {"split": "train"}}' \
+  --data-column-mapper '{"kind": "generative_column_mapper", "column_mappings": {"text_column": "messages", "tools_column": "tools"}}' \
+  --data-preprocessor kind=tool_calling_message_extractor \
+  --data-preprocessor kind=encode_media \
+  --data-finalizer '{"kind": "generative", "tool_call_mode": "server"}' \
+  --constraint '{"kind": "max_requests", "count": 50}' \
+  --profile '{"kind": "constant", "rate": 1}'
+```
+
+Tools for server-side tool calls are configured either in the request body via `--backend` (e.g. OpenAI `extras.body.tools`) or on the server itself (e.g. OGX MCP tool groups). The model decides per-turn whether to invoke them.
 
 ## Server Setup
 
-Tool calling requires server-side support. For vLLM, enable auto tool choice and a parser matching your model:
+Tool calling requires server-side support.
+
+**vLLM** -- enable auto tool choice and a parser matching your model:
 
 ```bash
 vllm serve Qwen/Qwen3-0.6B \
@@ -70,6 +88,8 @@ vllm serve Qwen/Qwen3-0.6B \
 ```
 
 Common parsers: `hermes` (Qwen/Hermes), `llama3_json` (Llama 3.x), `mistral` (Mistral). Without these flags, vLLM will reject tool call output with grammar errors.
+
+**OGX (Llama Stack)** -- for server-side tool execution, [OGX](https://github.com/ogx-ai/ogx) provides an OpenAI-compatible `/v1/responses` endpoint that handles the full tool-calling loop internally. OGX can use vLLM as its inference backend and supports MCP tool groups for server-side tool execution. See the [OGX documentation](https://ogx-ai.github.io/docs) for setup and tool group configuration.
 
 ## Providing Tool Definitions
 
