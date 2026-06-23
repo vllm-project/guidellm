@@ -51,16 +51,21 @@ This section summarizes the newest capabilities available to users and outlines 
 
 **Recent Additions**
 
-- New refactored architecture enabling high-rate load generation at scale and a more extensible interface for additional backends, data pipelines, load generation schedules, benchmarking constraints, and output formats.
-- Added multimodal benchmarking support for image, video, and audio workloads across chat completions, transcription, and translation APIs.
-- Broader metrics collection, including richer statistics for visual, audio, and text inputs such as image sizes, audio lengths, video frame counts, and word-level data.
+- New CLI interface with improved configuration and validation.
+- New backends for in-process vLLM Python API and websocket audio transcription.
+- Multi-turn conversation capabilities for benchmarking chat agents and dialogue systems.
+- Full tool calling support (client and server side) in chat completions and responses APIs.
+- Synthetic video and image datasets for controlled experimentation.
+- Replay of Mooncake trace files for realistic load testing.
+- Support for benchmarking Geospatial LLMs.
 
 **Active Development**
 
-- Generation of synthetic multimodal datasets for controlled experimentation across images, audio, and video.
-- Extended prefixing options for testing system-prompt and user-prompt variations.
-- Multi-turn conversation capabilities for benchmarking chat agents and dialogue systems.
-- Speculative decoding specific views and outputs.
+- Replay of OTEL and WEKA trace files.
+- Improved scenarios for benchmarking standard workflows.
+- Ability to stack scenario files for complex benchmarking workflows.
+- Ability to override constraints for individual benchmarks in a profile.
+- gRPC backend for benchmarking vLLM-native servers.
 
 ## Quick Start
 
@@ -91,10 +96,10 @@ Or run the latest container from [ghcr.io/vllm-project/guidellm](https://github.
 podman run \
   --rm -it \
   -v "./results:/results:rw" \
-  -e GUIDELLM_BACKEND='{"kind": "openai_http", "target": "http://localhost:8000"}' \
-  -e GUIDELLM_PROFILE='{"kind": "sweep"}' \
-  -e GUIDELLM_CONSTRAINTS='[{"kind": "max_duration", "max_duration": 30}]' \
-  -e GUIDELLM_DATA='[{"kind": "synthetic_text", "prompt_tokens": 256, "output_tokens": 128}]' \
+  -e GUIDELLM__SPEC__BACKEND='{"kind": "openai_http", "target": "http://localhost:8000"}' \
+  -e GUIDELLM__SPEC__PROFILE='{"kind": "sweep"}' \
+  -e GUIDELLM__SPEC__CONSTRAINTS='[{"kind": "max_duration", "seconds": 30}]' \
+  -e GUIDELLM__SPEC__DATA='[{"kind": "synthetic_text", "prompt_tokens": 256, "output_tokens": 128}]' \
   ghcr.io/vllm-project/guidellm:latest
 ```
 
@@ -114,10 +119,10 @@ Run a sweep that identifies the maximum performance and maximum rates for the mo
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile sweep "" \
-  --constraint max_duration "max_duration=30" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=30 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
 
 You will see progress updates and per-benchmark summaries during the run, as given below:
@@ -158,7 +163,7 @@ The HTML report provides a visual summary of results, including charts of latenc
 
 GuideLLM supports a wide range of LLM benchmarking workflows. The examples below show how to run typical scenarios and highlight the parameters that matter most. For a complete list of arguments, details, and options, run `guidellm run --help`.
 
-Each registry-backed option uses the form `--<option> <TYPE> <CONFIG>`, where `CONFIG` is key=value pairs, JSON, or YAML.
+Each registry-backed option uses the form `--<option> kind=<TYPE>,<CONFIG>...`, where `CONFIG` is key=value pairs. For more complex configurations, use JSON or YAML, e.g. `--data '{"kind":"huggingface","source":"abisee/cnn_dailymail","load_kwargs":{"name":"3.0.0"}}'`.
 
 ### Load Patterns
 
@@ -166,16 +171,16 @@ Simulating different applications requires different traffic shapes. This exampl
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile constant "rate=10" \
-  --constraint max_duration "max_duration=20" \
-  --data synthetic_text "prompt_tokens=128,output_tokens=256"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=constant,rate=10 \
+  --constraint kind=max_duration,seconds=20 \
+  --data kind=synthetic_text,prompt_tokens=128,output_tokens=256
 ```
 
 **Key parameters:**
 
 - `--profile`: Defines the traffic pattern — `synchronous`, `concurrent`, `throughput`, `constant`, `poisson`, or `sweep`
-- `--profile constant "rate=10"`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `throughput`, use `max_concurrency=`
+- `--profile kind=constant,rate=10`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `throughput`, use `max_concurrency=`
 - `--constraint max_duration` or `--constraint max_requests`: Limit each strategy by time or request count
 
 ### Dataset Sources
@@ -184,9 +189,9 @@ GuideLLM supports HuggingFace datasets, local files, and synthetic data. This ex
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --data huggingface '{"source": "abisee/cnn_dailymail", "load_kwargs": {"name": "3.0.0"}}' \
-  --data-column-mapper generative_column_mapper '{"column_mappings": {"text_column": "article"}}'
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=huggingface,source=abisee/cnn_dailymail,load_kwargs.name=3.0.0 \
+  --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=article
 ```
 
 **Key parameters:**
@@ -202,13 +207,13 @@ You can benchmark chat completions, text completions, or other supported request
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000,request_format=/v1/chat/completions" \
-  --data json_file "path=path/to/data.json"
+  --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/chat/completions \
+  --data kind=json_file,path=path/to/data.json
 ```
 
 **Key parameters:**
 
-- `--backend`: Backend type and connection settings, including `request_format` for the API endpoint (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/audio/transcriptions`, and others)
+- `--backend`: Backend type and connection settings, including the `target` OpenAI-compatible endpoint URL and `request_format` for the API endpoint (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/audio/transcriptions`, and others)
 
 ### Using Scenarios
 
@@ -217,7 +222,7 @@ Built-in scenarios bundle schedules, dataset settings, and request formatting to
 ```bash
 guidellm run \
   --config chat \
-  --backend openai_http "target=http://localhost:8000"
+  --backend kind=openai_http,target=http://localhost:8000
 ```
 
 **Key parameters:**
@@ -230,11 +235,11 @@ Warmup, cooldown, and maximum limits help ensure stable, repeatable measurements
 
 ```bash
 guidellm run \
-  --backend openai_http "target=http://localhost:8000" \
-  --profile concurrent "streams=16,warmup=0.1,cooldown=0.1" \
-  --constraint max_errors "max_errors=5" \
-  --constraint over_saturation "" \
-  --data synthetic_text "prompt_tokens=256,output_tokens=128"
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=concurrent,streams=16,warmup=0.1,cooldown=0.1 \
+  --constraint kind=max_errors,count=5 \
+  --constraint kind=over_saturation \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
 
 **Key parameters:**
