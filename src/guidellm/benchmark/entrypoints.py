@@ -140,18 +140,19 @@ async def resolve_tokenizer(
     )
 
     if args.tokenizer.model is not None:
+        model = args.tokenizer.model
         if console_step:
             console_step.finish(
-                title="Processor resolved",
-                details=f"Using tokenizer '{args.tokenizer.model}' from arguments",
+                title=f"Tokenizer resolved, Using tokenizer '{model}' from arguments",
+                details=args.tokenizer.model_dump(mode="json"),
                 status_level="success",
             )
     else:
         args.tokenizer.model = model
         if console_step:
             console_step.finish(
-                title="Processor resolved",
-                details=f"Using model '{model}' as tokenizer",
+                title=f"Tokenizer resolved, using model '{model}' as tokenizer",
+                details=args.tokenizer.model_dump(mode="json"),
                 status_level="success",
             )
 
@@ -203,49 +204,6 @@ def resolve_item_from_registry(
                 f"{base_type.__name__}."
             )
         return item_class(**kwargs)
-
-
-async def resolve_request_loader(
-    args: BenchmarkArgs,
-    console: Console | None = None,
-) -> DataLoader[GenerationRequest]:
-    """
-    Construct a DataLoader for GenerationRequest objects from raw data inputs.
-
-    Initializes and configures the data pipeline including column mapping, request
-    formatting, collation, and sampling. Resolves string-based preprocessor identifiers
-    from the PreprocessorRegistry and creates appropriate instances with provided
-    configurations.
-
-    :param args: BenchmarkArgs containing data loading configuration
-    :param console: Console instance for progress reporting, or None
-    :return: Configured DataLoader instance yielding GenerationRequest objects
-    """
-    console_step = (
-        console.print_update_step(title=f"Initializing request loader from {args.data}")
-        if console
-        else None
-    )
-
-    request_loader: DataLoader[GenerationRequest] = create_data_loader(
-        loader_config=args.data_loader,
-        data_config=args.data,
-        tokenizer_config=args.tokenizer,
-        column_mapper_config=args.data_column_mapper,
-        preprocessors_config=args.data_preprocessors,
-        finalizer_config=args.data_finalizer,
-        random_seed=args.seed.value,  # type: ignore[attr-defined]
-    )
-
-    if console_step:
-        samples = args.data_loader.samples if args.data_loader.samples > 0 else "inf"
-        console_step.finish(
-            title=(f"Request loader initialized with {samples} unique requests"),
-            details=InfoMixin.extract_from_obj(request_loader),
-            status_level="success",
-        )
-
-    return request_loader
 
 
 def resolve_constraints(
@@ -351,7 +309,7 @@ async def resolve_output_formats(
     if console_step:
         console_step.finish(
             title="Output formats resolved",
-            details={key: str(val) for key, val in resolved.items()},
+            details=[args.model_dump(mode="json") for args in outputs],
             status_level="success",
         )
 
@@ -480,26 +438,19 @@ async def benchmark_generative_text(
         console=console,
     )
     await resolve_tokenizer(args=benchmark_args, model=model, console=console)
-    request_loader = await resolve_request_loader(
-        args=benchmark_args,
+    request_loader: DataLoader[GenerationRequest] = await create_data_loader(
+        loader_config=benchmark_args.data_loader,
+        data_config=benchmark_args.data,
+        tokenizer_config=benchmark_args.tokenizer,
+        column_mapper_config=benchmark_args.data_column_mapper,
+        preprocessors_config=benchmark_args.data_preprocessors,
+        finalizer_config=benchmark_args.data_finalizer,
+        random_seed=benchmark_args.seed.value,  # type: ignore[attr-defined]
         console=console,
     )
 
     warmup = benchmark_args.profile.warmup
     cooldown = benchmark_args.profile.cooldown
-    if console:
-        console.print_update(
-            title="Resolved transient phase configurations",
-            details="\n".join(
-                [
-                    f"Warmup: {warmup}",
-                    f"Cooldown: {cooldown}",
-                    "Rampup (Throughput/Concurrent): "
-                    f"{benchmark_args.profile.rampup_duration}",
-                ]
-            ),
-            status="success",
-        )
 
     constraints = resolve_constraints(benchmark_args, **constraints)
     profile = await resolve_profile(

@@ -1,8 +1,10 @@
 """
-Unit tests for backend transformation to typed BackendArgs instances.
+Unit tests for backend transformation to typed BackendArgs instances
+and BenchmarkScenario environment variable support.
 
 Tests the automatic conversion of backend configuration from dict-based
-backend into properly typed BackendArgs instances during model validation.
+backend into properly typed BackendArgs instances during model validation,
+and env var loading for BenchmarkScenario.
 
 ### WRITTEN BY AI ###
 """
@@ -15,6 +17,7 @@ from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
 from guidellm.backends.openai.websocket import OpenAIWebSocketBackendArgs
 from guidellm.benchmark.schemas.entrypoints import (
     BenchmarkArgs,
+    BenchmarkScenario,
 )
 
 # Conditionally import VLLM backend args if available
@@ -388,3 +391,85 @@ class TestBackendArgsTransformation:
             )
             assert VLLMPythonBackendArgs is not None
             assert isinstance(args_vllm.backend, VLLMPythonBackendArgs)
+
+
+@pytest.mark.sanity
+class TestBenchmarkScenarioEnvVars:
+    """Test BenchmarkScenario environment variable loading."""
+
+    def test_backend_target_from_env(self, monkeypatch):
+        """
+        GUIDELLM__SPEC__BACKEND__TARGET sets the backend target.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setenv("GUIDELLM__SPEC__BACKEND__TARGET", "http://env-server:9000")
+
+        scenario = BenchmarkScenario.model_validate(
+            {"spec": {**_PIPELINE_DEFAULTS, "backend": {"kind": "openai_http"}}}
+        )
+
+        assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
+        assert scenario.spec.backend.target == "http://env-server:9000"
+
+    def test_discriminated_union_dispatch_from_env(self, monkeypatch):
+        """
+        Backend kind and variant-specific fields can be set via env vars.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setenv("GUIDELLM__SPEC__BACKEND__KIND", "openai_http")
+        monkeypatch.setenv("GUIDELLM__SPEC__BACKEND__TARGET", "http://env-server:9000")
+        monkeypatch.setenv("GUIDELLM__SPEC__BACKEND__MODEL", "env-model")
+
+        scenario = BenchmarkScenario.model_validate({"spec": _PIPELINE_DEFAULTS})
+
+        assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
+        assert scenario.spec.backend.target == "http://env-server:9000"
+        assert scenario.spec.backend.model == "env-model"
+
+    def test_sweep_size_string_coercion_from_env(self, monkeypatch):
+        """
+        GUIDELLM__SPEC__PROFILE__SWEEP_SIZE with string value is coerced to int.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setenv("GUIDELLM__SPEC__PROFILE__SWEEP_SIZE", "5")
+
+        scenario = BenchmarkScenario.model_validate(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                    "profile": {"kind": "sweep"},
+                }
+            }
+        )
+
+        assert scenario.spec.profile.sweep_size == 5  # type: ignore[union-attr]
+
+    def test_kwargs_override_env_vars(self, monkeypatch):
+        """
+        Explicit kwargs take precedence over env var values.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setenv("GUIDELLM__SPEC__BACKEND__TARGET", "http://from-env:9000")
+
+        scenario = BenchmarkScenario.model_validate(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://from-kwarg:8000",
+                    },
+                }
+            }
+        )
+
+        assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
+        assert scenario.spec.backend.target == "http://from-kwarg:8000"

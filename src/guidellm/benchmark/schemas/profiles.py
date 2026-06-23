@@ -8,6 +8,7 @@ deserialization of profile-specific argument types.
 
 from __future__ import annotations
 
+import contextlib
 from abc import ABC
 from typing import Any, ClassVar
 
@@ -19,6 +20,7 @@ from pydantic import (
 
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
+from guidellm.utils.imports import json
 
 __all__ = ["ProfileArgs"]
 
@@ -94,6 +96,9 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
     @field_validator("warmup", "cooldown", mode="before")
     @classmethod
     def _coerce_transient_phase(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                v = json.loads(v)
         if isinstance(v, int | float | None):
             return TransientPhaseConfig.create_from_value(v)
         return v
