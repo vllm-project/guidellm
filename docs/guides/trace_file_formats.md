@@ -1,17 +1,17 @@
 # Trace File Formats
 
-Unlike other file-based datasets, trace files can be formatted in ways irrespective of file format. This guide covers all trace file formats currently supported by GuideLLM, along with the format-agnostic and format-specific data arguments.
+Many trace files are formatted in ways that need to be specially handled to create an accurate replay. This guide covers all trace file formats currently supported by GuideLLM, along with the format-agnostic and format-specific data arguments.
 
-Detailed use of the replay profile as a whole is explained in [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+Detailed use of the replay profile and file-based datasets as a whole is explained in [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
 
 ## Supported Formats
 
-These are passed to the `--data` argument as `kind=[format]`:
+These are passed to the `--data` argument as `kind=format`:
 
 - `trace_minimal`: A trace format that does the bare minimum needed to complete a fully functioning trace replay benchmark with synthetic prompt generation
 - `mooncake`: The trace format used by the serving platform Mooncake, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
 
-## Format-Agnostic Data Arguments and `trace_minimal`
+## Format-Agnostic Data Arguments
 
 All trace formats can accept the following optional data arguments:
 
