@@ -454,6 +454,20 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             "Inter Token Latency",
             "ms",
         )
+        self._add_stats_for_metric(
+            headers,
+            values,
+            benchmark.metrics.time_to_last_round_trip_ms,
+            "Time To Last Round Trip",
+            "ms",
+        )
+        self._add_stats_for_metric(
+            headers,
+            values,
+            benchmark.metrics.avg_round_trip_time_ms,
+            "Avg Round Trip Time",
+            "ms",
+        )
 
     def _add_server_throughput_metrics(
         self,
