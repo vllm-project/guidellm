@@ -198,7 +198,7 @@ guidellm run \
 
 - `--data`: Data type plus config — `synthetic_text`, `huggingface`, `json_file`, `csv_file`, `text_file`, `trace_synthetic`, and others. Repeat for multiple sources.
 - `--data-column-mapper`: Column mapping preprocessor and JSON config for fields such as `text_column` or `output_tokens_count_column`
-- `--data-loader pytorch "samples=1000"`: Limit how many rows are loaded (`-1` for all)
+- `--data-loader type=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
 - `--tokenizer huggingface_auto "model=gpt2"`: Tokenizer for synthetic data or local token counting
 
 ### Request Types and API Targets

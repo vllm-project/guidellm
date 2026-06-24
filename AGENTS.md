@@ -104,7 +104,7 @@ uv run guidellm run \
   --profile kind=constant \
   --data '{"kind":"huggingface","source":"openai/gsm8k","load_kwargs":{"name":"main","split":"test"}}' \
   --constraint kind=max_duration,seconds=300 \
-  --override profile.rate=10,20 \
+  --override profile.rate 10,20 \
   --output kind=json,path=benchmark.json \
   --output kind=csv,path=report.csv
 ```
