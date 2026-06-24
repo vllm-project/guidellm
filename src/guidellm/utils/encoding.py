@@ -431,7 +431,7 @@ class Serializer:
             "*PYD*": True,
             "typ": item.__class__.__name__,
             "mod": item.__class__.__module__,
-            "dat": item.model_dump(mode="python"),
+            "dat": item.model_dump(mode="python", exclude_computed_fields=True),
         }
 
     def from_dict_pydantic(self, item: dict[str, Any]) -> Any:
@@ -572,7 +572,9 @@ class Serializer:
         """
         class_name: str = obj.__class__.__name__
         class_module: str = obj.__class__.__module__
-        json_data = obj.__pydantic_serializer__.to_json(obj)
+        json_data = obj.__pydantic_serializer__.to_json(
+            obj, exclude_computed_fields=True
+        )
 
         return class_name.encode() + b"|" + class_module.encode() + b"|" + json_data
 
