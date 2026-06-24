@@ -26,7 +26,7 @@ These are passed through the `--data` argument like below:
 ```bash
 guidellm benchmark \
     --target http://localhost:8000 \
-    --profile replay \
+    --profile kind=replay \
     --data "kind=trace_minimal,path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens"
 ```
 
