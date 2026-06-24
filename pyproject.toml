@@ -282,6 +282,10 @@ select = [
     "S106",    # allow hardcoded passwords in tests
     "PLR0915", # allow complext statements in tests
 ]
+"scripts/**/*.py" = [
+    "T201",    # print statements are the primary output mechanism for scripts
+    "INP001",  # scripts/ is not a package
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["guidellm", "tests"]
