@@ -4,7 +4,7 @@ GuideLLM supports various dataset configurations to enable benchmarking and eval
 
 ## Data Arguments Overview
 
-Dataset and processing options use "kind" pattern to select a registered implementation and configure parameters:
+Dataset and processing options use the "kind" pattern to select a registered implementation and configure parameters:
 
 ```bash
 guidellm run --data kind=<TYPE>,key=value,... [other options...]
@@ -321,7 +321,7 @@ The preprocessing command can:
 
 ```bash
 guidellm preprocess dataset \
-    <DATA> \
+    kind=<DATA_TYPE>,key=value,... \
     <OUTPUT_PATH> \
     --processor <PROCESSOR> \
     --config <CONFIG>
@@ -331,7 +331,7 @@ guidellm preprocess dataset \
 
 | Argument      | Description                                                                                                                                    |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATA`        | Path to the input dataset or Hugging Face dataset ID. Supports all dataset formats documented in the [Dataset Configurations](../datasets.md). |
+| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Configurations](../datasets.md). |
 | `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                     |
 | `--processor` | **Required.** Processor or tokenizer name/path for calculating token counts. Can be a Hugging Face model ID or local path.                     |
 | `--config`    | **Required.** Configuration specifying target token sizes. Can be a JSON string, key=value pairs, or file path (.json, .yaml, .yml, .config).  |
@@ -340,7 +340,7 @@ guidellm preprocess dataset \
 
 ```bash
 guidellm preprocess dataset \
-    "path/to/input_dataset.jsonl" \
+    kind=json_file,path=path/to/input_dataset.jsonl \
     "path/to/processed_dataset.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256,prefix_tokens_max=100"
@@ -387,13 +387,13 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 
 **Column mapping format:** The `--data-column-mapper` accepts a JSON string mapping column types to column names:
 
-```json
-{
+```bash
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {
   "text_column": "question",
   "prefix_column": "system_prompt",
   "prompt_tokens_count_column": "input_tokens",
   "output_tokens_count_column": "completion_tokens"
-}
+}}'
 ```
 
 **Supported column types:**
@@ -420,7 +420,7 @@ You would use:
 
 ```bash
 guidellm preprocess dataset \
-    "dataset.csv" \
+    "kind=csv_file,path=dataset.csv" \
     "processed.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
@@ -450,7 +450,7 @@ When prompts are shorter than the target token length, you can specify how to ha
 
 ```bash
 guidellm preprocess dataset \
-    "dataset.jsonl" \
+    "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
@@ -462,7 +462,7 @@ guidellm preprocess dataset \
 
 ```bash
 guidellm preprocess dataset \
-    "dataset.jsonl" \
+    "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
@@ -486,7 +486,7 @@ guidellm preprocess dataset \
 
 ```bash
 guidellm preprocess dataset \
-    "my_dataset.csv" \
+    "kind=csv_file,path=my_dataset.csv" \
     "processed_dataset.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
@@ -497,7 +497,7 @@ guidellm preprocess dataset \
 
 ```bash
 guidellm preprocess dataset \
-    "dataset.jsonl" \
+    "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,prompt_tokens_stdev=50,output_tokens=256,output_tokens_stdev=25" \
@@ -510,7 +510,7 @@ guidellm preprocess dataset \
 
 ```bash
 guidellm preprocess dataset \
-    "dataset.jsonl" \
+    "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
     --processor "gpt2" \
     --processor-args '{"use_fast": false}' \
@@ -522,7 +522,7 @@ guidellm preprocess dataset \
 
 ```bash
 guidellm preprocess dataset \
-    "my_dataset.jsonl" \
+    "kind=json_file,path=my_dataset.jsonl" \
     "processed.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
