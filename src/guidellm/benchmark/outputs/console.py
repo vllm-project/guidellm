@@ -480,6 +480,16 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="TPOT",
                 name="ms",
             )
+            columns.add_stats(
+                benchmark.metrics.time_to_last_round_trip_ms,
+                group="Last RT",
+                name="ms",
+            )
+            columns.add_stats(
+                benchmark.metrics.avg_round_trip_time_ms,
+                group="Avg RTT",
+                name="ms",
+            )
 
         headers, values = columns.get_table_data()
         self.console.print("\n")
