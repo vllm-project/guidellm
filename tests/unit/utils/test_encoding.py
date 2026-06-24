@@ -201,7 +201,6 @@ class TestMessageEncoding:
         else:
             assert decoded == obj
 
-    @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @pytest.mark.parametrize(
         "obj",
