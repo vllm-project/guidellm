@@ -813,6 +813,18 @@ class GenerativeMetrics(StandardBaseDict):
     inter_token_latency_ms: StatusDistributionSummary = Field(
         description="Distribution of inter-token latencies in milliseconds"
     )
+    time_to_last_round_trip_ms: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of websocket last-round-trip latencies in milliseconds "
+            "(last received token minus last sent packet)"
+        )
+    )
+    avg_round_trip_time_ms: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of approximate websocket average round-trip times in "
+            "milliseconds (mean received minus mean sent)"
+        )
+    )
     prompt_tokens_per_second: StatusDistributionSummary = Field(
         description="Distribution of prompt token processing rates"
     )
@@ -889,10 +901,12 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             request_concurrency=StatusDistributionSummary.concurrency_distribution_from_timings_function(
                 function=(
-                    lambda req: (req.request_start_time, req.request_end_time)
-                    if req.request_start_time is not None
-                    and req.request_end_time is not None
-                    else None
+                    lambda req: (
+                        (req.request_start_time, req.request_end_time)
+                        if req.request_start_time is not None
+                        and req.request_end_time is not None
+                        else None
+                    )
                 ),
                 successful=successful,
                 incomplete=incomplete,
@@ -933,6 +947,18 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             time_to_first_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_token_ms or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.time_to_last_round_trip_ms or 0.0,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            avg_round_trip_time_ms=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.avg_round_trip_time_ms or 0.0,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,

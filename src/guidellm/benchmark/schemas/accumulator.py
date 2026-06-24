@@ -495,6 +495,14 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         default_factory=RunningMetricStats,
         description="Accumulated time to first token statistics in milliseconds",
     )
+    time_to_last_round_trip_ms: RunningMetricStats = Field(
+        default_factory=RunningMetricStats,
+        description="Accumulated websocket last round-trip latency in milliseconds",
+    )
+    avg_round_trip_time_ms: RunningMetricStats = Field(
+        default_factory=RunningMetricStats,
+        description="Accumulated websocket average round-trip time in milliseconds",
+    )
     time_to_first_output_token_ms: RunningMetricStats = Field(
         default_factory=RunningMetricStats,
         description="Accumulated time to first content token stats in ms",
@@ -538,6 +546,12 @@ class GenerativeMetricsAccumulator(StandardBaseModel):
         self.request_latency.update_estimate(stats.request_latency, duration=duration)
         self.time_to_first_token_ms.update_estimate(
             stats.time_to_first_token_ms, duration=duration
+        )
+        self.time_to_last_round_trip_ms.update_estimate(
+            stats.time_to_last_round_trip_ms, duration=duration
+        )
+        self.avg_round_trip_time_ms.update_estimate(
+            stats.avg_round_trip_time_ms, duration=duration
         )
         self.time_to_first_output_token_ms.update_estimate(
             stats.time_to_first_output_token_ms, duration=duration
