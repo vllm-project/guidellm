@@ -78,6 +78,35 @@ class RequestTimings(StandardBaseDict):
     token_iterations: int = Field(
         default=0,
     )
+    last_request_sent: float | None = Field(
+        default=None,
+        description=(
+            "Unix timestamp of the last packet sent to the server, used for "
+            "round-trip metrics (openai_websocket backend)"
+        ),
+    )
+    request_sent_sum: float = Field(
+        default=0.0,
+        description=(
+            "Sum of sent-packet timestamps for mean round-trip estimation "
+            "(openai_websocket backend)"
+        ),
+    )
+    request_sent_count: int = Field(
+        default=0,
+        description="Number of packets sent to the server (openai_websocket backend)",
+    )
+    token_received_sum: float = Field(
+        default=0.0,
+        description=(
+            "Sum of received content-token timestamps for mean round-trip "
+            "estimation (openai_websocket backend)"
+        ),
+    )
+    token_received_count: int = Field(
+        default=0,
+        description="Number of content tokens received (openai_websocket backend)",
+    )
     request_end: float | None = Field(
         default=None,
         description="Unix timestamp when the backend completed processing the request",
