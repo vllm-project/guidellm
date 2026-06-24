@@ -329,12 +329,12 @@ guidellm preprocess dataset \
 
 ### Required Arguments
 
-| Argument      | Description                                                                                                                                    |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Configurations](../datasets.md). |
-| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                     |
-| `--processor` | **Required.** Processor or tokenizer name/path for calculating token counts. Can be a Hugging Face model ID or local path.                     |
-| `--config`    | **Required.** Configuration specifying target token sizes. Can be a JSON string, key=value pairs, or file path (.json, .yaml, .yml, .config).  |
+| Argument      | Description                                                                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Configurations](../datasets.md).                     |
+| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                    |
+| `--processor` | **Required.** Processor or tokenizer name/path for calculating token counts. Can be a Hugging Face model ID or local path.                    |
+| `--config`    | **Required.** Configuration specifying target token sizes. Can be a JSON string, key=value pairs, or file path (.json, .yaml, .yml, .config). |
 
 ### Example
 
@@ -486,7 +486,7 @@ guidellm preprocess dataset \
 
 ```bash
 guidellm preprocess dataset \
-    "kind=csv_file,path=my_dataset.csv" \
+    kind=csv_file,path=my_dataset.csv \
     "processed_dataset.jsonl" \
     --processor "gpt2" \
     --config "prompt_tokens=512,output_tokens=256" \
