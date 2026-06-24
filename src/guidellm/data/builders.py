@@ -242,7 +242,7 @@ def process_dataset(
         random_seed=random_seed,
     )
     # Setup column mapper
-    column_mapper = PreprocessorRegistry.create(
+    column_mapper: GenerativeColumnMapper = PreprocessorRegistry.create(
         config=DataPreprocessorArgs.model_validate(
             data_column_mapper  # type: ignore[arg-type]
         )
