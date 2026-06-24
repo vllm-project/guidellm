@@ -239,7 +239,8 @@ class BenchmarkMetadata(StandardBaseModel):
     purposes but does not affect benchmark execution.
     """
 
-    model_config = args_model_config()
+    # Allow arbitrary metadata fields
+    model_config = args_model_config() | ConfigDict(extra="allow")
 
     labels: dict[str, str] = Field(
         default_factory=dict,
