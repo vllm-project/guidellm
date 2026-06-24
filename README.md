@@ -179,9 +179,9 @@ guidellm run \
 
 **Key parameters:**
 
-- `--profile`: Defines the traffic pattern — `synchronous`, `concurrent`, `throughput`, `constant`, `poisson`, or `sweep`
+- `--profile kind=<type>`: Defines the traffic pattern — `synchronous`, `concurrent`, `throughput`, `constant`, `poisson`, or `sweep`
 - `--profile kind=constant,rate=10`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `throughput`, use `max_concurrency=`
-- `--constraint max_duration` or `--constraint max_requests`: Limit each strategy by time or request count
+- `--constraint kind=max_duration,seconds=<seconds>` or `--constraint kind=max_requests,count=<count>`: Limit each strategy by time or request count
 
 ### Dataset Sources
 
@@ -244,10 +244,10 @@ guidellm run \
 
 **Key parameters:**
 
-- `--profile`: Profile config supports `warmup` and `cooldown` (percentage or absolute units)
-- `--constraint max_duration` / `--constraint max_requests`: Stop each strategy by time or request count
-- `--constraint max_errors`: Stop when total errors exceed the threshold
-- `--constraint over_saturation`: Enable over-saturation detection (empty config uses defaults)
+- `--profile kind=<type>`: Profile config supports `warmup` and `cooldown` (percentage or absolute units)
+- `--constraint kind=max_duration,seconds=<seconds>` / `--constraint kind=max_requests,count=<count>`: Stop each strategy by time or request count
+- `--constraint kind=max_errors,count=<count>`: Stop when total errors exceed the threshold
+- `--constraint kind=over_saturation`: Enable over-saturation detection (empty config uses defaults)
 
 ## Development and Contribution
 

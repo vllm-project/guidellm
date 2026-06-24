@@ -162,7 +162,7 @@ guidellm run \
 **Key Parameters**
 
 - `--backend`: Server URL and `request_format=/v1/audio/transcriptions` for ASR
-- `--profile synchronous`: Run requests sequentially
+- `--profile kind=synchronous`: Run requests sequentially
 - `--constraint kind=max_requests,count=20`: Limits the benchmark to 20 total requests
 - `--data`: HuggingFace dataset with `load_kwargs` selecting the "clean" config and "test" split
 - `--data-column-mapper`: Maps the dataset's audio column to GuideLLM's `audio_column`
@@ -215,7 +215,7 @@ guidellm run \
 **Key Parameters:**
 
 - `--backend`: Server URL, translation endpoint, and target language via `extras.body`
-- `--profile synchronous`: Sequential execution mode
+- `--profile kind=synchronous`: Sequential execution mode
 - `--constraint kind=max_requests,count=20`: Limits the test to 20 requests
 - `--data`: HuggingFace dataset with `load_kwargs` for the "clean" config and "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Identifies the audio column for audio processing
@@ -270,7 +270,7 @@ guidellm run \
 **Key Parameters**
 
 - `--backend`: Server URL and chat completions endpoint for multimodal inputs
-- `--profile synchronous`: Sequential execution
+- `--profile kind=synchronous`: Sequential execution
 - `--constraint kind=max_requests,count=20`: Limits to 20 requests
 - `--data`: Specified twice — first for synthetic prompts (`kind=synthetic_text`), second for real audio from `openslr/librispeech_asr` (`kind=huggingface` with `load_kwargs` for dataset config)
 - `--data-column-mapper`: Maps audio from dataset index 1 (`"1.audio"`, LibriSpeech) and text from dataset index 0 (`"0.prompt"`, synthetic prompts) into each request.
