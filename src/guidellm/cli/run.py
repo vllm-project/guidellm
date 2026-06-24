@@ -61,6 +61,12 @@ __all__ = [
     nargs=2,
     callback=cli_tools.parse_overrides,
     multiple=True,
+    help=(
+        "Define overrides for each sub-benchmark. "
+        "Currently this only supports `profile.streams` or `profile.rate`. "
+        "Example: `--profile kind=concurrent --override 'profile.streams' 1,2,4,8,16`"
+        "  [repeatable]"
+    ),
 )
 @click.option(
     "--disable-console",
