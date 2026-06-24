@@ -9,12 +9,13 @@ from loguru import logger
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.config import load_config
-from guidellm.data.deserializers import (
-    DatasetDeserializerFactory,
+from guidellm.data.deserializers import DatasetDeserializerFactory
+from guidellm.data.preprocessors import GenerativeColumnMapper, PreprocessorRegistry
+from guidellm.data.schemas import (
+    DataArgs,
+    DataPreprocessorArgs,
+    PreprocessDatasetConfig,
 )
-from guidellm.data.preprocessors import GenerativeColumnMapper
-from guidellm.data.preprocessors.mappers import GenerativeColumnMapperArgs
-from guidellm.data.schemas import DataArgs, PreprocessDatasetConfig
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
 from guidellm.utils.hf_transformers import check_load_processor
 from guidellm.utils.random import IntegerRangeSampler
@@ -240,11 +241,10 @@ def process_dataset(
         processor_factory=lambda: tokenizer,
         random_seed=random_seed,
     )
-
     # Setup column mapper
-    column_mapper = GenerativeColumnMapper(
-        config=GenerativeColumnMapperArgs(
-            column_mappings=data_column_mapper  # type: ignore[arg-type]
+    column_mapper = PreprocessorRegistry.create(
+        config=DataPreprocessorArgs.model_validate(
+            data_column_mapper  # type: ignore[arg-type]
         )
     )
     column_mapper.setup_data(
