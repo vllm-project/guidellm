@@ -80,6 +80,9 @@ def _record_content_tokens(
     if content_tokens <= 0:
         return False
 
+    request_info.timings.token_received_sum += iter_time
+    request_info.timings.token_received_count += 1
+
     if request_info.timings.first_token_iteration is None:
         request_info.timings.first_token_iteration = iter_time
         request_info.timings.token_iterations = 0
@@ -90,6 +93,18 @@ def _record_content_tokens(
     request_info.timings.last_token_iteration = iter_time
     request_info.timings.token_iterations += content_tokens
     return False
+
+
+def _record_request_sent(request_info: RequestInfo) -> None:
+    """
+    Record the timestamp of one outbound WebSocket frame for round-trip metrics.
+
+    :param request_info: Mutable timing state for the in-flight request.
+    """
+    sent_time = time.time()
+    request_info.timings.last_request_sent = sent_time
+    request_info.timings.request_sent_sum += sent_time
+    request_info.timings.request_sent_count += 1
 
 
 def _load_ws_event(raw: str) -> dict[str, Any]:
@@ -377,8 +392,9 @@ class OpenAIWebSocketBackend(Backend):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        history: list[tuple[GenerationRequest, GenerationResponse | None]]
-        | None = None,
+        history: (
+            list[tuple[GenerationRequest, GenerationResponse | None]] | None
+        ) = None,
     ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
         """
         Stream one realtime transcription over WebSocket for a single audio column.
@@ -454,18 +470,22 @@ class OpenAIWebSocketBackend(Backend):
                         f"Expected session.created, got {first_event.get('type')!r}"
                     )
                 await ws.send(_json_text(session_update))
+                _record_request_sent(request_info)
                 for b64_chunk in chunks:
                     await ws.send(
                         _json_text(
                             {"type": "input_audio_buffer.append", "audio": b64_chunk}
                         )
                     )
+                    _record_request_sent(request_info)
                 await ws.send(
                     _json_text({"type": "input_audio_buffer.commit", "final": False})
                 )
+                _record_request_sent(request_info)
                 await ws.send(
                     _json_text({"type": "input_audio_buffer.commit", "final": True})
                 )
+                _record_request_sent(request_info)
 
                 ignored_events = 0
                 while True:
