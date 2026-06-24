@@ -264,7 +264,7 @@ class TraceDataset(IterableDataset):
             self._ex_iterable.iteration_count = epoch
 
 
-# TODO: I was hoping to avoid having format registered names in trace_common, as
+# I was hoping to avoid having format registered names in trace_common, as
 # having to add them to here will be easy to forget.
 #
 # I wonder if there's some non-ugly way of registering these somewhere else?

@@ -107,7 +107,8 @@ class TestMooncakeTraceFormat:
     def test_format_registered_with_deserializer(self, tmp_path: Path):
         trace = _write_trace(
             tmp_path,
-            '{"timestamp": 0.0, "input_length": 10, "output_length": 5, "hash_ids": [0]}\n',
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 5, '
+            '"hash_ids": [0]}\n',
         )
         DatasetDeserializerFactory.deserialize(
             config=MooncakeTraceFormatArgs(path=trace),
