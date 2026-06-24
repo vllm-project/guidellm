@@ -4,7 +4,7 @@ GuideLLM provides flexible options for outputting benchmark results, catering to
 
 ## CLI output configuration
 
-Outputs use the single-parameter CLI pattern. Repeat `--output` for each format:
+Outputs follows the typed registry-backed CLI pattern. Repeat `--output` with the appropriate type for each format:
 
 ```bash
 guidellm run \

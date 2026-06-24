@@ -164,7 +164,7 @@ prefix content prompt_0 content response to prompt_0 prompt_1 content response t
 
 By default, GuideLLM replays the full conversation history in each request (client-side history). For the Responses API, you can instead use **server-side history** via the `previous_response_id` field, where the server stores and manages conversation context.
 
-Enable it in the backend configuration:
+Enable server-side history in the backend configuration:
 
 ```bash
 guidellm run \
@@ -429,13 +429,13 @@ Results in the following being sent for the turn in the conversation history:
 ### Granite Format
 
 ```bash
---backend kind=openai_http'target=http://localhost:8000,multiturn_reasoning="Here is my thought process:{reasoning}Here is my response:"'
+--backend 'kind=openai_http,target=http://localhost:8000,multiturn_reasoning="Here is my thought process:{reasoning}Here is my response:"'
 ```
 
 ### Raw (no delimiters)
 
 ```bash
---backend kind=openai_http'target=http://localhost:8000,multiturn_reasoning="{reasoning}"'
+--backend 'kind=openai_http,target=http://localhost:8000,multiturn_reasoning="{reasoning}"'
 ```
 
 ### Common Model Pairings

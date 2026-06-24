@@ -80,7 +80,7 @@ GuideLLM supports multiple output formats that can be customized:
 - **HTML**: Interactive HTML report with tables and visualizations
 - **Console**: Terminal output displayed during execution
 
-To specify which formats to generate, use repeated `--output` options:
+To specify which formats to generate, and where to save them, use the `--output` option, which can be repeated for multiple formats:
 
 ```bash
 guidellm run \
@@ -88,18 +88,6 @@ guidellm run \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --output kind=json,path=results/benchmarks.json \
   --output kind=csv,path=results/summary.csv
-```
-
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://server1:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json,path=model1/benchmarks.json
-
-guidellm run \
-  --backend kind=openai_http,target=http://server2:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json,path=model2/benchmarks.json
 ```
 
 ### Programmatic Analysis

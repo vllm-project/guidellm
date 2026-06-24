@@ -4,19 +4,23 @@ GuideLLM is designed to work with OpenAI-compatible HTTP servers, enabling seaml
 
 ## CLI backend configuration
 
-Backends are configured with the single-parameter CLI pattern:
+Backends are configured using the `--backend` option. You can only specify one backend per command. Select a registered backend type with `kind=<TYPE>` and configure parameters with key=value pairs:
 
 ```bash
 guidellm run --backend kind=<TYPE>,key=value,...
 ```
 
-For HTTP servers, pass `kind=openai_http` and connection settings in the same configuration string:
+For HTTP servers, pass `kind=openai_http` with the target URL and other connection settings:
 
 ```bash
 --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Meta-Llama-3.1-8B-Instruct
 ```
 
-Flat settings use comma-separated key=value pairs; nested settings use serialized JSON. Common `openai_http` parameters include `target`, `model`, `request_format`, `api_key`, `stream`, `verify`, `timeout`, and nested `extras` for request body, headers, and query parameters.
+Flat settings can be specified using comma-separated key=value pairs; for nested settings use serialized JSON or YAML. Common `openai_http` parameters include `target`, `model`, `request_format`, `api_key`, `stream`, `verify`, `timeout`, and nested `extras` for request body, headers, and query parameters:
+
+```bash
+--backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"temperature":0.6,"top_p":0.95,"top_k":20}}}'
+```
 
 ## Supported Backends
 

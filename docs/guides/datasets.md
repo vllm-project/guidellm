@@ -4,7 +4,7 @@ GuideLLM supports various dataset configurations to enable benchmarking and eval
 
 ## Data Arguments Overview
 
-Dataset and processing options use the **single-parameter** CLI pattern:
+Dataset and processing options use "kind" pattern to select a registered implementation and configure parameters:
 
 ```bash
 guidellm run --data kind=<TYPE>,key=value,... [other options...]
@@ -28,7 +28,7 @@ In addition, you can specify additional arguments to the dataset loading with th
 
 ### Data Loader
 
-You can specify the data loader with `--loader` or `--data-loader` and a configuration string. The only current type is `pytorch`:
+You can specify the data loader with `--data-loader` and a configuration string. The only current type is `pytorch`:
 
 - `--data-loader kind=pytorch,samples=1000,num_workers=4,shuffle=true`
 

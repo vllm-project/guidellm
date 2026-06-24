@@ -217,7 +217,7 @@ guidellm run \
 - `--backend`: Server URL, translation endpoint, and target language via `extras.body`
 - `--profile synchronous`: Sequential execution mode
 - `--constraint kind=max_requests,count=20`: Limits the test to 20 requests
-- `--data`: HuggingFace dataset with `load_kwargs` for the "clean" config and "test" split
+- `--data`: HuggingFace dataset with `load_kwargs` for the "clean" config and "test" split. See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
 - `--data-column-mapper`: Identifies the audio column for audio processing
 
 The above command benchmarks the audio/translations endpoint on the target server using audio from the LibriSpeech dataset and requesting translations to French. It will result in an output similar to the following:
@@ -272,8 +272,8 @@ guidellm run \
 - `--backend`: Server URL and chat completions endpoint for multimodal inputs
 - `--profile synchronous`: Sequential execution
 - `--constraint kind=max_requests,count=20`: Limits to 20 requests
-- `--data`: Synthetic prompts plus LibriSpeech audio from HuggingFace
-- `--data-column-mapper`: Maps audio from dataset index 1 and text from dataset index 0
+- `--data`: Specified twice — first for synthetic prompts (`kind=synthetic_text`), second for real audio from `openslr/librispeech_asr` (`kind=huggingface` with `load_kwargs` for dataset config)
+- `--data-column-mapper`: Maps audio from dataset index 1 (`"1.audio"`, LibriSpeech) and text from dataset index 0 (`"0.prompt"`, synthetic prompts) into each request.
 
 The above command benchmarks the chat/completions endpoint on the target server using the prompt text from the synthetic dataset and audio from the LibriSpeech dataset. It will result in an output similar to the following:
 

@@ -21,28 +21,15 @@ After [starting a server](server.md), you're ready to run benchmarks to evaluate
 
 ## CLI option format
 
-GuideLLM benchmark options use a **single-parameter** pattern. Each registry-backed option takes one configuration string with `kind=<type>` and other key=value pairs:
+The GuideLLM CLI provides options using a common registry-backed format. The registered implementation is selected with `kind=<type>` and parametrs are configured with key=value pairs:
 
 ```bash
 guidellm run --<option> kind=<TYPE>,key=value,...
 ```
 
-Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON in the same argument. Repeat an option to supply multiple values (for example, multiple `--data` or `--constraint` entries).
+Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
 
-Common options:
-
-| Option          | Purpose                      | Example                                                          |
-| --------------- | ---------------------------- | ---------------------------------------------------------------- |
-| `--backend`     | Server or in-process backend | `--backend kind=openai_http,target=http://localhost:8000`        |
-| `--profile`     | Scheduling strategy          | `--profile kind=constant,rate=10`                                |
-| `--constraint`  | Stop conditions (repeatable) | `--constraint kind=max_duration,seconds=60`                      |
-| `--data`        | Dataset source (repeatable)  | `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128` |
-| `--tokenizer`   | Tokenizer for token counting | `--tokenizer kind=huggingface_auto,model=gpt2`                   |
-| `--seed`        | Random seed                  | `--seed kind=static,value=42`                                    |
-| `--output`      | Result files (repeatable)    | `--output kind=json,path=benchmarks.json`                        |
-| `--data-loader` | Loading and sampling         | `--data-loader kind=pytorch,samples=1000`                        |
-
-Load a saved scenario with `--config` (alias `--scenario`, `-c`). CLI options override scenario values.
+You can load a saved scenario (YAML or JSON file) with `--config` (alias `--scenario`, `-c`). CLI options override scenario values.
 
 ### Basic Example
 
@@ -258,7 +245,7 @@ guidellm run \
   --profile kind=replay,time_scale=1.0
 ```
 
-The profile parameter `time_scale` acts as a time scale for the intervals between trace events: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
+The replay profile parameter `time_scale` acts as a scaling factor for the intervals between trace events: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
 
 GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
 
@@ -295,7 +282,7 @@ guidellm run \
 
 ## Output Options
 
-By default, complete results are saved to `benchmarks.json` and `benchmarks.csv` in your current directory. Specify outputs explicitly with repeated `--output` options:
+By default, complete results are saved to `benchmarks.json` and `benchmarks.csv` in your current directory. Specify outputs explicitly with the `--output` option, which can be repeated for multiple formats:
 
 ```bash
 guidellm run \
