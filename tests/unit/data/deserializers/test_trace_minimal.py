@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 
@@ -50,6 +51,18 @@ def _get_from_kwargs(keys, kwargs) -> dict:
 
 
 class TestMinimalTraceFormat:
+    @pytest.mark.regression
+    def test_format_registered_with_deserializer(self, tmp_path: Path):
+        trace = _write_trace(
+            tmp_path,
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 5}\n',
+        )
+        DatasetDeserializerFactory.deserialize(
+            config=MinimalTraceFormatArgs(path=trace),
+            processor_factory=_mock_processor,
+            random_seed=42,
+        )
+
     @pytest.fixture
     def deserializer(self) -> TraceDatasetDeserializer:
         return TraceDatasetDeserializer()
