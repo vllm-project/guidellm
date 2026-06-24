@@ -164,6 +164,45 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
+    def time_to_last_round_trip_ms(self) -> float | None:
+        """
+        Time from the last sent packet to the last received token in milliseconds.
+
+        Only populated by the websocket backend, which records send timestamps;
+        None for backends that do not record sends.
+
+        :return: Last round-trip latency in milliseconds, or None if unavailable
+        """
+        last_received = self.info.timings.last_token_iteration
+        last_sent = self.info.timings.last_request_sent
+        if last_received is None or last_sent is None:
+            return None
+
+        return 1000 * (last_received - last_sent)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def avg_round_trip_time_ms(self) -> float | None:
+        """
+        Approximate average round-trip time in milliseconds.
+
+        Computed as the mean of received content-token timestamps minus the mean
+        of sent-packet timestamps. This is an approximation that assumes sent
+        packets and received tokens align uniformly in time. Only populated by
+        the websocket backend; None otherwise.
+
+        :return: Average round-trip time in milliseconds, or None if unavailable
+        """
+        timings = self.info.timings
+        if timings.request_sent_count <= 0 or timings.token_received_count <= 0:
+            return None
+
+        mean_sent = timings.request_sent_sum / timings.request_sent_count
+        mean_received = timings.token_received_sum / timings.token_received_count
+        return 1000 * (mean_received - mean_sent)
+
+    @computed_field  # type: ignore[misc]
+    @property
     def time_per_output_token_ms(self) -> float | None:
         """
         Average time per output token in milliseconds including first token.
