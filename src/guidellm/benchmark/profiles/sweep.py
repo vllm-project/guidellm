@@ -42,7 +42,7 @@ class SweepProfileArgs(ProfileArgs):
         description="Type of strategy to use for the asynchronous sweep",
     )
     max_concurrency: PositiveInt | None = Field(
-        default=None,
+        default=512,
         description="Maximum concurrent requests to schedule",
     )
 
