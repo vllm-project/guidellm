@@ -87,7 +87,7 @@ GuideLLM supports several types of datasets, each with its own advantages and us
 
 Synthetic datasets allow you to generate data on the fly with customizable parameters. This is useful for controlled experiments, stress testing, and simulating specific scenarios. For example, you might want to evaluate how a model handles long prompts or generates outputs with specific characteristics.
 
-GuideLLM supports both synthetic *text* — described below — and synthetic *visual* data (images and short videos) for benchmarking Vision-Language Models. See [Synthetic Visual Data](multimodal/synthetic_vision.md) for the `synthetic_image` and `synthetic_video` `--data` types, which compose with all of the text token controls listed here.
+GuideLLM supports both synthetic *text* — described below — and synthetic *visual* data (images and short videos) for benchmarking Vision-Language Models. See [Synthetic Visual Data](multimodal/synthetic_vision.md) for the `synthetic_image` and `synthetic_video` `--data` kinds, which compose with all of the text token controls listed here.
 
 #### Example Commands
 

@@ -4,7 +4,7 @@ weight: 40
 
 # Synthetic Visual Data
 
-GuideLLM can synthesize images and short videos on the fly so you can benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Two `--data` types — `synthetic_image` and `synthetic_video` — compose with the existing synthetic text token controls (`text_tokens`, `output_tokens`, and their `stdev`/`min`/`max` companions) so a single command produces a fully-shaped multimodal request.
+GuideLLM can synthesize images and short videos on the fly so you can benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Two `--data` kinds — `synthetic_image` and `synthetic_video` — compose with the existing synthetic text token controls (`text_tokens`, `output_tokens`, and their `stdev`/`min`/`max` companions) so a single command produces a fully-shaped multimodal request.
 
 Synthetic visual data is useful when you want to control payload shape precisely (image dimensions, frame count, frames-per-second) or stress-test serving paths that the preprocessor cache would otherwise hide. Defaults are tuned so every generated payload is byte-different from the next, which defeats vLLM's multimodal preprocessor cache while still compressing like real media on the wire.
 
@@ -18,24 +18,24 @@ pip install guidellm[vision]
 
 ## Synthetic image
 
-Use `--data "type=synthetic_image"` to generate a single image per request alongside any text prompt.
+Use `--data "kind=synthetic_image"` to generate a single image per request alongside any text prompt.
 
 ### Example Commands
 
 A single 720p image alongside 200 text tokens and 64 output tokens:
 
 ```bash
-guidellm benchmark run \
-  --target http://localhost:8000 \
-  --data "type=synthetic_image,resolution=720p,text_tokens=200,output_tokens=64"
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000" \
+  --data "kind=synthetic_image,resolution=720p,text_tokens=200,output_tokens=64"
 ```
 
 A 1280×720 JPEG with two images per request:
 
 ```bash
-guidellm benchmark run \
-  --target http://localhost:8000 \
-  --data "type=synthetic_image,width=1280,height=720,format=jpeg,images_per_request=2,text_tokens=200,output_tokens=64"
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000" \
+  --data "kind=synthetic_image,width=1280,height=720,format=jpeg,images_per_request=2,text_tokens=200,output_tokens=64"
 ```
 
 ### Configuration Options
@@ -54,24 +54,24 @@ guidellm benchmark run \
 
 ## Synthetic video
 
-Use `--data "type=synthetic_video"` to generate a short clip per request alongside any text prompt. Output is `mp4` (h264, yuv420p).
+Use `--data "kind=synthetic_video"` to generate a short clip per request alongside any text prompt. Output is `mp4` (h264, yuv420p).
 
 ### Example Commands
 
 A six-frame 480p clip at 1 fps with modest prompt and output budgets:
 
 ```bash
-guidellm benchmark run \
-  --target http://localhost:8000 \
-  --data "type=synthetic_video,width=854,height=480,frames=6,fps=1,text_tokens=64,output_tokens=128"
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000" \
+  --data "kind=synthetic_video,width=854,height=480,frames=6,fps=1,text_tokens=64,output_tokens=128"
 ```
 
 A twelve-frame 720p clip at 3 fps with an explicit h264 target bitrate:
 
 ```bash
-guidellm benchmark run \
-  --target http://localhost:8000 \
-  --data "type=synthetic_video,width=1280,height=720,frames=12,fps=3,video_bitrate=2M,text_tokens=64,output_tokens=128"
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000" \
+  --data "kind=synthetic_video,width=1280,height=720,frames=12,fps=3,video_bitrate=2M,text_tokens=64,output_tokens=128"
 ```
 
 ### Configuration Options
@@ -88,6 +88,6 @@ guidellm benchmark run \
 
 ## Notes
 
-- A processor/tokenizer is required for the text portion of the request. By default the model passed in or retrieved from the server is used; otherwise specify one with `--processor`.
-- Per-row seeded gradients produce byte-different payloads on every request, which bypasses vLLM's multimodal preprocessor cache. If you want to deliberately hit the cache, set `content=solid` or pin a fixed `seed` and `samples`.
+- A tokenizer is required for the text portion of the request. By default the model passed in or retrieved from the server is used; otherwise specify one with `--tokenizer`.
+- Per-row seeded gradients produce byte-different payloads on every request, which bypasses vLLM's multimodal preprocessor cache. If you want to deliberately hit the cache, use fixed payload settings such as `content=solid` for images, or a fixed `seed` with a fixed `--data-loader "kind=pytorch,samples=..."` value.
 - The exact mp4 bytes produced for a given seed depend on the installed `ffmpeg` and `PIL` versions. Output token counts and request shape stay stable across versions, but if you are comparing byte-level outputs or wire-size measurements across machines, expect small variation.
