@@ -16,10 +16,10 @@ from unittest.mock import MagicMock, Mock, patch
 import numpy as np
 import pytest
 
+from guidellm.backends.vllm_python import common
 from guidellm.backends.vllm_python.vllm import (
     VLLMPythonBackend,
     VLLMPythonBackendArgs,
-    _has_jinja2_markers,
     _ResolvedRequest,
 )
 from guidellm.schemas import (
@@ -500,8 +500,8 @@ class TestHasJinja2Markers:
         _has_jinja2_markers returns True for strings containing {{.
         ## WRITTEN BY AI ##
         """
-        assert _has_jinja2_markers("{{ message.content }}") is True
-        assert _has_jinja2_markers("prefix {{ x }}") is True
+        assert common._has_jinja2_markers("{{ message.content }}") is True
+        assert common._has_jinja2_markers("prefix {{ x }}") is True
 
     @pytest.mark.sanity
     def test_has_jinja2_markers_true_for_control(self):
@@ -509,8 +509,8 @@ class TestHasJinja2Markers:
         _has_jinja2_markers returns True for {% and {#.
         ## WRITTEN BY AI ##
         """
-        assert _has_jinja2_markers("{% for m in messages %}") is True
-        assert _has_jinja2_markers("{# comment #}") is True
+        assert common._has_jinja2_markers("{% for m in messages %}") is True
+        assert common._has_jinja2_markers("{# comment #}") is True
 
     @pytest.mark.sanity
     def test_has_jinja2_markers_false_for_plain_strings(self):
@@ -518,9 +518,9 @@ class TestHasJinja2Markers:
         _has_jinja2_markers returns False for strings with no template syntax.
         ## WRITTEN BY AI ##
         """
-        assert _has_jinja2_markers("chat_completions") is False
-        assert _has_jinja2_markers("plain text") is False
-        assert _has_jinja2_markers("") is False
+        assert common._has_jinja2_markers("chat_completions") is False
+        assert common._has_jinja2_markers("plain text") is False
+        assert common._has_jinja2_markers("") is False
 
 
 class TestVLLMRequestFormat:
