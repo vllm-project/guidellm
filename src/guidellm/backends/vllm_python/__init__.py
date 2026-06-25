@@ -9,4 +9,4 @@ from .offline import VLLMOfflineBackend
 from .vllm import VLLMPythonBackend
 from .vllm_response import VLLMResponseHandler
 
-__all__ = ["VLLMPythonBackend", "VLLMOfflineBackend", "VLLMResponseHandler"]
+__all__ = ["VLLMOfflineBackend", "VLLMPythonBackend", "VLLMResponseHandler"]
