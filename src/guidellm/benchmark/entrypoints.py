@@ -458,8 +458,6 @@ async def benchmark_generative_text(
         constraints=constraints,
         console=console,
         random_seed=benchmark_args.seed.value,  # type: ignore[attr-defined]
-        data=benchmark_args.data,
-        data_samples=request_loader.info.get("data_samples", -1),
     )
     output_formats = await resolve_output_formats(
         outputs=benchmark_args.outputs, console=console
