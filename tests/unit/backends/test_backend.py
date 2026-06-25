@@ -507,6 +507,25 @@ class TestBackend:
         assert backend.kind == "vllm_python"
 
     @pytest.mark.smoke
+    def test_vllm_offline_backend_registered(self):
+        """
+        Test that vllm_offline backend is registered and createable.
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.backends.vllm_python.offline import (
+            VLLMOfflineBackend,
+            VLLMOfflineBackendArgs,
+        )
+
+        assert Backend.is_registered("vllm_offline")
+        args = VLLMOfflineBackendArgs(model="test-model", batch_size=32)
+        backend = Backend.create(args)
+        assert isinstance(backend, VLLMOfflineBackend)
+        assert backend._args.model == "test-model"
+        assert backend._args.batch_size == 32
+        assert backend.kind == "vllm_offline"
+
+    @pytest.mark.smoke
     def test_backend_registry_functionality(self):
         """Test that backend registry functions work."""
         from guidellm.backends.openai import OpenAIHTTPBackend
