@@ -40,7 +40,9 @@ jobs:
           python-version: "3.13"
       - name: Install mkdocs dependencies
         run: |
-          uv sync --frozen # Sync GuideLLM install
+          # Sync GuideLLM install
+          uv sync --frozen
+          # Install mkdocs
           uv pip install "mkdocs<2.0.0" mkdocs-material mike \
             mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
             mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
