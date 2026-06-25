@@ -37,6 +37,6 @@ guidellm run \
 
 ## See Also
 
-- [Benchmark Profiles](benchmark-profiles.md) - Detailed explanation of all profile types
+- [Benchmark Profiles](../getting-started/benchmark.md#benchmark-profiles---profile) - Detailed explanation of all profile types
 - [Datasets Guide](datasets.md) - Creating and using custom datasets
 - [Metrics Guide](metrics.md) - Understanding performance metrics
