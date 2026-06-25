@@ -16,7 +16,7 @@ Environment Variables:
     - GUIDELLM__LOGGING__LOG_FILE_LEVEL: Log level for file logging
         (default: INFO if log file set else none).
 
-If logging isn't responding to the environment variables, run the `guidellm config`
+If logging isn't responding to the environment variables, run the `guidellm env`
 command to validate that the environment variables match and are being set correctly.
 
 Usage:
