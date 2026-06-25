@@ -14,7 +14,7 @@ import contextlib
 import time
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from more_itertools import roundrobin
 from pydantic import ConfigDict, Field, PositiveInt, model_validator
@@ -22,8 +22,12 @@ from pydantic import ConfigDict, Field, PositiveInt, model_validator
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python import common
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
-from guidellm.extras import vllm
 from guidellm.logger import logger
+
+if TYPE_CHECKING:
+    from guidellm.extras import vllm
+else:
+    from guidellm.extras import vllm
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
@@ -164,7 +168,7 @@ class VLLMOfflineBackend(Backend):
         # Runtime state
         self._in_process = False
         self._shutting_down = False
-        self._llm: vllm.LLM | None = None
+        self._llm: Any = None  # vllm.LLM | None
         self._batch_lock = asyncio.Lock()
         self._pending_batch: list[_BatchedRequest] = []
         self._processing_task: asyncio.Task | None = None
@@ -187,8 +191,8 @@ class VLLMOfflineBackend(Backend):
 
         # Initialize LLM in thread pool to avoid blocking
         def _init_llm():
-            engine_args = vllm.EngineArgs(**self._args.vllm_config)
-            return vllm.LLM.from_engine_args(engine_args)
+            engine_args = vllm.EngineArgs(**self._args.vllm_config)  # type: ignore[attr-defined]
+            return vllm.LLM.from_engine_args(engine_args)  # type: ignore[attr-defined]
 
         self._llm = await asyncio.to_thread(_init_llm)
         self._in_process = True
@@ -233,7 +237,7 @@ class VLLMOfflineBackend(Backend):
         """Get the default model for this backend."""
         return self._args.model
 
-    def _validate_backend_initialized(self) -> vllm.LLM:
+    def _validate_backend_initialized(self) -> Any:  # vllm.LLM
         """
         Validate that the backend is initialized and return the LLM.
 
