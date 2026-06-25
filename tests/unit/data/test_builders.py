@@ -121,6 +121,12 @@ def sample_dataset_with_prefix():
 
 
 @pytest.fixture
+def sample_data_column_mapper():
+    """Sample data column mapper."""
+    return {"kind": "generative_column_mapper"}
+
+
+@pytest.fixture
 def sample_config_json():
     """Sample config as JSON string."""
     return '{"prompt_tokens": 50, "output_tokens": 30}'
@@ -152,6 +158,7 @@ class TestProcessDatasetShortPromptStrategies:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -172,6 +179,7 @@ class TestProcessDatasetShortPromptStrategies:
             processor=tokenizer_mock,
             config=sample_config_json,
             short_prompt_strategy=ShortPromptStrategy.IGNORE,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -194,7 +202,7 @@ class TestProcessDatasetShortPromptStrategies:
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
-        sample_config_json,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -243,6 +251,7 @@ class TestProcessDatasetShortPromptStrategies:
             config=short_config,
             short_prompt_strategy=ShortPromptStrategy.CONCATENATE,
             concat_delimiter="\n",
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -296,6 +305,7 @@ class TestProcessDatasetShortPromptStrategies:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -317,6 +327,7 @@ class TestProcessDatasetShortPromptStrategies:
             config=sample_config_json,
             short_prompt_strategy=ShortPromptStrategy.PAD,
             pad_char="X",
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -362,6 +373,7 @@ class TestProcessDatasetShortPromptStrategies:
         mock_deserializer_factory_class,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -383,6 +395,7 @@ class TestProcessDatasetShortPromptStrategies:
                 processor=tokenizer_mock,
                 config=sample_config_json,
                 short_prompt_strategy=ShortPromptStrategy.ERROR,
+                data_column_mapper=sample_data_column_mapper,
             )
 
 
@@ -400,6 +413,7 @@ class TestProcessDatasetColumnNames:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -419,6 +433,7 @@ class TestProcessDatasetColumnNames:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -444,6 +459,7 @@ class TestProcessDatasetColumnNames:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_custom_columns,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -463,7 +479,7 @@ class TestProcessDatasetColumnNames:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
-            data_column_mapper={"text_column": "question"},
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -489,6 +505,7 @@ class TestProcessDatasetColumnNames:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_with_prefix,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -508,6 +525,7 @@ class TestProcessDatasetColumnNames:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -533,6 +551,7 @@ class TestProcessDatasetColumnNames:
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -561,6 +580,7 @@ class TestProcessDatasetColumnNames:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -586,6 +606,7 @@ class TestProcessDatasetConfigFormats:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -604,6 +625,7 @@ class TestProcessDatasetConfigFormats:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -620,6 +642,7 @@ class TestProcessDatasetConfigFormats:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         sample_config_key_value,
         temp_output_path,
     ):
@@ -639,6 +662,7 @@ class TestProcessDatasetConfigFormats:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_key_value,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -655,6 +679,7 @@ class TestProcessDatasetConfigFormats:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         tmp_path,
     ):
         """
@@ -680,6 +705,7 @@ class TestProcessDatasetConfigFormats:
             output_path=output_path,
             processor=tokenizer_mock,
             config=str(config_file),
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -694,6 +720,7 @@ class TestProcessDatasetConfigFormats:
         mock_check_processor,
         mock_deserializer_factory_class,
         mock_save_to_file,
+        sample_data_column_mapper,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_config_json,
@@ -722,6 +749,7 @@ class TestProcessDatasetConfigFormats:
             output_path=output_path,
             processor=tokenizer_mock,
             config=str(config_file),
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -738,6 +766,7 @@ class TestProcessDatasetConfigFormats:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         tmp_path,
     ):
         """
@@ -763,6 +792,7 @@ class TestProcessDatasetConfigFormats:
             output_path=output_path,
             processor=tokenizer_mock,
             config=str(config_file),
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -783,6 +813,7 @@ class TestProcessDatasetIntegration:
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -802,6 +833,7 @@ class TestProcessDatasetIntegration:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=sample_config_json,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify all expected calls were made
@@ -832,6 +864,7 @@ class TestProcessDatasetIntegration:
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
+        sample_data_column_mapper,
         sample_config_json,
         temp_output_path,
     ):
@@ -858,6 +891,7 @@ class TestProcessDatasetIntegration:
             processor=tokenizer_mock,
             config=sample_config_json,
             short_prompt_strategy=ShortPromptStrategy.IGNORE,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify all expected calls were made (even though dataset is empty)
@@ -880,6 +914,7 @@ class TestProcessDatasetIntegration:
         tokenizer_mock,
         sample_dataset_with_prefix,
         temp_output_path,
+        sample_data_column_mapper,
     ):
         """
         Test process_dataset handles trimming prefix tokens correctly.
@@ -898,6 +933,7 @@ class TestProcessDatasetIntegration:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -937,6 +973,7 @@ class TestProcessDatasetIntegration:
         sample_dataset_with_prefix,
         sample_config_json,
         temp_output_path,
+        sample_data_column_mapper,
     ):
         """Test process_dataset with include_prefix_in_token_count flag."""
         # Setup mocks
@@ -952,6 +989,7 @@ class TestProcessDatasetIntegration:
             processor=tokenizer_mock,
             config=sample_config_json,
             include_prefix_in_token_count=True,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -1009,6 +1047,7 @@ class TestProcessDatasetIntegration:
         tokenizer_mock,
         sample_dataset_default_columns,
         temp_output_path,
+        sample_data_column_mapper,
     ):
         """
         Test process_dataset with different config values (min, max, stdev).
@@ -1034,6 +1073,7 @@ class TestProcessDatasetIntegration:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify save_dataset_to_file was called
@@ -1070,6 +1110,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1094,6 +1135,7 @@ class TestProcessDatasetConfigValidation:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1119,6 +1161,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1143,6 +1186,7 @@ class TestProcessDatasetConfigValidation:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1165,6 +1209,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1189,6 +1234,7 @@ class TestProcessDatasetConfigValidation:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1225,6 +1271,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1249,6 +1296,7 @@ class TestProcessDatasetConfigValidation:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1278,6 +1326,7 @@ class TestProcessDatasetConfigValidation:
         tokenizer_mock,
         large_dataset_for_validation,
         temp_output_path,
+        sample_data_column_mapper,
     ):
         """
         Test that prompt token counts follow expected distribution with stdev.
@@ -1303,6 +1352,7 @@ class TestProcessDatasetConfigValidation:
             processor=tokenizer_mock,
             config=config,
             random_seed=42,  # Fixed seed for reproducibility
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1339,6 +1389,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1365,6 +1416,7 @@ class TestProcessDatasetConfigValidation:
             processor=tokenizer_mock,
             config=config,
             random_seed=42,  # Fixed seed for reproducibility
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1395,6 +1447,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1418,6 +1471,7 @@ class TestProcessDatasetConfigValidation:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1447,6 +1501,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1471,6 +1526,7 @@ class TestProcessDatasetConfigValidation:
             output_path=temp_output_path,
             processor=tokenizer_mock,
             config=config,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1495,6 +1551,7 @@ class TestProcessDatasetConfigValidation:
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1523,6 +1580,7 @@ class TestProcessDatasetConfigValidation:
             config=config,
             short_prompt_strategy=ShortPromptStrategy.PAD,
             pad_char="X",
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1570,6 +1628,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1598,6 +1657,7 @@ class TestProcessDatasetConfigValidation:
             processor=tokenizer_mock,
             config=config,
             random_seed=42,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1631,6 +1691,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1657,6 +1718,7 @@ class TestProcessDatasetConfigValidation:
             config=config_small,
             short_prompt_strategy=ShortPromptStrategy.PAD,
             pad_char="X",
+            data_column_mapper=sample_data_column_mapper,
         )
 
         assert mock_save_to_file.called
@@ -1690,6 +1752,7 @@ class TestProcessDatasetConfigValidation:
             config=config_min,
             short_prompt_strategy=ShortPromptStrategy.PAD,
             pad_char="X",
+            data_column_mapper=sample_data_column_mapper,
         )
 
         assert mock_save_to_file.called
@@ -1711,6 +1774,7 @@ class TestProcessDatasetConfigValidation:
         mock_save_to_file,
         tokenizer_mock,
         large_dataset_for_validation,
+        sample_data_column_mapper,
         temp_output_path,
     ):
         """
@@ -1739,6 +1803,7 @@ class TestProcessDatasetConfigValidation:
             processor=tokenizer_mock,
             config=config,
             random_seed=42,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Extract saved dataset
@@ -1831,6 +1896,7 @@ class TestProcessDatasetPushToHub:
         mock_push,
         tokenizer_mock,
         tmp_path,
+        sample_data_column_mapper,
     ):
         """Test that push_to_hub is called when push_to_hub=True."""
         # Create a dataset with prompts long enough to be processed
@@ -1853,6 +1919,7 @@ class TestProcessDatasetPushToHub:
             config=config,
             push_to_hub=True,
             hub_dataset_id="id123",
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify push_to_hub was called with the correct arguments
@@ -1874,6 +1941,7 @@ class TestProcessDatasetPushToHub:
         mock_push,
         tokenizer_mock,
         tmp_path,
+        sample_data_column_mapper,
     ):
         """Test that push_to_hub is not called when push_to_hub=False."""
         # Create a dataset with prompts long enough to be processed
@@ -1895,6 +1963,7 @@ class TestProcessDatasetPushToHub:
             processor=tokenizer_mock,
             config=config,
             push_to_hub=False,
+            data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify push_to_hub was not called
@@ -1939,6 +2008,7 @@ class TestProcessDatasetStrategyHandlerIntegration:
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
+        sample_data_column_mapper,
         tmp_path,
     ):
         """Test that strategy handlers are called during dataset processing."""
@@ -1967,6 +2037,7 @@ class TestProcessDatasetStrategyHandlerIntegration:
                 output_path=output_path,
                 processor=tokenizer_mock,
                 config=config,
+                data_column_mapper=sample_data_column_mapper,
                 short_prompt_strategy=ShortPromptStrategy.IGNORE,
             )
 
