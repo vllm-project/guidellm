@@ -223,6 +223,7 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
         row_idx = 0
         hash_id_table: list[Any] = []
         sibling_token_blocks: dict[Any, list[list[int]]] = {}
+        timestamps = self.trace_rows[self.config.timestamp_column]
         while True:
             try:
                 row = self.trace_rows[row_idx]
@@ -246,7 +247,6 @@ class _TraceMooncakeExamplesIterable(_BaseExamplesIterable):
                     )
                     sibling_token_blocks[prev_id].append(hash_id_table[hash_id])
             prompt = _create_prompt_from_hash_ids(ids, hash_id_table, self.processor)
-            timestamps = self.trace_rows[self.config.timestamp_column]
             relative_timestamp = timestamps[row_idx] - timestamps[0]
             yield (
                 row_idx,
