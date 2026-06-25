@@ -7,6 +7,7 @@ import hashlib
 import io
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import imageio
@@ -15,17 +16,15 @@ from PIL import Image
 
 from guidellm.data.deserializers import (
     DatasetDeserializerFactory,
+    SyntheticImageDataArgs,
     SyntheticImageDataset,
     SyntheticImageDatasetDeserializer,
+    SyntheticVideoDataArgs,
     SyntheticVideoDataset,
     SyntheticVideoDatasetDeserializer,
 )
-from guidellm.data.deserializers.deserializer import DataNotSupportedError
-from guidellm.data.schemas import (
-    SyntheticImageDatasetConfig,
-    SyntheticVideoDatasetConfig,
-)
-from guidellm.extras.vision import synthesize_image, synthesize_video
+from guidellm.data.schemas import DataArgs
+from guidellm.utils.vision import synthesize_image, synthesize_video
 
 
 def _mock_tokenizer() -> Mock:
@@ -141,7 +140,7 @@ class TestSynthesizeVideo:
             f.write(decoded)
             path = f.name
         try:
-            reader = imageio.get_reader(path, "ffmpeg")
+            reader: Any = imageio.get_reader(path, "ffmpeg")  # type: ignore[arg-type]
             decoded_frames = [frame for frame in reader]  # noqa: C416
             assert len(decoded_frames) == frames
             assert decoded_frames[0].shape == (240, 320, 3)
@@ -209,14 +208,14 @@ class TestSyntheticImageConfig:
     @pytest.mark.smoke
     def test_resolution_resolves_to_width_height(self):
         """## WRITTEN BY AI ##"""
-        cfg = SyntheticImageDatasetConfig(resolution="720p", text_tokens=50)
+        cfg = SyntheticImageDataArgs(resolution="720p", text_tokens=50)
         assert cfg.width == 1280
         assert cfg.height == 720
 
     @pytest.mark.sanity
     def test_aspect_ratio_overrides_width(self):
         """## WRITTEN BY AI ##"""
-        cfg = SyntheticImageDatasetConfig(
+        cfg = SyntheticImageDataArgs(
             resolution="720p", aspect_ratio="4:3", text_tokens=50
         )
         # 720 * 4 / 3 = 960
@@ -226,8 +225,13 @@ class TestSyntheticImageConfig:
     @pytest.mark.sanity
     def test_prompt_tokens_alias_accepted(self):
         """## WRITTEN BY AI ##"""
-        cfg = SyntheticImageDatasetConfig.model_validate(
-            {"width": 640, "height": 480, "prompt_tokens": 50}
+        cfg = SyntheticImageDataArgs.model_validate(
+            {
+                "kind": "synthetic_image",
+                "width": 640,
+                "height": 480,
+                "prompt_tokens": 50,
+            }
         )
         assert cfg.text_tokens == 50
 
@@ -235,29 +239,31 @@ class TestSyntheticImageConfig:
     def test_missing_dims_raises(self):
         """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError):
-            SyntheticImageDatasetConfig(text_tokens=10)
+            SyntheticImageDataArgs(text_tokens=10)
 
     @pytest.mark.regression
     def test_unknown_resolution_raises(self):
         """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError, match="resolution"):
-            SyntheticImageDatasetConfig(resolution="9000p", text_tokens=10)
+            SyntheticImageDataArgs(resolution="9000p", text_tokens=10)
 
 
 # ---------------------------------------------------------------------------
-# Deserializer-from-string + 10-row pull
+# Deserializer from typed config + 10-row pull
 # ---------------------------------------------------------------------------
 
 
 class TestSyntheticImageDeserializer:
     @pytest.mark.smoke
-    def test_pull_10_rows_from_data_string(self):
+    def test_pull_10_rows_from_config(self):
         """## WRITTEN BY AI ##"""
         d = SyntheticImageDatasetDeserializer()
         ds = d(
-            data=(
-                "type=synthetic_image,resolution=480p,text_tokens=20,"
-                "output_tokens=8,seed=11"
+            config=SyntheticImageDataArgs(
+                resolution="480p",
+                text_tokens=20,
+                output_tokens=8,
+                seed=11,
             ),
             processor_factory=_mock_tokenizer,
             random_seed=42,
@@ -284,36 +290,35 @@ class TestSyntheticImageDeserializer:
         assert len(digests) == 10
 
     @pytest.mark.sanity
-    def test_factory_dispatch_via_explicit_type(self):
+    def test_factory_dispatch_via_explicit_kind(self):
         """## WRITTEN BY AI ##"""
+        config = DataArgs.model_validate(
+            {
+                "kind": "synthetic_image",
+                "width": 320,
+                "height": 240,
+                "text_tokens": 15,
+                "output_tokens": 4,
+            }
+        )
         ds = DatasetDeserializerFactory.deserialize(
-            data=(
-                "type=synthetic_image,width=320,height=240,text_tokens=15,"
-                "output_tokens=4"
-            ),
+            config=config,
             processor_factory=_mock_tokenizer,
+            random_seed=42,
         )
         assert isinstance(ds, SyntheticImageDataset)
-
-    @pytest.mark.sanity
-    def test_refuses_when_type_mismatch(self):
-        """## WRITTEN BY AI ##"""
-        d = SyntheticImageDatasetDeserializer()
-        with pytest.raises(DataNotSupportedError):
-            d(
-                data="type=synthetic_text,prompt_tokens=50",
-                processor_factory=_mock_tokenizer,
-                random_seed=42,
-            )
 
     @pytest.mark.regression
     def test_images_per_request_emits_indexed_columns(self):
         """## WRITTEN BY AI ##"""
         d = SyntheticImageDatasetDeserializer()
         ds = d(
-            data=(
-                "type=synthetic_image,width=64,height=64,images_per_request=3,"
-                "text_tokens=5,output_tokens=2"
+            config=SyntheticImageDataArgs(
+                width=64,
+                height=64,
+                images_per_request=3,
+                text_tokens=5,
+                output_tokens=2,
             ),
             processor_factory=_mock_tokenizer,
             random_seed=42,
@@ -329,13 +334,18 @@ class TestSyntheticImageDeserializer:
 
 class TestSyntheticVideoDeserializer:
     @pytest.mark.smoke
-    def test_pull_10_rows_from_data_string(self):
+    def test_pull_10_rows_from_config(self):
         """## WRITTEN BY AI ##"""
         d = SyntheticVideoDatasetDeserializer()
         ds = d(
-            data=(
-                "type=synthetic_video,width=320,height=240,frames=4,fps=1,"
-                "text_tokens=10,output_tokens=4,seed=17"
+            config=SyntheticVideoDataArgs(
+                width=320,
+                height=240,
+                frames=4,
+                fps=1,
+                text_tokens=10,
+                output_tokens=4,
+                seed=17,
             ),
             processor_factory=_mock_tokenizer,
             random_seed=42,
@@ -360,33 +370,32 @@ class TestSyntheticVideoDeserializer:
         assert len(digests) == 10
 
     @pytest.mark.sanity
-    def test_factory_dispatch_via_explicit_type(self):
+    def test_factory_dispatch_via_explicit_kind(self):
         """## WRITTEN BY AI ##"""
+        config = DataArgs.model_validate(
+            {
+                "kind": "synthetic_video",
+                "width": 160,
+                "height": 120,
+                "frames": 3,
+                "fps": 1,
+                "text_tokens": 10,
+                "output_tokens": 4,
+            }
+        )
         ds = DatasetDeserializerFactory.deserialize(
-            data=(
-                "type=synthetic_video,width=160,height=120,frames=3,fps=1,"
-                "text_tokens=10,output_tokens=4"
-            ),
+            config=config,
             processor_factory=_mock_tokenizer,
+            random_seed=42,
         )
         assert isinstance(ds, SyntheticVideoDataset)
-
-    @pytest.mark.sanity
-    def test_refuses_when_type_mismatch(self):
-        """## WRITTEN BY AI ##"""
-        d = SyntheticVideoDatasetDeserializer()
-        with pytest.raises(DataNotSupportedError):
-            d(
-                data="type=synthetic_image,width=64,height=64,text_tokens=10",
-                processor_factory=_mock_tokenizer,
-                random_seed=42,
-            )
 
     @pytest.mark.smoke
     def test_video_config_via_json(self):
         """## WRITTEN BY AI ##"""
-        cfg = SyntheticVideoDatasetConfig.model_validate(
+        cfg = SyntheticVideoDataArgs.model_validate(
             {
+                "kind": "synthetic_video",
                 "width": 320,
                 "height": 240,
                 "frames": 4,
@@ -412,16 +421,15 @@ def test_full_dataset_reproducible_with_same_seed():
     ## WRITTEN BY AI ##
     """
     d = SyntheticImageDatasetDeserializer()
-    common = {
-        "data": (
-            "type=synthetic_image,width=128,height=128,text_tokens=10,"
-            "output_tokens=2,seed=999"
-        ),
-        "processor_factory": _mock_tokenizer,
-        "random_seed": 42,
-    }
-    ds_a = d(**common)
-    ds_b = d(**common)
+    config = SyntheticImageDataArgs(
+        width=128,
+        height=128,
+        text_tokens=10,
+        output_tokens=2,
+        seed=999,
+    )
+    ds_a = d(config=config, processor_factory=_mock_tokenizer, random_seed=42)
+    ds_b = d(config=config, processor_factory=_mock_tokenizer, random_seed=42)
 
     digests_a = []
     digests_b = []
