@@ -100,11 +100,11 @@ Long benchmark runs with thousands of requests can produce large JSON and YAML o
 
 Use `sample_size` to set the maximum number of requests **per status group** (completed, errored, incomplete) that retain their full data:
 
-| Value | Behavior |
-| --- | --- |
-| Not set (default) | Keep full data for all requests |
-| `0` | Strip all request data (stats only) |
-| `N` (e.g. `100`) | Retain full data for N randomly sampled requests per group |
+| Value             | Behavior                                                   |
+| ----------------- | ---------------------------------------------------------- |
+| Not set (default) | Keep full data for all requests                            |
+| `0`               | Strip all request data (stats only)                        |
+| `N` (e.g. `100`)  | Retain full data for N randomly sampled requests per group |
 
 ```bash
 # Keep full data for only 100 sampled requests per group
