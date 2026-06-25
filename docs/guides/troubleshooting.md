@@ -7,25 +7,28 @@ weight: 15
 Find your symptom below, then follow the linked fix. For CLI syntax, see [Run a Benchmark](../getting-started/benchmark.md#cli-option-format).
 
 | Symptom                                                     | Section                                                      |
-| ----------------------------------------------------------- | ------------------------------------------------------------ |
+|-------------------------------------------------------------| ------------------------------------------------------------ |
 | Requests fail or results look wrong                         | [Debug logging](#debug-logging)                              |
-| `trust_remote_code=True` when loading a tokenizer           | [Tokenizer: trust_remote_code](#tokenizer-trust_remote_code) |
+| Custom code error when loading a model's tokenizer.         | [Tokenizer: trust_remote_code](#tokenizer-trust_remote_code) |
 | `Worker process ... died unexpectedly (signal 11)` on macOS | [macOS worker crash](#macos-worker-crash-signal-11)          |
 
 ## Debug logging
 
-Enable verbose output to inspect request handling and worker startup:
+Enable debig output to inspect request handling and worker startup:
 
 ```bash
-GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL=DEBUG guidellm run ...
+GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL=DEBUG guidellm run ... --disable-progress
 ```
 
-Run `guidellm env` to confirm settings. For all logging options (file output, log levels), see [Logging](../developer/developing.md#logging) in the development guide.
+Run `guidellm env` to confirm the settings are being applied. The `--disable-progress` call is optional, but the interactive progress console can overwrite console log messages. Alternatively, you can use a file log as mentioned in the [logging guide](../developer/developing.md#logging) .
+
+For all logging options (file output, log levels), see [Logging](../developer/developing.md#logging) in the development guide.
 
 ## Tokenizer: trust_remote_code
 
 ### Symptom
 
+You get an error that looks like:
 ```text
 The repository moonshotai/Kimi-K2.6 contains custom code which must be executed
 to correctly load the model. You can inspect the repository content at
@@ -35,13 +38,15 @@ You can avoid this prompt in future by passing the argument `trust_remote_code=T
 
 ### Fix
 
-Pass `trust_remote_code` through `--tokenizer` `load_kwargs`:
+If you fully trust the model, pass `trust_remote_code` through `--tokenizer` `load_kwargs`:
 
 ```bash
 --tokenizer '{"kind":"huggingface_auto","load_kwargs":{"trust_remote_code":true}}'
 ```
 
-See [Datasets: Tokenizer](datasets.md#tokenizer) for other tokenizer options. Only use `trust_remote_code` with models you trust.
+Do not use this if you do not trust the model, as this allows code execution on your machine.
+
+See [Datasets: Tokenizer](datasets.md#tokenizer) for other tokenizer options.
 
 ## macOS worker crash (signal 11)
 
