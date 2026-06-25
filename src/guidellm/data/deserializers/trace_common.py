@@ -175,6 +175,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
         row_idx = 0
+        timestamps = self.trace_rows[self.config.timestamp_column]
         while True:
             try:
                 row = self.trace_rows[row_idx]
@@ -184,7 +185,6 @@ class TraceExamplesIterable(_BaseExamplesIterable):
             prompt = self.format.create_prompt(
                 self.config, row, self.processor, self.faker
             )
-            timestamps = self.trace_rows[self.config.timestamp_column]
             relative_timestamp = timestamps[row_idx] - timestamps[0]
             yield (
                 row_idx,
