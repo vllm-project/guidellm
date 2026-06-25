@@ -56,7 +56,7 @@ Prefix columns (if present) are treated specially:
 
 ## Processing Options
 
-All standard benchmarking arguments apply to multiturn tasks, such as `--profile`, `--rate`, and `--max-requests`. Any options that operate on "requests" will treat each turn as a separate request (e.g. A dataset row with 3 turns will count as 3 requests).
+All standard benchmarking arguments apply to multiturn tasks, such as `--profile`, profile rate parameters, and `--constraint kind=max_requests,count=<n>`. Any options that operate on "requests" will treat each turn as a separate request (e.g. A dataset row with 3 turns will count as 3 requests).
 
 ### Synthetic Data Configuration
 
@@ -67,7 +67,7 @@ GuideLLM can automatically generate multiturn synthetic data using the `turns` p
 To generate multiturn synthetic data, use the `--data` argument with `turns` specified:
 
 ```bash
---data "kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3"
+--data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3
 ```
 
 This creates a 3-turn conversation where each turn has 256 prompt tokens and requests 128 output tokens.
@@ -79,7 +79,7 @@ You can add system prompts (prefixes) to synthetic conversations using two appro
 **Simple Prefix Configuration:**
 
 ```bash
---data "kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3,prefix_count=5,prefix_tokens=50"
+--data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3,prefix_count=5,prefix_tokens=50
 ```
 
 This generates 5 unique prefixes of 50 tokens. Every conversation will select one of these 5 at random as the system message.
@@ -95,8 +95,16 @@ For more complex scenarios, use `prefix_buckets` to create weighted distribution
   "output_tokens": 128,
   "turns": 3,
   "prefix_buckets": [
-    {"bucket_weight": 60, "prefix_count": 10, "prefix_tokens": 100},
-    {"bucket_weight": 40, "prefix_count": 1, "prefix_tokens": 50}
+    {
+      "bucket_weight": 60,
+      "prefix_count": 10,
+      "prefix_tokens": 100
+    },
+    {
+      "bucket_weight": 40,
+      "prefix_count": 1,
+      "prefix_tokens": 50
+    }
   ]
 }'
 ```
@@ -156,14 +164,12 @@ prefix content prompt_0 content response to prompt_0 prompt_1 content response t
 
 By default, GuideLLM replays the full conversation history in each request (client-side history). For the Responses API, you can instead use **server-side history** via the `previous_response_id` field, where the server stores and manages conversation context.
 
-Enable it with `--backend-kwargs`:
+Enable server-side history in the backend configuration:
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --request-format /v1/responses \
-  --backend-kwargs '{"server_history": true}' \
-  --data "kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3"
+guidellm run \
+  --backend kind=openai_http'target=http://localhost:8000,request_format=/v1/responses,server_history=true' \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
 ```
 
 When enabled, GuideLLM sends only the current turn's input and references the previous response by ID. The server reconstructs the full conversation context internally.
@@ -249,13 +255,14 @@ with **TurnPivot** the second turn will be:
 To use TurnPivot in the CLI, specify it as a data preprocessor:
 
 ```bash
---data "kind=huggingface,source=dataset0.jsonl" \
---data "kind=huggingface,source=dataset1.jsonl" \
---data-preprocessors "encode_media,turn_pivot"
+--data kind=huggingface,source=dataset0.jsonl \
+--data kind=huggingface,source=dataset1.jsonl \
+--data-preprocessor kind=encode_media \
+--data-preprocessor kind=turn_pivot
 ```
 
 > [!WARNING]\
-> In the current CLI design, setting `--data-preprocessors` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
+> Setting `--data-preprocessor` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
 
 ## Examples
 
@@ -266,24 +273,18 @@ This example demonstrates a simple 3-turn conversation benchmark using synthetic
 **Command:**
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "meta-llama/Llama-3.1-8B-Instruct" \
-  --request-format /v1/chat/completions \
-  --profile kind=concurrent \
-  --rate 6 \
-  --max-requests 30 \
-  --data "kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3"
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=concurrent,streams=6 \
+  --constraint kind=max_requests,count=30 \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
 ```
 
 **Key Parameters:**
 
-- `--target`: The base URL of the inference server
-- `--model`: The model name to use for requests
-- `--request-format`: Request format endpoint (`/v1/chat/completions`, `/v1/completions`, etc)
-- `--profile`: Benchmark execution profile (concurrent maintains a fixed number of concurrent requests)
-- `--rate`: 6 - Maintain 6 concurrent requests
-- `--max-requests`: Maximum number of requests to send (30 requests ~= 10 conversations with 3 turns each)
+- `--backend`: Server URL, model, and request format
+- `--profile`: Benchmark execution profile (`concurrent` maintains a fixed number of concurrent requests)
+- `--constraint kind=max_requests,count=30`: Maximum number of requests to send (30 requests ~= 10 conversations with 3 turns each)
 - `--data`: Synthetic data configuration with 200 prompt tokens, 100 output tokens, and 3 turns
 
 This command benchmarks 10 three-turn conversations, where each turn has 200 input tokens and generates 100 output tokens. The model maintains conversation history across all three turns.
@@ -295,27 +296,23 @@ This example shows how to include system prompts in multiturn conversations, use
 **Command:**
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "meta-llama/Llama-3.1-8B-Instruct" \
-  --request-format /v1/chat/completions \
-  --profile kind=constant \
-  --rate 2.0 \
-  --max-requests 100 \
-  --data "kind=synthetic_text,prompt_tokens=150,output_tokens=75,turns=4,prefix_tokens=100"
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=constant,rate=2.0 \
+  --constraint kind=max_requests,count=100 \
+  --data kind=synthetic_text,prompt_tokens=150,output_tokens=75,turns=4,prefix_tokens=100
 ```
 
 **Key Parameters:**
 
-- `--profile`: kind=constant - Send requests at a constant rate
-- `--rate`: 2.0 - Send 2 requests per second
-- `--max-requests`: Maximum number of requests (100 requests ~= 25 conversations with 4 turns each)
+- `--profile kind=constant,rate=2.0`: Send requests at a constant rate of 2 per second
+- `--constraint kind=max_requests,count=100`: Maximum number of requests (100 requests ~= 25 conversations with 4 turns each)
 - `--data`: Added `prefix_tokens=100` to generate a system prompt of 100 tokens
 
 In this benchmark, each conversation includes a system message (prefix) at the beginning, followed by 4 turns of user-assistant interaction. In real use-cases the system prompt establishes context or instructions that apply to the entire conversation and is often common to all users.
 
 > [!NOTE]\
-> `turns=4` + `--max-requests 100` will result in 25 **or more** conversations. Follow-up turns can only be scheduled when the previous turn completes. When a turn is complete the conversation is placed at the front of the queue for the current worker.
+> `turns=4` + `--constraint kind=max_requests,count=100` will result in 25 **or more** conversations. Follow-up turns can only be scheduled when the previous turn completes. When a turn is complete the conversation is placed at the front of the queue for the current worker.
 
 ### 3. Advanced Prefix Distribution
 
@@ -324,30 +321,34 @@ This example demonstrates using multiple prefix configurations with weighted dis
 **Command:**
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "meta-llama/Llama-3.1-8B-Instruct" \
-  --request-format /v1/chat/completions \
-  --profile kind=constant \
-  --rate 1.5 \
-  --max-seconds 60 \
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=constant,rate=1.5 \
+  --constraint kind=max_duration,seconds=60 \
   --data '{
-    "kind": "synthetic_text",
-    "prompt_tokens": 180,
-    "output_tokens": 90,
-    "turns": 3,
-    "prefix_buckets": [
-      {"bucket_weight": 60, "prefix_count": 5, "prefix_tokens": 100},
-      {"bucket_weight": 40, "prefix_count": 1, "prefix_tokens": 0}
-    ]
-  }'
+  "kind": "synthetic_text",
+  "prompt_tokens": 180,
+  "output_tokens": 90,
+  "turns": 3,
+  "prefix_buckets": [
+    {
+      "bucket_weight": 60,
+      "prefix_count": 5,
+      "prefix_tokens": 100
+    },
+    {
+      "bucket_weight": 40,
+      "prefix_count": 1,
+      "prefix_tokens": 0
+    }
+  ]
+}'
 ```
 
 **Key Parameters:**
 
-- `--profile`: kind=constant - Send requests at a constant rate
-- `--rate`: 1.5 - Send 1.5 requests per second
-- `--max-seconds`: 60 - Run the benchmark for up to 60 seconds
+- `--profile kind=constant,rate=1.5`: Send requests at a constant rate of 1.5 per second
+- `--constraint kind=max_duration,seconds=60`: Run each strategy for up to 60 seconds
 - `--data`: JSON configuration with `prefix_buckets` defining two prefix distributions
 
 This creates a distribution where 60% of conversations have one of 5 prefixes (100 tokens each) and 40% have a prefix of 0 tokens (effectively no prefix).
@@ -366,21 +367,17 @@ This example shows how to use an existing dataset file with multiturn structure.
 **Command:**
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "meta-llama/Llama-3.1-8B-Instruct" \
-  --request-format /v1/chat/completions \
-  --profile kind=concurrent \
-  --rate 10 \
-  --max-requests 200 \
-  --data "kind=huggingface,source=multiturn_conversations.jsonl"
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=concurrent,streams=10 \
+  --constraint kind=max_requests,count=200 \
+  --data kind=huggingface,source=multiturn_conversations.jsonl
 ```
 
 **Key Parameters:**
 
-- `--profile`: kind=concurrent - Maintain a fixed number of concurrent requests
-- `--rate`: 10 - Maintain 10 concurrent requests
-- `--max-requests`: Maximum number of requests (200 requests ~= 100 conversations with 2 turns each)
+- `--profile kind=concurrent,streams=10`: Maintain 10 concurrent requests
+- `--constraint kind=max_requests,count=200`: Maximum number of requests (200 requests ~= 100 conversations with 2 turns each)
 - `--data`: Path to JSONL file with turn-indexed columns
 
 ### 5. Using TurnPivot with Multiple Datasets
@@ -390,31 +387,28 @@ This example demonstrates using the TurnPivot preprocessor to build a synthetic 
 **Command:**
 
 ```bash
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --model "meta-llama/Llama-3.1-8B-Instruct" \
-  --request-format /v1/chat/completions \
-  --profile kind=concurrent \
-  --rate 10 \
-  --max-requests 150 \
-  --data "kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256" \      # Turn 1
-  --data "kind=synthetic_text,prompt_tokens=256,prompt_token_stdev=32,output_tokens=128" \  # Turn 2
-  --data "kind=synthetic_text,prompt_tokens=64,output_tokens=128,output_tokens_stdev=16" \  # Turn 3
-  --data-preprocessors "turn_pivot"
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=concurrent,streams=10 \
+  --constraint kind=max_requests,count=150 \
+  --data kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256 \
+  --data kind=synthetic_text,prompt_tokens=256,prompt_token_stdev=32,output_tokens=128 \
+  --data kind=synthetic_text,prompt_tokens=64,output_tokens=128,output_tokens_stdev=16 \
+  --data-preprocessor kind=turn_pivot
 ```
 
 **Key Parameters:**
 
-- `--max-requests`: Maximum number of requests (150 requests ~= 50 conversations with 3 turns each)
+- `--constraint kind=max_requests,count=150`: Maximum number of requests (150 requests ~= 50 conversations with 3 turns each)
 - `--data`: Specified separately for each dataset; can also be specified once as an array
-- `--data-preprocessors`: Specify `"turn_pivot"` in the preprocessor list to transpose datasets and turn columns
+- `--data-preprocessor kind=turn_pivot`: Transpose datasets and turn columns
 
 > [!WARNING]\
-> In the current CLI design, setting `--data-preprocessors` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
+> In the current CLI design, setting `--data-preprocessor` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
 
 ## Reasoning in History
 
-Reasoning models emit chain-of-thought tokens before their final answer. By default, these are discarded from conversation history on follow-up turns. Enable `multiturn_reasoning` via `--backend-kwargs` to include them:
+Reasoning models emit chain-of-thought tokens before their final answer. By default, these are discarded from conversation history on follow-up turns. Enable `multiturn_reasoning` in the backend configuration to include them:
 
 - `false` (default) — reasoning not included in history
 - `true` — wraps in `<think>...</think>` tags (equivalent to `"<think>{reasoning}</think>"`)
@@ -423,7 +417,7 @@ Reasoning models emit chain-of-thought tokens before their final answer. By defa
 ### Think Tags (most models)
 
 ```bash
---backend-kwargs '{"multiturn_reasoning": true}'
+--backend kind=openai_http'target=http://localhost:8000,multiturn_reasoning=true'
 ```
 
 Results in the following being sent for the turn in the conversation history:
@@ -435,13 +429,13 @@ Results in the following being sent for the turn in the conversation history:
 ### Granite Format
 
 ```bash
---backend-kwargs '{"multiturn_reasoning": "Here is my thought process:{reasoning}Here is my response:"}'
+--backend 'kind=openai_http,target=http://localhost:8000,multiturn_reasoning="Here is my thought process:{reasoning}Here is my response:"'
 ```
 
 ### Raw (no delimiters)
 
 ```bash
---backend-kwargs '{"multiturn_reasoning": "{reasoning}"}'
+--backend 'kind=openai_http,target=http://localhost:8000,multiturn_reasoning="{reasoning}"'
 ```
 
 ### Common Model Pairings
@@ -475,7 +469,7 @@ Audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/translations`) do not su
 
 Turn-indexed columns must follow the naming conventions:
 
-- Column mapping applies to the base name. For example, `--data-column-mapper '{"column_mappings": {"text_column": "prompt"}}'`
+- Column mapping applies to the base name. For example, `--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "prompt"}}'`
 - Turn indices can be in the form of `-0` or `_0`. Exact numbering does not matter, turns will be re-numbered to avoid holes.
 - All turn columns must use the same base name. E.g. `prompt_0`, `prompt_2`, etc.
 
@@ -488,7 +482,7 @@ Multiturn conversations accumulate conversation history, which increases memory 
 - Token counts grow with each turn as history accumulates
 - Consider the model's context window when configuring the number of turns and token counts
 
-For example, `--data "kind=synthetic_text,prefix_tokens=50,prompt_tokens=100,output_tokens=200,turns=5"` will have:
+For example, `--data kind=synthetic_text,prefix_tokens=50,prompt_tokens=100,output_tokens=200,turns=5` will have:
 
 - Turn 1: 150 tokens in; 200 tokens out
 - Turn 2: (150 + 200) + 100 = 450 tokens in; 200 tokens out

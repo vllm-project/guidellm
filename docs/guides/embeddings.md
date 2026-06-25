@@ -18,12 +18,10 @@ Embeddings models convert text into dense vector representations used for semant
 vllm serve BAAI/bge-small-en-v1.5 --port 8000
 
 # Run benchmark
-guidellm benchmark \
-  --target http://localhost:8000/v1 \
-  --model "BAAI/bge-small-en-v1.5" \
-  --request-format /v1/embeddings \
-  --data "kind=synthetic_text,prompt_tokens=128" \
-  --max-requests 100
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000/v1,model=BAAI/bge-small-en-v1.5,request_format=/v1/embeddings \
+  --data kind=synthetic_text,prompt_tokens=128 \
+  --constraint kind=max_requests,count=100
 ```
 
 ## Key Differences from Generative Benchmarks

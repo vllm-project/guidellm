@@ -32,35 +32,45 @@ When over-saturation is detected, the constraint automatically stops request que
 
 ## Usage
 
+Over-saturation is configured with `kind=over_saturation` in the constraint configuration:
+
+```bash
+--constraint kind=over_saturation,...
+```
+
 ### Basic Usage
 
 Enable over-saturation detection with default settings:
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=throughput \
-  --rate 10 \
-  --detect-saturation
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput,max_concurrency=10 \
+  --constraint kind=over_saturation
 ```
 
 ### Advanced Configuration
 
-Configure detection parameters using a JSON dictionary:
+Configure detection parameters in the constraint config string:
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=concurrent \
-  --rate 16 \
-  --over-saturation '{"mode": "active", "min_seconds": 60, "max_window_seconds": 300, "moe_threshold": 1.5}'
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=concurrent,streams=16 \
+  --constraint kind=over_saturation,mode=enforce,min_seconds=60,max_window_seconds=300,moe_threshold=1.5
+```
+
+Or with JSON:
+
+```bash
+--constraint '{"kind":"over_saturation","mode":"enforce","min_seconds":60,"max_window_seconds":300,"moe_threshold":1.5}'
 ```
 
 ## Configuration Options
 
 The following parameters can be configured when enabling over-saturation detection:
 
-- **`mode`** (`"active"` | `"passive"`, default: `"active"`): Controls behavior when over-saturation is detected. `"active"` stops the benchmark, `"passive"` only monitors and reports
+- **`mode`** (`"enforce"` | `"monitor"`, default: `"enforce"`): Controls behavior when over-saturation is detected. `"enforce"` stops the benchmark, `"monitor"` only monitors and reports
 - **`min_seconds`** (float, default: `30.0`): Minimum seconds before checking for over-saturation. This prevents false positives during the initial warm-up phase.
 - **`max_window_seconds`** (float, default: `120.0`): Maximum time window in seconds for data retention. Older data points are automatically pruned to maintain bounded memory usage.
 - **`moe_threshold`** (float, default: `2.0`): Margin of error threshold for slope detection. Lower values make detection more sensitive to degradation.
@@ -78,11 +88,10 @@ Over-saturation detection is particularly useful in the following scenarios:
 When testing how your system handles increasing load, over-saturation detection automatically stops benchmarks once the system can no longer keep up, preventing wasted compute time on invalid results.
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=sweep \
-  --rate 5 \
-  --detect-saturation
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep,sweep_size=5 \
+  --constraint kind=over_saturation
 ```
 
 ### Cost-Effective Benchmarking
@@ -95,7 +104,7 @@ Use over-saturation detection to identify the maximum sustainable throughput for
 
 ## Interpreting Results
 
-When over-saturation detection is configured (in either `"active"` or `"passive"` mode), the benchmark output includes metadata about the detection state. This metadata is available in the scheduler action metadata and includes:
+When over-saturation detection is configured (in either `"enforce"` or `"monitor"` mode), the benchmark output includes metadata about the detection state. This metadata is available in the scheduler action metadata and includes:
 
 - **`is_over_saturated`** (bool): Whether over-saturation was detected at the time of evaluation
 - **`concurrent_slope`** (float): The calculated slope for concurrent requests
@@ -111,14 +120,14 @@ These metrics can help you understand why over-saturation was detected and fine-
 ## Example: Complete Benchmark with Over-Saturation Detection
 
 ```bash
-guidellm benchmark \
-  --target http://localhost:8000 \
-  --profile kind=concurrent \
-  --rate 16 \
-  --data "kind=synthetic_text,prompt_tokens=256,output_tokens=128" \
-  --max-seconds 300 \
-  --over-saturation '{"mode": "active", "min_seconds": 30, "max_window_seconds": 120}' \
-  --outputs json,html
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=concurrent,streams=16 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --constraint kind=max_duration,seconds=300 \
+  --constraint kind=over_saturation,mode=enforce,min_seconds=30,max_window_seconds=120 \
+  --output kind=json,path=benchmark.json \
+  --output kind=html,path=benchmark.html
 ```
 
 This example:
