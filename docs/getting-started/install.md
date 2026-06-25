@@ -90,4 +90,4 @@ To use the vLLM Python backend (in-process inference), see [vLLM Python backend]
 
 ## Troubleshooting
 
-If you encounter any issues during installation, ensure that your Python and pip versions meet the prerequisites. For further assistance, please refer to the [GitHub Issues](https://github.com/vllm-project/guidellm/issues) page or consult the [Documentation](https://github.com/vllm-project/guidellm/tree/main/docs).
+If you encounter any issues during installation, ensure that your Python and pip versions meet the prerequisites. For common runtime errors (debug logging, tokenizer loading, macOS worker crashes), see the [Troubleshooting guide](../guides/troubleshooting.md). For further assistance, please refer to the [GitHub Issues](https://github.com/vllm-project/guidellm/issues) page.
