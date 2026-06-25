@@ -23,7 +23,7 @@ __all__ = ["dataset"]
 )
 @click.argument(
     "data",
-    type=str,
+    callback=cli_tools.parse_arguments,
     required=True,
 )
 @click.argument(
@@ -62,7 +62,7 @@ __all__ = ["dataset"]
 )
 @click.option(
     "--data-column-mapper",
-    default=None,
+    default={"kind": "generative_column_mapper"},
     callback=cli_tools.parse_arguments,
     help="JSON string of column mappings to apply to the dataset.",
 )
