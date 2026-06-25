@@ -17,9 +17,9 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.synthetic_image import (
-    _RESOLUTION_PRESETS,
-    _SyntheticVisionTextMixin,
-    _parse_aspect_ratio,
+    RESOLUTION_PRESETS,
+    SyntheticVisionTextMixin,
+    parse_aspect_ratio,
 )
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.random import IntegerRangeSampler
@@ -36,11 +36,11 @@ _DESERIALIZER_TYPE = "synthetic_video"
 
 
 @DataArgs.register(_DESERIALIZER_TYPE)
-class SyntheticVideoDataArgs(_SyntheticVisionTextMixin):
+class SyntheticVideoDataArgs(SyntheticVisionTextMixin):
     """Model for synthetic video dataset deserializer arguments."""
 
     kind: Literal["synthetic_video"] = Field(  # type: ignore[assignment]
-        default=_DESERIALIZER_TYPE,
+        default="synthetic_video",
         description="Type identifier for the synthetic video dataset configuration.",
     )
     width: int | None = Field(
@@ -88,26 +88,26 @@ class SyntheticVideoDataArgs(_SyntheticVisionTextMixin):
         w = self.width
         h = self.height
         if self.resolution is not None:
-            preset = _RESOLUTION_PRESETS.get(self.resolution.lower())
+            preset = RESOLUTION_PRESETS.get(self.resolution.lower())
             if preset is None:
                 raise ValueError(
                     f"Unknown resolution '{self.resolution}'. Known: "
-                    f"{sorted(_RESOLUTION_PRESETS)}"
+                    f"{sorted(RESOLUTION_PRESETS)}"
                 )
             preset_w, preset_h = preset
             if h is None:
                 h = preset_h
             if w is None:
                 w = (
-                    int(round(h * _parse_aspect_ratio(self.aspect_ratio)))
+                    int(round(h * parse_aspect_ratio(self.aspect_ratio)))
                     if self.aspect_ratio is not None
                     else preset_w
                 )
         elif self.aspect_ratio is not None:
             if h is not None and w is None:
-                w = int(round(h * _parse_aspect_ratio(self.aspect_ratio)))
+                w = int(round(h * parse_aspect_ratio(self.aspect_ratio)))
             elif w is not None and h is None:
-                h = int(round(w / _parse_aspect_ratio(self.aspect_ratio)))
+                h = int(round(w / parse_aspect_ratio(self.aspect_ratio)))
 
         if w is None or h is None:
             raise ValueError(
@@ -118,8 +118,7 @@ class SyntheticVideoDataArgs(_SyntheticVisionTextMixin):
         self.height = int(h) - (int(h) % 2)
         if self.width <= 0 or self.height <= 0:
             raise ValueError(
-                f"Resolved video dims must be positive, got "
-                f"{self.width}x{self.height}"
+                f"Resolved video dims must be positive, got {self.width}x{self.height}"
             )
         return self
 
@@ -207,14 +206,18 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
                 faker,
                 f"{self.iteration_count} {row_index} ",
             )
+            width = self.config.width
+            height = self.config.height
+            if width is None or height is None:
+                raise RuntimeError("Synthetic video dimensions were not resolved.")
 
             row: dict[str, Any] = {
                 "prefix": "",
                 "prompt_0": prompt,
                 "prompt_tokens_count_0": text_token_count,
                 "video": synthesize_video(
-                    width=int(self.config.width),
-                    height=int(self.config.height),
+                    width=width,
+                    height=height,
                     frames=int(self.config.frames),
                     fps=float(self.config.fps),
                     content=self.config.content,

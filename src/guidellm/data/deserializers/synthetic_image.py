@@ -28,7 +28,7 @@ __all__ = [
 
 
 _DESERIALIZER_TYPE = "synthetic_image"
-_RESOLUTION_PRESETS: dict[str, tuple[int, int]] = {
+RESOLUTION_PRESETS: dict[str, tuple[int, int]] = {
     "240p": (426, 240),
     "360p": (640, 360),
     "480p": (854, 480),
@@ -41,7 +41,7 @@ _RESOLUTION_PRESETS: dict[str, tuple[int, int]] = {
 }
 
 
-def _parse_aspect_ratio(aspect: str) -> float:
+def parse_aspect_ratio(aspect: str) -> float:
     """Parse 'W:H' or 'W/H' into a float ratio."""
     sep = ":" if ":" in aspect else "/"
     try:
@@ -53,7 +53,7 @@ def _parse_aspect_ratio(aspect: str) -> float:
         ) from exc
 
 
-class _SyntheticVisionTextMixin(DataArgs):
+class SyntheticVisionTextMixin(DataArgs):
     text_tokens: int = Field(
         description="The average number of text tokens generated for the text portion.",
         gt=0,
@@ -116,11 +116,11 @@ class _SyntheticVisionTextMixin(DataArgs):
 
 
 @DataArgs.register(_DESERIALIZER_TYPE)
-class SyntheticImageDataArgs(_SyntheticVisionTextMixin):
+class SyntheticImageDataArgs(SyntheticVisionTextMixin):
     """Model for synthetic image dataset deserializer arguments."""
 
     kind: Literal["synthetic_image"] = Field(  # type: ignore[assignment]
-        default=_DESERIALIZER_TYPE,
+        default="synthetic_image",
         description="Type identifier for the synthetic image dataset configuration.",
     )
     width: int | None = Field(
@@ -166,26 +166,26 @@ class SyntheticImageDataArgs(_SyntheticVisionTextMixin):
         w = self.width
         h = self.height
         if self.resolution is not None:
-            preset = _RESOLUTION_PRESETS.get(self.resolution.lower())
+            preset = RESOLUTION_PRESETS.get(self.resolution.lower())
             if preset is None:
                 raise ValueError(
                     f"Unknown resolution '{self.resolution}'. Known: "
-                    f"{sorted(_RESOLUTION_PRESETS)}"
+                    f"{sorted(RESOLUTION_PRESETS)}"
                 )
             preset_w, preset_h = preset
             if h is None:
                 h = preset_h
             if w is None:
                 w = (
-                    int(round(h * _parse_aspect_ratio(self.aspect_ratio)))
+                    int(round(h * parse_aspect_ratio(self.aspect_ratio)))
                     if self.aspect_ratio is not None
                     else preset_w
                 )
         elif self.aspect_ratio is not None:
             if h is not None and w is None:
-                w = int(round(h * _parse_aspect_ratio(self.aspect_ratio)))
+                w = int(round(h * parse_aspect_ratio(self.aspect_ratio)))
             elif w is not None and h is None:
-                h = int(round(w / _parse_aspect_ratio(self.aspect_ratio)))
+                h = int(round(w / parse_aspect_ratio(self.aspect_ratio)))
 
         if w is None or h is None:
             raise ValueError(
@@ -196,8 +196,7 @@ class SyntheticImageDataArgs(_SyntheticVisionTextMixin):
         self.height = int(h) - (int(h) % 2)
         if self.width <= 0 or self.height <= 0:
             raise ValueError(
-                f"Resolved image dims must be positive, got "
-                f"{self.width}x{self.height}"
+                f"Resolved image dims must be positive, got {self.width}x{self.height}"
             )
         return self
 
@@ -296,10 +295,15 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
             if output_token_count is not None:
                 row["output_tokens_count_0"] = output_token_count
 
+            width = self.config.width
+            height = self.config.height
+            if width is None or height is None:
+                raise RuntimeError("Synthetic image dimensions were not resolved.")
+
             for img_idx in range(self.config.images_per_request):
                 encoded = synthesize_image(
-                    width=int(self.config.width),
-                    height=int(self.config.height),
+                    width=width,
+                    height=height,
                     content=self.config.content,
                     image_format=self.config.format,
                     jpeg_quality=self.config.jpeg_quality,

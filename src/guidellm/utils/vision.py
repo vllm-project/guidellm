@@ -28,7 +28,7 @@ def is_url(text: Any) -> bool:
     return isinstance(text, str) and text.startswith(("http://", "https://"))
 
 
-def encode_image(
+def encode_image(  # noqa: C901
     image: bytes | str | Path | np.ndarray | dict[str, Any] | libs.Image,
     width: int | None = None,
     height: int | None = None,
