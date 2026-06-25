@@ -30,7 +30,13 @@ from .base import (
     TransientPhaseConfig,
 )
 from .benchmark import GenerativeBenchmark
-from .entrypoints import BenchmarkArgs, BenchmarkMetadata, BenchmarkScenario
+from .entrypoints import (
+    BenchmarkArgs,
+    BenchmarkMetadata,
+    BenchmarkScenario,
+    GenerativeMetricsArgs,
+    MetricsArgs,
+)
 from .metrics import (
     GenerativeAudioMetricsSummary,
     GenerativeImageMetricsSummary,
@@ -64,6 +70,8 @@ __all__ = [
     "GenerativeImageMetricsSummary",
     "GenerativeMetrics",
     "GenerativeMetricsAccumulator",
+    "GenerativeMetricsArgs",
+    "MetricsArgs",
     "GenerativeMetricsSummary",
     "GenerativeRequestsAccumulator",
     "GenerativeTextMetricsSummary",
