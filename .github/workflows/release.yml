@@ -91,7 +91,10 @@ jobs:
           python-version: "3.13"
       - name: Install mkdocs dependencies
         run: |
-          uv pip install --system mkdocs mkdocs-material mike \
+          # Sync GuideLLM install
+          uv sync --frozen
+          # Install mkdocs
+          uv pip install "mkdocs<2.0.0" mkdocs-material mike \
             mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
             mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
       - name: Deploy docs
@@ -100,7 +103,7 @@ jobs:
           VERSION="${VERSION#v}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          mike deploy $VERSION stable --push --update-aliases
+          uv run --no-sync mike deploy $VERSION stable --push --update-aliases
 
   build-and-push-container:
     needs: extract-version
