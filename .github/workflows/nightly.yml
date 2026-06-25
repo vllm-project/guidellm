@@ -23,3 +23,29 @@ jobs:
     with:
       build-type: nightly
       tag: nightly
+
+  docs-deploy:
+    needs: [tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Setup Python with UV
+        uses: ./.github/actions/python-uv
+        with:
+          python-version: "3.13"
+      - name: Install mkdocs dependencies
+        run: |
+          uv sync --frozen # Sync GuideLLM install
+          uv pip install "mkdocs<2.0.0" mkdocs-material mike \
+            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
+            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
+      - name: Deploy docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          uv run --no-sync mike deploy main --push --update-aliases
