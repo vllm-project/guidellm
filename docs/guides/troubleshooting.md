@@ -7,7 +7,7 @@ weight: 15
 Find your symptom below, then follow the linked fix. For CLI syntax, see [Run a Benchmark](../getting-started/benchmark.md#cli-option-format).
 
 | Symptom                                                     | Section                                                      |
-|-------------------------------------------------------------| ------------------------------------------------------------ |
+| ----------------------------------------------------------- | ------------------------------------------------------------ |
 | Requests fail or results look wrong                         | [Debug logging](#debug-logging)                              |
 | Custom code error when loading a model's tokenizer.         | [Tokenizer: trust_remote_code](#tokenizer-trust_remote_code) |
 | `Worker process ... died unexpectedly (signal 11)` on macOS | [macOS worker crash](#macos-worker-crash-signal-11)          |
@@ -29,6 +29,7 @@ For all logging options (file output, log levels), see [Logging](../developer/de
 ### Symptom
 
 You get an error that looks like:
+
 ```text
 The repository moonshotai/Kimi-K2.6 contains custom code which must be executed
 to correctly load the model. You can inspect the repository content at
