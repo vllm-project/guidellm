@@ -21,7 +21,7 @@ Finally, ensure you have a dataset with supported image files for benchmarking. 
 
 ## Processing Options
 
-All of the standard arguments for benchmarking apply to image tasks as well, such as `--profile`, `--rate`, and `--max-requests`, among others. There are a few additional options that help control image-specific data handling and request formatting.
+All of the standard arguments for benchmarking apply to image tasks as well, such as `--profile`, profile rate parameters, and `--constraint kind=max_requests,count=<n>`, among others. There are a few additional options that help control image-specific data handling and request formatting.
 
 ### Data Loading
 
@@ -42,13 +42,13 @@ When specifying the dataset, generally, you will want to map the specific image 
 To specify the mapping, use the `--data-column-mapper` argument with a JSON string that specifies an existing column name for `image_column`. For example, if your dataset has an image column named `photo`, you would use:
 
 ```bash
---data-column-mapper '{"column_mappings": {"image_column": "photo"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"image_column": "photo"}}'
 ```
 
 If you are combining multiple datasets (e.g., for prompts and images), prepend the column name with the dataset index (starting at 0) or the dataset alias followed by a dot. For example, if the image column is in the second dataset (index 1):
 
 ```bash
---data-column-mapper '{"column_mappings": {"1.image_column": "photo"}}'
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"1.image_column": "photo"}}'
 ```
 
 ### Request Formatting
@@ -97,10 +97,10 @@ For example, to specify a specific system prompt or other body parameter:
 
 #### "stream"
 
-Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Use `--backend-kwargs`:
+Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
 
 ```bash
---backend-kwargs '{"stream": false}'
+--backend kind=openai_http,target=http://localhost:8000,stream=false
 ```
 
 ## Expected Results
@@ -142,23 +142,19 @@ This benchmark tests Vision-Language Models for their ability to answer question
 **Command:**
 
 ```bash
-guidellm benchmark \
-  --target "http://192.168.4.12:8000" \
-  --model "Qwen/Qwen3-VL-2B-Instruct" \
-  --request-type chat_completions \
+guidellm run \
+  --backend kind=openai_http,target=http://192.168.4.12:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions \
   --profile kind=synchronous \
-  --max-requests 20 \
-  --data ‘{"kind": "huggingface", "source": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}’ \
-  --data-column-mapper ‘{"column_mappings": {"image_column": "image", "text_column": "question"}}’
+  --constraint kind=max_requests,count=20 \
+  --data '{"kind":"huggingface","source":"lmms-lab/MMBench_EN","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"image_column":"image","text_column":"question"}}'
 ```
 
 **Key Parameters**
 
-- `--target`: The base URL of the inference server.
-- `--model`: The model name to use for requests.
-- `--request-type`: chat_completions, supporting multimodal inputs.
-- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options.
-- `--data-column-mapper`: Maps the dataset’s `image` column to `image_column` and `question` to `text_column`.
+- `--backend`: Server URL, model, and chat completions endpoint
+- `--data`: The dataset to load — uses `kind=huggingface` with the dataset identifier and `load_kwargs` for dataset loading configuration (selecting the "test" split). See [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset) for full list of valid options
+- `--data-column-mapper`: Maps the dataset's `image` column to `image_column` and `question` to `text_column`
 
 The above command benchmarks the chat/completions endpoint on the target server using the prompt text and image from the MMBench_EN dataset. It will result in an output similar to the following:
 
@@ -198,14 +194,12 @@ This benchmark tests the model's ability to describe an image without a specific
 **Command:**
 
 ```bash
-guidellm benchmark \
-  --target "http://localhost:8000" \
-  --model "Qwen/Qwen3-VL-2B-Instruct" \
-  --request-type chat_completions \
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions \
   --profile kind=synchronous \
-  --max-requests 20 \
-  --data '{"kind": "huggingface", "source": "lmms-lab/MMBench_EN", "load_kwargs": {"split": "test"}}' \
-  --data-column-mapper '{"column_mappings": {"image_column": "image"}}'
+  --constraint kind=max_requests,count=20 \
+  --data '{"kind":"huggingface","source":"lmms-lab/MMBench_EN","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"image_column":"image"}}'
 ```
 
 **Key Parameters:**
