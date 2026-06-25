@@ -16,8 +16,13 @@ if TYPE_CHECKING:
 __all__ = [
     "CHAT_TEMPLATE_UNSET",
     "build_multi_modal_data_from_columns",
+    "build_placeholder_prefix",
     "create_sampling_params",
+    "extract_prompt_chat_plain",
     "extract_prompt_chat_tokenizer",
+    "extract_text_from_content",
+    "format_column_blocks",
+    "inject_placeholders_into_messages",
     "resolve_chat_template",
 ]
 
@@ -28,6 +33,143 @@ CHAT_TEMPLATE_UNSET = object()
 def _has_jinja2_markers(s: str) -> bool:
     """Check if string contains Jinja2 template markers ({{, {%}, or {#})."""
     return "{{" in s or "{%" in s or "{#" in s
+
+
+def extract_text_from_content(content: str | list[dict[str, Any]] | Any) -> str:
+    """
+    Extract text content from message content field.
+
+    Handles both string content and list-based multimodal content blocks.
+    For list-based content, extracts text from blocks with type "text" and
+    concatenates them together.
+
+    :param content: Content field which can be a string or list of content blocks
+    :return: Extracted text string
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # Extract text from content blocks with type "text"
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict):
+                block_type = block.get("type")
+                if block_type == "text":
+                    text = block.get("text")
+                    if text:
+                        text_parts.append(text)
+        return "".join(text_parts)
+    # Fallback: convert to string
+    return str(content) if content is not None else ""
+
+
+def build_placeholder_prefix(
+    multi_modal_data: dict[str, Any],
+    image_placeholder: str = "<image>",
+    audio_placeholder: str = "<|audio|>",
+) -> str:
+    """
+    Build the placeholder prefix string for all modalities in multi_modal_data.
+
+    Returns a string like ``"<image>\\n<|audio|>\\n"`` with one placeholder per
+    item, or ``""`` if no multimodal items are present.
+
+    :param multi_modal_data: Multi-modal data dict with image/audio
+    :param image_placeholder: Placeholder token for images
+    :param audio_placeholder: Placeholder token for audio
+    :return: Newline-joined placeholder string or empty string
+    """
+    parts: list[str] = []
+    images = multi_modal_data.get("image")
+    if images is not None:
+        num = len(images) if isinstance(images, list | tuple) else 1
+        if num > 0:
+            parts.extend([image_placeholder] * num)
+    audio = multi_modal_data.get("audio")
+    if audio is not None:
+        # Single audio item (numpy array) — not a list of items.
+        num = len(audio) if isinstance(audio, list | tuple) else 1
+        if num > 0:
+            parts.extend([audio_placeholder] * num)
+    if not parts:
+        return ""
+    return "\n".join(parts) + "\n"
+
+
+def format_column_blocks(
+    column_data: list[Any], column_type: str
+) -> list[dict[str, Any]]:
+    """
+    Format data column items into vLLM-compatible content blocks.
+
+    Analogous to the HTTP backend's ``_format_prompts`` but emitting
+    vLLM-specific block types that chat templates can render into the
+    correct model-specific placeholder tokens.
+
+    :param column_data: List of items from a data column
+    :param column_type: Column type (text_column, image_column, audio_column)
+    :return: List of typed content block dicts
+    """
+    blocks: list[dict[str, Any]] = []
+    for item in column_data:
+        if not item:
+            continue
+        if column_type == "text_column":
+            blocks.append({"type": "text", "text": str(item)})
+        elif column_type == "image_column":
+            blocks.append({"type": "image"})
+        elif column_type == "audio_column":
+            blocks.append({"type": "audio"})
+    return blocks
+
+
+def inject_placeholders_into_messages(
+    formatted_messages: list[dict[str, Any]],
+    multi_modal_data: dict[str, Any],
+    image_placeholder: str = "<image>",
+    audio_placeholder: str = "<|audio|>",
+) -> None:
+    """
+    Inject multimodal placeholder tokens into the last user message's content.
+
+    vLLM requires one placeholder per multimodal item in the prompt text so its
+    processor can apply prompt replacement. This must happen *before* the chat
+    template is applied so that placeholders end up inside the correct message
+    turn (not prepended to the entire formatted prompt).
+
+    :param formatted_messages: List of message dicts (modified in-place)
+    :param multi_modal_data: Multi-modal data dict
+    :param image_placeholder: Placeholder token for images
+    :param audio_placeholder: Placeholder token for audio
+    """
+    prefix = build_placeholder_prefix(
+        multi_modal_data, image_placeholder, audio_placeholder
+    )
+    if not prefix:
+        return
+    for msg in reversed(formatted_messages):
+        if msg.get("role") == "user":
+            msg["content"] = prefix + (msg.get("content") or "")
+            return
+    if formatted_messages:
+        formatted_messages[-1]["content"] = prefix + (
+            formatted_messages[-1].get("content") or ""
+        )
+
+
+def extract_prompt_chat_plain(
+    formatted_messages: list[dict[str, Any]],
+) -> str:
+    """
+    Concatenate message content into a single raw prompt string.
+
+    Equivalent to the HTTP /v1/completions behaviour: prefix + text
+    with no role prefixes or trailing generation prompt.
+
+    :param formatted_messages: List of message dicts with role/content
+    :return: Space-joined content string
+    """
+    return " ".join(msg["content"] for msg in formatted_messages if msg.get("content"))
 
 
 def build_multi_modal_data_from_columns(
