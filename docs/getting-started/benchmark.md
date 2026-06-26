@@ -298,3 +298,7 @@ Learn more about output options in the [Outputs documentation](../guides/outputs
 ## Authentication
 
 When benchmarking against servers that require authentication (such as OpenAI's API), provide an API key in the backend configuration. See the [API Key Configuration](../guides/backends.md#api-key-configuration) section in the Backends documentation for details.
+
+## Troubleshooting
+
+See the [Troubleshooting guide](../guides/troubleshooting.md) for common issues.

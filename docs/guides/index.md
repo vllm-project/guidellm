@@ -84,4 +84,12 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Multimodal Guide](multimodal/index.md)
 
+- :material-lifebuoy:{ .lg .middle } Troubleshooting
+
+  ______________________________________________________________________
+
+  How to troubleshoot common errors.
+
+  [:octicons-arrow-right-24: Troubleshooting Guide](troubleshooting.md)
+
 </div>
