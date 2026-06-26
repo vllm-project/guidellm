@@ -222,3 +222,27 @@ def parse_overrides(ctx, param, value):
         overrides.append((k, values_parsed))
 
     return overrides_to_benchmarks(*overrides)
+
+
+def parse_kv_str(
+    ctx: click.Context, param: click.Parameter, value: str | tuple[str, ...] | list[str]
+):
+    """
+    Parse a key=value string into a dictionary.
+
+    :param ctx: Click context
+    :param param: Click parameter
+    :param value: The input string to parse
+    :return: Dictionary with the parsed key-value pair, or None if input is None
+    :raises click.BadParameter: When parsing fails or the format is invalid
+    """
+    if isinstance(value, list | tuple):
+        return [parse_kv_str(ctx, param, v) for v in value]
+
+    try:
+        key, val = value.split("=", 1)
+        return key, val
+    except ValueError as e:
+        raise click.BadParameter(
+            f"Invalid key=value format for '{value}'. Expected format is 'key=value'."
+        ) from e

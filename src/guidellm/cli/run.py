@@ -54,6 +54,18 @@ __all__ = [
         "CLI options override scenario settings."
     ),
 )
+@click.option(
+    "--label",
+    "-l",
+    "labels",
+    multiple=True,
+    callback=cli_tools.parse_kv_str,
+    help=(
+        "Define a labels in key-value pair for the run. "
+        "Example: `--label timestamp=1999-09-12@12:00:00 --label env=staging`"
+        "  [repeatable]"
+    ),
+)
 @registry_options_from_model(model=BenchmarkArgs, group_key="spec")
 @click.option(
     "--override",
@@ -61,6 +73,12 @@ __all__ = [
     nargs=2,
     callback=cli_tools.parse_overrides,
     multiple=True,
+    help=(
+        "Define overrides for each sub-benchmark. "
+        "Currently this only supports `profile.streams` or `profile.rate`. "
+        "Example: `--profile kind=concurrent --override 'profile.streams' 1,2,4,8,16`"
+        "  [repeatable]"
+    ),
 )
 @click.option(
     "--disable-console",
@@ -118,6 +136,7 @@ def run(**kwargs):  # noqa: C901, PLR0915
         args = BenchmarkScenario.create(
             spec=kwargs.get("spec", {}),
             benchmarks=kwargs.get("benchmarks", []),
+            metadata={"labels": dict(kwargs.get("labels", []))},
             scenario=kwargs.get("config"),
         )
     except ValidationError as err:
