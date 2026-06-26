@@ -1,10 +1,11 @@
 """
-Unit tests for backend transformation to typed BackendArgs instances
-and BenchmarkScenario environment variable support.
+Unit tests for backend transformation to typed BackendArgs instances,
+MetricsArgs registry validation, and BenchmarkScenario environment variable support.
 
 Tests the automatic conversion of backend configuration from dict-based
 backend into properly typed BackendArgs instances during model validation,
-and env var loading for BenchmarkScenario.
+MetricsArgs polymorphic dispatch to GenerativeMetricsArgs, and env var
+loading for BenchmarkScenario.
 
 ### WRITTEN BY AI ###
 """
@@ -18,6 +19,8 @@ from guidellm.backends.openai.websocket import OpenAIWebSocketBackendArgs
 from guidellm.benchmark.schemas.entrypoints import (
     BenchmarkArgs,
     BenchmarkScenario,
+    GenerativeMetricsArgs,
+    MetricsArgs,
 )
 
 # Conditionally import VLLM backend args if available
@@ -473,3 +476,158 @@ class TestBenchmarkScenarioEnvVars:
 
         assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
         assert scenario.spec.backend.target == "http://from-kwarg:8000"
+
+
+@pytest.mark.sanity
+class TestMetricsArgsValidation:
+    """Test MetricsArgs registry dispatch and GenerativeMetricsArgs validation."""
+
+    def test_default_metrics_is_generative(self):
+        """
+        Default BenchmarkArgs creates GenerativeMetricsArgs with correct defaults.
+
+        ## WRITTEN BY AI ##
+        """
+        args = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+
+        assert isinstance(args.metrics, GenerativeMetricsArgs)
+        assert isinstance(args.metrics, MetricsArgs)
+        assert args.metrics.kind == "generative"
+        assert args.metrics.sample_size is None
+        assert args.metrics.prefer_response_metrics is True
+
+    def test_explicit_metrics_dict_validates(self):
+        """
+        Explicit metrics dict with kind=generative validates to GenerativeMetricsArgs
+        with specified field values.
+
+        ## WRITTEN BY AI ##
+        """
+        args = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "metrics": {
+                    "kind": "generative",
+                    "sample_size": 100,
+                    "prefer_response_metrics": False,
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+
+        assert isinstance(args.metrics, GenerativeMetricsArgs)
+        assert args.metrics.sample_size == 100
+        assert args.metrics.prefer_response_metrics is False
+
+    def test_metrics_serialization_round_trip(self):
+        """
+        Serialization and deserialization preserves GenerativeMetricsArgs fields.
+
+        ## WRITTEN BY AI ##
+        """
+        args = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "metrics": {
+                    "kind": "generative",
+                    "sample_size": 50,
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+
+        serialized = args.metrics.model_dump()
+        assert serialized["kind"] == "generative"
+        assert serialized["sample_size"] == 50
+        assert serialized["prefer_response_metrics"] is True
+
+        args2 = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "metrics": serialized,
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+
+        assert isinstance(args2.metrics, GenerativeMetricsArgs)
+        assert args2.metrics.sample_size == 50
+
+    def test_invalid_metrics_kind_raises(self):
+        """
+        Unregistered metrics kind raises ValidationError.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            BenchmarkArgs.model_validate(
+                {
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                    "metrics": {"kind": "nonexistent"},
+                    **_PIPELINE_DEFAULTS,
+                }
+            )
+
+    def test_metrics_sample_size_zero(self):
+        """
+        sample_size=0 is valid and means keep no request data.
+
+        ## WRITTEN BY AI ##
+        """
+        args = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "metrics": {"kind": "generative", "sample_size": 0},
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+
+        assert isinstance(args.metrics, GenerativeMetricsArgs)
+        assert args.metrics.sample_size == 0
+
+    def test_metrics_from_scenario_spec(self):
+        """
+        Metrics args set in the scenario spec are preserved after validation.
+
+        ## WRITTEN BY AI ##
+        """
+        scenario = BenchmarkScenario.model_validate(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                    "metrics": {
+                        "kind": "generative",
+                        "sample_size": 200,
+                    },
+                }
+            }
+        )
+
+        assert isinstance(scenario.spec.metrics, GenerativeMetricsArgs)
+        assert scenario.spec.metrics.sample_size == 200

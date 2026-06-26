@@ -11,8 +11,9 @@ for persistent storage and reproduction of benchmark configurations.
 from __future__ import annotations
 
 import json
+from abc import ABC
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, Literal
 
 import yaml
 from pydantic import (
@@ -39,6 +40,7 @@ from guidellm.data import (
 )
 from guidellm.scheduler.constraints import ConstraintArgs
 from guidellm.schemas import (
+    PydanticClassRegistryMixin,
     ReloadableBaseModel,
     StandardBaseModel,
     standard_model_config,
@@ -49,6 +51,8 @@ __all__ = [
     "BenchmarkArgs",
     "BenchmarkMetadata",
     "BenchmarkScenario",
+    "GenerativeMetricsArgs",
+    "MetricsArgs",
 ]
 
 
@@ -75,6 +79,61 @@ def default_kind(kind: str) -> dict[str, Any]:
 def default_kind_list(*kinds: str) -> list[dict[str, Any]]:
     """Default factory for lists of argument models to set the 'kind' field."""
     return [default_kind(kind) for kind in kinds]
+
+
+class MetricsArgs(PydanticClassRegistryMixin["MetricsArgs"], ABC):
+    """Base class for metrics collection arguments.
+
+    :cvar schema_discriminator: Field name for polymorphic deserialization
+    """
+
+    model_config = standard_model_config()
+
+    schema_discriminator: ClassVar[str] = "kind"
+
+    @classmethod
+    def __pydantic_schema_base_type__(cls) -> type[MetricsArgs]:
+        """
+        Return base type for polymorphic validation hierarchy.
+
+        :return: Base MetricsArgs class for schema validation
+        """
+        if cls.__name__ == "MetricsArgs":
+            return cls
+
+        return MetricsArgs
+
+    kind: str = Field(
+        description="The kind of metrics configuration to use.",
+    )
+
+
+@MetricsArgs.register("generative")
+class GenerativeMetricsArgs(MetricsArgs):
+    """Metrics configuration for generative (autoregressive) benchmarks."""
+
+    kind: Literal["generative"] = Field(
+        default="generative",
+        description="The kind of metrics configuration to use.",
+    )
+    sample_size: int | None = Field(
+        default=None,
+        description=(
+            "Maximum number of requests per status group (completed, errored, "
+            "incomplete) to retain full data (prompt, output, tool calls) for in "
+            "the final benchmark. Lightweight stats (latency, token counts) are "
+            "always kept for every request. None keeps all request data, 0 strips "
+            "all request data, N > 0 uses reservoir sampling to retain N per group."
+        ),
+        examples=[None, 0, 100],
+    )
+    prefer_response_metrics: bool = Field(
+        default=True,
+        description=(
+            "Prioritize server-reported metrics over client-calculated metrics "
+            "when both are available."
+        ),
+    )
 
 
 class BenchmarkArgs(ReloadableBaseModel):
@@ -163,6 +222,11 @@ class BenchmarkArgs(ReloadableBaseModel):
             {"kind": "json", "filename": "benchmarks.json"},
         ],
         json_schema_extra={"argument_alias": "output"},
+    )
+    metrics: MetricsArgs = Field(  # type: ignore[assignment]
+        default_factory=lambda: default_kind("generative"),
+        description="Configuration for metrics collection and request sampling.",
+        json_schema_extra={"argument_alias": "metrics"},
     )
 
 

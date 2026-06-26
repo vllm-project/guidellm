@@ -30,6 +30,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
+    GenerativeMetricsArgs,
     ProfileArgs,
 )
 from guidellm.data import (
@@ -433,6 +434,13 @@ async def benchmark_generative_text(
     """
     benchmark_args = resolve_to_single_benchmark(args.get_benchmarks())
 
+    metrics_args = benchmark_args.metrics
+    if not isinstance(metrics_args, GenerativeMetricsArgs):
+        raise TypeError(
+            f"Expected GenerativeMetricsArgs for generative text benchmark, "
+            f"got {type(metrics_args).__name__}"
+        )
+
     backend, model = await resolve_backend(
         backend_args=benchmark_args.backend,
         console=console,
@@ -481,10 +489,10 @@ async def benchmark_generative_text(
         profile=profile,
         environment=NonDistributedEnvironment(),
         progress=progress,
-        sample_requests=None,
+        sample_size=metrics_args.sample_size,
         warmup=warmup,
         cooldown=cooldown,
-        prefer_response_metrics=True,
+        prefer_response_metrics=metrics_args.prefer_response_metrics,
     ):
         if benchmark:
             report.benchmarks.append(benchmark)
