@@ -576,10 +576,12 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
     retention (clearing request arguments and/or outputs for non-sampled requests).
     """
 
-    sample_requests: int | None = Field(
+    sample_size: int | None = Field(
         default=None,
         description=(
-            "Number of requests to sample and keep in the final benchmark for metrics"
+            "Maximum number of requests in each status group to retain full data "
+            "(prompt, output, tool calls) for. Lightweight stats are always kept. "
+            "None keeps all, 0 strips all, N > 0 uses reservoir sampling."
         ),
     )
     requests_stats: list[GenerativeRequestStats] = Field(
@@ -663,18 +665,18 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
         current_index = len(self.requests_stats)
         self.requests_stats.append(stats)
 
-        if self.sample_requests is None:
+        if self.sample_size is None:
             # Keeping all requests, don't need to sample
             self.samples = None
-        elif self.sample_requests <= 0:
+        elif self.sample_size <= 0:
             # Not keeping any requests, clear out unnecessary memory usage for current
             self.clear_stats_data(stats)
-        elif self.sample_requests >= len(self.requests_stats):
+        elif self.sample_size >= len(self.requests_stats):
             # Add directly to samples, haven't filled yet
             if self.samples is None:
                 self.samples = []
             self.samples.append(current_index)
-        elif self.sample_requests / len(self.requests_stats) >= random.random():
+        elif self.sample_size / len(self.requests_stats) >= random.random():
             # Sampling logic: choose to replace with decreasing probability s / n
             # where s is sample size, n is current number of requests.
             # If chosen, choose random existing sample to replace.
@@ -802,16 +804,16 @@ class GenerativeBenchmarkAccumulator(
         """
         Initialize child accumulators with config values after model construction.
 
-        Propagates sample_requests from config to child request accumulators to ensure
+        Propagates sample_size from config to child request accumulators to ensure
         consistent sampling behavior across completed, errored, and incomplete request
-        collections. This ensures the --sample-requests option functions correctly.
+        collections. This ensures the --metrics-sample-size option functions correctly.
         """
         super().model_post_init(__context)
 
-        # Propagate sample_requests from config to child accumulators
-        self.completed.sample_requests = self.config.sample_requests
-        self.errored.sample_requests = self.config.sample_requests
-        self.incomplete.sample_requests = self.config.sample_requests
+        # Propagate sample_size from config to child accumulators
+        self.completed.sample_size = self.config.sample_size
+        self.errored.sample_size = self.config.sample_size
+        self.incomplete.sample_size = self.config.sample_size
 
     def update_estimate(
         self,

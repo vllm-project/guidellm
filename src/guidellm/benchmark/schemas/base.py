@@ -275,9 +275,12 @@ class BenchmarkConfig(StandardBaseDict):
     constraints: dict[str, dict[str, Any]] = Field(
         description="Constraint definitions applied to scheduler strategy execution",
     )
-    sample_requests: int | None = Field(
+    sample_size: int | None = Field(
         default=None,
-        description="Request count for statistical sampling in final metrics",
+        description=(
+            "Maximum number of requests per status group to retain full data for. "
+            "None keeps all, 0 strips all, N > 0 uses reservoir sampling."
+        ),
     )
     warmup: TransientPhaseConfig = Field(
         default_factory=TransientPhaseConfig,

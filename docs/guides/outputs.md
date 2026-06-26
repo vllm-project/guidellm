@@ -94,6 +94,31 @@ guidellm run \
   --output kind=json,path=results/benchmark.json
 ```
 
+### Controlling Output File Size
+
+Long benchmark runs with thousands of requests can produce large JSON and YAML output files because, by default, every request's full data (prompt text, output text, tool calls) is retained. The `--metrics` option lets you limit how much request data is kept using reservoir sampling, while lightweight stats (latency, token counts, timing) are always preserved for every request.
+
+Use `sample_size` to set the maximum number of requests **per status group** (completed, errored, incomplete) that retain their full data:
+
+| Value             | Behavior                                                   |
+| ----------------- | ---------------------------------------------------------- |
+| Not set (default) | Keep full data for all requests                            |
+| `0`               | Strip all request data (stats only)                        |
+| `N` (e.g. `100`)  | Retain full data for N randomly sampled requests per group |
+
+```bash
+# Keep full data for only 100 sampled requests per group
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_requests,count=10000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --metrics kind=generative,sample_size=100 \
+  --output kind=json,path=results/benchmark.json
+```
+
+The `--metrics` option also accepts `prefer_response_metrics` (default `true`), which controls whether server-reported token counts are preferred over client-calculated counts when both are available. This rarely needs to be changed.
+
 ### Reloading Results
 
 JSON files can be reloaded into Python for further analysis using the `GenerativeBenchmarksReport` class. Below is a sample code snippet for reloading results:

@@ -64,7 +64,7 @@ class Benchmarker(
         environment: Environment,
         warmup: TransientPhaseConfig,
         cooldown: TransientPhaseConfig,
-        sample_requests: int | None = None,
+        sample_size: int | None = None,
         prefer_response_metrics: bool = True,
         progress: (
             BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None
@@ -81,8 +81,9 @@ class Benchmarker(
         :param environment: Environment for execution coordination
         :param warmup: Warmup phase configuration before benchmarking
         :param cooldown: Cooldown phase configuration after benchmarking
-        :param sample_requests: Number of requests to sample for estimation,
-            defaults to 20
+        :param sample_size: Maximum number of requests per status group
+            (completed, errored, incomplete) to retain full data for.
+            None keeps all, 0 strips all, N > 0 uses reservoir sampling.
         :param prefer_response_metrics: Whether to prefer response metrics over
             request metrics, defaults to True
         :param progress: Optional tracker for benchmark lifecycle events
@@ -117,7 +118,7 @@ class Benchmarker(
                         if constraints
                         else {}
                     ),
-                    sample_requests=sample_requests,
+                    sample_size=sample_size,
                     warmup=warmup,
                     cooldown=cooldown,
                     prefer_response_metrics=prefer_response_metrics,
