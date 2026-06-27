@@ -92,4 +92,12 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Troubleshooting Guide](troubleshooting.md)
 
+- :material-update:{ .lg .middle } v0.7.0 Migration Guide
+
+  ______________________________________________________________________
+
+  How to migrate GuideLLM CLI commandsfrom v0.6.0 to v0.7.0.
+
+  [:octicons-arrow-right-24: v0.7.0 Migration Guide](v0.7.0_migration_guide.md)
+
 </div>
