@@ -12,10 +12,12 @@ from typing import Any
 import pytest
 
 from guidellm.data.finalizers import GenerativeRequestFinalizer
-from guidellm.schemas import GenerationRequest
+from guidellm.schemas import GenerationRequest, RequestSettings
 
 
-def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:
+def _run_row_through_pipeline(
+    row: dict[str, Any],
+) -> list[tuple[GenerationRequest, RequestSettings]]:
     """Push a single dataset row through the column mapper and finalizer.
 
     ## WRITTEN BY AI ##
@@ -67,9 +69,10 @@ class TestJsonlMultiTurnToolCallPipeline:
             "output_tokens_count_2": 100,
         }
 
-        requests = _run_row_through_pipeline(row)
+        rows = _run_row_through_pipeline(row)
 
-        assert len(requests) == 5
+        assert len(rows) == 5
+        requests = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
 
         assert requests[0].turn_type == "client_tool_call"
         assert "tools_column" in requests[0].columns
@@ -113,9 +116,10 @@ class TestJsonlMultiTurnToolCallPipeline:
             "tool_response_3": '{"price": 150}',
         }
 
-        requests = _run_row_through_pipeline(row)
+        rows = _run_row_through_pipeline(row)
 
-        assert len(requests) == 6
+        assert len(rows) == 6
+        requests = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
 
         assert requests[0].turn_type == "client_tool_call"
         assert "tools_column" in requests[0].columns

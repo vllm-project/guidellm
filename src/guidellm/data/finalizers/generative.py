@@ -67,11 +67,14 @@ class GenerativeRequestFinalizer(
                 request.output_metrics = UsageMetrics()
                 results.append((request, RequestSettings()))
                 results.append(
-                    (GenerationRequest(
-                        columns=injection_columns,
-                        turn_type="tool_response_injection",
-                        output_metrics=metrics_config,
-                    ), settings)
+                    (
+                        GenerationRequest(
+                            columns=injection_columns,
+                            turn_type="tool_response_injection",
+                            output_metrics=metrics_config,
+                        ),
+                        settings,
+                    )
                 )
             else:
                 results.append((request, settings))
