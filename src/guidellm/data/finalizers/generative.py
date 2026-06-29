@@ -26,7 +26,9 @@ class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
 
 
 @FinalizerRegistry.register("generative")
-class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
+class GenerativeRequestFinalizer(
+    DatasetFinalizer[Iterable[tuple[GenerationRequest, RequestSettings]]]
+):
     """
     Finalizer that converts dataset rows into GenerationRequest objects,
     aggregating usage metrics from the provided columns.
@@ -35,12 +37,14 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
     def __init__(self, config: GenerativeRequestFinalizerArgs) -> None:
         self.config = config
 
-    def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
+    def __call__(
+        self, items: list[dict[str, Any]]
+    ) -> list[tuple[GenerationRequest, RequestSettings]]:
         return [self.finalize_turn(item) for item in items]
 
     def finalize_turn(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]
-    ) -> GenerationRequest:
+    ) -> tuple[GenerationRequest, RequestSettings]:
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
@@ -130,13 +134,26 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
             expects_tool_call=expects_tool_call,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
-            settings=self._request_settings_from_columns(columns),
+        ), RequestSettings(
+            relative_timestamp=self._get_optional_column_value(
+                columns, "relative_timestamp_column"
+            ),
+            requeue_delay=self._get_optional_column_value(
+                columns, "requeue_delay_column"
+            ),
         )
 
-    def _request_settings_from_columns(
-        self, columns: dict[str, Any]
-    ) -> RequestSettings:
-        relative_values = columns.get("relative_timestamp_column", [])
-        if relative_values and relative_values[0] is not None:
-            return RequestSettings(relative_timestamp=float(relative_values[0]))
-        return RequestSettings()
+    @staticmethod
+    def _get_optional_column_value(
+        columns: dict[str, Any],
+        column_name: str,
+    ) -> Any | None:
+        """
+        Retrieve the first value from a specified column in the columns dictionary.
+
+        :param columns: A dictionary containing columns.
+        :param column_name: The name of the column to retrieve the value from.
+        :return: The first value from the specified column
+        """
+        values = columns.get(column_name, [])
+        return values[0] if values else None

@@ -61,7 +61,7 @@ def _write_trace(path: Path, lines: list[str]) -> Path:
 
 def _requests_from_trace(
     trace_path: Path,
-) -> tuple[list[list[GenerationRequest]], list[float]]:
+) -> tuple[list[list[tuple[GenerationRequest, RequestSettings]]], list[float]]:
     deserializer = TraceSyntheticDatasetDeserializer()
     dataset = deserializer(
         config=TraceSyntheticDataArgs(path=trace_path),
@@ -73,17 +73,17 @@ def _requests_from_trace(
     mapper.setup_data([dataset])
     finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
-    conversations: list[list[GenerationRequest]] = []
+    conversations: list[list[tuple[GenerationRequest, RequestSettings]]] = []
     relative_timestamps: list[float] = []
     for index in range(len(dataset)):
         row = {column: dataset[column][index] for column in dataset.column_names}
         mapped = mapper([{"dataset": row}])
         requests = finalizer(mapped)
         assert len(requests) == 1
-        request = requests[0]
+        request, settings = requests[0]
         request.request_id = f"req_{index}"
-        conversations.append([request])
-        offset = request.settings.relative_timestamp
+        conversations.append([(request, settings)])
+        offset = settings.relative_timestamp
         assert offset is not None
         relative_timestamps.append(offset)
 

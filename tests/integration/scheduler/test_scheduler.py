@@ -22,7 +22,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
 )
 from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import RequestInfo, RequestSettings
 
 
 def async_timeout(delay: float):
@@ -129,7 +129,10 @@ async def test_scheduler_run_integration(
     num_requests = 100
 
     async for resp, req, info, state in scheduler.run(
-        requests=[[MockRequest(payload=f"req_{ind}")] for ind in range(num_requests)],
+        requests=[
+            [(MockRequest(payload=f"req_{ind}"), RequestSettings())]
+            for ind in range(num_requests)
+        ],
         backend=MockBackend(),
         strategy=strategy,
         env=env,
