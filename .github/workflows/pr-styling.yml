@@ -23,7 +23,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Skip dependabot PRs
+        if: github.actor == 'dependabot[bot]'
+        run: echo "Skipping PR styling for dependabot PRs"
+
       - name: Update PR description
+        if: github.actor != 'dependabot[bot]'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
