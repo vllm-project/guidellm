@@ -17,9 +17,13 @@ from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.deserializers.deserializer import DataNotSupportedError
+from guidellm.data.deserializers.deserializer import (
+    DataNotSupportedError,
+    DatasetDeserializerFactory,
+)
 from guidellm.data.deserializers.trace_common import (
     TraceDataArgs,
+    TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
     decode_prompt,
@@ -88,6 +92,9 @@ def _create_prompt_from_hash_ids(
         token for hash_id in hash_ids for token in hash_id_table[hash_id]
     ]
     return decode_prompt(processor, prompt_token_ids)
+
+
+DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, "mooncake")
 
 
 @DataArgs.register("mooncake")

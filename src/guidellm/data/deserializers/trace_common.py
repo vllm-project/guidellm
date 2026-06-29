@@ -264,12 +264,7 @@ class TraceDataset(IterableDataset):
             self._ex_iterable.iteration_count = epoch
 
 
-# I was hoping to avoid having format registered names in trace_common, as
-# having to add them to here will be easy to forget.
-#
-# I wonder if there's some non-ugly way of registering these somewhere else?
-# Jun/24/2026
-@DatasetDeserializerFactory.register(["mooncake", "trace_minimal"])
+@DatasetDeserializerFactory.register(["trace_minimal"])
 class TraceDatasetDeserializer(DatasetDeserializer):
     """Dataset deserializer for all trace formats."""
 
