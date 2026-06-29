@@ -31,3 +31,4 @@ merge_protections_settings:
   auto_merge_conditions:
     - "#approved-reviews-by >= 2"
     - "#changes-requested-reviews-by = 0"
+    - "#review-threads-unresolved = 0"

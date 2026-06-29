@@ -23,7 +23,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Skip dependabot PRs
+        if: github.actor == 'dependabot[bot]'
+        run: echo "Skipping PR styling for dependabot PRs"
+
       - name: Update PR description
+        if: github.actor != 'dependabot[bot]'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -31,6 +36,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # Fetch the PR branch since we are on base repo
+          # NOTE: DO NOT checkout the branch
           git fetch origin "refs/pull/${PR_NUMBER}/head"
 
           CURRENT_BODY="$(gh pr view "$PR_NUMBER" --json body -q .body)"
