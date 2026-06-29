@@ -40,7 +40,7 @@ from guidellm.scheduler.schemas import (
     ResponseT,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.utils.messaging import InterProcessMessaging
 from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
@@ -313,12 +313,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                         raise exception
 
                     history, conversation, info = task.result()
+                    settings = info.settings if info is not None else RequestSettings()
                     if conversation:
                         requeue_task = asyncio.create_task(
                             self._wait_then_requeue(
                                 history,
                                 conversation,
-                                self.strategy.requeue_delay(),
+                                settings,
                             )
                         )
                         pending_tasks.add(requeue_task)
@@ -480,11 +481,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self,
         history: HistoryT[RequestT, ResponseT],
         conversation: ConversationT[RequestT],
-        requeue_delay: float,
+        settings: RequestSettings,
     ):
         try:
-            if requeue_delay > 0:
-                await asyncio.sleep(requeue_delay)
+            if settings.requeue_delay:
+                await asyncio.sleep(settings.requeue_delay)
         finally:
             # Always requeue so that if we were cancelled during sleep
             # the whole conversation can be cancelled properly later

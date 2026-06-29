@@ -124,11 +124,20 @@ class RequestSettings(StandardBaseDict):
 
     relative_timestamp: float | None = Field(
         default=None,
+        ge=0,
         description=(
             "Trace offset in seconds from the first event after sorting (0 for the "
             "earliest event). Trace replay converts this to an absolute start time "
             "at dequeue: start_time + time_scale * relative_timestamp. When null, "
             "trace replay uses benchmark start time only."
+        ),
+    )
+    requeue_delay: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Delay in seconds before requeueing the conversation. This number is a "
+            "lower bound on the delay, subject to scheduling."
         ),
     )
 
