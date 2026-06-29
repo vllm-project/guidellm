@@ -16,6 +16,7 @@ from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.trace_common import (
+    TraceColumn,
     TraceDataArgs,
     TraceFormatBase,
     TraceFormatRegistry,
@@ -23,7 +24,6 @@ from guidellm.data.deserializers.trace_common import (
     generate_token_ids,
 )
 from guidellm.data.schemas import DataArgs
-from guidellm.utils.trace_io import TraceColumn
 
 __all__ = ["MinimalTraceFormatArgs"]
 

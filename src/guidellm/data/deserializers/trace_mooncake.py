@@ -22,6 +22,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
+    TraceColumn,
     TraceDataArgs,
     TraceDatasetDeserializer,
     TraceFormatBase,
@@ -30,7 +31,6 @@ from guidellm.data.deserializers.trace_common import (
     generate_token_ids,
 )
 from guidellm.data.schemas import DataArgs
-from guidellm.utils.trace_io import TraceColumn
 
 __all__ = ["MooncakeTraceFormatArgs"]
 

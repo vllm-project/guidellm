@@ -6,12 +6,20 @@ requested input_length for replay benchmarks."""
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
-from datasets import DatasetInfo, Features, IterableDataset, Value
+from datasets import (
+    Dataset,
+    DatasetInfo,
+    Features,
+    IterableDataset,
+    Value,
+    load_dataset,
+)
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
@@ -25,15 +33,16 @@ from guidellm.data.deserializers.deserializer import (
 )
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.registry import RegistryMixin
-from guidellm.utils.trace_io import TraceColumn, load_trace_rows
 
 __all__ = [
+    "TraceColumn",
     "TraceDataArgs",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
     "decode_prompt",
     "generate_token_ids",
+    "load_trace_rows",
 ]
 
 
@@ -66,6 +75,89 @@ def generate_token_ids(
         token_ids = processor.encode(text)
         if len(token_ids) >= token_count:
             return token_ids[:token_count]
+
+
+@dataclasses.dataclass
+class TraceColumn:
+    """Holds metadata for trace file columns in a HuggingFace Dataset."""
+
+    name: str
+    feature_type: Value
+
+
+def get_column_names(columns: list[TraceColumn]) -> list[str]:
+    return [c.name for c in columns]
+
+
+def validate_trace_path(path: Path | str) -> Path:
+    path = Path(path)
+    suffix = path.suffix.lower()
+    if suffix != ".jsonl":
+        raise ValueError(f"Unsupported trace file format: {suffix}")
+    if path.stat().st_size == 0:
+        raise ValueError(f"Trace file is empty or has no valid rows: {path}")
+    return path
+
+
+def check_and_raise_missing_columns(
+    required_columns: list[str], actual_columns: list[str]
+) -> None:
+    missing = [c for c in required_columns if c not in actual_columns]
+    if missing:
+        raise KeyError(f"Trace row missing required columns: {missing}")
+
+
+def load_trace_rows(
+    path: Path | str,
+    timestamp_column: TraceColumn,
+    required_columns: list[TraceColumn] | None = None,
+    **data_kwargs: Any,
+) -> Dataset:
+    """
+    Load trace file rows as a HuggingFace Dataset.
+
+    Supports .jsonl only (one JSON object per line).
+    If required_columns is set, every column must exist in the dataset;
+    otherwise KeyError is raised with a descriptive message.
+    Rows are sorted by timestamp_column.
+
+    :param path: Path to the trace file.
+    :param timestamp_column: Timestamp column used to sort trace rows.
+    :param required_columns: Optional list of column/fields that each row must have.
+    :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
+    :return: HuggingFace Dataset (iterable as dicts, column-accessible).
+    :raises DataNotSupportedError: For any of the following reasons:
+    - The dataset is empty or has no valid rows
+    - A required column or timestamp_column contains a NoneType
+    - A required column or timestamp_column failed during cast to feature type
+
+    :raises KeyError: If a required column is missing in the dataset.
+    :raises ValueError: If the file format is not .jsonl.
+    """
+    if required_columns is None:
+        required_columns = []
+    if timestamp_column not in required_columns:
+        required_columns = [*required_columns, timestamp_column]
+    path = validate_trace_path(path)
+    trace_dataset = load_dataset(
+        "json", data_files=str(path), split="train", **data_kwargs
+    )
+    if required_columns:
+        check_and_raise_missing_columns(
+            get_column_names(required_columns), trace_dataset.column_names
+        )
+
+    if not trace_dataset:
+        raise DataNotSupportedError(f"Trace file is empty or has no valid rows: {path}")
+    for col in required_columns:
+        if trace_dataset.data[col.name].null_count != 0:
+            raise DataNotSupportedError(f"NoneType found in {col}")
+        try:
+            trace_dataset.cast_column(col.name, col.feature_type)
+        except ValueError as e:
+            raise DataNotSupportedError(str(e)) from e
+
+    return trace_dataset.sort(timestamp_column.name)
 
 
 class TraceFormatBase(Protocol):
