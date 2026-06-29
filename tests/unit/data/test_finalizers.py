@@ -39,10 +39,11 @@ class TestGenerativeRequestFinalizerTokenAggregation:
         instance = valid_instances
         columns = {"prompt_tokens_count_column": [100]}
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
-        assert result.input_metrics.text_tokens == 100
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
+        assert gen_req.input_metrics.text_tokens == 100
 
     @pytest.mark.smoke
     def test_finalize_multi_turn_prompt_tokens(self, valid_instances):
@@ -53,10 +54,11 @@ class TestGenerativeRequestFinalizerTokenAggregation:
         instance = valid_instances
         columns = {"prompt_tokens_count_column": [50, 75, 100]}
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
-        assert result.input_metrics.text_tokens == 225  # 50 + 75 + 100
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
+        assert gen_req.input_metrics.text_tokens == 225  # 50 + 75 + 100
 
     @pytest.mark.smoke
     def test_finalize_multi_turn_output_tokens(self, valid_instances):
@@ -67,10 +69,11 @@ class TestGenerativeRequestFinalizerTokenAggregation:
         instance = valid_instances
         columns = {"output_tokens_count_column": [20, 30, 40]}
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
-        assert result.output_metrics.text_tokens == 90  # 20 + 30 + 40
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
+        assert gen_req.output_metrics.text_tokens == 90  # 20 + 30 + 40
 
     @pytest.mark.sanity
     def test_finalize_with_none_values_in_list(self, valid_instances):
@@ -81,10 +84,11 @@ class TestGenerativeRequestFinalizerTokenAggregation:
         instance = valid_instances
         columns = {"prompt_tokens_count_column": [50, None, 100]}
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
-        assert result.input_metrics.text_tokens == 150  # 50 + 100, skips None
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
+        assert gen_req.input_metrics.text_tokens == 150  # 50 + 100, skips None
 
     @pytest.mark.regression
     def test_finalize_with_empty_column_lists(self, valid_instances):
@@ -98,11 +102,12 @@ class TestGenerativeRequestFinalizerTokenAggregation:
             "output_tokens_count_column": [],
         }
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
-        assert result.input_metrics.text_tokens is None
-        assert result.output_metrics.text_tokens is None
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
+        assert gen_req.input_metrics.text_tokens is None
+        assert gen_req.output_metrics.text_tokens is None
 
 
 class TestGenerativeRequestFinalizerMultimodal:
@@ -134,12 +139,13 @@ class TestGenerativeRequestFinalizerMultimodal:
             ],
         }
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
         # Should accumulate metrics from all text values
-        assert result.input_metrics.text_words > 0
-        assert result.input_metrics.text_characters > 0
+        assert gen_req.input_metrics.text_words > 0
+        assert gen_req.input_metrics.text_characters > 0
 
     @pytest.mark.sanity
     def test_finalize_multi_value_image_columns(self, valid_instances):
@@ -156,11 +162,12 @@ class TestGenerativeRequestFinalizerMultimodal:
             ],
         }
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
-        assert result.input_metrics.image_pixels == 4500  # 1000 + 2000 + 1500
-        assert result.input_metrics.image_bytes == 22500  # 5000 + 10000 + 7500
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
+        assert gen_req.input_metrics.image_pixels == 4500  # 1000 + 2000 + 1500
+        assert gen_req.input_metrics.image_bytes == 22500  # 5000 + 10000 + 7500
 
     @pytest.mark.regression
     def test_finalize_preserves_columns(self, valid_instances):
@@ -175,14 +182,15 @@ class TestGenerativeRequestFinalizerMultimodal:
             "output_tokens_count_column": [25],
         }
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
         # Original columns should be preserved
-        assert result.columns == columns
+        assert gen_req.columns == columns
         # And metrics should be set
-        assert result.input_metrics.text_tokens == 50
-        assert result.output_metrics.text_tokens == 25
+        assert gen_req.input_metrics.text_tokens == 50
+        assert gen_req.output_metrics.text_tokens == 25
 
 
 class TestFinalizerTopLevel:
@@ -216,7 +224,12 @@ class TestFinalizerTopLevel:
 
         assert isinstance(result, list)
         assert len(result) == 3
-        assert all(isinstance(r, GenerationRequest) for r in result)
+        assert all(
+            isinstance(r, tuple)
+            and isinstance(r[0], GenerationRequest)
+            and isinstance(r[1], RequestSettings)
+            for r in result
+        )
 
     @pytest.mark.sanity
     def test_finalizer_handles_empty_list(self, valid_instances):
@@ -250,26 +263,27 @@ class TestFinalizerTopLevel:
             ],
         }
 
-        result = instance.finalize_turn(columns)
+        gen_req, req_settings = instance.finalize_turn(columns)
 
-        assert isinstance(result, GenerationRequest)
+        assert isinstance(gen_req, GenerationRequest)
+        assert isinstance(req_settings, RequestSettings)
         # Text metrics
-        assert result.input_metrics.text_words == 2
-        assert result.input_metrics.text_characters == 11
+        assert gen_req.input_metrics.text_words == 2
+        assert gen_req.input_metrics.text_characters == 11
 
         # Image metrics
-        assert result.input_metrics.image_pixels == 1920 * 1080
-        assert result.input_metrics.image_bytes == 50000
+        assert gen_req.input_metrics.image_pixels == 1920 * 1080
+        assert gen_req.input_metrics.image_bytes == 50000
 
         # Video metrics
-        assert result.input_metrics.video_frames == 120
-        assert result.input_metrics.video_seconds == 4.0
-        assert result.input_metrics.video_bytes == 1000000
+        assert gen_req.input_metrics.video_frames == 120
+        assert gen_req.input_metrics.video_seconds == 4.0
+        assert gen_req.input_metrics.video_bytes == 1000000
 
         # Audio metrics
-        assert result.input_metrics.audio_samples == 48000
-        assert result.input_metrics.audio_seconds == 1.0
-        assert result.input_metrics.audio_bytes == 96000
+        assert gen_req.input_metrics.audio_samples == 48000
+        assert gen_req.input_metrics.audio_seconds == 1.0
+        assert gen_req.input_metrics.audio_bytes == 96000
 
 
 class TestFinalizerRegistry:
@@ -330,8 +344,8 @@ class TestFinalizerExpectsToolCall:
         ]
         results = finalizer(items)
 
-        assert results[0].expects_tool_call is True
-        assert results[1].expects_tool_call is False
+        assert results[0][0].expects_tool_call is True
+        assert results[1][0].expects_tool_call is False
 
     @pytest.mark.smoke
     def test_all_turns_with_tools_all_expect_tool_call(self, finalizer):
@@ -345,8 +359,8 @@ class TestFinalizerExpectsToolCall:
         ]
         results = finalizer(items)
 
-        assert results[0].expects_tool_call is True
-        assert results[1].expects_tool_call is True
+        assert results[0][0].expects_tool_call is True
+        assert results[1][0].expects_tool_call is True
 
     @pytest.mark.sanity
     def test_expects_tool_call_false_without_tools(self, finalizer):
@@ -360,8 +374,8 @@ class TestFinalizerExpectsToolCall:
         ]
         results = finalizer(items)
 
-        assert results[0].expects_tool_call is False
-        assert results[1].expects_tool_call is False
+        assert results[0][0].expects_tool_call is False
+        assert results[1][0].expects_tool_call is False
 
     @pytest.mark.sanity
     def test_single_turn_with_tools_expects_tool_call(self, finalizer):
@@ -373,7 +387,7 @@ class TestFinalizerExpectsToolCall:
             {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
         ]
         results = finalizer(items)
-        assert results[0].expects_tool_call is True
+        assert results[0][0].expects_tool_call is True
 
 
 class TestGenerativeRequestFinalizerRequestSettings:
@@ -390,20 +404,24 @@ class TestGenerativeRequestFinalizerRequestSettings:
     @pytest.mark.smoke
     def test_relative_timestamp_column_sets_settings(self, finalizer):
         """### WRITTEN BY AI ###"""
-        result = finalizer.finalize_turn({"relative_timestamp_column": [2.5]})
+        _gen_req, req_settings = finalizer.finalize_turn(
+            {"relative_timestamp_column": [2.5]}
+        )
 
-        assert result.settings == RequestSettings(relative_timestamp=2.5)
+        assert req_settings == RequestSettings(relative_timestamp=2.5)
 
     @pytest.mark.smoke
     def test_missing_relative_timestamp_column_uses_empty_settings(self, finalizer):
         """### WRITTEN BY AI ###"""
-        result = finalizer.finalize_turn({"text_column": ["hello"]})
+        _gen_req, req_settings = finalizer.finalize_turn({"text_column": ["hello"]})
 
-        assert result.settings == RequestSettings()
+        assert req_settings == RequestSettings()
 
     @pytest.mark.smoke
     def test_none_relative_timestamp_column_uses_empty_settings(self, finalizer):
         """### WRITTEN BY AI ###"""
-        result = finalizer.finalize_turn({"relative_timestamp_column": [None]})
+        _gen_req, req_settings = finalizer.finalize_turn(
+            {"relative_timestamp_column": [None]}
+        )
 
-        assert result.settings == RequestSettings()
+        assert req_settings == RequestSettings()

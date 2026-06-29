@@ -19,7 +19,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     WorkerProcess,
 )
-from guidellm.schemas import RequestInfo, RequestTimings
+from guidellm.schemas import RequestInfo, RequestSettings, RequestTimings
 from guidellm.utils.messaging import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
 
@@ -875,15 +875,15 @@ class TestWorkerProcessMultiturn:
         """
         history = [("req1", "resp1")]
         conversation = [("req2", RequestInfo(request_id="req2"))]
-        delay = 0.1
+        settings = RequestSettings(requeue_delay=0.1)
 
         start = time.time()
-        await worker_instance._wait_then_requeue(history, conversation, delay)
+        await worker_instance._wait_then_requeue(history, conversation, settings)
         elapsed = time.time() - start
 
         # Should have slept for approximately the delay time
-        assert elapsed >= delay
-        assert elapsed < delay + 0.5  # Allow some tolerance
+        assert elapsed >= 0.1
+        assert elapsed < 0.1 + 0.5  # Allow some tolerance
 
         # Should have appended to turns_queue
         assert len(worker_instance.turns_queue) == 1
@@ -899,10 +899,10 @@ class TestWorkerProcessMultiturn:
         """
         history = [("req1", "resp1")]
         conversation = [("req2", RequestInfo(request_id="req2"))]
-        delay = 0
+        settings = RequestSettings()
 
         start = time.time()
-        await worker_instance._wait_then_requeue(history, conversation, delay)
+        await worker_instance._wait_then_requeue(history, conversation, settings)
         elapsed = time.time() - start
 
         # Should not have slept (very quick)
@@ -922,11 +922,11 @@ class TestWorkerProcessMultiturn:
         """
         history = [("req1", "resp1")]
         conversation = [("req2", RequestInfo(request_id="req2"))]
-        delay = 1.0  # Long delay
+        settings = RequestSettings(requeue_delay=1.0)  # Long delay
 
         # Create the requeue task
         requeue_task = asyncio.create_task(
-            worker_instance._wait_then_requeue(history, conversation, delay)
+            worker_instance._wait_then_requeue(history, conversation, settings)
         )
 
         # Cancel it immediately
@@ -956,7 +956,9 @@ class TestWorkerProcessMultiturn:
         ]
         conversation = [("req4", RequestInfo(request_id="req4"))]
 
-        await worker_instance._wait_then_requeue(history, conversation, 0)
+        await worker_instance._wait_then_requeue(
+            history, conversation, RequestSettings()
+        )
 
         # History should be preserved exactly
         assert worker_instance.turns_queue[0][0] == history
@@ -977,9 +979,9 @@ class TestWorkerProcessMultiturn:
         conv2 = ([], [("req2", RequestInfo(request_id="req2"))])
         conv3 = ([], [("req3", RequestInfo(request_id="req3"))])
 
-        await worker_instance._wait_then_requeue(*conv1, 0)
-        await worker_instance._wait_then_requeue(*conv2, 0)
-        await worker_instance._wait_then_requeue(*conv3, 0)
+        await worker_instance._wait_then_requeue(*conv1, RequestSettings())
+        await worker_instance._wait_then_requeue(*conv2, RequestSettings())
+        await worker_instance._wait_then_requeue(*conv3, RequestSettings())
 
         # Should maintain FIFO order
         assert len(worker_instance.turns_queue) == 3

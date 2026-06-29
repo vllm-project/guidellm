@@ -12,10 +12,12 @@ from typing import Any
 import pytest
 
 from guidellm.data.finalizers import GenerativeRequestFinalizer
-from guidellm.schemas import GenerationRequest
+from guidellm.schemas import GenerationRequest, RequestSettings
 
 
-def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:
+def _run_row_through_pipeline(
+    row: dict[str, Any],
+) -> list[tuple[GenerationRequest, RequestSettings]]:
     """Push a single dataset row through the column mapper and finalizer.
 
     ## WRITTEN BY AI ##
@@ -68,17 +70,17 @@ class TestJsonlMultiTurnToolCallPipeline:
 
         assert len(requests) == 3
 
-        assert requests[0].expects_tool_call is True
-        assert "tools_column" in requests[0].columns
-        assert requests[0].columns["tool_response_column"] == ['{"temp": 72}']
+        assert requests[0][0].expects_tool_call is True
+        assert "tools_column" in requests[0][0].columns
+        assert requests[0][0].columns["tool_response_column"] == ['{"temp": 72}']
 
-        assert requests[1].expects_tool_call is True
-        assert "tools_column" in requests[1].columns
-        assert requests[1].columns["tool_response_column"] == ['{"price": 150}']
+        assert requests[1][0].expects_tool_call is True
+        assert "tools_column" in requests[1][0].columns
+        assert requests[1][0].columns["tool_response_column"] == ['{"price": 150}']
 
-        assert requests[2].expects_tool_call is False
-        assert "tools_column" not in requests[2].columns
-        assert "tool_response_column" not in requests[2].columns
+        assert requests[2][0].expects_tool_call is False
+        assert "tools_column" not in requests[2][0].columns
+        assert "tool_response_column" not in requests[2][0].columns
 
     @pytest.mark.smoke
     def test_interleaved_tool_turns(self):
@@ -105,18 +107,18 @@ class TestJsonlMultiTurnToolCallPipeline:
 
         assert len(requests) == 4
 
-        assert requests[0].expects_tool_call is True
-        assert "tools_column" in requests[0].columns
-        assert "tool_response_column" in requests[0].columns
+        assert requests[0][0].expects_tool_call is True
+        assert "tools_column" in requests[0][0].columns
+        assert "tool_response_column" in requests[0][0].columns
 
-        assert requests[1].expects_tool_call is False
-        assert "tools_column" not in requests[1].columns
-        assert "tool_response_column" not in requests[1].columns
+        assert requests[1][0].expects_tool_call is False
+        assert "tools_column" not in requests[1][0].columns
+        assert "tool_response_column" not in requests[1][0].columns
 
-        assert requests[2].expects_tool_call is False
-        assert "tools_column" not in requests[2].columns
-        assert "tool_response_column" not in requests[2].columns
+        assert requests[2][0].expects_tool_call is False
+        assert "tools_column" not in requests[2][0].columns
+        assert "tool_response_column" not in requests[2][0].columns
 
-        assert requests[3].expects_tool_call is True
-        assert "tools_column" in requests[3].columns
-        assert "tool_response_column" in requests[3].columns
+        assert requests[3][0].expects_tool_call is True
+        assert "tools_column" in requests[3][0].columns
+        assert "tool_response_column" in requests[3][0].columns
