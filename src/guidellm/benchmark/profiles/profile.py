@@ -127,7 +127,7 @@ class Profile(ABC):
         Constraints that use "stop_local" (max duration, max requests) are normal
         completions and do not trigger escalation stops.
 
-        :param prev_benchmark: Benchmark instance with a scheduler_state attribute
+        :param prev_benchmark: Benchmark instance
         :return: True if a failure constraint was triggered, False otherwise
         """
         scheduler_state = getattr(prev_benchmark, "scheduler_state", None)
