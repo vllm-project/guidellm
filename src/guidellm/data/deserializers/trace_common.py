@@ -6,7 +6,6 @@ requested input_length for replay benchmarks."""
 
 from __future__ import annotations
 
-from abc import ABC
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Protocol
@@ -16,7 +15,7 @@ from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
-from pydantic import Field, field_serializer
+from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -100,7 +99,7 @@ class TraceFormatRegistry(RegistryMixin[type[TraceFormatBase]]):
         return format_from_type()
 
 
-class TraceDataArgs(DataArgs, ABC):
+class TraceDataArgs(DataArgs):
     """Abstract class meant to be inherited by a trace format.
     For testing, use `trace_minimal.MinimalTraceFormatArgs` instead."""
 
@@ -120,12 +119,6 @@ class TraceDataArgs(DataArgs, ABC):
         default="output_length",
         description="Column name for output token counts in the trace file.",
     )
-
-    @field_serializer("path")
-    @classmethod
-    def serialize_path(cls, path: Path) -> str:
-        """Serialize path as a string because Path is not JSON serializable."""
-        return str(path)
 
 
 def _validate_row(row: dict, config: TraceDataArgs) -> None:
