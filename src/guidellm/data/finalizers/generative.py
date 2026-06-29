@@ -26,7 +26,9 @@ class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
 
 
 @FinalizerRegistry.register("generative")
-class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
+class GenerativeRequestFinalizer(
+    DatasetFinalizer[Iterable[tuple[GenerationRequest, RequestSettings]]]
+):
     """
     Finalizer that converts dataset rows into GenerationRequest objects,
     aggregating usage metrics from the provided columns.
@@ -35,12 +37,14 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
     def __init__(self, config: GenerativeRequestFinalizerArgs) -> None:
         self.config = config
 
-    def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
+    def __call__(
+        self, items: list[dict[str, Any]]
+    ) -> list[tuple[GenerationRequest, RequestSettings]]:
         return [self.finalize_turn(item) for item in items]
 
     def finalize_turn(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]
-    ) -> GenerationRequest:
+    ) -> tuple[GenerationRequest, RequestSettings]:
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
@@ -130,8 +134,7 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
             expects_tool_call=expects_tool_call,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
-            settings=self._request_settings_from_columns(columns),
-        )
+        ), self._request_settings_from_columns(columns)
 
     def _request_settings_from_columns(
         self, columns: dict[str, Any]

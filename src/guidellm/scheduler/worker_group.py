@@ -39,7 +39,7 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
-from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
+from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.settings import settings
 from guidellm.utils.messaging import (
     InterProcessMessaging,
@@ -546,16 +546,6 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         else:
             return str(uuid.uuid4())
 
-    @staticmethod
-    def _request_settings_from_request(request: RequestT) -> RequestSettings:
-        if isinstance(request, GenerationRequest):
-            return request.settings
-        if isinstance(request, dict):
-            settings = request.get("settings")
-            if isinstance(settings, RequestSettings):
-                return settings
-        return RequestSettings()
-
     def requests_generator(
         self,
         requests: DatasetIterT[RequestT],
@@ -576,12 +566,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             stop_queueing: bool = False
 
             def _turn_iter(
-                requests_chain: Iterable[RequestT],
+                requests_chain: Iterable[tuple[RequestT, RequestSettings]],
             ) -> Generator[RequestDataT[RequestT], None, None]:
                 nonlocal count, stop_queueing
                 # NOTE: This allows users to correlate requests in post-processing
                 conv_id = str(uuid.uuid4())
-                for i, request in enumerate(requests_chain):
+                for i, (request, setting) in enumerate(requests_chain):
                     count += 1
 
                     request_id = self._find_request_id(request)
@@ -592,7 +582,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,
-                        settings=self._request_settings_from_request(request),
+                        settings=setting,
                     )
                     state_update = self._locked_update(request_info)
                     request_info.timings.queued = time.time()
