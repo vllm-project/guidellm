@@ -180,7 +180,7 @@ guidellm run \
 **Key parameters:**
 
 - `--profile kind=<type>`: Defines the traffic pattern — `synchronous`, `concurrent`, `throughput`, `constant`, `poisson`, or `sweep`
-- `--profile kind=constant,rate=10`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `throughput`, use `max_concurrency=`. For `constant`, `poisson`, and `concurrent`, multiple rates can be specified as a JSON list (e.g., `rate=[1,5,10]`). Rates are sorted ascending, and if a failure constraint (over-saturation, errors) triggers at a given rate, remaining higher rates are skipped.
+- `--profile kind=constant,rate=10`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `throughput`, use `max_concurrency=`
 - `--constraint kind=max_duration,seconds=<seconds>` or `--constraint kind=max_requests,count=<count>`: Limit each strategy by time or request count
 
 ### Dataset Sources

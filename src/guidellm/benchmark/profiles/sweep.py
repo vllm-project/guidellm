@@ -131,13 +131,11 @@ class SweepProfile(Profile):
                     self.args.sweep_size - 1,
                 )
             )[1:]  # don't rerun synchronous
-            # After throughput, fall through to async rate logic below.
-            # Don't check escalation since throughput is designed to push
-            # beyond sustainable load (over-saturation is expected).
 
-        # Stop escalation if a failure constraint was triggered.
-        # The throughput guard above skips this via the != "throughput" check.
-        # Synchronous never reaches here (returns ThroughputStrategy above).
+        # Stop escalation if a failure constraint was triggered during the
+        # async phase. Throughput is excluded (type_ != "throughput") because
+        # it intentionally pushes beyond sustainable load. Synchronous never
+        # reaches here — it returns a ThroughputStrategy above.
         if (
             prev_strategy.type_ != "throughput"
             and self._should_stop_escalating(prev_benchmark)  # type: ignore[arg-type]
