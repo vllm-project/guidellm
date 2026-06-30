@@ -227,7 +227,7 @@ You can customize synthetic data generation with additional parameters such as s
 
 ### Trace Replay Benchmarking
 
-For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL, JSON, CSV, or Parquet and are loaded with a supported [trace file format](../guides/trace_file_formats.md#supported-formats). Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
+For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL, JSON, CSV, or Parquet and are loaded with a supported [trace file format](../guides/trace_replay.md#supported-formats). Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
 
 ```json
 {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -258,7 +258,7 @@ guidellm run \
   --profile kind=replay,time_scale=1.0
 ```
 
-This functionality extends to columns required by specific formats. These additional columns and other format-specific arguments are described in the [Trace File Formats documentation](../guides/trace_file_formats.md)
+This functionality extends to columns required by specific formats. These additional columns and other format-specific arguments are described in the [Trace File Formats documentation](../guides/trace_replay.md)
 
 ### Working with Real Data
 

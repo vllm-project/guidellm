@@ -197,7 +197,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
   In this example, the second request is scheduled 0.5 seconds after the first request. Trace rows are ordered by timestamp before GuideLLM schedules requests and generates synthetic payloads. This keeps each scheduled event aligned with the prompt and output token lengths from the same row.
 
-  Use a supported [trace file format](./trace_file_formats.md#supported-formats) to enable trace loading:
+  Use a supported [trace file format](./trace_replay.md#supported-formats) to enable trace loading:
 
   ```bash
   guidellm run \
