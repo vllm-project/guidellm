@@ -346,9 +346,8 @@ class TraceDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int = 42,
     ) -> IterableDataset:
+        if not config.path.exists():
+            raise DataNotSupportedError(f"Trace file not found: {config.path}")
         if not config.path.is_file():
-            raise DataNotSupportedError(
-                f"{type(self).__name__} expects a path to a trace file, "
-                f"got {config.path}"
-            )
+            raise DataNotSupportedError(f"Trace path is not a file: {config.path}")
         return TraceDataset(config, processor_factory(), random_seed)

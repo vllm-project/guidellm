@@ -163,8 +163,10 @@ class TestTraceDatasetDeserializer:
     def test_rejects_invalid_path(self, deserializer):
         with pytest.raises(ValidationError, match="not a valid path"):
             self._deserialize(deserializer, 123)
-        with pytest.raises(DataNotSupportedError, match="path to a trace file"):
+        with pytest.raises(DataNotSupportedError, match="file not found"):
             self._deserialize(deserializer, "bad_path.jsonl")
+        with pytest.raises(DataNotSupportedError, match="not a file"):
+            self._deserialize(deserializer, Path.cwd())
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
