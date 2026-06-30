@@ -100,7 +100,7 @@ DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, "mooncak
 class MooncakeTraceFormatArgs(TraceDataArgs):
     kind: Literal["mooncake"] = Field(
         default="mooncake",
-        description="Type identifier for the trace Mooncake dataset deserializer.",
+        description="Type identifier for the Mooncake trace format.",
     )
     hash_ids_column: str = Field(
         default="hash_ids",
