@@ -156,6 +156,8 @@ class MooncakeTraceFormat(TraceFormatBase):
         processor: PreTrainedTokenizerBase,
         faker: Faker,
     ) -> str:
+        """Before generating the prompt, this first generates a block of tokens for
+        each hash ID that has not already been seen."""
         ids = row[config.hash_ids_column]
         for idx, hash_id in enumerate(ids):
             if not _is_in_table(self.hash_id_table, hash_id):
