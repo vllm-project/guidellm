@@ -78,7 +78,7 @@ def generate_token_ids(
 def validate_trace_path(path: Path | str) -> Path:
     path = Path(path)
     if path.stat().st_size == 0:
-        raise ValueError(f"Trace file is empty or has no valid rows: {path}")
+        raise ValueError(f"Trace file is empty: {path}")
     return path
 
 
@@ -125,7 +125,7 @@ def load_trace_rows(
         )
 
     if not trace_dataset:
-        raise DataNotSupportedError(f"Trace file is empty or has no valid rows: {path}")
+        raise DataNotSupportedError(f"Trace file has no valid rows: {path}")
     for name, val in required_columns.items():
         if trace_dataset.data[name].null_count != 0:
             raise DataNotSupportedError(f"NoneType found in {name}")
