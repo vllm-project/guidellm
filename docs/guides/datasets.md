@@ -203,7 +203,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay,time_scale=1.0 \
-    --data kind=trace_minimal,path=path/to/trace.jsonl
+    --data kind=trace_synthetic,path=path/to/trace.jsonl
   ```
 
   All trace formats by default look for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
@@ -212,7 +212,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay,time_scale=1.0 \
-    --data kind=trace_minimal,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
+    --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
   ```
 
   For replay, `time_scale` on the profile is a time scale for the intervals between trace events rather than requests per second. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.

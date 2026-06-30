@@ -28,15 +28,15 @@ from guidellm.data.schemas import DataArgs
 __all__ = ["MinimalTraceFormatArgs"]
 
 
-@DataArgs.register("trace_minimal")
+@DataArgs.register("trace_synthetic")
 class MinimalTraceFormatArgs(TraceDataArgs):
-    kind: Literal["trace_minimal"] = Field(
-        default="trace_minimal",
+    kind: Literal["trace_synthetic"] = Field(
+        default="trace_synthetic",
         description="Type identifier for the minimal trace format.",
     )
 
 
-@TraceFormatRegistry.register("trace_minimal")
+@TraceFormatRegistry.register("trace_synthetic")
 class MinimalTraceFormat(TraceFormatBase):
     def __init__(self) -> None:
         pass

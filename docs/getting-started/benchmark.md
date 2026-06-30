@@ -241,7 +241,7 @@ Run with the `replay` profile:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_minimal,path=path/to/trace.jsonl \
+  --data kind=trace_synthetic,path=path/to/trace.jsonl \
   --profile kind=replay,time_scale=1.0
 ```
 
@@ -254,7 +254,7 @@ Every format by default looks for the columns "timestamp", "input_length", and "
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_minimal,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
+  --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
   --profile kind=replay,time_scale=1.0
 ```
 

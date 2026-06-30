@@ -336,7 +336,7 @@ class TraceDataset(IterableDataset):
             self._ex_iterable.iteration_count = epoch
 
 
-@DatasetDeserializerFactory.register(["trace_minimal"])
+@DatasetDeserializerFactory.register(["trace_synthetic"])
 class TraceDatasetDeserializer(DatasetDeserializer):
     """Dataset deserializer for all trace formats."""
 
