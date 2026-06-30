@@ -22,9 +22,9 @@ The following arguments configure datasets and their processing:
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
   - `trace_minimal`, `mooncake` — loads a JSONL trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
 
-In addition, you can specify additional arguments to the dataset loading with the data argument `loader_kwargs`:
+In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
-- loader_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","loader_kwargs":{"split":"test"}}'`.
+- load_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}'`.
 
 ### Data Loader
 
