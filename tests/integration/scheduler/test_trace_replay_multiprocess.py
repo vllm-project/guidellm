@@ -16,9 +16,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from guidellm.data.deserializers.trace_synthetic import (
-    TraceSyntheticDataArgs,
-    TraceSyntheticDatasetDeserializer,
+from guidellm.data.deserializers import (
+    MinimalTraceFormatArgs,
+    TraceDatasetDeserializer,
 )
 from guidellm.data.finalizers.generative import (
     GenerativeRequestFinalizer,
@@ -62,9 +62,9 @@ def _write_trace(path: Path, lines: list[str]) -> Path:
 def _requests_from_trace(
     trace_path: Path,
 ) -> tuple[list[list[GenerationRequest]], list[float]]:
-    deserializer = TraceSyntheticDatasetDeserializer()
+    deserializer = TraceDatasetDeserializer()
     dataset = deserializer(
-        config=TraceSyntheticDataArgs(path=trace_path),
+        config=MinimalTraceFormatArgs(path=trace_path),
         processor_factory=_mock_processor,
         random_seed=42,
     )
@@ -75,13 +75,12 @@ def _requests_from_trace(
 
     conversations: list[list[GenerationRequest]] = []
     relative_timestamps: list[float] = []
-    for index in range(len(dataset)):
-        row = {column: dataset[column][index] for column in dataset.column_names}
+    for idx, row in enumerate(dataset):
         mapped = mapper([{"dataset": row}])
         requests = finalizer(mapped)
         assert len(requests) == 1
         request = requests[0]
-        request.request_id = f"req_{index}"
+        request.request_id = f"req_{idx}"
         conversations.append([request])
         offset = request.settings.relative_timestamp
         assert offset is not None

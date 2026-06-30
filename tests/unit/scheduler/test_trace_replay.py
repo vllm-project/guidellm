@@ -2,95 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from multiprocessing import get_context
-from pathlib import Path
 
 import pytest
-from datasets.exceptions import DatasetGenerationError
 
 from guidellm.scheduler import SchedulingStrategy, TraceReplayStrategy
 from guidellm.schemas import RequestInfo, RequestSettings
-from guidellm.utils.trace_io import load_relative_timestamps
-
-
-def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
-    path = tmp_path / f"trace{suffix}"
-    path.write_text(content)
-    return path
-
-
-class TestLoadRelativeTimestamps:
-    @pytest.mark.smoke
-    def test_loads_sorted_relative_timestamps_with_duplicates(self, tmp_path: Path):
-        trace = _write_trace(
-            tmp_path,
-            '{"timestamp": 5.0, "input_length": 10, "output_length": 10}\n'
-            '{"timestamp": 2.0, "input_length": 20, "output_length": 20}\n'
-            '{"timestamp": 2.0, "input_length": 30, "output_length": 30}\n'
-            '{"timestamp": 8.0, "input_length": 40, "output_length": 40}\n',
-        )
-
-        assert load_relative_timestamps(trace) == pytest.approx(
-            [0.0, 0.0, 3.0, 6.0], abs=1e-9
-        )
-
-    @pytest.mark.smoke
-    def test_loads_custom_timestamp_column(self, tmp_path: Path):
-        trace = _write_trace(
-            tmp_path,
-            '{"ts": 10.0, "input_length": 10, "output_length": 10}\n'
-            '{"ts": 10.25, "input_length": 20, "output_length": 20}\n',
-        )
-
-        assert load_relative_timestamps(trace, timestamp_column="ts") == pytest.approx(
-            [0.0, 0.25], abs=1e-9
-        )
-
-    @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        ("suffix", "content", "error_type", "match"),
-        [
-            (".jsonl", "", ValueError, "no valid rows"),
-            (
-                ".json",
-                '[{"timestamp": 0, "input_length": 10, "output_length": 100}]',
-                ValueError,
-                r"Unsupported.*\.json",
-            ),
-            (
-                ".csv",
-                "timestamp,input_length,output_length\n0,10,100\n",
-                ValueError,
-                r"Unsupported.*\.csv",
-            ),
-            (
-                ".jsonl",
-                '{"ts": 0, "input_length": 10, "output_length": 100}\n',
-                KeyError,
-                "timestamp",
-            ),
-            (
-                ".jsonl",
-                '{"timestamp": "bad", "input_length": 10, "output_length": 100}\n',
-                ValueError,
-                "could not convert",
-            ),
-            (
-                ".jsonl",
-                '{"timestamp": 0, "input_length": 10, "output_length": 100}\n'
-                "not-json\n",
-                DatasetGenerationError,
-                "generating the dataset",
-            ),
-        ],
-    )
-    def test_invalid_trace_inputs_raise(
-        self, tmp_path: Path, suffix, content, error_type, match
-    ):
-        trace = _write_trace(tmp_path, content, suffix=suffix)
-
-        with pytest.raises(error_type, match=match):
-            load_relative_timestamps(trace)
-
 
 TRACE_TIMESTAMPS = [0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 2.0, 2.0, 3.5, 7.0]
 
