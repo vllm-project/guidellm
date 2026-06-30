@@ -40,6 +40,8 @@ The `"all"` shorthand is equivalent to setting `server_tool_call_turns=N` where 
 
 ### Real datasets with server-side tool handling
 
+Note: There are currently limitations on mapping common tool call datasets.
+
 For real datasets that contain tool definitions (e.g. a `tools` column), the finalizer's `tool_call_mode` setting controls whether those turns are treated as client-side or server-side tool calls:
 
 - `tool_call_mode="client"` (default) -- turns with tool definitions become `client_tool_call` + `tool_response_injection` pairs. GuideLLM mocks tool responses and sends them back to the server.
@@ -141,9 +143,7 @@ guidellm run \
 
 The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
 
-**2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`.
-
-**JSON-wrapped datasets** -- some HuggingFace datasets store all fields inside a single JSON string column (e.g. `madroid/glaive-function-calling-openai` has a `json` column containing `{"messages": [...], "tools": [...]}`). The column mapper automatically detects this pattern and unwraps the JSON to find the inner columns:
+**2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
 
 ```bash
 guidellm run \
