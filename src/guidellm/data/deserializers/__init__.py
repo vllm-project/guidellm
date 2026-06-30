@@ -35,6 +35,7 @@ from .trace_common import (
     TraceFormatRegistry,
     decode_prompt,
     generate_token_ids,
+    load_trace_rows,
 )
 from .trace_minimal import MinimalTraceFormatArgs
 from .trace_mooncake import MooncakeTraceFormatArgs
@@ -71,4 +72,5 @@ __all__ = [
     "TraceFormatRegistry",
     "decode_prompt",
     "generate_token_ids",
+    "load_trace_rows",
 ]

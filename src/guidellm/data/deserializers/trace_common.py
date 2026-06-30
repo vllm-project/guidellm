@@ -6,7 +6,6 @@ requested input_length for replay benchmarks."""
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Protocol
@@ -35,7 +34,6 @@ from guidellm.data.schemas import DataArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
-    "TraceColumn",
     "TraceDataArgs",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
@@ -77,18 +75,6 @@ def generate_token_ids(
             return token_ids[:token_count]
 
 
-@dataclasses.dataclass
-class TraceColumn:
-    """Holds metadata for trace file columns in a HuggingFace Dataset."""
-
-    name: str
-    feature_type: Value
-
-
-def get_column_names(columns: list[TraceColumn]) -> list[str]:
-    return [c.name for c in columns]
-
-
 def validate_trace_path(path: Path | str) -> Path:
     path = Path(path)
     suffix = path.suffix.lower()
@@ -109,8 +95,8 @@ def check_and_raise_missing_columns(
 
 def load_trace_rows(
     path: Path | str,
-    timestamp_column: TraceColumn,
-    required_columns: list[TraceColumn] | None = None,
+    timestamp_column_name: str,
+    required_columns: Features,
     **data_kwargs: Any,
 ) -> Dataset:
     """
@@ -122,48 +108,45 @@ def load_trace_rows(
     Rows are sorted by timestamp_column.
 
     :param path: Path to the trace file.
-    :param timestamp_column: Timestamp column used to sort trace rows.
-    :param required_columns: Optional list of column/fields that each row must have.
+    :param timestamp_column_name: Name of the timestamp column used to sort trace rows.
+    :param required_columns: List of column/fields that each row must have. Must contain
+    the timestamp column.
     :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
     :return: HuggingFace Dataset (iterable as dicts, column-accessible).
     :raises DataNotSupportedError: For any of the following reasons:
     - The dataset is empty or has no valid rows
-    - A required column or timestamp_column contains a NoneType
-    - A required column or timestamp_column failed during cast to feature type
+    - A required column contains a NoneType
+    - A required column failed during cast to feature type
 
     :raises KeyError: If a required column is missing in the dataset.
     :raises ValueError: If the file format is not .jsonl.
     """
-    if required_columns is None:
-        required_columns = []
-    if timestamp_column not in required_columns:
-        required_columns = [*required_columns, timestamp_column]
     path = validate_trace_path(path)
     trace_dataset = load_dataset(
         "json", data_files=str(path), split="train", **data_kwargs
     )
     if required_columns:
         check_and_raise_missing_columns(
-            get_column_names(required_columns), trace_dataset.column_names
+            required_columns.keys(), trace_dataset.column_names
         )
 
     if not trace_dataset:
         raise DataNotSupportedError(f"Trace file is empty or has no valid rows: {path}")
-    for col in required_columns:
-        if trace_dataset.data[col.name].null_count != 0:
-            raise DataNotSupportedError(f"NoneType found in {col}")
+    for name, val in required_columns.items():
+        if trace_dataset.data[name].null_count != 0:
+            raise DataNotSupportedError(f"NoneType found in {name}")
         try:
-            trace_dataset.cast_column(col.name, col.feature_type)
+            trace_dataset.cast_column(name, val)
         except ValueError as e:
             raise DataNotSupportedError(str(e)) from e
 
-    return trace_dataset.sort(timestamp_column.name)
+    return trace_dataset.sort(timestamp_column_name)
 
 
 class TraceFormatBase(Protocol):
     def __init__(self) -> None: ...
 
-    def required_columns(self, config) -> list[TraceColumn]: ...
+    def required_columns(self, config) -> Features: ...
 
     def validate_row(self, config, row: dict) -> None:
         """Called within `trace_common.TraceExamplesIterable` on initialization,
@@ -242,12 +225,16 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         try:
             self.trace_rows = load_trace_rows(
                 config.path,
-                TraceColumn(config.timestamp_column, Value("float")),
-                required_columns=[
-                    TraceColumn(config.prompt_tokens_column, Value("int32")),
-                    TraceColumn(config.output_tokens_column, Value("int32")),
-                    *self.format.required_columns(self.config),
-                ],
+                config.timestamp_column,
+                required_columns=Features(
+                    {
+                        config.timestamp_column: Value("float"),
+                        config.prompt_tokens_column: Value("int32"),
+                        config.output_tokens_column: Value("int32"),
+                        **dict(self.format.required_columns(self.config)),
+                    }
+                ),
+                **config.load_kwargs,
             )
         except (DatasetGenerationError, KeyError, ValueError) as e:
             raise DataNotSupportedError(str(e)) from e

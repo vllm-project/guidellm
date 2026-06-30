@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from typing import Any, Literal
 
-from datasets import List, Value
+from datasets import Features, List, Value
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -22,7 +22,6 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
-    TraceColumn,
     TraceDataArgs,
     TraceDatasetDeserializer,
     TraceFormatBase,
@@ -133,8 +132,8 @@ class MooncakeTraceFormat(TraceFormatBase):
         self.hash_id_table: list[Any] = []
         self.sibling_token_blocks: dict[Any, list[list[int]]] = {}
 
-    def required_columns(self, config: MooncakeTraceFormatArgs) -> list[TraceColumn]:
-        return [TraceColumn(config.hash_ids_column, List(Value("int32")))]
+    def required_columns(self, config: MooncakeTraceFormatArgs) -> Features:
+        return Features({config.hash_ids_column: List(Value("int32"))})
 
     def validate_row(self, config: MooncakeTraceFormatArgs, row: dict) -> None:
         n_in = row[config.prompt_tokens_column]

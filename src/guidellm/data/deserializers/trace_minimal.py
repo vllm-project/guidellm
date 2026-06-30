@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from typing import Literal
 
+from datasets import Features
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.trace_common import (
-    TraceColumn,
     TraceDataArgs,
     TraceFormatBase,
     TraceFormatRegistry,
@@ -44,7 +44,7 @@ class MinimalTraceFormat(TraceFormatBase):
     def required_columns(
         self,
         config: MinimalTraceFormatArgs,  # noqa: ARG002
-    ) -> list[TraceColumn]:
+    ) -> Features:
         return []
 
     def validate_row(
