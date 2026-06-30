@@ -23,6 +23,7 @@ from guidellm.data.deserializers import (
     SyntheticVideoDataset,
     SyntheticVideoDatasetDeserializer,
 )
+from guidellm.data.preprocessors.encoders import MediaEncoder, MediaEncoderArgs
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.vision import synthesize_image, synthesize_video
 
@@ -407,6 +408,30 @@ class TestSyntheticVideoDeserializer:
         assert cfg.width == 320
         assert cfg.frames == 4
         assert cfg.video_bitrate == "200k"
+
+
+class TestSyntheticMediaEncoder:
+    @pytest.mark.regression
+    def test_encoded_image_and_video_dicts_are_preserved(self):
+        """Already-encoded synthetic media should bypass encoder helpers.
+
+        ## WRITTEN BY AI ##
+        """
+        encoded_image = synthesize_image(64, 64, seed=1, row_index=0)
+        encoded_video = synthesize_video(64, 64, frames=2, seed=1, row_index=0)
+        encoder = MediaEncoder(MediaEncoderArgs())
+
+        rows = encoder(
+            [
+                {
+                    "image_column": [encoded_image],
+                    "video_column": [encoded_video],
+                }
+            ]
+        )
+
+        assert rows[0]["image_column"] == [encoded_image]
+        assert rows[0]["video_column"] == [encoded_video]
 
 
 # ---------------------------------------------------------------------------
