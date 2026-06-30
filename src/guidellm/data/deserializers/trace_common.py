@@ -58,11 +58,12 @@ def generate_token_ids(
     token_count: int,
     processor: PreTrainedTokenizerBase,
     faker: Faker,
+    margin_of_safety: int = 8,
 ) -> list[int]:
-    """Generate `token_count` synthetic token ids for trace prompt construction."""
-    # Ideally, `margin_of_safety` should be set to slighty more than
-    # the average number of characters used by tokenizers to form one token.
-    margin_of_safety = 8
+    """Generate `token_count` synthetic token ids for trace prompt construction.
+
+    Ideally, `margin_of_safety` should be set to slighty more than
+    the average number of characters used by tokenizers to form one token."""
     attempt = 0
     while True:
         attempt += 1
