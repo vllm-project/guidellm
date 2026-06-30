@@ -48,6 +48,7 @@ from .trace_common import (
 )
 from .trace_minimal import MinimalTraceFormatArgs
 from .trace_mooncake import MooncakeTraceFormatArgs
+from .trace_weka import WEKATraceFormatArgs
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
@@ -85,6 +86,7 @@ __all__ = [
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
+    "WEKATraceFormatArgs",
     "decode_prompt",
     "generate_token_ids",
 ]
