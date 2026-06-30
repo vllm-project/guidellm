@@ -195,7 +195,7 @@ guidellm run --profile kind=sweep,sweep_size=10,rampup_duration=10,strategy_type
 
 #### Replay Profile
 
-Replays trace events using timestamps from a trace file dataset. See [Trace Replay Benchmarking](#trace-replay-benchmarking-beta) below for data setup.
+Replays trace events using timestamps from a trace file dataset. See [Trace Replay Benchmarking](#trace-replay-benchmarking) below for data setup.
 
 ```bash
 guidellm run --profile kind=replay,time_scale=1.0
@@ -227,7 +227,7 @@ You can customize synthetic data generation with additional parameters such as s
 
 ### Trace Replay Benchmarking
 
-For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL and are loaded with a supported [trace file format](../guides/trace_file_formats.md#supported-formats). Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
+For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL, JSON, CSV, or Parquet and are loaded with a supported [trace file format](../guides/trace_file_formats.md#supported-formats). Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
 
 ```json
 {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}

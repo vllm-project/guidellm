@@ -17,7 +17,6 @@ from datasets import (
     Features,
     IterableDataset,
     Value,
-    load_dataset,
 )
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
@@ -31,6 +30,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import DataArgs
+from guidellm.utils.hf_datasets import load_dataset_from_file
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
@@ -40,7 +40,6 @@ __all__ = [
     "TraceFormatRegistry",
     "decode_prompt",
     "generate_token_ids",
-    "load_trace_rows",
 ]
 
 
@@ -77,9 +76,6 @@ def generate_token_ids(
 
 def validate_trace_path(path: Path | str) -> Path:
     path = Path(path)
-    suffix = path.suffix.lower()
-    if suffix != ".jsonl":
-        raise ValueError(f"Unsupported trace file format: {suffix}")
     if path.stat().st_size == 0:
         raise ValueError(f"Trace file is empty or has no valid rows: {path}")
     return path
@@ -102,10 +98,9 @@ def load_trace_rows(
     """
     Load trace file rows as a HuggingFace Dataset.
 
-    Supports .jsonl only (one JSON object per line).
-    If required_columns is set, every column must exist in the dataset;
+    Every column in required_columns must exist in the dataset;
     otherwise KeyError is raised with a descriptive message.
-    Rows are sorted by timestamp_column.
+    Rows are sorted by column timestamp_column_name.
 
     :param path: Path to the trace file.
     :param timestamp_column_name: Name of the timestamp column used to sort trace rows.
@@ -119,12 +114,10 @@ def load_trace_rows(
     - A required column failed during cast to feature type
 
     :raises KeyError: If a required column is missing in the dataset.
-    :raises ValueError: If the file format is not .jsonl.
+    :raises ValueError: If the file format is not .jsonl, .json, .csv or .parquet.
     """
     path = validate_trace_path(path)
-    trace_dataset = load_dataset(
-        "json", data_files=str(path), split="train", **data_kwargs
-    )
+    trace_dataset = load_dataset_from_file(path, **data_kwargs)
     if required_columns:
         check_and_raise_missing_columns(
             required_columns.keys(), trace_dataset.column_names
@@ -196,7 +189,7 @@ class TraceDataArgs(DataArgs):
     )
 
 
-def _validate_row(row: dict, config: TraceDataArgs) -> None:
+def validate_row(row: dict, config: TraceDataArgs) -> None:
     n_in = row[config.prompt_tokens_column]
     n_out = row[config.output_tokens_column]
     if n_in < 0 or n_out < 0:
@@ -240,7 +233,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
             raise DataNotSupportedError(str(e)) from e
 
         for row in self.trace_rows:
-            _validate_row(row, self.config)
+            validate_row(row, self.config)
             self.format.validate_row(self.config, row)
         self.iteration_count = 0
 

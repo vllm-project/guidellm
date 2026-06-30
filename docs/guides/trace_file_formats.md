@@ -8,7 +8,7 @@ Detailed use of the replay profile and file-based datasets as a whole is explain
 
 These are passed to the `--data` argument as `kind=format`:
 
-- `trace_minimal`: A trace format that does the bare minimum needed to complete a fully functioning trace replay benchmark with synthetic prompt generation
+- `trace_synthetic`: A trace format that does the bare minimum needed to complete a fully functioning trace replay benchmark with synthetic prompt generation
 - `mooncake`: The trace format used by the serving platform Mooncake, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
 
 ## Format-Agnostic Data Arguments
@@ -27,10 +27,10 @@ These are passed through the `--data` argument like below:
 guidellm benchmark \
     --target http://localhost:8000 \
     --profile kind=replay \
-    --data "kind=trace_minimal,path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens"
+    --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens"
 ```
 
-`trace_minimal` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_minimal` may be used as a fallback for trace formats not currently supported by GuideLLM.
+`trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.
 
 ## Format-Specific Data Arguments
 

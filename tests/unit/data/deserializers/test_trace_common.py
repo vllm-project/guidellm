@@ -115,6 +115,37 @@ class TestTraceDatasetDeserializer:
             random_seed=42,
         )
 
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        "suffix",
+        [".json", ".jsonl"],
+    )
+    def test_loads_json(self, tmp_path: Path, deserializer, suffix):
+        trace = _write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 2, "input_length": 20, "output_length": 2}\n',
+            suffix=suffix,
+        )
+        ds = self._deserialize(deserializer, trace)
+        for i, row in enumerate(ds):
+            assert row["relative_timestamp"] == i
+            assert row["prompt_tokens_count"] == (i + 1) * 10
+            assert row["output_tokens_count"] == i + 1
+
+    @pytest.mark.sanity
+    def test_loads_csv(self, tmp_path: Path, deserializer):
+        trace = _write_trace(
+            tmp_path,
+            "timestamp,input_length,output_length\n1,10,1\n2,20,2\n",
+            suffix=".csv",
+        )
+        ds = self._deserialize(deserializer, trace)
+        for i, row in enumerate(ds):
+            assert row["relative_timestamp"] == i
+            assert row["prompt_tokens_count"] == (i + 1) * 10
+            assert row["output_tokens_count"] == i + 1
+
     @pytest.mark.smoke
     def test_loads_sorted_rows_and_keeps_token_columns_aligned(
         self, tmp_path: Path, deserializer
@@ -231,7 +262,7 @@ class TestTraceDatasetDeserializer:
             tmp_path,
             '{"timestamp": 0, "input_length": 10, "output_length": 5, '
             '"hash_ids": [0]}\n',
-            suffix=".json",
+            suffix=".txt",
         )
-        with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.json"):
+        with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.txt"):
             self._deserialize(deserializer, trace)
