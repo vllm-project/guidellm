@@ -128,7 +128,7 @@ def load_trace_rows(
         raise DataNotSupportedError(f"Trace file has no valid rows: {path}")
     for name, val in required_columns.items():
         if trace_dataset.data[name].null_count != 0:
-            raise DataNotSupportedError(f"NoneType found in {name}")
+            raise DataNotSupportedError(f"Missing column values in {name}")
         try:
             trace_dataset.cast_column(name, val)
         except ValueError as e:

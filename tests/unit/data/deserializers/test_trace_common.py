@@ -245,7 +245,7 @@ class TestTraceDatasetDeserializer:
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": null}\n',
                 {},
-                "NoneType",
+                "Missing column values",
             ),
         ],
     )
