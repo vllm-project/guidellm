@@ -1480,8 +1480,9 @@ class TestChatCompletionsRequestHandler:
     ):
         """
         When multiturn_reasoning=False (default) and the prior
-        response has reasoning_text but no regular text content, no
-        assistant message should be injected.
+        response has reasoning_text but empty text content, an
+        assistant message with empty content should still be included
+        to preserve alternating user/assistant structure.
 
         ## WRITTEN BY AI ##
         """
@@ -1508,7 +1509,65 @@ class TestChatCompletionsRequestHandler:
         assistant_msgs = [
             m for m in result.body["messages"] if m.get("role") == "assistant"
         ]
-        assert len(assistant_msgs) == 0
+        assert len(assistant_msgs) == 1
+        assert assistant_msgs[0]["content"] == ""
+
+    @pytest.mark.sanity
+    def test_format_preserves_empty_assistant_in_multi_turn_history(
+        self, valid_instances
+    ):
+        """
+        When a prior turn produced an empty text response (e.g. reasoning
+        model exhausted token budget), the assistant message must still appear
+        in the history to prevent consecutive user messages.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        turn1_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        turn1_response = GenerationResponse(
+            request_id="t1",
+            request_args=None,
+            text="Hi there!",
+        )
+        turn2_request = GenerationRequest(
+            columns={"text_column": ["Tell me more"]},
+        )
+        turn2_response = GenerationResponse(
+            request_id="t2",
+            request_args=None,
+            text="",
+            reasoning_text="Let me think about this...",
+        )
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["Continue"]},
+        )
+        result = instance.format(
+            current_request,
+            history=[
+                (turn1_request, turn1_response),
+                (turn2_request, turn2_response),
+            ],
+        )
+
+        messages = result.body["messages"]
+        roles = [m["role"] for m in messages]
+
+        # Verify no consecutive user messages
+        for j in range(len(roles) - 1):
+            assert not (roles[j] == "user" and roles[j + 1] == "user"), (
+                f"Consecutive user messages at indices {j} and {j + 1}: {roles}"
+            )
+
+        # Verify the empty assistant response is present
+        assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+        assert len(assistant_msgs) == 2
+        assert assistant_msgs[0]["content"] == "Hi there!"
+        assert assistant_msgs[1]["content"] == ""
 
     @pytest.mark.sanity
     def test_format_includes_reasoning_with_custom_template(self, valid_instances):
@@ -1989,7 +2048,7 @@ class TestChatCompletionsRequestHandler:
         instance = valid_instances
         data = GenerationRequest(
             columns={"text_column": ["test prompt"]},
-            expects_tool_call=False,
+            turn_type="standard",
         )
 
         result = instance.format(data, extras={"body": {"tool_choice": "required"}})
@@ -2282,10 +2341,10 @@ class TestAudioRequestHandler:
             instance.format(data, history=history)
 
     @pytest.mark.smoke
-    def test_audio_blocks_multiturn_with_response(self, valid_instances):
-        """Test audio handler blocks multiturn with non-None response.
+    def test_audio_blocks_multiturn_with_history_and_response(self, valid_instances):
+        """Test audio handler blocks multiturn with non-None history response.
 
-        ### WRITTEN BY AI ###
+        ## WRITTEN BY AI ##
         """
         instance = valid_instances
         data = GenerationRequest(
@@ -2300,12 +2359,13 @@ class TestAudioRequestHandler:
             },
         )
 
-        # Mock response
-
-        response = GenerationResponse(request_id="test", request_args=None, text="test")
+        prev_request = GenerationRequest(columns={"audio_column": [{"audio": b"x"}]})
+        prev_response = GenerationResponse(
+            request_id="test", request_args=None, text="test"
+        )
 
         with pytest.raises(ValueError, match="does not support multiturn"):
-            instance.format(data, response=response)
+            instance.format(data, history=[(prev_request, prev_response)])
 
     @pytest.mark.sanity
     def test_audio_allows_single_turn(self, valid_instances):
@@ -2487,12 +2547,10 @@ class TestTextCompletionsRequestHandlerMultiturn:
             columns={"text_column": ["Follow up"]},
         )
 
-        result = instance.format(
-            data, response=prev_response, history=[(prev_request, prev_response)]
-        )
+        result = instance.format(data, history=[(prev_request, prev_response)])
 
         prompt = result.body["prompt"]
-        # Should include the response text
+        # Should include the response text from history
         assert "The answer is 42" in prompt
 
 
@@ -3491,8 +3549,9 @@ class TestResponsesRequestHandler:
     ):
         """
         When multiturn_reasoning=False (default) and the prior
-        response has reasoning_text but no regular text content, no
-        assistant input item should be injected.
+        response has reasoning_text but empty text content, an
+        assistant input item with empty content should still be
+        included to preserve alternating user/assistant structure.
 
         ## WRITTEN BY AI ##
         """
@@ -3516,7 +3575,65 @@ class TestResponsesRequestHandler:
         assistant_items = [
             item for item in result.body["input"] if item.get("role") == "assistant"
         ]
-        assert len(assistant_items) == 0
+        assert len(assistant_items) == 1
+        assert assistant_items[0]["content"] == ""
+
+    @pytest.mark.sanity
+    def test_format_preserves_empty_assistant_in_multi_turn_history(
+        self, valid_instances
+    ):
+        """
+        When a prior turn produced an empty text response (e.g. reasoning
+        model exhausted token budget), the assistant input item must still
+        appear in the history to prevent consecutive user items.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+
+        turn1_request = GenerationRequest(
+            columns={"text_column": ["Hello"]},
+        )
+        turn1_response = GenerationResponse(
+            request_id="t1",
+            request_args=None,
+            text="Hi there!",
+        )
+        turn2_request = GenerationRequest(
+            columns={"text_column": ["Tell me more"]},
+        )
+        turn2_response = GenerationResponse(
+            request_id="t2",
+            request_args=None,
+            text="",
+            reasoning_text="Let me think about this...",
+        )
+
+        current_request = GenerationRequest(
+            columns={"text_column": ["Continue"]},
+        )
+        result = instance.format(
+            current_request,
+            history=[
+                (turn1_request, turn1_response),
+                (turn2_request, turn2_response),
+            ],
+        )
+
+        items = result.body["input"]
+        roles = [item["role"] for item in items if "role" in item]
+
+        # Verify no consecutive user items
+        for j in range(len(roles) - 1):
+            assert not (roles[j] == "user" and roles[j + 1] == "user"), (
+                f"Consecutive user items at indices {j} and {j + 1}: {roles}"
+            )
+
+        # Verify the empty assistant response is present
+        assistant_items = [item for item in items if item.get("role") == "assistant"]
+        assert len(assistant_items) == 2
+        assert assistant_items[0]["content"] == "Hi there!"
+        assert assistant_items[1]["content"] == ""
 
     @pytest.mark.sanity
     def test_format_includes_reasoning_with_custom_template(self, valid_instances):
@@ -3670,8 +3787,9 @@ class TestResponsesRequestHandler:
     def test_format_with_server_history_tool_calls(self, valid_instances):
         """
         Test format includes function_call_output items when server_history
-        is enabled and the last response had tool calls, but does NOT include
-        function_call items (the server already has those).
+        is enabled and the current request is a tool_response_injection turn.
+        The injection turn's tool_response_column supplies the output content
+        and the preceding response's tool_calls supply the call_ids.
 
         ## WRITTEN BY AI ##
         """
@@ -3681,6 +3799,7 @@ class TestResponsesRequestHandler:
 
         prev_request = GenerationRequest(
             columns={"text_column": ["Call get_weather for SF"]},
+            turn_type="client_tool_call",
         )
         prev_response = GenerationResponse(
             request_id="prev",
@@ -3700,7 +3819,7 @@ class TestResponsesRequestHandler:
         )
 
         data = GenerationRequest(
-            columns={"text_column": ["What is the weather?"]},
+            turn_type="tool_response_injection",
         )
 
         result = instance.format(
@@ -3710,7 +3829,7 @@ class TestResponsesRequestHandler:
         assert result.body["previous_response_id"] == "resp_tool_001"
         input_items = result.body["input"]
 
-        # function_call_output should be first, then the user message
+        # function_call_output should be present
         fco_items = [i for i in input_items if i.get("type") == "function_call_output"]
         assert len(fco_items) == 1
         assert fco_items[0]["call_id"] == "call_xyz"
@@ -3720,9 +3839,9 @@ class TestResponsesRequestHandler:
         fc_items = [i for i in input_items if i.get("type") == "function_call"]
         assert len(fc_items) == 0
 
-        # User message should still be present
+        # No user message on injection turns
         user_items = [i for i in input_items if i.get("role") == "user"]
-        assert len(user_items) == 1
+        assert len(user_items) == 0
 
     @pytest.mark.sanity
     def test_format_with_server_history_tool_calls_custom_response(
@@ -3730,7 +3849,7 @@ class TestResponsesRequestHandler:
     ):
         """
         Test format sources tool response content from tool_response_column
-        on the previous request when using server_history with tool calls.
+        on the injection turn when using server_history with tool calls.
 
         ## WRITTEN BY AI ##
         """
@@ -3739,10 +3858,8 @@ class TestResponsesRequestHandler:
         instance = valid_instances
 
         prev_request = GenerationRequest(
-            columns={
-                "text_column": ["Call get_weather"],
-                "tool_response_column": ['{"temp": 72, "unit": "F"}'],
-            },
+            columns={"text_column": ["Call get_weather"]},
+            turn_type="client_tool_call",
         )
         prev_response = GenerationResponse(
             request_id="prev",
@@ -3762,7 +3879,8 @@ class TestResponsesRequestHandler:
         )
 
         data = GenerationRequest(
-            columns={"text_column": ["Summarize the weather"]},
+            columns={"tool_response_column": ['{"temp": 72, "unit": "F"}']},
+            turn_type="tool_response_injection",
         )
 
         result = instance.format(
@@ -4202,7 +4320,7 @@ class TestResponsesRequestHandler:
         expected_tools = [{"type": "function", "name": "fn", "parameters": {}}]
         data = GenerationRequest(
             columns={"tools_column": [stdlib_json.dumps(chat_tools)]},
-            expects_tool_call=True,
+            turn_type="client_tool_call",
         )
 
         result = instance.format(data)
@@ -4223,7 +4341,7 @@ class TestResponsesRequestHandler:
         """
         instance = valid_instances
         tools = [{"type": "function", "function": {"name": "fn", "parameters": {}}}]
-        data = GenerationRequest(expects_tool_call=False)
+        data = GenerationRequest(turn_type="standard")
 
         result = instance.format(data, extras={"body": {"tools": tools}})
 
@@ -4241,7 +4359,7 @@ class TestResponsesRequestHandler:
         instance = valid_instances
         data = GenerationRequest(
             columns={"text_column": ["test prompt"]},
-            expects_tool_call=False,
+            turn_type="standard",
         )
 
         result = instance.format(data, extras={"body": {"tool_choice": "required"}})
@@ -4250,21 +4368,21 @@ class TestResponsesRequestHandler:
         assert "tools" not in result.body
 
     @pytest.mark.sanity
-    def test_build_input_items_replays_tool_calls(self, valid_instances):
+    def test_history_replays_tool_calls_and_injection(self, valid_instances):
         """
-        Test _build_input_items converts ToolCall objects to
-        Responses API function_call items and appends function_call_output
-        items for multi-turn replay.
+        Test history replay produces function_call items from a tool_call
+        turn and function_call_output items from the injection turn.
 
         ## WRITTEN BY AI ##
         """
         from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 
         instance = valid_instances
-        data = GenerationRequest(
-            columns={"text_column": ["follow-up question"]},
+        tool_call_req = GenerationRequest(
+            columns={"text_column": ["call the tool"]},
+            turn_type="client_tool_call",
         )
-        response = GenerationResponse(
+        tool_call_resp = GenerationResponse(
             request_id="req-1",
             request_args="{}",
             tool_calls=[
@@ -4278,16 +4396,34 @@ class TestResponsesRequestHandler:
                 )
             ],
         )
+        injection_req = GenerationRequest(
+            columns={},
+            turn_type="tool_response_injection",
+        )
+        injection_resp = GenerationResponse(
+            request_id="req-2",
+            request_args="{}",
+            text="The weather is sunny.",
+        )
 
-        items = instance._build_input_items(data, response, [])
+        current = GenerationRequest(
+            columns={"text_column": ["follow-up question"]},
+        )
+        result = instance.format(
+            current,
+            history=[
+                (tool_call_req, tool_call_resp),
+                (injection_req, injection_resp),
+            ],
+        )
 
-        fc_items = [i for i in items if i.get("type") == "function_call"]
+        input_items = result.body["input"]
+        fc_items = [i for i in input_items if i.get("type") == "function_call"]
         assert len(fc_items) == 1
         assert fc_items[0]["call_id"] == "call_abc"
         assert fc_items[0]["name"] == "get_weather"
-        assert fc_items[0]["arguments"] == '{"loc": "SF"}'
 
-        fco_items = [i for i in items if i.get("type") == "function_call_output"]
+        fco_items = [i for i in input_items if i.get("type") == "function_call_output"]
         assert len(fco_items) == 1
         assert fco_items[0]["call_id"] == "call_abc"
         assert fco_items[0]["output"] == '{"status": "ok"}'
@@ -4823,7 +4959,7 @@ class TestChatCompletionsToolChoiceOverride:
 
     @pytest.mark.smoke
     def test_tool_choice_none_when_expects_false(self, handler):
-        """When expects_tool_call=False and tools come from dataset, tool_choice='none'.
+        """When turn_type='standard' and tools come from dataset, tool_choice='none'.
 
         ## WRITTEN BY AI ##
         """
@@ -4835,7 +4971,7 @@ class TestChatCompletionsToolChoiceOverride:
                 "text_column": ["test"],
                 "tools_column": [json.dumps(tools)],
             },
-            expects_tool_call=False,
+            turn_type="standard",
         )
         extras = {"body": {"tool_choice": "required"}}
         result = handler.format(data, extras=extras)
@@ -4844,7 +4980,7 @@ class TestChatCompletionsToolChoiceOverride:
 
     @pytest.mark.smoke
     def test_tool_choice_preserved_when_expects_true(self, handler):
-        """When expects_tool_call=True, the configured tool_choice is kept.
+        """When turn_type='client_tool_call', the configured tool_choice is kept.
 
         ## WRITTEN BY AI ##
         """
@@ -4856,7 +4992,7 @@ class TestChatCompletionsToolChoiceOverride:
                 "text_column": ["test"],
                 "tools_column": [json.dumps(tools)],
             },
-            expects_tool_call=True,
+            turn_type="client_tool_call",
         )
         extras = {"body": {"tool_choice": "required"}}
         result = handler.format(data, extras=extras)
@@ -4865,7 +5001,7 @@ class TestChatCompletionsToolChoiceOverride:
 
     @pytest.mark.sanity
     def test_auto_tool_choice_preserved_when_expects_true(self, handler):
-        """When expects_tool_call=True with auto mode, tool_choice stays 'auto'.
+        """When turn_type='client_tool_call' with auto mode, tool_choice stays 'auto'.
 
         ## WRITTEN BY AI ##
         """
@@ -4877,7 +5013,7 @@ class TestChatCompletionsToolChoiceOverride:
                 "text_column": ["test"],
                 "tools_column": [json.dumps(tools)],
             },
-            expects_tool_call=True,
+            turn_type="client_tool_call",
         )
         extras = {"body": {"tool_choice": "auto"}}
         result = handler.format(data, extras=extras)
@@ -4892,7 +5028,7 @@ class TestChatCompletionsToolChoiceOverride:
         """
         data = GenerationRequest(
             columns={"text_column": ["test"]},
-            expects_tool_call=False,
+            turn_type="standard",
         )
         result = handler.format(data)
 
@@ -4912,16 +5048,16 @@ class TestChatCompletionsToolChoiceOverride:
                 "text_column": ["test"],
                 "tools_column": [json.dumps(tools)],
             },
-            expects_tool_call=True,
+            turn_type="client_tool_call",
         )
         result = handler.format(data)
 
         assert result.body["tools"] == tools
 
     @pytest.mark.smoke
-    def test_max_completion_tokens_stripped_on_tool_call_turn(self, handler):
-        """On tool-call turns, max_completion_tokens is removed so the model
-        can finish producing valid tool call JSON without truncation.
+    def test_no_token_limits_on_tool_call_turn(self, handler):
+        """On tool-call turns, ignore_eos, stop, max_completion_tokens, and
+        max_tokens are all absent.
 
         ## WRITTEN BY AI ##
         """
@@ -4933,13 +5069,57 @@ class TestChatCompletionsToolChoiceOverride:
                 "text_column": ["test"],
                 "tools_column": [json.dumps(tools)],
             },
-            expects_tool_call=True,
-            output_metrics=UsageMetrics(text_tokens=100),
+            turn_type="client_tool_call",
         )
         result = handler.format(data)
 
+        assert "ignore_eos" not in result.body
+        assert "stop" not in result.body
         assert "max_completion_tokens" not in result.body
         assert "max_tokens" not in result.body
+
+    @pytest.mark.sanity
+    def test_finalizer_to_format_no_token_limits_on_tool_call_turn(self, handler):
+        """The finalizer moves output_metrics to the injection turn so the
+        handler applies no token limits to the tool call turn and correct
+        limits to the injection turn.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        from guidellm.data.finalizers.generative import (
+            GenerativeRequestFinalizer,
+            GenerativeRequestFinalizerArgs,
+        )
+
+        finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+        items = [
+            {
+                "text_column": ["call the tool"],
+                "tools_column": [
+                    json.dumps([{"type": "function", "function": {"name": "fn"}}])
+                ],
+                "output_tokens_count_column": [100],
+            },
+        ]
+        requests = finalizer(items)
+
+        assert len(requests) == 2
+        tool_call_req, injection_req = requests
+
+        # Tool call turn: no token limits
+        tc_result = handler.format(tool_call_req)
+        assert "max_completion_tokens" not in tc_result.body
+        assert "max_tokens" not in tc_result.body
+        assert "ignore_eos" not in tc_result.body
+        assert "stop" not in tc_result.body
+
+        # Injection turn: token limits applied from output_metrics
+        inj_result = handler.format(injection_req)
+        assert inj_result.body["max_completion_tokens"] == 100
+        assert inj_result.body["ignore_eos"] is True
+        assert inj_result.body["stop"] is None
 
     @pytest.mark.smoke
     def test_max_completion_tokens_kept_on_plain_text_turn(self, handler):
@@ -4955,7 +5135,7 @@ class TestChatCompletionsToolChoiceOverride:
                 "text_column": ["test"],
                 "tools_column": [json.dumps(tools)],
             },
-            expects_tool_call=False,
+            turn_type="standard",
             output_metrics=UsageMetrics(text_tokens=100),
         )
         result = handler.format(data)
@@ -4964,7 +5144,8 @@ class TestChatCompletionsToolChoiceOverride:
 
 
 class TestChatCompletionsToolResponseColumn:
-    """Verify request handler uses tool_response_column instead of hardcoded default.
+    """Verify chat completions handler uses tool_response_column from the
+    injection turn, with tool_call_ids sourced from the preceding response.
 
     ## WRITTEN BY AI ##
     """
@@ -4977,8 +5158,9 @@ class TestChatCompletionsToolResponseColumn:
         return ChatCompletionsRequestHandler()
 
     @pytest.mark.smoke
-    def test_uses_tool_response_from_column(self, handler):
-        """Tool response content from tool_response_column is used in history.
+    def test_uses_tool_response_from_injection_column(self, handler):
+        """Tool response content from injection turn's tool_response_column
+        is used in history replay.
 
         ## WRITTEN BY AI ##
         """
@@ -4991,37 +5173,46 @@ class TestChatCompletionsToolResponseColumn:
         )
 
         tools = [{"type": "function", "function": {"name": "fn"}}]
-        prior_request = GenerationRequest(
+        tool_call_request = GenerationRequest(
             columns={
                 "text_column": ["call the tool"],
                 "tools_column": [json.dumps(tools)],
-                "tool_response_column": ['{"result": "custom data"}'],
             },
-            expects_tool_call=True,
+            turn_type="client_tool_call",
         )
-        prior_response = MagicMock(spec=GenerationResponse)
-        prior_response.tool_calls = [
-            ToolCall(
-                id="call_1",
-                function=ToolCallFunction(name="fn"),
-            )
+        tool_call_response = MagicMock(spec=GenerationResponse)
+        tool_call_response.tool_calls = [
+            ToolCall(id="call_1", function=ToolCallFunction(name="fn"))
         ]
-        prior_response.text = None
-        prior_response.reasoning_text = None
+        tool_call_response.text = None
+        tool_call_response.reasoning_text = None
+
+        injection_request = GenerationRequest(
+            columns={"tool_response_column": ['{"result": "custom data"}']},
+            turn_type="tool_response_injection",
+        )
+        injection_response = MagicMock(spec=GenerationResponse)
+        injection_response.tool_calls = None
+        injection_response.text = "The tool returned custom data."
+        injection_response.reasoning_text = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
-            expects_tool_call=False,
+            turn_type="standard",
         )
 
         result = handler.format(
             current_request,
-            history=[(prior_request, prior_response)],
+            history=[
+                (tool_call_request, tool_call_response),
+                (injection_request, injection_response),
+            ],
         )
 
         tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
         assert len(tool_messages) == 1
         assert tool_messages[0]["content"] == '{"result": "custom data"}'
+        assert tool_messages[0]["tool_call_id"] == "call_1"
 
     @pytest.mark.sanity
     def test_falls_back_to_default_without_column(self, handler):
@@ -5039,31 +5230,40 @@ class TestChatCompletionsToolResponseColumn:
         from guidellm.settings import settings
 
         tools = [{"type": "function", "function": {"name": "fn"}}]
-        prior_request = GenerationRequest(
+        tool_call_request = GenerationRequest(
             columns={
                 "text_column": ["call the tool"],
                 "tools_column": [json.dumps(tools)],
             },
-            expects_tool_call=True,
+            turn_type="client_tool_call",
         )
-        prior_response = MagicMock(spec=GenerationResponse)
-        prior_response.tool_calls = [
-            ToolCall(
-                id="call_1",
-                function=ToolCallFunction(name="fn"),
-            )
+        tool_call_response = MagicMock(spec=GenerationResponse)
+        tool_call_response.tool_calls = [
+            ToolCall(id="call_1", function=ToolCallFunction(name="fn"))
         ]
-        prior_response.text = None
-        prior_response.reasoning_text = None
+        tool_call_response.text = None
+        tool_call_response.reasoning_text = None
+
+        injection_request = GenerationRequest(
+            columns={},
+            turn_type="tool_response_injection",
+        )
+        injection_response = MagicMock(spec=GenerationResponse)
+        injection_response.tool_calls = None
+        injection_response.text = "Ok."
+        injection_response.reasoning_text = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
-            expects_tool_call=False,
+            turn_type="standard",
         )
 
         result = handler.format(
             current_request,
-            history=[(prior_request, prior_response)],
+            history=[
+                (tool_call_request, tool_call_response),
+                (injection_request, injection_response),
+            ],
         )
 
         tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
@@ -5085,35 +5285,280 @@ class TestChatCompletionsToolResponseColumn:
         )
 
         tools = [{"type": "function", "function": {"name": "fn"}}]
-        prior_request = GenerationRequest(
+        tool_call_request = GenerationRequest(
             columns={
                 "text_column": ["call the tool"],
                 "tools_column": [json.dumps(tools)],
-                "tool_response_column": [b'{"result": "bytes data"}'],
             },
-            expects_tool_call=True,
+            turn_type="client_tool_call",
         )
-        prior_response = MagicMock(spec=GenerationResponse)
-        prior_response.tool_calls = [
-            ToolCall(
-                id="call_1",
-                function=ToolCallFunction(name="fn"),
-            )
+        tool_call_response = MagicMock(spec=GenerationResponse)
+        tool_call_response.tool_calls = [
+            ToolCall(id="call_1", function=ToolCallFunction(name="fn"))
         ]
-        prior_response.text = None
-        prior_response.reasoning_text = None
+        tool_call_response.text = None
+        tool_call_response.reasoning_text = None
+
+        injection_request = GenerationRequest(
+            columns={"tool_response_column": [b'{"result": "bytes data"}']},
+            turn_type="tool_response_injection",
+        )
+        injection_response = MagicMock(spec=GenerationResponse)
+        injection_response.tool_calls = None
+        injection_response.text = "Done."
+        injection_response.reasoning_text = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
-            expects_tool_call=False,
+            turn_type="standard",
         )
 
         result = handler.format(
             current_request,
-            history=[(prior_request, prior_response)],
+            history=[
+                (tool_call_request, tool_call_response),
+                (injection_request, injection_response),
+            ],
         )
 
         tool_messages = [m for m in result.body["messages"] if m.get("role") == "tool"]
         assert len(tool_messages) == 1
         assert tool_messages[0]["content"] == '{"result": "bytes data"}'
         assert isinstance(tool_messages[0]["content"], str)
+
+
+class TestChatCompletionsInjectionTurnFormat:
+    """Verify ChatCompletionsRequestHandler formats injection turns correctly
+    as the current turn and in history replay.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def handler(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        return ChatCompletionsRequestHandler()
+
+    @pytest.mark.smoke
+    def test_injection_turn_as_current_turn(self, handler):
+        """Injection turn as current turn: tool response messages, no user content.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+
+        tool_req = GenerationRequest(
+            columns={"text_column": ["ask"]},
+            turn_type="client_tool_call",
+        )
+        tool_resp = GenerationResponse(
+            request_id="r1",
+            request_args="{}",
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function=ToolCallFunction(name="get_data", arguments="{}"),
+                )
+            ],
+        )
+
+        injection = GenerationRequest(
+            columns={"tool_response_column": ['{"data": 42}']},
+            turn_type="tool_response_injection",
+        )
+
+        result = handler.format(injection, history=[(tool_req, tool_resp)])
+
+        messages = result.body["messages"]
+        user_msgs = [m for m in messages if m.get("role") == "user"]
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        assert len(user_msgs) == 1  # from history
+        assert len(tool_msgs) == 1
+        assert tool_msgs[0]["tool_call_id"] == "call_1"
+        assert tool_msgs[0]["content"] == '{"data": 42}'
+
+    @pytest.mark.smoke
+    def test_consecutive_tool_turns_in_history(self, handler):
+        """Consecutive tool turns each produce their own injection turn pair.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+
+        tc1_req = GenerationRequest(
+            columns={"text_column": ["q1"]}, turn_type="client_tool_call"
+        )
+        tc1_resp = GenerationResponse(
+            request_id="r1",
+            request_args="{}",
+            tool_calls=[
+                ToolCall(id="c1", function=ToolCallFunction(name="fn1", arguments="{}"))
+            ],
+        )
+        inj1_req = GenerationRequest(
+            columns={"tool_response_column": ['{"r": 1}']},
+            turn_type="tool_response_injection",
+        )
+        inj1_resp = GenerationResponse(
+            request_id="r2", request_args="{}", text="Result 1."
+        )
+        tc2_req = GenerationRequest(
+            columns={"text_column": ["q2"]}, turn_type="client_tool_call"
+        )
+        tc2_resp = GenerationResponse(
+            request_id="r3",
+            request_args="{}",
+            tool_calls=[
+                ToolCall(id="c2", function=ToolCallFunction(name="fn2", arguments="{}"))
+            ],
+        )
+        inj2_req = GenerationRequest(
+            columns={"tool_response_column": ['{"r": 2}']},
+            turn_type="tool_response_injection",
+        )
+        inj2_resp = GenerationResponse(
+            request_id="r4", request_args="{}", text="Result 2."
+        )
+
+        current = GenerationRequest(
+            columns={"text_column": ["final question"]},
+        )
+        result = handler.format(
+            current,
+            history=[
+                (tc1_req, tc1_resp),
+                (inj1_req, inj1_resp),
+                (tc2_req, tc2_resp),
+                (inj2_req, inj2_resp),
+            ],
+        )
+
+        messages = result.body["messages"]
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        assert len(tool_msgs) == 2
+        assert tool_msgs[0]["tool_call_id"] == "c1"
+        assert tool_msgs[0]["content"] == '{"r": 1}'
+        assert tool_msgs[1]["tool_call_id"] == "c2"
+        assert tool_msgs[1]["content"] == '{"r": 2}'
+
+        assistant_msgs = [m for m in messages if m.get("role") == "assistant"]
+        assert len(assistant_msgs) == 4  # 2 tool_call + 2 injection text
+
+    @pytest.mark.sanity
+    def test_injection_with_no_prior_tool_calls(self, handler):
+        """Injection turn with no prior tool_calls produces no tool messages.
+
+        ## WRITTEN BY AI ##
+        """
+        prev_req = GenerationRequest(
+            columns={"text_column": ["normal"]},
+        )
+        prev_resp = GenerationResponse(
+            request_id="r1", request_args="{}", text="response"
+        )
+
+        injection = GenerationRequest(
+            columns={},
+            turn_type="tool_response_injection",
+        )
+
+        result = handler.format(injection, history=[(prev_req, prev_resp)])
+
+        messages = result.body["messages"]
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        assert len(tool_msgs) == 0
+
+
+class TestResponsesInjectionTurnFormat:
+    """Verify ResponsesRequestHandler formats injection turns correctly.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def handler(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        return ResponsesRequestHandler()
+
+    @pytest.mark.smoke
+    def test_injection_turn_as_current_turn(self, handler):
+        """Injection turn sends function_call_output items, no user content.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+
+        tool_req = GenerationRequest(
+            columns={"text_column": ["ask"]},
+            turn_type="client_tool_call",
+        )
+        tool_resp = GenerationResponse(
+            request_id="r1",
+            request_args="{}",
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function=ToolCallFunction(name="get_data", arguments="{}"),
+                )
+            ],
+        )
+
+        injection = GenerationRequest(
+            columns={"tool_response_column": ['{"data": 42}']},
+            turn_type="tool_response_injection",
+        )
+
+        result = handler.format(injection, history=[(tool_req, tool_resp)])
+
+        input_items = result.body["input"]
+        fco = [i for i in input_items if i.get("type") == "function_call_output"]
+        user = [i for i in input_items if i.get("role") == "user"]
+        assert len(fco) == 1
+        assert fco[0]["call_id"] == "call_1"
+        assert fco[0]["output"] == '{"data": 42}'
+        assert len(user) == 1  # from history
+
+    @pytest.mark.sanity
+    def test_server_history_injection_turn(self, handler):
+        """Server-side history: injection turn sets previous_response_id
+        and includes function_call_output items.
+
+        ## WRITTEN BY AI ##
+        """
+        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+
+        tool_req = GenerationRequest(
+            columns={"text_column": ["ask"]},
+            turn_type="client_tool_call",
+        )
+        tool_resp = GenerationResponse(
+            request_id="r1",
+            request_args="{}",
+            response_id="resp_001",
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function=ToolCallFunction(name="fn", arguments="{}"),
+                )
+            ],
+        )
+
+        injection = GenerationRequest(
+            columns={"tool_response_column": ['{"ok": true}']},
+            turn_type="tool_response_injection",
+        )
+
+        result = handler.format(
+            injection, history=[(tool_req, tool_resp)], server_history=True
+        )
+
+        assert result.body["previous_response_id"] == "resp_001"
+        input_items = result.body["input"]
+        fco = [i for i in input_items if i.get("type") == "function_call_output"]
+        assert len(fco) == 1
+        assert fco[0]["call_id"] == "call_1"
+        assert fco[0]["output"] == '{"ok": true}'

@@ -10,7 +10,7 @@ consistent interaction with various AI generation APIs.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, computed_field
 
@@ -18,9 +18,17 @@ from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 from guidellm.schemas.info import RequestSettings
 from guidellm.utils.dict import deep_update
 
+TurnType = Literal[
+    "standard",
+    "client_tool_call",
+    "tool_response_injection",
+    "server_tool_call",
+]
+
 __all__ = [
     "GenerationRequest",
     "GenerationRequestArguments",
+    "TurnType",
     "UsageMetrics",
 ]
 
@@ -245,11 +253,17 @@ class GenerationRequest(StandardBaseModel):
             "where keys are column names and values are lists of column entries."
         ),
     )
-    expects_tool_call: bool = Field(
-        default=False,
-        description="Whether this turn is expected to produce a tool call response. "
-        "Set by the data pipeline for pre-planned tool-call turns. "
-        "Derived from the presence of tools_column in the turn data.",
+    turn_type: TurnType = Field(
+        default="standard",
+        description="Discriminator for the kind of turn this request represents. "
+        "'standard' is a normal user turn. "
+        "'client_tool_call' expects the server to produce tool calls that the "
+        "client will handle by injecting tool responses in a follow-up turn. "
+        "'tool_response_injection' sends tool output back to the server and "
+        "expects a text response. "
+        "'server_tool_call' is a turn where the server handles tool execution "
+        "end-to-end; it prevents tool_choice='none' from being set so that "
+        "server-configured tools remain usable.",
     )
     input_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,

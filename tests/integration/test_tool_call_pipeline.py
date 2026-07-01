@@ -49,6 +49,9 @@ class TestJsonlMultiTurnToolCallPipeline:
     def test_consecutive_tool_turns(self):
         """3-turn JSONL: turns 0-1 are tool calls, turn 2 is plain text.
 
+        With injection turn splitting, this produces 5 requests:
+        tool_call, injection, tool_call, injection, standard.
+
         ## WRITTEN BY AI ##
         """
         row = {
@@ -66,23 +69,32 @@ class TestJsonlMultiTurnToolCallPipeline:
 
         requests = _run_row_through_pipeline(row)
 
-        assert len(requests) == 3
+        assert len(requests) == 5
 
-        assert requests[0].expects_tool_call is True
+        assert requests[0].turn_type == "client_tool_call"
         assert "tools_column" in requests[0].columns
-        assert requests[0].columns["tool_response_column"] == ['{"temp": 72}']
+        assert "tool_response_column" not in requests[0].columns
 
-        assert requests[1].expects_tool_call is True
-        assert "tools_column" in requests[1].columns
-        assert requests[1].columns["tool_response_column"] == ['{"price": 150}']
+        assert requests[1].turn_type == "tool_response_injection"
+        assert requests[1].columns["tool_response_column"] == ['{"temp": 72}']
 
-        assert requests[2].expects_tool_call is False
-        assert "tools_column" not in requests[2].columns
+        assert requests[2].turn_type == "client_tool_call"
+        assert "tools_column" in requests[2].columns
         assert "tool_response_column" not in requests[2].columns
+
+        assert requests[3].turn_type == "tool_response_injection"
+        assert requests[3].columns["tool_response_column"] == ['{"price": 150}']
+
+        assert requests[4].turn_type == "standard"
+        assert "tools_column" not in requests[4].columns
+        assert "tool_response_column" not in requests[4].columns
 
     @pytest.mark.smoke
     def test_interleaved_tool_turns(self):
         """4-turn JSONL: tool calls on turns 0 and 3, plain text on 1 and 2.
+
+        With injection turn splitting, this produces 6 requests:
+        tool_call, injection, standard, standard, tool_call, injection.
 
         ## WRITTEN BY AI ##
         """
@@ -103,20 +115,26 @@ class TestJsonlMultiTurnToolCallPipeline:
 
         requests = _run_row_through_pipeline(row)
 
-        assert len(requests) == 4
+        assert len(requests) == 6
 
-        assert requests[0].expects_tool_call is True
+        assert requests[0].turn_type == "client_tool_call"
         assert "tools_column" in requests[0].columns
-        assert "tool_response_column" in requests[0].columns
+        assert "tool_response_column" not in requests[0].columns
 
-        assert requests[1].expects_tool_call is False
-        assert "tools_column" not in requests[1].columns
-        assert "tool_response_column" not in requests[1].columns
+        assert requests[1].turn_type == "tool_response_injection"
+        assert requests[1].columns["tool_response_column"] == ['{"temp": 72}']
 
-        assert requests[2].expects_tool_call is False
+        assert requests[2].turn_type == "standard"
         assert "tools_column" not in requests[2].columns
         assert "tool_response_column" not in requests[2].columns
 
-        assert requests[3].expects_tool_call is True
-        assert "tools_column" in requests[3].columns
-        assert "tool_response_column" in requests[3].columns
+        assert requests[3].turn_type == "standard"
+        assert "tools_column" not in requests[3].columns
+        assert "tool_response_column" not in requests[3].columns
+
+        assert requests[4].turn_type == "client_tool_call"
+        assert "tools_column" in requests[4].columns
+        assert "tool_response_column" not in requests[4].columns
+
+        assert requests[5].turn_type == "tool_response_injection"
+        assert requests[5].columns["tool_response_column"] == ['{"price": 150}']
