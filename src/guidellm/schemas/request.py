@@ -18,9 +18,17 @@ from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
 from guidellm.schemas.info import RequestSettings
 from guidellm.utils.dict import deep_update
 
+TurnType = Literal[
+    "standard",
+    "client_tool_call",
+    "tool_response_injection",
+    "server_tool_call",
+]
+
 __all__ = [
     "GenerationRequest",
     "GenerationRequestArguments",
+    "TurnType",
     "UsageMetrics",
 ]
 
@@ -245,12 +253,7 @@ class GenerationRequest(StandardBaseModel):
             "where keys are column names and values are lists of column entries."
         ),
     )
-    turn_type: Literal[
-        "standard",
-        "client_tool_call",
-        "tool_response_injection",
-        "server_tool_call",
-    ] = Field(
+    turn_type: TurnType = Field(
         default="standard",
         description="Discriminator for the kind of turn this request represents. "
         "'standard' is a normal user turn. "

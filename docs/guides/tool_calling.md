@@ -19,24 +19,23 @@ GuideLLM currently supports mocked client-side tool calls (`turn_type="client_to
 
 ## Server-side tool calls
 
-For servers that handle tool execution internally (e.g. OpenAI Responses API with `container_auto`, or [OGX](https://github.com/ogx-ai/ogx) with MCP tool groups), use `server_tool_call` turns. These behave like standard turns from GuideLLM's perspective -- one request in, one response out -- but they prevent the backend from overriding `tool_choice` to `"none"`, so server-configured tools remain usable.
+For servers that handle tool execution internally (e.g. OpenAI Responses API with `container_auto`, or [OGX](https://github.com/ogx-ai/ogx) with MCP tool groups), use `server_tool_call` turns. These behave like standard turns from GuideLLM's perspective, but requests are sent without overriding `tool_choice` to `"none"`, so server-configured tools remain usable.
 
 No injection turn is created, and GuideLLM does not mock any tool responses. The server runs the full tool-calling loop internally and returns the final text answer. Latency metrics include the server-side tool execution time.
 
 ### Synthetic data with server-side tool handling
 
-For synthetic data, use `server_tool_call_turns` to mark user turns as server-managed. You can pass an int N (the first N turns), a list of indices, or `"all"` to mark every turn:
+For synthetic data, use `server_tool_call_turns` to mark user turns as server-managed. You can pass an int N (the first N turns), a list of indices, or `-1` to mark every turn:
 
 ```bash
 # All 3 turns are server_tool_call — the server decides per-turn whether to use tools
-guidellm benchmark run \
-  --target "http://localhost:8000" \
-  --data '{"prompt_tokens": 200, "output_tokens": 100, "turns": 3, "server_tool_call_turns": "all"}' \
-  --backend-kwargs '{"extras": {"body": {"tools": [{"type": "function", "function": {"name": "get_weather", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}}}]}}}' \
-  --max-requests 30
+guidellm run \
+  --backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]}}}' \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,server_tool_call_turns=-1 \
+  --constraint kind=max_requests,count=30
 ```
 
-The `"all"` shorthand is equivalent to setting `server_tool_call_turns=N` where N equals `turns`, but avoids having to keep them in sync. It also works for `tool_call_turns` (client-side tool calling).
+The `-1` shorthand is equivalent to setting `server_tool_call_turns=N` where N equals `turns`, but avoids having to keep them in sync. It also works for `tool_call_turns` (client-side tool calling).
 
 ### Real datasets with server-side tool handling
 
@@ -51,28 +50,28 @@ For real datasets that contain tool definitions (e.g. a `tools` column), the fin
 
 ```bash
 guidellm run \
-  --backend '{"kind": "openai_http", "target": "https://api.openai.com", "request_format": "/v1/responses", "extras": {"body": {"tools": [{"type": "shell", "environment": {"type": "container_auto"}}]}}}' \
-  --data '{"kind": "huggingface", "source": "madroid/glaive-function-calling-openai", "load_kwargs": {"split": "train"}}' \
-  --data-column-mapper '{"kind": "generative_column_mapper", "column_mappings": {"text_column": "messages", "tools_column": "tools"}}' \
+  --backend '{"kind":"openai_http","target":"https://api.openai.com","request_format":"/v1/responses","extras":{"body":{"tools":[{"type":"shell","environment":{"type":"container_auto"}}]}}}' \
+  --data kind=huggingface,source=madroid/glaive-function-calling-openai,load_kwargs.split=train \
+  --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=messages,column_mappings.tools_column=tools \
   --data-preprocessor kind=tool_calling_message_extractor \
   --data-preprocessor kind=encode_media \
-  --data-finalizer '{"kind": "generative", "tool_call_mode": "server"}' \
-  --constraint '{"kind": "max_requests", "count": 50}' \
-  --profile '{"kind": "constant", "rate": 1}'
+  --data-finalizer kind=generative,tool_call_mode=server \
+  --constraint kind=max_requests,count=50 \
+  --profile kind=constant,rate=1
 ```
 
 **OGX (Llama Stack)** -- an open-source, OpenAI-compatible agentic server that handles tool execution server-side via its `/v1/responses` orchestration loop. Tools are configured on the OGX server (MCP tool groups, built-in tools), so no `extras.body.tools` is needed in the GuideLLM command:
 
 ```bash
 guidellm run \
-  --backend '{"kind": "openai_http", "target": "http://localhost:8321", "request_format": "/v1/responses"}' \
-  --data '{"kind": "huggingface", "source": "madroid/glaive-function-calling-openai", "load_kwargs": {"split": "train"}}' \
-  --data-column-mapper '{"kind": "generative_column_mapper", "column_mappings": {"text_column": "messages", "tools_column": "tools"}}' \
+  --backend kind=openai_http,target=http://localhost:8321,request_format=/v1/responses \
+  --data kind=huggingface,source=madroid/glaive-function-calling-openai,load_kwargs.split=train \
+  --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=messages,column_mappings.tools_column=tools \
   --data-preprocessor kind=tool_calling_message_extractor \
   --data-preprocessor kind=encode_media \
-  --data-finalizer '{"kind": "generative", "tool_call_mode": "server"}' \
-  --constraint '{"kind": "max_requests", "count": 50}' \
-  --profile '{"kind": "constant", "rate": 1}'
+  --data-finalizer kind=generative,tool_call_mode=server \
+  --constraint kind=max_requests,count=50 \
+  --profile kind=constant,rate=1
 ```
 
 Tools for server-side tool calls are configured either in the request body via `--backend` (e.g. OpenAI `extras.body.tools`) or on the server itself (e.g. OGX MCP tool groups). The model decides per-turn whether to invoke them.
@@ -101,7 +100,7 @@ Tool definitions are always provided through the data pipeline rather than as a 
 
 ```bash
 guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions \
+  --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/chat/completions \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2 \
   --constraint kind=max_requests,count=30 \
   --profile kind=constant,rate=1
@@ -111,7 +110,7 @@ To specify non-contiguous tool-call turns, pass a list of 0-based turn indices:
 
 ```bash
 guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions \
+  --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/chat/completions \
   --data '{"kind":"synthetic_text","prompt_tokens":200,"output_tokens":100,"turns":4,"tool_call_turns":[0,2]}' \
   --constraint kind=max_requests,count=30 \
   --profile kind=constant,rate=1
@@ -119,23 +118,25 @@ guidellm run \
 
 Synthetic data configuration fields for tool calling:
 
-| Field                        | Type                        | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------------- | --------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tool_call_turns`            | `int \| list[int] \| "all"` | `0`     | Which user turns include tool definitions and expect tool-call responses. Indices are 0-based into user turns (not the expanded request list). An int N means "the first N user turns"; a list specifies explicit indices (e.g. `[0, 2]`); `"all"` means every turn. Each tool-calling user turn generates an additional injection request, so `tool_call_turns=[0,1]` with `turns=3` produces 5 total requests. When `0` or `[]`, no tool calling.                               |
-| `server_tool_call_turns`     | `int \| list[int] \| "all"` | `0`     | Which user turns use server-side tool calling. These turns are marked as `server_tool_call` so `tool_choice="none"` is not applied, letting the server use its configured tools. No injection turn is created. Must not overlap with `tool_call_turns`. An int N means "the first N user turns"; a list specifies explicit indices; `"all"` means every turn.                                                                                                                     |
-| `tools`                      | `list`                      | `None`  | Tool definitions in either [Chat Completions](https://platform.openai.com/docs/api-reference/chat/create#chat-create-tools) format (nested `function` key) or [Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) format (flat). GuideLLM auto-converts to match the `--request-format` at request time. Using the format that matches your target endpoint is recommended. When `None`, a built-in placeholder tool is used. |
-| `tool_response_tokens`       | `int`                       | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                                                                                                                                                                                                                                                                                        |
-| `tool_response_tokens_stdev` | `int`                       | `None`  | Standard deviation for tool response token count.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `tool_response_tokens_min`   | `int`                       | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `tool_response_tokens_max`   | `int`                       | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Field                        | Type               | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------- | ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tool_call_turns`            | `int \| list[int]` | `0`     | Which user turns include tool definitions and expect tool-call responses. Indices are 0-based into user turns (not the expanded request list). An int N means "the first N user turns"; a list specifies explicit indices (e.g. `[0, 2]`); `-1` means every turn. Each tool-calling user turn generates an additional injection request, so `tool_call_turns=[0,1]` with `turns=3` produces 5 total requests. When `0` or `[]`, no tool calling.                                  |
+| `server_tool_call_turns`     | `int \| list[int]` | `0`     | Which user turns use server-side tool calling. These turns are marked as `server_tool_call` so `tool_choice="none"` is not applied, letting the server use its configured tools. No injection turn is created. Must not overlap with `tool_call_turns`. An int N means "the first N user turns"; a list specifies explicit indices; `-1` means every turn.                                                                                                                        |
+| `tools`                      | `list`             | `None`  | Tool definitions in either [Chat Completions](https://platform.openai.com/docs/api-reference/chat/create#chat-create-tools) format (nested `function` key) or [Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) format (flat). GuideLLM auto-converts to match the `--request-format` at request time. Using the format that matches your target endpoint is recommended. When `None`, a built-in placeholder tool is used. |
+| `tool_response_tokens`       | `int`              | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                                                                                                                                                                                                                                                                                        |
+| `tool_response_tokens_stdev` | `int`              | `None`  | Standard deviation for tool response token count.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `tool_response_tokens_min`   | `int`              | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `tool_response_tokens_max`   | `int`              | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 Note: The token count is for the content of a field of the mock tool call response. The JSON structure adds ~5 tokens to the mock tool call response.
 
 **Configuring tool response content** -- by default, tool results use a short placeholder (`{"status": "ok"}`). This default can be changed via the `GUIDELLM__DEFAULT_SYNTHETIC_TOOL_RESPONSE` environment variable. For more realistic benchmarks, set `tool_response_tokens` to generate variable-length JSON responses:
 
+In this example, `tool_response_tokens` is set to 50.
+
 ```bash
 guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-0.6B,request_format=/v1/chat/completions \
+  --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2,tool_response_tokens=50 \
   --constraint kind=max_requests,count=30 \
   --profile kind=constant,rate=1
@@ -149,7 +150,7 @@ The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=huggingface,source=madroid/glaive-function-calling-openai \
-  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"messages","tools_column":"tools"}}' \
+  --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=messages,column_mappings.tools_column=tools \
   --data-preprocessor kind=tool_calling_message_extractor \
   --data-preprocessor kind=encode_media \
   --constraint kind=max_requests,count=50 \
@@ -171,16 +172,17 @@ Two backend settings control how tool-call turns are handled at runtime. Both ar
 
 ```bash
 guidellm run \
-  --backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"tool_choice":"auto"}}}' \
+  --backend kind=openai_http,target=http://localhost:8000,extras.body.tool_choice=auto \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2 \
-  --constraint kind=max_requests,count=30
+  --constraint kind=max_requests,count=30 \
+  --profile kind=synchronous
 ```
 
 **Setting `tool_call_missing_behavior` via backend config:**
 
 ```bash
 guidellm run \
-  --backend '{"kind":"openai_http","target":"http://localhost:8000","tool_call_missing_behavior":"ignore_continue","extras":{"body":{"tool_choice":"auto"}}}' \
+  --backend kind=openai_http,target=http://localhost:8000,tool_call_missing_behavior=ignore_continue,extras.body.tool_choice=auto \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2 \
   --constraint kind=max_requests,count=30
 ```

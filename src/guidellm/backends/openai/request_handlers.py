@@ -839,8 +839,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if data.turn_type == "client_tool_call":
             body.pop("ignore_eos", None)
             body.pop("stop", None)
-            body.pop("max_completion_tokens", None)
-            body.pop("max_tokens", None)
 
     def _build_history_messages(
         self,
@@ -929,24 +927,25 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             wrapped = _wrap_reasoning(
                 res.reasoning_text if res else None, multiturn_reasoning
             )
-            if res and res.tool_calls:
-                # Tool-call turn: assistant with tool_calls only.
-                # Tool response messages come from the injection turn.
-                assistant_content = res.text
-                if wrapped:
-                    assistant_content = wrapped + (assistant_content or "")
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": assistant_content,
-                        "tool_calls": [tc.model_dump() for tc in res.tool_calls],
-                    }
-                )
-            elif res is not None and (res.text is not None or wrapped):
-                content = res.text or ""
-                if wrapped:
-                    content = wrapped + content
-                messages.append({"role": "assistant", "content": content})
+            if res is not None:
+                if res.tool_calls:
+                    # Tool-call turn: assistant with tool_calls only.
+                    # Tool response messages come from the injection turn.
+                    assistant_content = res.text
+                    if wrapped:
+                        assistant_content = wrapped + (assistant_content or "")
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_content,
+                            "tool_calls": [tc.model_dump() for tc in res.tool_calls],
+                        }
+                    )
+                elif res.text is not None or wrapped:
+                    content = res.text or ""
+                    if wrapped:
+                        content = wrapped + content
+                    messages.append({"role": "assistant", "content": content})
 
         return messages
 
@@ -1599,16 +1598,17 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             wrapped = _wrap_reasoning(
                 res.reasoning_text if res else None, multiturn_reasoning
             )
-            if res and res.tool_calls:
-                # Tool-call turn: function_call items only.
-                # function_call_output items come from the injection turn.
-                for tc in res.tool_calls:
-                    items.append(self._tool_call_to_responses_item(tc))
-            elif res is not None and (res.text is not None or wrapped):
-                content = res.text or ""
-                if wrapped:
-                    content = wrapped + content
-                items.append({"role": "assistant", "content": content})
+            if res is not None:
+                if res.tool_calls:
+                    # Tool-call turn: function_call items only.
+                    # function_call_output items come from the injection turn.
+                    for tc in res.tool_calls:
+                        items.append(self._tool_call_to_responses_item(tc))
+                elif res.text is not None or wrapped:
+                    content = res.text or ""
+                    if wrapped:
+                        content = wrapped + content
+                    items.append({"role": "assistant", "content": content})
 
         return items
 

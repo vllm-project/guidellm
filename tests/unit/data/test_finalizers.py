@@ -322,7 +322,8 @@ class TestFinalizerTurnType:
     @pytest.mark.smoke
     def test_tool_turn_produces_tool_call_plus_injection(self, finalizer):
         """A turn with tools_column produces a tool_call request followed
-        by a tool_response_injection request that inherits output_metrics.
+        by a tool_response_injection request. Output metrics are moved
+        to the injection turn so the tool call turn is unconstrained.
 
         ## WRITTEN BY AI ##
         """
@@ -340,6 +341,7 @@ class TestFinalizerTurnType:
         assert len(results) == 3
         assert results[0].turn_type == "client_tool_call"
         assert "tool_response_column" not in results[0].columns
+        assert results[0].output_metrics.text_tokens is None
         assert results[1].turn_type == "tool_response_injection"
         assert results[1].columns["tool_response_column"] == ['{"status": "ok"}']
         assert results[1].output_metrics.text_tokens == 20

@@ -5055,9 +5055,9 @@ class TestChatCompletionsToolChoiceOverride:
         assert result.body["tools"] == tools
 
     @pytest.mark.smoke
-    def test_max_completion_tokens_stripped_on_tool_call_turn(self, handler):
-        """On tool-call turns, max_completion_tokens is removed so the model
-        can finish producing valid tool call JSON without truncation.
+    def test_no_token_limits_on_tool_call_turn(self, handler):
+        """On tool-call turns, ignore_eos, stop, max_completion_tokens, and
+        max_tokens are all absent.
 
         ## WRITTEN BY AI ##
         """
@@ -5070,12 +5070,56 @@ class TestChatCompletionsToolChoiceOverride:
                 "tools_column": [json.dumps(tools)],
             },
             turn_type="client_tool_call",
-            output_metrics=UsageMetrics(text_tokens=100),
         )
         result = handler.format(data)
 
+        assert "ignore_eos" not in result.body
+        assert "stop" not in result.body
         assert "max_completion_tokens" not in result.body
         assert "max_tokens" not in result.body
+
+    @pytest.mark.sanity
+    def test_finalizer_to_format_no_token_limits_on_tool_call_turn(self, handler):
+        """The finalizer moves output_metrics to the injection turn so the
+        handler applies no token limits to the tool call turn and correct
+        limits to the injection turn.
+
+        ## WRITTEN BY AI ##
+        """
+        import json
+
+        from guidellm.data.finalizers.generative import (
+            GenerativeRequestFinalizer,
+            GenerativeRequestFinalizerArgs,
+        )
+
+        finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+        items = [
+            {
+                "text_column": ["call the tool"],
+                "tools_column": [
+                    json.dumps([{"type": "function", "function": {"name": "fn"}}])
+                ],
+                "output_tokens_count_column": [100],
+            },
+        ]
+        requests = finalizer(items)
+
+        assert len(requests) == 2
+        tool_call_req, injection_req = requests
+
+        # Tool call turn: no token limits
+        tc_result = handler.format(tool_call_req)
+        assert "max_completion_tokens" not in tc_result.body
+        assert "max_tokens" not in tc_result.body
+        assert "ignore_eos" not in tc_result.body
+        assert "stop" not in tc_result.body
+
+        # Injection turn: token limits applied from output_metrics
+        inj_result = handler.format(injection_req)
+        assert inj_result.body["max_completion_tokens"] == 100
+        assert inj_result.body["ignore_eos"] is True
+        assert inj_result.body["stop"] is None
 
     @pytest.mark.smoke
     def test_max_completion_tokens_kept_on_plain_text_turn(self, handler):

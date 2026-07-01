@@ -125,26 +125,33 @@ class SyntheticTextDataArgs(DataArgs):
         examples=[30],
     )
     turns: int = Field(
-        description="The number of user turns in the conversation. "
-        "Each tool-calling user turn automatically generates an additional "
-        "tool_response_injection request, so the total request count per "
-        "conversation is turns + len(tool_call_turns).",
+        description=(
+            "The number of user turns in the conversation. "
+            "Each tool-calling user turn automatically generates an additional "
+            "tool_response_injection request, so the total request count per "
+            "conversation is turns + len(tool_call_turns)."
+        ),
         gt=0,
         default=1,
     )
     tool_call_turns: list[int] = Field(
-        description="Which user turns should include tool definitions and "
-        "expect tool-call responses. Indices are 0-based into the user "
-        "turns (not the expanded request list). An int N means 'the "
-        "first N user turns'; a list of ints specifies explicit indices "
-        "(e.g. [0, 2]). Normalized to a sorted list after validation. "
-        "When 0 or [] (default), no tool calling is configured.",
+        description=(
+            "Which user turns should include tool definitions and expect "
+            "tool-call responses. Indices are 0-based into the user turns "
+            "(not the expanded request list). An int N means 'the first "
+            "N user turns'; a list of ints specifies explicit indices "
+            "(e.g. [0, 2]); -1 means all turns. Normalized to a sorted "
+            "list after validation. "
+            "When 0 or [] (default), no tool calling is configured."
+        ),
         default_factory=list,
         examples=[1, [0, 1]],
     )
     tools: list[dict[str, Any]] | None = Field(
-        description="Tool definitions in OpenAI format. When tool_call_turns is "
-        "non-empty and this is None, a static placeholder tool definition is used.",
+        description=(
+            "Tool definitions in OpenAI format. When tool_call_turns is non-empty "
+            "and this is None, a static placeholder tool definition is used."
+        ),
         default=None,
         examples=[
             {
@@ -164,8 +171,10 @@ class SyntheticTextDataArgs(DataArgs):
         ],
     )
     tool_response_tokens: int | None = Field(
-        description="Average number of tokens for synthetic tool call responses. "
-        "When None (default), a short placeholder response is used.",
+        description=(
+            "Average number of tokens for synthetic tool call responses. "
+            "When None (default), a short placeholder response is used."
+        ),
         gt=0,
         default=None,
         examples=[10],
@@ -189,13 +198,15 @@ class SyntheticTextDataArgs(DataArgs):
         examples=[20],
     )
     server_tool_call_turns: list[int] = Field(
-        description="Which user turns use server-side tool calling. "
-        "These turns are marked as server_tool_call so tool_choice='none' "
-        "is not applied, letting the server use its configured tools. "
-        "No injection turn is created. Must not overlap with "
-        "tool_call_turns. Indices are 0-based into user turns. "
-        "An int N means 'the first N user turns'; a list of ints "
-        "specifies explicit indices (e.g. [0, 2]).",
+        description=(
+            "Which user turns use server-side tool calling. "
+            "These turns are marked as server_tool_call so tool_choice='none' "
+            "is not applied, letting the server use its configured tools. "
+            "No injection turn is created. Must not overlap with "
+            "tool_call_turns. Indices are 0-based into user turns. "
+            "An int N means 'the first N user turns'; a list of ints "
+            "specifies explicit indices (e.g. [0, 2]); -1 means all turns."
+        ),
         default_factory=list,
     )
 
@@ -234,18 +245,30 @@ class SyntheticTextDataArgs(DataArgs):
     def _coerce_tool_call_turns(cls, v: int | str | list[int]) -> list[int]:
         """Convert an int N to [0, ..., N-1]; pass lists through sorted.
 
-        The string ``"all"`` is converted to the sentinel ``[-1]`` which is
+        Strings are parsed as JSON to support CLI/env-var coercion.
+        The value ``-1`` is converted to the sentinel ``[-1]`` which is
         expanded to all turn indices by :meth:`_validate_tool_call_turn_indices`
         once ``self.turns`` is available.
         """
         if isinstance(v, str):
-            if v != "all":
-                raise ValueError(f"tool_call_turns string must be 'all', got {v!r}")
-            return [-1]
+            try:
+                v = json.loads(v)
+            except (json.JSONDecodeError, ValueError) as err:
+                raise ValueError(
+                    f"tool_call_turns string must be a JSON int or list of ints,"
+                    f" got {v!r}"
+                ) from err
         if isinstance(v, int):
+            if v == -1:
+                return [-1]
             if v < 0:
-                raise ValueError("tool_call_turns int must be >= 0")
+                raise ValueError("tool_call_turns int must be >= 0 or -1 for all")
             return list(range(v))
+        if not isinstance(v, list):
+            raise ValueError(
+                f"tool_call_turns must be int, list[int], or a JSON string,"
+                f" got {type(v)}"
+            )
         if len(v) != len(set(v)):
             raise ValueError("tool_call_turns list must not contain duplicates")
         return sorted(v)
@@ -254,10 +277,10 @@ class SyntheticTextDataArgs(DataArgs):
     def _validate_tool_call_turn_indices(self) -> SyntheticTextDataArgs:
         """Ensure all tool call turn indices are within [0, turns) and don't overlap.
 
-        The sentinel ``[-1]`` (produced by ``"all"``) is expanded to
-        ``list(range(self.turns))`` before validation.
+        The sentinel ``[-1]`` is expanded to ``list(range(self.turns))``
+        before validation.
         """
-        # Expand "all" sentinel for both fields
+        # Expand -1 sentinel ("all turns") for both fields
         if self.tool_call_turns == [-1]:
             self.tool_call_turns = list(range(self.turns))
         if self.server_tool_call_turns == [-1]:

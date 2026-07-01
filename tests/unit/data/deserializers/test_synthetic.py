@@ -1107,33 +1107,33 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
         assert config.server_tool_call_turns == [0, 1, 2]
 
     @pytest.mark.smoke
-    def test_server_tool_call_turns_all_string(self):
+    def test_server_tool_call_turns_minus_one(self):
         """
-        The string "all" expands to all turn indices.
+        The value -1 expands to all turn indices.
 
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(
-            prompt_tokens=50, output_tokens=50, turns=3, server_tool_call_turns="all"
+            prompt_tokens=50, output_tokens=50, turns=3, server_tool_call_turns=-1
         )
         assert config.server_tool_call_turns == [0, 1, 2]
 
     @pytest.mark.smoke
-    def test_server_tool_call_turns_all_single_turn(self):
+    def test_server_tool_call_turns_minus_one_single_turn(self):
         """
-        The string "all" works with a single turn.
+        The value -1 works with a single turn.
 
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(
-            prompt_tokens=50, output_tokens=50, turns=1, server_tool_call_turns="all"
+            prompt_tokens=50, output_tokens=50, turns=1, server_tool_call_turns=-1
         )
         assert config.server_tool_call_turns == [0]
 
     @pytest.mark.sanity
-    def test_server_tool_call_turns_all_rejects_overlap(self):
+    def test_server_tool_call_turns_minus_one_rejects_overlap(self):
         """
-        Using "all" for server_tool_call_turns rejects overlap with tool_call_turns.
+        Using -1 for server_tool_call_turns rejects overlap with tool_call_turns.
 
         ## WRITTEN BY AI ##
         """
@@ -1145,31 +1145,31 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
                 output_tokens=50,
                 turns=3,
                 tool_call_turns=[0],
-                server_tool_call_turns="all",
+                server_tool_call_turns=-1,
             )
 
     @pytest.mark.sanity
-    def test_tool_call_turns_all_string(self):
+    def test_tool_call_turns_minus_one(self):
         """
-        The string "all" also works for tool_call_turns.
+        The value -1 expands to all turn indices for tool_call_turns.
 
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(
-            prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns="all"
+            prompt_tokens=50, output_tokens=50, turns=3, tool_call_turns=-1
         )
         assert config.tool_call_turns == [0, 1, 2]
 
     @pytest.mark.sanity
     def test_invalid_string_rejected(self):
         """
-        Strings other than "all" are rejected.
+        Non-JSON strings are rejected.
 
         ## WRITTEN BY AI ##
         """
         from pydantic import ValidationError
 
-        with pytest.raises(ValidationError, match="must be 'all'"):
+        with pytest.raises(ValidationError, match="JSON int or list of ints"):
             SyntheticTextDataArgs(
                 prompt_tokens=50,
                 output_tokens=50,
@@ -1177,9 +1177,45 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
                 server_tool_call_turns="none",
             )
 
+    @pytest.mark.smoke
+    def test_string_int_coercion(self):
+        """
+        A string int like "2" is coerced to int and normalized.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50, output_tokens=50, turns=3, server_tool_call_turns="2"
+        )
+        assert config.server_tool_call_turns == [0, 1]
+
+    @pytest.mark.smoke
+    def test_string_minus_one_coercion(self):
+        """
+        The string "-1" is coerced to -1 and expands to all turn indices.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50, output_tokens=50, turns=3, server_tool_call_turns="-1"
+        )
+        assert config.server_tool_call_turns == [0, 1, 2]
+
+    @pytest.mark.smoke
+    def test_string_list_coercion(self):
+        """
+        A JSON list string like "[0, 2]" is coerced to a list of ints.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50, output_tokens=50, turns=4, server_tool_call_turns="[0, 2]"
+        )
+        assert config.server_tool_call_turns == [0, 2]
+
 
 class TestSyntheticDataServerToolCallColumnsAll:
-    """Verify synthetic data emits correct columns when server_tool_call_turns="all".
+    """Verify synthetic data emits correct columns when server_tool_call_turns=-1.
 
     ## WRITTEN BY AI ##
     """
@@ -1199,12 +1235,12 @@ class TestSyntheticDataServerToolCallColumnsAll:
     @pytest.mark.smoke
     def test_all_turns_emit_turn_type_columns(self, processor):
         """
-        All turns emit turn_type_N = "server_tool_call" when "all" is used.
+        All turns emit turn_type_N = "server_tool_call" when -1 is used.
 
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(
-            prompt_tokens=10, output_tokens=10, turns=3, server_tool_call_turns="all"
+            prompt_tokens=10, output_tokens=10, turns=3, server_tool_call_turns=-1
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
@@ -1216,12 +1252,12 @@ class TestSyntheticDataServerToolCallColumnsAll:
     @pytest.mark.sanity
     def test_all_turns_features_include_all_turn_types(self, processor):
         """
-        Features property includes turn_type_{i} for all turns when "all" is used.
+        Features property includes turn_type_{i} for all turns when -1 is used.
 
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(
-            prompt_tokens=10, output_tokens=10, turns=3, server_tool_call_turns="all"
+            prompt_tokens=10, output_tokens=10, turns=3, server_tool_call_turns=-1
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         features = iterable.features

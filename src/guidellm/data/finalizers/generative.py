@@ -7,14 +7,12 @@ from pydantic import Field
 
 from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.schemas import DataFinalizerArgs
-from guidellm.schemas import GenerationRequest, RequestSettings, UsageMetrics
-
-TurnType = Literal[
-    "standard",
-    "client_tool_call",
-    "tool_response_injection",
-    "server_tool_call",
-]
+from guidellm.schemas import (
+    GenerationRequest,
+    RequestSettings,
+    TurnType,
+    UsageMetrics,
+)
 
 __all__ = [
     "GenerativeRequestFinalizer",
@@ -60,12 +58,15 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
                 injection_columns: dict[str, list[Any]] = {}
                 if tool_response_data:
                     injection_columns["tool_response_column"] = tool_response_data
+                # Move output metrics to next turn
+                metrics_config = request.output_metrics
+                request.output_metrics = UsageMetrics()
                 results.append(request)
                 results.append(
                     GenerationRequest(
                         columns=injection_columns,
                         turn_type="tool_response_injection",
-                        output_metrics=request.output_metrics,
+                        output_metrics=metrics_config,
                     )
                 )
             else:
