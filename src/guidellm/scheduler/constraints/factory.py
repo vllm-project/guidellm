@@ -110,10 +110,10 @@ class ConstraintsInitializerFactory(RegistryMixin[ConstraintInitializer]):
         constraints = {}
 
         for key, val in initializers.items():
-            if isinstance(val, Constraint):
-                constraints[key] = val
-            elif isinstance(val, ConstraintInitializer):
+            if isinstance(val, ConstraintInitializer):
                 constraints[key] = val.create_constraint()
+            elif isinstance(val, Constraint):
+                constraints[key] = val
             else:
                 raise TypeError(
                     f"Constraint '{key}' has unsupported value type "
