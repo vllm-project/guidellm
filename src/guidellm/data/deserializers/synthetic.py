@@ -140,7 +140,7 @@ class SyntheticTextDataArgs(DataArgs):
     )
     delay_min: float | None = Field(
         description='The minimum requeue delay, or "think time" for prompts.',
-        gt=0,
+        ge=0,
         default=None,
         examples=[0.5],
     )
@@ -436,7 +436,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 if output_tokens_count is not None:
                     row[f"output_tokens_count_{turn}"] = output_tokens_count
                 if delay is not None:
-                    row[f"delay_{turn}"] = delay
+                    row[f"requeue_delay_{turn}"] = delay
 
                 if tools_defs is not None and turn in tool_call_turns_set:
                     row[f"tools_{turn}"] = json.dumps(tools_defs)
@@ -470,7 +470,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             if self.config.output_tokens is not None:
                 features[f"output_tokens_count_{i}"] = Value("int32")
             if self.config.delay is not None:
-                features[f"delay_{i}"] = Value("float")
+                features[f"requeue_delay_{i}"] = Value("float")
 
             if i in set(self.config.tool_call_turns):
                 # Tools column is a JSON-serialised list; store as string
