@@ -320,9 +320,11 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
                     raise ValueError(
                         f"Unsupported scenario file format: {scenario_path.suffix}"
                     )
-            if "args" in scenario_data:
+            # NOTE: If the scenario file is a report, it contains a "config" key with
+            # the benchmark configuration. This is a hack and should be replaced.
+            if "config" in scenario_data:
                 # loading from a report file
-                scenario_data = scenario_data["args"]
+                scenario_data = scenario_data["config"]
             constructor_kwargs.update(scenario_data)
 
         # NOTE In the future replace deep_update with a more intelligent merging
