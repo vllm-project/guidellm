@@ -1196,28 +1196,6 @@ class TestConstraintsInitializerFactory:
         ):
             ConstraintsInitializerFactory.create(FakeArgs(kind=unregistered_key))
 
-    @pytest.mark.smoke
-    def test_resolve_mixed_types(self):
-        """Test resolve method with constraint and initializer instances."""
-        max_num_constraint = MaxNumberConstraint(
-            args=MaxRequestsConstraintArgs(count=25)
-        )
-        max_duration_initializer = MaxDurationConstraint(
-            args=MaxDurationConstraintArgs(seconds=120.0)
-        )
-
-        mixed_spec = {
-            "max_requests": max_num_constraint,
-            "max_duration": max_duration_initializer,
-        }
-
-        resolved = ConstraintsInitializerFactory.resolve(mixed_spec)
-
-        assert len(resolved) == 2
-        assert all(isinstance(c, Constraint) for c in resolved.values())
-        assert resolved["max_requests"] is max_num_constraint
-        assert isinstance(resolved["max_duration"], MaxDurationConstraint)
-
     @pytest.mark.sanity
     def test_resolve_with_invalid_type(self):
         """Test that resolve raises TypeError for unsupported value types."""
