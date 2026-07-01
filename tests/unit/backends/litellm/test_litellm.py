@@ -170,7 +170,8 @@ class TestLiteLLMBackendResolve:
             m.return_value = _stream_chunks(chunks)
             results = []
             async for item in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 results.append(item)
 
@@ -190,7 +191,8 @@ class TestLiteLLMBackendResolve:
         ) as m:
             m.return_value = _stream_chunks(chunks)
             async for _ in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 pass
 
@@ -207,7 +209,8 @@ class TestLiteLLMBackendResolve:
         ) as m:
             m.return_value = _stream_chunks(chunks)
             async for _ in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 pass
 
@@ -226,13 +229,12 @@ class TestLiteLLMBackendResolve:
         ) as m:
             m.return_value = _stream_chunks(chunks)
             async for _ in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 pass
 
-        assert m.call_args.kwargs.get("api_base") == (
-            "https://proxy.example.com/v1"
-        )
+        assert m.call_args.kwargs.get("api_base") == ("https://proxy.example.com/v1")
 
     @pytest.mark.asyncio
     async def test_no_api_key_when_not_set(self):
@@ -245,7 +247,8 @@ class TestLiteLLMBackendResolve:
         ) as m:
             m.return_value = _stream_chunks(chunks)
             async for _ in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 pass
 
@@ -259,7 +262,8 @@ class TestLiteLLMBackendResolve:
             _make_chunk(
                 " world",
                 usage=_make_usage(
-                    prompt_tokens=5, completion_tokens=2,
+                    prompt_tokens=5,
+                    completion_tokens=2,
                 ),
             ),
         ]
@@ -271,7 +275,8 @@ class TestLiteLLMBackendResolve:
             m.return_value = _stream_chunks(chunks)
             results = []
             async for response, _ in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 if response is not None:
                     results.append(response)
@@ -286,7 +291,8 @@ class TestLiteLLMBackendResolve:
             _make_chunk(
                 "Hi",
                 usage=_make_usage(
-                    prompt_tokens=7, completion_tokens=3,
+                    prompt_tokens=7,
+                    completion_tokens=3,
                 ),
             ),
         ]
@@ -298,7 +304,8 @@ class TestLiteLLMBackendResolve:
             m.return_value = _stream_chunks(chunks)
             final = None
             async for response, _ in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 if response is not None:
                     final = response
@@ -322,7 +329,8 @@ class TestLiteLLMBackendResolve:
             m.return_value = _stream_chunks(chunks)
             yielded = []
             async for response, _ in backend.resolve(
-                self._request(), self._info(),
+                self._request(),
+                self._info(),
             ):
                 yielded.append(response)
 

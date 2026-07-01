@@ -54,9 +54,7 @@ class LiteLLMBackendArgs(BackendArgs):
     )
     api_key: SecretStr | None = Field(
         default=None,
-        description=(
-            "API key for the provider (overrides provider env var)."
-        ),
+        description=("API key for the provider (overrides provider env var)."),
     )
     api_base: str | None = Field(
         default=None,
@@ -69,8 +67,7 @@ class LiteLLMBackendArgs(BackendArgs):
     extras: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "Additional keyword arguments forwarded to "
-            "litellm.acompletion()."
+            "Additional keyword arguments forwarded to litellm.acompletion()."
         ),
     )
 
@@ -117,9 +114,7 @@ class LiteLLMBackend(Backend):
     async def validate(self):
         """Validate that model string is non-empty."""
         if not self._args.model:
-            raise RuntimeError(
-                "LiteLLM backend requires a non-empty model string."
-            )
+            raise RuntimeError("LiteLLM backend requires a non-empty model string.")
 
     async def available_models(self) -> list[str]:
         """Return the configured model as the only available model."""
@@ -134,8 +129,7 @@ class LiteLLMBackend(Backend):
         request: GenerationRequest,
         request_info: RequestInfo,
         history: (
-            list[tuple[GenerationRequest, GenerationResponse | None]]
-            | None
+            list[tuple[GenerationRequest, GenerationResponse | None]] | None
         ) = None,
     ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
         """
@@ -148,7 +142,9 @@ class LiteLLMBackend(Backend):
         """
         model = self._args.model
         messages, request_args_json = self._format_request(
-            request, history, model,
+            request,
+            history,
+            model,
         )
         call_kwargs = self._build_call_kwargs()
 
@@ -169,7 +165,9 @@ class LiteLLMBackend(Backend):
 
             async for chunk in response_stream:
                 token_info = self._process_chunk(
-                    chunk, request_info, texts,
+                    chunk,
+                    request_info,
+                    texts,
                 )
                 if token_info.response_id and response_id is None:
                     response_id = token_info.response_id
@@ -182,25 +180,36 @@ class LiteLLMBackend(Backend):
 
             request_info.timings.request_end = time.time()
 
-            yield self._build_response(
-                request, response_id, request_args_json,
-                texts, input_tokens, output_tokens,
-            ), request_info
+            yield (
+                self._build_response(
+                    request,
+                    response_id,
+                    request_args_json,
+                    texts,
+                    input_tokens,
+                    output_tokens,
+                ),
+                request_info,
+            )
 
         except asyncio.CancelledError as err:
-            yield self._build_response(
-                request, response_id, request_args_json,
-                texts, input_tokens, output_tokens,
-            ), request_info
+            yield (
+                self._build_response(
+                    request,
+                    response_id,
+                    request_args_json,
+                    texts,
+                    input_tokens,
+                    output_tokens,
+                ),
+                request_info,
+            )
             raise err
 
     def _format_request(
         self,
         request: GenerationRequest,
-        history: (
-            list[tuple[GenerationRequest, GenerationResponse | None]]
-            | None
-        ),
+        history: (list[tuple[GenerationRequest, GenerationResponse | None]] | None),
         model: str,
     ) -> tuple[list[dict[str, Any]], str]:
         handler = ChatCompletionsRequestHandler()
@@ -212,9 +221,7 @@ class LiteLLMBackend(Backend):
             max_tokens=self._args.max_tokens,
         )
         messages: list[dict[str, Any]] = (
-            arguments.body.get("messages", [])
-            if arguments.body
-            else []
+            arguments.body.get("messages", []) if arguments.body else []
         )
         return messages, arguments.model_dump_json()
 
@@ -249,12 +256,8 @@ class LiteLLMBackend(Backend):
         response_id = chunk.id if chunk.id else None
 
         usage = getattr(chunk, "usage", None)
-        input_tokens = (
-            getattr(usage, "prompt_tokens", None) if usage else None
-        )
-        output_tokens = (
-            getattr(usage, "completion_tokens", None) if usage else None
-        )
+        input_tokens = getattr(usage, "prompt_tokens", None) if usage else None
+        output_tokens = getattr(usage, "completion_tokens", None) if usage else None
 
         first_token = False
         if chunk.choices:
@@ -266,9 +269,7 @@ class LiteLLMBackend(Backend):
 
                 if request_info.timings.first_token_iteration is None:
                     request_info.timings.first_token_iteration = iter_time
-                    request_info.timings.first_output_token_iteration = (
-                        iter_time
-                    )
+                    request_info.timings.first_output_token_iteration = iter_time
                     request_info.timings.token_iterations = 0
                     first_token = True
 
