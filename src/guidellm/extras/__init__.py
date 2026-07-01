@@ -32,7 +32,7 @@ only external library classes (torchcodec, PIL). Implementations use module impo
 
 import guidellm.utils.lazy_loader as lazy
 
-submodules = ["vllm", "vision", "audio"]
+submodules = ["vllm", "vision", "audio", "litellm"]
 
 __getattr__, __dir__, __all__ = lazy.attach(
     __name__,
