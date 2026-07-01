@@ -15,6 +15,7 @@ import json
 import math
 import time
 import uuid
+from typing import Any
 
 from pydantic import ValidationError
 from sanic import response
@@ -118,13 +119,41 @@ class ChatCompletionsHandler:
         else:
             return await self._handle_non_stream(req_data)
 
+    def _should_return_tool_calls(self, req: ChatCompletionsRequest) -> bool:
+        """Check if this request expects a tool call response.
+
+        Returns True when tool_choice is "required", which is what GuideLLM
+        sets on client_tool_call turns.
+        """
+        return req.tool_choice == "required" and bool(req.tools)
+
+    def _build_tool_calls(self, req: ChatCompletionsRequest) -> list[dict[str, Any]]:
+        """Build a mock tool_calls array from the request's tool definitions.
+
+        Uses the first tool's function name and returns empty arguments.
+        """
+        func_name = "mock_function"
+        if req.tools:
+            first_tool = req.tools[0]
+            if "function" in first_tool:
+                func_name = first_tool["function"].get("name", func_name)
+
+        return [
+            {
+                "id": f"call_{uuid.uuid4().hex[:24]}",
+                "type": "function",
+                "function": {"name": func_name, "arguments": "{}"},
+            }
+        ]
+
     async def _handle_non_stream(self, req: ChatCompletionsRequest) -> HTTPResponse:
         """
         Generate complete non-streaming chat completion response.
 
         Simulates realistic LLM behavior with TTFT and ITL delays, generates
         appropriate token counts, and returns a complete response with usage
-        statistics and generated content.
+        statistics and generated content. When tool_choice is "required",
+        returns tool_calls instead of text content.
 
         :param req: Validated chat completion request parameters
         :return: Complete HTTP response with generated completion data
@@ -150,22 +179,33 @@ class ChatCompletionsHandler:
             itl_delay += next(delays_iter)
         await asyncio.sleep(itl_delay / 1000.0)
 
-        # Response
+        # Build message and finish_reason based on whether this is a tool call turn
+        if self._should_return_tool_calls(req):
+            choice = ChatCompletionChoice(
+                index=0,
+                message=ChatMessage(
+                    role="assistant",
+                    content=None,
+                    tool_calls=self._build_tool_calls(req),
+                ),
+                finish_reason="tool_calls",
+            )
+        else:
+            choice = ChatCompletionChoice(
+                index=0,
+                message=ChatMessage(
+                    role="assistant",
+                    content=create_fake_text(
+                        int(completion_tokens_count), self.tokenizer
+                    ),
+                ),
+                finish_reason="stop",
+            )
+
         chat_response = ChatCompletionsResponse(
             id=f"chatcmpl-{uuid.uuid4().hex[:29]}",
             model=req.model,
-            choices=[
-                ChatCompletionChoice(
-                    index=0,
-                    message=ChatMessage(
-                        role="assistant",
-                        content=create_fake_text(
-                            int(completion_tokens_count), self.tokenizer
-                        ),
-                    ),
-                    finish_reason="stop",
-                )
-            ],
+            choices=[choice],
             usage=Usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=int(completion_tokens_count),
@@ -181,11 +221,13 @@ class ChatCompletionsHandler:
 
         Creates a streaming response that delivers tokens incrementally with
         realistic timing delays. Supports optional usage statistics in the final
-        stream chunk when requested via stream_options.
+        stream chunk when requested via stream_options. When tool_choice is
+        "required", streams tool call deltas instead of content.
 
         :param req: Validated chat completion request with streaming enabled
         :return: Streaming HTTP response delivering tokens with proper timing
         """
+        is_tool_call = self._should_return_tool_calls(req)
 
         async def generate_stream(stream_response):
             completion_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
@@ -208,63 +250,22 @@ class ChatCompletionsHandler:
                 )
             )
 
-            # Send tokens
-            tokens = create_fake_tokens_str(completion_tokens_count, self.tokenizer)
-            delays_iter = iter(
-                times_generator(self.config.itl_ms, self.config.itl_ms_std)
-            )
-
-            for index, token in enumerate(tokens):
-                if index > 0:
-                    itl_delay = next(delays_iter)
-                    await asyncio.sleep(itl_delay / 1000.0)
-
-                chunk_data = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": req.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": token},
-                            "finish_reason": None,
-                        }
-                    ],
-                }
-                await stream_response.write(f"data: {json.dumps(chunk_data)}\n\n")
-
-            # Send final chunk with finish reason
-            final_chunk = {
-                "id": completion_id,
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": req.model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {},
-                        "finish_reason": "stop",
-                    }
-                ],
-            }
-            await stream_response.write(f"data: {json.dumps(final_chunk)}\n\n")
-
-            # Send usage if requested
-            if req.stream_options and req.stream_options.include_usage:
-                usage_chunk = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": req.model,
-                    "choices": [],
-                    "usage": {
-                        "prompt_tokens": prompt_tokens,
-                        "completion_tokens": completion_tokens_count,
-                        "total_tokens": prompt_tokens + completion_tokens_count,
-                    },
-                }
-                await stream_response.write(f"data: {json.dumps(usage_chunk)}\n\n")
+            if is_tool_call:
+                await self._stream_tool_call(
+                    stream_response,
+                    req,
+                    completion_id,
+                    prompt_tokens,
+                    completion_tokens_count,
+                )
+            else:
+                await self._stream_content(
+                    stream_response,
+                    req,
+                    completion_id,
+                    prompt_tokens,
+                    completion_tokens_count,
+                )
 
             # End stream
             await stream_response.write("data: [DONE]\n\n")
@@ -278,3 +279,178 @@ class ChatCompletionsHandler:
                 "X-Accel-Buffering": "no",
             },
         )
+
+    async def _stream_content(
+        self,
+        stream_response,
+        req,
+        completion_id,
+        prompt_tokens,
+        completion_tokens_count,
+    ):
+        """Stream text content tokens with ITL delays."""
+        tokens = create_fake_tokens_str(completion_tokens_count, self.tokenizer)
+        delays_iter = iter(times_generator(self.config.itl_ms, self.config.itl_ms_std))
+
+        for index, token in enumerate(tokens):
+            if index > 0:
+                itl_delay = next(delays_iter)
+                await asyncio.sleep(itl_delay / 1000.0)
+
+            chunk_data = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": req.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": token},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+            await stream_response.write(f"data: {json.dumps(chunk_data)}\n\n")
+
+        # Send final chunk with finish reason
+        final_chunk = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": req.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+        await stream_response.write(f"data: {json.dumps(final_chunk)}\n\n")
+
+        # Send usage if requested
+        if req.stream_options and req.stream_options.include_usage:
+            usage_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": req.model,
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens_count,
+                    "total_tokens": prompt_tokens + completion_tokens_count,
+                },
+            }
+            await stream_response.write(f"data: {json.dumps(usage_chunk)}\n\n")
+
+    async def _stream_tool_call(
+        self,
+        stream_response,
+        req,
+        completion_id,
+        prompt_tokens,
+        completion_tokens_count,
+    ):
+        """Stream tool call deltas matching the OpenAI streaming tool call format.
+
+        Emits: first chunk with tool call id/name, argument chunks with ITL
+        delays, final chunk with finish_reason="tool_calls", and optional usage.
+        """
+        tool_calls = self._build_tool_calls(req)
+        tool_call = tool_calls[0]
+        func_name = tool_call["function"]["name"]
+        arguments = tool_call["function"]["arguments"]
+
+        # Split arguments into character chunks to simulate streaming
+        # Use at least 2 chunks for realistic ITL measurement
+        arg_chunks = list(arguments) if len(arguments) > 1 else [arguments]
+
+        delays_iter = iter(times_generator(self.config.itl_ms, self.config.itl_ms_std))
+
+        # First chunk: tool call with id, type, and function name
+        first_chunk = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": req.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": tool_call["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": func_name,
+                                    "arguments": "",
+                                },
+                            }
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        }
+        await stream_response.write(f"data: {json.dumps(first_chunk)}\n\n")
+
+        # Argument chunks with ITL delays
+        for arg_piece in arg_chunks:
+            itl_delay = next(delays_iter)
+            await asyncio.sleep(itl_delay / 1000.0)
+
+            arg_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": req.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "function": {"arguments": arg_piece},
+                                }
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            }
+            await stream_response.write(f"data: {json.dumps(arg_chunk)}\n\n")
+
+        # Final chunk with finish reason
+        final_chunk = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": req.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "tool_calls",
+                }
+            ],
+        }
+        await stream_response.write(f"data: {json.dumps(final_chunk)}\n\n")
+
+        # Send usage if requested
+        if req.stream_options and req.stream_options.include_usage:
+            usage_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": req.model,
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens_count,
+                    "total_tokens": prompt_tokens + completion_tokens_count,
+                },
+            }
+            await stream_response.write(f"data: {json.dumps(usage_chunk)}\n\n")
