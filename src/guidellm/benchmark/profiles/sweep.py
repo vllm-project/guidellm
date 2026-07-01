@@ -97,7 +97,9 @@ class SweepProfile(Profile):
         Generate next strategy in adaptive sweep sequence.
 
         Executes synchronous and throughput strategies first to measure baseline
-        rates, then generates interpolated rates for async strategies.
+        rates, then generates interpolated rates for async strategies. If a
+        failure constraint is triggered during the async phase, all remaining
+        higher rates are skipped.
 
         :param prev_strategy: Previously completed strategy instance
         :param prev_benchmark: Benchmark results from previous strategy execution
@@ -129,6 +131,16 @@ class SweepProfile(Profile):
                     self.args.sweep_size - 1,
                 )
             )[1:]  # don't rerun synchronous
+
+        # Stop escalation if a failure constraint was triggered during the
+        # async phase. Throughput is excluded (type_ != "throughput") because
+        # it intentionally pushes beyond sustainable load. Synchronous never
+        # reaches here — it returns a ThroughputStrategy above.
+        if (
+            prev_strategy.type_ != "throughput"
+            and self._should_stop_escalating(prev_benchmark)  # type: ignore[arg-type]
+        ):
+            return None
 
         next_index = (
             len(self.completed_strategies) - 1 - 1
