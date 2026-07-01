@@ -20,7 +20,7 @@ from guidellm.data.deserializers.trace_common import (
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 
 
-def _mock_processor() -> Mock:
+def mock_processor() -> Mock:
     """Tokenizer where each whitespace-delimited word is one token."""
     proc = Mock()
     proc.encode.side_effect = lambda text: list(range(len(text.split())))
@@ -40,7 +40,7 @@ def _mock_processor() -> Mock:
     ],
 )
 def test_decode_prompt(token_ids, expected):
-    proc = _mock_processor()
+    proc = mock_processor()
     assert decode_prompt(proc, token_ids) == expected
 
 
@@ -54,7 +54,7 @@ def test_decode_prompt(token_ids, expected):
     ],
 )
 def test_generate_token_ids(token_count, expected):
-    proc = _mock_processor()
+    proc = mock_processor()
     faker = Faker()
     res = generate_token_ids(token_count, proc, faker)
     assert len(res) == len(expected)
@@ -75,13 +75,13 @@ class TraceColumnGenerator:
     data_generator: Callable[[int], Any]
 
 
-def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
+def write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
     path = tmp_path / f"trace{suffix}"
     path.write_text(content)
     return path
 
 
-def _generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
+def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
     return "\n".join(
         "{"
         + ", ".join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
@@ -90,7 +90,7 @@ def _generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
     )
 
 
-def _get_from_kwargs(keys, kwargs) -> dict:
+def get_from_kwargs(keys, kwargs) -> dict:
     return {k: v for k, v in kwargs.items() if k in keys}
 
 
@@ -99,8 +99,8 @@ class TestTraceDatasetDeserializer:
     def deserializer(self) -> TraceDatasetDeserializer:
         return TraceDatasetDeserializer()
 
-    def _deserialize(self, deserializer, data, **kwargs):
-        col_kwargs = _get_from_kwargs(
+    def deserialize(self, deserializer, data, **kwargs):
+        col_kwargs = get_from_kwargs(
             (
                 "timestamp_column",
                 "prompt_tokens_column",
@@ -111,7 +111,7 @@ class TestTraceDatasetDeserializer:
         config = MinimalTraceFormatArgs(path=data, **col_kwargs)
         return deserializer(
             config=config,
-            processor_factory=_mock_processor,
+            processor_factory=mock_processor,
             random_seed=42,
         )
 
@@ -121,13 +121,13 @@ class TestTraceDatasetDeserializer:
         [".json", ".jsonl"],
     )
     def test_loads_json(self, tmp_path: Path, deserializer, suffix):
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
             '{"timestamp": 1, "input_length": 10, "output_length": 1}\n'
             '{"timestamp": 2, "input_length": 20, "output_length": 2}\n',
             suffix=suffix,
         )
-        ds = self._deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
         for i, row in enumerate(ds):
             assert row["relative_timestamp"] == i
             assert row["prompt_tokens_count"] == (i + 1) * 10
@@ -135,12 +135,12 @@ class TestTraceDatasetDeserializer:
 
     @pytest.mark.sanity
     def test_loads_csv(self, tmp_path: Path, deserializer):
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
             "timestamp,input_length,output_length\n1,10,1\n2,20,2\n",
             suffix=".csv",
         )
-        ds = self._deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
         for i, row in enumerate(ds):
             assert row["relative_timestamp"] == i
             assert row["prompt_tokens_count"] == (i + 1) * 10
@@ -151,9 +151,9 @@ class TestTraceDatasetDeserializer:
         self, tmp_path: Path, deserializer
     ):
         n_rows = 10
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
-            _generate_trace(
+            generate_trace(
                 n_rows,
                 [
                     TraceColumnGenerator("timestamp", lambda i: n_rows - i),
@@ -162,9 +162,9 @@ class TestTraceDatasetDeserializer:
                 ],
             ),
         )
-        ds = self._deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
         assert isinstance(ds, IterableDataset)
-        proc = _mock_processor()
+        proc = mock_processor()
         for i, row in enumerate(ds):
             assert row["prompt_tokens_count"] == i + 1
             assert row["output_tokens_count"] == (i + 1) * 10
@@ -175,9 +175,9 @@ class TestTraceDatasetDeserializer:
         self, tmp_path: Path, deserializer
     ):
         n_rows = 5
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
-            _generate_trace(
+            generate_trace(
                 n_rows,
                 [
                     TraceColumnGenerator("timestamp", lambda i: i + 3),
@@ -186,18 +186,18 @@ class TestTraceDatasetDeserializer:
                 ],
             ),
         )
-        ds = self._deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
         for i, row in enumerate(ds):
             assert row["relative_timestamp"] == i
 
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):
         with pytest.raises(ValidationError, match="not a valid path"):
-            self._deserialize(deserializer, 123)
+            self.deserialize(deserializer, 123)
         with pytest.raises(DataNotSupportedError, match="file not found"):
-            self._deserialize(deserializer, "bad_path.jsonl")
+            self.deserialize(deserializer, "bad_path.jsonl")
         with pytest.raises(DataNotSupportedError, match="not a file"):
-            self._deserialize(deserializer, Path.cwd())
+            self.deserialize(deserializer, Path.cwd())
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -252,17 +252,17 @@ class TestTraceDatasetDeserializer:
     def test_trace_validation_raises(
         self, tmp_path: Path, deserializer, content, kwargs, match
     ):
-        trace = _write_trace(tmp_path, content)
+        trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
-            self._deserialize(deserializer, trace, **kwargs)
+            self.deserialize(deserializer, trace, **kwargs)
 
     @pytest.mark.sanity
     def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
             '{"timestamp": 0, "input_length": 10, "output_length": 5, '
             '"hash_ids": [0]}\n',
             suffix=".txt",
         )
         with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.txt"):
-            self._deserialize(deserializer, trace)
+            self.deserialize(deserializer, trace)

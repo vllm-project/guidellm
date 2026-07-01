@@ -116,7 +116,7 @@ class WEKATraceFormat(TraceFormatBase):
         self.hash_id_table: list[Any] = []
         self.sibling_token_blocks: dict[Any, list[list[int]]] = {}
 
-    def required_columns(self,config: WEKATraceFormatArgs) -> Features:
+    def required_columns(self, config: WEKATraceFormatArgs) -> Features:
         return Features({config.hash_ids_column: List(Value("int32"))})
 
     def validate_row(self, config: WEKATraceFormatArgs, row: dict) -> None:
@@ -147,7 +147,7 @@ class WEKATraceFormat(TraceFormatBase):
 
         Internally (after validation) hash IDs are decremented so that they start from
         0 instead of WEKA format's default of 1."""
-        ids = list(map(lambda id: id - 1, row[config.hash_ids_column]))
+        ids = [hash_id - 1 for hash_id in row[config.hash_ids_column]]
         for idx, hash_id in enumerate(ids):
             if not _is_in_table(self.hash_id_table, hash_id):
                 _resize_to_hold_id(self.hash_id_table, hash_id)

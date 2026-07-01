@@ -1,15 +1,13 @@
-from collections.abc import Callable
-import copy
 import dataclasses
 import math
-from pathlib import Path
 import random
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
-from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_weka import WEKATraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
@@ -56,7 +54,7 @@ def make_valid_hash_ids(prompt_lengths: list[int], block_size: int) -> list[list
     hash_ids = []
     for length in prompt_lengths:
         n_ids = math.floor(length / block_size)
-        hash_ids.append([i for i in range(1, n_ids + 1)])
+        hash_ids.append(list(range(1, n_ids + 1)))
     return hash_ids
 
 
@@ -91,8 +89,7 @@ def all_distinct(items: list):
 
 class TestWEKATraceFormat:
     @pytest.mark.regression
-    def test_format_registered_with_deserializer(self, tmp_path: Path):
-        ...
+    def test_format_registered_with_deserializer(self, tmp_path: Path): ...
 
     @pytest.fixture
     def default_block_size(self, tmp_path: Path) -> int:
@@ -102,7 +99,7 @@ class TestWEKATraceFormat:
     def deserializer(self) -> TraceDatasetDeserializer:
         return TraceDatasetDeserializer()
 
-    def _deserialize(self, deserializer, data, **kwargs):
+    def deserialize(self, deserializer, data, **kwargs):
         col_kwargs = get_from_kwargs(
             (
                 "timestamp_column",
@@ -135,7 +132,7 @@ class TestWEKATraceFormat:
                 ],
             ),
         )
-        self._deserialize(
+        self.deserialize(
             deserializer,
             trace,
             timestamp_column="ts",
@@ -162,7 +159,7 @@ class TestWEKATraceFormat:
                 ],
             ),
         )
-        self._deserialize(deserializer, trace, hash_id_block_size=n_in / 5)
+        self.deserialize(deserializer, trace, hash_id_block_size=n_in / 5)
 
     @pytest.mark.smoke
     def test_generates_large_trace_prompts(
@@ -174,8 +171,7 @@ class TestWEKATraceFormat:
         output_lengths = [random.randint(3, 800) for _ in range(n_rows)]
         times = [0.0, 0.5, 1.0, 2.0]
         timestamps = [times[int(i / n_rows * len(times))] for i in range(n_rows)]
-        block_size = default_block_size
-        hash_ids = make_valid_hash_ids(prompt_lengths, block_size)
+        hash_ids = make_valid_hash_ids(prompt_lengths, default_block_size)
         trace = write_trace(
             tmp_path,
             generate_trace(
@@ -189,13 +185,7 @@ class TestWEKATraceFormat:
             ),
         )
         processor = ascending_processor()
-        config = WEKATraceFormatArgs(path=trace)
-        ds = deserializer(
-            config=config,
-            processor_factory=lambda: processor,
-            random_seed=42,
-        )
-
+        ds = self.deserialize(deserializer, trace)
         for i, row in enumerate(ds):
             in_cnt = row["prompt_tokens_count"]
             assert in_cnt == prompt_lengths[i]
@@ -210,7 +200,7 @@ class TestWEKATraceFormat:
         self, tmp_path: Path, deserializer, default_block_size
     ):
         n_rows = 3
-        n_in = [i for i in range(default_block_size - 1, default_block_size + 2)]
+        n_in = list(range(default_block_size - 1, default_block_size + 2))
         hash_ids = make_valid_hash_ids(n_in, default_block_size)
         trace = write_trace(
             tmp_path,
@@ -220,16 +210,16 @@ class TestWEKATraceFormat:
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda i: n_in[i]),
                     TraceColumnGenerator("output_length", lambda _: 5),
-                    TraceColumnGenerator("hash_ids", lambda i: hash_ids[i])
-                ]
+                    TraceColumnGenerator("hash_ids", lambda i: hash_ids[i]),
+                ],
             ),
         )
         processor = ascending_processor()
-        ds = self._deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
         for row in ds:
             actual_prompt_length = len(processor.encode(row["prompt"]))
             if actual_prompt_length != row["prompt_tokens_count"]:
-                pytest.fail(f"{actual_prompt_length} != {row["prompt_tokens_count"]}")
+                pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -254,7 +244,7 @@ class TestWEKATraceFormat:
     ):
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
-            self._deserialize(deserializer, trace, **kwargs)
+            self.deserialize(deserializer, trace, **kwargs)
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(
@@ -301,9 +291,8 @@ class TestWEKATraceFormat:
                 ],
             ),
         )
-        config = WEKATraceFormatArgs(path=trace)
         ds = deserializer(
-            config=config,
+            config=WEKATraceFormatArgs(path=trace),
             processor_factory=lambda: compatible_processor(),
             random_seed=42,
         )
