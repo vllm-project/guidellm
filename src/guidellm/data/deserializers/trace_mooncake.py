@@ -123,8 +123,9 @@ class MooncakeTraceFormat(TraceFormatBase):
     blocks in a prompt. The relationships of IDs forms a tree, where every first ID
     in a prompt has a parent node of `None`. Parent nodes can have an unbounded
     number of children. Two hash IDs can represent identical blocks of tokens so long
-    as they do not share the same parent (previous ID). For more details, see section 4
-    of https://arxiv.org/pdf/2407.00079.
+    as they do not share the same parent (previous ID).
+
+    For more details, see section 4 of https://arxiv.org/pdf/2407.00079.
 
     Generated prompts match the prompt token count of the row."""
 

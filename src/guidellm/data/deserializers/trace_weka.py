@@ -110,7 +110,20 @@ class WEKATraceFormatArgs(TraceDataArgs):
 
 @TraceFormatRegistry.register("weka")
 class WEKATraceFormat(TraceFormatBase):
-    """TODO"""
+    """WEKA trace format requires a column for timestamps, prompt token counts,
+    ouput token counts and lists of hash IDs.
+
+    Hash IDs are unique identifiers based on the current and previous token
+    blocks in a prompt. The relationships of IDs forms a tree, where every first ID
+    in a prompt has a parent node of `None`. Parent nodes can have an unbounded
+    number of children. Two hash IDs can represent identical blocks of tokens so long
+    as they do not share the same parent (previous ID).
+
+    For more details, see [the WEKA trace format specification][trace-spec].
+
+    [trace-spec]: https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md
+
+    Generated prompts match the prompt token count of the row."""
 
     def __init__(self) -> None:
         self.hash_id_table: list[Any] = []
