@@ -9,7 +9,7 @@ import numpy as np
 from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -242,7 +242,9 @@ class SyntheticTextDataArgs(DataArgs):
 
     @field_validator("tool_call_turns", "server_tool_call_turns", mode="before")
     @classmethod
-    def _coerce_tool_call_turns(cls, v: int | str | list[int]) -> list[int]:
+    def _coerce_tool_call_turns(
+        cls, v: int | str | list[int], info: ValidationInfo
+    ) -> list[int]:
         """Convert an int N to [0, ..., N-1]; pass lists through sorted.
 
         Strings are parsed as JSON to support CLI/env-var coercion.
@@ -250,27 +252,27 @@ class SyntheticTextDataArgs(DataArgs):
         expanded to all turn indices by :meth:`_validate_tool_call_turn_indices`
         once ``self.turns`` is available.
         """
+        field = info.field_name
         if isinstance(v, str):
             try:
                 v = json.loads(v)
             except (json.JSONDecodeError, ValueError) as err:
                 raise ValueError(
-                    f"tool_call_turns string must be a JSON int or list of ints,"
-                    f" got {v!r}"
+                    f"{field} string must be a JSON int or list of ints, got {v!r}"
                 ) from err
         if isinstance(v, int):
             if v == -1:
                 return [-1]
             if v < 0:
-                raise ValueError("tool_call_turns int must be >= 0 or -1 for all")
+                raise ValueError(f"{field} int must be >= 0 or -1 for all")
             return list(range(v))
         if not isinstance(v, list):
             raise ValueError(
-                f"tool_call_turns must be int, list[int], or a JSON string,"
-                f" got {type(v)}"
+                f"{field} must be int, list[int], or a JSON representation"
+                f" of either, got {type(v)}"
             )
         if len(v) != len(set(v)):
-            raise ValueError("tool_call_turns list must not contain duplicates")
+            raise ValueError(f"{field} list must not contain duplicates")
         return sorted(v)
 
     @model_validator(mode="after")
