@@ -9,7 +9,8 @@ Detailed use of the replay profile and file-based datasets as a whole is explain
 These are passed to the `--data` argument as `kind=format`:
 
 - `trace_synthetic`: A trace format that does the bare minimum needed to complete a fully functioning trace replay benchmark with synthetic prompt generation
-- `mooncake`: The trace format used by the serving platform Mooncake, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
+- `mooncake`: The trace format used by the serving platform *Mooncake*, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
+- `weka`: The trace format used by WEKA's *Augmented Memory Grid*, as specified [in the original research repository](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md).
 
 ## Format-Agnostic Data Arguments
 
@@ -36,9 +37,18 @@ guidellm benchmark \
 
 ### `mooncake`
 
-The Mooncake format expects an additional column for hash IDs. During prompt generation, hash IDs sharing the same previous ID are required to represent distinct blocks of token ids.
+The Mooncake format expects an additional column for prefix-based cache hash IDs. During prompt generation, hash IDs sharing the same previous ID are required to represent distinct blocks of token ids.
 
 | Argument             | Default    | Description                                         |
 | -------------------- | ---------- | --------------------------------------------------- |
 | `hash_ids_column`    | "hash_ids" | Column name for lists of hash IDs in the trace file |
 | `hash_id_block_size` | 512        | Amount of tokens represented by one hash ID         |
+
+### `weka`
+
+The WEKA format expects an additional column for prefix-based cache hash IDs. During prompt generation, hash IDs sharing the same previous ID are required to represent distinct blocks of token ids.
+
+| Argument             | Default    | Description                                         |
+| -------------------- | ---------- | --------------------------------------------------- |
+| `hash_ids_column`    | "hash_ids" | Column name for lists of hash IDs in the trace file |
+| `hash_id_block_size` | 64         | Amount of tokens represented by one hash ID         |
