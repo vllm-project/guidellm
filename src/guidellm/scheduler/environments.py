@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Generic
 
-from guidellm.scheduler.constraints import Constraint
+from guidellm.scheduler.constraints import Constraint, ConstraintInitializer
 from guidellm.scheduler.schemas import (
     DatasetIterT,
     RequestT,
@@ -53,11 +53,11 @@ class Environment(ABC, Generic[RequestT, ResponseT], InfoMixin):
         self,
         requests: DatasetIterT[RequestT],
         strategy: SchedulingStrategy,
-        constraints: dict[str, Constraint],
+        constraints: dict[str, Constraint | ConstraintInitializer],
     ) -> tuple[
         DatasetIterT[RequestT],
         SchedulingStrategy,
-        dict[str, Constraint],
+        dict[str, Constraint | ConstraintInitializer],
     ]:
         """
         Synchronize execution parameters across nodes and resolve local scope.
@@ -176,11 +176,11 @@ class NonDistributedEnvironment(Environment[RequestT, ResponseT]):
         self,
         requests: DatasetIterT[RequestT],
         strategy: SchedulingStrategy,
-        constraints: dict[str, Constraint],
+        constraints: dict[str, Constraint | ConstraintInitializer],
     ) -> tuple[
         DatasetIterT[RequestT],
         SchedulingStrategy,
-        dict[str, Constraint],
+        dict[str, Constraint | ConstraintInitializer],
     ]:
         """
         Return parameters unchanged for single-node execution.
