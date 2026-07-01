@@ -10,3 +10,6 @@ __getattr__, __dir__, __all__ = lazy.attach_extras(
     },
     error_message="Please install guidellm[vision] to use image/video features",
 )
+
+iio = lazy.load("imageio.v3", suppress_warning=True)
+__all__.append("iio")
