@@ -33,14 +33,14 @@ __all__ = ["WEKATraceFormatArgs"]
 
 def _is_in_table(hash_id_table: list[Any], hash_id: int) -> bool:
     return (
-        hash_id <= len(hash_id_table)
-        and hash_id > 0
+        hash_id < len(hash_id_table)
+        and hash_id >= 0
         and hash_id_table[hash_id] is not None
     )
 
 
 def _resize_to_hold_id(hash_id_table: list[Any], hash_id: int) -> None:
-    num_new_entries = hash_id - len(hash_id_table)
+    num_new_entries = hash_id - (len(hash_id_table) - 1)
     hash_id_table.extend(None for _ in range(num_new_entries))
 
 
@@ -81,6 +81,8 @@ def _create_prompt_from_hash_ids(
 def _generate_remaining_prompt(
     num_tokens: int, processor: PreTrainedTokenizerBase, faker: Faker
 ) -> str:
+    if num_tokens == 0:
+        return ""
     token_ids = generate_token_ids(num_tokens, processor, faker)
     return decode_prompt(processor, token_ids)
 
@@ -126,10 +128,10 @@ class WEKATraceFormat(TraceFormatBase):
                     f"Hash ID must be greater than 0, got {hash_id}"
                 )
         # WEKA format drops what would be the partially filled hash ID
-        if math.ceil(n_in / config.hash_id_block_size) - 1 != n_blocks:
+        if math.floor(n_in / config.hash_id_block_size) != n_blocks:
             raise DataNotSupportedError(
                 f"Input token count of {n_in} split into blocks of size "
-                f"{config.hash_id_block_size} full blocks does not match given"
+                f"{config.hash_id_block_size} full blocks does not match given "
                 f"{n_blocks} blocks"
             )
 
@@ -141,8 +143,11 @@ class WEKATraceFormat(TraceFormatBase):
         faker: Faker,
     ) -> str:
         """Before generating the prompt, this first generates a block of tokens for
-        each hash ID that has not already been seen."""
-        ids = row[config.hash_ids_column]
+        each hash ID that has not already been seen.
+
+        Internally (after validation) hash IDs are decremented so that they start from
+        0 instead of WEKA format's default of 1."""
+        ids = list(map(lambda id: id - 1, row[config.hash_ids_column]))
         for idx, hash_id in enumerate(ids):
             if not _is_in_table(self.hash_id_table, hash_id):
                 _resize_to_hold_id(self.hash_id_table, hash_id)
@@ -157,7 +162,7 @@ class WEKATraceFormat(TraceFormatBase):
                 self.sibling_token_blocks[prev_id].append(self.hash_id_table[hash_id])
         prompt = _create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
         remainder = _generate_remaining_prompt(
-            config.prompt_tokens_column % config.hash_id_block_size,
+            (row[config.prompt_tokens_column] + 1) % config.hash_id_block_size,
             processor,
             faker,
         )
