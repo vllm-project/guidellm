@@ -162,8 +162,8 @@ class WEKATraceFormat(TraceFormatBase):
                 self.sibling_token_blocks[prev_id].append(self.hash_id_table[hash_id])
         prompt = _create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
         remainder = _generate_remaining_prompt(
-            (row[config.prompt_tokens_column] + 1) % config.hash_id_block_size,
+            row[config.prompt_tokens_column] % config.hash_id_block_size,
             processor,
             faker,
         )
-        return prompt + remainder
+        return prompt + " " + remainder

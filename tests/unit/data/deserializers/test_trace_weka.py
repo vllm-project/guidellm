@@ -205,6 +205,32 @@ class TestWEKATraceFormat:
             if actual_prompt_length != in_cnt:
                 pytest.fail(f"{actual_prompt_length} != {in_cnt}")
 
+    @pytest.mark.smoke
+    def test_prompt_matching_or_bordering_block_size(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        n_rows = 3
+        n_in = [i for i in range(default_block_size - 1, default_block_size + 2)]
+        hash_ids = make_valid_hash_ids(n_in, default_block_size)
+        trace = write_trace(
+            tmp_path,
+            generate_trace(
+                n_rows,
+                [
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda i: n_in[i]),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: hash_ids[i])
+                ]
+            ),
+        )
+        processor = ascending_processor()
+        ds = self._deserialize(deserializer, trace)
+        for row in ds:
+            actual_prompt_length = len(processor.encode(row["prompt"]))
+            if actual_prompt_length != row["prompt_tokens_count"]:
+                pytest.fail(f"{actual_prompt_length} != {row["prompt_tokens_count"]}")
+
     @pytest.mark.sanity
     @pytest.mark.parametrize(
         ("content", "kwargs", "match"),
