@@ -28,9 +28,12 @@ Flat settings can be specified using comma-separated key=value pairs; for nested
 
 GuideLLM supports OpenAI-compatible HTTP servers, which provide a standardized API for interacting with LLMs. This includes popular implementations such as [vLLM](https://github.com/vllm-project/vllm) and [Text Generation Inference (TGI)](https://github.com/huggingface/text-generation-inference). These servers allow GuideLLM to perform evaluations, benchmarks, and optimizations with minimal setup.
 
-### vLLM Python backend
+### vLLM Python Backends
 
-GuideLLM supports running inference in the same process using the **vLLM Python backend** (`vllm_python`). This backend runs inference in the same process as GuideLLM's using vLLM's python API (AsyncLLMEngine), without an HTTP server. For setup, installation options (container, existing vLLM, pip), and examples, see [vLLM Python backend](vllm-python-backend.md).
+GuideLLM supports running inference in the same process using vLLM's Python API, without an HTTP server:
+
+- **vLLM Python backend** (`vllm_python`): Uses vLLM's AsyncLLMEngine for async streaming inference. For setup and examples, see [vLLM Python backend](vllm-python-backend.md).
+- **vLLM Offline backend** (`vllm_offline`): Uses vLLM's LLM class for batch processing with micro-batching. Designed for offline benchmarking where batch efficiency is prioritized over streaming latency. For setup and examples, see [vLLM Offline backend](vllm-offline-backend.md).
 
 ## Examples for Spinning Up Compatible Servers
 
