@@ -136,6 +136,10 @@ class TestSyntheticDatasetConfig:
             output_tokens_stdev=5,
             output_tokens_min=20,
             output_tokens_max=40,
+            delay=1.2,
+            delay_stdev=0.5,
+            delay_min=0.1,
+            delay_max=2.4,
         )
 
         assert config.prefix_buckets[0].prefix_tokens == 5  # type: ignore [index]
@@ -147,6 +151,10 @@ class TestSyntheticDatasetConfig:
         assert config.output_tokens_stdev == 5
         assert config.output_tokens_min == 20
         assert config.output_tokens_max == 40
+        assert config.delay == 1.2
+        assert config.delay_stdev == 0.5
+        assert config.delay_min == 0.1
+        assert config.delay_max == 2.4
 
     @pytest.mark.regression
     def test_parse_json_string(self):
@@ -158,6 +166,7 @@ class TestSyntheticDatasetConfig:
             {
                 "prompt_tokens": 75,
                 "output_tokens": 25,
+                "delay": 1.2,
                 "prefix_buckets": [
                     {"bucket_weight": 100, "prefix_count": 1, "prefix_tokens": 10}
                 ],
@@ -168,6 +177,7 @@ class TestSyntheticDatasetConfig:
 
         assert config.prompt_tokens == 75
         assert config.output_tokens == 25
+        assert config.delay == 1.2
         assert config.prefix_buckets[0].prefix_tokens == 10  # type: ignore [index]
 
     @pytest.mark.sanity
@@ -182,9 +192,19 @@ class TestSyntheticDatasetConfig:
         with pytest.raises(ValueError):
             SyntheticTextDataArgs(prompt_tokens=20, output_tokens=0)
 
+        with pytest.raises(ValueError):
+            SyntheticTextDataArgs(prompt_tokens=20, output_tokens=20, delay=0.0)
+
         # Test negative prefix tokens via PrefixBucketConfig validation
         with pytest.raises(ValueError):
             SyntheticTextPrefixBucketConfig(prefix_tokens=-1)
+
+    @pytest.mark.sanity
+    def test_validation_positive_or_zero(self):
+        """`delay_min` will take 0.0 as a valid value."""
+        SyntheticTextDataArgs(prompt_tokens=20, delay=1.2, delay_min=0.0)
+        with pytest.raises(ValueError):
+            SyntheticTextDataArgs(prompt_tokens=20, delay=1.2, delay_min=-0.1)
 
     @pytest.mark.regression
     def test_validation_optional_positive_values(self):
@@ -605,6 +625,7 @@ class TestSyntheticTextDatasetMultiturn:
         config = SyntheticTextDataArgs(
             prompt_tokens=50,
             output_tokens=25,
+            delay=3.0,
             turns=1,
         )
         dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
@@ -617,6 +638,7 @@ class TestSyntheticTextDatasetMultiturn:
         assert "prompt_0" in item
         assert "prompt_tokens_count_0" in item
         assert "output_tokens_count_0" in item
+        assert "requeue_delay_0" in item
 
         # Should not have prompt_1, etc
         assert "prompt_1" not in item
@@ -631,6 +653,7 @@ class TestSyntheticTextDatasetMultiturn:
         config = SyntheticTextDataArgs(
             prompt_tokens=50,
             output_tokens=25,
+            delay=3.0,
             turns=3,
         )
         dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
@@ -643,6 +666,7 @@ class TestSyntheticTextDatasetMultiturn:
             assert f"prompt_{turn}" in item
             assert f"prompt_tokens_count_{turn}" in item
             assert f"output_tokens_count_{turn}" in item
+            assert f"requeue_delay_{turn}" in item
 
         # Should not have prompt_3
         assert "prompt_3" not in item
