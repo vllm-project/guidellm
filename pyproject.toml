@@ -11,6 +11,13 @@ include = ["*"]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
 
+[tool.uv]
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
+
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -86,9 +93,10 @@ tokenizers = ["tiktoken", "blobfile", "mistral-common"]
 audio = [
     # Version with stable aarch64 CPU-only wheels
     "datasets[audio]>=4.1.0",
-    # Torchcodec 0.13 requires PyTorch >= 2.11
-    "torch==2.11.*",
-    "torchcodec==0.13.*",
+    # Torchcodec 0.11 requires PyTorch == 2.11
+    # Torchcodec >=0.12 requires PyTorch >= 2.11
+    "torch>=2.11",
+    "torchcodec>=0.11",
 ]
 vision = [
     "datasets[vision]",
