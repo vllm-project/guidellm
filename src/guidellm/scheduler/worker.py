@@ -426,7 +426,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Record Turn
             history.append((request, response))
 
-            response = request = request_info = None
+            response = request = None
         except asyncio.CancelledError:
             premature_exit = True
             # Handle cancellation
