@@ -4,6 +4,11 @@ from collections.abc import Iterator
 from types import UnionType
 from typing import Annotated, Literal, Union, get_args, get_origin
 
+# NOTE: Sentinel is sentinel in newer (unreleased) version of typing_extensions
+# which matches the accepted version of PEP 661 in Python 3.15+
+# NOTE: Not sure why but mypy doesn't recognize Sentinel as a type
+from typing_extensions import Sentinel  # type: ignore[attr-defined]
+
 # Backwards compatibility for Python <3.12
 try:
     from typing import TypeAliasType  # type: ignore[attr-defined]
@@ -11,7 +16,10 @@ except ImportError:
     from typing_extensions import TypeAliasType
 
 
-__all__ = ["get_literal_vals"]
+__all__ = ["BLANK", "get_literal_vals"]
+
+
+BLANK = Sentinel("BLANK")
 
 
 def get_literal_vals(alias) -> frozenset[str]:

@@ -21,6 +21,7 @@ from guidellm.utils.click_pydantic import (
 )
 from guidellm.utils.console import Console
 from guidellm.utils.env_validator import validate_env_vars
+from guidellm.utils.typing import BLANK
 
 __all__ = [
     "run",
@@ -135,7 +136,7 @@ def run(**kwargs):  # noqa: C901, PLR0915
     try:
         args = BenchmarkScenario.create(
             spec=kwargs.get("spec", {}),
-            benchmarks=kwargs.get("benchmarks", []),
+            benchmarks=kwargs.get("benchmarks") or BLANK,
             metadata={"labels": dict(kwargs.get("labels", []))},
             scenario=kwargs.get("config"),
         )

@@ -5,6 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable, Hashable
 from typing import Any
 
+from guidellm.utils.typing import BLANK
+
+__all__ = [
+    "deep_filter",
+    "deep_update",
+    "recursive_key_update",
+]
+
 
 def recursive_key_update(d, key_update_func):
     if not isinstance(d, dict) and not isinstance(d, list):
@@ -39,6 +47,8 @@ def deep_update(dict1: dict, dict2: dict) -> None:
     Does not copy values. Does not merge lists.
     """
     for key, val in dict2.items():
+        if val is BLANK:
+            continue  # Skip updating this key if the value is BLANK
         if isinstance(val, dict) and key in dict1 and isinstance(dict1[key], dict):
             deep_update(dict1[key], val)
         else:
