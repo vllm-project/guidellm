@@ -23,7 +23,6 @@ from pydantic import (
     Field,
     model_validator,
 )
-from pydantic.utils import deep_update
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from guidellm.backends import BackendArgs
@@ -46,6 +45,7 @@ from guidellm.schemas import (
     standard_model_config,
 )
 from guidellm.utils.arg_string import ArgStringParser
+from guidellm.utils.dict import deep_update
 
 __all__ = [
     "BenchmarkArgs",
@@ -285,9 +285,7 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
     )
 
     @classmethod
-    def create(
-        cls, scenario: Path | str | None, **kwargs: dict[str, Any]
-    ) -> BenchmarkScenario:
+    def create(cls, scenario: Path | str | None, **kwargs: Any) -> BenchmarkScenario:
         """
         Create benchmark args from scenario file and keyword arguments.
 
@@ -330,7 +328,7 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
         # NOTE In the future replace deep_update with a more intelligent merging
         #      strategy that accounts for changes to `kind`.
         # Apply overrides from kwargs
-        constructor_kwargs = deep_update(constructor_kwargs, kwargs)
+        deep_update(constructor_kwargs, kwargs)
 
         return cls.model_validate(constructor_kwargs)
 
