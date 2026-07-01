@@ -91,7 +91,7 @@ class _MockToolBackend:
             else None
         )
 
-        if request.expects_tool_call and not self.has_tool_calls:
+        if request.turn_type == "client_tool_call" and not self.has_tool_calls:
             if self.tool_call_missing_behavior == "ignore_stop":
                 yield response, request_info
                 raise asyncio.CancelledError(
@@ -114,7 +114,7 @@ def _make_conversation(
     for i in range(num_turns):
         req = GenerationRequest(
             columns={"text_column": [f"turn_{i}"]},
-            expects_tool_call=(i < tool_call_turns),
+            turn_type="client_tool_call" if i < tool_call_turns else "standard",
         )
         info = RequestInfo(
             request_id=req.request_id,
@@ -194,8 +194,8 @@ class TestWorkerMissingToolCallBehavior:
         )
 
         assert len(remaining_conv) == 2
-        assert remaining_conv[0][0].expects_tool_call is True
-        assert remaining_conv[1][0].expects_tool_call is False
+        assert remaining_conv[0][0].turn_type == "client_tool_call"
+        assert remaining_conv[1][0].turn_type == "standard"
 
     @async_timeout(5.0)
     @pytest.mark.asyncio
@@ -369,4 +369,4 @@ class TestWorkerMissingToolCallBehavior:
         )
 
         assert len(remaining_conv) == 2
-        assert remaining_conv[0][0].expects_tool_call is True
+        assert remaining_conv[0][0].turn_type == "client_tool_call"

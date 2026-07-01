@@ -188,6 +188,10 @@ class MockTokenizer(PreTrainedTokenizerBase):
             else:
                 continue
 
+            # Skip None content (e.g. assistant tool_calls messages)
+            if content is None:
+                continue
+
             if isinstance(content, list):
                 content = " ".join(
                     part["text"] for part in content if part.get("type") == "text"

@@ -627,7 +627,7 @@ class OpenAIHTTPBackend(Backend):
         :param request: The generation request that was resolved.
         :param response: The compiled response from the model.
         """
-        if not request.expects_tool_call or response.tool_calls:
+        if request.turn_type != "client_tool_call" or response.tool_calls:
             return
 
         behavior = self._args.tool_call_missing_behavior

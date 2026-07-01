@@ -21,6 +21,7 @@ GenerativeDatasetColumnType = Literal[
     "audio_column",
     "tools_column",
     "tool_response_column",
+    "turn_type_column",
     "relative_timestamp_column",
 ]
 

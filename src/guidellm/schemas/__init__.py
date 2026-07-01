@@ -27,6 +27,7 @@ from .info import RequestInfo, RequestSettings, RequestTimings
 from .request import (
     GenerationRequest,
     GenerationRequestArguments,
+    TurnType,
     UsageMetrics,
 )
 from .request_stats import GenerativeRequestStats
@@ -64,6 +65,7 @@ __all__ = [
     "ToolCall",
     "ToolCallFunction",
     "TotalT",
+    "TurnType",
     "UsageMetrics",
     "standard_model_config",
 ]

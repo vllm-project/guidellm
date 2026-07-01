@@ -224,7 +224,7 @@ class TestGenerationResponse:
         )
         request = GenerationRequest(
             request_id="tc-err",
-            expects_tool_call=True,
+            turn_type="client_tool_call",
             output_metrics=UsageMetrics(text_tokens=20, tool_call_count=3),
         )
         info = RequestInfo(request_id="tc-err", status="errored")
@@ -248,7 +248,7 @@ class TestGenerationResponse:
         )
         request = GenerationRequest(
             request_id="no-tc-err",
-            expects_tool_call=False,
+            turn_type="standard",
             output_metrics=UsageMetrics(text_tokens=20),
         )
         info = RequestInfo(request_id="no-tc-err", status="errored")
@@ -273,7 +273,7 @@ class TestGenerationResponse:
         )
         request = GenerationRequest(
             request_id="tc-ok-none",
-            expects_tool_call=True,
+            turn_type="client_tool_call",
             output_metrics=UsageMetrics(text_tokens=20),
         )
         info = RequestInfo(request_id="tc-ok-none", status="completed")
