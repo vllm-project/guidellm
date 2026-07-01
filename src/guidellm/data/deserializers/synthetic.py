@@ -19,7 +19,7 @@ from guidellm.data.deserializers.deserializer import (
 from guidellm.data.schemas import DataArgs
 from guidellm.settings import settings
 from guidellm.utils.imports import json
-from guidellm.utils.random import IntegerRangeSampler
+from guidellm.utils.random import FloatRangeSampler, IntegerRangeSampler
 
 __all__ = [
     "SyntheticTextDataArgs",
@@ -123,6 +123,32 @@ class SyntheticTextDataArgs(DataArgs):
         gt=0,
         default=None,
         examples=[30],
+    )
+    delay: float | None = Field(
+        description='The average requeue delay, or "think time" for prompts.',
+        gt=0,
+        default=None,
+        examples=[10.0],
+    )
+    delay_stdev: float | None = Field(
+        description=(
+            'The standard deviation of requeue delays, or "think time" for prompts.'
+        ),
+        gt=0,
+        default=None,
+        examples=[1.0],
+    )
+    delay_min: float | None = Field(
+        description='The minimum requeue delay, or "think time" for prompts.',
+        gt=0,
+        default=None,
+        examples=[0.5],
+    )
+    delay_max: float | None = Field(
+        description='The maximum requeue delay, or "think time" for prompts.',
+        gt=0,
+        default=None,
+        examples=[5.0],
     )
     turns: int = Field(
         description=(
@@ -350,6 +376,20 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             if self.config.output_tokens is not None
             else None
         )
+        delay_sampler = (
+            iter(
+                FloatRangeSampler(
+                    average=self.config.delay,
+                    variance=self.config.delay_stdev,
+                    min_value=self.config.delay_min,
+                    max_value=self.config.delay_max,
+                    # ensure diff dist from prompts and outputs
+                    random_seed=iter_random_seed + 2,
+                )
+            )
+            if self.config.delay is not None
+            else None
+        )
 
         # Create a shared prefix if specified
         rand = Random(iter_random_seed + 3)
@@ -383,6 +423,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 if output_tokens_sampler is not None
                 else None
             )
+            delay = next(delay_sampler) if delay_sampler is not None else None
 
             row: dict[str, Any] = {"prefix": next(prefix_iter)}
             for turn in range(self.config.turns):
@@ -394,6 +435,8 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 row[f"prompt_tokens_count_{turn}"] = prompt_tokens_count
                 if output_tokens_count is not None:
                     row[f"output_tokens_count_{turn}"] = output_tokens_count
+                if delay is not None:
+                    row[f"delay_{turn}"] = delay
 
                 if tools_defs is not None and turn in tool_call_turns_set:
                     row[f"tools_{turn}"] = json.dumps(tools_defs)
@@ -426,6 +469,8 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             features[f"prompt_tokens_count_{i}"] = Value("int32")
             if self.config.output_tokens is not None:
                 features[f"output_tokens_count_{i}"] = Value("int32")
+            if self.config.delay is not None:
+                features[f"delay_{i}"] = Value("float")
 
             if i in set(self.config.tool_call_turns):
                 # Tools column is a JSON-serialised list; store as string
