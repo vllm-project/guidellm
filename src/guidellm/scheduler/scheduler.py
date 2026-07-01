@@ -15,7 +15,6 @@ from typing import Generic
 from guidellm.scheduler.constraints import (
     Constraint,
     ConstraintInitializer,
-    ConstraintsInitializerFactory,
 )
 from guidellm.scheduler.environments import Environment, NonDistributedEnvironment
 from guidellm.scheduler.schemas import (
@@ -111,21 +110,18 @@ class Scheduler(
             # and will ensure clean up before raising the error.
             try:
                 # Setup local run parameters, sync with the environment
-                resolved_constraints = ConstraintsInitializerFactory.resolve(
-                    constraints
-                )
                 (
                     local_requests,
                     local_strategy,
                     local_constraints,
-                ) = await env.sync_run_params(requests, strategy, resolved_constraints)
+                ) = await env.sync_run_params(requests, strategy, constraints)
 
                 # Setup the worker group, sync start with the environment
                 worker_group = WorkerProcessGroup[RequestT, ResponseT](
                     requests=local_requests,
                     backend=backend,
                     strategy=local_strategy,
-                    **local_constraints,
+                    **local_constraints,  # type: ignore[arg-type]
                 )
                 await worker_group.create_processes()
                 local_start_time = await env.sync_run_start()
