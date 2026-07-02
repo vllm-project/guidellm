@@ -101,6 +101,7 @@ audio = [
 vision = [
     "datasets[vision]",
     "pillow",
+    "imageio[ffmpeg]",
 ]
 # Dev Tooling
 dev = [
