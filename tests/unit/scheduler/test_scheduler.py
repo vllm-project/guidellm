@@ -22,7 +22,7 @@ from guidellm.scheduler.constraints import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
 )
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 from tests.unit.testing_utils import async_timeout
 
@@ -178,7 +178,10 @@ class TestScheduler:
     ):
         """Test Scheduler.run basic functionality with various parameters."""
         instance, _ = valid_instances
-        requests = [[MockRequest(payload=f"req_{i}")] for i in range(num_requests)]
+        requests = [
+            [(MockRequest(payload=f"req_{i}"), RequestSettings())]
+            for i in range(num_requests)
+        ]
         backend = MockBackend(error_rate=0.0, response_delay=0.001)
         strategy = SynchronousStrategy()
         env = NonDistributedEnvironment()
@@ -204,7 +207,9 @@ class TestScheduler:
     async def test_run_with_errors(self, valid_instances):
         """Test Scheduler.run error handling."""
         instance, _ = valid_instances
-        requests = [MockRequest(payload=f"req_{i}") for i in range(5)]
+        requests = [
+            [(MockRequest(payload=f"req_{i}"), RequestSettings())] for i in range(5)
+        ]
         backend = MockBackend(error_rate=1.0)  # Force all requests to error
         strategy = SynchronousStrategy()
         env = NonDistributedEnvironment()
@@ -247,7 +252,9 @@ class TestScheduler:
     async def test_run_constraint_variations(self, valid_instances):
         """Test Scheduler.run with different constraint types."""
         instance, _ = valid_instances
-        requests = [MockRequest(payload=f"req_{i}") for i in range(3)]
+        requests = [
+            [(MockRequest(payload=f"req_{i}"), RequestSettings())] for i in range(3)
+        ]
         backend = MockBackend(error_rate=0.0, response_delay=0.001)
         strategy = SynchronousStrategy()
         env = NonDistributedEnvironment()

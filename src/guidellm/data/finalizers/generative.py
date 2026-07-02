@@ -38,7 +38,9 @@ class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
 
 
 @FinalizerRegistry.register("generative")
-class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
+class GenerativeRequestFinalizer(
+    DatasetFinalizer[Iterable[tuple[GenerationRequest, RequestSettings]]]
+):
     """
     Finalizer that converts dataset rows into GenerationRequest objects,
     aggregating usage metrics from the provided columns.
@@ -47,10 +49,12 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
     def __init__(self, config: GenerativeRequestFinalizerArgs) -> None:
         self.config = config
 
-    def __call__(self, items: list[dict[str, Any]]) -> list[GenerationRequest]:
-        results: list[GenerationRequest] = []
+    def __call__(
+        self, items: list[dict[str, Any]]
+    ) -> list[tuple[GenerationRequest, RequestSettings]]:
+        results: list[tuple[GenerationRequest, RequestSettings]] = []
         for item in items:
-            request = self.finalize_turn(item)
+            request, settings = self.finalize_turn(item)
             if request.turn_type == "client_tool_call":
                 # Split tool-calling turns: the tool_response_column moves
                 # to a separate injection turn that follows the tool call.
@@ -61,21 +65,24 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
                 # Move output metrics to next turn
                 metrics_config = request.output_metrics
                 request.output_metrics = UsageMetrics()
-                results.append(request)
+                results.append((request, RequestSettings()))
                 results.append(
-                    GenerationRequest(
-                        columns=injection_columns,
-                        turn_type="tool_response_injection",
-                        output_metrics=metrics_config,
+                    (
+                        GenerationRequest(
+                            columns=injection_columns,
+                            turn_type="tool_response_injection",
+                            output_metrics=metrics_config,
+                        ),
+                        settings,
                     )
                 )
             else:
-                results.append(request)
+                results.append((request, settings))
         return results
 
     def finalize_turn(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]
-    ) -> GenerationRequest:
+    ) -> tuple[GenerationRequest, RequestSettings]:
         input_metrics = UsageMetrics()
         output_metrics = UsageMetrics()
 
@@ -181,13 +188,26 @@ class GenerativeRequestFinalizer(DatasetFinalizer[Iterable[GenerationRequest]]):
             turn_type=turn_type,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
-            settings=self._request_settings_from_columns(columns),
+        ), RequestSettings(
+            relative_timestamp=self._get_optional_column_value(
+                columns, "relative_timestamp_column"
+            ),
+            requeue_delay=self._get_optional_column_value(
+                columns, "requeue_delay_column"
+            ),
         )
 
-    def _request_settings_from_columns(
-        self, columns: dict[str, Any]
-    ) -> RequestSettings:
-        relative_values = columns.get("relative_timestamp_column", [])
-        if relative_values and relative_values[0] is not None:
-            return RequestSettings(relative_timestamp=float(relative_values[0]))
-        return RequestSettings()
+    @staticmethod
+    def _get_optional_column_value(
+        columns: dict[str, Any],
+        column_name: str,
+    ) -> Any | None:
+        """
+        Retrieve the first value from a specified column in the columns dictionary.
+
+        :param columns: A dictionary containing columns.
+        :param column_name: The name of the column to retrieve the value from.
+        :return: The first value from the specified column
+        """
+        values = columns.get(column_name, [])
+        return values[0] if values else None
