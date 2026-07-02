@@ -56,13 +56,13 @@ __all__ = ["ExtraAttr", "attach", "attach_extras", "attach_stub", "load"]
 class ExtraAttr(typing.NamedTuple):
     """Descriptor for a lazily imported attribute in :func:`attach_extras`.
 
-    :param source: Dotted module path to import from.
-    :param alias: Attribute name inside *source*.  When ``None`` (the
-        default), the dictionary key passed to ``attach_extras`` is used.
+    :param path: Dotted module path to import from.
+    :param name: Attribute name inside *path*. Only nessary if the attribute name
+        differs from the exported name.
     """
 
-    source: str
-    alias: str | None = None
+    path: str
+    name: str | None = None
 
 
 threadlock = threading.Lock()
@@ -160,11 +160,11 @@ def attach(
     return __getattr__, __dir__, __all__.copy()
 
 
-def _attach_extras_attrs(module_name, attrs, error_message):
+def _attach_extras_attrs(module_name, attrs: dict[str, ExtraAttr], error_message):
     _attr_map = {}
     for export_name, spec in attrs.items():
-        source_attr = spec.alias if spec.alias is not None else export_name
-        _attr_map[export_name] = (spec.source, source_attr)
+        source_attr = spec.name if spec.name is not None else export_name
+        _attr_map[export_name] = (spec.path, source_attr)
 
     _all = sorted(_attr_map.keys())
 
@@ -242,7 +242,7 @@ def attach_extras(
 
     :param module_name: Typically use ``__name__``.
     :param attrs: Map of exported names to :class:`ExtraAttr` descriptors.
-        Each value specifies the *source* module and an optional *alias*
+        Each value specifies the *source* module and an optional *attr*
         (the attribute name inside *source*, when it differs from the
         dictionary key).
     :param package: Name of a package whose public attributes should be

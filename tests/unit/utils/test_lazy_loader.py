@@ -299,7 +299,7 @@ def test_attach_extras_attrs_installed_package():
         "test_extras_attrs",
         attrs={
             "sin": lazy.ExtraAttr("math"),
-            "mypi": lazy.ExtraAttr("math", alias="pi"),
+            "mypi": lazy.ExtraAttr("math", "pi"),
         },
         error_message="install math",
     )
@@ -313,7 +313,7 @@ def test_attach_extras_attrs_alias():
     """## WRITTEN BY AI ##"""
     ga, _, _ = lazy.attach_extras(
         "test_extras_alias",
-        attrs={"my_sep": lazy.ExtraAttr("os.path", alias="sep")},
+        attrs={"my_sep": lazy.ExtraAttr("os.path", "sep")},
         error_message="install os",
     )
     import os.path
@@ -325,7 +325,7 @@ def test_attach_extras_attrs_submodule_fallback():
     """## WRITTEN BY AI ##"""
     ga, _, _ = lazy.attach_extras(
         "test_extras_submod",
-        attrs={"path": lazy.ExtraAttr("os", alias="path")},
+        attrs={"path": lazy.ExtraAttr("os", "path")},
         error_message="install os",
     )
     import os.path
