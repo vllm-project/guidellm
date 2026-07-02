@@ -5,6 +5,7 @@ from abc import ABC
 from typing import Protocol
 
 import pytest
+from disdantic import InfoMixin
 from pydantic import ValidationError
 
 from guidellm.scheduler import (
@@ -32,7 +33,6 @@ from guidellm.scheduler.constraints import (
 )
 from guidellm.scheduler.constraints.args import ConstraintArgs
 from guidellm.schemas import RequestInfo, StandardBaseModel
-from guidellm.utils.mixins import InfoMixin
 
 
 class TestConstraint:

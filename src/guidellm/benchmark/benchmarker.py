@@ -15,6 +15,8 @@ from abc import ABC
 from collections.abc import AsyncIterator
 from typing import Generic
 
+from disdantic import InfoMixin
+
 from guidellm.benchmark.profiles import Profile
 from guidellm.benchmark.progress import BenchmarkerProgress
 from guidellm.benchmark.schemas import (
@@ -34,7 +36,6 @@ from guidellm.scheduler import (
     Scheduler,
     SchedulingStrategy,
 )
-from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
 __all__ = ["Benchmarker"]

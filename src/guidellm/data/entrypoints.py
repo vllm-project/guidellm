@@ -2,6 +2,7 @@ from pathlib import Path
 from random import Random
 from typing import Any
 
+from disdantic import InfoMixin
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data import builders
@@ -24,7 +25,6 @@ from guidellm.data.schemas import (
 )
 from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.utils.console import Console
-from guidellm.utils.mixins import InfoMixin
 
 
 async def create_data_loader(
