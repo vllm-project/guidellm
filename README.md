@@ -201,6 +201,10 @@ guidellm run \
 - `--data-loader type=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
 - `--tokenizer huggingface_auto "model=gpt2"`: Tokenizer for synthetic data or local token counting
 
+### Synthetic Visual Data
+
+GuideLLM can synthesize images and short videos on the fly so you can benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Two `--data` kinds — `synthetic_image` and `synthetic_video` — compose with `synthetic_text` for multimodal prompts. See [Synthetic Visual Data](docs/guides/multimodal/synthetic_vision.md) for example commands and the full list of configuration options.
+
 ### Request Types and API Targets
 
 You can benchmark chat completions, text completions, or other supported request types. This example configures the benchmark to test the chat completions API using a custom dataset file, with GuideLLM automatically formatting requests to match the chat completions schema.
