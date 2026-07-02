@@ -115,14 +115,14 @@ dev = [
     "setuptools-git-versioning>=2.0,<3",
 
     # testing
-    "pytest~=8.2.2",
-    "pytest-asyncio~=1.1.0",
-    "pytest-cov~=5.0.0",
-    "pytest-mock~=3.14.0",
-    "pytest-rerunfailures~=14.0",
+    "pytest~=9.1.1",
+    "pytest-asyncio~=1.4.0",
+    "pytest-cov~=7.1.0",
+    "pytest-mock~=3.15.1",
+    "pytest-rerunfailures~=16.4",
     "pytest-timeout~=2.4.0",
-    "pytest-httpx~=0.35.0",
-    "respx~=0.22.0",
+    "pytest-httpx~=0.36.2",
+    "respx~=0.23.1",
 
     # code quality
     "mypy~=1.15.0",
