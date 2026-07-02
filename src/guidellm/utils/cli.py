@@ -43,13 +43,13 @@ def parse_list(ctx, param, value) -> list[str] | None:
 
     if isinstance(value, str) and "," in value:
         # Handle comma-separated strings
-        result = []
+        result: list[str] = []
         for item in value.split(","):
             stripped = item.strip()
             if stripped:
                 result.append(stripped)
             else:
-                result.append(BLANK)
+                result.append(BLANK)  # type: ignore[arg-type]
         return result
 
     if isinstance(value, str):

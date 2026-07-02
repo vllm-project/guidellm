@@ -429,8 +429,8 @@ def _process_single_row(
     :return: Processed row dictionary or None if row should be skipped.
     """
     # Extract prompt and prefix
-    prompt_text = row.get(prompt_column, "")
-    prefix_text = row.get(prefix_column) if prefix_column else None
+    prompt_text: str = row.get(prompt_column, "")
+    prefix_text: str | None = row.get(prefix_column) if prefix_column else None
 
     # Sample target prompt token count
     target_prompt_len = next(prompt_token_sampler)
@@ -442,7 +442,7 @@ def _process_single_row(
         if prefix_tokens_max is not None:
             prefix_tokens_list = tokenizer.encode(prefix_text)
             if len(prefix_tokens_list) > prefix_tokens_max:
-                prefix_text = tokenizer.decode(prefix_tokens_list[:prefix_tokens_max])
+                prefix_text = tokenizer.decode(prefix_tokens_list[:prefix_tokens_max])  # type: ignore[assignment]
 
         # Count prefix tokens toward prompt if enabled
         if include_prefix_in_token_count:
@@ -478,7 +478,7 @@ def _process_single_row(
     # Trim long prompts
     tokens = tokenizer.encode(prompt_text)
     if len(tokens) > target_prompt_len:
-        prompt_text = tokenizer.decode(tokens[:target_prompt_len])
+        prompt_text = tokenizer.decode(tokens[:target_prompt_len])  # type: ignore[assignment]
         tokens = tokenizer.encode(prompt_text)
 
     # Sample output token count
