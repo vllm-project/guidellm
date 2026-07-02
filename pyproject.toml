@@ -103,7 +103,8 @@ vision = [
     "pillow",
     "imageio[ffmpeg]",
 ]
-# Dev Tooling
+
+[dependency-groups]
 dev = [
     # Install all optional dependencies
     "guidellm[all]",
@@ -140,9 +141,6 @@ dev = [
     # link checking
     "mkdocs-linkcheck~=1.0.6",
 ]
-
-[dependency-groups]
-dev = ["guidellm[dev]"]
 ci = [
     "pre-commit",
     "tox",
