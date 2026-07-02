@@ -131,8 +131,6 @@ guidellm run --profile kind=throughput,max_concurrency=10
 | `max_concurrency` | Number of concurrent request streams     | `--profile kind=throughput,max_concurrency=10`                    |
 | `rampup_duration` | Seconds to ramp up to maximum throughput | `--profile kind=throughput,max_concurrency=10,rampup_duration=10` |
 
-You can use the `--override` option to specify a list of maximum concurrency values, to run a set of throughput "strategies" (sub-benchmarks) with different maximum concurrency values. For example, `--profile kind=throughput --override profile.max_concurrency 10,20,30` will run a throughput strategy with 10 concurrent requests, a throughput strategy with 20 concurrent requests, and a throughput strategy with 30 concurrent requests.
-
 #### Concurrent Profile
 
 Runs a fixed number of parallel request streams.
