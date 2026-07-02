@@ -5103,7 +5103,8 @@ class TestChatCompletionsToolChoiceOverride:
                 "output_tokens_count_column": [100],
             },
         ]
-        requests = finalizer(items)
+        rows = finalizer(items)
+        requests = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
 
         assert len(requests) == 2
         tool_call_req, injection_req = requests
