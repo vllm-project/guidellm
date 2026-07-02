@@ -119,7 +119,7 @@ class Union(click.ParamType):
         self.types = types
         self.name = "".join(t.name for t in types)
 
-    def convert(self, value, param, ctx):
+    def convert(self, value, param, ctx):  # noqa: RET503
         fails = []
         for t in self.types:
             try:
@@ -128,7 +128,7 @@ class Union(click.ParamType):
                 fails.append(str(e))
                 continue
 
-        self.fail("; ".join(fails) or f"Invalid value: {value}")  # noqa: RET503
+        self.fail("; ".join(fails) or f"Invalid value: {value}")
 
     def get_metavar(self, param: click.Parameter, ctx: click.Context) -> str:
         def get_choices(t: click.ParamType) -> str:
