@@ -632,6 +632,24 @@ wheels = [
 ]
 
 [[package]]
+name = "disdantic"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "loguru" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "rich" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "tstr" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/56/75/20d6468ec8480e3cfe58eb50dbfe3bae547e0d3cf7687e230363889032f1/disdantic-0.1.0.tar.gz", hash = "sha256:957e81cde3fcb1813ba3dbc643fe732c50cb5a2d1f211cfdf85e055163ba2062", size = 604391, upload-time = "2026-06-13T13:52:13.27Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/dd/10dcbed3cf39e32160d2cb8775da2fa91e132388db5b649162f0b72ef700/disdantic-0.1.0-py3-none-any.whl", hash = "sha256:3ee0cc155f80061b2f8bf9473b57d80fe2526c3f5dfc733312e28d8e72a34529", size = 52808, upload-time = "2026-06-13T13:52:12.02Z" },
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -836,6 +854,7 @@ dependencies = [
     { name = "click" },
     { name = "culsans" },
     { name = "datasets" },
+    { name = "disdantic" },
     { name = "eval-type-backport" },
     { name = "faker" },
     { name = "ftfy" },
@@ -978,6 +997,7 @@ requires-dist = [
     { name = "datasets", specifier = ">=4.1.0" },
     { name = "datasets", extras = ["audio"], marker = "extra == 'audio'", specifier = ">=4.1.0" },
     { name = "datasets", extras = ["vision"], marker = "extra == 'vision'" },
+    { name = "disdantic", specifier = ">=0.1.0" },
     { name = "eval-type-backport" },
     { name = "faker" },
     { name = "ftfy", specifier = ">=6.0.0" },
@@ -4254,6 +4274,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fc/1a/70e830d53ecc96ce69cfa8de38f163712d2b43ac52fbd743f39f56025c31/transformers-5.3.0.tar.gz", hash = "sha256:009555b364029da9e2946d41f1c5de9f15e6b1df46b189b7293f33a161b9c557", size = 8830831, upload-time = "2026-03-04T17:41:46.119Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b8/88/ae8320064e32679a5429a2c9ebbc05c2bf32cefb6e076f9b07f6d685a9b4/transformers-5.3.0-py3-none-any.whl", hash = "sha256:50ac8c89c3c7033444fb3f9f53138096b997ebb70d4b5e50a2e810bf12d3d29a", size = 10661827, upload-time = "2026-03-04T17:41:42.722Z" },
+]
+
+[[package]]
+name = "tstr"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/40/88e526174c65fe84552c5b920b0b7ec0787c52148106932cb72020561080/tstr-0.4.1.tar.gz", hash = "sha256:bad326e07fe239eb4c63635964a6de9d55ff40ab223b04c6361b01c3b709523d", size = 47180, upload-time = "2026-04-11T22:49:36.447Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/93/07444ed2e23e5378da5e0468e26626955508a587bcfb2ffa95d1398582e0/tstr-0.4.1-py3-none-any.whl", hash = "sha256:2a7b387855fddb24e57edaaf347c37f6bde5c2673fbc851e576ee802d56c6bd3", size = 19839, upload-time = "2026-04-11T22:49:35.089Z" },
 ]
 
 [[package]]
