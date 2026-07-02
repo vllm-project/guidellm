@@ -847,7 +847,7 @@ await backend.process_shutdown()
 </span><span id=__span-0-627><a id=__codelineno-0-627 name=__codelineno-0-627></a><span class=sd>        :param request: The generation request that was resolved.</span>
 </span><span id=__span-0-628><a id=__codelineno-0-628 name=__codelineno-0-628></a><span class=sd>        :param response: The compiled response from the model.</span>
 </span><span id=__span-0-629><a id=__codelineno-0-629 name=__codelineno-0-629></a><span class=sd>        &quot;&quot;&quot;</span>
-</span><span id=__span-0-630><a id=__codelineno-0-630 name=__codelineno-0-630></a>        <span class=k>if</span> <span class=ow>not</span> <span class=n>request</span><span class=o>.</span><span class=n>expects_tool_call</span> <span class=ow>or</span> <span class=n>response</span><span class=o>.</span><span class=n>tool_calls</span><span class=p>:</span>
+</span><span id=__span-0-630><a id=__codelineno-0-630 name=__codelineno-0-630></a>        <span class=k>if</span> <span class=n>request</span><span class=o>.</span><span class=n>turn_type</span> <span class=o>!=</span> <span class=s2>&quot;client_tool_call&quot;</span> <span class=ow>or</span> <span class=n>response</span><span class=o>.</span><span class=n>tool_calls</span><span class=p>:</span>
 </span><span id=__span-0-631><a id=__codelineno-0-631 name=__codelineno-0-631></a>            <span class=k>return</span>
 </span><span id=__span-0-632><a id=__codelineno-0-632 name=__codelineno-0-632></a>
 </span><span id=__span-0-633><a id=__codelineno-0-633 name=__codelineno-0-633></a>        <span class=n>behavior</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>_args</span><span class=o>.</span><span class=n>tool_call_missing_behavior</span>
