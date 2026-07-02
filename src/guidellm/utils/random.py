@@ -70,11 +70,13 @@ class FloatRangeSampler:
                 self.average + 5 * self.variance if self.variance else self.average
             )
 
-        while True:
-            if calc_min == calc_max:
+        if calc_min == calc_max:
+            while True:
                 yield calc_min
-            elif not self.variance:
+        elif not self.variance:
+            while True:
                 yield self.rng.uniform(calc_min, calc_max)
-            else:
+        else:
+            while True:
                 rand = self.rng.gauss(self.average, self.variance)
                 yield round(max(calc_min, min(calc_max, rand)))
