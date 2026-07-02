@@ -2,7 +2,7 @@
 
 GuideLLM is designed to work with OpenAI-compatible HTTP servers, enabling seamless integration with a variety of generative AI backends. This compatibility ensures that users can evaluate and optimize their large language model (LLM) deployments efficiently. While the current focus is on OpenAI-compatible servers, we welcome contributions to expand support for other backends, including additional server implementations and Python interfaces.
 
-## CLI backend configuration
+## CLI Backend Configuration
 
 Backends are configured using the `--backend` option. You can only specify one backend per command. Select a registered backend type with `kind=<TYPE>` and configure parameters with key=value pairs:
 
@@ -28,7 +28,7 @@ Flat settings can be specified using comma-separated key=value pairs; for nested
 
 GuideLLM supports OpenAI-compatible HTTP servers, which provide a standardized API for interacting with LLMs. This includes popular implementations such as [vLLM](https://github.com/vllm-project/vllm) and [Text Generation Inference (TGI)](https://github.com/huggingface/text-generation-inference). These servers allow GuideLLM to perform evaluations, benchmarks, and optimizations with minimal setup.
 
-### vLLM Python backend
+### vLLM Python Backend
 
 GuideLLM supports running inference in the same process using the **vLLM Python backend** (`vllm_python`). This backend runs inference in the same process as GuideLLM's using vLLM's python API (AsyncLLMEngine), without an HTTP server. For setup, installation options (container, existing vLLM, pip), and examples, see [vLLM Python backend](vllm-python-backend.md).
 
@@ -137,7 +137,7 @@ The `--backend` config is parsed into keyword arguments for the backend construc
 - `headers`: A dictionary of additional HTTP headers to include in requests.
 - `params`: A dictionary of query parameters to append to the request URL.
 
-### Example: Combining sampling parameters with other backend options
+### Example: Combining Sampling Parameters with Other Backend Options
 
 ```bash
 guidellm run \

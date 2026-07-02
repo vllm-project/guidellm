@@ -2,7 +2,7 @@
 
 GuideLLM provides flexible options for outputting benchmark results, catering to both console-based summaries and file-based detailed reports. This document outlines the supported output types, their configurations, and how to utilize them effectively.
 
-## CLI output configuration
+## CLI Output Configuration
 
 Outputs follows the typed registry-backed CLI pattern. Repeat `--output` with the appropriate type for each format:
 
