@@ -9,6 +9,7 @@ from typing import Any, Literal
 from unittest.mock import Mock, patch
 
 import pytest
+from disdantic import RegistryMixin
 from pydantic import Field, ValidationError
 
 from guidellm.backends import Backend, BackendArgs
@@ -22,8 +23,11 @@ from guidellm.backends.vllm_python.vllm import (
     VLLMPythonBackend,
     VLLMPythonBackendArgs,
 )
-from guidellm.schemas import GenerationRequest, PydanticClassRegistryMixin, RequestInfo
-from guidellm.utils.registry import RegistryMixin
+from guidellm.schemas import (
+    GenerationRequest,
+    RequestInfo,
+    _PydanticClassRegistryMixin,
+)
 from tests.unit.testing_utils import async_timeout
 
 
@@ -47,7 +51,7 @@ class TestBackendArgs:
 
         ### WRITTEN BY AI ###
         """
-        assert issubclass(BackendArgs, PydanticClassRegistryMixin)
+        assert issubclass(BackendArgs, _PydanticClassRegistryMixin)
         assert BackendArgs.schema_discriminator == "kind"
         assert "kind" in BackendArgs.model_fields
         assert hasattr(BackendArgs, "register")

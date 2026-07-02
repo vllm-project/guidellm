@@ -3,10 +3,11 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any, Generic, Protocol, TypeVar
 
+from disdantic import RegistryMixin
+
 from guidellm.data.finalizers import DatasetFinalizer
 from guidellm.data.preprocessors import DatasetPreprocessor
 from guidellm.data.schemas import DataLoaderArgs, DatasetType
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["DataLoader", "DataLoaderRegistry"]
 

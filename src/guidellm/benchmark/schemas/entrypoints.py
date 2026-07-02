@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import yaml
+from disdantic import ReloadableBaseModel
 from pydantic import (
     AliasChoices,
     AliasGenerator,
@@ -39,8 +40,6 @@ from guidellm.data import (
 )
 from guidellm.scheduler.constraints import ConstraintArgs
 from guidellm.schemas import (
-    PydanticClassRegistryMixin,
-    ReloadableBaseModel,
     StandardBaseModel,
     standard_model_config,
 )

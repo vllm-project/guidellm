@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Protocol, cast
 
+from disdantic import RegistryMixin
 from more_itertools import roundrobin
 
 from guidellm.backends.openai.common import format_ws_error
@@ -26,7 +27,6 @@ from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
 from guidellm.utils.audio import pcm16_append_b64_chunks
 from guidellm.utils.imports import json
-from guidellm.utils.registry import RegistryMixin
 
 WS_AUDIO_CHUNKS_BODY_KEY = "audio_chunks"
 

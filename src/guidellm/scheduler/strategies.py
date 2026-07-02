@@ -26,7 +26,7 @@ from typing import Annotated, ClassVar, Literal, TypeVar
 
 from pydantic import Field, NonNegativeFloat, NonNegativeInt, PositiveInt, PrivateAttr
 
-from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo, RequestSettings
+from guidellm.schemas import RequestInfo, RequestSettings, _PydanticClassRegistryMixin
 from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
@@ -48,7 +48,7 @@ StrategyType = Annotated[
 ]
 
 
-class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoMixin):
+class SchedulingStrategy(_PydanticClassRegistryMixin["SchedulingStrategy"], InfoMixin):
     """
     Base class for scheduling strategies controlling request processing patterns.
 

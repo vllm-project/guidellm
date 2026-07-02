@@ -7,7 +7,7 @@ from typing import Any, get_args, get_origin
 import click
 from pydantic import BaseModel, ValidationError
 
-from guidellm.schemas import PydanticClassRegistryMixin
+from guidellm.schemas import _PydanticClassRegistryMixin
 from guidellm.utils.cli import parse_arguments
 
 __all__ = [
@@ -34,7 +34,7 @@ class _RegistryParamType(click.ParamType):
 
     def __init__(
         self,
-        registry_type: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
+        registry_type: type[_PydanticClassRegistryMixin],  # type: ignore[type-arg]
         discriminator: str,
     ) -> None:
         self._registry_type = registry_type
@@ -74,7 +74,7 @@ class _RegistryParamType(click.ParamType):
 def _make_common_field_callback(
     is_list: bool,
     discriminator: str,
-    registry_type: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
+    registry_type: type[_PydanticClassRegistryMixin],  # type: ignore[type-arg]
 ):
     """
     Create a Click callback that parses a config string into a dict.
@@ -140,7 +140,9 @@ def _introspect_registry_fields(model: type[BaseModel]) -> list[dict[str, Any]]:
         else:
             field_type = annotation
 
-        if field_type is None or not issubclass(field_type, PydanticClassRegistryMixin):
+        if field_type is None or not issubclass(
+            field_type, _PydanticClassRegistryMixin
+        ):
             continue
 
         extra = field_info.json_schema_extra
@@ -164,7 +166,7 @@ def _introspect_registry_fields(model: type[BaseModel]) -> list[dict[str, Any]]:
 
 def registry_option(
     *param_decls: str,
-    registry: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
+    registry: type[_PydanticClassRegistryMixin],  # type: ignore[type-arg]
     multiple: bool = False,
     **extra: Any,
 ):

@@ -13,14 +13,13 @@ from .base import (
     BaseModelT,
     ErroredT,
     IncompleteT,
-    PydanticClassRegistryMixin,
     RegisterClassT,
-    ReloadableBaseModel,
     StandardBaseDict,
     StandardBaseModel,
     StatusBreakdown,
     SuccessfulT,
     TotalT,
+    _PydanticClassRegistryMixin,
     standard_model_config,
 )
 from .info import RequestInfo, RequestSettings, RequestTimings
@@ -51,9 +50,7 @@ __all__ = [
     "GenerativeRequestStats",
     "IncompleteT",
     "Percentiles",
-    "PydanticClassRegistryMixin",
     "RegisterClassT",
-    "ReloadableBaseModel",
     "RequestInfo",
     "RequestSettings",
     "RequestTimings",
@@ -67,5 +64,6 @@ __all__ = [
     "TotalT",
     "TurnType",
     "UsageMetrics",
+    "_PydanticClassRegistryMixin",
     "standard_model_config",
 ]

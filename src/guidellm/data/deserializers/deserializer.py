@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
+from disdantic import RegistryMixin
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.schemas import DataArgs, DataNotSupportedError, DatasetType
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "DatasetDeserializer",

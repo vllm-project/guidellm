@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator, MutableMapping
 from typing import Any
 
+from disdantic import RegistryMixin
+
 from guidellm.benchmark.schemas import Benchmark, ProfileArgs
 from guidellm.scheduler import (
     Constraint,
@@ -15,7 +17,6 @@ from guidellm.scheduler import (
     ConstraintsInitializerFactory,
     SchedulingStrategy,
 )
-from guidellm.utils.registry import RegistryMixin
 
 
 class ProfileFactory(RegistryMixin["type[Profile]"]):

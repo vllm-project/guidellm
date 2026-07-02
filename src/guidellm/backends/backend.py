@@ -11,16 +11,16 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
+from disdantic import RegistryMixin
 from pydantic import Field
 
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
-    PydanticClassRegistryMixin,
+    _PydanticClassRegistryMixin,
     standard_model_config,
 )
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "Backend",
@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 
-class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
+class BackendArgs(_PydanticClassRegistryMixin["BackendArgs"], ABC):
     """
     Base class for backend creation arguments.
 

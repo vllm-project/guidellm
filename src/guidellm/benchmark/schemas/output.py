@@ -5,14 +5,14 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
+from guidellm.schemas import _PydanticClassRegistryMixin, standard_model_config
 
 __all__ = [
     "BenchmarkOutputArgs",
 ]
 
 
-class BenchmarkOutputArgs(PydanticClassRegistryMixin["BenchmarkOutputArgs"], ABC):
+class BenchmarkOutputArgs(_PydanticClassRegistryMixin["BenchmarkOutputArgs"], ABC):
     """Base class for output creation arguments.
 
     This class serves as a base for defining argument models used in the creation
