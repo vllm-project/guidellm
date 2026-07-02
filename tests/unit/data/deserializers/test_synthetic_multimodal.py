@@ -13,6 +13,7 @@ from unittest.mock import Mock
 import imageio
 import pytest
 from PIL import Image
+from pydantic import ValidationError
 
 from guidellm.data.deserializers import (
     DatasetDeserializerFactory,
@@ -209,44 +210,42 @@ class TestSyntheticImageConfig:
     @pytest.mark.smoke
     def test_resolution_resolves_to_width_height(self):
         """## WRITTEN BY AI ##"""
-        cfg = SyntheticImageDataArgs(resolution="720p", text_tokens=50)
+        cfg = SyntheticImageDataArgs(resolution="720p")
         assert cfg.width == 1280
         assert cfg.height == 720
 
     @pytest.mark.sanity
     def test_aspect_ratio_overrides_width(self):
         """## WRITTEN BY AI ##"""
-        cfg = SyntheticImageDataArgs(
-            resolution="720p", aspect_ratio="4:3", text_tokens=50
-        )
+        cfg = SyntheticImageDataArgs(resolution="720p", aspect_ratio="4:3")
         # 720 * 4 / 3 = 960
         assert cfg.height == 720
         assert cfg.width == 960
 
     @pytest.mark.sanity
-    def test_prompt_tokens_alias_accepted(self):
+    def test_prompt_tokens_alias_rejected(self):
         """## WRITTEN BY AI ##"""
-        cfg = SyntheticImageDataArgs.model_validate(
-            {
-                "kind": "synthetic_image",
-                "width": 640,
-                "height": 480,
-                "prompt_tokens": 50,
-            }
-        )
-        assert cfg.text_tokens == 50
+        with pytest.raises(ValidationError, match="prompt_tokens"):
+            SyntheticImageDataArgs.model_validate(
+                {
+                    "kind": "synthetic_image",
+                    "width": 640,
+                    "height": 480,
+                    "prompt_tokens": 50,
+                }
+            )
 
     @pytest.mark.regression
     def test_missing_dims_raises(self):
         """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError):
-            SyntheticImageDataArgs(text_tokens=10)
+            SyntheticImageDataArgs()
 
     @pytest.mark.regression
     def test_unknown_resolution_raises(self):
         """## WRITTEN BY AI ##"""
         with pytest.raises(ValueError, match="resolution"):
-            SyntheticImageDataArgs(resolution="9000p", text_tokens=10)
+            SyntheticImageDataArgs(resolution="9000p")
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +261,6 @@ class TestSyntheticImageDeserializer:
         ds = d(
             config=SyntheticImageDataArgs(
                 resolution="480p",
-                text_tokens=20,
                 output_tokens=8,
                 seed=11,
             ),
@@ -281,7 +279,8 @@ class TestSyntheticImageDeserializer:
             assert "image" in row
             assert row["image"]["image_pixels"] == 854 * 480
             assert row["image"]["image_bytes"] > 0
-            assert row["prompt_tokens_count_0"] > 0
+            assert "prompt_0" not in row
+            assert "prompt_tokens_count_0" not in row
             assert row["output_tokens_count_0"] > 0
 
         # All 10 image payloads must be byte-different (cache-bust guarantee).
@@ -298,7 +297,6 @@ class TestSyntheticImageDeserializer:
                 "kind": "synthetic_image",
                 "width": 320,
                 "height": 240,
-                "text_tokens": 15,
                 "output_tokens": 4,
             }
         )
@@ -318,7 +316,6 @@ class TestSyntheticImageDeserializer:
                 width=64,
                 height=64,
                 images_per_request=3,
-                text_tokens=5,
                 output_tokens=2,
             ),
             processor_factory=_mock_tokenizer,
@@ -344,7 +341,6 @@ class TestSyntheticVideoDeserializer:
                 height=240,
                 frames=4,
                 fps=1,
-                text_tokens=10,
                 output_tokens=4,
                 seed=17,
             ),
@@ -380,7 +376,6 @@ class TestSyntheticVideoDeserializer:
                 "height": 120,
                 "frames": 3,
                 "fps": 1,
-                "text_tokens": 10,
                 "output_tokens": 4,
             }
         )
@@ -401,7 +396,6 @@ class TestSyntheticVideoDeserializer:
                 "height": 240,
                 "frames": 4,
                 "fps": 1,
-                "text_tokens": 10,
                 "video_bitrate": "200k",
             }
         )
@@ -449,7 +443,6 @@ def test_full_dataset_reproducible_with_same_seed():
     config = SyntheticImageDataArgs(
         width=128,
         height=128,
-        text_tokens=10,
         output_tokens=2,
         seed=999,
     )

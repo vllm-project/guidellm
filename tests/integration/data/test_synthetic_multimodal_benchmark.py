@@ -88,7 +88,7 @@ def mock_backend():
 
 def _run_benchmark(
     base_url: str,
-    data: str,
+    data: list[str],
     output_dir: Path,
     output_name: str,
     max_seconds: float = 3.0,
@@ -101,8 +101,6 @@ def _run_benchmark(
         "run",
         "--backend",
         f"kind=openai_http,target={base_url}",
-        "--data",
-        data,
         "--data-loader",
         "kind=pytorch,samples=8",
         "--profile",
@@ -115,6 +113,8 @@ def _run_benchmark(
         f"kind=json,path={output_path}",
         "--disable-console",
     ]
+    for item in data:
+        cmd.extend(["--data", item])
     return subprocess.run(  # noqa: S603
         cmd, capture_output=True, text=True, timeout=180, check=False
     )
@@ -128,10 +128,11 @@ def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
     """
     result = _run_benchmark(
         base_url=mock_backend,
-        data=(
+        data=[
+            "kind=synthetic_text,prompt_tokens=20",
             "kind=synthetic_image,width=128,height=128,format=jpeg,"
-            "jpeg_quality=85,text_tokens=20,output_tokens=8,seed=11"
-        ),
+            "jpeg_quality=85,output_tokens=8,seed=11",
+        ],
         output_dir=tmp_path,
         output_name="image.json",
     )
@@ -153,10 +154,11 @@ def test_synthetic_video_benchmark_against_mock(mock_backend, tmp_path):
     """
     result = _run_benchmark(
         base_url=mock_backend,
-        data=(
+        data=[
+            "kind=synthetic_text,prompt_tokens=10",
             "kind=synthetic_video,width=160,height=120,frames=4,fps=1,"
-            "text_tokens=10,output_tokens=4,seed=23"
-        ),
+            "output_tokens=4,seed=23",
+        ],
         output_dir=tmp_path,
         output_name="video.json",
         max_seconds=4.0,

@@ -8,7 +8,6 @@ from typing import Any, Literal
 import numpy as np
 from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.iterable_dataset import _BaseExamplesIterable
-from faker import Faker
 from pydantic import Field, model_validator
 from transformers import PreTrainedTokenizerBase
 
@@ -53,43 +52,24 @@ def parse_aspect_ratio(aspect: str) -> float:
         ) from exc
 
 
-class SyntheticVisionTextMixin(DataArgs):
-    text_tokens: int = Field(
-        description="The average number of text tokens generated for the text portion.",
-        gt=0,
-    )
-    text_tokens_stdev: int | None = Field(
-        description="Standard deviation of text-token counts per prompt.",
-        gt=0,
-        default=None,
-    )
-    text_tokens_min: int | None = Field(
-        description="Minimum number of text tokens per prompt.",
-        gt=0,
-        default=None,
-    )
-    text_tokens_max: int | None = Field(
-        description="Maximum number of text tokens per prompt.",
-        gt=0,
-        default=None,
-    )
+class SyntheticVisionDataArgs(DataArgs):
     output_tokens: int | None = Field(
         description="The average number of output tokens to request.",
         gt=0,
         default=None,
     )
     output_tokens_stdev: int | None = Field(
-        description="Standard deviation of output-token counts per prompt.",
+        description="Standard deviation of output-token counts per request.",
         gt=0,
         default=None,
     )
     output_tokens_min: int | None = Field(
-        description="Minimum number of output tokens per prompt.",
+        description="Minimum number of output tokens per request.",
         gt=0,
         default=None,
     )
     output_tokens_max: int | None = Field(
-        description="Maximum number of output tokens per prompt.",
+        description="Maximum number of output tokens per request.",
         gt=0,
         default=None,
     )
@@ -98,25 +78,9 @@ class SyntheticVisionTextMixin(DataArgs):
         default=42,
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _alias_prompt_tokens(cls, data: object) -> object:
-        """Accept ``prompt_tokens`` as an alias for ``text_tokens``."""
-        if isinstance(data, dict):
-            aliases = {
-                "prompt_tokens": "text_tokens",
-                "prompt_tokens_stdev": "text_tokens_stdev",
-                "prompt_tokens_min": "text_tokens_min",
-                "prompt_tokens_max": "text_tokens_max",
-            }
-            for alias, canonical in aliases.items():
-                if alias in data and canonical not in data:
-                    data[canonical] = data.pop(alias)
-        return data
-
 
 @DataArgs.register(_DESERIALIZER_TYPE)
-class SyntheticImageDataArgs(SyntheticVisionTextMixin):
+class SyntheticImageDataArgs(SyntheticVisionDataArgs):
     """Model for synthetic image dataset deserializer arguments."""
 
     kind: Literal["synthetic_image"] = Field(  # type: ignore[assignment]
@@ -202,62 +166,22 @@ class SyntheticImageDataArgs(SyntheticVisionTextMixin):
 
 
 class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
-    """Examples iterable that yields rows of synthetic images + text."""
+    """Examples iterable that yields rows of synthetic images."""
 
     def __init__(
         self,
         config: SyntheticImageDataArgs,
-        processor: PreTrainedTokenizerBase,
         random_seed: int,
     ):
         super().__init__()
         self.config = config
-        self.processor = processor
         self.random_seed = random_seed
         self.iteration_count = 0
-
-    @staticmethod
-    def _build_prompt(
-        token_count: int,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
-        unique: str,
-    ) -> str:
-        token_ids: list[int] = []
-        avg_chars_per_token = 5
-        margin_of_safety = 1.5
-        attempts = 0
-        while len(token_ids) < token_count:
-            attempts += 1
-            num_chars = int(
-                token_count * avg_chars_per_token * margin_of_safety * attempts
-            )
-            text = unique + faker.text(max_nb_chars=num_chars)
-            token_ids = processor.encode(text)
-        decoded = processor.decode(token_ids[:token_count], skip_special_tokens=True)
-        if isinstance(decoded, str):
-            return decoded
-        raise RuntimeError(
-            "Processor.decode returned a non-string value while generating "
-            "synthetic image prompt text."
-        )
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
         iter_seed = self.random_seed + self.iteration_count
         self.iteration_count += 1
 
-        faker = Faker()
-        faker.seed_instance(iter_seed)
-
-        text_tokens_sampler = iter(
-            IntegerRangeSampler(
-                average=self.config.text_tokens,
-                variance=self.config.text_tokens_stdev,
-                min_value=self.config.text_tokens_min,
-                max_value=self.config.text_tokens_max,
-                random_seed=iter_seed,
-            )
-        )
         output_tokens_sampler = (
             iter(
                 IntegerRangeSampler(
@@ -274,24 +198,13 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
 
         row_index = 0
         while True:
-            text_token_count = next(text_tokens_sampler)
             output_token_count = (
                 next(output_tokens_sampler)
                 if output_tokens_sampler is not None
                 else None
             )
-            prompt = self._build_prompt(
-                text_token_count,
-                self.processor,
-                faker,
-                f"{self.iteration_count} {row_index} ",
-            )
 
-            row: dict[str, Any] = {
-                "prefix": "",
-                "prompt_0": prompt,
-                "prompt_tokens_count_0": text_token_count,
-            }
+            row: dict[str, Any] = {}
             if output_token_count is not None:
                 row["output_tokens_count_0"] = output_token_count
 
@@ -324,11 +237,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
 
     @property
     def features(self) -> Features:
-        features: dict[str, Any] = {
-            "prefix": Value("string"),
-            "prompt_0": Value("string"),
-            "prompt_tokens_count_0": Value("int32"),
-        }
+        features: dict[str, Any] = {}
         if self.config.output_tokens is not None:
             features["output_tokens_count_0"] = Value("int32")
         image_struct = {
@@ -374,16 +283,13 @@ class SyntheticImageDataset(IterableDataset):
     def __init__(
         self,
         config: SyntheticImageDataArgs,
-        processor: PreTrainedTokenizerBase,
         random_seed: int = 42,
     ):
         self.config = config
-        self.processor = processor
         self.random_seed = random_seed
 
         ex_iterable = _SyntheticImageExamplesIterable(
             config=config,
-            processor=processor,
             random_seed=random_seed,
         )
         super().__init__(
@@ -407,8 +313,8 @@ class SyntheticImageDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
     ) -> IterableDataset:
+        _ = processor_factory
         return SyntheticImageDataset(
             config=config,
-            processor=processor_factory(),
             random_seed=random_seed,
         )

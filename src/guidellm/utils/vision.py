@@ -534,7 +534,7 @@ def synthesize_video(
     if video_bitrate is not None:
         write_kwargs["bitrate"] = str(video_bitrate)
 
-    video_bytes = libs.iio.imwrite("<bytes>", clip, **write_kwargs)
+    video_bytes = libs.iio.imwrite("<bytes>", clip, **write_kwargs)  # type: ignore[attr-defined]
     video_b64 = base64.b64encode(video_bytes).decode("utf-8")
 
     return {

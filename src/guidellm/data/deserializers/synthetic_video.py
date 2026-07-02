@@ -8,7 +8,6 @@ from typing import Any, Literal
 import numpy as np
 from datasets import DatasetInfo, Features, IterableDataset, Value
 from datasets.iterable_dataset import _BaseExamplesIterable
-from faker import Faker
 from pydantic import Field, model_validator
 from transformers import PreTrainedTokenizerBase
 
@@ -18,7 +17,7 @@ from guidellm.data.deserializers.deserializer import (
 )
 from guidellm.data.deserializers.synthetic_image import (
     RESOLUTION_PRESETS,
-    SyntheticVisionTextMixin,
+    SyntheticVisionDataArgs,
     parse_aspect_ratio,
 )
 from guidellm.data.schemas import DataArgs
@@ -36,7 +35,7 @@ _DESERIALIZER_TYPE = "synthetic_video"
 
 
 @DataArgs.register(_DESERIALIZER_TYPE)
-class SyntheticVideoDataArgs(SyntheticVisionTextMixin):
+class SyntheticVideoDataArgs(SyntheticVisionDataArgs):
     """Model for synthetic video dataset deserializer arguments."""
 
     kind: Literal["synthetic_video"] = Field(  # type: ignore[assignment]
@@ -127,57 +126,17 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
     def __init__(
         self,
         config: SyntheticVideoDataArgs,
-        processor: PreTrainedTokenizerBase,
         random_seed: int,
     ):
         super().__init__()
         self.config = config
-        self.processor = processor
         self.random_seed = random_seed
         self.iteration_count = 0
-
-    @staticmethod
-    def _build_prompt(
-        token_count: int,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
-        unique: str,
-    ) -> str:
-        token_ids: list[int] = []
-        avg_chars_per_token = 5
-        margin_of_safety = 1.5
-        attempts = 0
-        while len(token_ids) < token_count:
-            attempts += 1
-            num_chars = int(
-                token_count * avg_chars_per_token * margin_of_safety * attempts
-            )
-            text = unique + faker.text(max_nb_chars=num_chars)
-            token_ids = processor.encode(text)
-        decoded = processor.decode(token_ids[:token_count], skip_special_tokens=True)
-        if isinstance(decoded, str):
-            return decoded
-        raise RuntimeError(
-            "Processor.decode returned a non-string value while generating "
-            "synthetic video prompt text."
-        )
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
         iter_seed = self.random_seed + self.iteration_count
         self.iteration_count += 1
 
-        faker = Faker()
-        faker.seed_instance(iter_seed)
-
-        text_tokens_sampler = iter(
-            IntegerRangeSampler(
-                average=self.config.text_tokens,
-                variance=self.config.text_tokens_stdev,
-                min_value=self.config.text_tokens_min,
-                max_value=self.config.text_tokens_max,
-                random_seed=iter_seed,
-            )
-        )
         output_tokens_sampler = (
             iter(
                 IntegerRangeSampler(
@@ -194,17 +153,10 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
 
         row_index = 0
         while True:
-            text_token_count = next(text_tokens_sampler)
             output_token_count = (
                 next(output_tokens_sampler)
                 if output_tokens_sampler is not None
                 else None
-            )
-            prompt = self._build_prompt(
-                text_token_count,
-                self.processor,
-                faker,
-                f"{self.iteration_count} {row_index} ",
             )
             width = self.config.width
             height = self.config.height
@@ -212,9 +164,6 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
                 raise RuntimeError("Synthetic video dimensions were not resolved.")
 
             row: dict[str, Any] = {
-                "prefix": "",
-                "prompt_0": prompt,
-                "prompt_tokens_count_0": text_token_count,
                 "video": synthesize_video(
                     width=width,
                     height=height,
@@ -240,9 +189,6 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
     @property
     def features(self) -> Features:
         features: dict[str, Any] = {
-            "prefix": Value("string"),
-            "prompt_0": Value("string"),
-            "prompt_tokens_count_0": Value("int32"),
             "video": {
                 "type": Value("string"),
                 "video": Value("string"),
@@ -285,16 +231,13 @@ class SyntheticVideoDataset(IterableDataset):
     def __init__(
         self,
         config: SyntheticVideoDataArgs,
-        processor: PreTrainedTokenizerBase,
         random_seed: int = 42,
     ):
         self.config = config
-        self.processor = processor
         self.random_seed = random_seed
 
         ex_iterable = _SyntheticVideoExamplesIterable(
             config=config,
-            processor=processor,
             random_seed=random_seed,
         )
         super().__init__(
@@ -318,8 +261,8 @@ class SyntheticVideoDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
     ) -> IterableDataset:
+        _ = processor_factory
         return SyntheticVideoDataset(
             config=config,
-            processor=processor_factory(),
             random_seed=random_seed,
         )

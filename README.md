@@ -203,7 +203,7 @@ guidellm run \
 
 ### Synthetic Visual Data
 
-GuideLLM can synthesize images and short videos on the fly so you can benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Two `--data` kinds — `synthetic_image` and `synthetic_video` — compose with the existing text token controls. See [Synthetic Visual Data](docs/guides/multimodal/synthetic_vision.md) for example commands and the full list of configuration options.
+GuideLLM can synthesize images and short videos on the fly so you can benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Two `--data` kinds — `synthetic_image` and `synthetic_video` — compose with `synthetic_text` for multimodal prompts. See [Synthetic Visual Data](docs/guides/multimodal/synthetic_vision.md) for example commands and the full list of configuration options.
 
 ### Request Types and API Targets
 
