@@ -113,10 +113,6 @@ dev = [
     "setuptools>=61.0",
     "setuptools-git-versioning>=2.0,<3",
 
-    # general and configurations
-    "pre-commit~=3.5.0",
-    "tox~=4.16.0",
-
     # testing
     "pytest~=8.2.2",
     "pytest-asyncio~=1.1.0",
@@ -147,6 +143,11 @@ dev = [
 
 [dependency-groups]
 dev = ["guidellm[dev]"]
+ci = [
+    "pre-commit",
+    "tox",
+    "tox-uv",
+]
 
 [project.urls]
 homepage = "https://github.com/vllm-project/guidellm"
