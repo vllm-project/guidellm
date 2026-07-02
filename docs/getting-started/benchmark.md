@@ -98,6 +98,10 @@ For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sw
 
 See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details.
 
+### Sub-benchmark (per-strategy) Constraints
+
+When you use the `sweep` profile, or specify multiple `rate` values in the `async`/`constant`/`poisson` profiles, or multiple `streams` values in the `concurrent` profile, you are running multiple "benchmark strategies" within the profile. GuideLLM allows you to specify distinct control parameters for your constraints using the `--override` option. For example, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` runs 5 strategies (synchronous, throughput, and three interpolated constant rates) for 30 seconds each. You can use `--override constraint[0].seconds 10,20,10,15,20` to run the synchronous strategy for 10 seconds, the throughput strategy for 20 seconds, and the three interpolated constant rates for 10 seconds, 15 seconds, and 20 seconds. Note that specifying fewer values, e.g. `--override constraint[0].seconds 10,20,10`, will reuse the final value of 10 seconds for all three constant strategies.
+
 ### Benchmark Profiles (`--profile`)
 
 GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same configuration string after `kind=<type>`.
@@ -141,6 +145,8 @@ guidellm run --profile kind=concurrent,streams=10
 | `rampup_duration` | Seconds to spread initial requests            | `--profile kind=concurrent,streams=10,rampup_duration=10`                                       |
 | `max_concurrency` | Maximum concurrent requests to schedule       | `--profile kind=concurrent,streams=10,max_concurrency=10`                                       |
 
+You can use the `--override` option to specify a list of stream values, to run a set of concurrent "strategies" (sub-benchmarks) with different stream values. For example, `--profile kind=concurrent --override profile.streams 10,20,30` will run a concurrent strategy with 10 streams, a concurrent strategy with 20 streams, and a concurrent strategy with 30 streams.
+
 #### Constant Profile
 
 Sends asynchronous requests at a fixed rate per second.
@@ -157,6 +163,8 @@ guidellm run --profile '{"kind":"constant","rate":[16,32]}'
 | `rampup_duration` | Seconds to linearly ramp from 0 to target rate | `--profile kind=constant,rate=10,rampup_duration=10`                                  |
 | `max_concurrency` | Maximum concurrent requests to schedule        | `--profile kind=constant,rate=10,max_concurrency=32`                                  |
 
+You can use the `--override` option to specify a list of rate values, to run a set of constant "strategies" (sub-benchmarks) with different rate values. For example, `--profile kind=constant --override profile.rate 10,20,30` will run a constant strategy with 10 requests per second, a constant strategy with 20 requests per second, and a constant strategy with 30 requests per second.
+
 #### Poisson Profile
 
 Sends asynchronous requests at varying rates using a Poisson distribution around the specified target rate(s). This probabilistic pattern is useful for simulating more realistic real-world traffic patterns.
@@ -171,6 +179,8 @@ guidellm run --profile kind=poisson,rate=16 --seed kind=static,value=42
 | `max_concurrency` | Maximum concurrent requests to schedule | `--profile kind=poisson,rate=10,max_concurrency=32`                                 |
 
 Use `--seed kind=static,value=42` for reproducible Poisson scheduling.
+
+You can use the `--override` option to specify a list of rate values, to run a set of Poisson "strategies" (sub-benchmarks) with different rate values. For example, `--profile kind=poisson --override profile.rate 10,20,30` will run a Poisson strategy with 10 requests per second, a Poisson strategy with 20 requests per second, and a Poisson strategy with 30 requests per second.
 
 #### Sweep Profile
 
