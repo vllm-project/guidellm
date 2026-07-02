@@ -81,4 +81,4 @@ class FloatRangeSampler:
         else:
             while True:
                 rand = self.rng.gauss(self.average, self.variance)
-                yield round(max(calc_min, min(calc_max, rand)))
+                yield max(calc_min, min(calc_max, rand))
