@@ -889,10 +889,12 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             request_concurrency=StatusDistributionSummary.concurrency_distribution_from_timings_function(
                 function=(
-                    lambda req: (req.request_start_time, req.request_end_time)
-                    if req.request_start_time is not None
-                    and req.request_end_time is not None
-                    else None
+                    lambda req: (
+                        (req.request_start_time, req.request_end_time)
+                        if req.request_start_time is not None
+                        and req.request_end_time is not None
+                        else None
+                    )
                 ),
                 successful=successful,
                 incomplete=incomplete,

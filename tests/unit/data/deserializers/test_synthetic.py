@@ -242,10 +242,8 @@ class TestSyntheticTextGenerator:
         """
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
-        tokenizer.decode.side_effect = (
-            lambda tokens, skip_special_tokens=False: " ".join(
-                f"token_{t}" for t in tokens[:5]
-            )
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"token_{t}" for t in tokens[:5])
         )
         return tokenizer
 
@@ -398,10 +396,8 @@ class TestSyntheticDatasetDeserializer:
         """
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
-        tokenizer.decode.side_effect = (
-            lambda tokens, skip_special_tokens=False: " ".join(
-                f"token_{t}" for t in tokens[:5]
-            )
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"token_{t}" for t in tokens[:5])
         )
         return tokenizer
 
@@ -560,10 +556,8 @@ class TestSyntheticTextDatasetMultiturn:
         """
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
-        tokenizer.decode.side_effect = (
-            lambda tokens, skip_special_tokens=False: " ".join(
-                f"token_{t}" for t in tokens[:5]
-            )
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"token_{t}" for t in tokens[:5])
         )
         return tokenizer
 
