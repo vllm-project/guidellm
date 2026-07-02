@@ -37,7 +37,7 @@ class IntegerRangeSampler:
                 yield calc_min
         elif not self.variance:
             while True:
-                yield self.rng.uniform(calc_min, calc_max)
+                yield self.rng.randint(calc_min, calc_max)
         else:
             while True:
                 rand = self.rng.gauss(self.average, self.variance)
