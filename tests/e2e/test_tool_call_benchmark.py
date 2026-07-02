@@ -7,6 +7,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from guidellm.mock_server.config import MockServerConfig
+from guidellm.mock_server.server import MockServer
 from tests.e2e.utils import (
     GuidellmClient,
     assert_no_python_exceptions,
@@ -22,9 +24,6 @@ _BENCHMARK_ENV = {"GUIDELLM__MP_CONTEXT_TYPE": "spawn"}
 
 def _start_mock_server():
     """Start the MockServer in a subprocess."""
-    from guidellm.mock_server.config import MockServerConfig
-    from guidellm.mock_server.server import MockServer
-
     config = MockServerConfig(
         host=MOCK_SERVER_HOST,
         port=MOCK_SERVER_PORT,

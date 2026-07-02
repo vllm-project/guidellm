@@ -12,7 +12,17 @@ import pytest
 from pydantic import Field, ValidationError
 
 from guidellm.backends import Backend, BackendArgs
-from guidellm.schemas import GenerationRequest, RequestInfo
+from guidellm.backends.openai import (
+    OpenAIHTTPBackend,
+    OpenAIWebSocketBackend,
+    OpenAIWebSocketBackendArgs,
+)
+from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+from guidellm.backends.vllm_python.vllm import (
+    VLLMPythonBackend,
+    VLLMPythonBackendArgs,
+)
+from guidellm.schemas import GenerationRequest, PydanticClassRegistryMixin, RequestInfo
 from guidellm.utils.registry import RegistryMixin
 from tests.unit.testing_utils import async_timeout
 
@@ -37,8 +47,6 @@ class TestBackendArgs:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.schemas import PydanticClassRegistryMixin
-
         assert issubclass(BackendArgs, PydanticClassRegistryMixin)
         assert BackendArgs.schema_discriminator == "kind"
         assert "kind" in BackendArgs.model_fields
@@ -132,8 +140,6 @@ class TestBackendArgs:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-
         data = {"kind": "openai_http", "target": "http://localhost:8000"}
         result = BackendArgs.model_validate(data)
         assert isinstance(result, OpenAIHTTPBackendArgs)
@@ -145,8 +151,6 @@ class TestBackendArgs:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-
         args = OpenAIHTTPBackendArgs(target="http://localhost:8000")
         result = BackendArgs.model_validate_json(args.model_dump_json())
         assert isinstance(result, OpenAIHTTPBackendArgs)
@@ -185,8 +189,6 @@ class TestBackendArgs:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-
         args = OpenAIHTTPBackendArgs(target="http://localhost:8000", model="gpt-4")
         data = args.model_dump()
         restored = BackendArgs.model_validate(data)
@@ -460,11 +462,6 @@ class TestBackend:
     @pytest.mark.smoke
     def test_openai_websocket_backend_registered(self):
         """WebSocket OpenAI backend is registered and constructible."""
-        from guidellm.backends.openai import (
-            OpenAIWebSocketBackend,
-            OpenAIWebSocketBackendArgs,
-        )
-
         assert Backend.is_registered("openai_websocket")
         assert (
             BackendArgs.get_registered_object("openai_websocket")
@@ -479,9 +476,6 @@ class TestBackend:
 
     def test_openai_backend_registered(self):
         """Test that OpenAI HTTP backend is registered."""
-        from guidellm.backends.openai import OpenAIHTTPBackend
-        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-
         # OpenAI backend should be registered
         args = OpenAIHTTPBackendArgs(target="http://test")
         backend = Backend.create(args)
@@ -494,11 +488,6 @@ class TestBackend:
         Test that vllm_python backend is registered and createable.
         ## WRITTEN BY AI ##
         """
-        from guidellm.backends.vllm_python.vllm import (
-            VLLMPythonBackend,
-            VLLMPythonBackendArgs,
-        )
-
         assert Backend.is_registered("vllm_python")
         args = VLLMPythonBackendArgs(model="test-model")
         backend = Backend.create(args)
@@ -509,9 +498,6 @@ class TestBackend:
     @pytest.mark.smoke
     def test_backend_registry_functionality(self):
         """Test that backend registry functions work."""
-        from guidellm.backends.openai import OpenAIHTTPBackend
-        from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-
         # Test that we can get registered backends
         openai_class = Backend.get_registered_object("openai_http")
         assert openai_class == OpenAIHTTPBackend
@@ -581,6 +567,4 @@ class TestBackend:
         assert len(registered) > 0
 
         # Check that openai backend is in the registered objects
-        from guidellm.backends.openai import OpenAIHTTPBackend
-
         assert OpenAIHTTPBackend in registered

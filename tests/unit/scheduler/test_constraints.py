@@ -30,6 +30,7 @@ from guidellm.scheduler.constraints import (
     MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
 )
+from guidellm.scheduler.constraints.args import ConstraintArgs
 from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.utils.mixins import InfoMixin
 
@@ -1182,8 +1183,6 @@ class TestConstraintsInitializerFactory:
     @pytest.mark.sanity
     def test_unregistered_key_fails(self):
         """Test that unregistered keys raise ValueError."""
-        from guidellm.scheduler.constraints.args import ConstraintArgs
-
         unregistered_key = "nonexistent_constraint"
         assert not ConstraintsInitializerFactory.is_registered(unregistered_key)
 
