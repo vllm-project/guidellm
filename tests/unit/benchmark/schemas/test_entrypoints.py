@@ -11,6 +11,7 @@ loading for BenchmarkScenario.
 """
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from guidellm.backends.backend import BackendArgs
@@ -22,6 +23,7 @@ from guidellm.benchmark.schemas.entrypoints import (
     GenerativeMetricsArgs,
     MetricsArgs,
 )
+from guidellm.utils.typing import BLANK
 
 # Conditionally import VLLM backend args if available
 try:
@@ -394,6 +396,151 @@ class TestBackendArgsTransformation:
             )
             assert VLLMPythonBackendArgs is not None
             assert isinstance(args_vllm.backend, VLLMPythonBackendArgs)
+
+
+class TestBenchmarkScenario:
+    """Test BenchmarkScenario validation and defaults."""
+
+    @pytest.mark.sanity
+    def test_create_scenario_with_minimal_spec(self):
+        """
+        Test creating a BenchmarkScenario with minimal spec.
+
+        ## WRITTEN BY AI ##
+        """
+        scenario = BenchmarkScenario.create(
+            spec={
+                **_PIPELINE_DEFAULTS,
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+            },
+            scenario=None,
+        )
+
+        assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
+        assert scenario.spec.backend.target == "http://localhost:8000"
+        assert scenario.spec.profile.kind == "sweep"
+        assert scenario.spec.profile.sweep_size == 10  # type: ignore[union-attr]
+
+    @pytest.mark.sanity
+    def test_create_from_file(self, tmp_path):
+        """
+        Test creating a BenchmarkScenario from a YAML file.
+
+        ## WRITTEN BY AI ##
+        """
+        scenario = yaml.dump(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                },
+                "benchmarks": [],
+            }
+        )
+
+        yaml_file = tmp_path / "scenario.yaml"
+        yaml_file.write_text(scenario)
+
+        scenario = BenchmarkScenario.create(scenario=yaml_file)
+
+        assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
+        assert scenario.spec.backend.target == "http://localhost:8000"
+        assert scenario.spec.profile.kind == "sweep"
+
+    @pytest.mark.regression
+    def test_create_from_file_without_overrides(self, tmp_path):
+        """
+        Test creating a BenchmarkScenario from a YAML file with overrides.
+
+        ## WRITTEN BY AI ##
+        """
+        scenario = yaml.dump(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                    "profile": {"kind": "concurrent"},
+                },
+                "benchmarks": [
+                    {"profile.streams": 1},
+                    {"profile.streams": 2},
+                    {"profile.streams": 4},
+                ],
+            }
+        )
+
+        yaml_file = tmp_path / "scenario.yaml"
+        yaml_file.write_text(scenario)
+
+        scenario = BenchmarkScenario.create(
+            scenario=yaml_file,
+            spec={
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://override-server:9000",
+                },
+            },
+            benchmarks=BLANK,
+        )
+
+        assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
+        assert scenario.spec.backend.target == "http://override-server:9000"
+        assert len(scenario.benchmarks) == 3, "Expected 3 benchmarks from file"
+
+    @pytest.mark.regression
+    def test_create_from_file_with_overrides(self, tmp_path):
+        """
+        Test creating a BenchmarkScenario from a YAML file with overrides.
+
+        ## WRITTEN BY AI ##
+        """
+        scenario = yaml.dump(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                    "profile": {"kind": "concurrent"},
+                },
+                "benchmarks": [
+                    {"profile.streams": 1},
+                    {"profile.streams": 2},
+                    {"profile.streams": 4},
+                ],
+            }
+        )
+
+        yaml_file = tmp_path / "scenario.yaml"
+        yaml_file.write_text(scenario)
+
+        scenario = BenchmarkScenario.create(
+            scenario=yaml_file,
+            spec={
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://override-server:9000",
+                },
+            },
+            benchmarks=[
+                {"profile.streams": 8},
+                {"profile.streams": 16},
+            ],
+        )
+
+        assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
+        assert scenario.spec.backend.target == "http://override-server:9000"
+        assert len(scenario.benchmarks) == 2, "Expected 2 benchmarks from overrides"
 
 
 @pytest.mark.sanity

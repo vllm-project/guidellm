@@ -317,8 +317,15 @@ async def resolve_output_formats(
     return resolved
 
 
-_SKIP_FIELDS: frozenset[str] = frozenset({"profile"})
+_SKIP_FIELDS: frozenset[str] = frozenset({"profile", "constraints"})
 _PROFILE_RATE_FIELDS: frozenset[str] = frozenset({"rate", "streams"})
+_CONSTRAINT_LIST_FIELDS: frozenset[str] = frozenset(
+    {
+        "seconds",
+        "count",
+        "rate",
+    }
+)
 
 
 def _assert_fields_equal(
@@ -345,7 +352,7 @@ def _assert_fields_equal(
             if other.__dict__[field_name] != base_val:
                 raise NotImplementedError(
                     f"Differing {context} field '{field_name}' cannot be merged. "
-                    "Currently only rate can be modified with overrides."
+                    "All sub-benchmarks must share the same value for this field."
                 )
 
 
@@ -359,12 +366,13 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
 
     Temporary adapter that bridges the new multi-benchmark configuration format
     to the old single-benchmark internal pipeline.  All fields must be equal
-    across the provided benchmarks except for recognised rate-like profile
-    fields (see ``_PROFILE_RATE_FIELDS``), which are flattened into one list.
+    across the provided benchmarks except for recognised list-capable fields
+    (see ``_PROFILE_RATE_FIELDS`` and ``_CONSTRAINT_LIST_FIELDS``), which are
+    flattened into a single list.
 
     :param benchmarks: One or more benchmark argument instances to merge
     :return: A single, merged ``BenchmarkArgs`` ready for execution
-    :raises NotImplementedError: If any non-rate field differs across benchmarks
+    :raises NotImplementedError: If any non-mergeable field differs across benchmarks
     """
     if len(benchmarks) == 1:
         return benchmarks[0]
@@ -389,23 +397,57 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
         (f for f in _PROFILE_RATE_FIELDS if f in profile_cls.model_fields),
         None,
     )
-    if rate_field is None:
-        return base
+    merged_profile = base.profile
+    if rate_field is not None:
+        merged_rates: list[Any] = []
+        for bench in benchmarks:
+            val = bench.profile.__dict__[rate_field]
+            if isinstance(val, list | tuple):
+                merged_rates.extend(val)
+            else:
+                merged_rates.append(val)
 
-    merged_rates: list[Any] = []
-    for bench in benchmarks:
-        val = bench.profile.__dict__[rate_field]
-        if isinstance(val, list | tuple):
-            merged_rates.extend(val)
-        else:
-            merged_rates.append(val)
-
-    profile_dump = base.profile.model_dump()
-    profile_dump[rate_field] = merged_rates
-    merged_profile = profile_cls.model_validate(profile_dump)
+        profile_dump = base.profile.model_dump()
+        profile_dump[rate_field] = merged_rates
+        merged_profile = profile_cls.model_validate(profile_dump)
     # END: profile hack
 
-    return base.model_copy(update={"profile": merged_profile})
+    # BEGIN: constraints hack
+    merged_constraints: list[Any] = []
+    for idx in range(len(base.constraints)):
+        constraints_at_idx = [b.constraints[idx] for b in benchmarks]
+        constraint_cls = type(constraints_at_idx[0])
+        _assert_fields_equal(
+            constraints_at_idx,
+            constraint_cls.model_fields,
+            _CONSTRAINT_LIST_FIELDS,
+            "constraint",
+        )
+
+        list_field = next(
+            (f for f in _CONSTRAINT_LIST_FIELDS if f in constraint_cls.model_fields),
+            None,
+        )
+        if list_field is None:
+            merged_constraints.append(constraints_at_idx[0])
+            continue
+
+        merged_values: list[Any] = []
+        for constraint in constraints_at_idx:
+            val = constraint.__dict__[list_field]
+            if isinstance(val, list | tuple):
+                merged_values.extend(val)
+            else:
+                merged_values.append(val)
+
+        constraint_dump = constraints_at_idx[0].model_dump()
+        constraint_dump[list_field] = merged_values
+        merged_constraints.append(constraint_cls.model_validate(constraint_dump))
+    # END: constraints hack
+
+    return base.model_copy(
+        update={"profile": merged_profile, "constraints": merged_constraints}
+    )
 
 
 # Main Entrypoints Functions

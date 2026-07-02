@@ -25,7 +25,7 @@ def _make_errored_tool_call_stats(request_id: str) -> GenerativeRequestStats:
     The output_metrics.tool_call_count is 0 (expected but failed) and all
     other output fields are None, matching the behaviour of
     ``GenerationResponse.compile_stats`` for errored requests with
-    ``expects_tool_call=True``.
+    ``turn_type='client_tool_call'``.
     """
     timings = RequestTimings(
         resolve_start=1.0,

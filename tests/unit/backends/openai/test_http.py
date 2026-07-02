@@ -868,13 +868,13 @@ class TestCheckToolCallExpectations:
         )
         return OpenAIHTTPBackend(args)
 
-    def _make_request(self, expects_tool_call: bool) -> GenerationRequest:
+    def _make_request(self, is_tool_call: bool) -> GenerationRequest:
         """
         ## WRITTEN BY AI ##
         """
         return GenerationRequest(
             columns={"text_column": ["test"]},
-            expects_tool_call=expects_tool_call,
+            turn_type="client_tool_call" if is_tool_call else "standard",
         )
 
     def _make_response(self, has_tool_calls: bool):
@@ -908,7 +908,7 @@ class TestCheckToolCallExpectations:
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("error_stop")
-        req = self._make_request(expects_tool_call=True)
+        req = self._make_request(is_tool_call=True)
         resp = self._make_response(has_tool_calls=True)
 
         backend._check_tool_call_expectations(req, resp)
@@ -920,7 +920,7 @@ class TestCheckToolCallExpectations:
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("error_stop")
-        req = self._make_request(expects_tool_call=False)
+        req = self._make_request(is_tool_call=False)
         resp = self._make_response(has_tool_calls=False)
 
         backend._check_tool_call_expectations(req, resp)
@@ -932,7 +932,7 @@ class TestCheckToolCallExpectations:
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("ignore_continue")
-        req = self._make_request(expects_tool_call=True)
+        req = self._make_request(is_tool_call=True)
         resp = self._make_response(has_tool_calls=False)
 
         backend._check_tool_call_expectations(req, resp)
@@ -946,7 +946,7 @@ class TestCheckToolCallExpectations:
         import asyncio
 
         backend = self._make_backend("ignore_stop")
-        req = self._make_request(expects_tool_call=True)
+        req = self._make_request(is_tool_call=True)
         resp = self._make_response(has_tool_calls=False)
 
         with pytest.raises(asyncio.CancelledError, match="tool call"):
@@ -959,7 +959,7 @@ class TestCheckToolCallExpectations:
         ## WRITTEN BY AI ##
         """
         backend = self._make_backend("error_stop")
-        req = self._make_request(expects_tool_call=True)
+        req = self._make_request(is_tool_call=True)
         resp = self._make_response(has_tool_calls=False)
 
         with pytest.raises(ValueError, match="tool call"):
