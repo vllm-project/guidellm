@@ -1,29 +1,29 @@
 # Tool Calling
 
-GuideLLM supports benchmarking multi-turn tool calling workloads. Client tool call turns are **pre-anticipated**: the data pipeline decides upfront which user turns expect a tool call and which expect plain text. Each client tool call user turn automatically generates an additional `tool_response_injection` request, so the total request count per conversation is `turns + len(tool_call_turns)`. For example, `turns=3, tool_call_turns=[0, 1]` produces 5 requests: tool call, injection, tool call, injection, standard.
+GuideLLM supports benchmarking multi-turn tool-calling workloads. Client tool-call turns are **pre-anticipated**: the data pipeline decides upfront which user turns expect a tool call and which expect plain text. Each client tool-call user turn automatically generates an additional `tool_response_injection` request, so the total request count per conversation is `turns + len(tool_call_turns)`. For example, `turns=3, tool_call_turns=[0, 1]` produces 5 requests: tool call, injection, tool call, injection, standard.
 
-When a client tool call turn completes, GuideLLM sends the tool response back to the server in a separate injection turn and waits for a text response before proceeding to the next user turn. The tool response content comes from one of three sources (in priority order): the dataset's tool response column, synthetic data configured via `tool_response_tokens`, or a short placeholder (`{"status": "ok"}`). Tool definitions are only included in the request body on turns that have a `tools_column` in their data; non-tool turns are sent as plain chat completions without tools or `tool_choice`.
+When a client tool-call turn completes, GuideLLM sends the tool response back to the server in a separate injection turn and waits for a text response before proceeding to the next user turn. The tool response content comes from one of three sources (in priority order): the dataset's tool response column, synthetic data configured via `tool_response_tokens`, or a short placeholder (`{"status": "ok"}`). Tool definitions are only included in the request body on turns that have a `tools_column` in their data; non-tool turns are sent as plain chat completions without tools or `tool_choice`.
 
 ## Supported Request Formats
 
-Tool calling is supported with both `/v1/chat/completions` and `/v1/responses`. The CLI examples in this guide default to `/v1/chat/completions`, but all features work identically with `request_format=/v1/responses` in the backend configuration. The only difference is in how tool call history is represented in follow-up requests:
+Tool calling is supported with both `/v1/chat/completions` and `/v1/responses`. The CLI examples in this guide default to `/v1/chat/completions`, but all features work identically with `request_format=/v1/responses` in the backend configuration. The only difference is in how tool-call history is represented in follow-up requests:
 
 - **`/v1/chat/completions`** uses `role: "assistant"` messages with a `tool_calls` array, followed by `role: "tool"` messages carrying tool results.
 - **`/v1/responses`** uses `function_call` items in the `input` array, followed by `function_call_output` items.
 
-For the full wire format of tool call messages, see the [OpenAI function calling guide](https://developers.openai.com/api/docs/guides/function-calling).
+For the full wire format of tool-call messages, see the [OpenAI function calling guide](https://developers.openai.com/api/docs/guides/function-calling).
 
-## Mocked client-side tool calls
+## Mocked Client-side Tool Calls
 
-GuideLLM currently supports mocked client-side tool calls (`turn_type="client_tool_call"`). This means that the inference server runs the model and may return real `tool_calls`, but GuideLLM **does not execute** those functions against live APIs or other runtimes. After each client tool call turn, the benchmark sends a separate tool response injection request (`turn_type="tool_response_injection"`) containing the mocked tool output, then waits for the server's text response before proceeding to the next user turn. This allows measuring LLM throughput with tool-call handling, not external tool latency or side effects.
+GuideLLM currently supports mocked client-side tool calls (`turn_type="client_tool_call"`). This means that the inference server runs the model and may return real `tool_calls`, but GuideLLM **does not execute** those functions against live APIs or other runtimes. After each client tool-call turn, the benchmark sends a separate tool response injection request (`turn_type="tool_response_injection"`) containing the mocked tool output, then waits for the server's text response before proceeding to the next user turn. This allows measuring LLM throughput with tool-call handling, not external tool latency or side effects.
 
-## Server-side tool calls
+## Server-side Tool Calls
 
 For servers that handle tool execution internally (e.g. OpenAI Responses API with `container_auto`, or [OGX](https://github.com/ogx-ai/ogx) with MCP tool groups), use `server_tool_call` turns. These behave like standard turns from GuideLLM's perspective, but requests are sent without overriding `tool_choice` to `"none"`, so server-configured tools remain usable.
 
 No injection turn is created, and GuideLLM does not mock any tool responses. The server runs the full tool-calling loop internally and returns the final text answer. Latency metrics include the server-side tool execution time.
 
-### Synthetic data with server-side tool handling
+### Synthetic Data with Server-side Tool Handling
 
 For synthetic data, use `server_tool_call_turns` to mark user turns as server-managed. You can pass an int N (the first N turns), a list of indices, or `-1` to mark every turn:
 
@@ -37,9 +37,9 @@ guidellm run \
 
 The `-1` shorthand is equivalent to setting `server_tool_call_turns=N` where N equals `turns`, but avoids having to keep them in sync. It also works for `tool_call_turns` (client-side tool calling).
 
-### Real datasets with server-side tool handling
+### Real Datasets with Server-side Tool Handling
 
-Note: There are currently limitations on mapping common tool call datasets.
+Note: There are currently limitations on mapping common tool-call datasets.
 
 For real datasets that contain tool definitions (e.g. a `tools` column), the finalizer's `tool_call_mode` setting controls whether those turns are treated as client-side or server-side tool calls:
 
@@ -88,7 +88,7 @@ vllm serve Qwen/Qwen3-0.6B \
   --tool-call-parser hermes
 ```
 
-Common parsers: `hermes` (Qwen/Hermes), `llama3_json` (Llama 3.x), `mistral` (Mistral). Without these flags, vLLM will reject tool call output with grammar errors.
+Common parsers: `hermes` (Qwen/Hermes), `llama3_json` (Llama 3.x), `mistral` (Mistral). Without these flags, vLLM will reject tool-call output with grammar errors.
 
 **OGX (Llama Stack)** -- for server-side tool execution, [OGX](https://github.com/ogx-ai/ogx) provides an OpenAI-compatible `/v1/responses` endpoint that handles the full tool-calling loop internally. OGX can use vLLM as its inference backend and supports MCP tool groups for server-side tool execution. See the [OGX documentation](https://ogx-ai.github.io/docs) for setup and tool group configuration.
 
@@ -123,12 +123,12 @@ Synthetic data configuration fields for tool calling:
 | `tool_call_turns`            | `int \| list[int]` | `0`     | Which user turns include tool definitions and expect tool-call responses. Indices are 0-based into user turns (not the expanded request list). An int N means "the first N user turns"; a list specifies explicit indices (e.g. `[0, 2]`); `-1` means every turn. Each tool-calling user turn generates an additional injection request, so `tool_call_turns=[0,1]` with `turns=3` produces 5 total requests. When `0` or `[]`, no tool calling.                                |
 | `server_tool_call_turns`     | `int \| list[int]` | `0`     | Which user turns use server-side tool calling. These turns are marked as `server_tool_call` so `tool_choice="none"` is not applied, letting the server use its configured tools. No injection turn is created. Must not overlap with `tool_call_turns`. An int N means "the first N user turns"; a list specifies explicit indices; `-1` means every turn.                                                                                                                      |
 | `tools`                      | `list`             | `None`  | Tool definitions in either [Chat Completions](https://platform.openai.com/docs/api-reference/chat/create#chat-create-tools) format (nested `function` key) or [Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) format (flat). GuideLLM auto-converts to match the `request_format` at request time. Using the format that matches your target endpoint is recommended. When `None`, a built-in placeholder tool is used. |
-| `tool_response_tokens`       | `int`              | `None`  | Average number of tokens for synthetic tool call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                                                                                                                                                                                                                                                                                      |
+| `tool_response_tokens`       | `int`              | `None`  | Average number of tokens for synthetic tool-call responses. When `None`, a short placeholder (`{"status": "ok"}`) is used.                                                                                                                                                                                                                                                                                                                                                      |
 | `tool_response_tokens_stdev` | `int`              | `None`  | Standard deviation for tool response token count.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `tool_response_tokens_min`   | `int`              | `None`  | Minimum number of tokens for tool response.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `tool_response_tokens_max`   | `int`              | `None`  | Maximum number of tokens for tool response.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
-Note: The token count is for the content of a field of the mock tool call response. The JSON structure adds ~5 tokens to the mock tool call response.
+Note: The token count is for the content of a field of the mock tool-call response. The JSON structure adds ~5 tokens to the mock tool-call response.
 
 **Configuring tool response content** -- by default, tool results use a short placeholder (`{"status": "ok"}`). This default can be changed via the `GUIDELLM__DEFAULT_SYNTHETIC_TOOL_RESPONSE` environment variable. For more realistic benchmarks, set `tool_response_tokens` to generate variable-length JSON responses:
 
@@ -159,7 +159,7 @@ guidellm run \
 
 The `tool_calling_message_extractor` preprocessor must be explicitly enabled via `--data-preprocessor` (it is not included by default). It parses each row's `messages` array and extracts prompts, system messages, and tool results into the appropriate columns. If the dataset has no tool result messages, the placeholder (`{"status": "ok"}`) is used as a fallback.
 
-## Tool Choice and Missing Tool Call Behavior
+## Tool Choice and Missing Tool-Call Behavior
 
 Two backend settings control how tool-call turns are handled at runtime. Both are configured in the `--backend` config:
 
@@ -189,7 +189,7 @@ guidellm run \
 
 **`tool_choice` implications:**
 
-- `required` (default) -- the model **must** produce a tool call. This gives the most predictable benchmarks and the fewest errors, since the server constrains the output to valid tool call JSON. Use this when you don't want to rely on the model choosing to use tools. However, it may slow down the server due to forcing the server to choose low-probability options.
+- `required` (default) -- the model **must** produce a tool call. This gives the most predictable benchmarks and the fewest errors, since the server constrains the output to valid tool-call JSON. Use this when you don't want to rely on the model choosing to use tools. However, it may slow down the server due to forcing the server to choose low-probability options.
 - `auto` -- the model decides whether to call a tool. Useful for testing how often a model chooses to invoke tools, but increases the chance of missing tool calls (see `tool_call_missing_behavior`).
 - `none` -- tools are present in the request but the model cannot call them. This value is not set automatically by the pipeline (non-tool turns omit tools entirely); it is only useful when explicitly configured in the backend config alongside a global `tools` definition in extras.
 
@@ -203,7 +203,7 @@ This setting only matters when `tool_choice` is `auto` (or `required` and the se
 - `ignore_stop` -- the current turn is marked as **cancelled** (incomplete) and all remaining turns are cancelled. The model's response is preserved in the output but the turn's status reflects that the expected tool call was not produced. Use this when a missing tool call means the conversation can't continue meaningfully but shouldn't be treated as an error.
 - `ignore_continue` -- the current turn is treated as **completed** and the conversation continues to the next turn. Each future tool-call turn is evaluated independently. Use this when you want to measure how many tool calls actually happen under `auto` mode without aborting the conversation.
 
-### Recommended scenarios
+### Recommended Scenarios
 
 | Tool Choice | Missing Behavior  | Current Turn Status | Description                                                                                                  |
 | ----------- | ----------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -215,19 +215,19 @@ This setting only matters when `tool_choice` is `auto` (or `required` and the se
 
 When `output_tokens` is configured (either via synthetic data or a dataset column), GuideLLM normally sets `ignore_eos=True` and clears stop sequences to force the model to generate exactly N tokens. On tool-call turns, these settings are **automatically removed** because they are incompatible with vLLM's constrained decoding grammar:
 
-- **`ignore_eos`** conflicts with the grammar's terminal state. Constrained decoding guides token selection via a finite-state machine that marks EOS as the only valid token once the JSON is complete. `ignore_eos` masks out EOS, creating an impossible state with no valid tokens — causing server errors or runaway generation.
+- **`ignore_eos`** conflicts with the grammar's terminal state. Constrained decoding guides token selection via a finite state machine that marks EOS as the only valid token once the JSON is complete. `ignore_eos` masks out EOS, creating an impossible state with no valid tokens — causing server errors or runaway generation.
 - **`stop=None`** removes stop sequences that the tool-call parser may rely on internally (e.g. `<|eot_id|>` for Llama models).
-- **`max_tokens` / `max_completion_tokens`** would truncate mid-JSON, producing invalid tool call arguments that corrupt the conversation history on follow-up turns.
+- **`max_tokens` / `max_completion_tokens`** would truncate mid-JSON, producing invalid tool-call arguments that corrupt the conversation history on follow-up turns.
 
 As a result, tool-call turns generate output whose length is determined by the model and tool schema rather than the configured `output_tokens`. The model stops as soon as it produces valid JSON for the function name and arguments. This typically results in shorter output (20–80 tokens) compared to the configured target.
 
-Plain-text turns are unaffected and continue to respect `output_tokens` / `ignore_eos` as normal. These turns do not include tool definitions or `tool_choice` in the request.
+Plain text turns are unaffected and continue to respect `output_tokens` / `ignore_eos` as normal. These turns do not include tool definitions or `tool_choice` in the request.
 
 ## Edge Cases
 
-- **Single-turn tool calling** (`turns=1, tool_call_turns=1` or `tool_call_turns=[0]`) is supported. The conversation has one turn that expects a tool call and no plain-text response.
-- **All-tool conversations** (e.g. `tool_call_turns=3` with `turns=3`, or `tool_call_turns=[0,1,2]`) are supported. Every turn is a tool-call turn and the model never produces a final plain-text response. The `output` field in `benchmarks.json` will be `None` for every request; use the `tool_calls` field to inspect model output.
+- **Single-turn tool calling** (`turns=1, tool_call_turns=1` or `tool_call_turns=[0]`) is supported. The conversation has one turn that expects a tool call and no plain text response.
+- **All-tool conversations** (e.g. `tool_call_turns=3` with `turns=3`, or `tool_call_turns=[0,1,2]`) are supported. Every turn is a tool-call turn and the model never produces a final plain text response. The `output` field in `benchmarks.json` will be `None` for every request; use the `tool_calls` field to inspect model output.
 - **Non-contiguous tool turns** (e.g. `tool_call_turns=[0, 2]` with `turns=4`) are supported. Only the specified turns expect tool calls; other turns produce plain text.
 - **Tool definitions on non-tool turns** are not included in the request. The data pipeline only attaches `tools_column` to turns that expect a tool call, so non-tool turns are sent as plain chat completions without tools or `tool_choice`.
 - **Mixed datasets** where only some rows have a `tools_column` work correctly. Rows without tools are treated as plain text conversations; rows with tools follow the tool-call flow.
-- **Rate-limited profiles** (e.g. `--profile kind=constant,rate=1`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool calling logic.
+- **Rate-limited profiles** (e.g. `--profile kind=constant,rate=1`) pace follow-up tool turns through the same scheduler as any other request. The follow-up turn is requeued and waits for the next available scheduling slot, so the effective delay between turns is determined by the profile, not by the tool-calling logic.

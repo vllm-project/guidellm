@@ -70,7 +70,7 @@ Or with JSON:
 
 The following parameters can be configured when enabling over-saturation detection:
 
-- **`mode`** (`"enforce"` | `"monitor"`, default: `"enforce"`): Controls behavior when over-saturation is detected. `"enforce"` stops the benchmark, `"monitor"` only monitors and reports
+- **`mode`** (`"enforce"` | `"monitor"`, default: `"enforce"`): Controls behavior when over-saturation is detected. `"enforce"` stops the benchmark, `"monitor"` only monitors and reports.
 - **`min_seconds`** (float, default: `30.0`): Minimum seconds before checking for over-saturation. This prevents false positives during the initial warm-up phase.
 - **`max_window_seconds`** (float, default: `120.0`): Maximum time window in seconds for data retention. Older data points are automatically pruned to maintain bounded memory usage.
 - **`moe_threshold`** (float, default: `2.0`): Margin of error threshold for slope detection. Lower values make detection more sensitive to degradation.

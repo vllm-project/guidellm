@@ -14,7 +14,7 @@ Find your symptom below, then follow the linked fix. For CLI syntax, see [Run a 
 
 ## Debug logging
 
-Enable debig output to inspect request handling and worker startup:
+Enable debug output to inspect request handling and worker startup:
 
 ```bash
 GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL=DEBUG guidellm run ... --disable-progress
