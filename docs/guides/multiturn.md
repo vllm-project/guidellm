@@ -447,7 +447,7 @@ Results in the following being sent for the turn in the conversation history:
 | OpenAI o-series (o1, o3)                                           | `false` (reasoning not replayable via API)                     |
 | Custom / no delimiters                                             | `"{reasoning}"`                                                |
 
-### Other notes regarding reasoning:
+### Other Notes Regarding Reasoning:
 
 Reasoning is only recognized if "reasoning" chunks are sent to the client. This is typically only done if a reasoning parser is included. Otherwise, GuideLLM will interpret them as non-reasoning tokens. Regarding KVCache, reasoning parsers reformat the reasoning, which has a side effect of making it so that despite sending back reasoning tokens, kvcache likely won't match exactly, causing a partial cache miss. Settings to evict reasoning from vLLM's cache are in review as of the time of this writing.
 

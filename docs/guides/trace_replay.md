@@ -36,7 +36,7 @@ guidellm benchmark \
 
 ### `mooncake`
 
-The Mooncake format expects an additional column for hash IDs. During prompt generation, hash IDs sharing the same previous ID are required to represent dinstinct blocks of token ids.
+The Mooncake format expects an additional column for hash IDs. During prompt generation, hash IDs sharing the same previous ID are required to represent distinct blocks of token ids.
 
 | Argument             | Default    | Description                                         |
 | -------------------- | ---------- | --------------------------------------------------- |
