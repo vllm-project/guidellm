@@ -293,7 +293,7 @@ class SchedulerUpdateAction(StandardBaseModel):
         description="Additional context and data for the scheduler action",
     )
     progress: SchedulerProgress = Field(
-        default_factory=lambda: SchedulerProgress(),
+        default_factory=SchedulerProgress,
         description="Progress information for the scheduler action",
     )
 
@@ -354,7 +354,7 @@ class SchedulerState(StandardBaseModel):
     )
 
     progress: SchedulerProgress = Field(
-        default_factory=lambda: SchedulerProgress(),
+        default_factory=SchedulerProgress,
         description="Overall progress information for the scheduler run",
     )
 

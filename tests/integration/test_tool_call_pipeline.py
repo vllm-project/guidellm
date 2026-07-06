@@ -10,8 +10,14 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from datasets import Dataset
 
 from guidellm.data.finalizers import GenerativeRequestFinalizer
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
+from guidellm.data.preprocessors.mappers import (
+    GenerativeColumnMapper,
+    GenerativeColumnMapperArgs,
+)
 from guidellm.schemas import GenerationRequest, RequestSettings
 
 
@@ -22,14 +28,6 @@ def _run_row_through_pipeline(
 
     ## WRITTEN BY AI ##
     """
-    from datasets import Dataset
-
-    from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
-    from guidellm.data.preprocessors.mappers import (
-        GenerativeColumnMapper,
-        GenerativeColumnMapperArgs,
-    )
-
     dataset = Dataset.from_dict({k: [v] for k, v in row.items()})
 
     mapper = GenerativeColumnMapper(GenerativeColumnMapperArgs())

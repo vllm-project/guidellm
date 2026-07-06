@@ -45,11 +45,11 @@ class GenerativeBenchmarkMetadata(StandardBaseModel):
     )
     python_version: str = Field(
         description="Version of Python interpreter used during the benchmark",
-        default_factory=lambda: platform.python_version(),
+        default_factory=platform.python_version,
     )
     platform: str = Field(
         description="Operating system platform where the benchmark was executed",
-        default_factory=lambda: platform.platform(),
+        default_factory=platform.platform,
     )
 
 

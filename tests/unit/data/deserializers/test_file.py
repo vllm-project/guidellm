@@ -6,6 +6,8 @@ Unit tests for guidellm.data.deserializers.file module.
 
 import csv
 import io
+import sqlite3
+import tarfile
 from pathlib import Path
 
 import pandas as pd
@@ -292,7 +294,6 @@ def test_db_file_deserializer_success(monkeypatch, tmp_path):
 
     ### WRITTEN BY AI ###
     """
-    import sqlite3
 
     def create_sqlite_db(path: Path):
         conn = sqlite3.connect(path)
@@ -337,8 +338,6 @@ def test_db_file_deserializer_success(monkeypatch, tmp_path):
 
 
 def create_simple_tar(tar_path: str):
-    import tarfile
-
     content = b"hello world\nthis is a tar file\n"
     with tarfile.open(tar_path, "w") as tar:
         data_stream = io.BytesIO(content)
