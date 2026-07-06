@@ -5,6 +5,7 @@ and stopping features work correctly under various conditions and edge cases.
 """
 
 import math
+import random
 import time
 from unittest.mock import patch
 
@@ -108,8 +109,6 @@ class TestSlopeCheckerStatisticalAccuracy:
     @pytest.mark.sanity
     def test_slope_calculation_with_noise(self):
         """Test slope calculation with noisy data."""
-        import random
-
         random.seed(42)  # Reproducible results
 
         checker = SlopeChecker(moe_threshold=1.0, confidence=0.90)
@@ -327,8 +326,6 @@ class TestOverSaturationConstraintRealisticScenarios:
             moe_threshold=2.0,
             mode="active",
         )
-
-        import random
 
         random.seed(123)  # Reproducible
 

@@ -1,5 +1,8 @@
 ## WRITTEN BY AI ##
-from guidellm.benchmark.outputs.html import _filter_duplicate_percentiles
+from guidellm.benchmark.outputs.html import (
+    _filter_duplicate_percentiles,
+    _TabularDistributionSummary,
+)
 from guidellm.schemas import Percentiles
 
 
@@ -121,8 +124,6 @@ def test_partial_percentiles():
 
 def test_model_dump_filters_duplicates():
     """Test that model_dump applies percentile filtering."""
-    from guidellm.benchmark.outputs.html import _TabularDistributionSummary
-
     # Create a distribution with duplicate percentiles (typical of small datasets)
     dist = _TabularDistributionSummary(
         mean=15.5,

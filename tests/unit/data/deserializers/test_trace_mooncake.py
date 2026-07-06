@@ -264,7 +264,7 @@ class TestMooncakeTraceFormat:
         config = MooncakeTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
-            processor_factory=lambda: _ascending_processor(),
+            processor_factory=_ascending_processor,
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
@@ -290,7 +290,7 @@ class TestMooncakeTraceFormat:
         config = MooncakeTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
-            processor_factory=lambda: _compatible_processor(),
+            processor_factory=_compatible_processor,
             random_seed=42,
         )
         root_blocks, sibling_blocks = zip(

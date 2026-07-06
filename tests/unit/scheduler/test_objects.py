@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import typing
 from collections.abc import AsyncIterator
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, TypeVar
 
 import pytest
 from pydantic import ValidationError
@@ -325,7 +325,7 @@ class TestRequestTimings:
         for key in self.CHECK_KEYS:
             assert key in fields
             field_info = fields[key]
-            assert field_info.annotation in (Union[float, None], Optional[float])  # noqa: UP007
+            assert field_info.annotation == float | None
             assert field_info.default is None
 
     @pytest.mark.smoke

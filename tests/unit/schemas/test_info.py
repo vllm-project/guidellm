@@ -4,6 +4,8 @@ Unit tests for RequestInfo and RequestTimings.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from pydantic import ValidationError
 
@@ -340,8 +342,6 @@ class TestRequestInfo:
     @pytest.mark.smoke
     def test_auto_id_generation(self):
         """Test that request_id is auto-generated if not provided."""
-        import uuid
-
         info1 = RequestInfo()
         info2 = RequestInfo()
 

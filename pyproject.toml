@@ -103,36 +103,17 @@ vision = [
     "pillow",
     "imageio[ffmpeg]",
 ]
-# Dev Tooling
-dev = [
-    # Install all optional dependencies
-    "guidellm[all]",
 
-    # build
+[dependency-groups]
+build = [
     "build>=1.0.0",
     "setuptools>=61.0",
     "setuptools-git-versioning>=2.0,<3",
-
-    # general and configurations
-    "pre-commit~=3.5.0",
-    "scipy~=1.10",
-    "sphinx~=7.1.2",
-    "tox~=4.16.0",
-
-    # testing
-    "lorem~=0.1.1",
-    "pytest~=8.2.2",
-    "pytest-asyncio~=1.1.0",
-    "pytest-cov~=5.0.0",
-    "pytest-mock~=3.14.0",
-    "pytest-rerunfailures~=14.0",
-    "pytest-timeout~=2.4.0",
-    "pytest-httpx~=0.35.0",
-    "respx~=0.22.0",
-
+]
+quality = [
     # code quality
-    "mypy~=1.15.0",
-    "ruff~=0.11.7",
+    "mypy~=2.1.0",
+    "ruff~=0.15.20",
 
     # docs quality
     "mdformat~=1.0.0",
@@ -143,15 +124,34 @@ dev = [
     # type-checking
     "pandas-stubs",
     "types-PyYAML~=6.0.1",
-    "types-requests~=2.32.0",
-    "types-toml",
 
     # link checking
     "mkdocs-linkcheck~=1.0.6",
 ]
+test = [
+    # Install all optional dependencies
+    "guidellm[all]",
 
-[dependency-groups]
-dev = ["guidellm[dev]"]
+    "pytest~=9.1.1",
+    "pytest-asyncio~=1.4.0",
+    "pytest-cov~=7.1.0",
+    "pytest-mock~=3.15.1",
+    "pytest-rerunfailures~=16.4",
+    "pytest-timeout~=2.4.0",
+    "pytest-httpx~=0.36.2",
+    "respx~=0.23.1",
+]
+env = [
+    "pre-commit",
+    "tox",
+    "tox-uv",
+]
+dev = [
+    {include-group = "build"},
+    {include-group = "quality"},
+    {include-group = "test"},
+    {include-group = "env"},
+]
 
 [project.urls]
 homepage = "https://github.com/vllm-project/guidellm"

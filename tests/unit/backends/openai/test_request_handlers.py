@@ -6,6 +6,10 @@ Unit tests for OpenAI request handlers.
 
 from __future__ import annotations
 
+import json
+import json as stdlib_json
+from unittest.mock import MagicMock
+
 import pytest
 
 from guidellm.backends.openai.request_handlers import (
@@ -21,7 +25,13 @@ from guidellm.backends.openai.request_handlers import (
     TextCompletionsRequestHandler,
     WSEventResult,
 )
+from guidellm.data.finalizers.generative import (
+    GenerativeRequestFinalizer,
+    GenerativeRequestFinalizerArgs,
+)
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
+from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+from guidellm.settings import settings
 from guidellm.utils.registry import RegistryMixin
 
 
@@ -3793,8 +3803,6 @@ class TestResponsesRequestHandler:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
-
         instance = valid_instances
 
         prev_request = GenerationRequest(
@@ -3853,8 +3861,6 @@ class TestResponsesRequestHandler:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
-
         instance = valid_instances
 
         prev_request = GenerationRequest(
@@ -4311,8 +4317,6 @@ class TestResponsesRequestHandler:
 
         ## WRITTEN BY AI ##
         """
-        import json as stdlib_json
-
         instance = valid_instances
         chat_tools = [
             {"type": "function", "function": {"name": "fn", "parameters": {}}}
@@ -4375,8 +4379,6 @@ class TestResponsesRequestHandler:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
-
         instance = valid_instances
         tool_call_req = GenerationRequest(
             columns={"text_column": ["call the tool"]},
@@ -4963,8 +4965,6 @@ class TestChatCompletionsToolChoiceOverride:
 
         ## WRITTEN BY AI ##
         """
-        import json
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         data = GenerationRequest(
             columns={
@@ -4984,8 +4984,6 @@ class TestChatCompletionsToolChoiceOverride:
 
         ## WRITTEN BY AI ##
         """
-        import json
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         data = GenerationRequest(
             columns={
@@ -5005,8 +5003,6 @@ class TestChatCompletionsToolChoiceOverride:
 
         ## WRITTEN BY AI ##
         """
-        import json
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         data = GenerationRequest(
             columns={
@@ -5040,8 +5036,6 @@ class TestChatCompletionsToolChoiceOverride:
 
         ## WRITTEN BY AI ##
         """
-        import json
-
         tools = [{"type": "function", "function": {"name": "get_data"}}]
         data = GenerationRequest(
             columns={
@@ -5061,8 +5055,6 @@ class TestChatCompletionsToolChoiceOverride:
 
         ## WRITTEN BY AI ##
         """
-        import json
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         data = GenerationRequest(
             columns={
@@ -5086,13 +5078,6 @@ class TestChatCompletionsToolChoiceOverride:
 
         ## WRITTEN BY AI ##
         """
-        import json
-
-        from guidellm.data.finalizers.generative import (
-            GenerativeRequestFinalizer,
-            GenerativeRequestFinalizerArgs,
-        )
-
         finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
         items = [
             {
@@ -5128,8 +5113,6 @@ class TestChatCompletionsToolChoiceOverride:
 
         ## WRITTEN BY AI ##
         """
-        import json
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         data = GenerationRequest(
             columns={
@@ -5165,14 +5148,6 @@ class TestChatCompletionsToolResponseColumn:
 
         ## WRITTEN BY AI ##
         """
-        import json
-        from unittest.mock import MagicMock
-
-        from guidellm.schemas.tool_call import (
-            ToolCall,
-            ToolCallFunction,
-        )
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         tool_call_request = GenerationRequest(
             columns={
@@ -5221,15 +5196,6 @@ class TestChatCompletionsToolResponseColumn:
 
         ## WRITTEN BY AI ##
         """
-        import json
-        from unittest.mock import MagicMock
-
-        from guidellm.schemas.tool_call import (
-            ToolCall,
-            ToolCallFunction,
-        )
-        from guidellm.settings import settings
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         tool_call_request = GenerationRequest(
             columns={
@@ -5277,14 +5243,6 @@ class TestChatCompletionsToolResponseColumn:
 
         ## WRITTEN BY AI ##
         """
-        import json
-        from unittest.mock import MagicMock
-
-        from guidellm.schemas.tool_call import (
-            ToolCall,
-            ToolCallFunction,
-        )
-
         tools = [{"type": "function", "function": {"name": "fn"}}]
         tool_call_request = GenerationRequest(
             columns={
@@ -5348,8 +5306,6 @@ class TestChatCompletionsInjectionTurnFormat:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
-
         tool_req = GenerationRequest(
             columns={"text_column": ["ask"]},
             turn_type="client_tool_call",
@@ -5386,8 +5342,6 @@ class TestChatCompletionsInjectionTurnFormat:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
-
         tc1_req = GenerationRequest(
             columns={"text_column": ["q1"]}, turn_type="client_tool_call"
         )
@@ -5491,8 +5445,6 @@ class TestResponsesInjectionTurnFormat:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
-
         tool_req = GenerationRequest(
             columns={"text_column": ["ask"]},
             turn_type="client_tool_call",
@@ -5530,8 +5482,6 @@ class TestResponsesInjectionTurnFormat:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
-
         tool_req = GenerationRequest(
             columns={"text_column": ["ask"]},
             turn_type="client_tool_call",
