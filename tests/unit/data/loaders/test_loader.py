@@ -15,7 +15,7 @@ import guidellm.data.loaders  # noqa: F401 — ensures TorchDataLoader is regist
 
 # Import to ensure deserializer registry is populated
 from guidellm.data.loaders.loader import DataLoaderRegistry
-from guidellm.data.loaders.torch import TorchDataLoaderArgs
+from guidellm.data.loaders.torch import TorchDataLoader, TorchDataLoaderArgs
 
 
 class TestDataLoaderRegistry:
@@ -63,7 +63,5 @@ class TestDataLoaderRegistry:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.data.loaders.torch import TorchDataLoader
-
         loader_cls = DataLoaderRegistry.get_registered_object("pytorch")
         assert loader_cls is TorchDataLoader

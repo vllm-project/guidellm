@@ -9,35 +9,56 @@ Thank you for your interest in contributing to GuideLLM! This document provides 
 Before you begin, ensure you have the following installed:
 
 - Python 3.10 or higher
-- pip (Python package manager)
-- Tox
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) (recommended), pip, or another python package manager
 - Git
 
 ### Cloning the Repository
 
 1. Clone the repository to your local machine:
 
-   ```bash
+   ```sh
    git clone https://github.com/vllm-project/guidellm.git
    cd guidellm
    ```
 
 2. (Optional) If you plan to contribute changes back, fork the repository and clone your fork instead:
 
-   ```bash
+   ```sh
    git clone https://github.com/<your-username>/guidellm.git
    cd guidellm
    ```
 
 ### Installing Dependencies
 
-To install the required dependencies for the package and development, run:
+To install the required dependencies for the package and development, run one of:
 
-```bash
-pip install -e ./[dev]
+#### Option 1: with `uv`
+
+Synchronize a local venv with our locked dependency versions found within the projects `uv.lock`.
+
+```sh
+uv sync --frozen
 ```
 
-The `-e` flag installs the package in editable mode, allowing you to make changes to the code without reinstalling it. The `[dev]` part installs additional dependencies needed for development, such as testing and linting tools.
+The `--frozen` flag tells `uv` to avoid modifying dependency versions.
+
+To use tooling in the venv either activate it with `. .venv/bin/activate` or prepend commands with `uv run` to run them from within the venv.
+
+#### Option 2: with `pip`
+
+First create and activate a venv.
+
+```sh
+python -m venv .venv && . .venv/bin/activate
+```
+
+Then install into that venv with pip.
+
+```sh
+pip install --group dev -e .
+```
+
+The `-e` flag installs the package in editable mode, allowing you to make changes to the code without reinstalling it. The `--group dev` part installs additional dependencies needed for development, such as testing and linting tools.
 
 ## Implementing Changes
 
@@ -84,7 +105,7 @@ Assisted-by: GitHub Copilot gpt-4o
 
 We use Tox to simplify running various tasks in isolated environments. Tox standardizes environments to ensure consistency across local development, CI/CD pipelines, and releases. This guarantees that the code behaves the same regardless of where it is executed.
 
-Additionally, to ensure consistency and quality of the codebase, we use [ruff](https://github.com/astral-sh/ruff) for linting and styling, [isort](https://pycqa.github.io/isort/) for sorting imports, [mypy](https://github.com/python/mypy) for type checking, and [mdformat](https://github.com/hukkin/mdformat) for formatting Markdown files.
+Additionally, to ensure consistency and quality of the codebase, we use [ruff](https://github.com/astral-sh/ruff) for linting and styling, [mypy](https://github.com/python/mypy) for type checking, and [mdformat](https://github.com/hukkin/mdformat) for formatting Markdown files.
 
 ### Code Quality and Style
 

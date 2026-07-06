@@ -16,6 +16,7 @@ from datasets import Dataset
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.builders import (
+    STRATEGY_HANDLERS,
     PromptTooShortError,
     ShortPromptStrategy,
     ShortPromptStrategyHandler,
@@ -2012,8 +2013,6 @@ class TestProcessDatasetStrategyHandlerIntegration:
         tmp_path,
     ):
         """Test that strategy handlers are called during dataset processing."""
-        from guidellm.data.builders import STRATEGY_HANDLERS
-
         mock_handler = MagicMock(return_value="processed_prompt")
         with patch.dict(STRATEGY_HANDLERS, {ShortPromptStrategy.IGNORE: mock_handler}):
             # Create a dataset with prompts that need processing

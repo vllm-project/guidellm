@@ -4,8 +4,9 @@ Unit tests for OpenAIHTTPBackend implementation.
 
 from __future__ import annotations
 
+import asyncio
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import httpx
 import pytest
@@ -24,6 +25,10 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
     RequestTimings,
+)
+from guidellm.schemas.tool_call import (
+    ToolCall,
+    ToolCallFunction,
 )
 from tests.unit.testing_utils import async_timeout
 
@@ -881,13 +886,6 @@ class TestCheckToolCallExpectations:
         """
         ## WRITTEN BY AI ##
         """
-        from unittest.mock import MagicMock
-
-        from guidellm.schemas.tool_call import (
-            ToolCall,
-            ToolCallFunction,
-        )
-
         resp = MagicMock()
         resp.tool_calls = (
             [
@@ -943,8 +941,6 @@ class TestCheckToolCallExpectations:
 
         ## WRITTEN BY AI ##
         """
-        import asyncio
-
         backend = self._make_backend("ignore_stop")
         req = self._make_request(is_tool_call=True)
         resp = self._make_response(has_tool_calls=False)

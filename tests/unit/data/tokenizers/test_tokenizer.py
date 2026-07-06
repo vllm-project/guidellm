@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 import guidellm.data.tokenizers  # noqa: F401 — ensures tokenizers are registered
-from guidellm.data.tokenizers import TokenizerRegistry
+from guidellm.data.tokenizers import HuggingFaceTokenizerArgs, TokenizerRegistry
 from guidellm.data.tokenizers.huggingface import HuggingFaceTokenizer
 
 
@@ -43,8 +43,6 @@ class TestTokenizerRegistry:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.data.tokenizers import HuggingFaceTokenizerArgs
-
         config = HuggingFaceTokenizerArgs(model="test")
         # Monkey-patch kind to something not registered
         object.__setattr__(config, "kind", "nonexistent_tokenizer_kind")
