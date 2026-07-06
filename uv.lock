@@ -911,10 +911,10 @@ vision = [
 ]
 
 [package.dev-dependencies]
-ci = [
-    { name = "pre-commit" },
-    { name = "tox" },
-    { name = "tox-uv" },
+build = [
+    { name = "build" },
+    { name = "setuptools" },
+    { name = "setuptools-git-versioning" },
 ]
 dev = [
     { name = "build" },
@@ -926,6 +926,7 @@ dev = [
     { name = "mkdocs-linkcheck" },
     { name = "mypy" },
     { name = "pandas-stubs" },
+    { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -937,7 +938,36 @@ dev = [
     { name = "ruff" },
     { name = "setuptools" },
     { name = "setuptools-git-versioning" },
+    { name = "tox" },
+    { name = "tox-uv" },
     { name = "types-pyyaml" },
+]
+env = [
+    { name = "pre-commit" },
+    { name = "tox" },
+    { name = "tox-uv" },
+]
+quality = [
+    { name = "mdformat" },
+    { name = "mdformat-footnote" },
+    { name = "mdformat-frontmatter" },
+    { name = "mdformat-gfm" },
+    { name = "mkdocs-linkcheck" },
+    { name = "mypy" },
+    { name = "pandas-stubs" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+test = [
+    { name = "guidellm", extra = ["all"] },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-httpx" },
+    { name = "pytest-mock" },
+    { name = "pytest-rerunfailures" },
+    { name = "pytest-timeout" },
+    { name = "respx" },
 ]
 
 [package.metadata]
@@ -984,10 +1014,10 @@ requires-dist = [
 provides-extras = ["all", "recommended", "perf", "tokenizers", "audio", "vision"]
 
 [package.metadata.requires-dev]
-ci = [
-    { name = "pre-commit" },
-    { name = "tox" },
-    { name = "tox-uv" },
+build = [
+    { name = "build", specifier = ">=1.0.0" },
+    { name = "setuptools", specifier = ">=61.0" },
+    { name = "setuptools-git-versioning", specifier = ">=2.0,<3" },
 ]
 dev = [
     { name = "build", specifier = ">=1.0.0" },
@@ -999,6 +1029,7 @@ dev = [
     { name = "mkdocs-linkcheck", specifier = "~=1.0.6" },
     { name = "mypy", specifier = "~=2.1.0" },
     { name = "pandas-stubs" },
+    { name = "pre-commit" },
     { name = "pytest", specifier = "~=9.1.1" },
     { name = "pytest-asyncio", specifier = "~=1.4.0" },
     { name = "pytest-cov", specifier = "~=7.1.0" },
@@ -1010,7 +1041,36 @@ dev = [
     { name = "ruff", specifier = "~=0.15.20" },
     { name = "setuptools", specifier = ">=61.0" },
     { name = "setuptools-git-versioning", specifier = ">=2.0,<3" },
+    { name = "tox" },
+    { name = "tox-uv" },
     { name = "types-pyyaml", specifier = "~=6.0.1" },
+]
+env = [
+    { name = "pre-commit" },
+    { name = "tox" },
+    { name = "tox-uv" },
+]
+quality = [
+    { name = "mdformat", specifier = "~=1.0.0" },
+    { name = "mdformat-footnote", specifier = "~=0.1.3" },
+    { name = "mdformat-frontmatter", specifier = "~=2.0.10" },
+    { name = "mdformat-gfm", specifier = "~=1.0.0" },
+    { name = "mkdocs-linkcheck", specifier = "~=1.0.6" },
+    { name = "mypy", specifier = "~=2.1.0" },
+    { name = "pandas-stubs" },
+    { name = "ruff", specifier = "~=0.15.20" },
+    { name = "types-pyyaml", specifier = "~=6.0.1" },
+]
+test = [
+    { name = "guidellm", extras = ["all"] },
+    { name = "pytest", specifier = "~=9.1.1" },
+    { name = "pytest-asyncio", specifier = "~=1.4.0" },
+    { name = "pytest-cov", specifier = "~=7.1.0" },
+    { name = "pytest-httpx", specifier = "~=0.36.2" },
+    { name = "pytest-mock", specifier = "~=3.15.1" },
+    { name = "pytest-rerunfailures", specifier = "~=16.4" },
+    { name = "pytest-timeout", specifier = "~=2.4.0" },
+    { name = "respx", specifier = "~=0.23.1" },
 ]
 
 [[package]]
