@@ -156,7 +156,7 @@ class Benchmarker(
                             )
                     except Exception as err:  # noqa: BLE001
                         logger.error(
-                            f"Error updating benchmark estimate/progress: {err}"
+                            "Error updating benchmark estimate/progress: {}", err
                         )
 
                 benchmark = benchmark_class.compile(
