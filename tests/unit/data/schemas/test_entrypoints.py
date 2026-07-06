@@ -16,6 +16,7 @@ import guidellm.data.loaders  # noqa: F401
 import guidellm.data.preprocessors  # noqa: F401
 from guidellm.data.deserializers.huggingface import HuggingFaceDataArgs
 from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
+from guidellm.data.loaders.loader import DataLoaderRegistry
 from guidellm.data.loaders.torch import TorchDataLoaderArgs
 from guidellm.data.preprocessors.mappers import GenerativeColumnMapperArgs
 from guidellm.data.schemas.entrypoints import (
@@ -25,6 +26,7 @@ from guidellm.data.schemas.entrypoints import (
     DataPreprocessorArgs,
     DataTokenizerArgs,
 )
+from guidellm.data.tokenizers import HuggingFaceTokenizerArgs, TokenizerRegistry
 
 
 class TestDataLoaderArgsRegistry:
@@ -39,8 +41,6 @@ class TestDataLoaderArgsRegistry:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.data.loaders.loader import DataLoaderRegistry
-
         obj = DataLoaderRegistry.get_registered_object("pytorch")
         assert obj is not None
 
@@ -194,8 +194,6 @@ class TestDataTokenizerArgsRegistry:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.data.tokenizers import TokenizerRegistry
-
         obj = TokenizerRegistry.get_registered_object("huggingface_auto")
         assert obj is not None
 
@@ -205,8 +203,6 @@ class TestDataTokenizerArgsRegistry:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.data.tokenizers import TokenizerRegistry
-
         obj = TokenizerRegistry.get_registered_object("hf_auto")
         assert obj is not None
 
@@ -216,8 +212,6 @@ class TestDataTokenizerArgsRegistry:
 
         ### WRITTEN BY AI ###
         """
-        from guidellm.data.tokenizers import HuggingFaceTokenizerArgs
-
         args = HuggingFaceTokenizerArgs(model="gpt2")
         assert args.kind == "huggingface_auto"
         assert args.model == "gpt2"
@@ -232,8 +226,6 @@ class TestDataTokenizerArgsRegistry:
         result = DataTokenizerArgs.model_validate(
             {"kind": "huggingface_auto", "model": "gpt2"}
         )
-        from guidellm.data.tokenizers import HuggingFaceTokenizerArgs
-
         assert isinstance(result, HuggingFaceTokenizerArgs)
         assert result.model == "gpt2"
 

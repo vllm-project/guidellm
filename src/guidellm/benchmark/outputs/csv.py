@@ -114,7 +114,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         return cls(output_path=args.path)
 
     output_path: Path = Field(
-        default_factory=lambda: Path.cwd(),
+        default_factory=Path.cwd,
         description=(
             "Path where the CSV file will be saved, defaults to current directory"
         ),

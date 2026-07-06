@@ -161,7 +161,7 @@ class Benchmarker(
 
                 benchmark = benchmark_class.compile(
                     accumulator=accumulator,
-                    scheduler_state=scheduler_state,
+                    scheduler_state=scheduler_state,  # type: ignore[arg-type]
                 )
 
                 if progress:

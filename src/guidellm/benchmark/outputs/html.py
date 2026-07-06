@@ -73,7 +73,7 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
     DEFAULT_FILE: ClassVar[str] = "benchmarks.html"
 
     output_path: Path = Field(
-        default_factory=lambda: Path.cwd(),
+        default_factory=Path.cwd,
         description=(
             "Directory or file path for saving the HTML report, "
             "defaults to current working directory"

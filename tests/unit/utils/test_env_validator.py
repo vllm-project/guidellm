@@ -5,6 +5,7 @@ Unit tests for environment variable validation utilities.
 """
 
 import pytest
+from pydantic import BaseModel
 
 from guidellm.benchmark.schemas.entrypoints import BenchmarkScenario
 from guidellm.settings import Settings
@@ -38,7 +39,6 @@ class TestResolveModelType:
         """
         ## WRITTEN BY AI ##
         """
-        from pydantic import BaseModel
 
         class MyModel(BaseModel):
             x: int = 1
@@ -49,7 +49,6 @@ class TestResolveModelType:
         """
         ## WRITTEN BY AI ##
         """
-        from pydantic import BaseModel
 
         class MyModel(BaseModel):
             x: int = 1
@@ -60,7 +59,6 @@ class TestResolveModelType:
         """
         ## WRITTEN BY AI ##
         """
-        from pydantic import BaseModel
 
         class MyModel(BaseModel):
             x: int = 1

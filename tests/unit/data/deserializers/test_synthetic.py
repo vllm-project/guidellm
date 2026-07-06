@@ -11,6 +11,7 @@ import pytest
 import yaml
 from datasets import IterableDataset
 from faker import Faker
+from pydantic import ValidationError
 
 from guidellm.data import config as config_module
 from guidellm.data.deserializers.synthetic import (
@@ -22,6 +23,7 @@ from guidellm.data.deserializers.synthetic import (
     _SyntheticTextExamplesIterable,
 )
 from guidellm.data.schemas import DataNotSupportedError
+from guidellm.settings import settings
 
 
 class TestPrefixBucketConfig:
@@ -242,10 +244,8 @@ class TestSyntheticTextGenerator:
         """
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
-        tokenizer.decode.side_effect = (
-            lambda tokens, skip_special_tokens=False: " ".join(
-                f"token_{t}" for t in tokens[:5]
-            )
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"token_{t}" for t in tokens[:5])
         )
         return tokenizer
 
@@ -398,10 +398,8 @@ class TestSyntheticDatasetDeserializer:
         """
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
-        tokenizer.decode.side_effect = (
-            lambda tokens, skip_special_tokens=False: " ".join(
-                f"token_{t}" for t in tokens[:5]
-            )
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"token_{t}" for t in tokens[:5])
         )
         return tokenizer
 
@@ -560,10 +558,8 @@ class TestSyntheticTextDatasetMultiturn:
         """
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(len(text.split())))
-        tokenizer.decode.side_effect = (
-            lambda tokens, skip_special_tokens=False: " ".join(
-                f"token_{t}" for t in tokens[:5]
-            )
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"token_{t}" for t in tokens[:5])
         )
         return tokenizer
 
@@ -859,7 +855,6 @@ class TestSyntheticTextDatasetConfigToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="out of range"):
             SyntheticTextDataArgs(
@@ -872,7 +867,6 @@ class TestSyntheticTextDatasetConfigToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="duplicates"):
             SyntheticTextDataArgs(
@@ -885,7 +879,6 @@ class TestSyntheticTextDatasetConfigToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="out of range"):
             SyntheticTextDataArgs(
@@ -1060,7 +1053,6 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="server_tool_call_turns index"):
             SyntheticTextDataArgs(
@@ -1076,7 +1068,6 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="duplicates"):
             SyntheticTextDataArgs(
@@ -1092,7 +1083,6 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="must not overlap"):
             SyntheticTextDataArgs(
@@ -1161,7 +1151,6 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="must not overlap"):
             SyntheticTextDataArgs(
@@ -1191,7 +1180,6 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
 
         ## WRITTEN BY AI ##
         """
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="JSON int or list of ints"):
             SyntheticTextDataArgs(
@@ -1486,7 +1474,6 @@ class TestSyntheticDataToolResponseColumns:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.settings import settings
 
         config = SyntheticTextDataArgs(
             prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
