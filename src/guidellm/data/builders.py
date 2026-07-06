@@ -222,7 +222,9 @@ def process_dataset(
     Main method to process and save a dataset with sampled prompt/output token counts.
     """
     _validate_output_suffix(output_path)
-    logger.info(f"Starting dataset conversion | Input: {data} | Output: {output_path}")
+    logger.info(
+        "Starting dataset conversion | Input: {} | Output: {}", data, output_path
+    )
 
     # Parse config
     config_obj = parse_synthetic_config(config)
@@ -515,15 +517,15 @@ def _finalize_processed_dataset(
         logger.error("No prompts remained after processing")
         return
 
-    logger.info(f"Generated processed dataset with {len(processed_prompts)} prompts")
+    logger.info("Generated processed dataset with {} prompts", len(processed_prompts))
 
     processed_dataset = Dataset.from_list(processed_prompts)
     save_dataset_to_file(processed_dataset, output_path)
-    logger.info(f"Conversion completed. Dataset saved to: {output_path}")
+    logger.info("Conversion completed. Dataset saved to: {}", output_path)
 
     if push_to_hub:
         push_dataset_to_hub(hub_dataset_id, processed_dataset)
-        logger.info(f"Pushed dataset to: {hub_dataset_id}")
+        logger.info("Pushed dataset to: {}", hub_dataset_id)
 
 
 def push_dataset_to_hub(

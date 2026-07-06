@@ -616,7 +616,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             )
             self.stop_send_requests_event.set()
         except Exception as err:
-            logger.error(f"Error generating requests: {err}")
+            logger.error("Error generating requests: {}", err)
             self.error_event.set()
             raise err
 
@@ -674,7 +674,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             ):
                 self.shutdown_event.set()
         except Exception as err:
-            logger.error(f"Error processing received update: {err}")
+            logger.error("Error processing received update: {}", err)
             self.error_event.set()
             raise err
 
