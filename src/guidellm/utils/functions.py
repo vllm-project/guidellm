@@ -105,7 +105,8 @@ def safe_add(
     if len(signs) != len(values_list):
         raise ValueError("Length of signs must match length of values")
 
-    result = values_list[0] if values_list[0] is not None else default
+    first = values_list[0] if values_list[0] is not None else default
+    result = signs[0] * first
 
     for ind in range(1, len(values_list)):
         value = values_list[ind]
