@@ -17,7 +17,8 @@ This section provides a high-level summary of the benchmark run, including:
 - **Server configuration**: Target URL, model name, and backend details
 - **Data configuration**: Data source, token counts, and dataset properties
 - **Profile arguments**: Rate type, maximum duration, request limits, etc.
-- **Extras**: Any additional metadata provided via the `--output-extras` argument
+- **Extras**: Any additional metadata provided via the `--metadata` argument
+  (`--output-extras` is also accepted as a legacy alias)
 
 Example:
 

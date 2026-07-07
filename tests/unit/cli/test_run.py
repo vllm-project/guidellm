@@ -1,9 +1,64 @@
-"""Tests for ``guidellm run`` CLI error translation."""
+"""Tests for ``guidellm run`` CLI behavior."""
 
+import click
 import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
+from guidellm.cli.run import _build_metadata, run
+
+
+def test_build_metadata_attaches_metadata_and_labels():
+    """Metadata and labels should be written into the benchmark scenario.
+
+    ## WRITTEN BY AI ##
+    """
+    metadata = _build_metadata(
+        labels=[("env", "staging")],
+        metadata=[("owner", "platform"), ("ticket", "LLM-123")],
+    )
+
+    assert metadata == {
+        "labels": {"env": "staging"},
+        "owner": "platform",
+        "ticket": "LLM-123",
+    }
+
+
+def test_run_registers_metadata_aliases():
+    """The run command should expose --metadata and legacy --output-extras.
+
+    ## WRITTEN BY AI ##
+    """
+    metadata_option = next(param for param in run.params if param.name == "metadata")
+
+    assert isinstance(metadata_option, click.Option)
+    assert "--metadata" in metadata_option.opts
+    assert "--output-extras" in metadata_option.opts
+
+
+def test_run_rejects_metadata_labels_key():
+    """The labels metadata field is reserved for --label values.
+
+    ## WRITTEN BY AI ##
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "run",
+            "--disable-console",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=128",
+            "--constraint",
+            "kind=max_requests,max_num=1",
+            "--metadata",
+            "labels=staging",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "`labels` is reserved for --label values" in result.output
 
 
 @pytest.mark.regression

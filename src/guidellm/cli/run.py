@@ -62,8 +62,20 @@ __all__ = [
     multiple=True,
     callback=cli_tools.parse_kv_str,
     help=(
-        "Define a labels in key-value pair for the run. "
+        "Define a label key-value pair for the run. "
         "Example: `--label timestamp=1999-09-12@12:00:00 --label env=staging`"
+        "  [repeatable]"
+    ),
+)
+@click.option(
+    "--metadata",
+    "--output-extras",
+    "metadata",
+    multiple=True,
+    callback=cli_tools.parse_kv_str,
+    help=(
+        "Define a metadata key-value pair for the run. "
+        "Example: `--metadata owner=team-a --metadata ticket=LLM-123`"
         "  [repeatable]"
     ),
 )
@@ -134,10 +146,14 @@ def run(**kwargs):  # noqa: C901, PLR0915
             )
 
     try:
+        metadata = _build_metadata(
+            labels=kwargs.get("labels", []),
+            metadata=kwargs.get("metadata", []),
+        )
         args = BenchmarkScenario.create(
             spec=kwargs.get("spec", {}),
             benchmarks=kwargs.get("benchmarks") or BLANK,
-            metadata={"labels": dict(kwargs.get("labels", []))},
+            metadata=metadata,
             scenario=kwargs.get("config"),
         )
     except ValidationError as err:
@@ -155,3 +171,18 @@ def run(**kwargs):  # noqa: C901, PLR0915
             console=console,
         )
     )
+
+
+def _build_metadata(
+    labels: list[tuple[str, str]] | tuple[tuple[str, str], ...],
+    metadata: list[tuple[str, str]] | tuple[tuple[str, str], ...],
+) -> dict[str, str | dict[str, str]]:
+    metadata_dict = dict(metadata)
+    if "labels" in metadata_dict:
+        raise click.BadParameter(
+            "`labels` is reserved for --label values; use --label key=value instead.",
+            param_hint="--metadata",
+        )
+
+    metadata_dict["labels"] = dict(labels)
+    return metadata_dict
