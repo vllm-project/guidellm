@@ -31,7 +31,7 @@ def test_default_settings(mocker):
 @pytest.mark.sanity
 def test_disdantic_global_settings():
     settings = disdantic.get_settings()
-    assert settings.schema_rebuild_parents == False
+    assert not settings.schema_rebuild_parents
 
 
 @pytest.mark.smoke
