@@ -165,6 +165,10 @@ docs = "https://github.com/vllm-project/guidellm/tree/main/docs"
 guidellm = "guidellm.__main__:cli"
 
 
+[tool.disdantic]
+schema_rebuild_parents = false
+
+
 # ************************************************
 # ********** Code Quality Tools **********
 # ************************************************
