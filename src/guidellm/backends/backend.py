@@ -96,6 +96,8 @@ class Backend(
         backend = Backend.create(args)
     """
 
+    _args: BackendArgs
+
     @classmethod
     def create(cls, args: BackendArgs) -> Backend:
         """
@@ -125,14 +127,14 @@ class Backend(
         :param args: The backend arguments object
         """
         self.kind = args.kind
+        self._args = args
 
     @property
     def info(self) -> dict[str, Any]:
         """
         Return a snapshot of backend configuration for logging or debugging.
         """
-        args = getattr(self, "_args", None)
-        return args.model_dump(mode="json") if args else {}
+        return self._args.model_dump(mode="json") if self._args else {}
 
     @property
     def processes_limit(self) -> int | None:

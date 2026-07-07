@@ -148,6 +148,8 @@ class VLLMPythonBackend(Backend):
         await backend.process_shutdown()
     """
 
+    _args: VLLMPythonBackendArgs
+
     @classmethod
     def backend_args(cls) -> type[BackendArgs]:
         """Return the Pydantic model for this backend's creation arguments."""
@@ -161,7 +163,6 @@ class VLLMPythonBackend(Backend):
         Initialize VLLM Python backend with model and configuration.
         """
         super().__init__(arguments)
-        self._args = arguments
 
         # Runtime state
         self._in_process = False

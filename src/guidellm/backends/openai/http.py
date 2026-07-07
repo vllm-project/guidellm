@@ -234,6 +234,8 @@ class OpenAIHTTPBackend(Backend):
         await backend.process_shutdown()
     """
 
+    _args: OpenAIHTTPBackendArgs
+
     def __init__(
         self,
         arguments: OpenAIHTTPBackendArgs,
@@ -242,7 +244,6 @@ class OpenAIHTTPBackend(Backend):
         Initialize OpenAI HTTP backend with server configuration.
         """
         super().__init__(arguments)
-        self._args = arguments
 
         # Runtime state
         self._in_process = False

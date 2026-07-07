@@ -202,6 +202,8 @@ class OpenAIWebSocketBackend(Backend):
         await backend.process_shutdown()
     """
 
+    _args: OpenAIWebSocketBackendArgs
+
     def __init__(self, arguments: OpenAIWebSocketBackendArgs):
         """
         Initialize the WebSocket backend from validated args.
@@ -209,7 +211,6 @@ class OpenAIWebSocketBackend(Backend):
         :param arguments: Typed configuration including target, model, and paths.
         """
         super().__init__(arguments)
-        self._args = arguments
         self._resolved_model = (arguments.model or "").strip()
         self.validate_backend: dict[str, Any] | None = resolve_validate_kwargs(
             arguments.validate_backend,
