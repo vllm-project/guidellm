@@ -222,6 +222,8 @@ ignore = [
     "TC001",   # ignore imports used only for type checking
     "TC002",   # ignore imports used only for type checking
     "TC003",   # ignore imports used only for type checking
+    "FIX002",  # Allow TODO comments
+    "FIX004",  # Allow HACK comments
 ]
 select = [
     # Rules reference: https://docs.astral.sh/ruff/rules/
