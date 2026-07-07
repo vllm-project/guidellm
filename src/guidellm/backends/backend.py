@@ -9,7 +9,7 @@ provide a standard interface for distributed execution across worker processes.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import Field
 
@@ -125,6 +125,14 @@ class Backend(
         :param type_: The backend type identifier
         """
         self.kind = args.kind
+        self._args = args
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """
+        Return a snapshot of backend configuration for logging or debugging.
+        """
+        return self._args.model_dump(mode="json")
 
     @property
     def processes_limit(self) -> int | None:

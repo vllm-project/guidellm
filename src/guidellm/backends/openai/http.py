@@ -242,20 +242,10 @@ class OpenAIHTTPBackend(Backend):
         Initialize OpenAI HTTP backend with server configuration.
         """
         super().__init__(arguments)
-        self._args = arguments
 
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
-
-    @property
-    def info(self) -> dict[str, Any]:
-        """
-        Get backend configuration details.
-
-        :return: Dictionary containing backend configuration details
-        """
-        return self._args.model_dump(mode="json")
 
     async def process_startup(self):
         """
