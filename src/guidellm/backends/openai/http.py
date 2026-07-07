@@ -255,7 +255,7 @@ class OpenAIHTTPBackend(Backend):
 
         :return: Dictionary containing backend configuration details
         """
-        return self._args.model_dump()
+        return self._args.model_dump(mode="json")
 
     async def process_startup(self):
         """
