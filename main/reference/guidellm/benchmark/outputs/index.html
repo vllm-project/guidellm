@@ -735,7 +735,7 @@
 </span><span id=__span-0-114><a id=__codelineno-0-114 name=__codelineno-0-114></a>        <span class=k>return</span> <span class=bp>cls</span><span class=p>(</span><span class=n>output_path</span><span class=o>=</span><span class=n>args</span><span class=o>.</span><span class=n>path</span><span class=p>)</span>
 </span><span id=__span-0-115><a id=__codelineno-0-115 name=__codelineno-0-115></a>
 </span><span id=__span-0-116><a id=__codelineno-0-116 name=__codelineno-0-116></a>    <span class=n>output_path</span><span class=p>:</span> <span class=n>Path</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span>
-</span><span id=__span-0-117><a id=__codelineno-0-117 name=__codelineno-0-117></a>        <span class=n>default_factory</span><span class=o>=</span><span class=k>lambda</span><span class=p>:</span> <span class=n>Path</span><span class=o>.</span><span class=n>cwd</span><span class=p>(),</span>
+</span><span id=__span-0-117><a id=__codelineno-0-117 name=__codelineno-0-117></a>        <span class=n>default_factory</span><span class=o>=</span><span class=n>Path</span><span class=o>.</span><span class=n>cwd</span><span class=p>,</span>
 </span><span id=__span-0-118><a id=__codelineno-0-118 name=__codelineno-0-118></a>        <span class=n>description</span><span class=o>=</span><span class=p>(</span>
 </span><span id=__span-0-119><a id=__codelineno-0-119 name=__codelineno-0-119></a>            <span class=s2>&quot;Path where the CSV file will be saved, defaults to current directory&quot;</span>
 </span><span id=__span-0-120><a id=__codelineno-0-120 name=__codelineno-0-120></a>        <span class=p>),</span>
@@ -3207,7 +3207,7 @@
 </span><span id=__span-0-73><a id=__codelineno-0-73 name=__codelineno-0-73></a>    <span class=n>DEFAULT_FILE</span><span class=p>:</span> <span class=n>ClassVar</span><span class=p>[</span><span class=nb>str</span><span class=p>]</span> <span class=o>=</span> <span class=s2>&quot;benchmarks.html&quot;</span>
 </span><span id=__span-0-74><a id=__codelineno-0-74 name=__codelineno-0-74></a>
 </span><span id=__span-0-75><a id=__codelineno-0-75 name=__codelineno-0-75></a>    <span class=n>output_path</span><span class=p>:</span> <span class=n>Path</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span>
-</span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>        <span class=n>default_factory</span><span class=o>=</span><span class=k>lambda</span><span class=p>:</span> <span class=n>Path</span><span class=o>.</span><span class=n>cwd</span><span class=p>(),</span>
+</span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>        <span class=n>default_factory</span><span class=o>=</span><span class=n>Path</span><span class=o>.</span><span class=n>cwd</span><span class=p>,</span>
 </span><span id=__span-0-77><a id=__codelineno-0-77 name=__codelineno-0-77></a>        <span class=n>description</span><span class=o>=</span><span class=p>(</span>
 </span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a>            <span class=s2>&quot;Directory or file path for saving the HTML report, &quot;</span>
 </span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a>            <span class=s2>&quot;defaults to current working directory&quot;</span>
@@ -3609,7 +3609,7 @@
 </span><span id=__span-0-73><a id=__codelineno-0-73 name=__codelineno-0-73></a><span class=sd>    &quot;&quot;&quot;</span>
 </span><span id=__span-0-74><a id=__codelineno-0-74 name=__codelineno-0-74></a>
 </span><span id=__span-0-75><a id=__codelineno-0-75 name=__codelineno-0-75></a>    <span class=n>output_path</span><span class=p>:</span> <span class=n>Path</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span>
-</span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>        <span class=n>default_factory</span><span class=o>=</span><span class=k>lambda</span><span class=p>:</span> <span class=n>Path</span><span class=o>.</span><span class=n>cwd</span><span class=p>(),</span>
+</span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>        <span class=n>default_factory</span><span class=o>=</span><span class=n>Path</span><span class=o>.</span><span class=n>cwd</span><span class=p>,</span>
 </span><span id=__span-0-77><a id=__codelineno-0-77 name=__codelineno-0-77></a>        <span class=n>description</span><span class=o>=</span><span class=s2>&quot;Directory or file path for saving the serialized report&quot;</span><span class=p>,</span>
 </span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a>    <span class=p>)</span>
 </span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a>    <span class=n>format_type</span><span class=p>:</span> <span class=n>Literal</span><span class=p>[</span><span class=s2>&quot;json&quot;</span><span class=p>,</span> <span class=s2>&quot;yaml&quot;</span><span class=p>]</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span>

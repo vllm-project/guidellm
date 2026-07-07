@@ -262,12 +262,12 @@
 </span><span id=__span-0-156><a id=__codelineno-0-156 name=__codelineno-0-156></a>                            <span class=p>)</span>
 </span><span id=__span-0-157><a id=__codelineno-0-157 name=__codelineno-0-157></a>                    <span class=k>except</span> <span class=ne>Exception</span> <span class=k>as</span> <span class=n>err</span><span class=p>:</span>  <span class=c1># noqa: BLE001</span>
 </span><span id=__span-0-158><a id=__codelineno-0-158 name=__codelineno-0-158></a>                        <span class=n>logger</span><span class=o>.</span><span class=n>error</span><span class=p>(</span>
-</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a>                            <span class=sa>f</span><span class=s2>&quot;Error updating benchmark estimate/progress: </span><span class=si>{</span><span class=n>err</span><span class=si>}</span><span class=s2>&quot;</span>
+</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a>                            <span class=s2>&quot;Error updating benchmark estimate/progress: </span><span class=si>{}</span><span class=s2>&quot;</span><span class=p>,</span> <span class=n>err</span>
 </span><span id=__span-0-160><a id=__codelineno-0-160 name=__codelineno-0-160></a>                        <span class=p>)</span>
 </span><span id=__span-0-161><a id=__codelineno-0-161 name=__codelineno-0-161></a>
 </span><span id=__span-0-162><a id=__codelineno-0-162 name=__codelineno-0-162></a>                <span class=n>benchmark</span> <span class=o>=</span> <span class=n>benchmark_class</span><span class=o>.</span><span class=n>compile</span><span class=p>(</span>
 </span><span id=__span-0-163><a id=__codelineno-0-163 name=__codelineno-0-163></a>                    <span class=n>accumulator</span><span class=o>=</span><span class=n>accumulator</span><span class=p>,</span>
-</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>                    <span class=n>scheduler_state</span><span class=o>=</span><span class=n>scheduler_state</span><span class=p>,</span>
+</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>                    <span class=n>scheduler_state</span><span class=o>=</span><span class=n>scheduler_state</span><span class=p>,</span>  <span class=c1># type: ignore[arg-type]</span>
 </span><span id=__span-0-165><a id=__codelineno-0-165 name=__codelineno-0-165></a>                <span class=p>)</span>
 </span><span id=__span-0-166><a id=__codelineno-0-166 name=__codelineno-0-166></a>
 </span><span id=__span-0-167><a id=__codelineno-0-167 name=__codelineno-0-167></a>                <span class=k>if</span> <span class=n>progress</span><span class=p>:</span>
@@ -539,12 +539,12 @@
 </span><span id=__span-0-156><a id=__codelineno-0-156 name=__codelineno-0-156></a>                        <span class=p>)</span>
 </span><span id=__span-0-157><a id=__codelineno-0-157 name=__codelineno-0-157></a>                <span class=k>except</span> <span class=ne>Exception</span> <span class=k>as</span> <span class=n>err</span><span class=p>:</span>  <span class=c1># noqa: BLE001</span>
 </span><span id=__span-0-158><a id=__codelineno-0-158 name=__codelineno-0-158></a>                    <span class=n>logger</span><span class=o>.</span><span class=n>error</span><span class=p>(</span>
-</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a>                        <span class=sa>f</span><span class=s2>&quot;Error updating benchmark estimate/progress: </span><span class=si>{</span><span class=n>err</span><span class=si>}</span><span class=s2>&quot;</span>
+</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a>                        <span class=s2>&quot;Error updating benchmark estimate/progress: </span><span class=si>{}</span><span class=s2>&quot;</span><span class=p>,</span> <span class=n>err</span>
 </span><span id=__span-0-160><a id=__codelineno-0-160 name=__codelineno-0-160></a>                    <span class=p>)</span>
 </span><span id=__span-0-161><a id=__codelineno-0-161 name=__codelineno-0-161></a>
 </span><span id=__span-0-162><a id=__codelineno-0-162 name=__codelineno-0-162></a>            <span class=n>benchmark</span> <span class=o>=</span> <span class=n>benchmark_class</span><span class=o>.</span><span class=n>compile</span><span class=p>(</span>
 </span><span id=__span-0-163><a id=__codelineno-0-163 name=__codelineno-0-163></a>                <span class=n>accumulator</span><span class=o>=</span><span class=n>accumulator</span><span class=p>,</span>
-</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>                <span class=n>scheduler_state</span><span class=o>=</span><span class=n>scheduler_state</span><span class=p>,</span>
+</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>                <span class=n>scheduler_state</span><span class=o>=</span><span class=n>scheduler_state</span><span class=p>,</span>  <span class=c1># type: ignore[arg-type]</span>
 </span><span id=__span-0-165><a id=__codelineno-0-165 name=__codelineno-0-165></a>            <span class=p>)</span>
 </span><span id=__span-0-166><a id=__codelineno-0-166 name=__codelineno-0-166></a>
 </span><span id=__span-0-167><a id=__codelineno-0-167 name=__codelineno-0-167></a>            <span class=k>if</span> <span class=n>progress</span><span class=p>:</span>
