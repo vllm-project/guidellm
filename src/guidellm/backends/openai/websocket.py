@@ -209,6 +209,7 @@ class OpenAIWebSocketBackend(Backend):
         :param arguments: Typed configuration including target, model, and paths.
         """
         super().__init__(arguments)
+        self._args = arguments
         self._resolved_model = (arguments.model or "").strip()
         self.validate_backend: dict[str, Any] | None = resolve_validate_kwargs(
             arguments.validate_backend,
@@ -279,10 +280,7 @@ class OpenAIWebSocketBackend(Backend):
         self, existing_headers: dict[str, str] | None = None
     ) -> dict[str, str] | None:
         """Merge bearer auth and optional headers for HTTP and WebSocket handshakes."""
-        return build_headers(
-            self._args.api_key.get_secret_value() if self._args.api_key else None,
-            existing_headers,
-        )  # noqa: E501
+        return build_headers(self._args.api_key, existing_headers)
 
     async def process_startup(self) -> None:
         """

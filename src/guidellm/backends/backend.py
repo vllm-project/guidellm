@@ -122,17 +122,17 @@ class Backend(
         """
         Initialize a backend instance.
 
-        :param type_: The backend type identifier
+        :param args: The backend arguments object
         """
         self.kind = args.kind
-        self._args = args
 
     @property
     def info(self) -> dict[str, Any]:
         """
         Return a snapshot of backend configuration for logging or debugging.
         """
-        return self._args.model_dump(mode="json")
+        args = getattr(self, "_args", None)
+        return args.model_dump(mode="json") if args else {}
 
     @property
     def processes_limit(self) -> int | None:

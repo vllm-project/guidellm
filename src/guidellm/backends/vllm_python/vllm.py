@@ -161,6 +161,7 @@ class VLLMPythonBackend(Backend):
         Initialize VLLM Python backend with model and configuration.
         """
         super().__init__(arguments)
+        self._args = arguments
 
         # Runtime state
         self._in_process = False
