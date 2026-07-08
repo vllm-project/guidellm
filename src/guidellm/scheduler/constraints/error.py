@@ -159,6 +159,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         return SchedulerUpdateAction(
             request_queuing="stop" if errors_exceeded else "continue",
             request_processing="stop_all" if errors_exceeded else "continue",
+            stopping_scope=self.args.stopping_scope,
             metadata={
                 "max_errors": max_errors,
                 "errors_exceeded": errors_exceeded,
@@ -238,6 +239,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         return SchedulerUpdateAction(
             request_queuing="stop" if exceeded else "continue",
             request_processing="stop_all" if exceeded else "continue",
+            stopping_scope=self.args.stopping_scope,
             metadata={
                 "max_error_rate": max_error_rate,
                 "window_size": self.args.window,
@@ -316,6 +318,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         return SchedulerUpdateAction(
             request_queuing="stop" if exceeded else "continue",
             request_processing="stop_all" if exceeded else "continue",
+            stopping_scope=self.args.stopping_scope,
             metadata={
                 "max_error_rate": max_error_rate,
                 "min_processed": self.args.minimum,

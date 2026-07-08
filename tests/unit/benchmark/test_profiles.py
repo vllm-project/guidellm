@@ -5,10 +5,11 @@ and SweepProfile.
 ## WRITTEN BY AI ##
 
 Validates that:
-- AsyncProfile and ConcurrentProfile sort rates/streams ascending
-- Failure constraints (stop_all) stop rate escalation
+- AsyncProfile and ConcurrentProfile preserve user-specified rate/stream ordering
+- Constraints with stopping_scope='all' stop rate escalation
 - Normal completions (stop_local) do not stop rate escalation
 - SweepProfile stops escalation during the async phase but not during throughput
+- Ascending order is validated when early-exit constraints are configured
 """
 
 from types import SimpleNamespace
@@ -69,10 +70,11 @@ def _make_mock_benchmark(
 
 
 def _make_failure_action(name: str = "test_constraint") -> SchedulerUpdateAction:
-    """Create a SchedulerUpdateAction with stop_all (failure)."""
+    """Create a SchedulerUpdateAction with stopping_scope='all' (escalation stop)."""
     return SchedulerUpdateAction(
         request_queuing="stop",
         request_processing="stop_all",
+        stopping_scope="all",
         metadata={f"{name}_triggered": True},
     )
 
@@ -87,7 +89,7 @@ def _make_normal_completion_action() -> SchedulerUpdateAction:
 
 
 def _make_failure_benchmark(constraint_name: str = "over_saturation"):
-    """Create a mock benchmark terminated by a stop_all constraint."""
+    """Create a mock benchmark terminated by a stopping_scope='all' constraint."""
     return _make_mock_benchmark(
         end_queuing_constraints={
             constraint_name: _make_failure_action(constraint_name),
@@ -158,14 +160,27 @@ def _advance_sweep_to_async_phase(profile: SweepProfile, sync_rate=2.0, tp_rate=
 class TestShouldStopEscalating:
     """Tests for the shared Profile._should_stop_escalating static method."""
 
-    def test_stop_all_triggers_escalation_stop(self):
-        """A constraint with request_processing=stop_all should trigger stop."""
+    def test_stopping_scope_all_triggers_escalation_stop(self):
+        """A constraint with stopping_scope='all' should trigger stop."""
         benchmark = _make_failure_benchmark("over_saturation")
         assert Profile._should_stop_escalating(benchmark) is True
 
     def test_stop_local_does_not_trigger(self):
         """A constraint with request_processing=stop_local should not trigger."""
         benchmark = _make_normal_benchmark()
+        assert Profile._should_stop_escalating(benchmark) is False
+
+    def test_stop_all_without_stopping_scope_does_not_trigger(self):
+        """stop_all alone (stopping_scope='current') should NOT trigger stop."""
+        action = SchedulerUpdateAction(
+            request_queuing="stop",
+            request_processing="stop_all",
+            stopping_scope="current",
+            metadata={"test": True},
+        )
+        benchmark = _make_mock_benchmark(
+            end_queuing_constraints={"test_constraint": action}
+        )
         assert Profile._should_stop_escalating(benchmark) is False
 
     def test_no_constraints(self):
@@ -178,8 +193,8 @@ class TestShouldStopEscalating:
         benchmark = SimpleNamespace()
         assert Profile._should_stop_escalating(benchmark) is False
 
-    def test_mixed_constraints_with_one_stop_all(self):
-        """If multiple constraints present and one is stop_all, should stop."""
+    def test_mixed_constraints_with_one_stopping_scope_all(self):
+        """With one stopping_scope='all' among multiple constraints, should stop."""
         benchmark = _make_mock_benchmark(
             end_queuing_constraints={
                 "max_duration": _make_normal_completion_action(),
@@ -200,38 +215,74 @@ class TestShouldStopEscalating:
 
 
 # ============================================================================
-# Rate/stream sorting tests
+# Rate/stream ordering tests
 # ============================================================================
 
 
-class TestRateSorting:
-    """Rates and streams should be sorted ascending by Pydantic validators."""
+class TestRateOrdering:
+    """Rates and streams should preserve user-specified order."""
 
-    @pytest.mark.parametrize(
-        ("unsorted_input", "sorted_output"),
-        [
-            ([50.0, 10.0, 1.0, 25.0], [1.0, 10.0, 25.0, 50.0]),
-            ([1.0, 5.0, 10.0], [1.0, 5.0, 10.0]),
-            ([5.0], [5.0]),
-        ],
-        ids=["unsorted", "sorted", "single"],
-    )
-    def test_async_rate_sorting(self, unsorted_input, sorted_output):
-        args = AsyncProfileArgs(kind="constant", rate=unsorted_input)
-        assert args.rate == sorted_output
+    def test_async_rates_preserved(self):
+        """Rates should NOT be sorted — user order is preserved."""
+        args = AsyncProfileArgs(kind="constant", rate=[50.0, 10.0, 1.0, 25.0])
+        assert args.rate == [50.0, 10.0, 1.0, 25.0]
 
-    @pytest.mark.parametrize(
-        ("unsorted_input", "sorted_output"),
-        [
-            ([16, 4, 1, 8], [1, 4, 8, 16]),
-            ([2, 4, 8], [2, 4, 8]),
-            ([4], [4]),
-        ],
-        ids=["unsorted", "sorted", "single"],
-    )
-    def test_concurrent_stream_sorting(self, unsorted_input, sorted_output):
-        args = ConcurrentProfileArgs(kind="concurrent", streams=unsorted_input)
-        assert args.streams == sorted_output
+    def test_concurrent_streams_preserved(self):
+        """Streams should NOT be sorted — user order is preserved."""
+        args = ConcurrentProfileArgs(kind="concurrent", streams=[16, 4, 1, 8])
+        assert args.streams == [16, 4, 1, 8]
+
+    def test_async_ascending_validation_with_escalation_stopping(self):
+        """Non-ascending rates with stopping_scope='all' constraint should raise."""
+        from guidellm.scheduler.constraints import (
+            MaxErrorsConstraintArgs,
+        )
+        from guidellm.scheduler.constraints.factory import (
+            ConstraintsInitializerFactory,
+        )
+
+        constraint_args = MaxErrorsConstraintArgs(
+            kind="max_errors", count=5, stopping_scope="all"
+        )
+        initializer = ConstraintsInitializerFactory.create(constraint_args)
+        args = AsyncProfileArgs(kind="constant", rate=[10.0, 5.0, 1.0])
+
+        with pytest.raises(ValueError, match="ascending"):
+            AsyncProfile(
+                args, random_seed=42, constraints={"max_errors": initializer}
+            )
+
+    def test_concurrent_ascending_validation_with_escalation_stopping(self):
+        """Non-ascending streams with stopping_scope='all' constraint should raise."""
+        from guidellm.scheduler.constraints import (
+            MaxErrorsConstraintArgs,
+        )
+        from guidellm.scheduler.constraints.factory import (
+            ConstraintsInitializerFactory,
+        )
+
+        constraint_args = MaxErrorsConstraintArgs(
+            kind="max_errors", count=5, stopping_scope="all"
+        )
+        initializer = ConstraintsInitializerFactory.create(constraint_args)
+        args = ConcurrentProfileArgs(kind="concurrent", streams=[8, 4, 2])
+
+        with pytest.raises(ValueError, match="ascending"):
+            ConcurrentProfile(
+                args, random_seed=42, constraints={"max_errors": initializer}
+            )
+
+    def test_async_unsorted_ok_without_escalation_stopping(self):
+        """Non-ascending rates are fine without stopping_scope='all'."""
+        args = AsyncProfileArgs(kind="constant", rate=[10.0, 5.0, 1.0])
+        profile = AsyncProfile(args, random_seed=42, constraints=None)
+        assert profile.args.rate == [10.0, 5.0, 1.0]
+
+    def test_concurrent_unsorted_ok_without_escalation_stopping(self):
+        """Non-ascending streams are fine without stopping_scope='all'."""
+        args = ConcurrentProfileArgs(kind="concurrent", streams=[8, 4, 2])
+        profile = ConcurrentProfile(args, random_seed=42, constraints=None)
+        assert profile.args.streams == [8, 4, 2]
 
 
 # ============================================================================
@@ -269,7 +320,7 @@ class TestMultiRateProfileEarlyExit:
 
     @pytest.mark.parametrize("make_profile", MULTI_PROFILE_FACTORIES)
     def test_failure_stops(self, make_profile):
-        """After failure (stop_all), should return None."""
+        """After stopping_scope='all' trigger, should return None."""
         profile, first_strategy = getattr(self, make_profile)()
         profile.completed_strategies.append(first_strategy)
 
@@ -404,7 +455,7 @@ class TestSweepProfileEarlyExit:
         assert first_async_strat is not None
 
     def test_async_phase_stops_on_failure(self):
-        """During async phase, stop_all constraint should stop remaining rates."""
+        """During async phase, stopping_scope='all' should stop remaining rates."""
         profile = _make_sweep_profile(sweep_size=5)
         first_async_strat, _ = _advance_sweep_to_async_phase(profile)
         assert first_async_strat is not None

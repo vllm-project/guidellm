@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import Field, PositiveFloat, PositiveInt, field_validator
 
 from guidellm.benchmark.schemas import ProfileArgs
-from guidellm.logger import logger
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -57,12 +56,7 @@ class AsyncProfileArgs(ProfileArgs):
         if not value:
             raise ValueError("rate requires at least one value")
         if isinstance(value, list | tuple):
-            sorted_rates = sorted(value)
-            if list(sorted_rates) != list(value):
-                logger.warning(
-                    f"Rates reordered from {list(value)} to {sorted_rates} (ascending)"
-                )
-            return sorted_rates
+            return value
         if isinstance(value, int | float):
             return [value]
         raise ValueError(
@@ -98,6 +92,16 @@ class AsyncProfile(Profile):
         else:
             raise ValueError(f"Invalid profile kind: {args.kind}")
 
+        if (
+            len(args.rate) > 1
+            and self._has_escalation_stopping()
+            and list(args.rate) != sorted(args.rate)
+        ):
+            raise ValueError(
+                "Early-exit (stopping_scope='all') requires rates in ascending "
+                f"order, got {list(args.rate)}"
+            )
+
     @property
     def strategy_types(self) -> list[str]:
         """
@@ -113,14 +117,13 @@ class AsyncProfile(Profile):
         """
         Generate async strategy for next configured rate.
 
-        Rates are sorted ascending, so if a previous rate was terminated by a
-        failure constraint (over-saturation, errors, etc.), all remaining higher
-        rates are skipped.
+        If a previous rate was terminated by a constraint with
+        stopping_scope='all', remaining rates are skipped.
 
         :param prev_strategy: Previously completed strategy
         :param prev_benchmark: Benchmark results from previous execution
         :return: AsyncConstantStrategy or AsyncPoissonStrategy for next rate,
-            or None if all rates completed or failure detected
+            or None if all rates completed or escalation halted
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'
         """
         _ = prev_strategy

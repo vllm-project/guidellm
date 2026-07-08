@@ -134,6 +134,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         return SchedulerUpdateAction(
             request_queuing="stop" if create_exceeded else "continue",
             request_processing="stop_local" if processed_exceeded else "continue",
+            stopping_scope=self.args.stopping_scope,
             metadata={
                 "max_requests": max_num,
                 "create_exceeded": create_exceeded,
@@ -206,6 +207,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         return SchedulerUpdateAction(
             request_queuing="stop" if duration_exceeded else "continue",
             request_processing="stop_local" if duration_exceeded else "continue",
+            stopping_scope=self.args.stopping_scope,
             metadata={
                 "max_duration": max_duration,
                 "elapsed_time": elapsed,

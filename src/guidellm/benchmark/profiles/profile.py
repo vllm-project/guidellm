@@ -102,6 +102,14 @@ class Profile(ABC):
         self.constraints = dict(constraints or {})
         self.completed_strategies: list[SchedulingStrategy] = []
 
+    def _has_escalation_stopping(self) -> bool:
+        """Check if any constraint is configured with stopping_scope='all'."""
+        for initializer in self.constraints.values():
+            args = getattr(initializer, "args", None)
+            if args is not None and getattr(args, "stopping_scope", "current") == "all":
+                return True
+        return False
+
     @property
     def info(self) -> dict[str, Any]:
         """
@@ -119,26 +127,24 @@ class Profile(ABC):
     @staticmethod
     def _should_stop_escalating(prev_benchmark: Benchmark) -> bool:
         """
-        Check if a benchmark was terminated by a failure constraint.
+        Check if a benchmark was terminated by a constraint with stopping_scope="all".
 
         Inspects the scheduler state's end_queuing_constraints for any constraint
-        that used "stop_all" for request processing, which indicates the system
-        could not handle the load (over-saturation, excessive errors, etc.).
-        Constraints that use "stop_local" (max duration, max requests) are normal
-        completions and do not trigger escalation stops.
+        whose stopping_scope is "all", indicating the system could not handle the
+        load and escalation to subsequent rates/streams should halt.
 
         :param prev_benchmark: Benchmark instance
-        :return: True if a failure constraint was triggered, False otherwise
+        :return: True if escalation should stop, False otherwise
         """
         scheduler_state = getattr(prev_benchmark, "scheduler_state", None)
         if scheduler_state is None:
             return False
 
         for name, action in scheduler_state.end_queuing_constraints.items():
-            if action.request_processing == "stop_all":
+            if action.stopping_scope == "all":
                 logger.info(
                     f"Stopping rate escalation: constraint '{name}' "
-                    f"triggered (request_processing=stop_all)"
+                    f"triggered (stopping_scope=all)"
                 )
                 return True
         return False

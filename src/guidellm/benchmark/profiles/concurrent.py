@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import Field, PositiveInt, field_validator
 
 from guidellm.benchmark.schemas import ProfileArgs
-from guidellm.logger import logger
 from guidellm.scheduler import (
     ConcurrentStrategy,
     ConstraintInitializer,
@@ -49,13 +48,7 @@ class ConcurrentProfileArgs(ProfileArgs):
         if not value:
             raise ValueError("streams requires at least one value")
         if isinstance(value, list | tuple):
-            streams = [int(stream) for stream in value]
-            sorted_streams = sorted(streams)
-            if sorted_streams != streams:
-                logger.warning(
-                    f"Streams reordered from {streams} to {sorted_streams} (ascending)"
-                )
-            return sorted_streams
+            return [int(stream) for stream in value]
         if isinstance(value, int | float):
             return [int(value)]
         raise ValueError(
@@ -85,6 +78,16 @@ class ConcurrentProfile(Profile):
         super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
 
+        if (
+            len(args.streams) > 1
+            and self._has_escalation_stopping()
+            and list(args.streams) != sorted(args.streams)
+        ):
+            raise ValueError(
+                "Early-exit (stopping_scope='all') requires streams in ascending "
+                f"order, got {list(args.streams)}"
+            )
+
     @property
     def strategy_types(self) -> list[str]:
         """
@@ -100,14 +103,13 @@ class ConcurrentProfile(Profile):
         """
         Generate concurrent strategy for next stream count.
 
-        Stream counts are sorted ascending, so if a previous stream count was
-        terminated by a failure constraint (over-saturation, errors, etc.), all
-        remaining higher stream counts are skipped.
+        If a previous stream count was terminated by a constraint with
+        stopping_scope='all', remaining stream counts are skipped.
 
         :param prev_strategy: Previously completed strategy
         :param prev_benchmark: Benchmark results from previous execution
         :return: ConcurrentStrategy with next stream count, or None if complete
-            or failure detected
+            or escalation halted
         """
         _ = prev_strategy
 
