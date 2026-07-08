@@ -33,6 +33,8 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
     SynchronousStrategy,
 )
+from guidellm.scheduler.constraints import MaxErrorsConstraintArgs
+from guidellm.scheduler.constraints.factory import ConstraintsInitializerFactory
 
 MULTI_PROFILE_FACTORIES = (
     "_make_async_profile",
@@ -234,13 +236,6 @@ class TestRateOrdering:
 
     def test_async_ascending_validation_with_escalation_stopping(self):
         """Non-ascending rates with stopping_scope='all' constraint should raise."""
-        from guidellm.scheduler.constraints import (
-            MaxErrorsConstraintArgs,
-        )
-        from guidellm.scheduler.constraints.factory import (
-            ConstraintsInitializerFactory,
-        )
-
         constraint_args = MaxErrorsConstraintArgs(
             kind="max_errors", count=5, stopping_scope="all"
         )
@@ -248,19 +243,10 @@ class TestRateOrdering:
         args = AsyncProfileArgs(kind="constant", rate=[10.0, 5.0, 1.0])
 
         with pytest.raises(ValueError, match="ascending"):
-            AsyncProfile(
-                args, random_seed=42, constraints={"max_errors": initializer}
-            )
+            AsyncProfile(args, random_seed=42, constraints={"max_errors": initializer})
 
     def test_concurrent_ascending_validation_with_escalation_stopping(self):
         """Non-ascending streams with stopping_scope='all' constraint should raise."""
-        from guidellm.scheduler.constraints import (
-            MaxErrorsConstraintArgs,
-        )
-        from guidellm.scheduler.constraints.factory import (
-            ConstraintsInitializerFactory,
-        )
-
         constraint_args = MaxErrorsConstraintArgs(
             kind="max_errors", count=5, stopping_scope="all"
         )
