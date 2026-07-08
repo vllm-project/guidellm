@@ -10,9 +10,11 @@ structured result organization.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any, Generic, TypeVar
 
 from disdantic import PydanticClassRegistryMixin
+from disdantic.exceptions import AutoPopulationError
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
@@ -144,7 +146,7 @@ class StatusBreakdown(BaseModel, Generic[SuccessfulT, ErroredT, IncompleteT, Tot
     )
 
 
-class _PydanticClassRegistryMixin(PydanticClassRegistryMixin):
+class _PydanticClassRegistryMixin(PydanticClassRegistryMixin[BaseModelT]):
     def __new__(cls, *args, **kwargs):  # noqa: ARG004
         """
         Prevent direct instantiation of base classes that use this mixin.
@@ -155,3 +157,19 @@ class _PydanticClassRegistryMixin(PydanticClassRegistryMixin):
         if cls is base_type:
             raise TypeError(f"only children of '{cls.__name__}' may be instantiated")
         return super().__new__(cls)
+
+    @classmethod
+    def registered_names(cls) -> tuple[str, ...]:
+        """
+        Get all registered names from the registry.
+
+        Automatically triggers auto-discovery if it is enabled
+        to ensure all available implementations are included.
+
+        :return: Tuple of all registered names including auto-discovered ones
+        """
+        with cls._registry_lock:
+            if cls.is_auto_discovery_enabled():
+                with contextlib.suppress(AutoPopulationError):
+                    cls.auto_populate_registry()
+            return tuple(cls.registry.keys())
