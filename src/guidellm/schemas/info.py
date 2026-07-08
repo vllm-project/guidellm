@@ -173,6 +173,25 @@ class RequestInfo(StandardBaseModel):
         default=0,
         description="Index of the request within the conversation, if applicable.",
     )
+    node_id: str | None = Field(
+        default=None,
+        description="Node ID within a conversation graph, if applicable.",
+    )
+    agent_id: str | None = Field(
+        default=None,
+        description="Identifier for the simulated agent that owns this request.",
+    )
+    parent_node_ids: list[str] = Field(
+        default_factory=list,
+        description="Node IDs of direct predecessors in the DAG.",
+    )
+    graph_id: str | None = Field(
+        default=None,
+        description=(
+            "Top-level conversation graph identifier. "
+            "Maps to conversation_id for backward compatibility."
+        ),
+    )
     status: Literal[
         "queued",
         "pending",
