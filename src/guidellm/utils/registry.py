@@ -1,13 +1,3 @@
-"""
-Registry system for dynamic object registration and discovery.
-
-Provides a flexible object registration system with optional auto-discovery
-capabilities through decorators and module imports. Enables dynamic discovery
-and instantiation of implementations based on configuration parameters, supporting
-both manual registration and automatic package-based discovery for extensible
-plugin architectures.
-"""
-
 from __future__ import annotations
 
 from typing import TypeVar

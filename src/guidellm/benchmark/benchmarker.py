@@ -41,7 +41,8 @@ from guidellm.scheduler import (
 __all__ = ["Benchmarker"]
 
 
-class BenchmarkerMeta(ABCMeta, SingletonMeta): ...
+class BenchmarkerMeta(ABCMeta, SingletonMeta):
+    """Exists to resolves metaclass conflicts in `Benchmarker`."""
 
 
 class Benchmarker(
