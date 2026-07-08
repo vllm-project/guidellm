@@ -318,6 +318,20 @@ Logging is set using the following environment variables:
 
 If logging isn't responding to the environment variables, run the `guidellm config` command to validate that the environment variables match and are being set correctly.
 
+Examples:
+
+Enable verbose console output for a single run. The interactive progress display can overwrite console log lines, so `--disable-progress` is recommended when reading console logs:
+
+```bash
+GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL=DEBUG guidellm run ... --disable-progress
+```
+
+Write structured `DEBUG` logs to a file while leaving the console at its default level:
+
+```bash
+GUIDELLM__LOGGING__LOG_FILE=guidellm.log GUIDELLM__LOGGING__LOG_FILE_LEVEL=DEBUG guidellm run ...
+```
+
 ## Additional Resources
 
 - [CONTRIBUTING.md](https://github.com/vllm-project/guidellm/blob/main/CONTRIBUTING.md): Guidelines for contributing to the project.
