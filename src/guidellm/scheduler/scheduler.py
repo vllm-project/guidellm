@@ -9,8 +9,11 @@ various scenarios including LLM inference benchmarking.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import AsyncIterator
 from typing import Generic
+
+from disdantic import SingletonMeta
 
 from guidellm.scheduler.constraints import (
     Constraint,
@@ -27,14 +30,13 @@ from guidellm.scheduler.schemas import (
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker_group import WorkerProcessGroup
 from guidellm.schemas import RequestInfo
-from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
 __all__ = ["Scheduler"]
 
 
 class Scheduler(
     Generic[RequestT, ResponseT],
-    ThreadSafeSingletonMixin,
+    metaclass=SingletonMeta,
 ):
     """
     Thread-safe singleton scheduler for distributed benchmarking workload coordination.
@@ -60,6 +62,8 @@ class Scheduler(
         ):
             print(f"Processed: {request}")
     """
+
+    init_lock = threading.Lock()
 
     async def run(
         self,
@@ -99,7 +103,7 @@ class Scheduler(
         :raises Exception: Worker process errors, environment synchronization failures,
             or constraint evaluation errors are propagated after cleanup
         """
-        with self.thread_lock:
+        with self.init_lock:
             if env is None:
                 env = NonDistributedEnvironment[RequestT, ResponseT]()
 

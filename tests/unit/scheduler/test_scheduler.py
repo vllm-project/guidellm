@@ -7,6 +7,7 @@ import uuid
 from typing import Any, Generic
 
 import pytest
+from disdantic import SingletonMeta
 from pydantic import BaseModel, Field
 
 from guidellm.scheduler import (
@@ -23,7 +24,6 @@ from guidellm.scheduler.constraints import (
     MaxRequestsConstraintArgs,
 )
 from guidellm.schemas import RequestInfo, RequestSettings
-from guidellm.utils.singleton import ThreadSafeSingletonMixin
 from tests.unit.testing_utils import async_timeout
 
 
@@ -89,7 +89,7 @@ class TestScheduler:
         """Fixture providing test data for Scheduler."""
         # Clear singleton state between tests
         if hasattr(Scheduler, "singleton_instance"):
-            Scheduler.singleton_instance = None
+            Scheduler.clear_instances()
 
         instance = Scheduler()
         constructor_args = {}
@@ -99,10 +99,10 @@ class TestScheduler:
     def test_class_signatures(self):
         """Test Scheduler inheritance and type relationships."""
         # Clear singleton before testing
-        if hasattr(Scheduler, "singleton_instance"):
-            Scheduler.singleton_instance = None
+        if isinstance(Scheduler, SingletonMeta):
+            Scheduler.clear_instances()
 
-        assert issubclass(Scheduler, ThreadSafeSingletonMixin)
+        assert isinstance(Scheduler, SingletonMeta)
         assert issubclass(Scheduler, Generic)
         assert hasattr(Scheduler, "run")
         assert callable(Scheduler.run)
@@ -139,7 +139,6 @@ class TestScheduler:
         assert isinstance(instance1, Scheduler)
         assert instance1 is instance2
         assert id(instance1) == id(instance2)
-        assert hasattr(instance1, "thread_lock")
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
