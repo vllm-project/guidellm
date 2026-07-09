@@ -77,7 +77,7 @@ guidellm run \
   --tokenizer '{"kind":"huggingface_auto","model":"/data/mistral"}' \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}' \
   --profile kind=concurrent,streams=100 \
-  --data-loader kind=pytorch,samples=1000
+  --data-loader kind=pytorch,samples=-1
 ```
 
 ### What Each Argument Does
