@@ -33,8 +33,6 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
     SynchronousStrategy,
 )
-from guidellm.scheduler.constraints import MaxErrorsConstraintArgs
-from guidellm.scheduler.constraints.factory import ConstraintsInitializerFactory
 
 MULTI_PROFILE_FACTORIES = (
     "_make_async_profile",
@@ -233,42 +231,6 @@ class TestRateOrdering:
         """Streams should NOT be sorted — user order is preserved."""
         args = ConcurrentProfileArgs(kind="concurrent", streams=[16, 4, 1, 8])
         assert args.streams == [16, 4, 1, 8]
-
-    def test_async_ascending_validation_with_escalation_stopping(self):
-        """Non-ascending rates with stopping_scope='all' constraint should raise."""
-        constraint_args = MaxErrorsConstraintArgs(
-            kind="max_errors", count=5, stopping_scope="all"
-        )
-        initializer = ConstraintsInitializerFactory.create(constraint_args)
-        args = AsyncProfileArgs(kind="constant", rate=[10.0, 5.0, 1.0])
-
-        with pytest.raises(ValueError, match="ascending"):
-            AsyncProfile(args, random_seed=42, constraints={"max_errors": initializer})
-
-    def test_concurrent_ascending_validation_with_escalation_stopping(self):
-        """Non-ascending streams with stopping_scope='all' constraint should raise."""
-        constraint_args = MaxErrorsConstraintArgs(
-            kind="max_errors", count=5, stopping_scope="all"
-        )
-        initializer = ConstraintsInitializerFactory.create(constraint_args)
-        args = ConcurrentProfileArgs(kind="concurrent", streams=[8, 4, 2])
-
-        with pytest.raises(ValueError, match="ascending"):
-            ConcurrentProfile(
-                args, random_seed=42, constraints={"max_errors": initializer}
-            )
-
-    def test_async_unsorted_ok_without_escalation_stopping(self):
-        """Non-ascending rates are fine without stopping_scope='all'."""
-        args = AsyncProfileArgs(kind="constant", rate=[10.0, 5.0, 1.0])
-        profile = AsyncProfile(args, random_seed=42, constraints=None)
-        assert profile.args.rate == [10.0, 5.0, 1.0]
-
-    def test_concurrent_unsorted_ok_without_escalation_stopping(self):
-        """Non-ascending streams are fine without stopping_scope='all'."""
-        args = ConcurrentProfileArgs(kind="concurrent", streams=[8, 4, 2])
-        profile = ConcurrentProfile(args, random_seed=42, constraints=None)
-        assert profile.args.streams == [8, 4, 2]
 
 
 # ============================================================================

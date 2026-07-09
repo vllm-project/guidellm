@@ -92,16 +92,6 @@ class AsyncProfile(Profile):
         else:
             raise ValueError(f"Invalid profile kind: {args.kind}")
 
-        if (
-            len(args.rate) > 1
-            and self._has_escalation_stopping()
-            and list(args.rate) != sorted(args.rate)
-        ):
-            raise ValueError(
-                "Early-exit (stopping_scope='all') requires rates in ascending "
-                f"order, got {list(args.rate)}"
-            )
-
     @property
     def strategy_types(self) -> list[str]:
         """

@@ -78,16 +78,6 @@ class ConcurrentProfile(Profile):
         super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
 
-        if (
-            len(args.streams) > 1
-            and self._has_escalation_stopping()
-            and list(args.streams) != sorted(args.streams)
-        ):
-            raise ValueError(
-                "Early-exit (stopping_scope='all') requires streams in ascending "
-                f"order, got {list(args.streams)}"
-            )
-
     @property
     def strategy_types(self) -> list[str]:
         """

@@ -102,14 +102,6 @@ class Profile(ABC):
         self.constraints = dict(constraints or {})
         self.completed_strategies: list[SchedulingStrategy] = []
 
-    def _has_escalation_stopping(self) -> bool:
-        """Check if any constraint is configured with stopping_scope='all'."""
-        for initializer in self.constraints.values():
-            args = getattr(initializer, "args", None)
-            if args is not None and getattr(args, "stopping_scope", "current") == "all":
-                return True
-        return False
-
     @property
     def info(self) -> dict[str, Any]:
         """
@@ -142,9 +134,10 @@ class Profile(ABC):
 
         for name, action in scheduler_state.end_queuing_constraints.items():
             if action.stopping_scope == "all":
-                logger.info(
-                    f"Stopping rate escalation: constraint '{name}' "
-                    f"triggered (stopping_scope=all)"
+                logger.debug(
+                    "Stopping rate escalation: constraint '{}' "
+                    "triggered (stopping_scope=all)",
+                    name,
                 )
                 return True
         return False

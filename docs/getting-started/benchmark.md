@@ -178,7 +178,7 @@ guidellm run --profile kind=poisson,rate=16 --seed kind=static,value=42
 | `rate`            | Target rate(s) in requests per second   | `--profile kind=poisson,rate=10` or `--profile '{"kind":"poisson","rate":[10,20]}'` |
 | `max_concurrency` | Maximum concurrent requests to schedule | `--profile kind=poisson,rate=10,max_concurrency=32`                                 |
 
-When multiple rates are specified and a constraint with `stopping_scope="all"` is configured (e.g., over-saturation or error rate limits), rates must be in ascending order. If such a constraint triggers at a given rate, remaining rates are skipped.
+When multiple rates are specified and a constraint with `stopping_scope="all"` is configured (e.g., over-saturation or error rate limits), triggering that constraint will skip all remaining rates in the list. For best results, specify rates in ascending order so that only higher (harder) rates are skipped. With non-ascending order, easier rates that follow a failed rate will also be skipped.
 
 Use `--seed kind=static,value=42` for reproducible Poisson scheduling.
 
