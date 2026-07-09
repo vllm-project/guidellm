@@ -19,13 +19,13 @@ from pydantic import (
 )
 
 from guidellm.benchmark.schemas.base import TransientPhaseConfig
-from guidellm.schemas import _PydanticClassRegistryMixin, standard_model_config
+from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 from guidellm.utils.imports import json
 
 __all__ = ["ProfileArgs"]
 
 
-class ProfileArgs(_PydanticClassRegistryMixin["ProfileArgs"], ABC):
+class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
     """Base class for profile creation arguments.
 
     This class serves as a base for defining argument models used in the creation

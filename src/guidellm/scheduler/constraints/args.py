@@ -9,7 +9,7 @@ from typing import Annotated, ClassVar
 from annotated_types import Gt, Lt
 from pydantic import BeforeValidator, ConfigDict, Field
 
-from guidellm.schemas import _PydanticClassRegistryMixin
+from guidellm.schemas import PydanticClassRegistryMixin
 
 __all__ = [
     "ConstraintArgs",
@@ -38,7 +38,7 @@ ErrorRateOrList = Annotated[
 ]
 
 
-class ConstraintArgs(_PydanticClassRegistryMixin["ConstraintArgs"]):
+class ConstraintArgs(PydanticClassRegistryMixin["ConstraintArgs"]):
     """
     Base class for constraint configuration arguments.
 

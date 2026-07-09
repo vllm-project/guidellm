@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 
 from pydantic import Field
 
-from guidellm.schemas import _PydanticClassRegistryMixin, standard_model_config
+from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 
 __all__ = [
     "DataArgs",
@@ -17,7 +17,7 @@ __all__ = [
 
 
 class DataLoaderArgs(
-    _PydanticClassRegistryMixin["DataLoaderArgs"],
+    PydanticClassRegistryMixin["DataLoaderArgs"],
     ABC,
 ):
     """
@@ -60,7 +60,7 @@ class DataLoaderArgs(
 
 
 class DataArgs(
-    _PydanticClassRegistryMixin["DataArgs"],
+    PydanticClassRegistryMixin["DataArgs"],
     ABC,
 ):
     """Base class for data loading and processing argument models.
@@ -104,7 +104,7 @@ class DataArgs(
 
 
 class DataPreprocessorArgs(
-    _PydanticClassRegistryMixin["DataPreprocessorArgs"],
+    PydanticClassRegistryMixin["DataPreprocessorArgs"],
     ABC,
 ):
     """
@@ -141,7 +141,7 @@ class DataPreprocessorArgs(
 
 
 class DataFinalizerArgs(
-    _PydanticClassRegistryMixin["DataFinalizerArgs"],
+    PydanticClassRegistryMixin["DataFinalizerArgs"],
     ABC,
 ):
     """
@@ -178,7 +178,7 @@ class DataFinalizerArgs(
 
 
 class DataTokenizerArgs(
-    _PydanticClassRegistryMixin["DataTokenizerArgs"],
+    PydanticClassRegistryMixin["DataTokenizerArgs"],
     ABC,
 ):
     """

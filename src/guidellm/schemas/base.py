@@ -13,7 +13,7 @@ from __future__ import annotations
 import contextlib
 from typing import Any, Generic, TypeVar
 
-from disdantic import PydanticClassRegistryMixin
+from disdantic import PydanticClassRegistryMixin as BasePydanticClassRegistryMixin
 from disdantic.exceptions import AutoPopulationError
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,13 +21,13 @@ __all__ = [
     "BaseModelT",
     "ErroredT",
     "IncompleteT",
+    "PydanticClassRegistryMixin",
     "RegisterClassT",
     "StandardBaseDict",
     "StandardBaseModel",
     "StatusBreakdown",
     "SuccessfulT",
     "TotalT",
-    "_PydanticClassRegistryMixin",
     "standard_model_config",
 ]
 
@@ -146,7 +146,7 @@ class StatusBreakdown(BaseModel, Generic[SuccessfulT, ErroredT, IncompleteT, Tot
     )
 
 
-class _PydanticClassRegistryMixin(PydanticClassRegistryMixin[BaseModelT]):
+class PydanticClassRegistryMixin(BasePydanticClassRegistryMixin[BaseModelT]):
     def __new__(cls, *args, **kwargs):  # noqa: ARG004
         """
         Prevent direct instantiation of base classes that use this mixin.

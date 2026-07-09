@@ -18,7 +18,7 @@ from guidellm.scheduler import BackendInterface
 from guidellm.schemas import (
     GenerationRequest,
     GenerationResponse,
-    _PydanticClassRegistryMixin,
+    PydanticClassRegistryMixin,
     standard_model_config,
 )
 
@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 
-class BackendArgs(_PydanticClassRegistryMixin["BackendArgs"], ABC):
+class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
     """
     Base class for backend creation arguments.
 

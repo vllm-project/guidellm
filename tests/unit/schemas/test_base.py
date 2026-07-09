@@ -13,13 +13,13 @@ from guidellm.schemas import (
     BaseModelT,
     ErroredT,
     IncompleteT,
+    PydanticClassRegistryMixin,
     RegisterClassT,
     StandardBaseDict,
     StandardBaseModel,
     StatusBreakdown,
     SuccessfulT,
     TotalT,
-    _PydanticClassRegistryMixin,
 )
 
 
@@ -453,7 +453,7 @@ class TestPydanticClassRegistryMixin:
     def test_base_class_direct_instantiation(self):
         """Test that base class cannot be instantiated directly."""
 
-        class TestBaseModel(_PydanticClassRegistryMixin):
+        class TestBaseModel(PydanticClassRegistryMixin):
             schema_discriminator: ClassVar[str] = "test_type"
             test_type: str
 

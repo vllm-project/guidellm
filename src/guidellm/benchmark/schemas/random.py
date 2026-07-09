@@ -5,7 +5,7 @@ from typing import ClassVar, Literal
 
 from pydantic import Field
 
-from guidellm.schemas import _PydanticClassRegistryMixin, standard_model_config
+from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 
 __all__ = [
     "RandomArgs",
@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 
-class RandomArgs(_PydanticClassRegistryMixin["RandomArgs"], ABC):
+class RandomArgs(PydanticClassRegistryMixin["RandomArgs"], ABC):
     """Base class for random initialization arguments.
 
     :cvar schema_discriminator: Field name for polymorphic deserialization

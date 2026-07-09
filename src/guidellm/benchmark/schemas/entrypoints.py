@@ -40,8 +40,8 @@ from guidellm.data import (
 )
 from guidellm.scheduler.constraints import ConstraintArgs
 from guidellm.schemas import (
+    PydanticClassRegistryMixin,
     StandardBaseModel,
-    _PydanticClassRegistryMixin,
     standard_model_config,
 )
 from guidellm.utils.arg_string import ArgStringParser
@@ -81,7 +81,7 @@ def default_kind_list(*kinds: str) -> list[dict[str, Any]]:
     return [default_kind(kind) for kind in kinds]
 
 
-class MetricsArgs(_PydanticClassRegistryMixin["MetricsArgs"], ABC):
+class MetricsArgs(PydanticClassRegistryMixin["MetricsArgs"], ABC):
     """Base class for metrics collection arguments.
 
     :cvar schema_discriminator: Field name for polymorphic deserialization
