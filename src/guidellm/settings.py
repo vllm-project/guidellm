@@ -53,14 +53,6 @@ class DatasetSettings(BaseModel):
     )
 
 
-class ReportGenerationSettings(BaseModel):
-    """
-    Report generation settings for the application
-    """
-
-    source: str = "https://vllm-project.github.io/guidellm/ui/latest/index.html"
-
-
 class Settings(BaseSettings):
     """
     All the settings are powered by pydantic_settings and could be
@@ -109,9 +101,6 @@ class Settings(BaseSettings):
     # Data settings
     dataset: DatasetSettings = DatasetSettings()
     default_synthetic_tool_response: str = '{"status": "ok"}'
-
-    # Report settings
-    report_generation: ReportGenerationSettings = ReportGenerationSettings()
 
     # Output settings
     table_border_char: str = "="

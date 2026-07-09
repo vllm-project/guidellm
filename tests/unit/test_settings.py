@@ -5,14 +5,11 @@ import pytest
 from guidellm.settings import (
     DatasetSettings,
     LoggingSettings,
-    ReportGenerationSettings,
     Settings,
     print_config,
     reload_settings,
     settings,
 )
-
-BASE_URL = "https://vllm-project.github.io/guidellm/ui/"
 
 
 @pytest.mark.smoke
@@ -24,7 +21,6 @@ def test_default_settings(mocker):
     )
     settings = Settings()
     assert settings.logging == LoggingSettings()
-    assert settings.report_generation.source.startswith(BASE_URL)
 
 
 @pytest.mark.smoke
@@ -39,7 +35,6 @@ def test_settings_from_env_variables(mocker):
 
     settings = Settings()
     assert settings.logging.disabled is True
-    assert settings.report_generation.source == "http://custom.url"
 
 
 @pytest.mark.sanity
@@ -54,11 +49,6 @@ def test_logging_settings():
     assert logging_settings.console_log_level == "DEBUG"
     assert logging_settings.log_file == "app.log"
     assert logging_settings.log_file_level == "ERROR"
-
-
-def test_report_generation_settings():
-    report_settings = ReportGenerationSettings(source="http://custom.report")
-    assert report_settings.source == "http://custom.report"
 
 
 @pytest.mark.sanity

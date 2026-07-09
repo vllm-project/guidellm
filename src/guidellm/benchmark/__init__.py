@@ -15,7 +15,6 @@ from .entrypoints import benchmark_generative_text, reimport_benchmarks_report
 from .outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerCSV,
-    GenerativeBenchmarkerHTML,
     GenerativeBenchmarkerOutput,
 )
 from .profiles import (
@@ -78,7 +77,6 @@ __all__ = [
     "GenerativeBenchmarkTimings",
     "GenerativeBenchmarkerCSV",
     "GenerativeBenchmarkerConsole",
-    "GenerativeBenchmarkerHTML",
     "GenerativeBenchmarkerOutput",
     "GenerativeBenchmarksReport",
     "GenerativeConsoleBenchmarkerProgress",
