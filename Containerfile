@@ -68,9 +68,9 @@ RUN --mount=type=cache,sharing=locked,target=/var/cache/dnf \
 USER 1001:0
 
 # Add guidellm bin to PATH
-# Argument defaults can be set with GUIDELLM_<ARG>
+# Change the default save directory for results
 ENV HOME="/home/guidellm" \
-    GUIDELLM_OUTPUT_DIR="/results"
+    GUIDELLM__DEFAULT_RESULTS_DIR="/results"
 
 # Create the user home dir
 WORKDIR $HOME

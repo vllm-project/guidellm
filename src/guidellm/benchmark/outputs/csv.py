@@ -24,6 +24,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarksReport,
 )
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
+from guidellm.settings import settings
 from guidellm.utils.functions import safe_format_timestamp
 
 __all__ = [
@@ -41,7 +42,7 @@ class CSVBenchmarkOutputArgs(BenchmarkOutputArgs):
         description="The kind of output.",
     )
     path: Path = Field(
-        default=Path("./benchmarks.csv"),
+        default_factory=lambda: settings.default_results_dir / "benchmarks.csv",
         description="The file to save the output to.",
     )
 

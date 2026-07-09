@@ -16,6 +16,7 @@ from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import BenchmarkOutputArgs, GenerativeBenchmarksReport
+from guidellm.settings import settings
 
 __all__ = [
     "GenerativeBenchmarkerSerialized",
@@ -34,7 +35,7 @@ class JSONBenchmarkOutputArgs(BenchmarkOutputArgs):
         examples=["json"],
     )
     path: Path = Field(
-        default=Path("./benchmarks.json"),
+        default_factory=lambda: settings.default_results_dir / "benchmarks.json",
         description="The file to save the output to.",
         examples=["./benchmarks.json"],
     )
@@ -50,7 +51,7 @@ class YAMLBenchmarkOutputArgs(BenchmarkOutputArgs):
         examples=["yaml"],
     )
     path: Path = Field(
-        default=Path("./benchmarks.yaml"),
+        default_factory=lambda: settings.default_results_dir / "benchmarks.yaml",
         description="The file to save the output to.",
         examples=["./benchmarks.yaml"],
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -74,6 +75,8 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
+        # TODO: We also use `GUIDELLM__` as the prefix for config arguments
+        #       so we should probably change this prefix to avoid clashes
         env_prefix="GUIDELLM__",
         env_nested_delimiter="__",
         extra="ignore",
@@ -111,6 +114,12 @@ class Settings(BaseSettings):
     default_synthetic_tool_response: str = '{"status": "ok"}'
 
     # Report settings
+    default_results_dir: Path = Field(
+        description=(
+            "Results save directory. Used as the default path for report outputs."
+        ),
+        default_factory=Path.cwd,
+    )
     report_generation: ReportGenerationSettings = ReportGenerationSettings()
 
     # Output settings
