@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import ParseResult, urlparse
 
 import httpx
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from websockets.asyncio.client import connect as ws_connect
 
 if TYPE_CHECKING:
@@ -141,7 +141,9 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
         ge=1,
         description="PCM16 frames per input_audio_buffer.append chunk (16 kHz).",
     )
-    api_key: str | None = Field(default=None, description="Bearer token if required.")
+    api_key: SecretStr | None = Field(
+        default=None, description="Bearer token if required."
+    )  # noqa: F821
     verify: bool = Field(default=False, description="Verify TLS certificates.")
     timeout: float | None = Field(
         default=None,
@@ -200,6 +202,8 @@ class OpenAIWebSocketBackend(Backend):
         await backend.process_shutdown()
     """
 
+    _args: OpenAIWebSocketBackendArgs
+
     def __init__(self, arguments: OpenAIWebSocketBackendArgs):
         """
         Initialize the WebSocket backend from validated args.
@@ -207,7 +211,6 @@ class OpenAIWebSocketBackend(Backend):
         :param arguments: Typed configuration including target, model, and paths.
         """
         super().__init__(arguments)
-        self._args = arguments
         self._resolved_model = (arguments.model or "").strip()
         self.validate_backend: dict[str, Any] | None = resolve_validate_kwargs(
             arguments.validate_backend,
