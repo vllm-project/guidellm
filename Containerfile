@@ -70,7 +70,7 @@ USER 1001:0
 # Add guidellm bin to PATH
 # Change the default save directory for results
 ENV HOME="/home/guidellm" \
-    GUIDELLM__WORKING_DIRECTORY="/results"
+    GUIDELLM__DEFAULT_RESULTS_DIR="/results"
 
 # Create the user home dir
 WORKDIR $HOME

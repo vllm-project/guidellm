@@ -114,8 +114,10 @@ class Settings(BaseSettings):
     default_synthetic_tool_response: str = '{"status": "ok"}'
 
     # Report settings
-    working_directory: Path = Field(
-        description="Working directory. Used as the default path for report outputs.",
+    default_results_dir: Path = Field(
+        description=(
+            "Results save directory. Used as the default path for report outputs."
+        ),
         default_factory=Path.cwd,
     )
     report_generation: ReportGenerationSettings = ReportGenerationSettings()

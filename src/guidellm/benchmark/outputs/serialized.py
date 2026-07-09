@@ -35,7 +35,7 @@ class JSONBenchmarkOutputArgs(BenchmarkOutputArgs):
         examples=["json"],
     )
     path: Path = Field(
-        default_factory=lambda: settings.working_directory / "benchmarks.json",
+        default_factory=lambda: settings.default_results_dir / "benchmarks.json",
         description="The file to save the output to.",
         examples=["./benchmarks.json"],
     )
@@ -51,7 +51,7 @@ class YAMLBenchmarkOutputArgs(BenchmarkOutputArgs):
         examples=["yaml"],
     )
     path: Path = Field(
-        default_factory=lambda: settings.working_directory / "benchmarks.yaml",
+        default_factory=lambda: settings.default_results_dir / "benchmarks.yaml",
         description="The file to save the output to.",
         examples=["./benchmarks.yaml"],
     )

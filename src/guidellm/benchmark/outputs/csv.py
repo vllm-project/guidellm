@@ -42,7 +42,7 @@ class CSVBenchmarkOutputArgs(BenchmarkOutputArgs):
         description="The kind of output.",
     )
     path: Path = Field(
-        default_factory=lambda: settings.working_directory / "benchmarks.csv",
+        default_factory=lambda: settings.default_results_dir / "benchmarks.csv",
         description="The file to save the output to.",
     )
 
