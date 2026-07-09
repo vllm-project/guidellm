@@ -48,7 +48,6 @@ Mount the local directory into the container and drop into a shell:
 
 ```bash
 sudo docker run --rm -ti \
-  -e GUIDELLM_OUTPUT_DIR="/data/mistral" \
   -e USER=guidellm \
   --volume /home/<USERNAME>/mistral:/data/mistral \
   --entrypoint bash \
@@ -77,7 +76,8 @@ guidellm run \
   --tokenizer '{"kind":"huggingface_auto","model":"/data/mistral"}' \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}' \
   --profile kind=concurrent,streams=100 \
-  --data-loader kind=pytorch,samples=-1
+  --data-loader kind=pytorch,samples=-1 \
+  --output kind=json,path=/data/mistral/benchmarks.json
 ```
 
 ### What Each Argument Does
@@ -90,6 +90,7 @@ guidellm run \
 | `--data-column-mapper` | Maps the JSONL `prompt` field to the `text_column` GuideLLM expects internally. |
 | `--profile kind=concurrent,streams=100` | Simulates 100 concurrent "users" hitting the endpoint at once. |
 | `--data-loader kind=pytorch,samples=1000` | Reads 1000 lines or samples from the JSONL file for the run. |
+| `--output kind=json,path=/data/mistral/benchmarks.json` | Output file type and path. |
 
 ______________________________________________________________________
 
