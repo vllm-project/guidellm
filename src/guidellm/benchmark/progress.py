@@ -155,6 +155,7 @@ class GenerativeConsoleBenchmarkerProgress(
             TextColumn("<"),
             TimeRemainingColumn(),
             TextColumn("]"),
+            auto_refresh=False,
         )
         self.run_progress_task = self.run_progress.add_task("")
         self._sync_run_progress()
@@ -256,6 +257,7 @@ class _GenerativeProgressTasks(Progress):
             TextColumn("({task.fields[progress_status]})"),
             TextColumn(" "),
             TextColumn(summary_text),
+            auto_refresh=False,
         )
 
         for strategy_type in profile.strategy_types:
