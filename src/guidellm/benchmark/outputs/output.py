@@ -13,10 +13,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from disdantic import RegistryMixin
 from pydantic import BaseModel, ConfigDict
 
 from guidellm.benchmark.schemas import BenchmarkOutputArgs, GenerativeBenchmarksReport
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["GenerativeBenchmarkerOutput"]
 

@@ -20,6 +20,7 @@ from datasets import (
 )
 from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
+from disdantic import RegistryMixin
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -31,7 +32,6 @@ from guidellm.data.deserializers.deserializer import (
 )
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.hf_datasets import load_dataset_from_file
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "TraceDataArgs",

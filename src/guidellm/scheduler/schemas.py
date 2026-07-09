@@ -13,11 +13,12 @@ import time
 from collections.abc import AsyncIterator, Iterable
 from typing import Any, Generic, Literal, Protocol, TypeVar
 
+from disdantic import RegistryMixin
 from pydantic import Field
 from typing_extensions import TypeAliasType
 
 from guidellm.schemas import RequestInfo, RequestSettings, StandardBaseModel
-from guidellm.utils.registry import RegistryMixin, RegistryObjT
+from guidellm.utils.registry import RegistryObjT
 
 __all__ = [
     "BackendInterface",

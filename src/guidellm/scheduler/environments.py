@@ -23,6 +23,8 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Generic
 
+from disdantic import InfoMixin
+
 from guidellm.scheduler.constraints import Constraint, ConstraintInitializer
 from guidellm.scheduler.schemas import (
     DatasetIterT,
@@ -33,7 +35,6 @@ from guidellm.scheduler.schemas import (
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
-from guidellm.utils.mixins import InfoMixin
 
 __all__ = ["Environment", "NonDistributedEnvironment"]
 

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
+from disdantic import RegistryMixin
+
 from guidellm.data.schemas import DataFinalizerArgs
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "DatasetFinalizer",

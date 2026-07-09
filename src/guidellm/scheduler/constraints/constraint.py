@@ -35,11 +35,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from disdantic import InfoMixin
 from pydantic import Field
 
 from guidellm.scheduler.schemas import SchedulerState, SchedulerUpdateAction
 from guidellm.schemas import RequestInfo, StandardBaseModel
-from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
     "Constraint",

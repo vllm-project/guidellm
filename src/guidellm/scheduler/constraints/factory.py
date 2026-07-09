@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from disdantic import RegistryMixin
+
 from guidellm.scheduler.constraints.args import ConstraintArgs
 from guidellm.scheduler.constraints.constraint import (
     Constraint,
@@ -16,7 +18,6 @@ from guidellm.scheduler.constraints.constraint import (
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["ConstraintsInitializerFactory"]
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
+from disdantic import RegistryMixin
 from pydantic import Field
 
 from guidellm.scheduler import BackendInterface
@@ -20,7 +21,6 @@ from guidellm.schemas import (
     PydanticClassRegistryMixin,
     standard_model_config,
 )
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "Backend",

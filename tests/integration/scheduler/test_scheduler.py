@@ -117,7 +117,7 @@ async def test_scheduler_run_integration(
     """Integration test for full scheduler workflow."""
     # Clear singleton state
     if hasattr(Scheduler, "singleton_instance"):
-        Scheduler.singleton_instance = None
+        Scheduler.clear_instances()
 
     scheduler = Scheduler()
     constraints = {

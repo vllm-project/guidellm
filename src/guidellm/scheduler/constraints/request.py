@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from typing import Any, Literal, cast
 
+from disdantic import InfoMixin
 from pydantic import Field
 
 from guidellm.scheduler.constraints.args import (
@@ -28,7 +29,6 @@ from guidellm.scheduler.schemas import (
     SchedulerUpdateAction,
 )
 from guidellm.schemas import RequestInfo, StandardBaseModel
-from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
     "MaxDurationConstraint",

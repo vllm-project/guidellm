@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from disdantic import RegistryMixin
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.schemas import DataTokenizerArgs
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["DataTokenizer", "TokenizerRegistry"]
 

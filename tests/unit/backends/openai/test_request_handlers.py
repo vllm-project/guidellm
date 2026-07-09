@@ -11,6 +11,7 @@ import json as stdlib_json
 from unittest.mock import MagicMock
 
 import pytest
+from disdantic import RegistryMixin
 
 from guidellm.backends.openai.request_handlers import (
     AudioRequestHandler,
@@ -32,7 +33,6 @@ from guidellm.data.finalizers.generative import (
 from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
 from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
-from guidellm.utils.registry import RegistryMixin
 
 
 @pytest.fixture

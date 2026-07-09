@@ -10,10 +10,13 @@ singleton operations for consistent state management across concurrent workflows
 
 from __future__ import annotations
 
+import threading
 import uuid
-from abc import ABC
+from abc import ABC, ABCMeta
 from collections.abc import AsyncIterator
 from typing import Generic
+
+from disdantic import InfoMixin, SingletonMeta
 
 from guidellm.benchmark.profiles import Profile
 from guidellm.benchmark.progress import BenchmarkerProgress
@@ -34,16 +37,18 @@ from guidellm.scheduler import (
     Scheduler,
     SchedulingStrategy,
 )
-from guidellm.utils.mixins import InfoMixin
-from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
 __all__ = ["Benchmarker"]
+
+
+class BenchmarkerMeta(ABCMeta, SingletonMeta):
+    """Exists to resolves metaclass conflicts in `Benchmarker`."""
 
 
 class Benchmarker(
     Generic[BenchmarkT, RequestT, ResponseT],
     ABC,
-    ThreadSafeSingletonMixin,
+    metaclass=BenchmarkerMeta,
 ):
     """
     Orchestrates benchmark execution across scheduling strategies.
@@ -53,6 +58,8 @@ class Benchmarker(
     consistent state management across concurrent operations while supporting multiple
     scheduling strategies and execution environments.
     """
+
+    init_lock = threading.Lock()
 
     async def run(
         self,
@@ -90,7 +97,7 @@ class Benchmarker(
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
-        with self.thread_lock:
+        with self.init_lock:
             if progress:
                 await progress.on_initialize(profile)
 

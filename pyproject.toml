@@ -61,6 +61,7 @@ dependencies = [
     "click~=8.3.0",
     "culsans~=0.10.0",
     "datasets>=4.1.0",
+    "disdantic>=0.1.0",
     "eval_type_backport",
     "faker",
     "ftfy>=6.0.0",
@@ -162,6 +163,10 @@ docs = "https://github.com/vllm-project/guidellm/tree/main/docs"
 
 [project.entry-points.console_scripts]
 guidellm = "guidellm.__main__:cli"
+
+
+[tool.disdantic]
+schema_rebuild_parents = false
 
 
 # ************************************************

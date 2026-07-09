@@ -5,6 +5,7 @@ from typing import Generic
 from unittest.mock import patch
 
 import pytest
+from disdantic import InfoMixin
 
 from guidellm.scheduler import (
     Environment,
@@ -17,7 +18,6 @@ from guidellm.scheduler import (
 )
 from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
 from guidellm.schemas import RequestInfo
-from guidellm.utils.mixins import InfoMixin
 
 
 class TestEnvironment:

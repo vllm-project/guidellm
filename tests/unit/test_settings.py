@@ -1,5 +1,6 @@
 import os
 
+import disdantic
 import pytest
 
 from guidellm.settings import (
@@ -25,6 +26,12 @@ def test_default_settings(mocker):
     settings = Settings()
     assert settings.logging == LoggingSettings()
     assert settings.report_generation.source.startswith(BASE_URL)
+
+
+@pytest.mark.sanity
+def test_disdantic_global_settings():
+    settings = disdantic.get_settings()
+    assert not settings.schema_rebuild_parents
 
 
 @pytest.mark.smoke

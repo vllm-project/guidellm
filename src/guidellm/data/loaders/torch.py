@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from typing import Any, Literal, TypeVar
 
 import torch
+from disdantic import InfoMixin
 from pydantic import Field
 from torch.utils.data.dataloader import DataLoader as PyTorchDataLoader
 from torch.utils.data.dataset import IterableDataset as TorchIterableDataset
@@ -20,7 +21,6 @@ from guidellm.data.schemas import (
     DatasetType,
 )
 from guidellm.logger import logger
-from guidellm.utils.mixins import InfoMixin
 
 __all__ = ["DatasetsIterator", "TorchDataLoader", "TorchDataLoaderArgs"]
 

@@ -15,6 +15,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TypeVar
 
+from disdantic import InfoMixin, RegistryMixin
+
 from guidellm.backends import Backend, BackendArgs
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.outputs import (
@@ -47,8 +49,6 @@ from guidellm.schemas import (
     GenerationResponse,
 )
 from guidellm.utils.console import Console
-from guidellm.utils.mixins import InfoMixin
-from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "benchmark_generative_text",
