@@ -27,6 +27,8 @@ __all__ = [
     "loads",
 ]
 
+_ListValuePaths = set[tuple[tuple[str, int | None], ...]]
+
 
 class ArgStringParseError(Exception):
     """Exception raised for errors during argument string parsing."""
@@ -109,6 +111,7 @@ class ArgStringParser:
             # {'items': [{'weight': 10, 'count': 5}]}
         """
         result: dict[str, Any] = {}
+        assigned_list_values: _ListValuePaths = set()
 
         if not s or not s.strip():
             return result
@@ -145,7 +148,12 @@ class ArgStringParser:
             parsed_value = yaml.safe_load(value)
 
             # Set the value in the nested structure
-            self._value_set_nested(result, segments, parsed_value)
+            self._value_set_nested(
+                result,
+                segments,
+                parsed_value,
+                assigned_list_values=assigned_list_values,
+            )
 
         return result
 
@@ -250,6 +258,8 @@ class ArgStringParser:
         name: str,
         index: int,
         value: Any,
+        *,
+        assigned: bool = False,
     ) -> None:
         """
         Set a value in a list at the given index within a dictionary.
@@ -261,6 +271,7 @@ class ArgStringParser:
         :param name: The key name for the list in the dictionary
         :param index: The list index where the value should be set
         :param value: The value to set at the specified index
+        :param assigned: Whether the list position was explicitly assigned
         :raises ArgStringParseError: If overwriting and allow_overwrite is False
         """
         if name not in current:
@@ -277,7 +288,7 @@ class ArgStringParser:
 
         # Check for overwrite of non-fill values
         existing_value = current[name][index]
-        if not self.allow_overwrite and existing_value != self.fill_value:
+        if not self.allow_overwrite and (assigned or existing_value != self.fill_value):
             raise ArgStringParseError(
                 f"Cannot overwrite existing value at '{name}[{index}]'"
             )
@@ -289,6 +300,8 @@ class ArgStringParser:
         current: dict[str, Any],
         name: str,
         index: int,
+        *,
+        assigned: bool = False,
     ) -> Any:
         """
         Navigate to or create a list element for intermediate path segments.
@@ -300,6 +313,7 @@ class ArgStringParser:
         :param current: The current dictionary context containing the list
         :param name: The key name for the list in the dictionary
         :param index: The list index to navigate to
+        :param assigned: Whether the list position was explicitly assigned
         :return: The element at the given index (creating empty dict if needed)
         :raises ArgStringParseError: If overwriting and allow_overwrite is False
         """
@@ -317,7 +331,7 @@ class ArgStringParser:
 
         # Create nested structure if needed (only for fill values)
         existing_value = current[name][index]
-        if existing_value == self.fill_value:
+        if existing_value == self.fill_value and not assigned:
             current[name][index] = {}
         elif not isinstance(existing_value, dict):
             # Trying to navigate into non-dict value
@@ -362,6 +376,8 @@ class ArgStringParser:
         result: dict[str, Any],
         segments: list[tuple[str, int | None]],
         value: Any,
+        *,
+        assigned_list_values: _ListValuePaths | None = None,
     ) -> None:
         """
         Set a value in a nested dictionary and list structure.
@@ -373,17 +389,28 @@ class ArgStringParser:
         :param result: The root dictionary to modify in place
         :param segments: List of (name, index) tuples representing the navigation path
         :param value: The value to set at the final destination
+        :param assigned_list_values: List positions explicitly assigned while decoding
         :raises ArgStringParseError: If overwriting and allow_overwrite is False
         """
         current: Any = result
 
         for i, (name, index) in enumerate(segments):
             is_last = i == len(segments) - 1
+            path = tuple(segments[: i + 1])
+            assigned = assigned_list_values is not None and path in assigned_list_values
 
             if is_last:
                 # If we are at the last segment, set the value
                 if index is not None:
-                    self._list_set_value(current, name, index, value)
+                    self._list_set_value(
+                        current,
+                        name,
+                        index,
+                        value,
+                        assigned=assigned,
+                    )
+                    if assigned_list_values is not None:
+                        assigned_list_values.add(path)
                 else:
                     if name in current and not self.allow_overwrite:
                         raise ArgStringParseError(
@@ -393,7 +420,12 @@ class ArgStringParser:
             # If not last, navigate/create intermediate structures
             elif index is not None:
                 # Intermediate segment with array access
-                current = self._list_navigate_to_element(current, name, index)
+                current = self._list_navigate_to_element(
+                    current,
+                    name,
+                    index,
+                    assigned=assigned,
+                )
             else:
                 # Intermediate segment with dict access
                 current = self._dict_navigate_to_key(current, name)
