@@ -90,7 +90,7 @@ guidellm run \
 | `--backend kind=openai_http,target=...` | Points GuideLLM at your OpenAI-compatible predictor endpoint. |
 | `--data kind=json_file,path=...` | Loads prompts from the local JSONL file. |
 | `--tokenizer kind=huggingface_auto,model=/data/mistral` | Loads the tokenizer from the local directory, the 3 files from step 1, instead of downloading a model. |
-| `--data-column-mapper` | Maps the JSONL `prompt` field to the `text_column` GuideLLM expects internally. |
+| `--data-column-mapper` | Maps the JSONL `prompt` field to the `text_column` GuideLLM expects internally. Optional here since `prompt` is already a default mapping. Shown explicitly for clarity. |
 | `--profile kind=concurrent,streams=100` | Simulates 100 concurrent "users" hitting the endpoint at once. |
 | `--data-loader kind=pytorch,samples=1000` | Reads 1000 lines or samples from the JSONL file for the run. |
 | `--output kind=json,path=/data/mistral/benchmarks.json` | Output file type and path. |
