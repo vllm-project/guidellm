@@ -2,6 +2,8 @@
 
 Benchmark an already-deployed OpenAI-compatible model endpoint using GuideLLM with a local tokenizer and a custom JSONL prompt dataset, without needing a local copy of the model itself.
 
+This example runs GuideLLM from a container, reflecting our internal workflow, but that's not a requirement. A local `pip install`-based setup works the same way and skips step 3.
+
 ## Getting Started
 
 ### 1. Prepare the Tokenizer Files
