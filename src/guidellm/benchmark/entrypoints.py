@@ -589,7 +589,9 @@ async def reimport_benchmarks_report(
     output_args: list[BenchmarkOutputArgs] = []
     for fmt in output_formats:
         data: dict[str, Any] = {"kind": fmt}
-        data["path"] = base_path / f"benchmarks.{fmt}"
+        output_cls = BenchmarkOutputArgs.get_registered_object(fmt)
+        if output_cls is not None and "path" in output_cls.model_fields:
+            data["path"] = base_path / f"benchmarks.{fmt}"
         output_args.append(BenchmarkOutputArgs.model_validate(data))
 
     output_format_results: dict[str, Any] = {}
