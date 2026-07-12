@@ -9,8 +9,8 @@ Benchmark an already-deployed OpenAI-compatible model endpoint using GuideLLM wi
 
 The model is already deployed and running, for example on GPU, served via vLLM or OpenShift, behind an OpenAI-compatible endpoint. GuideLLM never loads or runs the model, it only talks to it over HTTP. What GuideLLM does need locally is the tokenizer, since it uses it to compute token counts for its metrics such as prompt tokens, output tokens and throughput.
 
-From the model's repo, for example the HuggingFace Hub or wherever the model artifacts live, copy only these three files.
-This example uses a Mistral-family model; other model architectures may require additional or different files, so treat this list as a starting point rather than a universal one:
+From the model's repo, for example the HuggingFace Hub or wherever the model artifacts live, copy the tokenizer files required by your specific model.
+This example uses a Mistral-family model, which needs only these three files. A pattern that's typical of many tokenizers, but not universal, so treat it as a starting point rather than a fixed requirement for every model:
 
 ```bash
 tokenizer.json
