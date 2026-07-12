@@ -2,15 +2,13 @@
 
 Benchmark an already-deployed OpenAI-compatible model endpoint using GuideLLM with a local tokenizer and a custom JSONL prompt dataset, without needing a local copy of the model itself. This example runs GuideLLM via a local `pip install`.
 
-
 ## Getting Started
 
 ### 1. Prepare the Tokenizer Files
 
 The model is already deployed and running, for example on GPU, served via vLLM or OpenShift, behind an OpenAI-compatible endpoint. GuideLLM never loads or runs the model, it only talks to it over HTTP. What GuideLLM does need locally is the tokenizer, since it uses it to compute token counts for its metrics such as prompt tokens, output tokens and throughput.
 
-From the model's repo, for example the HuggingFace Hub or wherever the model artifacts live, copy the tokenizer files required by your specific model.
-This example uses a Mistral-family model, which needs only these three files. A pattern that's typical of many tokenizers, but not universal, so treat it as a starting point rather than a fixed requirement for every model:
+From the model's repo, for example the HuggingFace Hub or wherever the model artifacts live, copy the tokenizer files required by your specific model. This example uses a Mistral-family model, which needs only these three files. A pattern that's typical of many tokenizers, but not universal, so treat it as a starting point rather than a fixed requirement for every model:
 
 ```bash
 tokenizer.json
@@ -19,6 +17,8 @@ special_tokens_map.json
 ```
 
 Place them in a local directory, e.g. `/home/<USERNAME>/mistral`.
+
+______________________________________________________________________
 
 ### 2. Prepare a Custom JSONL Dataset
 
@@ -66,17 +66,17 @@ guidellm run \
 
 ### What Each Argument Does
 
-| Argument | Purpose |
-|---|---|
-| `--backend kind=openai_http,target=...` | Points GuideLLM at your OpenAI-compatible predictor endpoint. |
-| `--data kind=json_file,path=...` | Loads prompts from the local JSONL file. |
+| Argument                                                           | Purpose                                                                                                |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `--backend kind=openai_http,target=...`                            | Points GuideLLM at your OpenAI-compatible predictor endpoint.                                          |
+| `--data kind=json_file,path=...`                                   | Loads prompts from the local JSONL file.                                                               |
 | `--tokenizer kind=huggingface_auto,model=/home/<USERNAME>/mistral` | Loads the tokenizer from the local directory, the 3 files from step 1, instead of downloading a model. |
-| `--profile kind=concurrent,streams=100` | Simulates 100 concurrent "users" hitting the endpoint at once. |
-| `--output kind=json,path=/home/<USERNAME>/mistral/benchmarks.json` | Output file type and path. |
+| `--profile kind=concurrent,streams=100`                            | Simulates 100 concurrent "users" hitting the endpoint at once.                                         |
+| `--output kind=json,path=/home/<USERNAME>/mistral/benchmarks.json` | Output file type and path.                                                                             |
 
 ______________________________________________________________________
 
-## 5. Notes
+## 4. Notes
 
 - The tokenizer path (`/home/<USERNAME>/mistral` in this example) only needs the 3 tokenizer files, no model weights required.
 - The dataset file path and the tokenizer path can point to different directories or models if you want to mix and match, though in this example they are the same folder for convenience.
