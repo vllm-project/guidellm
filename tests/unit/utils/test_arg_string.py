@@ -314,6 +314,41 @@ class TestArgStringLoads:
             arg_string.loads("items[0]=first,items[0]=second")
 
     @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("value", "fill_value"),
+        [
+            ("null", None),
+            ("0", lambda: 0),
+        ],
+    )
+    def test_overwrite_error_list_value_equal_to_fill(self, value, fill_value):
+        """
+        Test that explicit values equal to the fill value cannot be overwritten.
+
+        ### WRITTEN BY AI ###
+        """
+        kwargs = {} if fill_value is None else {"fill_value": fill_value}
+
+        with pytest.raises(
+            arg_string.ArgStringParseError,
+            match="Cannot overwrite existing value at 'items\\[0\\]'",
+        ):
+            arg_string.loads(f"items[0]={value},items[0]=replacement", **kwargs)
+
+    @pytest.mark.regression
+    def test_overwrite_error_list_fill_value_with_dict(self):
+        """
+        Test that an explicit null list value cannot be replaced with a dictionary.
+
+        ### WRITTEN BY AI ###
+        """
+        with pytest.raises(
+            arg_string.ArgStringParseError,
+            match="Cannot overwrite non-dict value at 'items\\[0\\]' with dict",
+        ):
+            arg_string.loads("items[0]=null,items[0].field=value")
+
+    @pytest.mark.regression
     def test_mixed_value_types(self):
         """
         Test parsing with mixed value types in a single string.

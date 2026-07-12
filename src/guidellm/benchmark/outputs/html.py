@@ -51,7 +51,7 @@ class HTMLBenchmarkOutputArgs(BenchmarkOutputArgs):
         description="The kind of output.",
     )
     path: Path = Field(
-        default=Path("./benchmarks.html"),
+        default_factory=lambda: settings.default_results_dir / "benchmarks.html",
         description="The file to save the output to.",
     )
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import SecretStr
+
 from guidellm.utils.imports import json
 
 __all__ = [
@@ -18,7 +20,7 @@ FALLBACK_TIMEOUT = 5.0
 
 
 def build_headers(
-    api_key: str | None,
+    api_key: SecretStr | str | None,
     existing_headers: dict[str, str] | None = None,
 ) -> dict[str, str] | None:
     """
@@ -33,6 +35,8 @@ def build_headers(
     """
     headers: dict[str, str] = {}
     if api_key:
+        if isinstance(api_key, SecretStr):
+            api_key = api_key.get_secret_value()
         headers["Authorization"] = f"Bearer {api_key}"
     if existing_headers:
         headers = {**headers, **existing_headers}
