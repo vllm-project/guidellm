@@ -190,7 +190,7 @@ The sweep profile applies a sequence of benchmark strategies to find the optimal
 
 1. It runs a `synchronous` strategy to measure the baseline rate,
 2. then runs a `throughput` strategy to determine peak throughput,
-3. and finally runs a series of asynchronous strategies with rates interpolated between the baseline and maximum throughput. (The number of interpolated strategies is `sweep_size` minus 2.) The asynchronous strategy type is determined by the `strategy_type` profile parameter. The default strategy type is `constant`. During the async phase, if a failure constraint triggers at a given rate, all remaining higher rates are skipped.
+3. and finally runs a series of asynchronous strategies with rates interpolated between the baseline and maximum throughput. (The number of interpolated strategies is `sweep_size` minus 2.) The asynchronous strategy type is determined by the `strategy_type` profile parameter. The default strategy type is `constant`. During the async phase, if a constraint with `stopping_scope="all"` triggers at a given rate, remaining rates are skipped.
 
 For example, to run a sweep with 10 strategies, 10 seconds of rampup, and a strategy type of `poisson`:
 
