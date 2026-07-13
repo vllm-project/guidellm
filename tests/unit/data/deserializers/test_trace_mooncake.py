@@ -282,11 +282,11 @@ class TestMooncakeTraceFormat:
         n_in = default_block_size * 2
         trace = write_trace(
             tmp_path,
-            _generate_trace(
+            generate_trace(
                 n_rows,
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda _: 1024),
+                    TraceColumnGenerator("input_length", lambda _: n_in),
                     TraceColumnGenerator("output_length", lambda _: 5),
                     TraceColumnGenerator("hash_ids", lambda i: [0, i + 1]),
                 ],
@@ -295,7 +295,7 @@ class TestMooncakeTraceFormat:
         config = MooncakeTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,
-            processor_factory=_ascending_processor,
+            processor_factory=ascending_processor,
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
@@ -306,9 +306,9 @@ class TestMooncakeTraceFormat:
     def test_token_block_distinctness(self, tmp_path: Path, deserializer):
         n_rows = 4
         n_in = 1024
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
-            _generate_trace(
+            generate_trace(
                 n_rows,
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
@@ -319,8 +319,8 @@ class TestMooncakeTraceFormat:
             ),
         )
         ds = deserializer(
-            config=config,
-            processor_factory=_compatible_processor,
+            config=MooncakeTraceFormatArgs(path=trace),
+            processor_factory=compatible_processor,
             random_seed=42,
         )
         root_blocks, sibling_blocks = zip(

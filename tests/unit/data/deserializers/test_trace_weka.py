@@ -266,7 +266,7 @@ class TestWEKATraceFormat:
         )
         ds = deserializer(
             config=WEKATraceFormatArgs(path=trace),
-            processor_factory=lambda: ascending_processor(),
+            processor_factory=ascending_processor,
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
@@ -293,7 +293,7 @@ class TestWEKATraceFormat:
         )
         ds = deserializer(
             config=WEKATraceFormatArgs(path=trace),
-            processor_factory=lambda: compatible_processor(),
+            processor_factory=compatible_processor,
             random_seed=42,
         )
         root_blocks, sibling_blocks = zip(
