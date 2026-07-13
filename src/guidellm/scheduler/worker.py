@@ -17,8 +17,6 @@ from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
 from typing import Annotated, Generic, Literal
 
-from typing_extensions import TypeAliasType
-
 try:
     import uvloop
 
@@ -32,15 +30,16 @@ except ImportError:
 
 
 from guidellm.logger import logger
+from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import (
     BackendInterface,
-    ConversationT,
+    ConversationGraph,
     HistoryT,
     RequestT,
     ResponseT,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas import RequestInfo
 from guidellm.utils.messaging import InterProcessMessaging
 from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
@@ -49,17 +48,6 @@ from guidellm.utils.synchronous import (
 )
 
 __all__ = ["WorkerProcess"]
-
-ProcessRequestT = TypeAliasType(
-    "ProcessRequestT",
-    tuple[
-        HistoryT[RequestT, ResponseT],
-        ConversationT[RequestT],
-        RequestInfo | None,
-    ],
-    type_params=(RequestT, ResponseT),
-)
-"""Response from the async request processor."""
 
 
 class WorkerProcess(Generic[RequestT, ResponseT]):
@@ -94,7 +82,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         worker_index: int,
         messaging: InterProcessMessaging[
             tuple[ResponseT | None, RequestT, RequestInfo],
-            ConversationT[RequestT],
+            ConversationGraph[RequestT],
         ],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
@@ -138,9 +126,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.startup_completed = False
         self.backend_started = False
         self.messaging_started = False
-        self.turns_queue: list[
-            tuple[HistoryT[RequestT, ResponseT], ConversationT[RequestT]]
+        self.graph_queue: list[
+            DAGExecutionState[RequestT, ResponseT]
         ] = []
+        self.graph_request_infos: dict[str, dict[str, RequestInfo]] = {}
 
     def run(self):
         """
@@ -300,31 +289,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         maintaining the configured concurrency limit through semaphore coordination.
         """
         try:
-            # Run request processing
             async_semaphore = asyncio.Semaphore(self.async_limit)
             pending_tasks: set[asyncio.Task] = set()
 
-            def _task_done(task: asyncio.Task[ProcessRequestT[RequestT, ResponseT]]):
-                pending_tasks.discard(task)
-                async_semaphore.release()
-
-                if not task.cancelled():
-                    if exception := task.exception():
-                        raise exception
-
-                    history, conversation, info = task.result()
-                    settings = info.settings if info is not None else RequestSettings()
-                    if conversation:
-                        requeue_task = asyncio.create_task(
-                            self._wait_then_requeue(
-                                history,
-                                conversation,
-                                settings,
-                            )
-                        )
-                        pending_tasks.add(requeue_task)
-
-            # Main loop; loop until canceled
             while True:
                 await async_semaphore.acquire()
                 request_time = await self.strategy.next_request_time(
@@ -337,159 +304,205 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     await asyncio.sleep(time_until - self.fut_scheduling_time_limit)
 
                 request_task = asyncio.create_task(
-                    self._process_next_request(target_start=request_time)
+                    self._process_next_graph_node(target_start=request_time)
                 )
                 pending_tasks.add(request_task)
+
+                def _task_done(
+                    task: asyncio.Task,
+                    _pending=pending_tasks,
+                    _sem=async_semaphore,
+                ):
+                    _pending.discard(task)
+                    _sem.release()
+                    if not task.cancelled() and (
+                        exception := task.exception()
+                    ):
+                        raise exception
+
                 request_task.add_done_callback(_task_done)
         except asyncio.CancelledError as err:
             for task in pending_tasks:
                 task.cancel()
             await asyncio.gather(*pending_tasks, return_exceptions=True)
-
             raise err
 
     async def _cancel_requests_loop(self):
-        """Cancel all remaining queued requests until worker process terminates."""
+        """Cancel all remaining queued graph nodes until worker terminates."""
+        for state in self.graph_queue:
+            remaining = state.abort()
+            infos = self.graph_request_infos.get(state.graph.graph_id, {})
+            for node_id in remaining:
+                node = state.graph.nodes[node_id]
+                ri = infos.get(node_id)
+                if ri is not None:
+                    ri.scheduler_node_id = self.messaging.worker_index or -1
+                    ri.error = "Request was cancelled"
+                    ri.timings.resolve_end = time.time()
+                    self._send_update("cancelled", None, node.request, ri)
+        self.graph_queue.clear()
+        self.graph_request_infos.clear()
+
         while True:
             try:
-                _, conversation = (
-                    self.turns_queue.pop(0)
-                    if self.turns_queue
-                    else (
-                        None,
-                        await self.messaging.get(timeout=self.messaging.poll_interval),
-                    )
+                graph: ConversationGraph[RequestT] = await self.messaging.get(
+                    timeout=self.messaging.poll_interval
                 )
             except asyncio.TimeoutError:
                 continue
+            for node_id, node in graph.nodes.items():
+                ri = graph.request_infos.get(node_id)
+                if ri is not None:
+                    ri.scheduler_node_id = self.messaging.worker_index or -1
+                    ri.error = "Request was cancelled"
+                    ri.timings.resolve_end = time.time()
+                    self._send_update("cancelled", None, node.request, ri)
 
-            for request, request_info in conversation:
-                request_info.scheduler_node_id = self.messaging.worker_index or -1
-                request_info.error = "Request was cancelled"
-                request_info.timings.resolve_end = time.time()
-                self._send_update("cancelled", None, request, request_info)
+    async def _get_next_ready_node(
+        self,
+    ) -> tuple[DAGExecutionState[RequestT, ResponseT], str]:
+        """Get the next ready node from active graphs or dequeue a new graph."""
+        while True:
+            for state in self.graph_queue:
+                ready = state.get_ready_nodes()
+                if ready:
+                    return state, ready[0]
+            graph: ConversationGraph[RequestT] = await self.messaging.get()
+            state = DAGExecutionState(graph)
+            self.graph_queue.append(state)
+            self.graph_request_infos[graph.graph_id] = dict(graph.request_infos)
 
-    async def _process_next_request(  # noqa: C901
-        self, target_start: float
-    ) -> ProcessRequestT[RequestT, ResponseT]:
-        """
-        Process a single request from queue to completion.
-
-        Retrieves request from messaging queue, applies timing strategy, processes
-        through backend, and publishes status updates throughout the lifecycle.
-
-        :param target_start: Unix timestamp when request should begin processing
-        """
-        conversation: ConversationT[RequestT] = []
-        history: HistoryT[RequestT, ResponseT] = []
+    async def _process_next_graph_node(self, target_start: float) -> None:
+        """Process a single graph node from queue to completion."""
         request: RequestT | None = None
         request_info: RequestInfo | None = None
         response: ResponseT | None = None
-        premature_exit: bool = False
+        state: DAGExecutionState[RequestT, ResponseT] | None = None
+        node_id: str | None = None
 
         try:
-            # Pull request from the queue, update state, and send "pending" update
-            history, conversation = await self._dequeue_next_conversation(target_start)
-            request, request_info = conversation.pop(0)
-
-            effective_target_start = await self.strategy.resolve_dequeued_target_start(
-                self.worker_index,
-                target_start,
-                request_info.settings,
+            state, node_id = await self._get_next_ready_node()
+            request, request_info = self._prepare_node(state, node_id, target_start)
+            response = await self._execute_node(
+                state, node_id, request, request_info, target_start
             )
-            if effective_target_start != target_start:
-                request_info.timings.targeted_start = effective_target_start
-                self._send_update("pending", None, request, request_info)
-
-            # Schedule the request and send "in_progress" update
-            await self._schedule_request(request, request_info, effective_target_start)
-
-            async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
-                request, request_info, history or None
-            ):
-                request_info = info
-                if request_info is None:
-                    raise RuntimeError("Received invalid request info from backend")
-
-                if (
-                    resp is None
-                    and request_info.timings.first_token_iteration is not None
-                ):
-                    self._send_update("first_token", None, request, request_info)
-
-                response = resp
-
-            # Complete the request
-            request_info.timings.resolve_end = time.time()
-            self._send_update("completed", response, request, request_info)
-
-            # Record Turn
-            history.append((request, response))
-
+            self._finalize_node(state, node_id, request, request_info, response)
             response = request = None
         except asyncio.CancelledError:
-            premature_exit = True
-            # Handle cancellation
             if request is not None and request_info is not None:
                 request_info.error = "Request was cancelled"
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", response, request, request_info)
             raise
         except Exception as exc:  # noqa: BLE001
-            premature_exit = True
-            if request is not None and request_info is not None:
-                request_info.error = repr(exc)
-                request_info.traceback = traceback.format_exc()
-                request_info.timings.resolve_end = time.time()
-                self._send_update("errored", response, request, request_info)
-                logger.opt(exception=True).debug(
-                    f"Backend exception for request {request_info.request_id}"
-                )
+            self._handle_node_error(
+                exc, state, node_id, request, request_info, response
+            )
         finally:
             if request_info is not None:
                 self.strategy.request_completed(request_info)
-            if premature_exit and conversation:
-                for request, request_info in conversation:
-                    request_info.error = "Request was cancelled"
-                    request_info.timings.resolve_end = time.time()
-                    self._send_update("cancelled", None, request, request_info)
-                # Clear conversation on premature exit
-                conversation = []
 
-        return history, conversation, request_info
-
-    async def _dequeue_next_conversation(
-        self, target_start: float
-    ) -> tuple[HistoryT[RequestT, ResponseT], ConversationT[RequestT]]:
-        history, conversation = (
-            self.turns_queue.pop(0)
-            if self.turns_queue
-            else ([], await self.messaging.get())
-        )
-        request, request_info = conversation[0]
-        dequeued_time = time.time()  # Ensure accurate dequeue timing
-        if request is None or request_info is None:
-            raise RuntimeError("Received invalid request or request info")
-
-        request_info.timings.dequeued = dequeued_time
+    def _prepare_node(
+        self,
+        state: DAGExecutionState[RequestT, ResponseT],
+        node_id: str,
+        target_start: float,
+    ) -> tuple[RequestT, RequestInfo]:
+        """Look up request and RequestInfo for a node, set dequeue timing."""
+        node = state.graph.nodes[node_id]
+        request = node.request
+        infos = self.graph_request_infos.get(state.graph.graph_id, {})
+        request_info = infos.get(node_id)
+        if request_info is None:
+            raise RuntimeError(
+                f"No RequestInfo for node '{node_id}' in graph "
+                f"'{state.graph.graph_id}'"
+            )
+        request_info.timings.dequeued = time.time()
         request_info.scheduler_node_id = self.messaging.worker_index or -1
         request_info.timings.targeted_start = target_start
         self._send_update("pending", None, request, request_info)
-        return history, conversation
+        return request, request_info
 
-    async def _wait_then_requeue(
+    async def _execute_node(
         self,
-        history: HistoryT[RequestT, ResponseT],
-        conversation: ConversationT[RequestT],
-        settings: RequestSettings,
-    ):
-        try:
-            if settings.requeue_delay:
-                await asyncio.sleep(settings.requeue_delay)
-        finally:
-            # Always requeue so that if we were cancelled during sleep
-            # the whole conversation can be cancelled properly later
-            self.turns_queue.append((history, conversation))
+        state: DAGExecutionState[RequestT, ResponseT],
+        node_id: str,
+        request: RequestT,
+        request_info: RequestInfo,
+        target_start: float,
+    ) -> ResponseT | None:
+        """Schedule, assemble history, and execute a node via backend."""
+        effective_target_start = await self.strategy.resolve_dequeued_target_start(
+            self.worker_index, target_start, request_info.settings,
+        )
+        if effective_target_start != target_start:
+            request_info.timings.targeted_start = effective_target_start
+            self._send_update("pending", None, request, request_info)
+        await self._schedule_request(request, request_info, effective_target_start)
+
+        history_pairs = state.assemble_history(node_id)
+        history: HistoryT[RequestT, ResponseT] | None = (
+            history_pairs if history_pairs else None
+        )
+        response: ResponseT | None = None
+        async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
+            request, request_info, history
+        ):
+            if info is None:
+                raise RuntimeError("Received invalid request info from backend")
+            if resp is None and info.timings.first_token_iteration is not None:
+                self._send_update("first_token", None, request, info)
+            response = resp
+        return response
+
+    def _finalize_node(
+        self,
+        state: DAGExecutionState[RequestT, ResponseT],
+        node_id: str,
+        request: RequestT,
+        request_info: RequestInfo,
+        response: ResponseT | None,
+    ) -> None:
+        """Mark node completed and clean up finished graphs."""
+        request_info.timings.resolve_end = time.time()
+        self._send_update("completed", response, request, request_info)
+        state.mark_completed(node_id, request, response)
+        if state.is_complete:
+            self.graph_queue.remove(state)
+            self.graph_request_infos.pop(state.graph.graph_id, None)
+
+    def _handle_node_error(  # noqa: PLR0913
+        self,
+        exc: Exception,
+        state: DAGExecutionState[RequestT, ResponseT] | None,
+        node_id: str | None,  # noqa: ARG002
+        request: RequestT | None,
+        request_info: RequestInfo | None,
+        response: ResponseT | None,
+    ) -> None:
+        """Report error for the failed node and abort the entire graph."""
+        if request is not None and request_info is not None:
+            request_info.error = repr(exc)
+            request_info.traceback = traceback.format_exc()
+            request_info.timings.resolve_end = time.time()
+            self._send_update("errored", response, request, request_info)
+            logger.opt(exception=True).debug(
+                f"Backend exception for request {request_info.request_id}"
+            )
+        if state is not None:
+            remaining = state.abort()
+            infos = self.graph_request_infos.get(state.graph.graph_id, {})
+            for rem_id in remaining:
+                rem_node = state.graph.nodes[rem_id]
+                rem_info = infos.get(rem_id)
+                if rem_info is not None:
+                    rem_info.error = "Request was cancelled"
+                    rem_info.timings.resolve_end = time.time()
+                    self._send_update("cancelled", None, rem_node.request, rem_info)
+            if state in self.graph_queue:
+                self.graph_queue.remove(state)
+            self.graph_request_infos.pop(state.graph.graph_id, None)
 
     async def _schedule_request(
         self, request: RequestT, request_info: RequestInfo, target_start: float

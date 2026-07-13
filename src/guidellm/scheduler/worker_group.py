@@ -15,7 +15,7 @@ import math
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Generator, Iterable
+from collections.abc import AsyncIterator, Generator
 from multiprocessing import get_context
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
@@ -31,7 +31,6 @@ from guidellm.scheduler.schemas import (
     BackendInterface,
     ConversationT,
     DatasetIterT,
-    RequestDataT,
     RequestT,
     ResponseT,
     SchedulerState,
@@ -39,7 +38,7 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
-from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
 from guidellm.utils.messaging import (
     InterProcessMessaging,
@@ -565,47 +564,56 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             count = 0
             stop_queueing: bool = False
 
-            def _turn_iter(
-                requests_chain: Iterable[tuple[RequestT, RequestSettings]],
-            ) -> Generator[RequestDataT[RequestT], None, None]:
-                nonlocal count, stop_queueing
-                # NOTE: This allows users to correlate requests in post-processing
-                conv_id = str(uuid.uuid4())
-                for i, (request, setting) in enumerate(requests_chain):
+            for graph in requests:
+                from guidellm.scheduler.dag import DAGExecutionState
+
+                topo = DAGExecutionState(graph).topological_order()
+                incoming_map: dict[str, list[str]] = {
+                    nid: [] for nid in graph.nodes
+                }
+                for edge in graph.edges:
+                    incoming_map[edge.target_node_id].append(
+                        edge.source_node_id
+                    )
+
+                for i, node_id in enumerate(topo):
+                    node = graph.nodes[node_id]
                     count += 1
 
-                    request_id = self._find_request_id(request)
+                    request_id = self._find_request_id(node.request)
                     request_info: RequestInfo = RequestInfo(
                         request_id=request_id,
-                        conversation_id=conv_id,
+                        conversation_id=graph.graph_id,
+                        graph_id=graph.graph_id,
+                        node_id=node_id,
+                        agent_id=node.agent_id,
+                        parent_node_ids=incoming_map[node_id],
                         turn_index=i,
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,
-                        settings=setting,
+                        settings=node.settings,
                     )
                     state_update = self._locked_update(request_info)
                     request_info.timings.queued = time.time()
                     if self.messaging.buffer_receive_queue is None:
                         raise RuntimeError("buffer receive queue is None")
                     self.messaging.buffer_receive_queue.sync_put(
-                        (None, request, request_info, state_update.state)
+                        (None, node.request, request_info, state_update.state)
                     )
 
-                    yield request, request_info
+                    graph.request_infos[node_id] = request_info
 
                     if state_update.stop_queueing:
                         stop_queueing = True
-                        return
+                        break
 
-            for request_chain in requests:
-                yield list(_turn_iter(request_chain))
+                yield graph  # type: ignore[misc]
 
                 if stop_queueing:
                     self.stop_send_requests_event.set()
                     return
 
-            # Reached the end, inject a RequestsExhaustedConstraint to record
             self._locked_update(
                 info=None,
                 add_constraints={
