@@ -114,6 +114,47 @@ For this configuration:
 - 60% of conversations use one of the 10 prefixes which are 100 tokens each
 - 40% of conversations use the prefix of 50 tokens
 
+#### Sub-Agent Branches
+
+GuideLLM supports simulating multi-agent workloads where an orchestrator spawns parallel sub-agents during a conversation. Use the `branches` parameter to specify sub-agent branches that fork from the main conversation at a specific turn and merge back at the next turn.
+
+Each branch:
+
+- **Spawns** at `at_turn` with fresh context (the sub-agent does not see the main conversation history)
+- **Runs** for `turns` turns independently
+- **Merges** back at `at_turn + 1`, where the main conversation receives the sub-agent's final output
+
+Multiple branches at the same turn are supported and may have different lengths. All branches must complete before the main conversation continues past the merge point.
+
+**Basic Example:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":2,"turns":3}]}'
+```
+
+This creates a 5-turn main conversation with one sub-agent branch that spawns at turn 2, runs for 3 turns, and merges back at turn 3.
+
+**Multiple Branches:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":2,"turns":3},{"at_turn":2,"turns":1,"agent_id":"reviewer"}]}'
+```
+
+This spawns two sub-agents at turn 2: one that runs for 3 turns and one that runs for 1 turn. Both merge back at turn 3. The main conversation at turn 3 receives the full history from turns 0-2 plus the final output from each sub-agent.
+
+**Branch Configuration Fields:**
+
+| Field           | Type          | Default    | Description                                           |
+| --------------- | ------------- | ---------- | ----------------------------------------------------- |
+| `at_turn`       | `int`         | (required) | Main chain turn index where the branch spawns         |
+| `turns`         | `int`         | (required) | Number of turns in this branch                        |
+| `agent_id`      | `str`         | `"worker"` | Agent identity for branch nodes                       |
+| `prompt_tokens` | `int \| null` | `null`     | Override prompt token count (defaults to main config) |
+| `output_tokens` | `int \| null` | `null`     | Override output token count (defaults to main config) |
+
+> [!NOTE]\
+> `at_turn` must be less than `turns - 1` so that a merge point exists at `at_turn + 1`. Branching from the last turn is not allowed.
+
 ### Request Formatting
 
 Multiturn conversations are formatted differently depending on the request format:

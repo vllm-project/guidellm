@@ -226,6 +226,13 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
             "user-provided values are overwritten."
         ),
     )
+    request_infos: dict[str, RequestInfo] = Field(
+        default_factory=dict,
+        description=(
+            "Per-node RequestInfo, populated by the scheduler coordinator "
+            "before dispatch. Not part of the dataset -- created at runtime."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_graph(self) -> ConversationGraph[RequestT]:

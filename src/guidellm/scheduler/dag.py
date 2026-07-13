@@ -193,10 +193,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
         # Collect last entries (sorted by source_node_id for determinism)
         for edge in sorted(incoming, key=lambda e: e.source_node_id):
-            ctx = edge.history_context
-            if isinstance(ctx, HistoryContext):
-                ctx = ctx.value
-            if ctx == HistoryContext.LAST.value:
+            if edge.history_context == HistoryContext.LAST:
                 has_any_history = True
                 completed = self._completed.get(edge.source_node_id)
                 if completed is not None:

@@ -17,6 +17,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import DataArgs
+from guidellm.schemas.base import StandardBaseModel
 from guidellm.settings import settings
 from guidellm.utils.imports import json
 from guidellm.utils.random import FloatRangeSampler, IntegerRangeSampler
@@ -61,6 +62,52 @@ class SyntheticTextPrefixBucketConfig(BaseModel):
         description="The number of prefix tokens per-prompt for this bucket.",
         ge=0,
         default=0,
+    )
+
+
+class BranchSpec(StandardBaseModel):
+    """
+    Specifies a sub-agent branch spawned from the main conversation.
+
+    Each branch spawns at ``at_turn`` in the main chain and merges
+    back at ``at_turn + 1`` via a ``last`` edge. The branch runs for
+    ``turns`` turns with an independent context (``new`` edge from
+    the spawn point).
+
+    :param at_turn: Main conversation turn index where the branch spawns.
+    :param turns: Number of turns in this branch.
+    :param agent_id: Agent identity for branch nodes.
+    :param prompt_tokens: Override prompt token count for branch turns.
+    :param output_tokens: Override output token count for branch turns.
+    """
+
+    at_turn: int = Field(
+        description="Main chain turn index where this branch spawns.",
+        ge=0,
+    )
+    turns: int = Field(
+        description="Number of turns in this branch.",
+        gt=0,
+    )
+    agent_id: str = Field(
+        description="Agent identity for branch nodes.",
+        default="worker",
+    )
+    prompt_tokens: int | None = Field(
+        description=(
+            "Override prompt token count for branch turns. "
+            "If None, uses the main chain's prompt_tokens."
+        ),
+        default=None,
+        gt=0,
+    )
+    output_tokens: int | None = Field(
+        description=(
+            "Override output token count for branch turns. "
+            "If None, uses the main chain's output_tokens."
+        ),
+        default=None,
+        gt=0,
     )
 
 
@@ -236,6 +283,16 @@ class SyntheticTextDataArgs(DataArgs):
         default_factory=list,
     )
 
+    branches: list[BranchSpec] = Field(
+        description=(
+            "Sub-agent branches spawned from the main conversation. "
+            "Each branch spawns at a specified main-chain turn and merges "
+            "back at the next turn. Multiple branches at the same turn "
+            "are supported and may have different lengths."
+        ),
+        default_factory=list,
+    )
+
     prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
         description="Buckets for the prefix tokens distribution.",
         default=None,
@@ -265,6 +322,26 @@ class SyntheticTextDataArgs(DataArgs):
                 ]
 
         return self
+
+    @field_validator("branches", mode="before")
+    @classmethod
+    def _coerce_branches(
+        cls, v: str | list[dict[str, Any] | BranchSpec],
+    ) -> list[dict[str, Any] | BranchSpec]:
+        """Parse JSON string for CLI/env-var support."""
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except (json.JSONDecodeError, ValueError) as err:
+                raise ValueError(
+                    f"branches must be a JSON list of BranchSpec objects, "
+                    f"got {v!r}"
+                ) from err
+        if not isinstance(v, list):
+            raise ValueError(
+                f"branches must be a list, got {type(v)}"
+            )
+        return v
 
     @field_validator("tool_call_turns", "server_tool_call_turns", mode="before")
     @classmethod
@@ -330,6 +407,16 @@ class SyntheticTextDataArgs(DataArgs):
                 f"tool_call_turns and server_tool_call_turns must not overlap; "
                 f"overlapping indices: {sorted(overlap)}"
             )
+
+        # Validate branch specs: at_turn must be in [0, turns-1) so that
+        # at_turn+1 exists as the merge point
+        for i, branch in enumerate(self.branches):
+            if branch.at_turn >= self.turns - 1:
+                raise ValueError(
+                    f"branches[{i}].at_turn={branch.at_turn} must be less "
+                    f"than turns-1={self.turns - 1} (merge point is at_turn+1)"
+                )
+
         return self
 
 
