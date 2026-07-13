@@ -72,7 +72,7 @@ def test_reexporting_benchmark(get_test_asset_dir, cleanup):
     cleanup.append(exported_file)
     if exported_file.exists():
         exported_file.unlink()
-    reimport_benchmarks_report(source_file, exported_file)
+    reimport_benchmarks_report(source_file, {"kind": "json", "path": exported_file})
     # The reexported file should exist and be identical to the source.
     assert exported_file.exists()
     assert filecmp.cmp(source_file, exported_file, shallow=False)
