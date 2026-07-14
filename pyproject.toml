@@ -141,6 +141,7 @@ test = [
     "pytest-timeout~=2.4.0",
     "pytest-httpx~=0.36.2",
     "respx~=0.23.1",
+    "trio~=0.33.0",
 ]
 env = [
     "pre-commit",
