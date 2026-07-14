@@ -393,7 +393,7 @@ class OverSaturationConstraint(Constraint):
             (default: "enforce")
         :param stopping_scope: Whether to halt only the current benchmark or also prevent escalation to subsequent rates/streams.
             (default: "current")
-       """
+        """
         self.minimum_duration = minimum_duration
         self.minimum_ttft = minimum_ttft
         self.maximum_window_seconds = maximum_window_seconds
