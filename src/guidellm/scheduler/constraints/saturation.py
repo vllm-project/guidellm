@@ -391,7 +391,8 @@ class OverSaturationConstraint(Constraint):
             (default: 1e-12)
         :param mode: Whether to stop when over-saturation is detected, or only monitor
             (default: "enforce")
-        :param stopping_scope: Whether to halt only the current benchmark or also prevent escalation to subsequent rates/streams.
+        :param stopping_scope: Whether to halt only the current benchmark
+            or also prevent escalation to subsequent rates/streams.
             (default: "current")
         """
         self.minimum_duration = minimum_duration
