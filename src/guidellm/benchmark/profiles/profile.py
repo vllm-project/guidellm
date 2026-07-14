@@ -9,6 +9,7 @@ from collections.abc import Generator, MutableMapping
 from typing import Any
 
 from guidellm.benchmark.schemas import Benchmark, ProfileArgs
+from guidellm.logger import logger
 from guidellm.scheduler import (
     Constraint,
     ConstraintInitializer,
@@ -114,6 +115,32 @@ class Profile(ABC):
         :return: Strategy types executed or to be executed in this profile
         """
         return [strat.type_ for strat in self.completed_strategies]
+
+    @staticmethod
+    def _should_stop_escalating(prev_benchmark: Benchmark) -> bool:
+        """
+        Check if a benchmark was terminated by a constraint with stopping_scope="all".
+
+        Inspects the scheduler state's end_queuing_constraints for any constraint
+        whose stopping_scope is "all", indicating the system could not handle the
+        load and escalation to subsequent rates/streams should halt.
+
+        :param prev_benchmark: Benchmark instance
+        :return: True if escalation should stop, False otherwise
+        """
+        scheduler_state = getattr(prev_benchmark, "scheduler_state", None)
+        if scheduler_state is None:
+            return False
+
+        for name, action in scheduler_state.end_queuing_constraints.items():
+            if action.stopping_scope == "all":
+                logger.debug(
+                    "Stopping rate escalation: constraint '{}' "
+                    "triggered (stopping_scope=all)",
+                    name,
+                )
+                return True
+        return False
 
     def strategies_generator(
         self,
