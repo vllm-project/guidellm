@@ -4,7 +4,7 @@ Kind-discriminated constraint argument schemas for benchmark configuration.
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated, ClassVar, Literal
 
 from annotated_types import Gt, Lt
 from pydantic import BeforeValidator, ConfigDict, Field
@@ -72,6 +72,15 @@ class ConstraintArgs(PydanticClassRegistryMixin["ConstraintArgs"]):
 
     kind: str = Field(
         description="Constraint type discriminator for polymorphic serialization",
+    )
+
+    stopping_scope: Literal["current", "all"] = Field(
+        default="current",
+        description=(
+            "Whether triggering this constraint should stop only the current "
+            "benchmark ('current') or also halt escalation to subsequent "
+            "rates/streams ('all')."
+        ),
     )
 
     @property
