@@ -81,13 +81,15 @@ dependencies = [
     "more-itertools>=10.8.0",
     "typing-extensions>=4.15.0",
     "websockets>=13.0",
+    "matplotlib>=3.10.9",
 ]
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision]"]
+all = ["guidellm[perf,tokenizers,audio,vision,plot]"]
 recommended = ["guidellm[perf,tokenizers]"]
 # Feature Extras
+plot = ["matplotlib>=3.10.9"]
 perf = ["orjson", "msgpack", "msgspec", "uvloop"]
 tokenizers = ["tiktoken", "blobfile", "mistral-common"]
 audio = [

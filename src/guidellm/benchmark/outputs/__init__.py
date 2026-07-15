@@ -13,6 +13,7 @@ from .console import GenerativeBenchmarkerConsole
 from .csv import GenerativeBenchmarkerCSV
 from .html import GenerativeBenchmarkerHTML
 from .output import GenerativeBenchmarkerOutput
+from .plot import GenerativeBenchmarkerPlot
 from .serialized import GenerativeBenchmarkerSerialized
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
     "GenerativeBenchmarkerConsole",
     "GenerativeBenchmarkerHTML",
     "GenerativeBenchmarkerOutput",
+    "GenerativeBenchmarkerPlot",
     "GenerativeBenchmarkerSerialized",
 ]
