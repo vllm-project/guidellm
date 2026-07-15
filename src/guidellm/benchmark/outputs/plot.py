@@ -27,7 +27,10 @@ from guidellm.benchmark.schemas import (
     BenchmarkOutputArgs,
     GenerativeBenchmarksReport,
 )
-from guidellm.benchmark.schemas.output import ALLOWED_PLOT_SUFFIXES, PlotBenchmarkOutputArgs
+from guidellm.benchmark.schemas.output import (
+    ALLOWED_PLOT_SUFFIXES,
+    PlotBenchmarkOutputArgs,
+)
 
 __all__ = [
     "GenerativeBenchmarkerPlot",

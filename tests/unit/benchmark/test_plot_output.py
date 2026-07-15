@@ -214,7 +214,7 @@ async def test_finalize_coerces_suffix_to_png(tmp_path: Path):
     ## WRITTEN BY AI ##
     """
     report = SimpleNamespace(benchmarks=[MockBenchmark()])
-    target_path = tmp_path / "my_plot.jpg"
+    target_path = tmp_path / "my_plot.txt"
     plot_output = GenerativeBenchmarkerPlot(output_path=target_path, dpi=80)
 
     path = await plot_output.finalize(report)  # type: ignore[arg-type]
