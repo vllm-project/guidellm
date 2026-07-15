@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC
-from pathlib import Path
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from pydantic import Field
 
 from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 
-__all__ = [
-    "BenchmarkOutputArgs"
-]
+__all__ = ["BenchmarkOutputArgs"]
+
 
 class BenchmarkOutputArgs(PydanticClassRegistryMixin["BenchmarkOutputArgs"], ABC):
     """Base class for output creation arguments.
@@ -42,4 +40,3 @@ class BenchmarkOutputArgs(PydanticClassRegistryMixin["BenchmarkOutputArgs"], ABC
     kind: str = Field(
         description="Type identifier for the output configuration.",
     )
-

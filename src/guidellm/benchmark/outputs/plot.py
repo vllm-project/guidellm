@@ -5,10 +5,8 @@ This module provides the GenerativeBenchmarkerPlot class which exports benchmark
 reports to a static PNG image format containing comprehensive performance
 visualization charts.
 """
-from __future__ import annotations
 
-from guidellm.benchmark.schemas import GenerativeBenchmark
-from guidellm.schemas import StatusBreakdown
+from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -20,9 +18,11 @@ from pydantic import Field, field_validator
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
     BenchmarkOutputArgs,
+    GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
 from guidellm.extras import plot
+from guidellm.schemas import StatusBreakdown
 
 __all__ = [
     "GenerativeBenchmarkerPlot",
@@ -41,6 +41,7 @@ _GREEN = "#2d6a4f"
 _ORANGE = "#f77f00"
 _PINK = "#c9184a"
 _GRAY = "#6c757d"
+
 
 @BenchmarkOutputArgs.register("plot")
 class PlotBenchmarkOutputArgs(BenchmarkOutputArgs):
@@ -105,9 +106,7 @@ class _BenchmarkPoint:
     total_requests: float
 
 
-def _select_distribution(
-    metric: StatusBreakdown | None, status: _StatusName
-) -> Any:
+def _select_distribution(metric: StatusBreakdown | None, status: _StatusName) -> Any:
     if metric is None:
         return None
     if status == "successful":
@@ -171,9 +170,7 @@ def _get_percentile(
     return float(value) if value is not None else default
 
 
-def _get_status_total(
-    totals: StatusBreakdown | None, status: _StatusName
-) -> float:
+def _get_status_total(totals: StatusBreakdown | None, status: _StatusName) -> float:
     if totals is None:
         return 0.0
     if status == "successful":
