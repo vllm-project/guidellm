@@ -72,11 +72,9 @@ class PlotBenchmarkOutputArgs(BenchmarkOutputArgs):
     @classmethod
     def validate_plot_suffix(cls, v: Path) -> Path:
         """Ensures the output file path ends with a supported plotting format extension.
-        
+
         If the suffix is missing or not supported, it defaults to .png.
         """
         if v.suffix.lower() not in ALLOWED_PLOT_SUFFIXES:
             return v.with_suffix(".png")
         return v
-
-
