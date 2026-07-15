@@ -75,14 +75,14 @@ def generate_token_ids(
             return token_ids[:token_count]
 
 
-def validate_trace_path(path: Path | str) -> Path:
+def _validate_trace_path(path: Path | str) -> Path:
     path = Path(path)
     if path.stat().st_size == 0:
         raise ValueError(f"Trace file is empty: {path}")
     return path
 
 
-def check_and_raise_missing_columns(
+def _check_and_raise_missing_columns(
     required_columns: list[str], actual_columns: list[str]
 ) -> None:
     missing = [c for c in required_columns if c not in actual_columns]
@@ -90,7 +90,7 @@ def check_and_raise_missing_columns(
         raise KeyError(f"Trace row missing required columns: {missing}")
 
 
-def load_trace_rows(
+def _load_trace_rows(
     path: Path | str,
     timestamp_column_name: str,
     required_columns: Features,
@@ -117,10 +117,10 @@ def load_trace_rows(
     :raises KeyError: If a required column is missing in the dataset.
     :raises ValueError: If the file format is not .jsonl, .json, .csv or .parquet.
     """
-    path = validate_trace_path(path)
+    path = _validate_trace_path(path)
     trace_dataset = load_dataset_from_file(path, **data_kwargs)
     if required_columns:
-        check_and_raise_missing_columns(
+        _check_and_raise_missing_columns(
             required_columns.keys(), trace_dataset.column_names
         )
 
@@ -190,7 +190,7 @@ class TraceDataArgs(DataArgs):
     )
 
 
-def validate_row(row: dict, config: TraceDataArgs) -> None:
+def _validate_row(row: dict, config: TraceDataArgs) -> None:
     n_in = row[config.prompt_tokens_column]
     n_out = row[config.output_tokens_column]
     if n_in < 0 or n_out < 0:
@@ -217,7 +217,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         self.faker = Faker()
         self.faker.seed_instance(random_seed)
         try:
-            self.trace_rows = load_trace_rows(
+            self.trace_rows = _load_trace_rows(
                 config.path,
                 config.timestamp_column,
                 required_columns=Features(
@@ -234,7 +234,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
             raise DataNotSupportedError(str(e)) from e
 
         for row in self.trace_rows:
-            validate_row(row, self.config)
+            _validate_row(row, self.config)
             self.format.validate_row(self.config, row)
         self.iteration_count = 0
 
