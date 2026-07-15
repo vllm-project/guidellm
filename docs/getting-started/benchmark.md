@@ -178,6 +178,8 @@ guidellm run --profile kind=poisson,rate=16 --seed kind=static,value=42
 | `rate`            | Target rate(s) in requests per second   | `--profile kind=poisson,rate=10` or `--profile '{"kind":"poisson","rate":[10,20]}'` |
 | `max_concurrency` | Maximum concurrent requests to schedule | `--profile kind=poisson,rate=10,max_concurrency=32`                                 |
 
+When multiple rates are specified and a constraint with `stopping_scope="all"` is configured (e.g., over-saturation or error rate limits), triggering that constraint will skip all remaining rates in the list. For best results, specify rates in ascending order so that only higher (harder) rates are skipped. With non-ascending order, easier rates that follow a failed rate will also be skipped.
+
 Use `--seed kind=static,value=42` for reproducible Poisson scheduling.
 
 You can use the `--override` option to specify a list of rate values, to run a set of Poisson "strategies" (sub-benchmarks) with different rate values. For example, `--profile kind=poisson --override profile.rate 10,20,30` will run a Poisson strategy with 10 requests per second, a Poisson strategy with 20 requests per second, and a Poisson strategy with 30 requests per second.
@@ -188,7 +190,7 @@ The sweep profile applies a sequence of benchmark strategies to find the optimal
 
 1. It runs a `synchronous` strategy to measure the baseline rate,
 2. then runs a `throughput` strategy to determine peak throughput,
-3. and finally runs a series of asynchronous strategies with rates interpolated between the baseline and maximum throughput. (The number of interpolated strategies is `sweep_size` minus 2.) The asynchronous strategy type is determined by the `strategy_type` profile parameter. The default strategy type is `constant`.
+3. and finally runs a series of asynchronous strategies with rates interpolated between the baseline and maximum throughput. (The number of interpolated strategies is `sweep_size` minus 2.) The asynchronous strategy type is determined by the `strategy_type` profile parameter. The default strategy type is `constant`. During the async phase, if a constraint with `stopping_scope="all"` triggers at a given rate, remaining rates are skipped.
 
 For example, to run a sweep with 10 strategies, 10 seconds of rampup, and a strategy type of `poisson`:
 

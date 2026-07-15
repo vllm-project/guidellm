@@ -362,6 +362,7 @@ class OverSaturationConstraint(Constraint):
         confidence: float = 0.95,
         eps: float = 1e-12,
         mode: Literal["enforce", "monitor"] = "enforce",
+        stopping_scope: Literal["current", "all"] = "current",
     ) -> None:  # noqa: PLR0913
         """
         Initialize the over-saturation constraint.
@@ -390,6 +391,9 @@ class OverSaturationConstraint(Constraint):
             (default: 1e-12)
         :param mode: Whether to stop when over-saturation is detected, or only monitor
             (default: "enforce")
+        :param stopping_scope: Whether to halt only the current benchmark
+            or also prevent escalation to subsequent rates/streams.
+            (default: "current")
         """
         self.minimum_duration = minimum_duration
         self.minimum_ttft = minimum_ttft
@@ -400,6 +404,7 @@ class OverSaturationConstraint(Constraint):
         self.confidence = confidence
         self.eps = eps
         self.mode = mode
+        self.stopping_scope = stopping_scope
         self.reset()
 
     @property
@@ -617,6 +622,7 @@ class OverSaturationConstraint(Constraint):
         return SchedulerUpdateAction(
             request_queuing="stop" if should_stop else "continue",
             request_processing="stop_all" if should_stop else "continue",
+            stopping_scope=self.stopping_scope,
             metadata={
                 "ttft_slope": ttft_slope,
                 "ttft_slope_moe": ttft_slope_moe,
@@ -670,4 +676,5 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
             minimum_window_size=self.args.minimum_window_size,
             confidence=self.args.confidence,
             mode=self.args.mode,
+            stopping_scope=self.args.stopping_scope,
         )

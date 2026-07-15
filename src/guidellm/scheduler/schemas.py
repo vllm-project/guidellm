@@ -288,6 +288,14 @@ class SchedulerUpdateAction(StandardBaseModel):
         default="continue",
         description="Action to take for request processing operations",
     )
+    stopping_scope: Literal["current", "all"] = Field(
+        default="current",
+        description=(
+            "Whether this constraint's stop signal should halt only the current "
+            "benchmark ('current') or also prevent escalation to subsequent "
+            "rates/streams ('all')."
+        ),
+    )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional context and data for the scheduler action",

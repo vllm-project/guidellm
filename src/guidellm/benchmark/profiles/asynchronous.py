@@ -107,15 +107,21 @@ class AsyncProfile(Profile):
         """
         Generate async strategy for next configured rate.
 
-        :param prev_strategy: Previously completed strategy (unused)
-        :param prev_benchmark: Benchmark results from previous execution (unused)
+        If a previous rate was terminated by a constraint with
+        stopping_scope='all', remaining rates are skipped.
+
+        :param prev_strategy: Previously completed strategy
+        :param prev_benchmark: Benchmark results from previous execution
         :return: AsyncConstantStrategy or AsyncPoissonStrategy for next rate,
-            or None if all rates completed
+            or None if all rates completed or escalation halted
         :raises ValueError: If strategy_type is neither 'constant' nor 'poisson'
         """
-        _ = (prev_strategy, prev_benchmark)  # unused
+        _ = prev_strategy
 
         if len(self.completed_strategies) >= len(self.args.rate):
+            return None
+
+        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
             return None
 
         current_rate = self.args.rate[len(self.completed_strategies)]

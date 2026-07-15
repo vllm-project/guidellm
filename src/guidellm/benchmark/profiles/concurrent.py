@@ -93,13 +93,20 @@ class ConcurrentProfile(Profile):
         """
         Generate concurrent strategy for next stream count.
 
-        :param prev_strategy: Previously completed strategy (unused)
-        :param prev_benchmark: Benchmark results from previous execution (unused)
+        If a previous stream count was terminated by a constraint with
+        stopping_scope='all', remaining stream counts are skipped.
+
+        :param prev_strategy: Previously completed strategy
+        :param prev_benchmark: Benchmark results from previous execution
         :return: ConcurrentStrategy with next stream count, or None if complete
+            or escalation halted
         """
-        _ = (prev_strategy, prev_benchmark)  # unused
+        _ = prev_strategy
 
         if len(self.completed_strategies) >= len(self.args.streams):
+            return None
+
+        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
             return None
 
         return ConcurrentStrategy(
