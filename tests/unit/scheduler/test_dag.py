@@ -11,7 +11,6 @@ from guidellm.scheduler.schemas import (
     ConversationEdge,
     ConversationGraph,
     ConversationNode,
-    HistoryContext,
 )
 
 
@@ -31,7 +30,7 @@ def _linear_graph(n: int) -> ConversationGraph[str]:
         ConversationEdge(
             source_node_id=node_ids[i],
             target_node_id=node_ids[i + 1],
-            history_context=HistoryContext.FULL,
+            history_context="full",
         )
         for i in range(n - 1)
     ]
@@ -53,37 +52,37 @@ def _fork_join_graph() -> ConversationGraph[str]:
         ConversationEdge(
             source_node_id="M1",
             target_node_id="M2",
-            history_context=HistoryContext.FULL,
+            history_context="full",
         ),
         ConversationEdge(
             source_node_id="M2",
             target_node_id="M3",
-            history_context=HistoryContext.FULL,
+            history_context="full",
         ),
         ConversationEdge(
             source_node_id="M3",
             target_node_id="M4",
-            history_context=HistoryContext.FULL,
+            history_context="full",
         ),
         ConversationEdge(
             source_node_id="M3",
             target_node_id="W1",
-            history_context=HistoryContext.NEW,
+            history_context="new",
         ),
         ConversationEdge(
             source_node_id="M3",
             target_node_id="W2",
-            history_context=HistoryContext.NEW,
+            history_context="new",
         ),
         ConversationEdge(
             source_node_id="W1",
             target_node_id="M4",
-            history_context=HistoryContext.LAST,
+            history_context="last",
         ),
         ConversationEdge(
             source_node_id="W2",
             target_node_id="M4",
-            history_context=HistoryContext.LAST,
+            history_context="last",
         ),
     ]
     return ConversationGraph(graph_id="fork_join", nodes=nodes, edges=edges)
@@ -99,27 +98,27 @@ def _compaction_graph() -> ConversationGraph[str]:
         ConversationEdge(
             source_node_id="A",
             target_node_id="B",
-            history_context=HistoryContext.FULL,
+            history_context="full",
         ),
         ConversationEdge(
             source_node_id="B",
             target_node_id="C",
-            history_context=HistoryContext.FULL,
+            history_context="full",
         ),
         ConversationEdge(
             source_node_id="C",
             target_node_id="D",
-            history_context=HistoryContext.LAST,
+            history_context="last",
         ),
         ConversationEdge(
             source_node_id="D",
             target_node_id="E",
-            history_context=HistoryContext.FULL,
+            history_context="full",
         ),
         ConversationEdge(
             source_node_id="E",
             target_node_id="F",
-            history_context=HistoryContext.FULL,
+            history_context="full",
         ),
     ]
     return ConversationGraph(graph_id="compaction", nodes=nodes, edges=edges)
@@ -344,12 +343,12 @@ class TestDAGExecutionStateWalkBack:
                 ConversationEdge(
                     source_node_id="a",
                     target_node_id="c",
-                    history_context=HistoryContext.LAST,
+                    history_context="last",
                 ),
                 ConversationEdge(
                     source_node_id="b",
                     target_node_id="c",
-                    history_context=HistoryContext.LAST,
+                    history_context="last",
                 ),
             ],
         )

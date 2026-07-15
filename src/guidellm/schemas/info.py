@@ -185,13 +185,6 @@ class RequestInfo(StandardBaseModel):
         default_factory=list,
         description="Node IDs of direct predecessors in the DAG.",
     )
-    graph_id: str | None = Field(
-        default=None,
-        description=(
-            "Top-level conversation graph identifier. "
-            "Maps to conversation_id for backward compatibility."
-        ),
-    )
     status: Literal[
         "queued",
         "pending",

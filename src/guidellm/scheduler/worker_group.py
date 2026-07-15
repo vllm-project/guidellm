@@ -27,6 +27,7 @@ from typing_extensions import TypeAliasType
 
 from guidellm.logger import logger
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
+from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import (
     BackendInterface,
     ConversationT,
@@ -565,18 +566,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             stop_queueing: bool = False
 
             for graph in requests:
-                from guidellm.scheduler.dag import DAGExecutionState
-
-                topo = DAGExecutionState(graph).topological_order()
-                incoming_map: dict[str, list[str]] = {
-                    nid: [] for nid in graph.nodes
-                }
+                topo_dag_nodes = DAGExecutionState(graph).topological_order()
+                incoming_map: dict[str, list[str]] = {nid: [] for nid in graph.nodes}
                 for edge in graph.edges:
-                    incoming_map[edge.target_node_id].append(
-                        edge.source_node_id
-                    )
+                    incoming_map[edge.target_node_id].append(edge.source_node_id)
 
-                for i, node_id in enumerate(topo):
+                for i, node_id in enumerate(topo_dag_nodes):
                     node = graph.nodes[node_id]
                     count += 1
 
@@ -584,7 +579,6 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                     request_info: RequestInfo = RequestInfo(
                         request_id=request_id,
                         conversation_id=graph.graph_id,
-                        graph_id=graph.graph_id,
                         node_id=node_id,
                         agent_id=node.agent_id,
                         parent_node_ids=incoming_map[node_id],
@@ -608,7 +602,15 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         stop_queueing = True
                         break
 
-                yield graph  # type: ignore[misc]
+                queued_ids = set(graph.request_infos)
+                to_yield = graph
+                # Canceled part way through the conversation, so some nodes
+                # in the DAG should not be sent.
+                if queued_ids and queued_ids != set(graph.nodes):
+                    to_yield = graph.subgraph_for_nodes(queued_ids)
+
+                if to_yield.request_infos:
+                    yield to_yield  # type: ignore[misc]
 
                 if stop_queueing:
                     self.stop_send_requests_event.set()

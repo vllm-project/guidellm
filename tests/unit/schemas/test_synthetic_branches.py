@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
+from guidellm.data.deserializers.synthetic import BranchSpec, SyntheticTextDataArgs
 from guidellm.scheduler.dag import DAGExecutionState
-from guidellm.scheduler.schemas import HistoryContext
 from guidellm.schemas import GenerationRequest
 from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 
@@ -53,11 +53,11 @@ class TestFromLinearChainWithBranches:
             for e in graph.edges
         }
         # Spawn: main_1 -> branch_0_0 (new)
-        assert edge_map[("main_1", "branch_0_0")] == HistoryContext.NEW.value
+        assert edge_map[("main_1", "branch_0_0")] == "new"
         # Branch chain: branch_0_0 -> branch_0_1 (full)
-        assert edge_map[("branch_0_0", "branch_0_1")] == HistoryContext.FULL.value
+        assert edge_map[("branch_0_0", "branch_0_1")] == "full"
         # Merge: branch_0_1 -> main_2 (last)
-        assert edge_map[("branch_0_1", "main_2")] == HistoryContext.LAST.value
+        assert edge_map[("branch_0_1", "main_2")] == "last"
 
     @pytest.mark.sanity
     def test_multiple_branches_same_turn(self):
@@ -87,7 +87,7 @@ class TestFromLinearChainWithBranches:
         edge_targets = {
             (e.source_node_id, e.target_node_id)
             for e in graph.edges
-            if e.history_context == HistoryContext.LAST.value
+            if e.history_context == "last"
         }
         assert ("branch_0_2", "main_3") in edge_targets
         assert ("branch_1_0", "main_3") in edge_targets
@@ -175,8 +175,8 @@ class TestFromLinearChainWithBranches:
             (e.source_node_id, e.target_node_id): e.history_context
             for e in graph.edges
         }
-        assert edge_map[("branch_0_0", "main_2")] == HistoryContext.LAST.value
-        assert edge_map[("branch_1_1", "main_4")] == HistoryContext.LAST.value
+        assert edge_map[("branch_0_0", "main_2")] == "last"
+        assert edge_map[("branch_1_1", "main_4")] == "last"
 
     @pytest.mark.sanity
     def test_no_branches_produces_linear_graph(self):
@@ -224,11 +224,6 @@ class TestBranchSpecValidation:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.data.deserializers.synthetic import (
-            BranchSpec,
-            SyntheticTextDataArgs,
-        )
-
         args = SyntheticTextDataArgs(
             kind="synthetic_text",
             prompt_tokens=100,
@@ -245,11 +240,6 @@ class TestBranchSpecValidation:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.data.deserializers.synthetic import (
-            BranchSpec,
-            SyntheticTextDataArgs,
-        )
-
         with pytest.raises(Exception, match="at_turn"):
             SyntheticTextDataArgs(
                 kind="synthetic_text",
@@ -265,8 +255,6 @@ class TestBranchSpecValidation:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.data.deserializers.synthetic import SyntheticTextDataArgs
-
         args = SyntheticTextDataArgs(
             kind="synthetic_text",
             prompt_tokens=100,
@@ -283,11 +271,6 @@ class TestBranchSpecValidation:
 
         ## WRITTEN BY AI ##
         """
-        from guidellm.data.deserializers.synthetic import (
-            BranchSpec,
-            SyntheticTextDataArgs,
-        )
-
         with pytest.raises(ValueError, match="at_turn"):
             SyntheticTextDataArgs(
                 kind="synthetic_text",
