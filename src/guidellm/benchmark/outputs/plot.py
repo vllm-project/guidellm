@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -26,16 +26,13 @@ from guidellm.benchmark.schemas.output import (
 )
 from guidellm.extras import plot
 
-if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
 __all__ = [
     "GenerativeBenchmarkerPlot",
 ]
 
 
 _StatusName = Literal["successful", "incomplete", "errored", "total"]
-_PlotFunction = Callable[["Axes", Sequence["_BenchmarkPoint"]], None]
+_PlotFunction = Callable[["plot.Axes", Sequence["_BenchmarkPoint"]], None]
 
 _BLUE = "#0077b6"
 _RED = "#d00000"
@@ -241,7 +238,7 @@ def _filter_series(
 
 
 def _plot_line(
-    ax: Axes,
+    ax: plot.Axes,
     x_values: Sequence[float],
     y_values: Sequence[float],
     log_x: bool = False,
@@ -253,7 +250,9 @@ def _plot_line(
         ax.plot(x_data, y_data, **kwargs)
 
 
-def _set_log_scale(ax: Axes, axis: Literal["x", "y"], values: Sequence[float]) -> None:
+def _set_log_scale(
+    ax: plot.Axes, axis: Literal["x", "y"], values: Sequence[float]
+) -> None:
     if not any(value > 0.0 for value in values):
         return
     if axis == "x":
@@ -262,11 +261,11 @@ def _set_log_scale(ax: Axes, axis: Literal["x", "y"], values: Sequence[float]) -
         ax.set_yscale("log")
 
 
-def _set_title(ax: Axes, title: str) -> None:
+def _set_title(ax: plot.Axes, title: str) -> None:
     ax.set_title(title, fontsize=12, color="black", weight="bold")
 
 
-def _show_legend(ax: Axes) -> None:
+def _show_legend(ax: plot.Axes) -> None:
     handles, labels = ax.get_legend_handles_labels()
     if handles and labels:
         ax.legend(facecolor="white", edgecolor="#cccccc")
@@ -278,7 +277,7 @@ def _label_for_concurrency(point: _BenchmarkPoint, index: int) -> str:
     return str(index + 1)
 
 
-def _style_axis(ax: Axes) -> None:
+def _style_axis(ax: plot.Axes) -> None:
     ax.set_facecolor("white")
     ax.grid(True, color="#cccccc", linestyle=":", alpha=0.8)
     for spine in ax.spines.values():
@@ -296,7 +295,7 @@ def _set_plot_theme(dpi: int) -> None:
 
 
 def plot_latency_vs_request_rate(
-    ax: Axes,
+    ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
     """
@@ -363,7 +362,7 @@ def plot_latency_vs_request_rate(
 
 
 def plot_generation_latency_vs_request_rate(
-    ax: Axes,
+    ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
     """
@@ -433,7 +432,7 @@ def plot_generation_latency_vs_request_rate(
 
 
 def plot_token_throughput_vs_concurrency(
-    ax: Axes,
+    ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
     """
@@ -486,7 +485,9 @@ def plot_token_throughput_vs_concurrency(
     _show_legend(ax)
 
 
-def plot_latency_vs_throughput(ax: Axes, points: Sequence[_BenchmarkPoint]) -> None:
+def plot_latency_vs_throughput(
+    ax: plot.Axes, points: Sequence[_BenchmarkPoint]
+) -> None:
     """
     Plot first-token latency against token throughput to expose the saturation knee.
 
@@ -527,7 +528,9 @@ def plot_latency_vs_throughput(ax: Axes, points: Sequence[_BenchmarkPoint]) -> N
     _show_legend(ax)
 
 
-def plot_request_status_counts(ax: Axes, points: Sequence[_BenchmarkPoint]) -> None:
+def plot_request_status_counts(
+    ax: plot.Axes, points: Sequence[_BenchmarkPoint]
+) -> None:
     """
     Plot request status counts by concurrency level.
 
@@ -569,7 +572,7 @@ def plot_request_status_counts(ax: Axes, points: Sequence[_BenchmarkPoint]) -> N
 
 
 def plot_latency_breakdown_at_peak_throughput(
-    ax: Axes,
+    ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
     """
@@ -625,7 +628,7 @@ def plot_latency_breakdown_at_peak_throughput(
 
 
 def plot_throughput_efficiency_vs_concurrency(
-    ax: Axes,
+    ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
     """
@@ -662,7 +665,7 @@ def plot_throughput_efficiency_vs_concurrency(
 
 
 def plot_token_throughput_mix_vs_request_rate(
-    ax: Axes,
+    ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
     """
