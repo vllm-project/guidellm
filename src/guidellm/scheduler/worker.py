@@ -39,7 +39,7 @@ from guidellm.scheduler.schemas import (
     ResponseT,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestInfo
+from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.utils.messaging import InterProcessMessaging
 from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
@@ -126,10 +126,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.startup_completed = False
         self.backend_started = False
         self.messaging_started = False
-        self.graph_queue: list[
+        self.turns_queue: list[
             DAGExecutionState[RequestT, ResponseT]
         ] = []
-        self.graph_request_infos: dict[str, dict[str, RequestInfo]] = {}
+        self.graph_request_infos: dict[str, dict[str, RequestInfo]] = {} # TODO: Is this the best design?
 
     def run(self):
         """
@@ -288,10 +288,20 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         Schedules and processes requests according to the timing strategy while
         maintaining the configured concurrency limit through semaphore coordination.
         """
+        pending_tasks: set[asyncio.Task] = set()
         try:
+            # Run request processing
             async_semaphore = asyncio.Semaphore(self.async_limit)
-            pending_tasks: set[asyncio.Task] = set()
 
+            def _task_done(task: asyncio.Task):
+                pending_tasks.discard(task)
+                async_semaphore.release()
+
+                if not task.cancelled():
+                    if exception := task.exception():
+                        raise exception
+
+            # Main loop; loop until canceled
             while True:
                 await async_semaphore.acquire()
                 request_time = await self.strategy.next_request_time(
@@ -307,40 +317,28 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     self._process_next_graph_node(target_start=request_time)
                 )
                 pending_tasks.add(request_task)
-
-                def _task_done(
-                    task: asyncio.Task,
-                    _pending=pending_tasks,
-                    _sem=async_semaphore,
-                ):
-                    _pending.discard(task)
-                    _sem.release()
-                    if not task.cancelled() and (
-                        exception := task.exception()
-                    ):
-                        raise exception
-
                 request_task.add_done_callback(_task_done)
         except asyncio.CancelledError as err:
             for task in pending_tasks:
                 task.cancel()
             await asyncio.gather(*pending_tasks, return_exceptions=True)
+
             raise err
 
     async def _cancel_requests_loop(self):
-        """Cancel all remaining queued graph nodes until worker terminates."""
-        for state in self.graph_queue:
+        """Cancel all remaining queued graph nodes until worker process terminates."""
+        for state in self.turns_queue:
             remaining = state.abort()
             infos = self.graph_request_infos.get(state.graph.graph_id, {})
             for node_id in remaining:
                 node = state.graph.nodes[node_id]
-                ri = infos.get(node_id)
-                if ri is not None:
-                    ri.scheduler_node_id = self.messaging.worker_index or -1
-                    ri.error = "Request was cancelled"
-                    ri.timings.resolve_end = time.time()
-                    self._send_update("cancelled", None, node.request, ri)
-        self.graph_queue.clear()
+                request_info = infos.get(node_id)
+                if request_info is not None:
+                    request_info.scheduler_node_id = self.messaging.worker_index or -1
+                    request_info.error = "Request was cancelled"
+                    request_info.timings.resolve_end = time.time()
+                    self._send_update("cancelled", None, node.request, request_info)
+        self.turns_queue.clear()
         self.graph_request_infos.clear()
 
         while True:
@@ -351,25 +349,25 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             except asyncio.TimeoutError:
                 continue
             for node_id, node in graph.nodes.items():
-                ri = graph.request_infos.get(node_id)
-                if ri is not None:
-                    ri.scheduler_node_id = self.messaging.worker_index or -1
-                    ri.error = "Request was cancelled"
-                    ri.timings.resolve_end = time.time()
-                    self._send_update("cancelled", None, node.request, ri)
+                request_info = graph.request_infos.get(node_id)
+                if request_info is not None:
+                    request_info.scheduler_node_id = self.messaging.worker_index or -1
+                    request_info.error = "Request was cancelled"
+                    request_info.timings.resolve_end = time.time()
+                    self._send_update("cancelled", None, node.request, request_info)
 
     async def _get_next_ready_node(
         self,
     ) -> tuple[DAGExecutionState[RequestT, ResponseT], str]:
         """Get the next ready node from active graphs or dequeue a new graph."""
         while True:
-            for state in self.graph_queue:
+            for state in self.turns_queue:
                 ready = state.get_ready_nodes()
                 if ready:
                     return state, ready[0]
             graph: ConversationGraph[RequestT] = await self.messaging.get()
             state = DAGExecutionState(graph)
-            self.graph_queue.append(state)
+            self.turns_queue.append(state)
             self.graph_request_infos[graph.graph_id] = dict(graph.request_infos)
 
     async def _process_next_graph_node(self, target_start: float) -> None:
@@ -469,7 +467,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self._send_update("completed", response, request, request_info)
         state.mark_completed(node_id, request, response)
         if state.is_complete:
-            self.graph_queue.remove(state)
+            self.turns_queue.remove(state)
             self.graph_request_infos.pop(state.graph.graph_id, None)
 
     def _handle_node_error(  # noqa: PLR0913
@@ -490,6 +488,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             logger.opt(exception=True).debug(
                 f"Backend exception for request {request_info.request_id}"
             )
+        else:
+            logger.opt(exception=True).debug(
+                "Graph node failed: worker={} graph={} node={}",
+                self.worker_index,
+                state.graph.graph_id if state is not None else None,
+                node_id,
+            )
         if state is not None:
             remaining = state.abort()
             infos = self.graph_request_infos.get(state.graph.graph_id, {})
@@ -500,8 +505,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     rem_info.error = "Request was cancelled"
                     rem_info.timings.resolve_end = time.time()
                     self._send_update("cancelled", None, rem_node.request, rem_info)
-            if state in self.graph_queue:
-                self.graph_queue.remove(state)
+            if state in self.turns_queue:
+                self.turns_queue.remove(state)
             self.graph_request_infos.pop(state.graph.graph_id, None)
 
     async def _schedule_request(

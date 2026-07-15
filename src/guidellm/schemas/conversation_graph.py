@@ -18,7 +18,6 @@ from guidellm.scheduler.schemas import (
     ConversationEdge,
     ConversationGraph,
     ConversationNode,
-    HistoryContext,
 )
 from guidellm.schemas.request import GenerationRequest
 
@@ -88,7 +87,7 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
                 ConversationEdge(
                     source_node_id=node_ids[i],
                     target_node_id=node_ids[i + 1],
-                    history_context=HistoryContext.FULL,
+                    history_context="full",
                 )
             )
 
@@ -149,7 +148,7 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
                 ConversationEdge(
                     source_node_id=main_ids[i],
                     target_node_id=main_ids[i + 1],
-                    history_context=HistoryContext.FULL,
+                    history_context="full",
                 )
             )
 
@@ -178,7 +177,7 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
                     ConversationEdge(
                         source_node_id=branch_ids[t],
                         target_node_id=branch_ids[t + 1],
-                        history_context=HistoryContext.FULL,
+                        history_context="full",
                     )
                 )
 
@@ -187,7 +186,7 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
                 ConversationEdge(
                     source_node_id=main_ids[at_turn],
                     target_node_id=branch_ids[0],
-                    history_context=HistoryContext.NEW,
+                    history_context="new",
                 )
             )
 
@@ -196,7 +195,7 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
                 ConversationEdge(
                     source_node_id=branch_ids[-1],
                     target_node_id=main_ids[merge_turn],
-                    history_context=HistoryContext.LAST,
+                    history_context="last",
                 )
             )
 

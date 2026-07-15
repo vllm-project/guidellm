@@ -17,7 +17,6 @@ from typing import Generic, NamedTuple, TypeVar
 from guidellm.scheduler.schemas import (
     ConversationEdge,
     ConversationGraph,
-    HistoryContext,
 )
 
 __all__ = [
@@ -193,7 +192,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
         # Collect last entries (sorted by source_node_id for determinism)
         for edge in sorted(incoming, key=lambda e: e.source_node_id):
-            if edge.history_context == HistoryContext.LAST:
+            if edge.history_context == "last":
                 has_any_history = True
                 completed = self._completed.get(edge.source_node_id)
                 if completed is not None:
@@ -223,10 +222,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         :return: The full edge, or None.
         """
         for edge in incoming:
-            ctx = edge.history_context
-            if isinstance(ctx, HistoryContext):
-                ctx = ctx.value
-            if ctx == HistoryContext.FULL.value:
+            if edge.history_context == "full":
                 return edge
         return None
 
@@ -267,10 +263,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                 for edge in sorted(
                     current_incoming, key=lambda e: e.source_node_id
                 ):
-                    ctx = edge.history_context
-                    if isinstance(ctx, HistoryContext):
-                        ctx = ctx.value
-                    if ctx == HistoryContext.LAST.value:
+                    if edge.history_context == "last":
                         last_completed = self._completed.get(
                             edge.source_node_id
                         )
