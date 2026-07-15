@@ -303,16 +303,13 @@ async def test_reimport_benchmarks_report_custom_extension_plot(
     report_file.write_text(minimal_report.model_dump_json(), encoding="utf-8")
 
     # Re-import and save specifically to a named .pdf file
-    target_path = tmp_path / "my_report.pdf"
+    expected_pdf = tmp_path / "my_report.pdf"
 
     await reimport_benchmarks_report(
-        file=report_file,
-        output_path=target_path,
-        output_formats=["plot"],
+        file=report_file, outputs=[{"kind": "plot", "path": expected_pdf}]
     )
 
     # Assert that it resolved and created the correct file: my_report.pdf
-    expected_pdf = tmp_path / "my_report.pdf"
     assert expected_pdf.exists()
     assert expected_pdf.is_file()
     assert expected_pdf.stat().st_size > 0
@@ -332,16 +329,16 @@ async def test_reimport_benchmarks_report_multiple_sibling_file_path(
     report_file = tmp_path / "report.json"
     report_file.write_text(minimal_report.model_dump_json(), encoding="utf-8")
 
-    target_path = tmp_path / "my_report.aaf"
+    expected_json = tmp_path / "my_report.json"
+    expected_png = tmp_path / "my_report.png"
 
     await reimport_benchmarks_report(
         file=report_file,
-        output_path=target_path,
-        output_formats=["json", "plot"],
+        outputs=[
+            {"kind": "json", "path": expected_json},
+            {"kind": "plot", "path": expected_png},
+        ],
     )
-
-    expected_json = tmp_path / "my_report.json"
-    expected_png = tmp_path / "my_report.png"
 
     assert expected_json.exists()
     assert expected_json.is_file()
