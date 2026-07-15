@@ -805,8 +805,6 @@ class GenerativeBenchmarkerPlot(GenerativeBenchmarkerOutput):
         output_path = self.output_path
         if output_path.is_dir():
             output_path = output_path / "benchmarks.png"
-        elif output_path.suffix.lower() not in _ALLOWED_PLOT_SUFFIXES:
-            output_path = output_path.with_suffix(".png")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 

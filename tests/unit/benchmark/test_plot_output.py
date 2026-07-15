@@ -218,26 +218,6 @@ async def test_finalize_resolves_directory_path(tmp_path: Path):
 
 @pytest.mark.asyncio
 @pytest.mark.sanity
-async def test_finalize_coerces_suffix_to_png(tmp_path: Path):
-    """
-    Test that a non-png output_path suffix is coerced to .png in finalize.
-
-    ## WRITTEN BY AI ##
-    """
-    report = SimpleNamespace(benchmarks=[MockBenchmark()])
-    target_path = tmp_path / "my_plot.txt"
-    plot_output = GenerativeBenchmarkerPlot(output_path=target_path, dpi=80)
-
-    path = await plot_output.finalize(report)  # type: ignore[arg-type]
-
-    expected_path = tmp_path / "my_plot.png"
-    assert path == expected_path
-    assert path.exists()
-    assert path.stat().st_size > 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.sanity
 async def test_finalize_handles_empty_benchmarks_gracefully(tmp_path: Path):
     """
     Test that finalize handles empty benchmarks list gracefully without raising errors.
