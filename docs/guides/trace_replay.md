@@ -25,8 +25,8 @@ All trace formats can accept the following optional data arguments:
 These are passed through the `--data` argument like below:
 
 ```bash
-guidellm benchmark \
-    --target http://localhost:8000 \
+guidellm run \
+    --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
     --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens"
 ```
