@@ -563,7 +563,13 @@ async def benchmark_generative_text(
 async def reimport_benchmarks_report(
     file: Path,
     output_path: Path | None,
-    output_formats: tuple[str, ...] | list[str] = ("console", "json", "html", "csv"),
+    output_formats: tuple[str, ...] | list[str] = (
+        "console",
+        "json",
+        "html",
+        "csv",
+        "plot",
+    ),
 ) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
     """
     Load and re-export an existing benchmarks report in specified output formats.
@@ -589,7 +595,18 @@ async def reimport_benchmarks_report(
     output_args: list[BenchmarkOutputArgs] = []
     for fmt in output_formats:
         data: dict[str, Any] = {"kind": fmt}
-        data["path"] = base_path / f"benchmarks.{fmt}"
+
+        # Temporary workaround: map format name to file extension.
+        # For the plot format, default to .png since .plot is not a valid extension.
+        # This will be removed once from-file config supports typed outputs:
+        # https://github.com/vllm-project/guidellm/pull/923#discussion_r3582378419
+        ext = "png" if fmt == "plot" else fmt
+        if len(output_formats) == 1 and base_path.suffix:
+            data["path"] = base_path
+        elif base_path.suffix:
+            data["path"] = base_path.parent / f"{base_path.stem}.{ext}"
+        else:
+            data["path"] = base_path / f"benchmarks.{ext}"
         output_args.append(BenchmarkOutputArgs.model_validate(data))
 
     output_format_results: dict[str, Any] = {}

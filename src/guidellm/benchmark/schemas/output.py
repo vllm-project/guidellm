@@ -7,9 +7,7 @@ from pydantic import Field
 
 from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 
-__all__ = [
-    "BenchmarkOutputArgs",
-]
+__all__ = ["BenchmarkOutputArgs"]
 
 
 class BenchmarkOutputArgs(PydanticClassRegistryMixin["BenchmarkOutputArgs"], ABC):
