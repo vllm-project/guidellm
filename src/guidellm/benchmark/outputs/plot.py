@@ -6,19 +6,12 @@ reports to a static PNG image format containing comprehensive performance
 visualization charts.
 """
 
-# ruff: noqa: I001
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
-
-import matplotlib as mpl
-
-mpl.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field
 
@@ -31,6 +24,10 @@ from guidellm.benchmark.schemas.output import (
     ALLOWED_PLOT_SUFFIXES,
     PlotBenchmarkOutputArgs,
 )
+from guidellm.extras import plot
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 __all__ = [
     "GenerativeBenchmarkerPlot",
@@ -38,7 +35,7 @@ __all__ = [
 
 
 _StatusName = Literal["successful", "incomplete", "errored", "total"]
-_PlotFunction = Callable[[Axes, Sequence["_BenchmarkPoint"]], None]
+_PlotFunction = Callable[["Axes", Sequence["_BenchmarkPoint"]], None]
 
 _BLUE = "#0077b6"
 _RED = "#d00000"
@@ -289,12 +286,13 @@ def _style_axis(ax: Axes) -> None:
 
 
 def _set_plot_theme(dpi: int) -> None:
-    plt.rcParams["figure.dpi"] = dpi
-    plt.rcParams["font.family"] = "sans-serif"
-    plt.rcParams["text.color"] = "black"
-    plt.rcParams["axes.labelcolor"] = "black"
-    plt.rcParams["xtick.color"] = "black"
-    plt.rcParams["ytick.color"] = "black"
+    plot.use("Agg")
+    plot.plt.rcParams["figure.dpi"] = dpi
+    plot.plt.rcParams["font.family"] = "sans-serif"
+    plot.plt.rcParams["text.color"] = "black"
+    plot.plt.rcParams["axes.labelcolor"] = "black"
+    plot.plt.rcParams["xtick.color"] = "black"
+    plot.plt.rcParams["ytick.color"] = "black"
 
 
 def plot_latency_vs_request_rate(
@@ -770,20 +768,20 @@ class GenerativeBenchmarkerPlot(GenerativeBenchmarkerOutput):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if not report.benchmarks:
-            fig, ax = plt.subplots(figsize=(10, 8), facecolor="white")
+            fig, ax = plot.plt.subplots(figsize=(10, 8), facecolor="white")
             ax.text(0.5, 0.5, "No benchmark data available", fontsize=14, ha="center")
             ax.set_facecolor("white")
-            plt.savefig(
+            plot.plt.savefig(
                 output_path, facecolor="white", bbox_inches="tight", dpi=self.dpi
             )
-            plt.close(fig)
+            plot.plt.close(fig)
             return output_path
 
         points = _build_points(report.benchmarks)
 
         _set_plot_theme(self.dpi)
 
-        fig, axs = plt.subplots(4, 2, figsize=(16, 22), facecolor="white")
+        fig, axs = plot.plt.subplots(4, 2, figsize=(16, 22), facecolor="white")
         fig.suptitle(
             "GuideLLM Benchmark Performance Visualization",
             fontsize=18,
@@ -800,8 +798,8 @@ class GenerativeBenchmarkerPlot(GenerativeBenchmarkerOutput):
 
         fig.align_ylabels(axs[:, 0])
         fig.align_ylabels(axs[:, 1])
-        plt.tight_layout(rect=(0.04, 0.03, 0.96, 0.965), h_pad=3.0, w_pad=2.5)
+        plot.plt.tight_layout(rect=(0.04, 0.03, 0.96, 0.965), h_pad=3.0, w_pad=2.5)
         fig.savefig(output_path, facecolor="white", bbox_inches="tight", dpi=self.dpi)
-        plt.close(fig)
+        plot.plt.close(fig)
 
         return output_path

@@ -29,9 +29,11 @@ __all__ = ["from_file"]
     type=click.Path(),
     default=Path.cwd(),
     help=(
-        "Directory or file path to save re-exported benchmark results. "
-        "If a directory, all output formats will be saved there. "
-        "If a file, the matching format will be saved to that file."
+        "Directory or file path where the re-exported benchmark results will be saved. "
+        "If a directory, default filenames are used. "
+        "If a file path, the suffix is used directly when generating a "
+        "single format, or replaced by each format's extension when generating "
+        "multiple formats."
     ),
 )
 @click.option(
