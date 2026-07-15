@@ -6,11 +6,13 @@ import pytest
 from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import reimport_benchmarks_report
-from guidellm.benchmark.outputs.plot import GenerativeBenchmarkerPlot
+from guidellm.benchmark.outputs.plot import (
+    GenerativeBenchmarkerPlot,
+    PlotBenchmarkOutputArgs,
+)
 from guidellm.benchmark.schemas import BenchmarkScenario, GenerativeBenchmarksReport
 from guidellm.benchmark.schemas.output import (
     BenchmarkOutputArgs,
-    PlotBenchmarkOutputArgs,
 )
 
 
@@ -127,17 +129,26 @@ def test_path_validation_with_png():
 
 
 @pytest.mark.sanity
-def test_path_validation_coerces_non_png():
+def test_path_validation_coerces_missing_suffix():
     """
-    Test that unsupported plot paths are coerced to .png.
+    Test that plot paths with missing suffix are coerced to .png.
 
     ## WRITTEN BY AI ##
     """
     args = PlotBenchmarkOutputArgs(path=Path("test"))
     assert args.path == Path("test.png")
 
-    args2 = PlotBenchmarkOutputArgs(path=Path("test.unsupported"))
-    assert args2.path == Path("test.png")
+
+@pytest.mark.sanity
+def test_path_validation_raises_unsupported_suffix():
+    """
+    Test that unsupported plot suffixes raise a validation error.
+
+    ## WRITTEN BY AI ##
+    """
+    with pytest.raises(ValidationError) as excinfo:
+        PlotBenchmarkOutputArgs(path=Path("test.unsupported"))
+    assert "Plot output type .unsupported is not supported" in str(excinfo.value)
 
 
 @pytest.mark.sanity
@@ -303,7 +314,7 @@ async def test_reimport_benchmarks_report_custom_extension_plot(
     tmp_path: Path, minimal_report: GenerativeBenchmarksReport
 ):
     """
-    Test that reimport preserves a custom filename and resolves plot to .png.
+    Test that reimport preserves a custom filename and resolves plot to .pdf.
 
     ## WRITTEN BY AI ##
     """
@@ -311,8 +322,8 @@ async def test_reimport_benchmarks_report_custom_extension_plot(
     report_file = tmp_path / "report.json"
     report_file.write_text(minimal_report.model_dump_json(), encoding="utf-8")
 
-    # Re-import and save specifically to a named .aaf file
-    target_path = tmp_path / "my_report.aaf"
+    # Re-import and save specifically to a named .pdf file
+    target_path = tmp_path / "my_report.pdf"
 
     await reimport_benchmarks_report(
         file=report_file,
@@ -320,11 +331,11 @@ async def test_reimport_benchmarks_report_custom_extension_plot(
         output_formats=["plot"],
     )
 
-    # Assert that it resolved and created the correct file: my_report.png
-    expected_png = tmp_path / "my_report.png"
-    assert expected_png.exists()
-    assert expected_png.is_file()
-    assert expected_png.stat().st_size > 0
+    # Assert that it resolved and created the correct file: my_report.pdf
+    expected_pdf = tmp_path / "my_report.pdf"
+    assert expected_pdf.exists()
+    assert expected_pdf.is_file()
+    assert expected_pdf.stat().st_size > 0
 
 
 @pytest.mark.asyncio

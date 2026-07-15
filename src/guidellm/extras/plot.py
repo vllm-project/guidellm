@@ -9,5 +9,5 @@ __getattr__, __dir__, __all__ = lazy.attach_extras(
         "plt": lazy.ExtraAttr("matplotlib", alias="pyplot"),
         "Axes": lazy.ExtraAttr("matplotlib.axes", alias="Axes"),
     },
-    error_message="Please install matplotlib to use plot output features",
+    error_message="Please install guidellm[plot] to use plot output features",
 )
