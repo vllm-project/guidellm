@@ -8,6 +8,8 @@ from pathlib import Path
 import click
 
 from guidellm.benchmark import reimport_benchmarks_report
+from guidellm.benchmark.schemas import BenchmarkOutputArgs
+from guidellm.utils.click_pydantic import registry_option
 
 __all__ = ["from_file"]
 
@@ -24,24 +26,12 @@ __all__ = ["from_file"]
     type=click.Path(file_okay=True, dir_okay=False, exists=True),
     default=Path.cwd() / "benchmarks.json",
 )
-@click.option(
-    "--output-path",
-    type=click.Path(),
-    default=Path.cwd(),
-    help=(
-        "Directory or file path where the re-exported benchmark results will be saved. "
-        "If a directory, default filenames are used. "
-        "If a file path, the suffix is used directly when generating a "
-        "single format, or replaced by each format's extension when generating "
-        "multiple formats."
-    ),
-)
-@click.option(
-    "--output-formats",
+@registry_option(
+    "--output",
+    "outputs",
+    registry=BenchmarkOutputArgs,
     multiple=True,
-    type=str,
-    default=("console", "json"),  # ("console", "json", "html", "csv")
-    help="Output formats for benchmark results (e.g., console, json, html, csv).",
+    default=[{"kind": "console"}, {"kind": "json"}, {"kind": "html"}, {"kind": "csv"}],
 )
-def from_file(path, output_path, output_formats):
-    asyncio.run(reimport_benchmarks_report(path, output_path, output_formats))
+def from_file(path, outputs):
+    asyncio.run(reimport_benchmarks_report(path, outputs))
