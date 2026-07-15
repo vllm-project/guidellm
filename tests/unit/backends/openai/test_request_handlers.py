@@ -2113,6 +2113,8 @@ class TestChatCompletionsRequestHandler:
 
         assert "tool_choice" not in result.body
         assert "tools" not in result.body
+
+
 class TestAudioRequestHandler:
     """Test cases for AudioRequestHandler.
 
