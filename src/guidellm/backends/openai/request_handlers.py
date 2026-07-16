@@ -581,8 +581,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         output_tokens = response.output_metrics.total_tokens or 0
         if not has_text and output_tokens <= 0:
             raise ValueError(
-                "[UNUSABLE_BACKEND_RESPONSE] backend resolved without a usable "
-                "terminal response payload"
+                "[UNUSABLE_BACKEND_RESPONSE] backend resolved with empty "
+                "response payload"
             )
 
     def extract_line_data(self, line: str) -> dict[str, Any] | None:
