@@ -8,15 +8,22 @@ import pytest
 
 from guidellm.data.deserializers.synthetic import BranchSpec, SyntheticTextDataArgs
 from guidellm.scheduler.dag import DAGExecutionState
-from guidellm.schemas import GenerationRequest
+from guidellm.schemas import GenerationRequest, RequestSettings
 from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 
 
-def _make_request(label: str) -> GenerationRequest:
-    return GenerationRequest(columns={"text_column": [label]})
+def _make_request(
+    label: str, settings: RequestSettings | None = None
+) -> tuple[GenerationRequest, RequestSettings]:
+    return (
+        GenerationRequest(columns={"text_column": [label]}),
+        settings if settings is not None else RequestSettings(),
+    )
 
 
-def _branch_factory(b_idx: int, t_idx: int) -> GenerationRequest:
+def _branch_factory(
+    b_idx: int, t_idx: int
+) -> tuple[GenerationRequest, RequestSettings]:
     return _make_request(f"branch_{b_idx}_turn_{t_idx}")
 
 
@@ -49,8 +56,7 @@ class TestFromLinearChainWithBranches:
 
         # Find edges from/to branch
         edge_map = {
-            (e.source_node_id, e.target_node_id): e.history_context
-            for e in graph.edges
+            (e.source_node_id, e.target_node_id): e.history_context for e in graph.edges
         }
         # Spawn: main_1 -> branch_0_0 (new)
         assert edge_map[("main_1", "branch_0_0")] == "new"
@@ -172,8 +178,7 @@ class TestFromLinearChainWithBranches:
 
         # Branch 0 merges at main_2
         edge_map = {
-            (e.source_node_id, e.target_node_id): e.history_context
-            for e in graph.edges
+            (e.source_node_id, e.target_node_id): e.history_context for e in graph.edges
         }
         assert edge_map[("branch_0_0", "main_2")] == "last"
         assert edge_map[("branch_1_1", "main_4")] == "last"

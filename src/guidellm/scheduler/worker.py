@@ -39,7 +39,7 @@ from guidellm.scheduler.schemas import (
     ResponseT,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas import RequestInfo
 from guidellm.utils.messaging import InterProcessMessaging
 from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
@@ -126,10 +126,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.startup_completed = False
         self.backend_started = False
         self.messaging_started = False
-        self.turns_queue: list[
-            DAGExecutionState[RequestT, ResponseT]
-        ] = []
-        self.graph_request_infos: dict[str, dict[str, RequestInfo]] = {} # TODO: Is this the best design?
+        self.turns_queue: list[DAGExecutionState[RequestT, ResponseT]] = []
+        self.graph_request_infos: dict[
+            str, dict[str, RequestInfo]
+        ] = {}  # TODO: Is this the best design?
 
     def run(self):
         """
@@ -359,13 +359,38 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
     async def _get_next_ready_node(
         self,
     ) -> tuple[DAGExecutionState[RequestT, ResponseT], str]:
-        """Get the next ready node from active graphs or dequeue a new graph."""
+        """Get the next ready node from active graphs or dequeue a new graph.
+
+        Preference order:
+        1. A schedulable node from an in-flight graph (claim it).
+        2. Wait until a think-time gate expires or a new graph arrives.
+        3. Block on IPC for a new graph when nothing is delayed.
+        """
         while True:
             for state in self.turns_queue:
                 ready = state.get_ready_nodes()
                 if ready:
-                    return state, ready[0]
-            graph: ConversationGraph[RequestT] = await self.messaging.get()
+                    node_id = ready[0]
+                    state.claim_node(node_id)
+                    return state, node_id
+
+            earliest: float | None = None
+            for state in self.turns_queue:
+                next_at = state.next_delayed_ready_at()
+                if next_at is not None and (earliest is None or next_at < earliest):
+                    earliest = next_at
+
+            if earliest is not None:
+                timeout = max(0.0, earliest - time.time())
+                try:
+                    graph: ConversationGraph[RequestT] = await self.messaging.get(
+                        timeout=timeout
+                    )
+                except asyncio.TimeoutError:
+                    continue
+            else:
+                graph = await self.messaging.get()
+
             state = DAGExecutionState(graph)
             self.turns_queue.append(state)
             self.graph_request_infos[graph.graph_id] = dict(graph.request_infos)
@@ -413,8 +438,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         request_info = infos.get(node_id)
         if request_info is None:
             raise RuntimeError(
-                f"No RequestInfo for node '{node_id}' in graph "
-                f"'{state.graph.graph_id}'"
+                f"No RequestInfo for node '{node_id}' in graph '{state.graph.graph_id}'"
             )
         request_info.timings.dequeued = time.time()
         request_info.scheduler_node_id = self.messaging.worker_index or -1
@@ -432,7 +456,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
     ) -> ResponseT | None:
         """Schedule, assemble history, and execute a node via backend."""
         effective_target_start = await self.strategy.resolve_dequeued_target_start(
-            self.worker_index, target_start, request_info.settings,
+            self.worker_index,
+            target_start,
+            request_info.settings,
         )
         if effective_target_start != target_start:
             request_info.timings.targeted_start = effective_target_start

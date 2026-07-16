@@ -19,6 +19,7 @@ from guidellm.scheduler.schemas import (
     ConversationGraph,
     ConversationNode,
 )
+from guidellm.schemas.info import RequestSettings
 from guidellm.schemas.request import GenerationRequest
 
 __all__ = [
@@ -47,18 +48,19 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
     @classmethod
     def from_linear_chain(
         cls,
-        requests: list[GenerationRequest],
+        requests: list[tuple[GenerationRequest, RequestSettings]],
         agent_id: str = "default",
     ) -> Self:
         """
-        Wrap a linear list of requests as a degenerate single-path graph.
+        Wrap a linear list of request/settings pairs as a single-path graph.
 
         Each request becomes a node connected to the next via a ``full``
         edge, preserving the existing multi-turn conversation semantics.
-        Used for backward compatibility with linear datasets.
+        Scheduling metadata is taken from the pair's ``RequestSettings``,
+        not from the request payload (keeps ``RequestT`` generic).
 
-        :param requests: Ordered list of generation requests forming a
-            conversation chain.
+        :param requests: Ordered list of ``(request, settings)`` pairs
+            forming a conversation chain.
         :param agent_id: Agent identifier to assign to all nodes.
             Defaults to ``"default"``.
         :return: A conversation graph with one path through all requests.
@@ -72,14 +74,14 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
         edges: list[ConversationEdge] = []
 
         node_ids: list[str] = []
-        for i, request in enumerate(requests):
+        for i, (request, settings) in enumerate(requests):
             node_id = f"turn_{i}"
             node_ids.append(node_id)
             nodes[node_id] = GenerativeConversationNode(
                 node_id=node_id,
                 agent_id=agent_id,
                 request=request,
-                settings=request.settings,
+                settings=settings,
             )
 
         for i in range(len(node_ids) - 1):
@@ -100,9 +102,11 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
     @classmethod
     def from_linear_chain_with_branches(
         cls,
-        main_requests: list[GenerationRequest],
+        main_requests: list[tuple[GenerationRequest, RequestSettings]],
         branches: list[dict[str, Any]],
-        branch_request_factory: Callable[[int, int], GenerationRequest],
+        branch_request_factory: Callable[
+            [int, int], tuple[GenerationRequest, RequestSettings]
+        ],
         main_agent_id: str = "default",
     ) -> Self:
         """
@@ -112,12 +116,14 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
         back at ``at_turn + 1`` via a ``last`` edge. Multiple branches
         at the same turn are supported.
 
-        :param main_requests: Ordered list of main chain requests.
+        :param main_requests: Ordered list of main-chain
+            ``(request, settings)`` pairs.
         :param branches: List of branch specs, each with ``at_turn``,
             ``turns``, and optionally ``agent_id``.
         :param branch_request_factory: Callable that takes
             ``(branch_index, turn_index)`` and returns a
-            ``GenerationRequest`` for that branch turn.
+            ``(GenerationRequest, RequestSettings)`` pair for that
+            branch turn.
         :param main_agent_id: Agent ID for the main chain nodes.
         :return: A conversation graph with main chain and branches.
         :raises ValueError: If main_requests is empty or branch specs
@@ -132,14 +138,14 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
 
         # Build main chain nodes
         main_ids: list[str] = []
-        for i, request in enumerate(main_requests):
+        for i, (request, settings) in enumerate(main_requests):
             node_id = f"main_{i}"
             main_ids.append(node_id)
             nodes[node_id] = GenerativeConversationNode(
                 node_id=node_id,
                 agent_id=main_agent_id,
                 request=request,
-                settings=request.settings,
+                settings=settings,
             )
 
         # Connect main chain with full edges
@@ -163,12 +169,12 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
             for t in range(num_turns):
                 node_id = f"branch_{b_idx}_{t}"
                 branch_ids.append(node_id)
-                request = branch_request_factory(b_idx, t)
+                request, settings = branch_request_factory(b_idx, t)
                 nodes[node_id] = GenerativeConversationNode(
                     node_id=node_id,
                     agent_id=agent_id,
                     request=request,
-                    settings=request.settings,
+                    settings=settings,
                 )
 
             # Connect branch turns with full edges

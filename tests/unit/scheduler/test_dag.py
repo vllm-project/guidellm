@@ -12,13 +12,19 @@ from guidellm.scheduler.schemas import (
     ConversationGraph,
     ConversationNode,
 )
+from guidellm.schemas import RequestSettings
 
 
-def _make_node(node_id: str, agent_id: str = "agent") -> ConversationNode[str]:
+def _make_node(
+    node_id: str,
+    agent_id: str = "agent",
+    settings: RequestSettings | None = None,
+) -> ConversationNode[str]:
     return ConversationNode(
         node_id=node_id,
         agent_id=agent_id,
         request=f"req_{node_id}",
+        settings=settings if settings is not None else RequestSettings(),
     )
 
 
@@ -419,7 +425,7 @@ class TestDAGExecutionStateTopologicalOrder:
         state = DAGExecutionState(_linear_graph(5))
         order = state.topological_order()
         for i in range(4):
-            assert order.index(f"n{i}") < order.index(f"n{i+1}")
+            assert order.index(f"n{i}") < order.index(f"n{i + 1}")
 
     @pytest.mark.sanity
     def test_fork_join_topological_order(self):
@@ -441,3 +447,124 @@ class TestDAGExecutionStateTopologicalOrder:
         assert order.index("W1") < order.index("M4")
         assert order.index("W2") < order.index("M4")
         assert order.index("M3") < order.index("M4")
+
+
+class TestDAGExecutionStateRequeueDelay:
+    """Test think-time gating via requeue_delay.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_child_not_ready_until_delay_elapses(self, monkeypatch):
+        """
+        After a parent completes with requeue_delay, the child stays
+        unschedulable until available_after.
+
+        ## WRITTEN BY AI ##
+        """
+        now = 1000.0
+        monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: now)
+
+        nodes = {
+            "n0": _make_node("n0", settings=RequestSettings(requeue_delay=0.5)),
+            "n1": _make_node("n1"),
+        }
+        edges = [
+            ConversationEdge(
+                source_node_id="n0",
+                target_node_id="n1",
+                history_context="full",
+            )
+        ]
+        state = DAGExecutionState(
+            ConversationGraph(graph_id="delay", nodes=nodes, edges=edges)
+        )
+
+        state.mark_completed("n0", "r0", "resp0")
+        assert state.get_ready_nodes() == []
+        assert state.next_delayed_ready_at() == pytest.approx(1000.5)
+
+        now = 1000.5
+        monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: now)
+        assert state.get_ready_nodes() == ["n1"]
+        assert state.next_delayed_ready_at() is None
+
+    @pytest.mark.smoke
+    def test_none_delay_makes_child_immediately_ready(self, monkeypatch):
+        """
+        With requeue_delay=None, children become schedulable immediately.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: 50.0)
+
+        state = DAGExecutionState(_linear_graph(2))
+        state.mark_completed("n0", "r0", "resp0")
+        assert state.get_ready_nodes() == ["n1"]
+        assert state.next_delayed_ready_at() is None
+
+    @pytest.mark.sanity
+    def test_join_think_timer_starts_when_last_parent_completes(self, monkeypatch):
+        """
+        Join think time starts only when the last parent completes;
+        early parents' delays do not start the timer.
+
+        ## WRITTEN BY AI ##
+        """
+        clock = {"t": 0.0}
+        monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: clock["t"])
+
+        nodes = {
+            "A": _make_node("A", settings=RequestSettings(requeue_delay=10.0)),
+            "B": _make_node("B", settings=RequestSettings(requeue_delay=0.2)),
+            "J": _make_node("J"),
+        }
+        edges = [
+            ConversationEdge(
+                source_node_id="A",
+                target_node_id="J",
+                history_context="last",
+            ),
+            ConversationEdge(
+                source_node_id="B",
+                target_node_id="J",
+                history_context="last",
+            ),
+        ]
+        state = DAGExecutionState(
+            ConversationGraph(graph_id="join_delay", nodes=nodes, edges=edges)
+        )
+
+        # A finishes early with a long delay; J is not dependency-ready yet.
+        clock["t"] = 1.0
+        state.mark_completed("A", "rA", "respA")
+        assert "J" not in state.get_ready_nodes()
+        assert state.next_delayed_ready_at() is None
+
+        # Last parent B unlocks J; think timer uses B's delay from now.
+        clock["t"] = 5.0
+        state.mark_completed("B", "rB", "respB")
+        assert state.get_ready_nodes() == []
+        assert state.next_delayed_ready_at() == pytest.approx(5.2)
+
+        clock["t"] = 5.2
+        assert state.get_ready_nodes() == ["J"]
+
+    @pytest.mark.sanity
+    def test_claim_excludes_node_from_ready(self, monkeypatch):
+        """
+        Claiming a ready node removes it from get_ready_nodes until
+        mark_completed clears the in-progress set.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: 0.0)
+
+        state = DAGExecutionState(_linear_graph(2))
+        assert state.get_ready_nodes() == ["n0"]
+        state.claim_node("n0")
+        assert state.get_ready_nodes() == []
+
+        state.mark_completed("n0", "r0", "resp0")
+        assert state.get_ready_nodes() == ["n1"]
