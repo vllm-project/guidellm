@@ -326,7 +326,8 @@ class SyntheticTextDataArgs(DataArgs):
     @field_validator("branches", mode="before")
     @classmethod
     def _coerce_branches(
-        cls, v: str | list[dict[str, Any] | BranchSpec],
+        cls,
+        v: str | list[dict[str, Any] | BranchSpec],
     ) -> list[dict[str, Any] | BranchSpec]:
         """Parse JSON string for CLI/env-var support."""
         if isinstance(v, str):
@@ -334,13 +335,10 @@ class SyntheticTextDataArgs(DataArgs):
                 v = json.loads(v)
             except (json.JSONDecodeError, ValueError) as err:
                 raise ValueError(
-                    f"branches must be a JSON list of BranchSpec objects, "
-                    f"got {v!r}"
+                    f"branches must be a JSON list of BranchSpec objects, got {v!r}"
                 ) from err
         if not isinstance(v, list):
-            raise ValueError(
-                f"branches must be a list, got {type(v)}"
-            )
+            raise ValueError(f"branches must be a list, got {type(v)}")
         return v
 
     @field_validator("tool_call_turns", "server_tool_call_turns", mode="before")

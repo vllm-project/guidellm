@@ -227,7 +227,11 @@ class TestGenerativeConversationGraph:
         ## WRITTEN BY AI ##
         """
         reqs = [
-            GenerationRequest(columns={"text_column": [f"turn {i}"]}) for i in range(3)
+            (
+                GenerationRequest(columns={"text_column": [f"turn {i}"]}),
+                RequestSettings(),
+            )
+            for i in range(3)
         ]
         graph = GenerativeConversationGraph.from_linear_chain(reqs)
 
@@ -246,7 +250,9 @@ class TestGenerativeConversationGraph:
         ## WRITTEN BY AI ##
         """
         req = GenerationRequest(columns={"text_column": ["hello"]})
-        graph = GenerativeConversationGraph.from_linear_chain([req])
+        graph = GenerativeConversationGraph.from_linear_chain(
+            [(req, RequestSettings())]
+        )
 
         assert len(graph.nodes) == 1
         assert len(graph.edges) == 0
@@ -265,17 +271,16 @@ class TestGenerativeConversationGraph:
     @pytest.mark.sanity
     def test_from_linear_chain_inherits_settings(self):
         """
-        Node settings should be populated from the request's settings.
+        Node settings should be populated from the pair's RequestSettings.
 
         ## WRITTEN BY AI ##
         """
-        req = GenerationRequest(
-            columns={"text_column": ["hello"]},
-            settings=RequestSettings(relative_timestamp=1.5),
-        )
-        graph = GenerativeConversationGraph.from_linear_chain([req])
+        req = GenerationRequest(columns={"text_column": ["hello"]})
+        settings = RequestSettings(relative_timestamp=1.5, requeue_delay=2.0)
+        graph = GenerativeConversationGraph.from_linear_chain([(req, settings)])
         node = graph.nodes["turn_0"]
         assert node.settings.relative_timestamp == 1.5
+        assert node.settings.requeue_delay == 2.0
 
     @pytest.mark.smoke
     def test_is_conversation_graph_subclass(self):
@@ -284,7 +289,9 @@ class TestGenerativeConversationGraph:
 
         ## WRITTEN BY AI ##
         """
-        reqs = [GenerationRequest(columns={"text_column": ["hello"]})]
+        reqs = [
+            (GenerationRequest(columns={"text_column": ["hello"]}), RequestSettings())
+        ]
         graph = GenerativeConversationGraph.from_linear_chain(reqs)
         assert isinstance(graph, ConversationGraph)
 
@@ -313,12 +320,23 @@ class TestConversationGraphSubgraphForNodes:
     def branched_graph(self) -> GenerativeConversationGraph:
         """Build a main chain with one branch for truncation tests."""
         main_reqs = [
-            GenerationRequest(columns={"text_column": [f"main {i}"]}) for i in range(3)
+            (
+                GenerationRequest(columns={"text_column": [f"main {i}"]}),
+                RequestSettings(),
+            )
+            for i in range(3)
         ]
 
-        def branch_factory(branch_index: int, turn_index: int) -> GenerationRequest:
-            return GenerationRequest(
-                columns={"text_column": [f"branch {branch_index} turn {turn_index}"]}
+        def branch_factory(
+            branch_index: int, turn_index: int
+        ) -> tuple[GenerationRequest, RequestSettings]:
+            return (
+                GenerationRequest(
+                    columns={
+                        "text_column": [f"branch {branch_index} turn {turn_index}"]
+                    }
+                ),
+                RequestSettings(),
             )
 
         return GenerativeConversationGraph.from_linear_chain_with_branches(

@@ -19,6 +19,12 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     WorkerProcess,
 )
+from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.schemas import (
+    ConversationEdge,
+    ConversationGraph,
+    ConversationNode,
+)
 from guidellm.schemas import RequestInfo, RequestSettings, RequestTimings
 from guidellm.utils.messaging import InterProcessMessagingQueue
 from tests.unit.testing_utils import async_timeout
@@ -651,9 +657,9 @@ class TestWorkerProcess:
 
 
 class MockMessaging:
-    """Mock messaging queue for testing worker multiturn functionality.
+    """Mock messaging queue for testing worker DAG functionality.
 
-    ### WRITTEN BY AI ###
+    ## WRITTEN BY AI ##
     """
 
     def __init__(self, worker_index=1):
@@ -661,20 +667,35 @@ class MockMessaging:
         self.poll_interval = 0.01
         self._queue = []
         self._sent_items = []
+        self.get_calls: list[float | None] = []
+        self._item_available = asyncio.Event()
 
     async def get(self, timeout=None):
-        """Mock get from queue."""
-        if not self._queue:
-            raise asyncio.TimeoutError("Mock queue empty")
-        return self._queue.pop(0)
+        """Mock get from queue; honor timeout like InterProcessMessaging."""
+        self.get_calls.append(timeout)
+        if self._queue:
+            item = self._queue.pop(0)
+            if not self._queue:
+                self._item_available.clear()
+            return item
+        if timeout is None:
+            await self._item_available.wait()
+            item = self._queue.pop(0)
+            if not self._queue:
+                self._item_available.clear()
+            return item
+        await asyncio.sleep(timeout)
+        raise asyncio.TimeoutError("Mock queue empty")
 
     async def put(self, item, timeout=None):
         """Mock put to queue."""
         self._queue.append(item)
+        self._item_available.set()
 
     def put_sync(self, item, timeout=None):
         """Mock synchronous put."""
         self._sent_items.append(item)
+        self._item_available.set()
 
 
 class TestWorkerProcessMultiturn:
@@ -704,13 +725,13 @@ class TestWorkerProcessMultiturn:
         )
 
     @pytest.mark.smoke
-    def test_graph_queue_initialization(self, worker_instance):
-        """Test that graph_queue is initialized as empty list.
+    def test_turns_queue_initialization(self, worker_instance):
+        """Test that turns_queue is initialized as empty list.
 
         ## WRITTEN BY AI ##
         """
-        assert hasattr(worker_instance, "graph_queue")
-        assert worker_instance.graph_queue == []
+        assert hasattr(worker_instance, "turns_queue")
+        assert worker_instance.turns_queue == []
 
     @pytest.mark.smoke
     def test_graph_request_infos_initialization(self, worker_instance):
@@ -720,3 +741,100 @@ class TestWorkerProcessMultiturn:
         """
         assert hasattr(worker_instance, "graph_request_infos")
         assert worker_instance.graph_request_infos == {}
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_get_next_ready_node_waits_for_delay(self, worker_instance):
+        """Delayed-only graphs wake without requiring a new IPC graph.
+
+        ## WRITTEN BY AI ##
+        """
+        nodes = {
+            "n0": ConversationNode(
+                node_id="n0",
+                agent_id="a",
+                request="r0",
+                settings=RequestSettings(requeue_delay=0.05),
+            ),
+            "n1": ConversationNode(
+                node_id="n1",
+                agent_id="a",
+                request="r1",
+            ),
+        }
+        graph = ConversationGraph(
+            graph_id="delayed",
+            nodes=nodes,
+            edges=[
+                ConversationEdge(
+                    source_node_id="n0",
+                    target_node_id="n1",
+                    history_context="full",
+                )
+            ],
+        )
+        state = DAGExecutionState(graph)
+        state.mark_completed("n0", "r0", "resp0")
+        worker_instance.turns_queue.append(state)
+
+        started = time.time()
+        result_state, node_id = await worker_instance._get_next_ready_node()
+        elapsed = time.time() - started
+
+        assert result_state is state
+        assert node_id == "n1"
+        assert elapsed >= 0.04
+        assert any(t is not None for t in worker_instance.messaging.get_calls)
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_cancel_clears_delayed_graphs(self, worker_instance):
+        """Cancel loop aborts in-flight graphs including delayed children.
+
+        ## WRITTEN BY AI ##
+        """
+        nodes = {
+            "n0": ConversationNode(
+                node_id="n0",
+                agent_id="a",
+                request="r0",
+                settings=RequestSettings(requeue_delay=30.0),
+            ),
+            "n1": ConversationNode(
+                node_id="n1",
+                agent_id="a",
+                request="r1",
+            ),
+        }
+        graph = ConversationGraph(
+            graph_id="cancel_delay",
+            nodes=nodes,
+            edges=[
+                ConversationEdge(
+                    source_node_id="n0",
+                    target_node_id="n1",
+                    history_context="full",
+                )
+            ],
+            request_infos={
+                "n0": RequestInfo(request_id="id0", node_id="n0"),
+                "n1": RequestInfo(request_id="id1", node_id="n1"),
+            },
+        )
+        state = DAGExecutionState(graph)
+        state.mark_completed("n0", "r0", "resp0")
+        worker_instance.turns_queue.append(state)
+        worker_instance.graph_request_infos[graph.graph_id] = dict(graph.request_infos)
+        assert state.next_delayed_ready_at() is not None
+
+        cancel_task = asyncio.create_task(worker_instance._cancel_requests_loop())
+        await asyncio.sleep(0.05)
+        cancel_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await cancel_task
+
+        assert worker_instance.turns_queue == []
+        assert worker_instance.graph_request_infos == {}
+        assert state.is_aborted
+        assert state.get_ready_nodes() == []
+        assert state.next_delayed_ready_at() is None

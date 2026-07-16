@@ -10,6 +10,7 @@ graph-native data sources are available.
 
 from __future__ import annotations
 
+import time
 from collections import deque
 from collections.abc import Iterable
 from typing import Generic, NamedTuple, TypeVar
@@ -71,6 +72,10 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
         self._completed: dict[str, CompletedNodeData[_RequestT, _ResponseT]] = {}
         self._remaining_parents: dict[str, int] = dict(self._parent_count)
+        # Think-time gate: node is schedulable only after this timestamp.
+        # Set when the last parent completes (dependency-ready).
+        self._available_after: dict[str, float] = dict.fromkeys(graph.nodes, 0.0)
+        self._in_progress: set[str] = set()
         self._aborted: bool = False
 
     @property
@@ -96,19 +101,68 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
     def get_ready_nodes(self) -> list[str]:
         """
-        Find all nodes whose parents have all completed and that haven't
-        been executed yet.
+        Find nodes that are dependency-ready, past their think-time gate,
+        and not already claimed or completed.
 
         :return: Sorted list of node IDs ready for execution.
         """
         if self._aborted:
             return []
 
+        now = time.time()
         ready = []
         for nid in self._graph.nodes:
-            if nid not in self._completed and self._remaining_parents[nid] == 0:
+            if (
+                nid not in self._completed
+                and nid not in self._in_progress
+                and self._remaining_parents[nid] == 0
+                and now >= self._available_after[nid]
+            ):
                 ready.append(nid)
         return sorted(ready)
+
+    def next_delayed_ready_at(self) -> float | None:
+        """
+        Earliest time when a dependency-ready but delayed node becomes
+        schedulable.
+
+        :return: Absolute timestamp, or ``None`` if no delayed nodes are
+            waiting.
+        """
+        if self._aborted:
+            return None
+
+        now = time.time()
+        earliest: float | None = None
+        for nid in self._graph.nodes:
+            if (
+                nid not in self._completed
+                and nid not in self._in_progress
+                and self._remaining_parents[nid] == 0
+                and self._available_after[nid] > now
+            ):
+                unlock_at = self._available_after[nid]
+                if earliest is None or unlock_at < earliest:
+                    earliest = unlock_at
+        return earliest
+
+    def claim_node(self, node_id: str) -> None:
+        """
+        Mark a ready node as in-progress so concurrent slots cannot
+        select it again.
+
+        :param node_id: The node to claim.
+        :raises ValueError: If the node does not exist or is not claimable.
+        """
+        if node_id not in self._graph.nodes:
+            raise ValueError(f"Node '{node_id}' not in graph")
+        if node_id in self._completed or node_id in self._in_progress:
+            raise ValueError(f"Node '{node_id}' is not claimable")
+        if self._remaining_parents[node_id] != 0:
+            raise ValueError(f"Node '{node_id}' still has unmet parents")
+        if time.time() < self._available_after[node_id]:
+            raise ValueError(f"Node '{node_id}' is still time-gated")
+        self._in_progress.add(node_id)
 
     def mark_completed(
         self,
@@ -117,12 +171,16 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         response: _ResponseT,
     ) -> list[str]:
         """
-        Mark a node as completed and return any newly ready children.
+        Mark a node as completed and return newly dependency-satisfied children.
+
+        When a child's last parent completes, think time starts: the child's
+        ``available_after`` is set to ``now + unlocking_parent.requeue_delay``.
+        Returned children may still be time-gated and not yet schedulable.
 
         :param node_id: The ID of the completed node.
         :param request: The request that was executed.
         :param response: The response from the backend.
-        :return: Sorted list of child node IDs that became ready.
+        :return: Sorted list of child node IDs that became dependency-ready.
         :raises ValueError: If the node is already completed or doesn't exist.
         """
         if node_id not in self._graph.nodes:
@@ -131,6 +189,10 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             raise ValueError(f"Node '{node_id}' already completed")
 
         self._completed[node_id] = CompletedNodeData(request, response)
+        self._in_progress.discard(node_id)
+
+        delay = self._graph.nodes[node_id].settings.requeue_delay or 0.0
+        unlock_at = time.time() + delay
 
         newly_ready: list[str] = []
         for edge in self._outgoing_edges[node_id]:
@@ -140,6 +202,8 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                 self._remaining_parents[child_id] == 0
                 and child_id not in self._completed
             ):
+                # Think time starts only once all parents are done.
+                self._available_after[child_id] = unlock_at
                 newly_ready.append(child_id)
 
         return sorted(newly_ready)
@@ -151,9 +215,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         :return: List of node IDs that were not yet completed.
         """
         self._aborted = True
-        return sorted(
-            nid for nid in self._graph.nodes if nid not in self._completed
-        )
+        return sorted(nid for nid in self._graph.nodes if nid not in self._completed)
 
     def assemble_history(
         self, node_id: str
@@ -226,9 +288,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                 return edge
         return None
 
-    def _walk_back_full(
-        self, start_node_id: str
-    ) -> list[tuple[_RequestT, _ResponseT]]:
+    def _walk_back_full(self, start_node_id: str) -> list[tuple[_RequestT, _ResponseT]]:
         """
         Walk backwards through ``full`` edges collecting ancestor history.
 
@@ -260,13 +320,9 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             # (has a full parent). At the stopping node, last parents are
             # the node's own context, not part of downstream history.
             if full_edge is not None:
-                for edge in sorted(
-                    current_incoming, key=lambda e: e.source_node_id
-                ):
+                for edge in sorted(current_incoming, key=lambda e: e.source_node_id):
                     if edge.history_context == "last":
-                        last_completed = self._completed.get(
-                            edge.source_node_id
-                        )
+                        last_completed = self._completed.get(edge.source_node_id)
                         if last_completed is not None:
                             interleaved_last.append(
                                 (
@@ -278,9 +334,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                                 )
                             )
 
-            current_id = (
-                full_edge.source_node_id if full_edge is not None else None
-            )
+            current_id = full_edge.source_node_id if full_edge is not None else None
 
         chain_reversed.reverse()
 
@@ -296,9 +350,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
         :return: Sorted list of incomplete node IDs.
         """
-        return sorted(
-            nid for nid in self._graph.nodes if nid not in self._completed
-        )
+        return sorted(nid for nid in self._graph.nodes if nid not in self._completed)
 
     def topological_order(self) -> list[str]:
         """
@@ -307,9 +359,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         :return: List of node IDs in topological order.
         """
         in_degree: dict[str, int] = dict(self._parent_count)
-        queue: deque[str] = deque(
-            nid for nid, deg in in_degree.items() if deg == 0
-        )
+        queue: deque[str] = deque(nid for nid, deg in in_degree.items() if deg == 0)
         order: list[str] = []
 
         while queue:
