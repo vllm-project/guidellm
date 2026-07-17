@@ -121,22 +121,12 @@ async def create_data_loader(
         else None
     )
 
-    # Extract branch specs from data configs (if any synthetic text
-    # config has branches defined, pass them to the data loader for
-    # graph construction with sub-agent branches)
-    branch_specs: list[dict[str, Any]] = []
-    for dc in data_config:
-        if hasattr(dc, "branches") and dc.branches:
-            branch_specs = [b.model_dump() for b in dc.branches]
-            break
-
     data_loader = DataLoaderRegistry.create(
         config=loader_config,
         datasets=datasets,
         preprocessors=preprocessors,
         finalizer=finalizer,
         random_seed=rng.getrandbits(32),
-        branch_specs=branch_specs or None,
     )
 
     if console_step:

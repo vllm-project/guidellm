@@ -1,18 +1,24 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any, Literal
 
 from pydantic import Field
 
 from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.schemas import DataFinalizerArgs
+from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
+from guidellm.scheduler.schemas import HistoryContext
 from guidellm.schemas import (
     GenerationRequest,
     RequestSettings,
     TurnType,
     UsageMetrics,
 )
+from guidellm.schemas.conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
+)
+from guidellm.utils.imports import json
 
 __all__ = [
     "GenerativeRequestFinalizer",
@@ -38,11 +44,9 @@ class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
 
 
 @FinalizerRegistry.register("generative")
-class GenerativeRequestFinalizer(
-    DatasetFinalizer[Iterable[tuple[GenerationRequest, RequestSettings]]]
-):
+class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | list]):
     """
-    Finalizer that converts dataset rows into GenerationRequest objects,
+    Finalizer that converts dataset rows into a GenerativeConversationGraph,
     aggregating usage metrics from the provided columns.
     """
 
@@ -51,7 +55,12 @@ class GenerativeRequestFinalizer(
 
     def __call__(
         self, items: list[dict[str, Any]]
-    ) -> list[tuple[GenerationRequest, RequestSettings]]:
+    ) -> GenerativeConversationGraph | list:
+        # Branched / multi-agent path: one mapped item carries conversation_turns.
+        for item in items:
+            if item.get("conversation_turns_column"):
+                return self._finalize_conversation_turns(item)
+
         results: list[tuple[GenerationRequest, RequestSettings]] = []
         for item in items:
             request, settings = self.finalize_turn(item)
@@ -78,7 +87,65 @@ class GenerativeRequestFinalizer(
                 )
             else:
                 results.append((request, settings))
-        return results
+
+        # Empty results stay as [] so the loader can skip the row.
+        if not results:
+            return []
+
+        return GenerativeConversationGraph.from_linear_chain(results)
+
+    def _finalize_conversation_turns(
+        self, item: dict[str, Any]
+    ) -> GenerativeConversationGraph:
+        """
+        Assemble a graph from a ``conversation_turns_column`` payload.
+
+        :param item: Mapped row containing ``conversation_turns_column``.
+        :return: A generative conversation graph.
+        :raises ValueError: If the payload is missing or invalid.
+        """
+        raw_values = item.get("conversation_turns_column") or []
+        if not raw_values:
+            raise ValueError("conversation_turns_column is empty")
+
+        raw = raw_values[0]
+        if isinstance(raw, str):
+            graph_data = ConversationGraphData.model_validate(json.loads(raw))
+        else:
+            graph_data = ConversationGraphData.model_validate(raw)
+
+        if not graph_data.turns:
+            raise ValueError("ConversationGraphData.turns must not be empty")
+
+        nodes: dict[str, GenerativeConversationNode] = {}
+        parents_by_node: dict[str, list[tuple[str, HistoryContext]]] = {}
+        for turn in graph_data.turns:
+            request, settings = self.finalize_turn(dict(turn.columns))
+            # Prefer explicit turn-level scheduling fields over column values.
+            if turn.relative_timestamp is not None:
+                settings = settings.model_copy(
+                    update={"relative_timestamp": turn.relative_timestamp}
+                )
+            if turn.requeue_delay is not None:
+                settings = settings.model_copy(
+                    update={"requeue_delay": turn.requeue_delay}
+                )
+            nodes[turn.node_id] = GenerativeConversationNode(
+                node_id=turn.node_id,
+                agent_id=turn.agent_id,
+                request=request,
+                settings=settings,
+            )
+            parents_by_node[turn.node_id] = [
+                (parent.parent_node_id, parent.history_context)
+                for parent in turn.parents
+            ]
+
+        return GenerativeConversationGraph.from_nodes_with_parents(
+            nodes=nodes,
+            parents_by_node=parents_by_node,
+            graph_id=graph_data.graph_id,
+        )
 
     def finalize_turn(  # noqa: C901 PLR0912
         self, columns: dict[str, Any]

@@ -254,6 +254,23 @@ class TestBranchSpecValidation:
             )
 
     @pytest.mark.sanity
+    def test_branches_with_tool_call_turns_accepted(self):
+        """
+        Branches may be combined with tool_call_turns on the main chain.
+
+        ## WRITTEN BY AI ##
+        """
+        args = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=100,
+            turns=3,
+            branches=[BranchSpec(at_turn=0, turns=1)],
+            tool_call_turns=[0],
+        )
+        assert args.tool_call_turns == [0]
+        assert len(args.branches) == 1
+
+    @pytest.mark.sanity
     def test_branch_json_parsing(self):
         """
         Branch specs should parse from JSON strings (CLI support).
@@ -283,3 +300,172 @@ class TestBranchSpecValidation:
                 turns=1,
                 branches=[BranchSpec(at_turn=0, turns=1)],
             )
+
+
+class TestSyntheticBranchesEmitConversationTurns:
+    """Branched synthetic rows emit conversation_turns with inline parents.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_branched_row_emits_conversation_turns_topology(self):
+        """
+        ## WRITTEN BY AI ##
+        """
+        from unittest.mock import Mock
+
+        from guidellm.data.deserializers.synthetic import _SyntheticTextExamplesIterable
+        from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
+        from guidellm.utils.imports import json
+
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"tok{t}" for t in tokens)
+        )
+
+        config = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=20,
+            output_tokens=10,
+            turns=3,
+            branches=[BranchSpec(at_turn=0, turns=1, agent_id="worker")],
+        )
+        iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
+        _key, row = next(iter(iterable))
+
+        assert set(row) == {"conversation_turns"}
+        graph_data = ConversationGraphData.model_validate(
+            json.loads(row["conversation_turns"])
+        )
+        by_id = {turn.node_id: turn for turn in graph_data.turns}
+        assert set(by_id) == {"main_0", "main_1", "main_2", "branch_0_0"}
+        assert by_id["main_0"].parents == []
+        assert by_id["branch_0_0"].agent_id == "worker"
+        assert [
+            (p.parent_node_id, p.history_context) for p in by_id["branch_0_0"].parents
+        ] == [("main_0", "new")]
+        assert {
+            (p.parent_node_id, p.history_context) for p in by_id["main_1"].parents
+        } == {("main_0", "full"), ("branch_0_0", "last")}
+        assert [
+            (p.parent_node_id, p.history_context) for p in by_id["main_2"].parents
+        ] == [("main_1", "full")]
+
+    @pytest.mark.smoke
+    def test_branched_row_with_client_tool_turn_expands_injection(self):
+        """
+        Client tool turns on the main chain expand to tool-call + injection nodes.
+
+        ## WRITTEN BY AI ##
+        """
+        from unittest.mock import Mock
+
+        from guidellm.data.deserializers.synthetic import _SyntheticTextExamplesIterable
+        from guidellm.data.finalizers.generative import (
+            GenerativeRequestFinalizer,
+            GenerativeRequestFinalizerArgs,
+        )
+        from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
+        from guidellm.utils.imports import json
+
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"tok{t}" for t in tokens)
+        )
+
+        config = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=20,
+            output_tokens=10,
+            turns=3,
+            branches=[BranchSpec(at_turn=0, turns=1, agent_id="worker")],
+            tool_call_turns=[0],
+        )
+        iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
+        _key, row = next(iter(iterable))
+        graph_data = ConversationGraphData.model_validate(
+            json.loads(row["conversation_turns"])
+        )
+        by_id = {turn.node_id: turn for turn in graph_data.turns}
+
+        assert set(by_id) == {
+            "main_0",
+            "main_0_injection",
+            "main_1",
+            "main_2",
+            "branch_0_0",
+        }
+        assert "tools_column" in by_id["main_0"].columns
+        assert "output_tokens_count_column" not in by_id["main_0"].columns
+        assert by_id["main_0_injection"].columns["turn_type_column"] == [
+            "tool_response_injection"
+        ]
+        assert [
+            (p.parent_node_id, p.history_context)
+            for p in by_id["main_0_injection"].parents
+        ] == [("main_0", "full")]
+        assert [
+            (p.parent_node_id, p.history_context) for p in by_id["branch_0_0"].parents
+        ] == [("main_0_injection", "new")]
+        assert {
+            (p.parent_node_id, p.history_context) for p in by_id["main_1"].parents
+        } == {("main_0_injection", "full"), ("branch_0_0", "last")}
+
+        graph = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())(
+            [{"conversation_turns_column": [graph_data.model_dump(mode="json")]}]
+        )
+        assert graph.nodes["main_0"].request.turn_type == "client_tool_call"
+        assert (
+            graph.nodes["main_0_injection"].request.turn_type
+            == "tool_response_injection"
+        )
+        edge_triples = {
+            (e.source_node_id, e.target_node_id, e.history_context) for e in graph.edges
+        }
+        assert ("main_0", "main_0_injection", "full") in edge_triples
+        assert ("main_0_injection", "branch_0_0", "new") in edge_triples
+        assert ("main_0_injection", "main_1", "full") in edge_triples
+        assert ("branch_0_0", "main_1", "last") in edge_triples
+
+    @pytest.mark.sanity
+    def test_branched_row_with_server_tool_turn_no_injection(self):
+        """
+        Server tool turns stay a single main node with turn_type set.
+
+        ## WRITTEN BY AI ##
+        """
+        from unittest.mock import Mock
+
+        from guidellm.data.deserializers.synthetic import _SyntheticTextExamplesIterable
+        from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
+        from guidellm.utils.imports import json
+
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"tok{t}" for t in tokens)
+        )
+
+        config = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=20,
+            output_tokens=10,
+            turns=3,
+            branches=[BranchSpec(at_turn=0, turns=1)],
+            server_tool_call_turns=[0],
+        )
+        iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
+        _key, row = next(iter(iterable))
+        graph_data = ConversationGraphData.model_validate(
+            json.loads(row["conversation_turns"])
+        )
+        by_id = {turn.node_id: turn for turn in graph_data.turns}
+
+        assert "main_0_injection" not in by_id
+        assert by_id["main_0"].columns["turn_type_column"] == ["server_tool_call"]
+        assert [
+            (p.parent_node_id, p.history_context) for p in by_id["branch_0_0"].parents
+        ] == [("main_0", "new")]

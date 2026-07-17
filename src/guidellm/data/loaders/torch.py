@@ -5,7 +5,6 @@ from collections.abc import Iterator
 from typing import Any, Literal, TypeVar
 
 import torch
-from faker import Faker
 from pydantic import Field
 from torch.utils.data.dataloader import DataLoader as PyTorchDataLoader
 from torch.utils.data.dataset import IterableDataset as TorchIterableDataset
@@ -21,9 +20,6 @@ from guidellm.data.schemas import (
     DatasetType,
 )
 from guidellm.logger import logger
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
-from guidellm.schemas.info import RequestSettings
-from guidellm.schemas.request import GenerationRequest
 from guidellm.utils.mixins import InfoMixin
 
 __all__ = ["DatasetsIterator", "TorchDataLoader", "TorchDataLoaderArgs"]
@@ -64,7 +60,6 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         data_samples: int,
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
         finalizer: DatasetFinalizer[DataT],
-        branch_specs: list[dict[str, Any]] | None = None,
     ):
         self.datasets = datasets
         self.preprocessors = preprocessors
@@ -74,48 +69,10 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                     datasets=self.datasets,
                 )
         self.finalizer = finalizer
-        self.branch_specs = branch_specs or []
-        self._faker = Faker() if branch_specs else None
         self.precache: list[Any] | None = (
             list(self.generator(data_samples)) if data_samples else None
         )
         self.epoch = 0
-
-    _MIN_TOKENS_FOR_SCALED_TEXT = 20
-    _TOKENS_PER_PARAGRAPH = 65
-
-    def _make_branch_request(
-        self,
-        branch_index: int,
-        turn_index: int,  # noqa: ARG002
-    ) -> tuple[GenerationRequest, RequestSettings]:
-        """Generate a synthetic request/settings pair for a branch turn.
-
-        Uses the branch's configured prompt/output token counts if
-        available, falling back to generating a paragraph of text.
-        """
-        spec = (
-            self.branch_specs[branch_index]
-            if branch_index < len(self.branch_specs)
-            else {}
-        )
-        prompt_tokens = spec.get("prompt_tokens")
-        output_tokens = spec.get("output_tokens")
-
-        # Generate text roughly matching the target token count
-        if prompt_tokens and prompt_tokens > self._MIN_TOKENS_FOR_SCALED_TEXT:
-            num_paragraphs = max(1, prompt_tokens // self._TOKENS_PER_PARAGRAPH)
-            text = " ".join(
-                self._faker.paragraph(nb_sentences=5) for _ in range(num_paragraphs)
-            )
-        else:
-            text = self._faker.paragraph(nb_sentences=3)
-
-        columns: dict[str, list[Any]] = {"text_column": [text]}
-        if output_tokens:
-            columns["output_tokens_count_column"] = [output_tokens]
-
-        return GenerationRequest(columns=columns), RequestSettings()
 
     def __iter__(self) -> Iterator[DataT]:
         worker_info = torch.utils.data.get_worker_info()
@@ -134,7 +91,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
 
-    def generator(  # noqa: C901, PLR0912
+    def generator(  # noqa: C901
         self,
         max_items: int | None = None,
         modulus: int | None = None,
@@ -177,29 +134,6 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                     # no columns, so finalizer returned an empty list)
                     if not result:
                         continue
-
-                    # Wrap linear chain as a ConversationGraph.
-                    # Keep (request, settings) pairs so node.settings is
-                    # populated from scheduling metadata, not RequestT.
-                    if isinstance(result, list):
-                        if self.branch_specs:
-                            result = (
-                                GenerativeConversationGraph
-                                .from_linear_chain_with_branches(
-                                    main_requests=result,
-                                    branches=self.branch_specs,
-                                    branch_request_factory=(
-                                        self._make_branch_request
-                                    ),
-                                )
-                            )
-                        else:
-                            result = (
-                                GenerativeConversationGraph.from_linear_chain(
-                                    result
-                                )
-                            )
-
                     yield result
                     yield_count += 1
                 except StopIteration:
@@ -236,7 +170,6 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
         finalizer: DatasetFinalizer[DataT],
         random_seed: int = 42,
-        branch_specs: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ):
         iterator: DatasetsIterator[DataT] = DatasetsIterator(
@@ -244,7 +177,6 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
             data_samples=config.samples,
             preprocessors=preprocessors,
             finalizer=finalizer,
-            branch_specs=branch_specs,
         )
         self._info: dict[str, Any] = config.model_dump(mode="json")
         self.epoch = 0
