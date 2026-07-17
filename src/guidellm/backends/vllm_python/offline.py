@@ -253,12 +253,11 @@ class VLLMOfflineBackend(VLLMPythonBackend):
     ) -> str:
         """Apply tokenizer chat template to formatted messages.
 
-        Accesses the tokenizer through the synchronous LLM engine
-        path (``llm.llm_engine.tokenizer.tokenizer``) instead of
-        ``engine.tokenizer`` used by the async parent.
+        Accesses the tokenizer through ``llm.get_tokenizer()``
+        instead of ``engine.tokenizer`` used by the async parent.
         """
         llm = self._validate_backend_initialized()
-        tokenizer = llm.llm_engine.tokenizer.tokenizer
+        tokenizer = llm.get_tokenizer()
         if tokenizer is None:
             raise RuntimeError("Backend engine has no tokenizer.")
 
