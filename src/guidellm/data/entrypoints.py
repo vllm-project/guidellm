@@ -2,8 +2,6 @@ from pathlib import Path
 from random import Random
 from typing import Any
 
-from transformers import PreTrainedTokenizerBase
-
 from guidellm.data import builders
 from guidellm.data.builders import ShortPromptStrategy
 from guidellm.data.deserializers import DatasetDeserializerFactory
@@ -141,13 +139,11 @@ async def create_data_loader(
 
 
 def process_dataset(
-    data: dict,
+    data: DataArgs | dict[str, Any],
     output_path: str | Path,
-    processor: str | Path | PreTrainedTokenizerBase,
+    tokenizer: DataTokenizerArgs | dict[str, Any],
     config: str | Path,
-    processor_args: dict[str, Any] | None = None,
-    data_args: dict[str, Any] | None = None,
-    data_column_mapper: dict[str, str] | None = None,
+    data_column_mapper: DataPreprocessorArgs | dict[str, Any] | None = None,
     short_prompt_strategy: ShortPromptStrategy = ShortPromptStrategy.IGNORE,
     pad_char: str | None = None,
     concat_delimiter: str | None = None,
@@ -159,13 +155,11 @@ def process_dataset(
     """
     Main method to process and save a dataset with sampled prompt/output token counts.
 
-    :param data: Path or identifier for dataset input.
+    :param data: Dataset source configuration (``DataArgs`` or equivalent dict).
     :param output_path: File path to save the processed dataset.
-    :param processor: Tokenizer object or its config.
+    :param tokenizer: Tokenizer configuration (``DataTokenizerArgs`` or dict).
     :param config: PreprocessDatasetConfig string or file path.
-    :param processor_args: Optional processor arguments.
-    :param data_args: Optional data loading arguments.
-    :param data_column_mapper: Optional column mapping dictionary.
+    :param data_column_mapper: Optional column mapping configuration.
     :param short_prompt_strategy: Strategy for handling short prompts.
     :param pad_char: Character used when padding short prompts.
     :param concat_delimiter: Delimiter for concatenation strategy.
@@ -178,15 +172,23 @@ def process_dataset(
     :param random_seed: Seed for random sampling.
     :raises ValueError: If the output path is invalid or pushing conditions unmet.
     """
-    data_config = DataArgs.model_validate(data)
+    data_config = data if isinstance(data, DataArgs) else DataArgs.model_validate(data)
+    tokenizer_config = (
+        tokenizer
+        if isinstance(tokenizer, DataTokenizerArgs)
+        else DataTokenizerArgs.model_validate(tokenizer)
+    )
+    column_mapper_config = DataPreprocessorArgs.model_validate(
+        data_column_mapper
+        if data_column_mapper is not None
+        else {"kind": "generative_column_mapper"}
+    )
     builders.process_dataset(
         data_config,
         output_path,
-        processor,
+        tokenizer_config,
         config,
-        processor_args,
-        data_args,
-        data_column_mapper,
+        column_mapper_config,
         short_prompt_strategy,
         pad_char,
         concat_delimiter,

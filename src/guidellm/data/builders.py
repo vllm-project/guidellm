@@ -14,10 +14,11 @@ from guidellm.data.preprocessors import GenerativeColumnMapper, PreprocessorRegi
 from guidellm.data.schemas import (
     DataArgs,
     DataPreprocessorArgs,
+    DataTokenizerArgs,
     PreprocessDatasetConfig,
 )
+from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
-from guidellm.utils.hf_transformers import check_load_processor
 from guidellm.utils.random import IntegerRangeSampler
 
 
@@ -205,11 +206,9 @@ def parse_synthetic_config(
 def process_dataset(
     data: DataArgs,
     output_path: str | Path,
-    processor: str | Path | PreTrainedTokenizerBase,
+    tokenizer: DataTokenizerArgs,
     config: str | Path,
-    processor_args: dict[str, Any] | None,
-    data_args: dict[str, Any] | None,
-    data_column_mapper: dict[str, str] | None,
+    data_column_mapper: DataPreprocessorArgs,
     short_prompt_strategy: ShortPromptStrategy,
     pad_char: str | None,
     concat_delimiter: str | None,
@@ -230,24 +229,18 @@ def process_dataset(
     config_obj = parse_synthetic_config(config)
 
     # Load tokenizer
-    tokenizer = check_load_processor(
-        processor,
-        processor_args,
-        "dataset conversion.",
-    )
+    tokenizer_factory = TokenizerRegistry.create(tokenizer)
+    loaded_tokenizer = tokenizer_factory()
 
     # Load dataset
-    data.load_kwargs.update(data_args or {})
     dataset = DatasetDeserializerFactory.deserialize(
         config=data,
-        processor_factory=lambda: tokenizer,
+        processor_factory=tokenizer_factory,
         random_seed=random_seed,
     )
     # Setup column mapper
     column_mapper: GenerativeColumnMapper = PreprocessorRegistry.create(  # type: ignore[assignment]
-        config=DataPreprocessorArgs.model_validate(
-            data_column_mapper  # type: ignore[arg-type]
-        )
+        config=data_column_mapper
     )
     column_mapper.setup_data(
         datasets=[dataset],
@@ -278,7 +271,7 @@ def process_dataset(
             prefix_column=prefix_column,
             prompt_token_sampler=prompt_token_sampler,
             output_token_sampler=output_token_sampler,
-            tokenizer=tokenizer,
+            tokenizer=loaded_tokenizer,
             prompt_handler=prompt_handler,
             dataset_iterator=dataset_iterator,
             include_prefix_in_token_count=include_prefix_in_token_count,

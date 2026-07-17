@@ -325,18 +325,18 @@ The preprocessing command can:
 guidellm preprocess dataset \
     kind=<DATA_TYPE>,key=value,... \
     <OUTPUT_PATH> \
-    --processor <PROCESSOR> \
+    --tokenizer kind=huggingface_auto,model=<MODEL> \
     --config <CONFIG>
 ```
 
 ### Required Arguments
 
-| Argument      | Description                                                                                                                                   |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Configurations](#datasets).                          |
-| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                    |
-| `--processor` | **Required.** Processor or tokenizer name/path for calculating token counts. Can be a Hugging Face model ID or local path.                    |
-| `--config`    | **Required.** Configuration specifying target token sizes. Can be a JSON string, key=value pairs, or file path (.json, .yaml, .yml, .config). |
+| Argument      | Description                                                                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Configurations](#datasets). Pass loader options via `load_kwargs` on this descriptor. |
+| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                                                     |
+| `--tokenizer` | **Required.** Tokenizer configuration using registry syntax, for example `--tokenizer kind=huggingface_auto,model=gpt2`. Optional constructor kwargs go in `load_kwargs`.      |
+| `--config`    | **Required.** Configuration specifying target token sizes. Can be a JSON string, key=value pairs, or file path (.json, .yaml, .yml, .config).                                  |
 
 ### Example
 
@@ -344,11 +344,11 @@ guidellm preprocess dataset \
 guidellm preprocess dataset \
     kind=json_file,path=path/to/input_dataset.jsonl \
     "path/to/processed_dataset.jsonl" \
-    --processor "gpt2" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
     --config "prompt_tokens=512,output_tokens=256,prefix_tokens_max=100"
 ```
 
-### Configuration and Processor Options
+### Configuration and Tokenizer Options
 
 The `--config` parameter accepts a `PreprocessDatasetConfig` as a JSON string, key=value pairs, or a configuration file path (.json, .yaml, .yml, .config). This configuration is similar to the synthetic data configuration but includes additional fields specific to preprocessing.
 
@@ -377,7 +377,7 @@ The `--config` parameter accepts a `PreprocessDatasetConfig` as a JSON string, k
 --config "path/to/config.json"
 ```
 
-The `--processor` argument specifies the tokenizer to use for calculating token counts. This is required because the preprocessing command needs to tokenize prompts to ensure they match the target token sizes. For information about using tokenizers in benchmarks, see the [Data Arguments Overview](#data-arguments-overview) section.
+The `--tokenizer` argument specifies the tokenizer to use for calculating token counts (same registry form as `guidellm run --tokenizer`). This is required because the preprocessing command needs to tokenize prompts to ensure they match the target token sizes. For information about using tokenizers in benchmarks, see the [Data Arguments Overview](#data-arguments-overview) section.
 
 ### Column Mapping
 
@@ -387,9 +387,12 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 2. **You have multiple datasets** and need to specify which dataset's columns to use
 3. **Your dataset has system prompts or prefixes** in a separate column
 
-**Column mapping format:** The `--data-column-mapper` accepts a JSON string mapping column types to column names:
+**Column mapping format:** The `--data-column-mapper` option uses registry syntax (same as `guidellm run`):
 
 ```bash
+--data-column-mapper kind=generative_column_mapper,column_mappings.text_column=question,column_mappings.prefix_column=system_prompt
+
+# Or as JSON:
 --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {
   "text_column": "question",
   "prefix_column": "system_prompt",
@@ -424,9 +427,9 @@ You would use:
 guidellm preprocess dataset \
     "kind=csv_file,path=dataset.csv" \
     "processed.jsonl" \
-    --processor "gpt2" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
     --config "prompt_tokens=512,output_tokens=256" \
-    --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "user_query", "prefix_column": "system_message"}}'
+    --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=user_query,column_mappings.prefix_column=system_message
 ```
 
 **Example: Multiple datasets**
@@ -454,7 +457,7 @@ When prompts are shorter than the target token length, you can specify how to ha
 guidellm preprocess dataset \
     "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
-    --processor "gpt2" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
     --config "prompt_tokens=512,output_tokens=256" \
     --short-prompt-strategy "concatenate" \
     --concat-delimiter "\n\n"
@@ -466,7 +469,7 @@ guidellm preprocess dataset \
 guidellm preprocess dataset \
     "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
-    --processor "gpt2" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
     --config "prompt_tokens=512,output_tokens=256" \
     --short-prompt-strategy "pad" \
     --pad-char " "
@@ -476,9 +479,9 @@ guidellm preprocess dataset \
 
 | Option                            | Description                                                                                                                             |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `--data-args <JSON>`              | JSON string of arguments to pass to dataset loading. See [Data Arguments Overview](#data-arguments-overview) for details.               |
+| `--data-column-mapper`            | Column mapping preprocessor configuration (default: `kind=generative_column_mapper`).                                                   |
+| `--seed`                          | Random seed configuration for reproducible token sampling (default: `kind=static,value=42`).                                            |
 | `--include-prefix-in-token-count` | Include prefix tokens in prompt token count calculation (flag). When enabled, prefix trimming is disabled and the prefix is kept as-is. |
-| `--random-seed <NUMBER>`          | Random seed for reproducible token sampling (default: 42).                                                                              |
 | `--push-to-hub`                   | Push the processed dataset to Hugging Face Hub (flag).                                                                                  |
 | `--hub-dataset-id <ID>`           | Hugging Face Hub dataset ID for upload (required if `--push-to-hub` is set).                                                            |
 
@@ -490,9 +493,9 @@ guidellm preprocess dataset \
 guidellm preprocess dataset \
     kind=csv_file,path=my_dataset.csv \
     "processed_dataset.jsonl" \
-    --processor "gpt2" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
     --config "prompt_tokens=512,output_tokens=256" \
-    --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "user_question", "prefix_column": "system_instruction"}}'
+    --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=user_question,column_mappings.prefix_column=system_instruction
 ```
 
 **Example 2: Preprocessing with distribution and short prompt handling**
@@ -501,21 +504,20 @@ guidellm preprocess dataset \
 guidellm preprocess dataset \
     "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
-    --processor "gpt2" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
     --config "prompt_tokens=512,prompt_tokens_stdev=50,output_tokens=256,output_tokens_stdev=25" \
     --short-prompt-strategy "concatenate" \
     --concat-delimiter "\n\n" \
-    --random-seed 123
+    --seed kind=static,value=123
 ```
 
-**Example 3: Preprocessing with processor arguments and prefix token limits**
+**Example 3: Preprocessing with tokenizer load kwargs and prefix token limits**
 
 ```bash
 guidellm preprocess dataset \
     "kind=json_file,path=dataset.jsonl" \
     "processed.jsonl" \
-    --processor "gpt2" \
-    --processor-args '{"use_fast": false}' \
+    --tokenizer kind=huggingface_auto,model=gpt2,load_kwargs.use_fast=false \
     --config "prompt_tokens=512,output_tokens=256,prefix_tokens_max=100" \
     --include-prefix-in-token-count
 ```
@@ -526,7 +528,7 @@ guidellm preprocess dataset \
 guidellm preprocess dataset \
     "kind=json_file,path=my_dataset.jsonl" \
     "processed.jsonl" \
-    --processor "gpt2" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
     --config "prompt_tokens=512,output_tokens=256" \
     --push-to-hub \
     --hub-dataset-id "username/processed-dataset"
@@ -534,8 +536,9 @@ guidellm preprocess dataset \
 
 ### Notes
 
-- The `--config` parameter accepts a `PreprocessDatasetConfig` which includes all token count fields (prompt_tokens, output_tokens, etc.) plus `prefix_tokens_max` for controlling prefix length. See the [Configuration and Processor Options](#configuration-and-processor-options) section above for all available parameters.
-- The processor/tokenizer is required because the preprocessing command needs to tokenize prompts to ensure they match target token sizes. See the [Data Arguments Overview](#data-arguments-overview) for tokenizer usage in benchmarks.
+- The `--config` parameter accepts a `PreprocessDatasetConfig` which includes all token count fields (prompt_tokens, output_tokens, etc.) plus `prefix_tokens_max` for controlling prefix length. See the [Configuration and Tokenizer Options](#configuration-and-tokenizer-options) section above for all available parameters.
+- The tokenizer is required because the preprocessing command needs to tokenize prompts to ensure they match target token sizes. See the [Data Arguments Overview](#data-arguments-overview) for tokenizer usage in benchmarks.
+- Dataset loader kwargs belong on the positional `DATA` descriptor (`load_kwargs=...`), not a separate `--data-args` flag.
 - Column mappings are only needed when your dataset uses non-standard column names. GuideLLM will automatically try common column names if no mapping is provided.
 - When using `--short-prompt-strategy concatenate`, ensure your dataset has enough samples to concatenate, or some prompts may be skipped.
 - The output format is determined by the file extension of `OUTPUT_PATH` (e.g., `.jsonl`, `.csv`, `.parquet`).
