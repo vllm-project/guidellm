@@ -1,169 +1,30 @@
 import os
-from collections.abc import Callable, Iterator
-from enum import Enum
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from datasets import Dataset
 from loguru import logger
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.config import load_config
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.preprocessors import GenerativeColumnMapper, PreprocessorRegistry
 from guidellm.data.schemas import (
     DataArgs,
     DataPreprocessorArgs,
     DataTokenizerArgs,
-    PreprocessDatasetConfig,
+    PreprocessStrategyArgs,
+    PromptTooShortError,
 )
 from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
 from guidellm.utils.random import IntegerRangeSampler
 
-
-class PromptTooShortError(Exception):
-    pass
-
-
-class ShortPromptStrategy(str, Enum):
-    IGNORE = "ignore"
-    CONCATENATE = "concatenate"
-    PAD = "pad"
-    ERROR = "error"
-
-
-class ShortPromptStrategyHandler:
-    """Handler class for short prompt strategies."""
-
-    @staticmethod
-    def handle_ignore(
-        current_prompt: str,
-        min_prompt_tokens: int,
-        tokenizer: PreTrainedTokenizerBase,
-        **_kwargs,
-    ) -> str | None:
-        """
-        Ignores prompts that are shorter than the required minimum token length.
-
-        :param current_prompt: The input prompt string.
-        :param min_prompt_tokens: Minimum required token count.
-        :param tokenizer: Tokenizer used to count tokens.
-        :return: The prompt if it meets the length, otherwise None.
-        """
-
-        if len(tokenizer.encode(current_prompt)) < min_prompt_tokens:
-            logger.warning("Prompt too short, ignoring")
-            return None
-        return current_prompt
-
-    @staticmethod
-    def handle_concatenate(
-        current_prompt: str,
-        min_prompt_tokens: int,
-        dataset_iterator: Iterator[dict[str, Any]],
-        prompt_column: str,
-        tokenizer: PreTrainedTokenizerBase,
-        concat_delimiter: str,
-        **_kwargs,
-    ) -> str | None:
-        """
-        Concatenates prompts until the minimum token requirement is met.
-
-        :param current_prompt: The initial prompt.
-        :param min_prompt_tokens: Target minimum token length.
-        :param dataset_iterator: Iterator to fetch more prompts.
-        :param prompt_column: Column key for prompt extraction.
-        :param tokenizer: Tokenizer used to count tokens.
-        :param concat_delimiter: Delimiter to use between prompts.
-        :return: Concatenated prompt or None if not enough data.
-        """
-
-        tokens_len = len(tokenizer.encode(current_prompt))
-        while tokens_len < min_prompt_tokens:
-            try:
-                next_row = next(dataset_iterator)
-            except StopIteration:
-                logger.warning(
-                    "Could not concatenate enough prompts to reach minimum "
-                    "length, ignoring"
-                )
-                return None
-            current_prompt += concat_delimiter + next_row[prompt_column]
-            tokens_len = len(tokenizer.encode(current_prompt))
-        return current_prompt
-
-    @staticmethod
-    def handle_pad(
-        current_prompt: str,
-        min_prompt_tokens: int,
-        tokenizer: PreTrainedTokenizerBase,
-        pad_char: str,
-        pad_multiplier: int = 2,
-        **_kwargs,
-    ) -> str:
-        """
-        Pads the prompt with a character until it reaches the minimum token length.
-
-        :param current_prompt: The input prompt.
-        :param min_prompt_tokens: Desired minimum token count.
-        :param tokenizer: Tokenizer used to count tokens.
-        :param pad_char: Character used for padding.
-        :param pad_multiplier: Multiplier for padding character length.
-        :return: Padded prompt string.
-        """
-        tokens = tokenizer.encode(current_prompt)
-        pad_count = 1
-        prompt = current_prompt
-        while len(tokens) < min_prompt_tokens:
-            prompt += pad_char * pad_count
-            tokens = tokenizer.encode(prompt)
-            pad_count *= pad_multiplier
-        return prompt
-
-    @staticmethod
-    def handle_error(
-        current_prompt: str,
-        min_prompt_tokens: int,
-        tokenizer: PreTrainedTokenizerBase,
-        **_kwargs,
-    ) -> str | None:
-        """
-        Raises an error if the prompt is too short.
-
-        :param current_prompt: The input prompt.
-        :param min_prompt_tokens: Required token count.
-        :param tokenizer: Tokenizer used to count tokens.
-        :return: The input prompt if valid.
-        :raises PromptTooShortError: If the prompt is too short.
-        """
-
-        prompt_len = len(tokenizer.encode(current_prompt))
-        if prompt_len < min_prompt_tokens:
-            raise PromptTooShortError(
-                f"Found too short prompt: {current_prompt}, with length: {prompt_len}. "
-                f"Minimum length required: {min_prompt_tokens}.",
-            )
-        return current_prompt
-
-    @classmethod
-    def get_strategy_handler(cls, strategy: ShortPromptStrategy) -> Callable[..., Any]:
-        """
-        Get the handler for a specific strategy.
-
-        :param strategy: The short prompt strategy to get the handler for.
-        :return: The handler callable for the specified strategy.
-        """
-        return cast("Callable[..., Any]", STRATEGY_HANDLERS[strategy])
-
-
-# Initialize STRATEGY_HANDLERS after class definition to allow method references
-STRATEGY_HANDLERS = {
-    ShortPromptStrategy.IGNORE: ShortPromptStrategyHandler.handle_ignore,
-    ShortPromptStrategy.CONCATENATE: ShortPromptStrategyHandler.handle_concatenate,
-    ShortPromptStrategy.PAD: ShortPromptStrategyHandler.handle_pad,
-    ShortPromptStrategy.ERROR: ShortPromptStrategyHandler.handle_error,
-}
+__all__ = [
+    "PromptTooShortError",
+    "process_dataset",
+    "push_dataset_to_hub",
+]
 
 
 def _validate_output_suffix(output_path: str | Path) -> None:
@@ -176,43 +37,12 @@ def _validate_output_suffix(output_path: str | Path) -> None:
         )
 
 
-def parse_synthetic_config(
-    config_input: str | Path,
-) -> PreprocessDatasetConfig:
-    """
-    Parse PreprocessDatasetConfig from string or file path.
-
-    Reuses SyntheticTextDatasetDeserializer's parsing logic to support:
-    - JSON strings
-    - Key=value pairs
-    - File paths (.json, .yaml, .yml, .config)
-
-    :param config_input: String or path to config.
-    :return: Parsed PreprocessDatasetConfig instance.
-    :raises ValueError: If the format is not recognized or parsing fails.
-    """
-    config = load_config(config_input, PreprocessDatasetConfig)
-
-    if config is not None:
-        return config
-
-    raise ValueError(
-        f"Could not parse config from input: {config_input}. "
-        "Expected JSON string, key=value pairs, or file path "
-        "(.json, .yaml, .yml, .config)"
-    )
-
-
 def process_dataset(
     data: DataArgs,
     output_path: str | Path,
     tokenizer: DataTokenizerArgs,
-    config: str | Path,
+    strategy: PreprocessStrategyArgs,
     data_column_mapper: DataPreprocessorArgs,
-    short_prompt_strategy: ShortPromptStrategy,
-    pad_char: str | None,
-    concat_delimiter: str | None,
-    include_prefix_in_token_count: bool,
     push_to_hub: bool,
     hub_dataset_id: str | None,
     random_seed: int,
@@ -224,9 +54,6 @@ def process_dataset(
     logger.info(
         "Starting dataset conversion | Input: {} | Output: {}", data, output_path
     )
-
-    # Parse config
-    config_obj = parse_synthetic_config(config)
 
     # Load tokenizer
     tokenizer_factory = TokenizerRegistry.create(tokenizer)
@@ -250,19 +77,14 @@ def process_dataset(
     prompt_column, prefix_column, output_column = _extract_column_names(column_mapper)
 
     # Create token samplers
-    prompt_token_sampler, output_token_sampler, prefix_tokens_max = (
-        _create_token_samplers(
-            config_obj,
-            random_seed,
-        )
+    prompt_token_sampler, output_token_sampler = _create_token_samplers(
+        strategy,
+        random_seed,
     )
 
     # Process dataset
     dataset_iterator = iter(dataset)
     processed_prompts = []
-    prompt_handler = ShortPromptStrategyHandler.get_strategy_handler(
-        short_prompt_strategy
-    )
 
     for row in dataset_iterator:
         processed_row = _process_single_row(
@@ -272,18 +94,13 @@ def process_dataset(
             prompt_token_sampler=prompt_token_sampler,
             output_token_sampler=output_token_sampler,
             tokenizer=loaded_tokenizer,
-            prompt_handler=prompt_handler,
+            strategy=strategy,
             dataset_iterator=dataset_iterator,
-            include_prefix_in_token_count=include_prefix_in_token_count,
-            pad_char=pad_char,
-            concat_delimiter=concat_delimiter,
             output_column=output_column,
-            prefix_tokens_max=prefix_tokens_max,
         )
         if processed_row is not None:
             processed_prompts.append(processed_row)
 
-        # Finalize
     _finalize_processed_dataset(
         processed_prompts,
         output_path,
@@ -329,40 +146,37 @@ def _extract_column_names(
 
 
 def _create_token_samplers(
-    config_obj: PreprocessDatasetConfig,
+    strategy: PreprocessStrategyArgs,
     random_seed: int,
-) -> tuple[Iterator[int], Iterator[int], int | None]:
+) -> tuple[Iterator[int], Iterator[int]]:
     """
-    Create token samplers for prompt, output, and prefix tokens.
+    Create token samplers for prompt and output tokens.
 
-    :param config_obj: Configuration object with token settings.
-    :param prefix_tokens: Optional single prefix token count.
+    :param strategy: Preprocess strategy with token count settings.
     :param random_seed: Seed for random sampling.
-    :return: Tuple of (prompt_sampler, output_sampler, prefix_tokens_max).
-        prefix_sampler is None when prefix_tokens is not provided.
-        prefix_tokens_max is the maximum prefix token limit from config.
+    :return: Tuple of (prompt_sampler, output_sampler).
     """
     prompt_token_sampler = iter(
         IntegerRangeSampler(
-            average=config_obj.prompt_tokens,
-            variance=config_obj.prompt_tokens_stdev,
-            min_value=config_obj.prompt_tokens_min,
-            max_value=config_obj.prompt_tokens_max,
+            average=strategy.prompt_tokens,
+            variance=strategy.prompt_tokens_stdev,
+            min_value=strategy.prompt_tokens_min,
+            max_value=strategy.prompt_tokens_max,
             random_seed=random_seed,
         )
     )
 
     output_token_sampler = iter(
         IntegerRangeSampler(
-            average=config_obj.output_tokens,
-            variance=config_obj.output_tokens_stdev,
-            min_value=config_obj.output_tokens_min,
-            max_value=config_obj.output_tokens_max,
+            average=strategy.output_tokens,
+            variance=strategy.output_tokens_stdev,
+            min_value=strategy.output_tokens_min,
+            max_value=strategy.output_tokens_max,
             random_seed=random_seed,
         )
     )
 
-    return prompt_token_sampler, output_token_sampler, config_obj.prefix_tokens_max
+    return prompt_token_sampler, output_token_sampler
 
 
 def _process_dataset_row(
@@ -382,7 +196,6 @@ def _process_dataset_row(
     :param prompt_column: Name of prompt column.
     :param prefix_column: Name of prefix column or None.
     :param output_column: Name of output tokens count column.
-    :param target_prompt_len: Target prompt token length.
     :param target_output_len: Target output token length.
     :param prompt_text: Processed prompt text.
     :param prefix_text: Processed prefix text or None.
@@ -405,22 +218,14 @@ def _process_single_row(
     prompt_token_sampler: Iterator[int],
     output_token_sampler: Iterator[int],
     tokenizer: PreTrainedTokenizerBase,
-    prompt_handler: Callable,
+    strategy: PreprocessStrategyArgs,
     dataset_iterator: Iterator[dict[str, Any]],
-    include_prefix_in_token_count: bool,
-    pad_char: str | None,
-    concat_delimiter: str | None,
     output_column: str,
-    prefix_tokens_max: int | None,
 ) -> dict[str, Any] | None:
     """
     Process a single row from the dataset.
 
-    :param include_prefix_in_token_count: When True, includes prefix tokens in the
-        prompt token count calculation. When False, prefix tokens are not counted
-        toward prompt tokens.
-    :param prefix_tokens_max: Maximum prefix token limit. If set, the prefix will be
-        trimmed if it exceeds this limit.
+    :param strategy: Preprocess strategy controlling token targets and short prompts.
     :return: Processed row dictionary or None if row should be skipped.
     """
     # Extract prompt and prefix
@@ -434,13 +239,15 @@ def _process_single_row(
     # Handle prefix
     if prefix_text:
         # Apply prefix_tokens_max limit if set (strict maximum)
-        if prefix_tokens_max is not None:
+        if strategy.prefix_tokens_max is not None:
             prefix_tokens_list = tokenizer.encode(prefix_text)
-            if len(prefix_tokens_list) > prefix_tokens_max:
-                prefix_text = tokenizer.decode(prefix_tokens_list[:prefix_tokens_max])  # type: ignore[assignment]
+            if len(prefix_tokens_list) > strategy.prefix_tokens_max:
+                prefix_text = tokenizer.decode(  # type: ignore[assignment]
+                    prefix_tokens_list[: strategy.prefix_tokens_max]
+                )
 
         # Count prefix tokens toward prompt if enabled
-        if include_prefix_in_token_count:
+        if strategy.count_prefix:
             count_adjustment = len(tokenizer.encode(prefix_text))
 
     if target_prompt_len == 0:
@@ -451,24 +258,23 @@ def _process_single_row(
         if adjusted_prompt_len <= 0:
             logger.warning(
                 "The prefix exceeds target output length with "
-                "--include-prefix-in-token-count enabled; Using prompt size"
+                "count_prefix enabled; Using prompt size"
                 "of 1; skipping row"
             )
             return None
         target_prompt_len = adjusted_prompt_len
 
-    # Handle short prompts
-    prompt_text = prompt_handler(
+    # Handle short prompts via strategy encapsulation
+    handled_prompt = strategy.handle_short_prompt(
         current_prompt=prompt_text,
         min_prompt_tokens=target_prompt_len,
+        tokenizer=tokenizer,
         dataset_iterator=dataset_iterator,
         prompt_column=prompt_column,
-        tokenizer=tokenizer,
-        pad_char=pad_char,
-        concat_delimiter=concat_delimiter,
     )
-    if prompt_text is None:
+    if handled_prompt is None:
         return None
+    prompt_text = handled_prompt
 
     # Trim long prompts
     tokens = tokenizer.encode(prompt_text)

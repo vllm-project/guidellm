@@ -8,11 +8,13 @@ import click
 import guidellm.data.preprocessors  # noqa: F401
 import guidellm.data.tokenizers  # noqa: F401
 from guidellm.cli.preprocess.args import PreprocessDatasetArgs
+from guidellm.data.schemas import PreprocessStrategyArgs
 
 from .dataset import dataset
 
 __all__ = ["preprocess"]
 
+PreprocessStrategyArgs.reload_schema()
 PreprocessDatasetArgs.reload_schema()
 
 

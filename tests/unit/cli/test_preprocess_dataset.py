@@ -22,11 +22,15 @@ def test_preprocess_dataset_help_uses_registry_options():
 
     assert result.exit_code == 0
     assert "--tokenizer" in result.output
+    assert "--strategy" in result.output
     assert "--seed" in result.output
     assert "--data-column-mapper" in result.output
+    assert "--config" not in result.output
+    assert "--short-prompt-strategy" not in result.output
+    assert "--pad-char" not in result.output
+    assert "--concat-delimiter" not in result.output
+    assert "--include-prefix-in-token-count" not in result.output
     assert "--processor" not in result.output
-    assert "--processor-args" not in result.output
-    assert "--data-args" not in result.output
     assert "--random-seed" not in result.output
 
 
@@ -45,8 +49,8 @@ def test_preprocess_dataset_requires_tokenizer_kind():
             "dataset",
             "kind=json_file,path=input.json",
             "output.jsonl",
-            "--config",
-            "prompt_tokens=10,output_tokens=5",
+            "--strategy",
+            "kind=ignore,prompt_tokens=10,output_tokens=5",
             "--tokenizer",
             "model=gpt2",
         ],
@@ -58,9 +62,33 @@ def test_preprocess_dataset_requires_tokenizer_kind():
 
 
 @pytest.mark.sanity
-def test_preprocess_dataset_rejects_legacy_processor_flag():
+def test_preprocess_dataset_requires_strategy():
     """
-    Legacy ``--processor`` syntax should no longer be accepted.
+    Missing strategy should fail validation.
+
+    ## WRITTEN BY AI ##
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "preprocess",
+            "dataset",
+            "kind=json_file,path=input.json",
+            "output.jsonl",
+            "--tokenizer",
+            "kind=huggingface_auto,model=gpt2",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--strategy" in result.output
+
+
+@pytest.mark.sanity
+def test_preprocess_dataset_rejects_legacy_config_flag():
+    """
+    Legacy ``--config`` syntax should no longer be accepted.
 
     ## WRITTEN BY AI ##
     """
@@ -74,13 +102,13 @@ def test_preprocess_dataset_rejects_legacy_processor_flag():
             "output.jsonl",
             "--config",
             "prompt_tokens=10,output_tokens=5",
-            "--processor",
-            "gpt2",
+            "--tokenizer",
+            "kind=huggingface_auto,model=gpt2",
         ],
     )
 
     assert result.exit_code != 0
-    assert "No such option: --processor" in result.output
+    assert "No such option: --config" in result.output
 
 
 @pytest.mark.regression
@@ -99,10 +127,10 @@ def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
             "dataset",
             "kind=huggingface,source=test/ds,load_kwargs.split=train",
             "output.jsonl",
-            "--config",
-            "prompt_tokens=10,output_tokens=5",
             "--tokenizer",
             "kind=huggingface_auto,model=gpt2,load_kwargs.use_fast=false",
+            "--strategy",
+            "kind=pad,prompt_tokens=10,output_tokens=5,pad=X,count_prefix=true",
             "--seed",
             "kind=static,value=123",
             "--data-column-mapper",
@@ -117,6 +145,10 @@ def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
     assert kwargs["tokenizer"].kind == "huggingface_auto"
     assert kwargs["tokenizer"].model == "gpt2"
     assert kwargs["tokenizer"].load_kwargs == {"use_fast": False}
+    assert kwargs["strategy"].kind == "pad"
+    assert kwargs["strategy"].prompt_tokens == 10
+    assert kwargs["strategy"].pad == "X"
+    assert kwargs["strategy"].count_prefix is True
     assert kwargs["data_column_mapper"].kind == "generative_column_mapper"
     assert kwargs["data"].kind == "huggingface"
     assert kwargs["data"].load_kwargs == {"split": "train"}

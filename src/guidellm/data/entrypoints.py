@@ -3,7 +3,6 @@ from random import Random
 from typing import Any
 
 from guidellm.data import builders
-from guidellm.data.builders import ShortPromptStrategy
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.finalizers import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.loaders import DataLoader, DataLoaderRegistry
@@ -19,6 +18,7 @@ from guidellm.data.schemas import (
     DataPreprocessorArgs,
     DatasetType,
     DataTokenizerArgs,
+    PreprocessStrategyArgs,
 )
 from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.utils.console import Console
@@ -142,12 +142,8 @@ def process_dataset(
     data: DataArgs | dict[str, Any],
     output_path: str | Path,
     tokenizer: DataTokenizerArgs | dict[str, Any],
-    config: str | Path,
+    strategy: PreprocessStrategyArgs | dict[str, Any],
     data_column_mapper: DataPreprocessorArgs | dict[str, Any] | None = None,
-    short_prompt_strategy: ShortPromptStrategy = ShortPromptStrategy.IGNORE,
-    pad_char: str | None = None,
-    concat_delimiter: str | None = None,
-    include_prefix_in_token_count: bool = False,
     push_to_hub: bool = False,
     hub_dataset_id: str | None = None,
     random_seed: int = 42,
@@ -158,15 +154,9 @@ def process_dataset(
     :param data: Dataset source configuration (``DataArgs`` or equivalent dict).
     :param output_path: File path to save the processed dataset.
     :param tokenizer: Tokenizer configuration (``DataTokenizerArgs`` or dict).
-    :param config: PreprocessDatasetConfig string or file path.
+    :param strategy: Preprocess strategy configuration including token targets and
+        short-prompt handling (``PreprocessStrategyArgs`` or dict).
     :param data_column_mapper: Optional column mapping configuration.
-    :param short_prompt_strategy: Strategy for handling short prompts.
-    :param pad_char: Character used when padding short prompts.
-    :param concat_delimiter: Delimiter for concatenation strategy.
-    :param include_prefix_in_token_count:
-        Whether to include prefix in prompt token count, simplifying the token counts.
-        When True, prefix trimming is disabled and the prefix is kept as-is. The prefix
-        token count is subtracted from the prompt token budget instead.
     :param push_to_hub: Whether to push to Hugging Face Hub.
     :param hub_dataset_id: Dataset ID on Hugging Face Hub.
     :param random_seed: Seed for random sampling.
@@ -178,6 +168,11 @@ def process_dataset(
         if isinstance(tokenizer, DataTokenizerArgs)
         else DataTokenizerArgs.model_validate(tokenizer)
     )
+    strategy_config = (
+        strategy
+        if isinstance(strategy, PreprocessStrategyArgs)
+        else PreprocessStrategyArgs.model_validate(strategy)
+    )
     column_mapper_config = DataPreprocessorArgs.model_validate(
         data_column_mapper
         if data_column_mapper is not None
@@ -187,12 +182,8 @@ def process_dataset(
         data_config,
         output_path,
         tokenizer_config,
-        config,
+        strategy_config,
         column_mapper_config,
-        short_prompt_strategy,
-        pad_char,
-        concat_delimiter,
-        include_prefix_in_token_count,
         push_to_hub,
         hub_dataset_id,
         random_seed,

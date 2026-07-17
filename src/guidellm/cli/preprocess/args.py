@@ -12,7 +12,11 @@ from pydantic import (
 )
 
 from guidellm.benchmark.schemas import RandomArgs
-from guidellm.data.schemas import DataPreprocessorArgs, DataTokenizerArgs
+from guidellm.data.schemas import (
+    DataPreprocessorArgs,
+    DataTokenizerArgs,
+    PreprocessStrategyArgs,
+)
 from guidellm.schemas import ReloadableBaseModel, standard_model_config
 
 __all__ = [
@@ -52,6 +56,22 @@ class PreprocessDatasetArgs(ReloadableBaseModel):
         ),
         examples=[{"kind": "huggingface_auto", "model": "gpt2"}],
         json_schema_extra={"argument_alias": "tokenizer"},
+    )
+    strategy: PreprocessStrategyArgs = Field(  # type: ignore[assignment]
+        description=(
+            "Preprocess strategy including token targets and short-prompt handling. "
+            "Example: kind=ignore,prompt_tokens=512,output_tokens=256"
+        ),
+        examples=[
+            {"kind": "ignore", "prompt_tokens": 512, "output_tokens": 256},
+            {
+                "kind": "pad",
+                "prompt_tokens": 512,
+                "output_tokens": 256,
+                "pad": " ",
+            },
+        ],
+        json_schema_extra={"argument_alias": "strategy"},
     )
     data_column_mapper: DataPreprocessorArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("generative_column_mapper"),
