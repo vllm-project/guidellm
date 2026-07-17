@@ -610,7 +610,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                     to_yield = graph.subgraph_for_nodes(queued_ids)
 
                 if to_yield.request_infos:
-                    yield to_yield  # type: ignore[misc]
+                    yield to_yield
 
                 if stop_queueing:
                     self.stop_send_requests_event.set()

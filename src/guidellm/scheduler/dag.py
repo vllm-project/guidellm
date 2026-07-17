@@ -13,7 +13,8 @@ from __future__ import annotations
 import time
 from collections import deque
 from collections.abc import Iterable
-from typing import Generic, NamedTuple, TypeVar
+from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 from guidellm.scheduler.schemas import (
     ConversationEdge,
@@ -30,16 +31,17 @@ _RequestT = TypeVar("_RequestT")
 _ResponseT = TypeVar("_ResponseT")
 
 
-class CompletedNodeData(NamedTuple, Generic[_RequestT, _ResponseT]):
+@dataclass(frozen=True)
+class CompletedNodeData(Generic[_RequestT, _ResponseT]):
     """
     Stored result for a completed DAG node.
 
     :param request: The original request that was executed.
-    :param response: The response returned by the backend.
+    :param response: The response returned by the backend, if any.
     """
 
     request: _RequestT
-    response: _ResponseT
+    response: _ResponseT | None
 
 
 class DAGExecutionState(Generic[_RequestT, _ResponseT]):
@@ -168,7 +170,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         self,
         node_id: str,
         request: _RequestT,
-        response: _ResponseT,
+        response: _ResponseT | None,
     ) -> list[str]:
         """
         Mark a node as completed and return newly dependency-satisfied children.
@@ -179,7 +181,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
         :param node_id: The ID of the completed node.
         :param request: The request that was executed.
-        :param response: The response from the backend.
+        :param response: The response from the backend, if any.
         :return: Sorted list of child node IDs that became dependency-ready.
         :raises ValueError: If the node is already completed or doesn't exist.
         """
@@ -219,7 +221,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
     def assemble_history(
         self, node_id: str
-    ) -> list[tuple[_RequestT, _ResponseT]] | None:
+    ) -> list[tuple[_RequestT, _ResponseT | None]] | None:
         """
         Assemble the flat history list for a node via walk-back.
 
@@ -242,8 +244,8 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         if not incoming:
             return None
 
-        full_chain: list[tuple[_RequestT, _ResponseT]] = []
-        last_entries: list[tuple[str, tuple[_RequestT, _ResponseT]]] = []
+        full_chain: list[tuple[_RequestT, _ResponseT | None]] = []
+        last_entries: list[tuple[str, tuple[_RequestT, _ResponseT | None]]] = []
         has_any_history = False
 
         # Walk-back through the single full parent (if any)
@@ -266,7 +268,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             return None
 
         # Combine: full chain in chronological order, then last outputs
-        result: list[tuple[_RequestT, _ResponseT]] = list(full_chain)
+        result: list[tuple[_RequestT, _ResponseT | None]] = list(full_chain)
         for _, entry in last_entries:
             result.append(entry)
 
@@ -288,7 +290,9 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                 return edge
         return None
 
-    def _walk_back_full(self, start_node_id: str) -> list[tuple[_RequestT, _ResponseT]]:
+    def _walk_back_full(
+        self, start_node_id: str
+    ) -> list[tuple[_RequestT, _ResponseT | None]]:
         """
         Walk backwards through ``full`` edges collecting ancestor history.
 
@@ -302,8 +306,8 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         :param start_node_id: The node to start walking back from.
         :return: List of (request, response) pairs in chronological order.
         """
-        chain_reversed: list[tuple[_RequestT, _ResponseT]] = []
-        interleaved_last: list[tuple[str, tuple[_RequestT, _ResponseT]]] = []
+        chain_reversed: list[tuple[_RequestT, _ResponseT | None]] = []
+        interleaved_last: list[tuple[str, tuple[_RequestT, _ResponseT | None]]] = []
         current_id: str | None = start_node_id
 
         while current_id is not None:
