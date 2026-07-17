@@ -18,6 +18,10 @@ from guidellm.backends.openai import (
     OpenAIWebSocketBackendArgs,
 )
 from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
+from guidellm.backends.vllm_python.offline import (
+    VLLMOfflineBackend,
+    VLLMOfflineBackendArgs,
+)
 from guidellm.backends.vllm_python.vllm import (
     VLLMPythonBackend,
     VLLMPythonBackendArgs,
@@ -557,6 +561,21 @@ class TestBackend:
         backend = Backend.create(args)
         assert isinstance(backend, TestDecoratorBackend)
         assert backend.info == {"test_param": "custom"}
+
+    @pytest.mark.smoke
+    def test_vllm_offline_backend_registered(self):
+        """
+        Test that vllm_offline backend is registered and createable.
+        ## WRITTEN BY AI ##
+        """
+        assert Backend.is_registered("vllm_offline")
+        args = VLLMOfflineBackendArgs(model="test-model")
+        backend = Backend.create(args)
+        assert isinstance(backend, VLLMOfflineBackend)
+        assert isinstance(backend, VLLMPythonBackend)
+        assert backend._args.model == "test-model"
+        assert backend._args.batch_size == 32
+        assert backend.kind == "vllm_offline"
 
     @pytest.mark.smoke
     def test_registered_objects(self):
