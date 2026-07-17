@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from collections import deque
+from collections.abc import Iterable
 from typing import Generic, Literal
 
 from pydantic import Field, model_validator
-from typing_extensions import Self
+from typing_extensions import Self, TypeAliasType
 
 from guidellm.schemas import RequestInfo, RequestSettings, StandardBaseModel
 
@@ -15,6 +17,8 @@ __all__ = [
     "ConversationEdge",
     "ConversationGraph",
     "ConversationNode",
+    "ConversationT",
+    "DatasetIterT",
     "HistoryContext",
 ]
 
@@ -148,6 +152,51 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
         ),
     )
 
+    @classmethod
+    def from_linear_chain(
+        cls,
+        requests: list[tuple[RequestT, RequestSettings]],
+        agent_id: str = "default",
+    ) -> Self:
+        """
+        Wrap a linear list of request/settings pairs as a single-path graph.
+
+        Each request becomes a node connected to the next via a ``full``
+        edge, preserving multi-turn conversation semantics.
+
+        :param requests: Ordered list of ``(request, settings)`` pairs.
+        :param agent_id: Agent identifier assigned to all nodes.
+        :return: A conversation graph with one path through all requests.
+        :raises ValueError: If the requests list is empty.
+        """
+        if not requests:
+            raise ValueError("Cannot create a graph from an empty request list")
+
+        nodes: dict[str, ConversationNode[RequestT]] = {}
+        edges: list[ConversationEdge] = []
+        node_ids: list[str] = []
+
+        for i, (request, settings) in enumerate(requests):
+            node_id = f"turn_{i}"
+            node_ids.append(node_id)
+            nodes[node_id] = ConversationNode(
+                node_id=node_id,
+                agent_id=agent_id,
+                request=request,
+                settings=settings,
+            )
+
+        for i in range(len(node_ids) - 1):
+            edges.append(
+                ConversationEdge(
+                    source_node_id=node_ids[i],
+                    target_node_id=node_ids[i + 1],
+                    history_context="full",
+                )
+            )
+
+        return cls(graph_id=str(uuid.uuid4()), nodes=nodes, edges=edges)
+
     @model_validator(mode="after")
     def _validate_graph(self) -> ConversationGraph[RequestT]:
         """
@@ -260,3 +309,21 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
                 nid: info for nid, info in self.request_infos.items() if nid in node_ids
             },
         )
+
+
+ConversationT = TypeAliasType(
+    "ConversationT",
+    ConversationGraph[RequestT],
+    type_params=(RequestT,),
+)
+"""A conversation graph of requests for multi-turn / multi-agent workloads."""
+
+# NOTE: This is the interface between data and scheduler.
+DatasetIterT = TypeAliasType(
+    "DatasetIterT",
+    Iterable[ConversationGraph[RequestT]],
+    type_params=(RequestT,),
+)
+"""
+Output of the data loader: an iterable of conversation graphs.
+"""

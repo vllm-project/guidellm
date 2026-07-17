@@ -39,8 +39,9 @@ from guidellm.scheduler.constraints import (
     MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
 )
+from guidellm.scheduler.schemas import ConversationGraph
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestTimings
+from guidellm.schemas import RequestSettings, RequestTimings
 
 
 def async_timeout(delay):
@@ -157,7 +158,10 @@ class TestWorkerGroup:
         """Test comprehensive lifecycle with different strategies and constraints."""
         # Setup
         backend = MockBackend(response_delay=0.01, processes_limit_value=1)
-        requests = [f"request_{ind}" for ind in range(1000)]
+        requests = [
+            ConversationGraph.from_linear_chain([(f"request_{ind}", RequestSettings())])
+            for ind in range(1000)
+        ]
         group = WorkerProcessGroup(
             backend=backend,
             requests=requests,

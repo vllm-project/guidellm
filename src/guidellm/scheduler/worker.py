@@ -297,9 +297,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 pending_tasks.discard(task)
                 async_semaphore.release()
 
-                if not task.cancelled():
-                    if exception := task.exception():
-                        raise exception
+                if not task.cancelled() and (exception := task.exception()):
+                    raise exception
 
             # Main loop; loop until canceled
             while True:
@@ -416,6 +415,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.error = "Request was cancelled"
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", response, request, request_info)
+            if state is not None:
+                self._abort_remaining_nodes(state, skip_node_id=node_id)
             raise
         except Exception as exc:  # noqa: BLE001
             self._handle_node_error(
@@ -522,18 +523,33 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 node_id,
             )
         if state is not None:
-            remaining = state.abort()
-            infos = self.graph_request_infos.get(state.graph.graph_id, {})
-            for rem_id in remaining:
-                rem_node = state.graph.nodes[rem_id]
-                rem_info = infos.get(rem_id)
-                if rem_info is not None:
-                    rem_info.error = "Request was cancelled"
-                    rem_info.timings.resolve_end = time.time()
-                    self._send_update("cancelled", None, rem_node.request, rem_info)
-            if state in self.turns_queue:
-                self.turns_queue.remove(state)
-            self.graph_request_infos.pop(state.graph.graph_id, None)
+            self._abort_remaining_nodes(state, skip_node_id=node_id)
+
+    def _abort_remaining_nodes(
+        self,
+        state: DAGExecutionState[RequestT, ResponseT],
+        skip_node_id: str | None = None,
+    ) -> None:
+        """Cancel incomplete nodes and drop the graph from worker queues.
+
+        :param state: Graph execution state to abort.
+        :param skip_node_id: Node already reported (errored/cancelled); do not
+            send a second cancel update for it.
+        """
+        remaining = state.abort()
+        infos = self.graph_request_infos.get(state.graph.graph_id, {})
+        for rem_id in remaining:
+            if rem_id == skip_node_id:
+                continue
+            rem_node = state.graph.nodes[rem_id]
+            rem_info = infos.get(rem_id)
+            if rem_info is not None:
+                rem_info.error = "Request was cancelled"
+                rem_info.timings.resolve_end = time.time()
+                self._send_update("cancelled", None, rem_node.request, rem_info)
+        if state in self.turns_queue:
+            self.turns_queue.remove(state)
+        self.graph_request_infos.pop(state.graph.graph_id, None)
 
     async def _schedule_request(
         self, request: RequestT, request_info: RequestInfo, target_start: float

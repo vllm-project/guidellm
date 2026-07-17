@@ -18,12 +18,25 @@ from guidellm.data.preprocessors.mappers import (
     GenerativeColumnMapper,
     GenerativeColumnMapperArgs,
 )
-from guidellm.schemas import GenerationRequest, RequestSettings
+from guidellm.schemas import GenerationRequest
+from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 
 
-def _run_row_through_pipeline(
-    row: dict[str, Any],
-) -> list[tuple[GenerationRequest, RequestSettings]]:
+def _ordered_requests(graph: GenerativeConversationGraph) -> list[GenerationRequest]:
+    """Return graph node requests ordered by turn index suffix.
+
+    ## WRITTEN BY AI ##
+    """
+    return [
+        graph.nodes[nid].request
+        for nid in sorted(
+            graph.nodes,
+            key=lambda nid: int(nid.rsplit("_", 1)[-1]),
+        )
+    ]
+
+
+def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:
     """Push a single dataset row through the column mapper and finalizer.
 
     ## WRITTEN BY AI ##
@@ -35,7 +48,9 @@ def _run_row_through_pipeline(
 
     finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
     mapped_turns = mapper([{"dataset": row}])
-    return finalizer(mapped_turns)
+    graph = finalizer(mapped_turns)
+    assert isinstance(graph, GenerativeConversationGraph)
+    return _ordered_requests(graph)
 
 
 class TestJsonlMultiTurnToolCallPipeline:
@@ -70,7 +85,7 @@ class TestJsonlMultiTurnToolCallPipeline:
         rows = _run_row_through_pipeline(row)
 
         assert len(rows) == 5
-        requests = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        requests = rows
 
         assert requests[0].turn_type == "client_tool_call"
         assert "tools_column" in requests[0].columns
@@ -117,7 +132,7 @@ class TestJsonlMultiTurnToolCallPipeline:
         rows = _run_row_through_pipeline(row)
 
         assert len(rows) == 6
-        requests = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        requests = rows
 
         assert requests[0].turn_type == "client_tool_call"
         assert "tools_column" in requests[0].columns

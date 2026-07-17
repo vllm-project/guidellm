@@ -22,6 +22,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
 )
 from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
+from guidellm.scheduler.schemas import ConversationGraph
 from guidellm.schemas import RequestInfo, RequestSettings
 
 
@@ -41,6 +42,10 @@ def async_timeout(delay: float):
 class MockRequest(BaseModel):
     payload: str
     id_: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+
+class MockConversationGraph(ConversationGraph[MockRequest]):
+    """Bound graph type so IPC deserialization restores MockRequest nodes."""
 
 
 class MockBackend(BackendInterface):
@@ -130,7 +135,9 @@ async def test_scheduler_run_integration(
 
     async for resp, req, info, state in scheduler.run(
         requests=[
-            [(MockRequest(payload=f"req_{ind}"), RequestSettings())]
+            MockConversationGraph.from_linear_chain(
+                [(MockRequest(payload=f"req_{ind}"), RequestSettings())]
+            )
             for ind in range(num_requests)
         ],
         backend=MockBackend(),

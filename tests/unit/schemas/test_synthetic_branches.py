@@ -4,12 +4,24 @@ Unit tests for synthetic sub-agent branch graph building.
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
-from guidellm.data.deserializers.synthetic import BranchSpec, SyntheticTextDataArgs
+from guidellm.data.deserializers.synthetic import (
+    BranchSpec,
+    SyntheticTextDataArgs,
+    _SyntheticTextExamplesIterable,
+)
+from guidellm.data.finalizers.generative import (
+    GenerativeRequestFinalizer,
+    GenerativeRequestFinalizerArgs,
+)
+from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
 from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.schemas import GenerationRequest, RequestSettings
 from guidellm.schemas.conversation_graph import GenerativeConversationGraph
+from guidellm.utils.imports import json
 
 
 def _make_request(
@@ -313,12 +325,6 @@ class TestSyntheticBranchesEmitConversationTurns:
         """
         ## WRITTEN BY AI ##
         """
-        from unittest.mock import Mock
-
-        from guidellm.data.deserializers.synthetic import _SyntheticTextExamplesIterable
-        from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
-        from guidellm.utils.imports import json
-
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
         tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
@@ -360,16 +366,6 @@ class TestSyntheticBranchesEmitConversationTurns:
 
         ## WRITTEN BY AI ##
         """
-        from unittest.mock import Mock
-
-        from guidellm.data.deserializers.synthetic import _SyntheticTextExamplesIterable
-        from guidellm.data.finalizers.generative import (
-            GenerativeRequestFinalizer,
-            GenerativeRequestFinalizerArgs,
-        )
-        from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
-        from guidellm.utils.imports import json
-
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
         tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
@@ -437,12 +433,6 @@ class TestSyntheticBranchesEmitConversationTurns:
 
         ## WRITTEN BY AI ##
         """
-        from unittest.mock import Mock
-
-        from guidellm.data.deserializers.synthetic import _SyntheticTextExamplesIterable
-        from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
-        from guidellm.utils.imports import json
-
         tokenizer = Mock()
         tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
         tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (

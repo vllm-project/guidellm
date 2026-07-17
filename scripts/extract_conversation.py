@@ -245,9 +245,9 @@ def extract_conversations(
         )
 
     if truncated:
-        print(
-            f"\n  {_dim(f'... ({total - limit} more requests not shown, use -n to adjust)')}"
-        )
+        remaining = total - limit
+        msg = f"... ({remaining} more requests not shown, use -n to adjust)"
+        print(f"\n  {_dim(msg)}")
 
 
 def _print_agent_context(
@@ -315,10 +315,12 @@ def _print_request(
 
     separator = _dim("─" * 72)
     print(f"\n{separator}")
+    prompt_tokens = _bright_cyan(str(req.get("prompt_tokens")))
+    output_tokens = _bright_green(str(req.get("output_tokens")))
     print(
         f" {_bold(f'Turn {turn_number} of {total}')}"
-        f"    {_dim('(')}prompt_tokens: {_bright_cyan(str(req.get('prompt_tokens')))}"
-        f" {_dim('|')} output_tokens: {_bright_green(str(req.get('output_tokens')))}{_dim(')')}"
+        f"    {_dim('(')}prompt_tokens: {prompt_tokens}"
+        f" {_dim('|')} output_tokens: {output_tokens}{_dim(')')}"
     )
 
     if show_agent_context:

@@ -35,6 +35,7 @@ from guidellm.schemas import (
     GenerationResponse,
     UsageMetrics,
 )
+from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
 from guidellm.utils.registry import RegistryMixin
@@ -5301,7 +5302,14 @@ class TestChatCompletionsToolChoiceOverride:
             },
         ]
         rows = finalizer(items)
-        requests = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        assert isinstance(rows, GenerativeConversationGraph)
+        requests = [
+            rows.nodes[nid].request
+            for nid in sorted(
+                rows.nodes,
+                key=lambda nid: int(nid.rsplit("_", 1)[-1]),
+            )
+        ]
 
         assert len(requests) == 2
         tool_call_req, injection_req = requests
