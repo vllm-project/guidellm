@@ -384,9 +384,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        history: (
-            list[tuple[GenerationRequest, GenerationResponse]] | None
-        ) = None,
+        history: (list[tuple[GenerationRequest, GenerationResponse]] | None) = None,
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Queue a request for batch processing and yield the response.
@@ -456,11 +454,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         text = self._text_from_output(request_output)
         usage = self._usage_from_output(request_output)
-        response_id = (
-            request_output.request_id
-            if request_output.request_id
-            else None
-        )
+        response_id = request_output.request_id if request_output.request_id else None
 
         response = VLLMResponseHandler.build_response(
             request, text, usage, response_id=response_id
@@ -491,39 +485,22 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         request_info: RequestInfo,
         request_output: Any,
     ) -> None:
-        """Populate request timing from vLLM ``RequestOutput.metrics``.
+        """Populate iteration counts from vLLM ``RequestOutput``.
 
-        The ``metrics`` attribute (a ``RequestStateStats``) carries
-        engine-internal timestamps for scheduling, first-token, and
-        completion.  We map those onto the ``RequestInfo.timings``
-        fields so downstream analysis has per-request granularity.
-
-        ``request_start`` / ``request_end`` are left as user-observed
-        wall-clock times and are **not** overwritten here.
+        vLLM's ``RequestStateStats`` timestamps are monotonic-clock
+        values that cannot be mixed with the wall-clock
+        ``request_start`` / ``request_end``, so we only extract
+        token counts here.  Iteration timing fields are left to the
+        wall-clock ``request_start`` / ``request_end`` already set
+        by the caller.
         """
         metrics = getattr(request_output, "metrics", None)
-        if metrics is None:
-            return
+        num_gen = getattr(metrics, "num_generation_tokens", 0) if metrics else 0
 
-        first_token_ts = getattr(metrics, "first_token_ts", None)
-        last_token_ts = getattr(metrics, "last_token_ts", None)
-
-        if first_token_ts is not None and first_token_ts > 0:
-            request_info.timings.first_token_iteration = first_token_ts
-            request_info.timings.first_request_iteration = first_token_ts
-
-        if last_token_ts is not None and last_token_ts > 0:
-            request_info.timings.last_token_iteration = last_token_ts
-            request_info.timings.last_request_iteration = last_token_ts
-
-        num_gen = getattr(metrics, "num_generation_tokens", 0)
         if num_gen > 0:
             request_info.timings.token_iterations = num_gen
             request_info.timings.request_iterations = 1
-        elif (
-            request_output.outputs
-            and request_output.outputs[0].token_ids is not None
-        ):
+        elif request_output.outputs and request_output.outputs[0].token_ids is not None:
             request_info.timings.token_iterations = len(
                 request_output.outputs[0].token_ids
             )

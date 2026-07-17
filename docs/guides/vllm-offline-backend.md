@@ -24,12 +24,12 @@ guidellm run \
 
 ## Offline vs Python backend
 
-| Feature | `vllm_python` | `vllm_offline` |
-|---|---|---|
-| Engine | `AsyncLLMEngine` (async) | `LLM` (synchronous, batch) |
-| Streaming | Supported | Not supported |
-| Batching | Per-request async scheduling | Configurable micro-batches |
-| Best for | Latency profiling, streaming | Throughput benchmarking |
+| Feature   | `vllm_python`                | `vllm_offline`             |
+| --------- | ---------------------------- | -------------------------- |
+| Engine    | `AsyncLLMEngine` (async)     | `LLM` (synchronous, batch) |
+| Streaming | Supported                    | Not supported              |
+| Batching  | Per-request async scheduling | Configurable micro-batches |
+| Best for  | Latency profiling, streaming | Throughput benchmarking    |
 
 ## Backend options
 
