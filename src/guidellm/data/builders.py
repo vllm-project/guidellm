@@ -11,6 +11,7 @@ from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.preprocessors import GenerativeColumnMapper, PreprocessorRegistry
 from guidellm.data.schemas import (
     DataArgs,
+    DataLoaderArgs,
     DataPreprocessorArgs,
     DataTokenizerArgs,
     PreprocessStrategyArgs,
@@ -46,14 +47,23 @@ def process_dataset(
     push_to_hub: bool,
     hub_dataset_id: str | None,
     random_seed: int,
+    data_loader: DataLoaderArgs | None = None,
 ) -> None:
     """
     Main method to process and save a dataset with sampled prompt/output token counts.
+
+    :param data_loader: Optional loader config. When ``samples`` is greater than 0,
+        processing stops after that many successfully processed rows. ``shuffle`` and
+        ``num_workers`` are ignored for preprocessing.
     """
     _validate_output_suffix(output_path)
     logger.info(
         "Starting dataset conversion | Input: {} | Output: {}", data, output_path
     )
+
+    # samples > 0 caps successfully processed output rows; -1 means unlimited.
+    # shuffle / num_workers on TorchDataLoaderArgs are ignored for preprocess.
+    max_samples = data_loader.samples if data_loader is not None else -1
 
     # Load tokenizer
     tokenizer_factory = TokenizerRegistry.create(tokenizer)
@@ -100,6 +110,8 @@ def process_dataset(
         )
         if processed_row is not None:
             processed_prompts.append(processed_row)
+            if max_samples > 0 and len(processed_prompts) >= max_samples:
+                break
 
     _finalize_processed_dataset(
         processed_prompts,

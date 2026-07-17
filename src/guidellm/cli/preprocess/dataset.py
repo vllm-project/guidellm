@@ -78,6 +78,7 @@ def dataset(
         tokenizer=args.tokenizer,
         strategy=args.strategy,
         data_column_mapper=args.data_column_mapper,
+        data_loader=args.data_loader,
         push_to_hub=push_to_hub,
         hub_dataset_id=hub_dataset_id,
         random_seed=args.seed.value,  # type: ignore[attr-defined]

@@ -25,6 +25,7 @@ def test_preprocess_dataset_help_uses_registry_options():
     assert "--strategy" in result.output
     assert "--seed" in result.output
     assert "--data-column-mapper" in result.output
+    assert "--data-loader" in result.output
     assert "--config" not in result.output
     assert "--short-prompt-strategy" not in result.output
     assert "--pad-char" not in result.output
@@ -135,6 +136,8 @@ def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
             "kind=static,value=123",
             "--data-column-mapper",
             "kind=generative_column_mapper,column_mappings.text_column=question",
+            "--data-loader",
+            "kind=pytorch,samples=50",
         ],
     )
 
@@ -152,3 +155,35 @@ def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
     assert kwargs["data_column_mapper"].kind == "generative_column_mapper"
     assert kwargs["data"].kind == "huggingface"
     assert kwargs["data"].load_kwargs == {"split": "train"}
+    assert kwargs["data_loader"].kind == "pytorch"
+    assert kwargs["data_loader"].samples == 50
+
+
+@pytest.mark.regression
+@patch("guidellm.cli.preprocess.dataset.process_dataset")
+def test_preprocess_dataset_defaults_data_loader(mock_process_dataset):
+    """
+    Omitting --data-loader should forward the default pytorch loader config.
+
+    ## WRITTEN BY AI ##
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "preprocess",
+            "dataset",
+            "kind=json_file,path=input.json",
+            "output.jsonl",
+            "--tokenizer",
+            "kind=huggingface_auto,model=gpt2",
+            "--strategy",
+            "kind=ignore,prompt_tokens=10,output_tokens=5",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_process_dataset.assert_called_once()
+    kwargs = mock_process_dataset.call_args.kwargs
+    assert kwargs["data_loader"].kind == "pytorch"
+    assert kwargs["data_loader"].samples == -1

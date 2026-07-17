@@ -918,6 +918,54 @@ class TestProcessDatasetIntegration:
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
     @patch("guidellm.data.builders.TokenizerRegistry")
+    def test_process_dataset_limits_samples(
+        self,
+        mock_tokenizer_registry,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        tokenizer_mock,
+        sample_data_column_mapper,
+        sample_strategy_pad,
+        temp_output_path,
+    ):
+        """
+        data_loader.samples should cap successfully processed output rows.
+
+        ## WRITTEN BY AI ##
+        """
+        dataset = Dataset.from_dict(
+            {
+                "prompt": [
+                    ("Long enough prompt for preprocessing tests. " * 10),
+                    ("Another long enough prompt for preprocessing. " * 10),
+                    ("Yet another long enough prompt for tests. " * 10),
+                    ("Fourth long enough prompt for sample limits. " * 10),
+                    ("Fifth long enough prompt for sample limits. " * 10),
+                ],
+            }
+        )
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
+        mock_deserializer_factory_class.deserialize.return_value = dataset
+
+        process_dataset(
+            data={"kind": "huggingface", "source": "test_data"},
+            output_path=temp_output_path,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_pad,
+            data_column_mapper=sample_data_column_mapper,
+            data_loader={"kind": "pytorch", "samples": 2},
+        )
+
+        assert mock_save_to_file.called
+        saved_dataset = mock_save_to_file.call_args[0][0]
+        assert len(saved_dataset) == 2
+
+    @pytest.mark.sanity
+    @patch("guidellm.data.builders.save_dataset_to_file")
+    @patch("guidellm.data.builders.DatasetDeserializerFactory")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_empty_after_filtering(
         self,
         mock_tokenizer_registry,

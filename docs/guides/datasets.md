@@ -455,12 +455,13 @@ If you're working with multiple datasets and need to specify which dataset's col
 
 ### Additional Options
 
-| Option                  | Description                                                                                  |
-| ----------------------- | -------------------------------------------------------------------------------------------- |
-| `--data-column-mapper`  | Column mapping preprocessor configuration (default: `kind=generative_column_mapper`).        |
-| `--seed`                | Random seed configuration for reproducible token sampling (default: `kind=static,value=42`). |
-| `--push-to-hub`         | Push the processed dataset to Hugging Face Hub (flag).                                       |
-| `--hub-dataset-id <ID>` | Hugging Face Hub dataset ID for upload (required if `--push-to-hub` is set).                 |
+| Option                  | Description                                                                                                                                                                 |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--data-column-mapper`  | Column mapping preprocessor configuration (default: `kind=generative_column_mapper`).                                                                                       |
+| `--data-loader`         | Data loader configuration (default: `kind=pytorch`). Use `samples` to limit how many processed rows are written. `shuffle` and `num_workers` are ignored for preprocessing. |
+| `--seed`                | Random seed configuration for reproducible token sampling (default: `kind=static,value=42`).                                                                                |
+| `--push-to-hub`         | Push the processed dataset to Hugging Face Hub (flag).                                                                                                                      |
+| `--hub-dataset-id <ID>` | Hugging Face Hub dataset ID for upload (required if `--push-to-hub` is set).                                                                                                |
 
 ### Complete Examples
 
@@ -496,7 +497,18 @@ guidellm preprocess dataset \
     --strategy kind=ignore,prompt_tokens=512,output_tokens=256,prefix_tokens_max=100,count_prefix=true
 ```
 
-**Example 4: Preprocessing and uploading to Hugging Face Hub**
+**Example 4: Limit processed rows with --data-loader**
+
+```bash
+guidellm preprocess dataset \
+    "kind=json_file,path=large_dataset.jsonl" \
+    "processed.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
+    --strategy kind=ignore,prompt_tokens=512,output_tokens=256 \
+    --data-loader kind=pytorch,samples=1000
+```
+
+**Example 5: Preprocessing and uploading to Hugging Face Hub**
 
 ```bash
 guidellm preprocess dataset \
@@ -513,5 +525,6 @@ guidellm preprocess dataset \
 - The `--strategy` option accepts a `PreprocessStrategyArgs` registry type that includes token-count fields (`prompt_tokens`, `output_tokens`, and related distribution fields), `prefix_tokens_max`, `count_prefix`, and a short-prompt `kind`. See [Preprocess Strategy](#preprocess-strategy).
 - The tokenizer is required because the preprocessing command needs to tokenize prompts to ensure they match target token sizes. See the [Data Arguments Overview](#data-arguments-overview) for tokenizer usage in benchmarks.
 - Dataset loader kwargs belong on the positional `DATA` descriptor (`load_kwargs=...`), not a separate `--data-args` flag.
+- Use `--data-loader kind=pytorch,samples=<N>` to stop after writing `N` processed rows. `shuffle` and `num_workers` are accepted for CLI parity with `guidellm run` but are ignored during preprocessing.
 - Column mappings are only needed when your dataset uses non-standard column names. GuideLLM will automatically try common column names if no mapping is provided.
 - The output file format is determined by the file suffix in `OUTPUT_PATH` (e.g., `.json`, `.jsonl`, `.csv`, `.parquet`).

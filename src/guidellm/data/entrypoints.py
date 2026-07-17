@@ -144,6 +144,7 @@ def process_dataset(
     tokenizer: DataTokenizerArgs | dict[str, Any],
     strategy: PreprocessStrategyArgs | dict[str, Any],
     data_column_mapper: DataPreprocessorArgs | dict[str, Any] | None = None,
+    data_loader: DataLoaderArgs | dict[str, Any] | None = None,
     push_to_hub: bool = False,
     hub_dataset_id: str | None = None,
     random_seed: int = 42,
@@ -157,6 +158,8 @@ def process_dataset(
     :param strategy: Preprocess strategy configuration including token targets and
         short-prompt handling (``PreprocessStrategyArgs`` or dict).
     :param data_column_mapper: Optional column mapping configuration.
+    :param data_loader: Optional data loader configuration. ``samples`` limits how
+        many processed rows are written; ``shuffle`` and ``num_workers`` are ignored.
     :param push_to_hub: Whether to push to Hugging Face Hub.
     :param hub_dataset_id: Dataset ID on Hugging Face Hub.
     :param random_seed: Seed for random sampling.
@@ -178,6 +181,9 @@ def process_dataset(
         if data_column_mapper is not None
         else {"kind": "generative_column_mapper"}
     )
+    loader_config = DataLoaderArgs.model_validate(
+        data_loader if data_loader is not None else {"kind": "pytorch"}
+    )
     builders.process_dataset(
         data_config,
         output_path,
@@ -187,4 +193,5 @@ def process_dataset(
         push_to_hub,
         hub_dataset_id,
         random_seed,
+        loader_config,
     )

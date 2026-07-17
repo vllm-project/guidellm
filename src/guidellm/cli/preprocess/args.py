@@ -13,6 +13,7 @@ from pydantic import (
 
 from guidellm.benchmark.schemas import RandomArgs
 from guidellm.data.schemas import (
+    DataLoaderArgs,
     DataPreprocessorArgs,
     DataTokenizerArgs,
     PreprocessStrategyArgs,
@@ -78,6 +79,16 @@ class PreprocessDatasetArgs(ReloadableBaseModel):
         description="Specify how to map dataset columns into prompts and outputs.",
         examples=[{"kind": "generative_column_mapper"}],
         json_schema_extra={"argument_alias": "data_column_mapper"},
+    )
+    data_loader: DataLoaderArgs = Field(  # type: ignore[assignment]
+        default_factory=lambda: default_kind("pytorch"),
+        description=(
+            "Specify how to load the dataset during preprocessing. "
+            "Use samples to limit how many processed rows are written "
+            "(shuffle and num_workers are ignored for preprocess)."
+        ),
+        examples=[{"kind": "pytorch"}, {"kind": "pytorch", "samples": 1000}],
+        json_schema_extra={"argument_alias": "data_loader"},
     )
     seed: RandomArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("static"),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import click
 
 # Ensure registry subclasses are imported before schema reload.
+import guidellm.data.loaders  # noqa: F401
 import guidellm.data.preprocessors  # noqa: F401
 import guidellm.data.tokenizers  # noqa: F401
 from guidellm.cli.preprocess.args import PreprocessDatasetArgs
