@@ -12,7 +12,10 @@ __all__ = ["benchmark"]
 
 
 @click.group(
-    help="Load a previously saved benchmark report.",
+    help=(
+        "Load and display previously saved benchmark reports. "
+        "Use 'guidellm benchmark from-file <path>' to re-export saved results."
+    ),
     cls=DefaultGroupHandler,
     default="run",
 )
