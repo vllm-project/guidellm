@@ -10,10 +10,14 @@ the standard GuideLLM scheduler lifecycle.
 from __future__ import annotations
 
 import asyncio
+import gc
+import os
+import sys
 import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal, cast
 
 from pydantic import ConfigDict, Field, PositiveInt, model_validator
@@ -165,6 +169,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         # The synchronous vLLM LLM engine (set during startup)
         self._llm: Any = None  # vllm.LLM
+        self._engine_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -172,29 +177,49 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
     async def process_startup(self):
         """
-        Initialize the synchronous vLLM LLM engine.
+        Mark the backend as active.
 
-        Runs engine construction in the default executor so the
-        event loop is not blocked during model loading.
+        Engine construction is deferred to the first
+        ``_ensure_engine()`` call so that the heavyweight vLLM
+        multiprocess executor is only created inside the worker
+        process that will actually run inference.  This avoids a
+        double-startup that wastes resources reloading model
+        weights and can cause CPU-affinity degradation.
 
         :raises RuntimeError: If backend is already initialised
         """
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
-        loop = asyncio.get_running_loop()
-        config = dict(self._args.vllm_config)
-
-        engine_args = vllm.EngineArgs(  # type: ignore[attr-defined]
-            **config,
-        )
-        self._llm = await loop.run_in_executor(
-            None,
-            vllm.LLM.from_engine_args,  # type: ignore[attr-defined]
-            engine_args,
-        )
         self._in_process = True
         self._shutting_down = False
+
+    async def _ensure_engine(self) -> Any:
+        """Create the vLLM ``LLM`` engine on first use."""
+        if self._llm is not None:
+            return self._llm
+
+        async with self._engine_lock:
+            if self._llm is not None:
+                return self._llm
+
+            loop = asyncio.get_running_loop()
+            config = dict(self._args.vllm_config)
+            engine_args = vllm.EngineArgs(  # type: ignore[attr-defined]
+                **config,
+            )
+
+            def _create_engine() -> Any:
+                self._reset_cpu_affinity()
+                return vllm.LLM.from_engine_args(  # type: ignore[attr-defined]
+                    engine_args,
+                )
+
+            self._llm = await loop.run_in_executor(
+                None,
+                _create_engine,
+            )
+            return self._llm
 
     async def process_shutdown(self):
         """
@@ -219,6 +244,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if self._llm is not None:
             del self._llm
             self._llm = None
+            gc.collect()
 
         self._in_process = False
 
@@ -226,12 +252,13 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         """
         Validate backend readiness.
 
-        The synchronous LLM engine has no ``check_health`` method,
-        so we simply verify the engine was initialised.
+        Only checks that ``process_startup()`` was called.  The
+        engine itself is created lazily on the first request.
 
         :raises RuntimeError: If backend is not initialised
         """
-        self._validate_backend_initialized()
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process.")
 
     def _validate_backend_initialized(self) -> Any:  # type: ignore[override]
         """
@@ -240,9 +267,54 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         :raises RuntimeError: If backend is not initialised
         :return: The initialised ``vllm.LLM`` instance
         """
-        if self._llm is None:
+        if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
         return self._llm
+
+    @staticmethod
+    def _reset_cpu_affinity() -> None:
+        """Restore the full CPU set allowed by the OS/cgroup.
+
+        When the worker process is forked from a parent that has
+        already initialised an OpenMP runtime (e.g. via PyTorch),
+        the child inherits a restricted CPU-affinity mask.  This
+        causes vLLM's auto-bind logic to see far fewer cores than
+        are actually available, destroying throughput.
+
+        We read the effective cpuset from the cgroup filesystem
+        (works inside containers and on bare metal with cgroups v2)
+        and reset the affinity to the full set.
+        """
+        if sys.platform != "linux":
+            return
+
+        current = os.sched_getaffinity(0)
+
+        for path_str in (
+            "/sys/fs/cgroup/cpuset.cpus.effective",
+            "/sys/fs/cgroup/cpuset/cpuset.cpus",
+        ):
+            try:
+                raw = Path(path_str).read_text().strip()
+            except OSError:
+                continue
+
+            cpus: set[int] = set()
+            for part in raw.split(","):
+                if "-" in part:
+                    lo, hi = part.split("-", 1)
+                    cpus.update(range(int(lo), int(hi) + 1))
+                else:
+                    cpus.add(int(part))
+
+            if cpus and current != cpus:
+                os.sched_setaffinity(0, cpus)
+                logger.info(
+                    "Reset CPU affinity from {} to {} cores",
+                    len(current),
+                    len(cpus),
+                )
+            return
 
     # ------------------------------------------------------------------
     # Chat template / tokenizer (overrides for offline tokenizer path)
@@ -404,6 +476,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         :yields: Single tuple of (response, updated_request_info)
         """
         self._validate_backend_initialized()
+        await self._ensure_engine()
         self._validate_history(history)
 
         resolved = self._resolve_request(request)
