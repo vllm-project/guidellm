@@ -291,21 +291,22 @@ async def resolve_profile(
 async def resolve_output_formats(
     outputs: list[BenchmarkOutputArgs],
     console: Console | None = None,
-) -> dict[str, GenerativeBenchmarkerOutput]:
+) -> list[GenerativeBenchmarkerOutput]:
     """
     Resolve output format specifications into configured output handler instances.
 
     :param outputs: List of BenchmarkOutputArgs specifying output kind and path
     :param console: Console instance for progress reporting, or None
-    :return: Dictionary mapping format names to configured output handler instances
+    :return: Ordered list of configured output handler instances, one per input
+        specification (repeated kinds are preserved as separate entries)
     """
     console_step = (
         console.print_update_step(title="Resolving output formats") if console else None
     )
 
-    resolved: dict[str, GenerativeBenchmarkerOutput] = {}
+    resolved: list[GenerativeBenchmarkerOutput] = []
     for output_arg in outputs:
-        resolved[output_arg.kind] = GenerativeBenchmarkerOutput.resolve(output_arg)
+        resolved.append(GenerativeBenchmarkerOutput.resolve(output_arg))
 
     if console_step:
         console_step.finish(
@@ -458,7 +459,7 @@ async def benchmark_generative_text(
     progress: GenerativeConsoleBenchmarkerProgress | None = None,
     console: Console | None = None,
     **constraints: str | ConstraintInitializer | Any,
-) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
+) -> tuple[GenerativeBenchmarksReport, list[tuple[str, Any]]]:
     """
     Execute a comprehensive generative text benchmarking workflow.
 
@@ -539,10 +540,9 @@ async def benchmark_generative_text(
         if benchmark:
             report.benchmarks.append(benchmark)
 
-    output_format_results = {}
-    for key, output in output_formats.items():
-        output_result = await output.finalize(report)
-        output_format_results[key] = output_result
+    output_format_results: list[tuple[str, Any]] = []
+    for output_arg, output in zip(benchmark_args.outputs, output_formats, strict=True):
+        output_format_results.append((output_arg.kind, await output.finalize(report)))
 
     if console:
         await GenerativeBenchmarkerConsole(console=console).finalize(report)
@@ -554,8 +554,8 @@ async def benchmark_generative_text(
             ),
             status="success",
         )
-        for key, value in output_format_results.items():
-            console.print_update(title=f"  {key:<8}: {value}", status="debug")
+        for kind, value in output_format_results:
+            console.print_update(title=f"  {kind:<8}: {value}", status="debug")
 
     return report, output_format_results
 
@@ -563,7 +563,7 @@ async def benchmark_generative_text(
 async def reimport_benchmarks_report(
     file: Path,
     outputs: tuple[BenchmarkOutputArgs, ...] | list[dict[str, Any]],
-) -> tuple[GenerativeBenchmarksReport, dict[str, Any]]:
+) -> tuple[GenerativeBenchmarksReport, list[tuple[str, Any]]]:
     """
     Load and re-export an existing benchmarks report in specified output formats.
 
@@ -587,12 +587,12 @@ async def reimport_benchmarks_report(
     for fmt in outputs:
         output_args.append(BenchmarkOutputArgs.model_validate(fmt))
 
-    output_results: dict[str, Any] = {}
+    output_results: list[tuple[str, Any]] = []
     for args in output_args:
         output = GenerativeBenchmarkerOutput.resolve(args)
-        output_results[args.kind] = await output.finalize(report)
+        output_results.append((args.kind, await output.finalize(report)))
 
-    for key, value in output_results.items():
-        console.print_update(title=f"  {key:<8}: {value}", status="debug")
+    for kind, value in output_results:
+        console.print_update(title=f"  {kind:<8}: {value}", status="debug")
 
     return report, output_results
