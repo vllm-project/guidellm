@@ -1,7 +1,6 @@
 import dataclasses
-import itertools
 import json
-from typing import Any
+from typing import Any, cast
 
 from datasets import Dataset, IterableDataset
 
@@ -10,6 +9,23 @@ from datasets import Dataset, IterableDataset
 class VirtualColumnLocation:
     wrapper_column: str
     virtual_column: str
+
+
+def construct_virtual_column_locations(
+    wrapper_column: str, virtual_columns: list[str]
+) -> list[VirtualColumnLocation]:
+    return [VirtualColumnLocation(wrapper_column, c) for c in virtual_columns]
+
+
+def unzip_virtual_column_locations(
+    column_locations: list[VirtualColumnLocation],
+) -> tuple[tuple[str], tuple[str]]:
+    """Returns a tuple of wrapper columns and a tuple of virtual columns,
+    in that order."""
+    return cast(
+        "tuple[tuple[str], tuple[str]]",
+        zip(*(dataclasses.astuple(c) for c in column_locations), strict=True),
+    )
 
 
 def try_json_load(json_string: str) -> Any:
@@ -23,7 +39,7 @@ def get_json_column_names(dataset: Dataset | IterableDataset) -> list[str]:
     """Assumes dataset has at least one column and at least one row.
 
     Returns a list of all columns in the dataset containing valid JSON. This includes
-    columns containing lists of valid JSON.
+    columns containing lists of valid JSON and Python dictionaries.
     """
     sample = next(iter(dataset))
     sample = {k: (v[0] if isinstance(v, list) and v else v) for k, v in sample.items()}
@@ -33,35 +49,3 @@ def get_json_column_names(dataset: Dataset | IterableDataset) -> list[str]:
         for col in column_names
         if isinstance(sample[col], dict) or try_json_load(sample[col]) is not None
     ]
-
-
-def _extract_list_of_json(raw: list) -> Any:
-    data = list(
-        itertools.takewhile(
-            lambda res: res is not None,
-            ((try_json_load(val) if isinstance(val, str) else val) for val in raw),
-        )
-    )
-    if len(data) < len(raw):
-        return None
-    return data
-
-
-def extract_json(row_data: dict[str, Any], wrapper_column: str) -> Any:
-    """Parse a JSON `wrapper_column` from a row and return its inner JSON
-    object or list of JSON objects.
-    """
-    raw = row_data.get(wrapper_column)
-    if raw is None:
-        return None
-
-    if isinstance(raw, list):
-        data = _extract_list_of_json(raw)
-    elif isinstance(raw, str):
-        data = try_json_load(raw)
-    else:
-        data = raw
-
-    if isinstance(data, list | dict):
-        return data
-    return None

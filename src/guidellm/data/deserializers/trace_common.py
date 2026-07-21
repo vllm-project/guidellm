@@ -35,8 +35,9 @@ from guidellm.data.schemas import DataArgs
 from guidellm.utils.hf_datasets import load_dataset_from_file
 from guidellm.utils.json_unwrap import (
     VirtualColumnLocation,
-    extract_json,
+    construct_virtual_column_locations,
     get_json_column_names,
+    unzip_virtual_column_locations,
 )
 from guidellm.utils.registry import RegistryMixin
 
@@ -107,12 +108,6 @@ class ColumnSearchResult:
     apropos_column_names: Sequence[str | VirtualColumnLocation]
 
 
-def _construct_virtual_column_locations(
-    wrapper_column: str, virtual_columns: list[str]
-) -> list[VirtualColumnLocation]:
-    return [VirtualColumnLocation(wrapper_column, c) for c in virtual_columns]
-
-
 def _is_supported_json_data_type(data: Any) -> bool:
     """Currently, only JSON data in the form of a list of JSON objects is supported."""
     return isinstance(data, list) and (len(data) == 0 or isinstance(data[0], dict))
@@ -126,12 +121,12 @@ def _find_virtual_columns(
     """Required columns must all be stored within the same column."""
     completely_missing = set(target_columns)
     for col in json_column_names:
-        parsed = extract_json(sample_row, col)
+        parsed = sample_row[col]
         if _is_supported_json_data_type(parsed) and len(parsed) > 0:
             virtual_columns = [] if parsed is None else list(parsed[0].keys())
             missing = _get_missing_columns(target_columns, virtual_columns)
             if not missing:
-                locations = _construct_virtual_column_locations(col, target_columns)
+                locations = construct_virtual_column_locations(col, target_columns)
                 return ColumnSearchResult(Status.SUCCESS, True, locations)
             completely_missing = completely_missing.difference(missing)
     if json_column_names:
@@ -153,24 +148,13 @@ def _find_required_columns(columns: list[str], dataset: Dataset) -> ColumnSearch
     return ColumnSearchResult(Status.SUCCESS, False, [])
 
 
-def _unzip_virtual_column_locations(
-    column_locations: list[VirtualColumnLocation],
-) -> tuple[tuple[str], tuple[str]]:
-    """Returns a tuple of wrapper columns and a tuple of virtual columns,
-    in that order."""
-    return cast(
-        "tuple[tuple[str], tuple[str]]",
-        zip(*(dataclasses.astuple(c) for c in column_locations), strict=True),
-    )
-
-
 def _make_columns_from_virtual(
     batch: dict[str, list], wrapper_col: str, virtual_cols: list[str]
 ) -> dict[str, list]:
     """Intended to be used with `datasets.Dataset.map()`."""
     json_dicts = []
-    for json_strings in batch[wrapper_col]:
-        json_dicts.extend(extract_json({wrapper_col: json_strings}, wrapper_col))
+    for json_dicts_list in batch[wrapper_col]:
+        json_dicts.extend(json_dicts_list)
     return {c: [row[c] for row in json_dicts] for c in virtual_cols}
 
 
@@ -179,7 +163,7 @@ def _make_dataset_from_virtual(
 ) -> Dataset:
     """Assumes all virtual columns are stored inside the same column.
     (Currently ensured by `_is_supported_json_data_type`)."""
-    wrapper_cols, virt_cols = _unzip_virtual_column_locations(columns)
+    wrapper_cols, virt_cols = unzip_virtual_column_locations(columns)
     return dataset.map(
         _make_columns_from_virtual,
         batched=True,

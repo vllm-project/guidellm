@@ -65,24 +65,3 @@ def test_get_json_column_names(data, expected_out):
     )
     for ds in (dataset, iterable_dataset):
         assert get_json_column_names(ds) == expected_out
-
-
-@pytest.mark.smoke
-@pytest.mark.parametrize(
-    ("wrapper_column", "expected_out"),
-    [
-        ("field_1", None),
-        ("field_2", None),
-        ("wrapper", {"inner_field": 3}),
-        ("wrapper_2", [{"inner_field": 4}]),
-        ("nonexistent", None),
-    ],
-)
-def test_extract_json(wrapper_column, expected_out):
-    row_data = {
-        "field_1": 1,
-        "field_2": "two",
-        "wrapper": r'{"inner_field": 3}',
-        "wrapper_2": [r'{"inner_field": 4}'],
-    }
-    assert extract_json(row_data, wrapper_column) == expected_out
