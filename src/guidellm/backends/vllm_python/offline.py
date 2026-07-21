@@ -171,7 +171,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
     async def process_startup(self):
         """
-        Mark the backend as active.
+        Mark the backend as active and reset process-local state.
 
         Engine construction is deferred to the first
         ``_ensure_engine()`` call so that the heavyweight vLLM
@@ -180,6 +180,11 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         double-startup that wastes resources reloading model
         weights and can cause CPU-affinity degradation.
 
+        Asyncio primitives are recreated here because the benchmark
+        framework forks worker processes after a parent
+        validate/shutdown cycle; locks created on the parent's
+        event loop are unusable in the child.
+
         :raises RuntimeError: If backend is already initialised
         """
         if self._in_process:
@@ -187,6 +192,13 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         self._in_process = True
         self._shutting_down = False
+
+        # Recreate asyncio primitives for the current event loop.
+        self._batch_lock = asyncio.Lock()
+        self._generate_lock = asyncio.Lock()
+        self._engine_lock = asyncio.Lock()
+        self._pending_batch = []
+        self._processing_task = None
 
     async def _ensure_engine(self) -> Any:
         """Create the vLLM ``LLM`` engine on first use."""
