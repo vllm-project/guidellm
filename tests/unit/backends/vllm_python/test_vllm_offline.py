@@ -8,6 +8,7 @@ serialization, shutdown drain, shutting-down guard, and metrics wiring.
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
@@ -84,6 +85,7 @@ class TestEngineLaziness:
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_startup_does_not_create_engine(self):
+        """Engine is None after startup. ## WRITTEN BY AI ##"""
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
@@ -98,6 +100,7 @@ class TestEngineLaziness:
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_ensure_engine_creates_on_first_call(self):
+        """First _ensure_engine call creates the LLM. ## WRITTEN BY AI ##"""
         mock_llm = Mock()
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
@@ -118,6 +121,7 @@ class TestEngineLaziness:
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_ensure_engine_idempotent(self):
+        """Repeated _ensure_engine calls do not recreate. ## WRITTEN BY AI ##"""
         mock_llm = Mock()
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
@@ -138,6 +142,7 @@ class TestEngineLaziness:
     @pytest.mark.sanity
     @async_timeout(5.0)
     async def test_ensure_engine_concurrent_creates_once(self):
+        """Concurrent _ensure_engine calls create one engine. ## WRITTEN BY AI ##"""
         mock_llm = Mock()
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
@@ -161,6 +166,7 @@ class TestEngineLaziness:
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_startup_raises_if_already_started(self):
+        """Double startup raises RuntimeError. ## WRITTEN BY AI ##"""
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
@@ -182,6 +188,10 @@ class TestLifecycle:
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_shutdown_resets_state(self, started_backend):
+        """Shutdown clears state flags.
+
+        ## WRITTEN BY AI ##
+        """
         await started_backend.process_shutdown()
         assert started_backend._in_process is False
         assert started_backend._llm is None
@@ -190,6 +200,7 @@ class TestLifecycle:
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_shutdown_calls_llm_shutdown(self, started_backend):
+        """Shutdown calls llm.shutdown() when available. ## WRITTEN BY AI ##"""
         shutdown_mock = Mock()
         started_backend._llm.shutdown = shutdown_mock
         await started_backend.process_shutdown()
@@ -198,6 +209,7 @@ class TestLifecycle:
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_shutdown_tolerates_missing_shutdown_method(self, started_backend):
+        """Shutdown succeeds when llm has no shutdown method. ## WRITTEN BY AI ##"""
         del started_backend._llm.shutdown
         await started_backend.process_shutdown()
         assert started_backend._llm is None
@@ -205,12 +217,14 @@ class TestLifecycle:
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_shutdown_not_started_raises(self, offline_backend):
+        """Shutdown before startup raises RuntimeError. ## WRITTEN BY AI ##"""
         with pytest.raises(RuntimeError, match="not started"):
             await offline_backend.process_shutdown()
 
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_shutdown_drains_pending_batch(self, started_backend):
+        """Shutdown processes pending batch before teardown. ## WRITTEN BY AI ##"""
         req = _BatchedRequest(
             resolved_prompt="hello",
             multi_modal_data=None,
@@ -225,21 +239,47 @@ class TestLifecycle:
 
     @pytest.mark.asyncio
     @pytest.mark.sanity
-    async def test_shutdown_cancels_processing_task(self, started_backend):
-        task = asyncio.ensure_future(asyncio.sleep(100))
-        started_backend._processing_task = task
-        await started_backend.process_shutdown()
-        assert task.cancelling() or task.cancelled()
-        assert started_backend._processing_task is None
+    @async_timeout(10.0)
+    async def test_shutdown_waits_for_inflight_generate(self, started_backend):
+        """Shutdown blocks until in-flight generate completes. ## WRITTEN BY AI ##"""
+        generate_entered = threading.Event()
+        generate_proceed = threading.Event()
+
+        def slow_generate(*args, **kwargs):
+            generate_entered.set()
+            generate_proceed.wait(timeout=5.0)
+            return [_mock_request_output() for _ in args[0]]
+
+        started_backend._llm.generate.side_effect = slow_generate
+
+        req = _BatchedRequest(resolved_prompt="p", multi_modal_data=None, max_tokens=10)
+        started_backend._pending_batch.append(req)
+        await started_backend._schedule_deferred_flush()
+
+        # Wait for generate to start in the executor thread
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: generate_entered.wait(timeout=5.0))
+
+        # Start shutdown concurrently
+        shutdown_task = asyncio.ensure_future(started_backend.process_shutdown())
+        await asyncio.sleep(0.05)
+
+        assert not shutdown_task.done(), "shutdown completed before generate finished"
+
+        generate_proceed.set()
+        await shutdown_task
+        assert started_backend._llm is None
 
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_validate_passes_after_startup(self, started_backend):
+        """Validate succeeds after startup. ## WRITTEN BY AI ##"""
         await started_backend.validate()
 
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_validate_fails_before_startup(self, offline_backend):
+        """Validate before startup raises RuntimeError. ## WRITTEN BY AI ##"""
         with pytest.raises(RuntimeError, match="not started"):
             await offline_backend.validate()
 
@@ -252,6 +292,7 @@ class TestLifecycle:
 class TestBatchProcessing:
     @pytest.mark.sanity
     def test_take_pending_batch_clears_queue(self, started_backend):
+        """_take_pending_batch snapshots and clears the queue. ## WRITTEN BY AI ##"""
         req1 = _BatchedRequest(
             resolved_prompt="a", multi_modal_data=None, max_tokens=10
         )
@@ -266,6 +307,7 @@ class TestBatchProcessing:
     @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_run_generate_empty_batch_noop(self, started_backend):
+        """Empty batch skips generate call. ## WRITTEN BY AI ##"""
         await started_backend._run_generate([])
         started_backend._llm.generate.assert_not_called()
 
@@ -273,6 +315,7 @@ class TestBatchProcessing:
     @pytest.mark.smoke
     @async_timeout(5.0)
     async def test_run_generate_distributes_results(self, started_backend):
+        """Results are distributed to matching batch requests. ## WRITTEN BY AI ##"""
         reqs = [
             _BatchedRequest(
                 resolved_prompt=f"prompt-{i}",
@@ -292,6 +335,7 @@ class TestBatchProcessing:
     @pytest.mark.sanity
     @async_timeout(5.0)
     async def test_run_generate_error_signals_all_waiters(self, started_backend):
+        """Generate errors signal all waiters with the exception. ## WRITTEN BY AI ##"""
         reqs = [
             _BatchedRequest(resolved_prompt="p", multi_modal_data=None, max_tokens=10)
             for _ in range(2)
@@ -306,6 +350,7 @@ class TestBatchProcessing:
     @pytest.mark.sanity
     @async_timeout(5.0)
     async def test_run_generate_multimodal_prompt_format(self, started_backend):
+        """Multimodal data is passed as dict prompt. ## WRITTEN BY AI ##"""
         mm_data = {"image": Mock()}
         req = _BatchedRequest(
             resolved_prompt="describe image",
@@ -324,6 +369,7 @@ class TestBatchProcessing:
     @pytest.mark.smoke
     @async_timeout(5.0)
     async def test_maybe_process_batch_triggers_at_capacity(self, started_backend):
+        """Full batch triggers immediate generate. ## WRITTEN BY AI ##"""
         reqs = [
             _BatchedRequest(
                 resolved_prompt=f"p-{i}",
@@ -343,6 +389,7 @@ class TestBatchProcessing:
     @pytest.mark.sanity
     @async_timeout(5.0)
     async def test_maybe_process_batch_skips_under_capacity(self, started_backend):
+        """Under-capacity batch is not processed immediately. ## WRITTEN BY AI ##"""
         started_backend._pending_batch = [
             _BatchedRequest(
                 resolved_prompt="p",
@@ -364,6 +411,7 @@ class TestDeferredFlush:
     @pytest.mark.smoke
     @async_timeout(5.0)
     async def test_deferred_flush_processes_partial_batch(self, started_backend):
+        """Partial batch is flushed after batch_timeout. ## WRITTEN BY AI ##"""
         req = _BatchedRequest(
             resolved_prompt="partial",
             multi_modal_data=None,
@@ -372,8 +420,8 @@ class TestDeferredFlush:
         started_backend._pending_batch.append(req)
         started_backend._llm.generate.return_value = [_mock_request_output()]
         await started_backend._schedule_deferred_flush()
-        # Let the flush task run
-        await asyncio.sleep(0.01)
+        if started_backend._processing_task:
+            await started_backend._processing_task
         assert req.ready.is_set()
         started_backend._llm.generate.assert_called_once()
 
@@ -381,6 +429,7 @@ class TestDeferredFlush:
     @pytest.mark.sanity
     @async_timeout(5.0)
     async def test_deferred_flush_idempotent(self, started_backend):
+        """Repeated schedule calls reuse the same task. ## WRITTEN BY AI ##"""
         req = _BatchedRequest(
             resolved_prompt="p",
             multi_modal_data=None,
@@ -393,7 +442,8 @@ class TestDeferredFlush:
         await started_backend._schedule_deferred_flush()
         task2 = started_backend._processing_task
         assert task1 is task2
-        await asyncio.sleep(0.01)
+        if started_backend._processing_task:
+            await started_backend._processing_task
 
 
 # ------------------------------------------------------------------
@@ -406,6 +456,7 @@ class TestGenerateLock:
     @pytest.mark.smoke
     @async_timeout(5.0)
     async def test_generate_lock_serializes_calls(self, started_backend):
+        """Concurrent _run_generate calls are serialized. ## WRITTEN BY AI ##"""
         call_order = []
 
         def tracking_generate(*args, **kwargs):
@@ -435,7 +486,6 @@ class TestGenerateLock:
             started_backend._run_generate(batch1),
             started_backend._run_generate(batch2),
         )
-        # Should be serialized: enter/exit/enter/exit, not interleaved
         assert call_order == ["enter", "exit", "enter", "exit"]
 
 
@@ -449,6 +499,7 @@ class TestShuttingDownGuard:
     @pytest.mark.smoke
     @async_timeout(5.0)
     async def test_resolve_rejects_during_shutdown(self, started_backend):
+        """resolve() raises when backend is shutting down. ## WRITTEN BY AI ##"""
         started_backend._shutting_down = True
         request = GenerationRequest(columns={"text_column": ["test"]})
         request_info = RequestInfo()
@@ -466,8 +517,52 @@ class TestShuttingDownGuard:
     @pytest.mark.sanity
     @async_timeout(5.0)
     async def test_shutdown_flag_set_under_lock(self, started_backend):
+        """_shutting_down is True after shutdown. ## WRITTEN BY AI ##"""
         await started_backend.process_shutdown()
         assert started_backend._shutting_down is True
+
+
+# ------------------------------------------------------------------
+# Batch timeout configuration
+# ------------------------------------------------------------------
+
+
+class TestBatchTimeout:
+    @pytest.mark.smoke
+    def test_batch_timeout_default(self):
+        """Default batch_timeout is 0.01 seconds. ## WRITTEN BY AI ##"""
+        mock_vllm = MagicMock()
+        mock_vllm.SamplingParams = _fake_sampling_params
+        with (
+            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+        ):
+            backend = _make_offline_backend(model="test-model")
+        assert backend._args.batch_timeout == 0.01
+
+    @pytest.mark.sanity
+    def test_batch_timeout_custom(self):
+        """Custom batch_timeout is accepted. ## WRITTEN BY AI ##"""
+        mock_vllm = MagicMock()
+        mock_vllm.SamplingParams = _fake_sampling_params
+        with (
+            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+        ):
+            backend = _make_offline_backend(model="test-model", batch_timeout=0.05)
+        assert backend._args.batch_timeout == 0.05
+
+    @pytest.mark.sanity
+    def test_batch_timeout_rejects_zero(self):
+        """batch_timeout=0 is rejected by validation. ## WRITTEN BY AI ##"""
+        mock_vllm = MagicMock()
+        mock_vllm.SamplingParams = _fake_sampling_params
+        with (
+            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+            pytest.raises(ValueError),
+        ):
+            _make_offline_backend(model="test-model", batch_timeout=0)
 
 
 # ------------------------------------------------------------------
@@ -478,6 +573,7 @@ class TestShuttingDownGuard:
 class TestWireVllmMetrics:
     @pytest.mark.smoke
     def test_token_count_from_num_generation_tokens(self):
+        """Token count uses num_generation_tokens when > 0. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
         metrics = SimpleNamespace(num_generation_tokens=42)
         output = _mock_request_output(metrics=metrics)
@@ -487,6 +583,7 @@ class TestWireVllmMetrics:
 
     @pytest.mark.sanity
     def test_token_count_fallback_to_token_ids(self):
+        """Token count falls back to len(token_ids) when 0. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
         metrics = SimpleNamespace(num_generation_tokens=0)
         output = _mock_request_output(token_ids=[1, 2, 3, 4, 5], metrics=metrics)
@@ -496,6 +593,7 @@ class TestWireVllmMetrics:
 
     @pytest.mark.sanity
     def test_no_metrics_no_crash(self):
+        """No metrics attribute does not crash. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
         output = _mock_request_output(metrics=None)
         VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
@@ -503,6 +601,7 @@ class TestWireVllmMetrics:
 
     @pytest.mark.smoke
     def test_timing_from_request_state_stats(self):
+        """Wall-clock timings derived from RequestStateStats. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
         metrics = SimpleNamespace(
             num_generation_tokens=10,
@@ -528,6 +627,7 @@ class TestWireVllmMetrics:
 
     @pytest.mark.sanity
     def test_timing_skipped_when_first_token_ts_missing(self):
+        """Timing is skipped when first_token_ts is zero. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
         metrics = SimpleNamespace(
             num_generation_tokens=5,
@@ -544,6 +644,10 @@ class TestWireVllmMetrics:
 
     @pytest.mark.sanity
     def test_timing_uses_queued_ts_fallback(self):
+        """queued_ts used as mono base fallback.
+
+        ## WRITTEN BY AI ##
+        """
         request_info = RequestInfo()
         metrics = SimpleNamespace(
             num_generation_tokens=5,

@@ -10,6 +10,7 @@ the standard GuideLLM scheduler lifecycle.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import gc
 import time
 from collections.abc import AsyncIterator
@@ -55,7 +56,17 @@ class VLLMOfflineBackendArgs(VLLMPythonBackendArgs):
         default=32,
         description=(
             "Maximum number of requests to accumulate before "
-            "dispatching a single vLLM generate() call."
+            "dispatching a single vLLM generate() call.  Full "
+            "batches flush immediately; partial batches wait up "
+            "to ``batch_timeout`` seconds."
+        ),
+    )
+    batch_timeout: float = Field(
+        default=0.01,
+        gt=0,
+        description=(
+            "Seconds to wait for more requests before flushing a "
+            "partial batch.  Full batches bypass this delay."
         ),
     )
 
@@ -222,17 +233,24 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if batch:
             await self._run_generate(batch)
 
+        # Wait for any deferred flush to finish naturally.
+        # _shutting_down prevents new enqueues so the loop will
+        # see an empty _pending_batch and exit.
         if self._processing_task is not None:
-            self._processing_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._processing_task
             self._processing_task = None
 
-        if self._llm is not None:
-            shutdown = getattr(self._llm, "shutdown", None)
-            if callable(shutdown):
-                shutdown()
-            del self._llm
-            self._llm = None
-            gc.collect()
+        # Serialize with any in-flight _run_generate (e.g. from
+        # _maybe_process_batch in a concurrent resolve()) before
+        # tearing down the engine.
+        async with self._generate_lock:
+            if self._llm is not None:
+                if hasattr(self._llm, "shutdown"):
+                    self._llm.shutdown()
+                del self._llm
+                self._llm = None
+                gc.collect()
 
         self._in_process = False
 
@@ -498,13 +516,14 @@ class VLLMOfflineBackend(VLLMPythonBackend):
     # ------------------------------------------------------------------
 
     async def _schedule_deferred_flush(self) -> None:
-        """Schedule a task that flushes the pending batch after a
-        short delay, ensuring partial batches are not stuck.
+        """Schedule a task that flushes the pending batch after
+        ``batch_timeout`` seconds, giving concurrent requests a
+        window to accumulate before dispatch.
         """
 
         async def _deferred_flush() -> None:
             while True:
-                await asyncio.sleep(0)
+                await asyncio.sleep(self._args.batch_timeout)
                 async with self._batch_lock:
                     if not self._pending_batch:
                         return
