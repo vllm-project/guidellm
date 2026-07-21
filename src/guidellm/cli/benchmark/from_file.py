@@ -32,6 +32,7 @@ __all__ = ["from_file"]
     registry=BenchmarkOutputArgs,
     multiple=True,
     default=[{"kind": "console"}, {"kind": "json"}, {"kind": "html"}, {"kind": "csv"}],
+    help="Output formats for the report (default: console, json, html, csv).",
 )
 def from_file(path, outputs):
     asyncio.run(reimport_benchmarks_report(path, outputs))
