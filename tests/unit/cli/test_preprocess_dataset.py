@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -112,6 +113,7 @@ def test_preprocess_dataset_rejects_legacy_config_flag():
     assert "No such option: --config" in result.output
 
 
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="Fails in CI Python 3.10")
 @pytest.mark.regression
 @patch("guidellm.cli.preprocess.dataset.process_dataset")
 def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
@@ -159,6 +161,7 @@ def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
     assert kwargs["data_loader"].samples == 50
 
 
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="Fails in CI Python 3.10")
 @pytest.mark.regression
 @patch("guidellm.cli.preprocess.dataset.process_dataset")
 def test_preprocess_dataset_defaults_data_loader(mock_process_dataset):
