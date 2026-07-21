@@ -13,7 +13,29 @@ from guidellm.data.finalizers import (
     GenerativeRequestFinalizer,
 )
 from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationParentRef,
+    ConversationTurnData,
+)
 from guidellm.schemas import GenerationRequest, RequestSettings
+from guidellm.schemas.conversation_graph import GenerativeConversationGraph
+
+
+def _ordered_requests(
+    graph: GenerativeConversationGraph,
+) -> list[GenerationRequest]:
+    """Return graph node requests ordered by turn index suffix.
+
+    ## WRITTEN BY AI ##
+    """
+    return [
+        graph.nodes[nid].request
+        for nid in sorted(
+            graph.nodes,
+            key=lambda nid: int(nid.rsplit("_", 1)[-1]),
+        )
+    ]
 
 
 class TestGenerativeRequestFinalizerTokenAggregation:
@@ -208,8 +230,8 @@ class TestFinalizerTopLevel:
         return GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     @pytest.mark.smoke
-    def test_finalizer_returns_list(self, valid_instances):
-        """Test __call__ returns list of GenerationRequest objects.
+    def test_finalizer_returns_conversation_graph(self, valid_instances):
+        """Test __call__ returns a GenerativeConversationGraph.
 
         ### WRITTEN BY AI ###
         """
@@ -222,14 +244,11 @@ class TestFinalizerTopLevel:
 
         result = instance(items)
 
-        assert isinstance(result, list)
-        assert len(result) == 3
-        assert all(
-            isinstance(r, tuple)
-            and isinstance(r[0], GenerationRequest)
-            and isinstance(r[1], RequestSettings)
-            for r in result
-        )
+        assert isinstance(result, GenerativeConversationGraph)
+        requests = _ordered_requests(result)
+        assert len(requests) == 3
+        assert all(isinstance(r, GenerationRequest) for r in requests)
+        assert [r.input_metrics.text_tokens for r in requests] == [50, 75, 100]
 
     @pytest.mark.sanity
     def test_finalizer_handles_empty_list(self, valid_instances):
@@ -316,7 +335,7 @@ class TestFinalizerRegistry:
 
         # Test it works as expected
         result = instance([{"text_column": ["test"]}])
-        assert isinstance(result, list)
+        assert isinstance(result, GenerativeConversationGraph)
 
 
 class TestFinalizerTurnType:
@@ -350,8 +369,9 @@ class TestFinalizerTurnType:
             },
             {"text_column": ["world"]},
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 3
         assert results[0].turn_type == "client_tool_call"
@@ -372,8 +392,9 @@ class TestFinalizerTurnType:
             {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
             {"text_column": ["world"], "tools_column": ['[{"type": "function"}]']},
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 4
         assert results[0].turn_type == "client_tool_call"
@@ -391,8 +412,9 @@ class TestFinalizerTurnType:
             {"text_column": ["hello"]},
             {"text_column": ["world"]},
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 2
         assert results[0].turn_type == "standard"
@@ -407,8 +429,9 @@ class TestFinalizerTurnType:
         items = [
             {"text_column": ["hello"], "tools_column": ['[{"type": "function"}]']},
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 2
         assert results[0].turn_type == "client_tool_call"
@@ -440,8 +463,9 @@ class TestFinalizerTurnTypeColumn:
                 "turn_type_column": ["server_tool_call"],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 1
         assert results[0].turn_type == "server_tool_call"
@@ -459,8 +483,9 @@ class TestFinalizerTurnTypeColumn:
                 "turn_type_column": ["server_tool_call"],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 1
         assert results[0].turn_type == "server_tool_call"
@@ -480,8 +505,9 @@ class TestFinalizerTurnTypeColumn:
                 "text_column": ["world"],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 2
         assert results[0].turn_type == "server_tool_call"
@@ -500,8 +526,9 @@ class TestFinalizerTurnTypeColumn:
                 "tools_column": ['[{"type": "function"}]'],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 2
         assert results[0].turn_type == "client_tool_call"
@@ -539,8 +566,9 @@ class TestFinalizerToolCallMode:
                 "tool_response_column": ['{"status": "ok"}'],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 2
         assert results[0].turn_type == "client_tool_call"
@@ -562,8 +590,9 @@ class TestFinalizerToolCallMode:
                 "tool_response_column": ['{"status": "ok"}'],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 1
         assert results[0].turn_type == "server_tool_call"
@@ -584,8 +613,9 @@ class TestFinalizerToolCallMode:
                 "tool_response_column": ['{"status": "ok"}'],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 1
         assert "tools_column" not in results[0].columns
@@ -603,8 +633,9 @@ class TestFinalizerToolCallMode:
         items = [
             {"text_column": ["hello"]},
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 1
         assert results[0].turn_type == "standard"
@@ -625,8 +656,9 @@ class TestFinalizerToolCallMode:
             },
             {"text_column": ["standard turn"]},
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         assert len(results) == 2
         assert results[0].turn_type == "server_tool_call"
@@ -648,8 +680,9 @@ class TestFinalizerToolCallMode:
                 "turn_type_column": ["client_tool_call"],
             },
         ]
-        rows = finalizer(items)
-        results = [r[0] for r in rows]  # Extract GenerationRequest from each tuple
+        graph = finalizer(items)
+        assert isinstance(graph, GenerativeConversationGraph)
+        results = _ordered_requests(graph)
 
         # turn_type_column says client_tool_call, so it should create
         # a client_tool_call + injection pair despite server mode
@@ -693,3 +726,127 @@ class TestGenerativeRequestFinalizerRequestSettings:
         )
 
         assert req_settings == RequestSettings()
+
+
+class TestFinalizerConversationGraph:
+    """Verify finalizer wraps request pairs into conversation graphs.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_linear_chain_without_branches(self):
+        """Non-empty rows without branches become a linear conversation graph.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+        items = [
+            {"text_column": ["hello"]},
+            {"text_column": ["world"]},
+        ]
+
+        graph = finalizer(items)
+
+        assert isinstance(graph, GenerativeConversationGraph)
+        assert set(graph.nodes) == {"turn_0", "turn_1"}
+        assert len(graph.edges) == 1
+        assert graph.edges[0].source_node_id == "turn_0"
+        assert graph.edges[0].target_node_id == "turn_1"
+        assert graph.nodes["turn_0"].settings == RequestSettings()
+
+    @pytest.mark.sanity
+    def test_graph_preserves_request_settings_from_pairs(self):
+        """Node settings come from RequestSettings pairs, not the request.
+
+        ## WRITTEN BY AI ##
+        """
+        finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+        items = [
+            {
+                "text_column": ["hello"],
+                "relative_timestamp_column": [1.5],
+                "requeue_delay_column": [0.25],
+            },
+        ]
+
+        graph = finalizer(items)
+
+        assert isinstance(graph, GenerativeConversationGraph)
+        node = graph.nodes["turn_0"]
+        assert node.settings == RequestSettings(
+            relative_timestamp=1.5,
+            requeue_delay=0.25,
+        )
+
+    @pytest.mark.smoke
+    def test_conversation_turns_column_builds_fork_join_graph(self):
+        """conversation_turns_column assembles a fork/join graph from inline parents.
+
+        ## WRITTEN BY AI ##
+        """
+        graph_data = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="main_0",
+                    columns={"text_column": ["main_0"]},
+                ),
+                ConversationTurnData(
+                    node_id="main_1",
+                    parents=[
+                        ConversationParentRef(
+                            parent_node_id="main_0",
+                            history_context="full",
+                        ),
+                        ConversationParentRef(
+                            parent_node_id="branch_0_0",
+                            history_context="last",
+                        ),
+                    ],
+                    columns={
+                        "text_column": ["main_1"],
+                        "output_tokens_count_column": [5],
+                    },
+                ),
+                ConversationTurnData(
+                    node_id="branch_0_0",
+                    agent_id="sub_agent",
+                    parents=[
+                        ConversationParentRef(
+                            parent_node_id="main_0",
+                            history_context="new",
+                        )
+                    ],
+                    columns={
+                        "text_column": ["branch"],
+                        "output_tokens_count_column": [5],
+                    },
+                ),
+            ]
+        )
+        finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+        graph = finalizer(
+            [{"conversation_turns_column": [graph_data.model_dump(mode="json")]}]
+        )
+
+        assert isinstance(graph, GenerativeConversationGraph)
+        assert set(graph.nodes) == {"main_0", "main_1", "branch_0_0"}
+        assert graph.nodes["branch_0_0"].agent_id == "sub_agent"
+        edge_triples = {
+            (e.source_node_id, e.target_node_id, e.history_context) for e in graph.edges
+        }
+        assert (
+            "main_0",
+            "branch_0_0",
+            "new",
+        ) in edge_triples
+        assert (
+            "branch_0_0",
+            "main_1",
+            "last",
+        ) in edge_triples
+        assert (
+            "main_0",
+            "main_1",
+            "full",
+        ) in edge_triples
