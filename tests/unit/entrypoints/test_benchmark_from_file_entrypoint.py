@@ -87,7 +87,7 @@ async def test_loads_json_report(
     """
     report, output_results = await reimport_benchmarks_report(saved_json_report, [])
 
-    assert output_results == {}
+    assert output_results == []
     assert report.config == sample_report.config
     assert report.benchmarks == []
     assert report.metadata.version == 2
@@ -105,7 +105,7 @@ async def test_loads_yaml_report(
     """
     report, output_results = await reimport_benchmarks_report(saved_yaml_report, [])
 
-    assert output_results == {}
+    assert output_results == []
     assert report.config == sample_report.config
     assert report.benchmarks == []
 
@@ -122,7 +122,7 @@ async def test_loads_report_from_directory(
     """
     report, output_results = await reimport_benchmarks_report(report_directory, [])
 
-    assert output_results == {}
+    assert output_results == []
     assert report.config == sample_report.config
 
 
@@ -145,7 +145,7 @@ async def test_console_output(capfd, saved_json_report: Path):
     combined = out + err
     assert "Import of old benchmarks complete" in combined
     assert "Run Summary Info" in combined
-    assert output_results == {"console": "printed to console"}
+    assert output_results == [("console", "printed to console")]
 
 
 @pytest.mark.asyncio
@@ -164,7 +164,7 @@ async def test_reexports_json(saved_json_report: Path, tmp_path: Path):
     )
 
     assert exported_file.exists()
-    assert output_results["json"] == exported_file
+    assert output_results == [("json", exported_file)]
     assert filecmp.cmp(saved_json_report, exported_file, shallow=False)
 
     reloaded = GenerativeBenchmarksReport.load_file(exported_file)
@@ -188,7 +188,7 @@ async def test_reexports_yaml(saved_yaml_report: Path, tmp_path: Path):
     )
 
     assert exported_file.exists()
-    assert output_results["yaml"] == exported_file
+    assert output_results == [("yaml", exported_file)]
     assert filecmp.cmp(saved_yaml_report, exported_file, shallow=False)
 
     reloaded = GenerativeBenchmarksReport.load_file(exported_file)
@@ -216,10 +216,11 @@ async def test_multiple_output_formats(saved_json_report: Path, tmp_path: Path):
         ],
     )
 
-    assert set(output_results) == {"console", "json", "yaml"}
-    assert output_results["console"] == "printed to console"
-    assert output_results["json"] == exported_json
-    assert output_results["yaml"] == exported_yaml
+    assert [kind for kind, _ in output_results] == ["console", "json", "yaml"]
+    results_by_kind = dict(output_results)
+    assert results_by_kind["console"] == "printed to console"
+    assert results_by_kind["json"] == exported_json
+    assert results_by_kind["yaml"] == exported_yaml
     assert exported_json.exists()
     assert exported_yaml.exists()
     assert json.loads(exported_json.read_text()) == json.loads(
@@ -249,6 +250,33 @@ async def test_outputs_accepts_tuple_of_args(saved_json_report: Path, tmp_path: 
         ),
     )
 
-    assert set(output_results) == {"json", "yaml"}
+    assert [kind for kind, _ in output_results] == ["json", "yaml"]
     assert exported_file.exists()
     assert (tmp_path / "benchmarks.yaml").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_duplicate_output_kind_generates_and_reports_all(
+    saved_json_report: Path, tmp_path: Path
+):
+    """
+    Two outputs of the same kind with different paths are both generated and
+    both appear, in order, in the returned results (regression for #933).
+
+    ## WRITTEN BY AI ##
+    """
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+
+    _, output_results = await reimport_benchmarks_report(
+        saved_json_report,
+        [
+            {"kind": "json", "path": first},
+            {"kind": "json", "path": second},
+        ],
+    )
+
+    assert first.exists()
+    assert second.exists()
+    assert output_results == [("json", first), ("json", second)]
