@@ -233,9 +233,12 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         self._shutting_down = True
 
         # Drain any remaining requests
+        batch: list[_BatchedRequest] = []
         async with self._batch_lock:
             if self._pending_batch:
-                await self._process_batch()
+                batch = self._take_pending_batch()
+        if batch:
+            await self._run_generate(batch)
 
         if self._processing_task is not None:
             self._processing_task.cancel()
@@ -385,18 +388,23 @@ class VLLMOfflineBackend(VLLMPythonBackend):
     # Batch processing
     # ------------------------------------------------------------------
 
-    async def _process_batch(self) -> None:
-        """Collect all pending requests and run ``LLM.generate()``.
+    def _take_pending_batch(self) -> list[_BatchedRequest]:
+        """Snapshot and clear ``_pending_batch``.
 
-        Must be called while holding ``_batch_lock``.  Results are
-        distributed back to callers via each ``_BatchedRequest.ready``
-        event.
+        Must be called while holding ``_batch_lock``.
         """
-        if not self._pending_batch:
-            return
-
         batch = list(self._pending_batch)
         self._pending_batch.clear()
+        return batch
+
+    async def _run_generate(self, batch: list[_BatchedRequest]) -> None:
+        """Run ``LLM.generate()`` for *batch* and distribute results.
+
+        Does **not** hold ``_batch_lock`` so new requests can enqueue
+        while generation is in progress.
+        """
+        if not batch:
+            return
 
         # Build per-request generate inputs
         prompts: list[str | dict[str, Any]] = []
@@ -448,9 +456,12 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
     async def _maybe_process_batch(self) -> None:
         """Trigger batch processing if the batch is full."""
+        batch: list[_BatchedRequest] = []
         async with self._batch_lock:
             if len(self._pending_batch) >= self._args.batch_size:
-                await self._process_batch()
+                batch = self._take_pending_batch()
+        if batch:
+            await self._run_generate(batch)
 
     async def resolve(  # type: ignore[override, misc]
         self,
@@ -544,10 +555,13 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         """
 
         async def _deferred_flush() -> None:
-            # Yield control so other requests can arrive
-            await asyncio.sleep(0)
-            async with self._batch_lock:
-                await self._process_batch()
+            while True:
+                await asyncio.sleep(0)
+                async with self._batch_lock:
+                    if not self._pending_batch:
+                        return
+                    batch = self._take_pending_batch()
+                await self._run_generate(batch)
 
         # Only schedule one deferred flush at a time
         if self._processing_task is None or self._processing_task.done():
@@ -558,23 +572,42 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         request_info: RequestInfo,
         request_output: Any,
     ) -> None:
-        """Populate iteration counts from vLLM ``RequestOutput``.
+        """Populate iteration counts and timing from vLLM metrics.
 
-        vLLM's ``RequestStateStats`` timestamps are monotonic-clock
-        values that cannot be mixed with the wall-clock
-        ``request_start`` / ``request_end``, so we only extract
-        token counts here.  Iteration timing fields are left to the
-        wall-clock ``request_start`` / ``request_end`` already set
-        by the caller.
+        Extracts token counts and, when available, maps vLLM's
+        monotonic-clock ``RequestStateStats`` timestamps to
+        wall-clock values anchored on the wall-clock
+        ``arrival_time`` that vLLM also provides.
         """
         metrics = getattr(request_output, "metrics", None)
         num_gen = getattr(metrics, "num_generation_tokens", 0) if metrics else 0
 
         if num_gen > 0:
             request_info.timings.token_iterations = num_gen
-            request_info.timings.request_iterations = 1
         elif request_output.outputs and request_output.outputs[0].token_ids is not None:
-            request_info.timings.token_iterations = len(
-                request_output.outputs[0].token_ids
-            )
+            num_gen = len(request_output.outputs[0].token_ids)
+            request_info.timings.token_iterations = num_gen
+
+        if num_gen > 0:
             request_info.timings.request_iterations = 1
+
+        if metrics is None:
+            return
+
+        arrival = getattr(metrics, "arrival_time", 0.0)
+        mono_base = getattr(metrics, "scheduled_ts", 0.0) or getattr(
+            metrics, "queued_ts", 0.0
+        )
+        first_tok = getattr(metrics, "first_token_ts", 0.0)
+        last_tok = getattr(metrics, "last_token_ts", 0.0)
+
+        if not (arrival and mono_base and first_tok):
+            return
+
+        request_info.timings.first_request_iteration = arrival
+        request_info.timings.first_token_iteration = arrival + (first_tok - mono_base)
+        if last_tok:
+            request_info.timings.last_token_iteration = arrival + (last_tok - mono_base)
+            request_info.timings.last_request_iteration = arrival + (
+                last_tok - mono_base
+            )
