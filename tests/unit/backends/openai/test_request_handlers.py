@@ -686,9 +686,12 @@ class TestTextCompletionsRequestHandler:
         """
         instance = valid_instances
         arguments = instance.format(generation_request)
+        compiled = instance.compile_non_streaming(
+            generation_request, arguments, response
+        )
 
         with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
-            instance.compile_non_streaming(generation_request, arguments, response)
+            instance.post_validation(compiled)
 
     @pytest.mark.regression
     def test_streaming_raises_for_unusable_terminal_payload(
@@ -706,8 +709,10 @@ class TestTextCompletionsRequestHandler:
             if result is None:
                 break
 
+        compiled = instance.compile_streaming(generation_request, arguments)
+
         with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
-            instance.compile_streaming(generation_request, arguments)
+            instance.post_validation(compiled)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -1250,9 +1255,12 @@ class TestChatCompletionsRequestHandler:
         """
         instance = valid_instances
         arguments = instance.format(generation_request)
+        compiled = instance.compile_non_streaming(
+            generation_request, arguments, response
+        )
 
         with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
-            instance.compile_non_streaming(generation_request, arguments, response)
+            instance.post_validation(compiled)
 
     @pytest.mark.regression
     def test_streaming_raises_for_unusable_terminal_payload(
@@ -1270,8 +1278,45 @@ class TestChatCompletionsRequestHandler:
             if result is None:
                 break
 
+        compiled = instance.compile_streaming(generation_request, arguments)
+
         with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
-            instance.compile_streaming(generation_request, arguments)
+            instance.post_validation(compiled)
+
+    @pytest.mark.regression
+    def test_non_streaming_tool_call_only_passes_validation(
+        self, valid_instances, generation_request
+    ):
+        """Tool-call-only response (no text) is valid and must not raise.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"city":"NYC"}',
+                                },
+                            }
+                        ],
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        result = instance.compile_non_streaming(generation_request, arguments, response)
+        instance.post_validation(result)
+        assert result.tool_calls is not None
+        assert len(result.tool_calls) == 1
 
     @pytest.mark.sanity
     def test_streaming_reasoning_tokens(self, valid_instances, generation_request):
@@ -3050,18 +3095,6 @@ class TestResponsesRequestHandler:
                 10,
                 8,
             ),
-            (
-                {"id": "resp_789", "output": [], "usage": {}},
-                "",
-                None,
-                None,
-            ),
-            (
-                {"output": []},
-                "",
-                None,
-                None,
-            ),
         ],
     )
     def test_non_streaming(
@@ -3152,29 +3185,6 @@ class TestResponsesRequestHandler:
                     "data: [DONE]",
                 ],
                 "Test",
-                None,
-                None,
-            ),
-            (
-                [
-                    "event: response.created",
-                    (
-                        "data: {"
-                        '"type":"response.created",'
-                        '"response":{"id":"resp_3"},'
-                        '"sequence_number":0}'
-                    ),
-                    "",
-                    "event: response.completed",
-                    (
-                        "data: {"
-                        '"type":"response.completed",'
-                        '"response":{"id":"resp_3","usage":{}},'
-                        '"sequence_number":2}'
-                    ),
-                    "data: [DONE]",
-                ],
-                "",
                 None,
                 None,
             ),
@@ -3337,20 +3347,6 @@ class TestResponsesRequestHandler:
                 10,
                 2,
             ),
-            (
-                [
-                    "event: response.failed",
-                    (
-                        "data: {"
-                        '"type":"response.failed",'
-                        '"response":{"id":"resp_fail_no_usage"},'
-                        '"sequence_number":1}'
-                    ),
-                ],
-                "",
-                None,
-                None,
-            ),
         ],
     )
     def test_streaming_terminal_events(
@@ -3379,6 +3375,57 @@ class TestResponsesRequestHandler:
         assert response.text == expected_text
         assert response.input_metrics.text_tokens == expected_input_tokens
         assert response.output_metrics.text_tokens == expected_output_tokens
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "response",
+        [
+            {"output": [], "usage": {}},
+            {"output": [{"type": "message", "content": []}], "usage": {}},
+        ],
+    )
+    def test_non_streaming_raises_for_unusable_terminal_payload(
+        self, valid_instances, generation_request, response
+    ):
+        """Responses API empty output raises UNUSABLE_BACKEND_RESPONSE.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        compiled = instance.compile_non_streaming(
+            generation_request, arguments, response
+        )
+
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            instance.post_validation(compiled)
+
+    @pytest.mark.regression
+    def test_non_streaming_tool_call_only_passes_validation(
+        self, valid_instances, generation_request
+    ):
+        """Tool-call-only Responses API output is valid and must not raise.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+        response = {
+            "output": [
+                {
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "get_weather",
+                    "arguments": '{"city":"NYC"}',
+                }
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        result = instance.compile_non_streaming(generation_request, arguments, response)
+        instance.post_validation(result)
+        assert result.tool_calls is not None
+        assert len(result.tool_calls) == 1
 
     @pytest.mark.sanity
     def test_streaming_reasoning_triggers_ttft_not_content(
