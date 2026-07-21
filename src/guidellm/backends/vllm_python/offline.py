@@ -12,12 +12,11 @@ from __future__ import annotations
 import asyncio
 import gc
 import time
-import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from pydantic import ConfigDict, Field, PositiveInt, model_validator
+from pydantic import ConfigDict, Field, PositiveInt
 
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.common import reset_cpu_affinity
@@ -67,18 +66,6 @@ class VLLMOfflineBackendArgs(VLLMPythonBackendArgs):
         description="Offline backend does not support streaming.",
     )
 
-    @model_validator(mode="after")
-    def validate_vllm_config(self):
-        """Set defaults on vllm_config and ensure model is set."""
-        if "model" in self.vllm_config:
-            logger.warning(
-                "The `model` input was passed to the vllm offline "
-                "backend with the `vllm_config` input. Ignoring and "
-                "overwriting with the value from the `model` input."
-            )
-        self.vllm_config["model"] = self.model
-        return self
-
 
 class _OfflineResolvedRequest(StandardBaseModel):
     """Fully resolved request for the offline backend.
@@ -102,12 +89,9 @@ class _OfflineResolvedRequest(StandardBaseModel):
 class _BatchedRequest:
     """Tracks a single request waiting for batch processing."""
 
-    request: GenerationRequest
-    request_info: RequestInfo
     resolved_prompt: str
     multi_modal_data: dict[str, Any] | None
     max_tokens: int | None
-    request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     result: Any = None  # vllm.RequestOutput once available
     ready: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -161,6 +145,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         # Batch processing state
         self._batch_lock = asyncio.Lock()
+        self._generate_lock = asyncio.Lock()
         self._pending_batch: list[_BatchedRequest] = []
         self._processing_task: asyncio.Task[None] | None = None
         self._shutting_down = False
@@ -228,11 +213,10 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
 
-        self._shutting_down = True
-
-        # Drain any remaining requests
+        # Set flag under lock so no new requests can enqueue
         batch: list[_BatchedRequest] = []
         async with self._batch_lock:
+            self._shutting_down = True
             if self._pending_batch:
                 batch = self._take_pending_batch()
         if batch:
@@ -356,8 +340,10 @@ class VLLMOfflineBackend(VLLMPythonBackend):
     async def _run_generate(self, batch: list[_BatchedRequest]) -> None:
         """Run ``LLM.generate()`` for *batch* and distribute results.
 
-        Does **not** hold ``_batch_lock`` so new requests can enqueue
-        while generation is in progress.
+        Serialized by ``_generate_lock`` so only one generate() call
+        runs at a time (vLLM's sync LLM is not safe for overlapping
+        generates).  Does **not** hold ``_batch_lock`` so new requests
+        can enqueue while generation is in progress.
         """
         if not batch:
             return
@@ -384,26 +370,32 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         loop = asyncio.get_running_loop()
 
-        try:
-            outputs = await loop.run_in_executor(
-                None,
-                lambda: self._llm.generate(  # type: ignore[union-attr]
-                    prompts,
-                    sampling_params=sampling_params_list,
-                    use_tqdm=False,
-                ),
-            )
-        except (RuntimeError, ValueError, TypeError, OSError, KeyError) as exc:
-            logger.error(
-                "vLLM offline generate() failed: {}: {}",
-                type(exc).__name__,
-                exc,
-            )
-            # Signal all waiters so they can raise
-            for batched_req in batch:
-                batched_req.result = exc
-                batched_req.ready.set()
-            return
+        async with self._generate_lock:
+            try:
+                outputs = await loop.run_in_executor(
+                    None,
+                    lambda: self._llm.generate(  # type: ignore[union-attr]
+                        prompts,
+                        sampling_params=sampling_params_list,
+                        use_tqdm=False,
+                    ),
+                )
+            except (
+                RuntimeError,
+                ValueError,
+                TypeError,
+                OSError,
+                KeyError,
+            ) as exc:
+                logger.error(
+                    "vLLM offline generate() failed: {}: {}",
+                    type(exc).__name__,
+                    exc,
+                )
+                for batched_req in batch:
+                    batched_req.result = exc
+                    batched_req.ready.set()
+                return
 
         # Distribute results back to callers
         for batched_req, output in zip(batch, outputs, strict=True):
@@ -442,8 +434,6 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             generation fails
         :yields: Single tuple of (response, updated_request_info)
         """
-        if self._shutting_down:
-            raise RuntimeError("Backend is shutting down.")
         self._validate_backend_initialized()
         await self._ensure_engine()
         self._validate_history(history)
@@ -457,8 +447,6 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         )
 
         batched_req = _BatchedRequest(
-            request=request,
-            request_info=request_info,
             resolved_prompt=resolved.prompt,
             multi_modal_data=resolved.multi_modal_data,
             max_tokens=max_tokens,
@@ -466,8 +454,10 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         request_info.timings.request_start = time.time()
 
-        # Enqueue
+        # Enqueue atomically with shutdown check
         async with self._batch_lock:
+            if self._shutting_down:
+                raise RuntimeError("Backend is shutting down.")
             self._pending_batch.append(batched_req)
 
         # If the batch is full, process immediately
