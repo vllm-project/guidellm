@@ -34,7 +34,10 @@ guidellm run \
 ## Backend options
 
 - **`batch_size`** (default: `32`)\
-  Maximum number of requests to accumulate before dispatching a single `LLM.generate()` call. Larger batches amortize engine overhead but increase per-request latency.
+  Maximum number of requests to accumulate before dispatching a single `LLM.generate()` call. When the batch fills to this size, it is dispatched immediately. Partial batches (fewer requests than `batch_size`) are flushed after `batch_timeout` seconds. The effective batch size is therefore `min(batch_size, requests arriving within the timeout window)`. Larger values amortize engine overhead but increase per-request latency.
+
+- **`batch_timeout`** (default: `0.01`)\
+  Seconds to wait for more requests before flushing a partial batch. Full batches bypass this delay entirely. Increase this value when higher concurrency allows more requests to accumulate per batch; decrease it (or leave at the default) for latency-sensitive workloads.
 
 - **`model`** (required)\
   Hugging Face model identifier or filesystem path for vLLM to load.
