@@ -6,9 +6,11 @@ requested input_length for replay benchmarks."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+import dataclasses
+import enum
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 from datasets import (
@@ -31,6 +33,11 @@ from guidellm.data.deserializers.deserializer import (
 )
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.hf_datasets import load_dataset_from_file
+from guidellm.utils.json_unwrap import (
+    VirtualColumnLocation,
+    extract_json,
+    get_json_column_names,
+)
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
@@ -82,12 +89,130 @@ def _validate_trace_path(path: Path | str) -> Path:
     return path
 
 
-def _check_and_raise_missing_columns(
+def _get_missing_columns(
     required_columns: list[str], actual_columns: list[str]
-) -> None:
-    missing = [c for c in required_columns if c not in actual_columns]
+) -> list[str]:
+    return [c for c in required_columns if c not in actual_columns]
+
+
+class Status(enum.Enum):
+    FAILURE = enum.auto()
+    SUCCESS = enum.auto()
+
+
+@dataclasses.dataclass
+class ColumnSearchResult:
+    status: Status
+    checked_json_columns: bool
+    apropos_column_names: Sequence[str | VirtualColumnLocation]
+
+
+def _construct_virtual_column_locations(
+    wrapper_column: str, virtual_columns: list[str]
+) -> list[VirtualColumnLocation]:
+    return [VirtualColumnLocation(wrapper_column, c) for c in virtual_columns]
+
+
+def _is_supported_json_data_type(data: Any) -> bool:
+    """Currently, only JSON data in the form of a list of JSON objects is supported."""
+    return isinstance(data, list) and (len(data) == 0 or isinstance(data[0], dict))
+
+
+def _find_virtual_columns(
+    sample_row: dict[str, Any],
+    json_column_names: list[str],
+    target_columns: list[str],
+) -> ColumnSearchResult:
+    """Required columns must all be stored within the same column."""
+    completely_missing = set(target_columns)
+    for col in json_column_names:
+        parsed = extract_json(sample_row, col)
+        if _is_supported_json_data_type(parsed) and len(parsed) > 0:
+            virtual_columns = [] if parsed is None else list(parsed[0].keys())
+            missing = _get_missing_columns(target_columns, virtual_columns)
+            if not missing:
+                locations = _construct_virtual_column_locations(col, target_columns)
+                return ColumnSearchResult(Status.SUCCESS, True, locations)
+            completely_missing = completely_missing.difference(missing)
+    if json_column_names:
+        return ColumnSearchResult(Status.FAILURE, True, list(completely_missing))
+    return ColumnSearchResult(Status.FAILURE, False, [])
+
+
+def _find_required_columns(columns: list[str], dataset: Dataset) -> ColumnSearchResult:
+    """Returns a list of all missing columns on failure. Otherwise returns a list of
+    the locations of any required columns embedded inside a JSON dict."""
+    missing = _get_missing_columns(columns, dataset.column_names)
     if missing:
-        raise KeyError(f"Trace row missing required columns: {missing}")
+        json_column_names = get_json_column_names(dataset)
+        sample = dataset[0]
+        result = _find_virtual_columns(sample, json_column_names, columns)
+        if result.status is Status.FAILURE and not result.checked_json_columns:
+            result.apropos_column_names = missing
+        return result
+    return ColumnSearchResult(Status.SUCCESS, False, [])
+
+
+def _unzip_virtual_column_locations(
+    column_locations: list[VirtualColumnLocation],
+) -> tuple[tuple[str], tuple[str]]:
+    """Returns a tuple of wrapper columns and a tuple of virtual columns,
+    in that order."""
+    return cast(
+        "tuple[tuple[str], tuple[str]]",
+        zip(*(dataclasses.astuple(c) for c in column_locations), strict=True),
+    )
+
+
+def _make_columns_from_virtual(
+    batch: dict[str, list], wrapper_col: str, virtual_cols: list[str]
+) -> dict[str, list]:
+    """Intended to be used with `datasets.Dataset.map()`."""
+    json_dicts = []
+    for json_strings in batch[wrapper_col]:
+        json_dicts.extend(extract_json({wrapper_col: json_strings}, wrapper_col))
+    return {c: [row[c] for row in json_dicts] for c in virtual_cols}
+
+
+def _make_dataset_from_virtual(
+    dataset: Dataset, columns: list[VirtualColumnLocation]
+) -> Dataset:
+    """Assumes all virtual columns are stored inside the same column.
+    (Currently ensured by `_is_supported_json_data_type`)."""
+    wrapper_cols, virt_cols = _unzip_virtual_column_locations(columns)
+    return dataset.map(
+        _make_columns_from_virtual,
+        batched=True,
+        remove_columns=dataset.column_names,
+        fn_kwargs={"wrapper_col": wrapper_cols[0], "virtual_cols": virt_cols},
+    )
+
+
+def _handle_column_search_result(
+    result: ColumnSearchResult, dataset: Dataset
+) -> Dataset:
+    """Returns an updated dataset where any required columns found wrapped inside
+    JSON dicts are unwrapped and added as columns to the dataset.
+
+    :raises KeyError: If a required column is missing in the dataset."""
+    if result.status is Status.FAILURE:
+        additional_info = ""
+        if result.checked_json_columns:
+            additional_info = (
+                "Note: GuideLLM searched columns with lists of JSON objects after"
+                "failing to find them at the top level."
+                "Ensure that all required columns are wrapped in the same column if"
+                "this is where they are intended to be found."
+            )
+        raise KeyError(
+            f"Trace row missing required columns: {result.apropos_column_names} "
+            f"{additional_info}"
+        )
+    if not result.checked_json_columns:
+        return dataset
+    return _make_dataset_from_virtual(
+        dataset, cast("list[VirtualColumnLocation]", result.apropos_column_names)
+    )
 
 
 def _load_trace_rows(
@@ -114,18 +239,16 @@ def _load_trace_rows(
     - A required column contains a NoneType
     - A required column failed during cast to feature type
 
-    :raises KeyError: If a required column is missing in the dataset.
     :raises ValueError: If the file format is not .jsonl, .json, .csv or .parquet.
     """
     path = _validate_trace_path(path)
     trace_dataset = load_dataset_from_file(path, **data_kwargs)
-    if required_columns:
-        _check_and_raise_missing_columns(
-            required_columns.keys(), trace_dataset.column_names
-        )
-
     if not trace_dataset:
         raise DataNotSupportedError(f"Trace file has no valid rows: {path}")
+
+    result = _find_required_columns(required_columns.keys(), trace_dataset)
+    trace_dataset = _handle_column_search_result(result, trace_dataset)
+
     for name, val in required_columns.items():
         if trace_dataset.data[name].null_count != 0:
             raise DataNotSupportedError(f"Missing column values in {name}")
@@ -330,6 +453,13 @@ class TraceDataset(IterableDataset):
             self._ex_iterable.iteration_count = epoch
 
 
+def _validate_path(path: Path) -> None:
+    if not path.exists():
+        raise DataNotSupportedError(f"Trace file not found: {path}")
+    if not path.is_file():
+        raise DataNotSupportedError(f"Trace path is not a file: {path}")
+
+
 @DatasetDeserializerFactory.register(["trace_synthetic"])
 class TraceDatasetDeserializer(DatasetDeserializer):
     """Dataset deserializer for all trace formats."""
@@ -340,8 +470,5 @@ class TraceDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int = 42,
     ) -> IterableDataset:
-        if not config.path.exists():
-            raise DataNotSupportedError(f"Trace file not found: {config.path}")
-        if not config.path.is_file():
-            raise DataNotSupportedError(f"Trace path is not a file: {config.path}")
+        _validate_path(config.path)
         return TraceDataset(config, processor_factory(), random_seed)

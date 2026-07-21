@@ -1,4 +1,5 @@
 import dataclasses
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -82,9 +83,12 @@ def write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
 
 
 def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
+    """Returns valid JSON lines."""
     return "\n".join(
         "{"
-        + ", ".join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
+        + ", ".join(
+            f'"{col.name}": {col.data_generator(idx)}' for col in columns
+        ).replace("'", '"')
         + "}"
         for idx in range(num_rows)
     )
@@ -146,22 +150,53 @@ class TestTraceDatasetDeserializer:
             assert row["prompt_tokens_count"] == (i + 1) * 10
             assert row["output_tokens_count"] == i + 1
 
-    @pytest.mark.smoke
-    def test_loads_sorted_rows_and_keeps_token_columns_aligned(
-        self, tmp_path: Path, deserializer
-    ):
-        n_rows = 10
-        trace = write_trace(
-            tmp_path,
-            generate_trace(
+    @pytest.fixture
+    def example_trace(self):
+        def generator(tmp_path: Path, n_rows: int) -> str:
+            trace_rows = generate_trace(
                 n_rows,
                 [
                     TraceColumnGenerator("timestamp", lambda i: n_rows - i),
                     TraceColumnGenerator("input_length", lambda i: n_rows - i),
                     TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
                 ],
-            ),
-        )
+            )
+            return write_trace(tmp_path, trace_rows)
+
+        return generator
+
+    @pytest.fixture
+    def example_list_json_trace(self):
+        def generator(tmp_path: Path, n_rows: int) -> str:
+            trace_rows = generate_trace(
+                n_rows,
+                [
+                    TraceColumnGenerator("timestamp", lambda i: n_rows - i),
+                    TraceColumnGenerator("input_length", lambda i: n_rows - i),
+                    TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
+                ],
+            )
+            json_data = [json.loads(s) for s in trace_rows.split("\n")]
+            return write_trace(
+                tmp_path,
+                generate_trace(
+                    1, [TraceColumnGenerator("requests", lambda _: json_data)]
+                ),
+            )
+
+        return generator
+
+    @pytest.mark.parametrize(
+        "example",
+        ["example_trace", "example_list_json_trace"],
+    )
+    @pytest.mark.smoke
+    def test_loads_sorted_rows_and_keeps_token_columns_aligned(
+        self, tmp_path: Path, deserializer, example, request
+    ):
+        n_rows = 10
+        trace_factory = request.getfixturevalue(example)
+        trace = trace_factory(tmp_path, n_rows)
         ds = self.deserialize(deserializer, trace)
         assert isinstance(ds, IterableDataset)
         proc = mock_processor()
