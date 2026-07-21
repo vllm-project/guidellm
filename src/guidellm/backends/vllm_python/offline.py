@@ -11,18 +11,16 @@ from __future__ import annotations
 
 import asyncio
 import gc
-import os
-import sys
 import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Literal, cast
 
 from pydantic import ConfigDict, Field, PositiveInt, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.vllm_python.common import reset_cpu_affinity
 from guidellm.backends.vllm_python.vllm import (
     _CHAT_TEMPLATE_UNSET,
     VLLMPythonBackend,
@@ -210,7 +208,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             )
 
             def _create_engine() -> Any:
-                self._reset_cpu_affinity()
+                reset_cpu_affinity()
                 return vllm.LLM.from_engine_args(  # type: ignore[attr-defined]
                     engine_args,
                 )
@@ -245,6 +243,9 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             self._processing_task = None
 
         if self._llm is not None:
+            shutdown = getattr(self._llm, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
             del self._llm
             self._llm = None
             gc.collect()
@@ -273,51 +274,6 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
         return self._llm
-
-    @staticmethod
-    def _reset_cpu_affinity() -> None:
-        """Restore the full CPU set allowed by the OS/cgroup.
-
-        When the worker process is forked from a parent that has
-        already initialised an OpenMP runtime (e.g. via PyTorch),
-        the child inherits a restricted CPU-affinity mask.  This
-        causes vLLM's auto-bind logic to see far fewer cores than
-        are actually available, destroying throughput.
-
-        We read the effective cpuset from the cgroup filesystem
-        (works inside containers and on bare metal with cgroups v2)
-        and reset the affinity to the full set.
-        """
-        if sys.platform != "linux":
-            return
-
-        current = os.sched_getaffinity(0)
-
-        for path_str in (
-            "/sys/fs/cgroup/cpuset.cpus.effective",
-            "/sys/fs/cgroup/cpuset/cpuset.cpus",
-        ):
-            try:
-                raw = Path(path_str).read_text().strip()
-            except OSError:
-                continue
-
-            cpus: set[int] = set()
-            for part in raw.split(","):
-                if "-" in part:
-                    lo, hi = part.split("-", 1)
-                    cpus.update(range(int(lo), int(hi) + 1))
-                else:
-                    cpus.add(int(part))
-
-            if cpus and current != cpus:
-                os.sched_setaffinity(0, cpus)
-                logger.info(
-                    "Reset CPU affinity from {} to {} cores",
-                    len(current),
-                    len(cpus),
-                )
-            return
 
     # ------------------------------------------------------------------
     # Chat template / tokenizer (overrides for offline tokenizer path)
@@ -486,6 +442,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             generation fails
         :yields: Single tuple of (response, updated_request_info)
         """
+        if self._shutting_down:
+            raise RuntimeError("Backend is shutting down.")
         self._validate_backend_initialized()
         await self._ensure_engine()
         self._validate_history(history)
