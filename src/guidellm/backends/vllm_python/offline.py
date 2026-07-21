@@ -546,8 +546,12 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         wall-clock values anchored on the wall-clock
         ``arrival_time`` that vLLM also provides.
         """
-        metrics = getattr(request_output, "metrics", None)
-        num_gen = getattr(metrics, "num_generation_tokens", 0) if metrics else 0
+        metrics = request_output.metrics if hasattr(request_output, "metrics") else None
+        num_gen = (
+            metrics.num_generation_tokens
+            if metrics and hasattr(metrics, "num_generation_tokens")
+            else 0
+        )
 
         if num_gen > 0:
             request_info.timings.token_iterations = num_gen
@@ -561,12 +565,14 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if metrics is None:
             return
 
-        arrival = getattr(metrics, "arrival_time", 0.0)
-        mono_base = getattr(metrics, "scheduled_ts", 0.0) or getattr(
-            metrics, "queued_ts", 0.0
+        arrival = metrics.arrival_time if hasattr(metrics, "arrival_time") else 0.0
+        scheduled = metrics.scheduled_ts if hasattr(metrics, "scheduled_ts") else 0.0
+        queued = metrics.queued_ts if hasattr(metrics, "queued_ts") else 0.0
+        mono_base = scheduled or queued
+        first_tok = (
+            metrics.first_token_ts if hasattr(metrics, "first_token_ts") else 0.0
         )
-        first_tok = getattr(metrics, "first_token_ts", 0.0)
-        last_tok = getattr(metrics, "last_token_ts", 0.0)
+        last_tok = metrics.last_token_ts if hasattr(metrics, "last_token_ts") else 0.0
 
         if not (arrival and mono_base and first_tok):
             return

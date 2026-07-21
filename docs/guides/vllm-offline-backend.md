@@ -18,8 +18,8 @@ Run a benchmark with the vLLM offline backend:
 guidellm run \
   --backend kind=vllm_offline,model=Qwen/Qwen3-0.6B,batch_size=32 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --profile kind=constant,rate=3 \
-  --constraint kind=max_duration,seconds=20
+  --profile kind=throughput,max_concurrency=20 \
+  --constraint kind=max_requests,count=100
 ```
 
 ## Offline vs Python backend
