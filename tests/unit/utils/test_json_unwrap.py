@@ -2,7 +2,6 @@ import pytest
 from datasets import Dataset, IterableDataset
 
 from guidellm.utils.json_unwrap import (
-    extract_json,
     get_json_column_names,
     try_json_load,
 )
