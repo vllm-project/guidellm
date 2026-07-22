@@ -16,6 +16,7 @@ from guidellm.benchmark import (
 )
 from guidellm.settings import Settings
 from guidellm.utils.click_pydantic import (
+    RegistryAwareCommand,
     format_validation_errors,
     registry_options_from_model,
 )
@@ -30,6 +31,7 @@ __all__ = [
 
 @click.command(
     "run",
+    cls=RegistryAwareCommand,
     help=(
         "Run a benchmark against a generative model. "
         "Supports multiple backends, data sources, strategies, and output formats. "
