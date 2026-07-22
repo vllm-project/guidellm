@@ -10,9 +10,17 @@ from .entrypoints import (
     DataPreprocessorArgs,
     DataTokenizerArgs,
 )
-from .preprocess import PreprocessDatasetConfig
+from .preprocess import (
+    ConcatenatePreprocessStrategyArgs,
+    ErrorPreprocessStrategyArgs,
+    IgnorePreprocessStrategyArgs,
+    PadPreprocessStrategyArgs,
+    PreprocessStrategyArgs,
+    PromptTooShortError,
+)
 
 __all__ = [
+    "ConcatenatePreprocessStrategyArgs",
     "DataArgs",
     "DataFinalizerArgs",
     "DataLoaderArgs",
@@ -20,6 +28,10 @@ __all__ = [
     "DataPreprocessorArgs",
     "DataTokenizerArgs",
     "DatasetType",
+    "ErrorPreprocessStrategyArgs",
     "GenerativeDatasetColumnType",
-    "PreprocessDatasetConfig",
+    "IgnorePreprocessStrategyArgs",
+    "PadPreprocessStrategyArgs",
+    "PreprocessStrategyArgs",
+    "PromptTooShortError",
 ]

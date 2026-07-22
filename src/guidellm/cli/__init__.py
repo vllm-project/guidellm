@@ -15,7 +15,9 @@ Example:
         --profile sweep
 
     # Preprocess a dataset
-    guidellm preprocess dataset input.json output.json --processor gpt2
+    guidellm preprocess dataset kind=json_file,path=input.json \\
+        output.json --tokenizer kind=huggingface_auto,model=gpt2 \\
+        --strategy kind=ignore,prompt_tokens=128,output_tokens=64
 
     # Start a mock server for testing
     guidellm mock-server --host 0.0.0.0 --port 8080
