@@ -36,4 +36,12 @@ GuideLLM is an open-source project that values community contributions. We maint
 
   [:octicons-arrow-right-24: Development Guide](developing.md)
 
+- :material-clipboard-check:{ .lg .middle } Release Test Plan
+
+  ______________________________________________________________________
+
+  Manual checklist for verifying a release candidate: CLI surfaces, outputs, datasets, backends, and known regression hotspots.
+
+  [:octicons-arrow-right-24: Release Test Plan](release-test-plan.md)
+
 </div>
