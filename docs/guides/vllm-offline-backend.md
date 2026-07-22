@@ -58,6 +58,14 @@ guidellm run \
 >
 > The `model` field in the backend configuration is required for `vllm_offline`. If `model` is also set inside `vllm_config`, the top-level `model` field takes precedence.
 
+## Engine lifecycle
+
+The vLLM engine is created **lazily** — it is not loaded during `process_startup()`. Instead, the engine is created the first time a request is processed.
+
+When GuideLLM forks worker processes for benchmarking, each worker calls `validate()` before the timed phase begins. The offline backend detects that it is running inside a forked worker (by comparing PIDs) and **preloads the engine during validation**. This ensures the engine cold-start time is excluded from the benchmark measurement.
+
+The parent process never loads the engine, avoiding a double-startup that would waste resources reloading model weights.
+
 ## See also
 
 - [vLLM Python Backend](vllm-python-backend.md) -- Async per-request backend.
