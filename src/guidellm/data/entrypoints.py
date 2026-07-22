@@ -165,17 +165,9 @@ def process_dataset(
     :param random_seed: Seed for random sampling.
     :raises ValueError: If the output path is invalid or pushing conditions unmet.
     """
-    data_config = data if isinstance(data, DataArgs) else DataArgs.model_validate(data)
-    tokenizer_config = (
-        tokenizer
-        if isinstance(tokenizer, DataTokenizerArgs)
-        else DataTokenizerArgs.model_validate(tokenizer)
-    )
-    strategy_config = (
-        strategy
-        if isinstance(strategy, PreprocessStrategyArgs)
-        else PreprocessStrategyArgs.model_validate(strategy)
-    )
+    data_config = DataArgs.model_validate(data)
+    tokenizer_config = DataTokenizerArgs.model_validate(tokenizer)
+    strategy_config = PreprocessStrategyArgs.model_validate(strategy)
     column_mapper_config = DataPreprocessorArgs.model_validate(
         data_column_mapper
         if data_column_mapper is not None
