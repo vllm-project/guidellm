@@ -52,11 +52,6 @@ lock:
 build:
 	tox -e build
 
-# Cross-platform cleanup using Python (works on Windows, macOS, and Linux)
-clean:
-	python -c "import shutil, glob; [shutil.rmtree(p, ignore_errors=True) for p in ('.tox', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.hypothesis', 'build', 'dist')]"
-	python -c "import shutil, glob; [shutil.rmtree(p, ignore_errors=True) for p in glob.glob('*.egg-info')]"
-
 help:
 	@echo "GuideLLM Development Targets:"
 	@echo "  make check            - Run unit tests, lint check, and type check"
