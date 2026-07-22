@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import csv
 import json
+from json import JSONEncoder
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
@@ -31,6 +32,13 @@ __all__ = [
     "CSVBenchmarkOutputArgs",
     "GenerativeBenchmarkerCSV",
 ]
+
+
+class _SecretStrEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, SecretStr):
+            return obj.get_secret_value()
+        return super().default(obj)
 
 
 @BenchmarkOutputArgs.register("csv")
@@ -306,7 +314,14 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             json.dumps(benchmark.config.requests),
         )
         self._add_field(
-            headers, values, "Run Info", "Backend", json.dumps(benchmark.config.backend)
+            headers,
+            values,
+            "Run Info",
+            "Backend",
+            json.dumps(
+                benchmark.config.backend,
+                cls=_SecretStrEncoder,
+            ),
         )
         self._add_field(
             headers,
