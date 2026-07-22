@@ -15,6 +15,7 @@ from .dataset import dataset
 
 __all__ = ["preprocess"]
 
+# Rebuild schemas to ensure all registry subclasses are known
 PreprocessStrategyArgs.reload_schema()
 PreprocessDatasetArgs.reload_schema()
 
