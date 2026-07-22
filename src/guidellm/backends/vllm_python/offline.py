@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import gc
+import os
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -154,6 +155,11 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         """
         super().__init__(arguments)
 
+        # PID of the process that created this instance.
+        # Workers forked by the benchmark framework will have a
+        # different PID and can use this to detect they are children.
+        self._creator_pid = os.getpid()
+
         # Batch processing state
         self._batch_lock = asyncio.Lock()
         self._generate_lock = asyncio.Lock()
@@ -192,6 +198,10 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         self._in_process = True
         self._shutting_down = False
+
+        # Discard any engine handle inherited from the parent process.
+        # The worker must create its own via _ensure_engine().
+        self._llm = None
 
         # Recreate asyncio primitives for the current event loop.
         self._batch_lock = asyncio.Lock()
@@ -268,15 +278,23 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
     async def validate(self):
         """
-        Validate backend readiness.
+        Validate backend readiness and preload the engine in workers.
 
-        Only checks that ``process_startup()`` was called.  The
-        engine itself is created lazily on the first request.
+        In the parent process (PID matches ``_creator_pid``) this only
+        checks that ``process_startup()`` was called — engine creation
+        is deferred so the parent never loads model weights.
+
+        In a forked worker (PID differs) the engine is eagerly created
+        so that the cold-start time is excluded from the timed
+        benchmark phase.
 
         :raises RuntimeError: If backend is not initialised
         """
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
+
+        if os.getpid() != self._creator_pid:
+            await self._ensure_engine()
 
     def _validate_backend_initialized(self) -> Any:  # type: ignore[override]
         """
