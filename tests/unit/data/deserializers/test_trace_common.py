@@ -194,9 +194,8 @@ class TestTraceDatasetDeserializer:
     def test_loads_sorted_rows_and_keeps_token_columns_aligned(
         self, tmp_path: Path, deserializer, example, request
     ):
-        n_rows = 10
         trace_factory = request.getfixturevalue(example)
-        trace = trace_factory(tmp_path, n_rows)
+        trace = trace_factory(tmp_path, 10)
         ds = self.deserialize(deserializer, trace)
         assert isinstance(ds, IterableDataset)
         proc = mock_processor()
@@ -290,6 +289,16 @@ class TestTraceDatasetDeserializer:
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
             self.deserialize(deserializer, trace, **kwargs)
+
+    @pytest.mark.sanity
+    def test_malformed_json_columns_raises(
+        self, tmp_path: Path, deserializer, example_list_json_trace
+    ):
+        trace = example_list_json_trace(tmp_path, 2)
+        data = trace.read_text().replace("timestamp", "ts")
+        trace.write_text(data)
+        with pytest.raises(DataNotSupportedError, match="lists of JSON objects"):
+            self.deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):
