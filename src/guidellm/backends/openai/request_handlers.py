@@ -706,17 +706,56 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             return {"type": tool.get("type", "function"), "function": fn}
         return tool
 
+    @staticmethod
+    def _format_text_prompt(
+        item: Any,
+        append_payloads: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Format one plain or structured dataset prompt as text content.
+
+        :param item: A plain string or structured text content dictionary.
+        :param append_payloads: Backend fields that override dataset metadata.
+        :return: A copied, validated text content dictionary.
+        :raises ValueError: If the prompt is not valid structured text content.
+        """
+        if isinstance(item, str):
+            content = {"type": "text", "text": item}
+        elif isinstance(item, dict):
+            content = item.copy()
+            content.setdefault("type", "text")
+            if content["type"] != "text":
+                raise ValueError("Structured text prompts must use content type 'text'")
+            if not isinstance(content.get("text"), str):
+                raise ValueError(
+                    "Structured text prompts must contain a string 'text' field"
+                )
+        else:
+            raise ValueError(
+                "Text prompts must be strings or structured content objects"
+            )
+
+        if append_payloads:
+            content.update(append_payloads)
+        return content
+
     def _format_prompts(
-        self, column_data: list[dict[str, Any]], column_type: str
+        self,
+        column_data: list[Any],
+        column_type: str,
+        append_payloads: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Helper method to format different types of data columns
         into the appropriate structure for chat messages.
+
+        Structured text dictionaries are copied as-is so model-specific metadata
+        from datasets is preserved. Backend-provided ``append_payloads`` are applied
+        last and therefore override matching dataset metadata.
         """
         formatted_data = []
         for item in column_data:
             if column_type == "text_column":
-                formatted_data.append({"type": "text", "text": item})
+                formatted_data.append(self._format_text_prompt(item, append_payloads))
             elif column_type == "image_column":
                 formatted_data.append(
                     {
@@ -911,7 +950,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 messages.append({"role": "system", "content": prefix})
 
             prompts = [
-                self._format_prompts(req.columns.get(col, []), col)
+                self._format_prompts(
+                    req.columns.get(col, []),
+                    col,
+                    kwargs.get("append_payloads") if col == "text_column" else None,
+                )
                 for col in (
                     "text_column",
                     "image_column",
@@ -1019,7 +1062,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 arguments.body["messages"].append({"role": "system", "content": prefix})
 
             prompts = [
-                self._format_prompts(data.columns.get(col, []), col)
+                self._format_prompts(
+                    data.columns.get(col, []),
+                    col,
+                    kwargs.get("append_payloads") if col == "text_column" else None,
+                )
                 for col in (
                     "text_column",
                     "image_column",

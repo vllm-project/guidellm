@@ -179,6 +179,76 @@ class TestOpenAIHTTPBackend:
         )
         assert backend._args.server_history is True
 
+    @pytest.mark.sanity
+    def test_append_payloads_are_accepted_for_chat_completions(self):
+        """Chat backends accept structured content payload defaults.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            append_payloads={
+                "metadata": {"category": "support"},
+                "priority": 1,
+            },
+        )
+
+        assert backend._args.append_payloads == {
+            "metadata": {"category": "support"},
+            "priority": 1,
+        }
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("reserved_field", ["type", "text"])
+    def test_append_payloads_reject_reserved_fields(self, reserved_field):
+        """Append payloads cannot replace GuideLLM-owned content fields.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="reserved content fields"):
+            _make_backend(
+                target="http://localhost:8000",
+                append_payloads={reserved_field: "replacement"},
+            )
+
+    @pytest.mark.sanity
+    def test_append_payloads_reject_non_chat_endpoint(self):
+        """Append payloads are isolated from non-chat request handlers.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="only supported"):
+            _make_backend(
+                target="http://localhost:8000",
+                request_format="/v1/completions",
+                append_payloads={"priority": 1},
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.regression
+    async def test_append_payloads_are_forwarded_to_request_handler(
+        self, mock_request_handler
+    ):
+        """The HTTP backend forwards append payloads through its handler boundary.
+
+        ## WRITTEN BY AI ##
+        """
+        payloads = {
+            "metadata": {"category": "support"},
+            "priority": 1,
+        }
+        backend = _make_backend(
+            target="http://localhost:8000",
+            model="test-model",
+            append_payloads=payloads,
+        )
+        mock_handler, handler_patch = mock_request_handler
+
+        with handler_patch:
+            await backend._prepare_resolve_request(GenerationRequest())
+
+        assert mock_handler.format.call_args.kwargs["append_payloads"] == payloads
+
     @pytest.mark.smoke
     def test_factory_registration(self):
         """Test that OpenAIHTTPBackend is registered with Backend factory."""

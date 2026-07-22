@@ -1,9 +1,12 @@
 """Tests for ``guidellm run`` CLI error translation."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
+from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
 
 
 @pytest.mark.regression
@@ -57,3 +60,58 @@ def test_run_allows_synthetic_text_without_output_tokens():
 
     assert "Invalid value for --data" not in result.output
     assert "output_tokens" not in result.output
+
+
+@pytest.mark.regression
+def test_run_parses_append_payloads_into_openai_backend():
+    """The top-level option is stored in the registered backend configuration.
+
+    ## WRITTEN BY AI ##
+    """
+    runner = CliRunner()
+    benchmark = AsyncMock()
+
+    with patch("guidellm.cli.run.benchmark_generative_text", benchmark):
+        result = runner.invoke(
+            cli,
+            [
+                "run",
+                "--backend",
+                "kind=openai_http,target=http://localhost:8000",
+                "--append-payloads",
+                '{"metadata":{"category":"support"},"priority":1}',
+                "--data",
+                "kind=synthetic_text,prompt_tokens=128",
+                "--disable-console",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    args = benchmark.await_args.kwargs["args"]
+    assert isinstance(args.spec.backend, OpenAIHTTPBackendArgs)
+    assert args.spec.backend.append_payloads == {
+        "metadata": {"category": "support"},
+        "priority": 1,
+    }
+
+
+@pytest.mark.regression
+def test_run_rejects_non_object_append_payloads():
+    """The CLI reports a clear error when append payloads is not an object.
+
+    ## WRITTEN BY AI ##
+    """
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--append-payloads",
+            '["not", "an", "object"]',
+            "--data",
+            "kind=synthetic_text,prompt_tokens=128",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid value for '--append-payloads'" in result.output
+    assert "must be a JSON, YAML, or key=value object" in result.output

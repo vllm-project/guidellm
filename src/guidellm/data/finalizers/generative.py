@@ -49,6 +49,24 @@ class GenerativeRequestFinalizer(
     def __init__(self, config: GenerativeRequestFinalizerArgs) -> None:
         self.config = config
 
+    @staticmethod
+    def _extract_prompt_text(prompt: Any) -> str:
+        """Extract metric-bearing text from a plain or structured prompt.
+
+        :param prompt: A plain string or structured text content dictionary.
+        :return: The prompt text used for character and word metrics.
+        :raises ValueError: If the prompt does not contain valid text.
+        """
+        if isinstance(prompt, str):
+            return prompt
+        if isinstance(prompt, dict) and isinstance(prompt.get("text"), str):
+            return prompt["text"]
+        if isinstance(prompt, dict):
+            raise ValueError(
+                "Structured text prompts must contain a string 'text' field"
+            )
+        raise ValueError("Text prompts must be strings or structured content objects")
+
     def __call__(
         self, items: list[dict[str, Any]]
     ) -> list[tuple[GenerationRequest, RequestSettings]]:
@@ -106,11 +124,11 @@ class GenerativeRequestFinalizer(
             input_metrics.add_text_metrics(prefix)
 
         # Count words in text prompts
-        for text in columns.get("text_column", []):
-            if not text:
+        for prompt in columns.get("text_column", []):
+            if not prompt:
                 continue
 
-            input_metrics.add_text_metrics(text)
+            input_metrics.add_text_metrics(self._extract_prompt_text(prompt))
 
         # Count pixels and bytes in images
         for image in columns.get("image_column", []):

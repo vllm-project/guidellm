@@ -953,6 +953,102 @@ class TestChatCompletionsRequestHandler:
         assert result.body["messages"][0]["content"][1]["type"] == "text"
         assert result.body["messages"][0]["content"][1]["text"] == "How are you?"
 
+    @pytest.mark.regression
+    def test_format_preserves_structured_text_metadata(self, valid_instances):
+        """Structured dataset prompts retain model-specific content fields.
+
+        ## WRITTEN BY AI ##
+        """
+        prompt = {
+            "type": "text",
+            "text": "Handle this request",
+            "metadata": {"category": "support"},
+            "priority": 1,
+        }
+        data = GenerationRequest(columns={"text_column": [prompt]})
+
+        result = valid_instances.format(data)
+
+        content = result.body["messages"][0]["content"][0]
+        assert content == prompt
+        assert content is not prompt
+
+    @pytest.mark.regression
+    def test_append_payloads_override_structured_text_metadata(self, valid_instances):
+        """CLI payload values take precedence over custom dataset metadata.
+
+        ## WRITTEN BY AI ##
+        """
+        prompt = {
+            "type": "text",
+            "text": "Handle this request",
+            "priority": 1,
+            "metadata": {"source": "dataset"},
+            "dataset_only": True,
+        }
+        data = GenerationRequest(columns={"text_column": [prompt]})
+
+        result = valid_instances.format(
+            data,
+            append_payloads={
+                "priority": 2,
+                "metadata": {"source": "cli"},
+                "cli_only": True,
+            },
+        )
+
+        content = result.body["messages"][0]["content"][0]
+        assert content == {
+            "type": "text",
+            "text": "Handle this request",
+            "priority": 2,
+            "metadata": {"source": "cli"},
+            "dataset_only": True,
+            "cli_only": True,
+        }
+        assert prompt["priority"] == 1
+        assert prompt["metadata"] == {"source": "dataset"}
+
+    @pytest.mark.regression
+    def test_append_payloads_enrich_plain_text_only(self, valid_instances):
+        """Append payloads enrich text without changing multimodal parts.
+
+        ## WRITTEN BY AI ##
+        """
+        data = GenerationRequest(
+            columns={
+                "text_column": ["Describe this"],
+                "image_column": [{"image": "https://example.com/image.jpg"}],
+            }
+        )
+
+        result = valid_instances.format(
+            data,
+            append_payloads={
+                "metadata": {"category": "vision"},
+                "priority": 1,
+            },
+        )
+
+        text_content, image_content = result.body["messages"][0]["content"]
+        assert text_content["metadata"] == {"category": "vision"}
+        assert text_content["priority"] == 1
+        assert "metadata" not in image_content
+        assert "priority" not in image_content
+
+    @pytest.mark.regression
+    def test_format_rejects_invalid_structured_text(self, valid_instances):
+        """Invalid structured prompt objects are rejected explicitly.
+
+        ## WRITTEN BY AI ##
+        """
+        data = GenerationRequest(
+            columns={"text_column": [{"type": "text", "text": 123}]}
+        )
+
+        with pytest.raises(ValueError, match="must contain a string 'text' field"):
+            valid_instances.format(data)
+
     @pytest.mark.sanity
     def test_format_messages_prefix(self, valid_instances):
         """Test format method with prefix as system message.
@@ -2625,6 +2721,52 @@ class TestChatCompletionsRequestHandlerMultiturn:
         assert messages[1]["role"] == "assistant"
         assert messages[1]["content"] == "The answer is 4"
         assert messages[2]["role"] == "user"
+
+    @pytest.mark.regression
+    def test_append_payloads_override_history_and_current_metadata(
+        self, valid_instances
+    ):
+        """Append payload precedence is consistent across conversation turns.
+
+        ## WRITTEN BY AI ##
+        """
+        prev_request = GenerationRequest(
+            columns={
+                "text_column": [
+                    {
+                        "type": "text",
+                        "text": "Previous",
+                        "priority": 1,
+                    }
+                ]
+            }
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="Previous response",
+        )
+        data = GenerationRequest(
+            columns={
+                "text_column": [
+                    {
+                        "type": "text",
+                        "text": "Current",
+                        "priority": 2,
+                    }
+                ]
+            }
+        )
+
+        result = valid_instances.format(
+            data,
+            history=[(prev_request, prev_response)],
+            append_payloads={"priority": 3},
+        )
+
+        messages = result.body["messages"]
+        assert messages[0]["content"][0]["priority"] == 3
+        assert messages[2]["content"][0]["priority"] == 3
 
     @pytest.mark.sanity
     def test_chat_format_with_multi_turn_history(self, valid_instances):

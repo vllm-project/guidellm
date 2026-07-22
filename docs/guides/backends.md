@@ -129,6 +129,39 @@ guidellm run \
 
 This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
 
+## Structured Chat Content Payloads
+
+Some chat templates require metadata alongside the text in each structured content object. GuideLLM supports this metadata from custom datasets and from the `--append-payloads` option for the `openai_http` chat-completions backend.
+
+### Per-prompt metadata from a custom dataset
+
+Store the structured text content object in the dataset's `prompt` field. Extra fields are preserved when GuideLLM builds the chat request:
+
+```json
+{"prompt":{"type":"text","text":"The quick brown fox jumps over the lazy dog.","source_lang_code":"en","target_lang_code":"es"},"output_tokens_count":1000}
+```
+
+The default generative column mapper already maps `prompt` to `text_column`, so no custom column mapping is required:
+
+```bash
+guidellm run \
+  --backend 'kind=openai_http,target=http://localhost:8000,model=google/translategemma-12b-it,request_format=/v1/chat/completions' \
+  --data '{"kind":"json_file","path":"translations.jsonl","load_kwargs":{"split":"train"}}' \
+  --constraint kind=max_requests,count=10
+```
+
+### Applying or overriding metadata from the CLI
+
+Use `--append-payloads` when every request should receive the same fields. CLI values override matching metadata in a structured dataset prompt. The generated `type` and `text` fields are reserved and cannot be overridden.
+
+```bash
+guidellm run \
+  --backend 'kind=openai_http,target=http://localhost:8000,model=google/translategemma-12b-it,request_format=/v1/chat/completions' \
+  --append-payloads '{"source_lang_code":"en","target_lang_code":"es"}' \
+  --data kind=synthetic_text,prompt_tokens=1000,output_tokens=1000 \
+  --constraint kind=max_duration,seconds=60
+```
+
 ### How It Works
 
 The `--backend` config is parsed into keyword arguments for the backend constructor. The `extras` field within that config maps to a `GenerationRequestArguments` object that supports the following sub-fields:

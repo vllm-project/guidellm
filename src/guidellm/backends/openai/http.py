@@ -139,6 +139,21 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         default=None,
         description="Additional parameters to include in generation requests.",
     )
+    append_payloads: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional fields to append to every text content object in chat "
+            "completion requests. These fields override matching metadata from "
+            "structured dataset prompts. The reserved fields 'type' and 'text' "
+            "cannot be overridden."
+        ),
+        examples=[
+            {
+                "metadata": {"category": "support"},
+                "priority": 1,
+            }
+        ],
+    )
     max_tokens: int | None = Field(
         default=None,
         validation_alias=AliasChoices("max_tokens", "max_completion_tokens"),
@@ -205,6 +220,24 @@ class OpenAIHTTPBackendArgs(BackendArgs):
                 "server_history=True is only supported with the /v1/responses "
                 "request format. Current request_format: "
                 f"'{self.request_format}'"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_append_payloads(self):
+        """Validate append payloads are safe and scoped to chat completions."""
+        if not self.append_payloads:
+            return self
+        if self.request_format != "/v1/chat/completions":
+            raise ValueError(
+                "append_payloads is only supported with the "
+                "'/v1/chat/completions' request format"
+            )
+        reserved_fields = {"type", "text"}.intersection(self.append_payloads)
+        if reserved_fields:
+            fields = ", ".join(sorted(reserved_fields))
+            raise ValueError(
+                f"append_payloads cannot override reserved content fields: {fields}"
             )
         return self
 
@@ -428,6 +461,7 @@ class OpenAIHTTPBackend(Backend):
             max_tokens=self._args.max_tokens,
             server_history=self._args.server_history,
             multiturn_reasoning=self._args.multiturn_reasoning,
+            append_payloads=self._args.append_payloads,
         )
 
         request_url = f"{self._args.target}/{request_path}"
