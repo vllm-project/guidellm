@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import sys
+import importlib
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
+
+_dataset_mod = importlib.import_module("guidellm.cli.preprocess.dataset")
 
 
 @pytest.mark.smoke
@@ -113,9 +115,8 @@ def test_preprocess_dataset_rejects_legacy_config_flag():
     assert "No such option: --config" in result.output
 
 
-@pytest.mark.skipif(sys.version_info < (3, 12), reason="Fails in CI Python 3.10")
 @pytest.mark.regression
-@patch("guidellm.cli.preprocess.dataset.process_dataset")
+@patch.object(_dataset_mod, "process_dataset")
 def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
     """
     Parsed registry options should be forwarded to process_dataset.
@@ -161,9 +162,8 @@ def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
     assert kwargs["data_loader"].samples == 50
 
 
-@pytest.mark.skipif(sys.version_info < (3, 12), reason="Fails in CI Python 3.10")
 @pytest.mark.regression
-@patch("guidellm.cli.preprocess.dataset.process_dataset")
+@patch.object(_dataset_mod, "process_dataset")
 def test_preprocess_dataset_defaults_data_loader(mock_process_dataset):
     """
     Omitting --data-loader should forward the default pytorch loader config.
