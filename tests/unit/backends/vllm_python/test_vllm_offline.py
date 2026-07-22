@@ -304,23 +304,27 @@ class TestProcessStartupReset:
             backend = _make_offline_backend(model="test-model")
             await backend.process_startup()
 
-            lock_ids_first = (
-                id(backend._batch_lock),
-                id(backend._generate_lock),
-                id(backend._engine_lock),
-            )
+            old_batch_lock = backend._batch_lock
+            old_generate_lock = backend._generate_lock
+            old_engine_lock = backend._engine_lock
 
             backend._llm = Mock()
             await backend.process_shutdown()
             await backend.process_startup()
 
-            lock_ids_second = (
-                id(backend._batch_lock),
-                id(backend._generate_lock),
-                id(backend._engine_lock),
-            )
+        assert backend._batch_lock is not old_batch_lock
+        assert backend._generate_lock is not old_generate_lock
+        assert backend._engine_lock is not old_engine_lock
 
-        assert lock_ids_first != lock_ids_second
+        assert backend._pending_batch == []
+        assert backend._processing_task is None
+
+        async with backend._batch_lock:
+            pass
+        async with backend._generate_lock:
+            pass
+        async with backend._engine_lock:
+            pass
 
     @pytest.mark.asyncio
     @pytest.mark.sanity

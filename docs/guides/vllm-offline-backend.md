@@ -60,11 +60,11 @@ guidellm run \
 
 ## Engine lifecycle
 
-The vLLM engine is created **lazily** — it is not loaded during `process_startup()`. Instead, the engine is created the first time a request is processed.
+The vLLM `LLM` engine is never loaded during `process_startup()`. Engine creation is controlled by a PID check that distinguishes the parent (preflight) process from the worker that runs inference:
 
-When GuideLLM forks worker processes for benchmarking, each worker calls `validate()` before the timed phase begins. The offline backend detects that it is running inside a forked worker (by comparing PIDs) and **preloads the engine during validation**. This ensures the engine cold-start time is excluded from the benchmark measurement.
-
-The parent process never loads the engine, avoiding a double-startup that would waste resources reloading model weights.
+- **Parent preflight** (`resolve_backend`): `validate()` sees that `os.getpid()` matches `_creator_pid` and performs a cheap readiness check only — no model weights are loaded.
+- **Worker process**: when the PID differs from `_creator_pid` (true for both `fork` and `spawn` workers; see `GUIDELLM__MP_CONTEXT_TYPE`), `validate()` calls `_ensure_engine()` to **preload** the engine so the cold-start time is excluded from the timed benchmark phase.
+- **`resolve()` fallback**: each `resolve()` call still invokes `_ensure_engine()` as an idempotent safety net, so inference works correctly even if `validate()` was not called.
 
 ## See also
 

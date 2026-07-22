@@ -284,9 +284,11 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         checks that ``process_startup()`` was called — engine creation
         is deferred so the parent never loads model weights.
 
-        In a forked worker (PID differs) the engine is eagerly created
-        so that the cold-start time is excluded from the timed
-        benchmark phase.
+        In a worker process — whether forked or spawned (PID differs
+        from ``_creator_pid``) — the engine is eagerly created so
+        that the cold-start time is excluded from the timed benchmark
+        phase.  ``resolve()`` still calls ``_ensure_engine()`` as an
+        idempotent fallback.
 
         :raises RuntimeError: If backend is not initialised
         """
