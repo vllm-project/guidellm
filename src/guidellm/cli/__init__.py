@@ -12,7 +12,8 @@ Example:
 ::
     # Run a benchmark against a model
     guidellm run --backend kind=openai_http,target=http://localhost:8000 \\
-        --profile kind=sweep --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+        --profile kind=sweep \\
+        --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 
     # Export a saved benchmark report
     guidellm export benchmarks.json --output kind=json,path=report.json
