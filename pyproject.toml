@@ -293,7 +293,7 @@ select = [
     "N806",    # allow uppercase variable names in tests
     "PGH003",  # allow general ignores in tests
     "S106",    # allow hardcoded passwords in tests
-    "PLR0915", # allow complext statements in tests
+    "PLR0915", # allow complex statements in tests
 ]
 "scripts/**/*.py" = [
     "T201",    # print statements are the primary output mechanism for scripts
