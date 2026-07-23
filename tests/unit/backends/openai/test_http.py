@@ -449,7 +449,11 @@ class TestOpenAIHTTPBackend:
     @async_timeout(10.0)
     async def test_resolve_with_history(self, httpx_mock: HTTPXMock):
         """Test resolve method handles conversation history."""
-        backend = _make_backend(target="http://test", request_format="/v1/completions")
+        backend = _make_backend(
+            target="http://test",
+            request_format="/v1/completions",
+            stream=False,
+        )
 
         # Mock the models endpoint
         httpx_mock.add_response(

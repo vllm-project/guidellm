@@ -506,7 +506,9 @@ class OpenAIWebSocketBackend(Backend):
                                 f"(last type={event.get('type')!r})."
                             )
 
-                yield handler.compile_streaming(request, arguments), request_info
+                compiled = handler.compile_streaming(request, arguments)
+                handler.post_validation(compiled)
+                yield compiled, request_info
 
         except asyncio.CancelledError as err:
             yield handler.compile_streaming(request, arguments), request_info

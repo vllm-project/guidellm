@@ -126,6 +126,18 @@ class OpenAIRequestHandler(Protocol):
         """
         ...
 
+    def post_validation(self, response: GenerationResponse) -> None:
+        """Validate a compiled response before returning it.
+
+        Default implementation is permissive (no-op). Handlers override
+        this to reject responses that lack usable output for their
+        endpoint type.
+
+        :param response: The compiled generation response to validate.
+        :raises ValueError: If the response is unusable.
+        """
+        ...
+
 
 class OpenAIRequestHandlerFactory(RegistryMixin[type[OpenAIRequestHandler]]):
     """
@@ -272,6 +284,18 @@ class OpenAIWSRequestHandler(Protocol):
         """
         ...
 
+    def post_validation(self, response: GenerationResponse) -> None:
+        """Validate a compiled response before returning it.
+
+        Default implementation is permissive (no-op). Handlers override
+        this to reject responses that lack usable output for their
+        endpoint type.
+
+        :param response: The compiled generation response to validate.
+        :raises ValueError: If the response is unusable.
+        """
+        ...
+
 
 class OpenAIWSRequestHandlerFactory(RegistryMixin["type[OpenAIWSRequestHandler]"]):
     """Factory for registering and creating WebSocket request handlers by path."""
@@ -315,6 +339,24 @@ def _apply_tool_call_metrics(
         output_metrics.tool_call_tokens = output_metrics.text_tokens
     else:  # mixed content + tool call turn
         output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
+
+
+def _validate_text_response(response: GenerationResponse) -> None:
+    """Reject a compiled response that has no usable output.
+
+    A response is considered usable if it has non-empty text, tool calls,
+    or output tokens. Used by text/chat completions and responses handlers.
+
+    :param response: The compiled generation response to validate.
+    :raises ValueError: If the response contains no usable output.
+    """
+    has_text = bool(response.text and response.text.strip())
+    has_tool_calls = bool(response.tool_calls)
+    output_tokens = response.output_metrics.total_tokens or 0
+    if not has_text and not has_tool_calls and output_tokens <= 0:
+        raise ValueError(
+            "[UNUSABLE_BACKEND_RESPONSE] backend resolved with empty response payload"
+        )
 
 
 _DEFAULT_REASONING_TEMPLATE = "<think>{reasoning}</think>"
@@ -570,6 +612,10 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
+
+    def post_validation(self, response: GenerationResponse) -> None:
+        """Reject responses with no text, tool calls, or output tokens."""
+        _validate_text_response(response)
 
     def extract_line_data(self, line: str) -> dict[str, Any] | None:
         """
@@ -1848,6 +1894,10 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             streaming_reasoning_texts=self.streaming_reasoning_texts,
         )
 
+    def post_validation(self, response: GenerationResponse) -> None:
+        """Reject responses with no text, tool calls, or output tokens."""
+        _validate_text_response(response)
+
     def extract_line_data(self, line: str) -> dict[str, Any] | None:
         """Parse a Responses API SSE line.
 
@@ -2146,6 +2196,9 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
     Inherits from ChatCompletionsRequestHandler and overrides format() to handle
     pooling-specific request structure with nested data fields.
     """
+
+    def post_validation(self, response: GenerationResponse) -> None:  # noqa: ARG002
+        """Pooling responses produce non-text output; skip validation."""
 
     def format(
         self,
