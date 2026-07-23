@@ -26,18 +26,15 @@ _REGISTRY_SHAPE_ERROR_TYPES = frozenset({"model_attributes_type"})
 
 def format_kind_config_usage(
     registry_type: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
-    discriminator: str | None = None,
 ) -> str:
     """
     Build a self-documenting usage hint for a registry-backed config option.
 
     :param registry_type: The ``PydanticClassRegistryMixin`` subclass whose
         registered names are listed
-    :param discriminator: Discriminator field name; defaults to the registry's
-        ``schema_discriminator`` (typically ``"kind"``)
     :return: Multi-line string describing expected format and valid kinds
     """
-    disc = discriminator or registry_type.schema_discriminator
+    disc = registry_type.schema_discriminator
     names = registry_type.registered_names()
     choices = ", ".join(names) if names else "(none registered)"
     return (
@@ -228,7 +225,7 @@ def _make_common_field_callback(
     :param registry_type: The registry subclass for error messages
     :return: A Click callback function
     """
-    usage = format_kind_config_usage(registry_type, discriminator)
+    usage = format_kind_config_usage(registry_type)
 
     def callback(
         ctx: click.Context,
