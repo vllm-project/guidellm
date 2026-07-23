@@ -11,10 +11,37 @@ from guidellm.schemas import PydanticClassRegistryMixin
 from guidellm.utils.cli import parse_arguments
 
 __all__ = [
+    "RegistryAwareCommand",
+    "format_kind_config_usage",
     "format_validation_errors",
     "registry_option",
     "registry_options_from_model",
 ]
+
+# Pydantic error types where the stock message does not list valid kinds, so we
+# append format_kind_config_usage. ``union_tag_invalid`` already lists tags and
+# would be redundant if we appended again.
+_REGISTRY_SHAPE_ERROR_TYPES = frozenset({"model_attributes_type"})
+
+
+def format_kind_config_usage(
+    registry_type: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
+) -> str:
+    """
+    Build a self-documenting usage hint for a registry-backed config option.
+
+    :param registry_type: The ``PydanticClassRegistryMixin`` subclass whose
+        registered names are listed
+    :return: Multi-line string describing expected format and valid kinds
+    """
+    disc = registry_type.schema_discriminator
+    names = registry_type.registered_names()
+    choices = ", ".join(names) if names else "(none registered)"
+    return (
+        f"Expected format: {disc}=<type>,key=value,... "
+        f"or JSON/YAML object with a '{disc}' field\n"
+        f"  Valid {disc}s: {choices}"
+    )
 
 
 class _RegistryParamType(click.ParamType):
@@ -71,6 +98,117 @@ class _RegistryParamType(click.ParamType):
         return value
 
 
+class RegistryConfigOption(click.Option):
+    """
+    Click option subclass that carries a reference to its registry type.
+
+    Used by :class:`RegistryAwareCommand` to enrich missing-argument errors
+    with the expected format and valid kinds.
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        registry_type: type[PydanticClassRegistryMixin] | None = None,  # type: ignore[type-arg]
+        **kwargs: Any,
+    ) -> None:
+        self.registry_type = registry_type
+        super().__init__(*args, **kwargs)
+
+
+class RegistryAwareCommand(click.Command):
+    """
+    Command subclass that enriches missing-argument errors for registry options.
+
+    When Click's parser raises ``BadOptionUsage`` for a registry-backed option
+    (e.g. bare ``--constraint`` with no value), this override catches it and
+    re-raises a ``BadParameter`` with the expected format and valid kinds.
+    """
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        """
+        Override to intercept missing-value errors for registry options.
+
+        :param ctx: Click context
+        :param args: Command-line arguments to parse
+        :return: Remaining arguments after parsing
+        """
+        try:
+            return super().parse_args(ctx, args)
+        except click.BadOptionUsage as e:
+            for param in self.params:
+                if (
+                    isinstance(param, RegistryConfigOption)
+                    and param.registry_type is not None
+                    and hasattr(e, "option_name")
+                    and e.option_name in param.opts
+                ):
+                    usage = format_kind_config_usage(param.registry_type)
+                    raise click.BadParameter(
+                        f"option requires a value.\n{usage}",
+                        ctx=ctx,
+                        param=param,
+                    ) from e
+            raise
+
+
+def _parse_and_check_kind_config(
+    ctx: click.Context,
+    param: click.Parameter,
+    raw: str,
+    discriminator: str,
+    registry_type: type[PydanticClassRegistryMixin],  # type: ignore[type-arg]
+    usage: str,
+) -> dict[str, Any]:
+    """
+    Parse a registry config string and require a valid discriminator value.
+
+    :param ctx: Click context
+    :param param: Click parameter
+    :param raw: Raw CLI string value
+    :param discriminator: Discriminator field name (e.g. ``"kind"``)
+    :param registry_type: Registry used to validate the discriminator value
+    :param usage: Preformatted usage hint to append on errors
+    :return: Parsed config dictionary
+    :raises click.BadParameter: When parsing fails, the value is not a dict
+        with the required discriminator key, or the kind is unregistered
+    """
+    try:
+        parsed = parse_arguments(ctx, param, raw)
+    except click.BadParameter as e:
+        raise click.BadParameter(
+            f"{e.message}\n{usage}",
+            ctx=ctx,
+            param=param,
+        ) from e
+
+    if not isinstance(parsed, dict):
+        raise click.BadParameter(
+            f"invalid config value (expected key=value pairs or "
+            f"JSON/YAML object).\n{usage}",
+            ctx=ctx,
+            param=param,
+        )
+
+    if discriminator not in parsed:
+        raise click.BadParameter(
+            f"missing required key '{discriminator}'.\n{usage}",
+            ctx=ctx,
+            param=param,
+        )
+
+    # Reject unknown kinds early so the error is a single clean usage block.
+    kind_value = parsed[discriminator]
+    valid_kinds = registry_type.registered_names()
+    if kind_value not in valid_kinds:
+        raise click.BadParameter(
+            f"invalid {discriminator} {kind_value!r}.\n{usage}",
+            ctx=ctx,
+            param=param,
+        )
+    return parsed
+
+
 def _make_common_field_callback(
     is_list: bool,
     discriminator: str,
@@ -87,20 +225,7 @@ def _make_common_field_callback(
     :param registry_type: The registry subclass for error messages
     :return: A Click callback function
     """
-
-    def _parse_and_check(
-        ctx: click.Context, param: click.Parameter, raw: str
-    ) -> dict[str, Any]:
-        parsed = parse_arguments(ctx, param, raw)
-        if isinstance(parsed, dict) and discriminator not in parsed:
-            names = registry_type.registered_names()
-            choices = ", ".join(names) if names else "(none registered)"
-            raise click.BadParameter(
-                f"missing required key '{discriminator}'. Valid options: {choices}",
-                ctx=ctx,
-                param=param,
-            )
-        return parsed
+    usage = format_kind_config_usage(registry_type)
 
     def callback(
         ctx: click.Context,
@@ -110,11 +235,18 @@ def _make_common_field_callback(
         if is_list:
             if not value:
                 return None
-            return [_parse_and_check(ctx, param, v) for v in value]
+            return [
+                _parse_and_check_kind_config(
+                    ctx, param, v, discriminator, registry_type, usage
+                )
+                for v in value
+            ]
 
         if value is None:
             return None
-        return _parse_and_check(ctx, param, value)
+        return _parse_and_check_kind_config(
+            ctx, param, value, discriminator, registry_type, usage
+        )
 
     return callback
 
@@ -187,6 +319,8 @@ def registry_option(
     if multiple and "help" in extra:
         extra["help"] = f"{extra['help']}  [repeatable]"
     kwargs: dict[str, Any] = {
+        "cls": RegistryConfigOption,
+        "registry_type": registry,
         "type": param_type,
         "multiple": multiple,
         "callback": _make_common_field_callback(
@@ -326,6 +460,49 @@ def _resolve_param_name(
     raise KeyError("Key does not exist")
 
 
+def _resolve_registry_type(
+    loc: tuple[str | int, ...],
+    base_class: type[BaseModel],
+) -> type[PydanticClassRegistryMixin] | None:  # type: ignore[type-arg]
+    """
+    Walk a pydantic error location to the nearest registry-backed field type.
+
+    :param loc: Validation error location tuple
+    :param base_class: Root model to start walking from
+    :return: The registry mixin class if found, otherwise ``None``
+    """
+    current_model: type[BaseModel] = base_class
+
+    for component in loc:
+        if isinstance(component, int):
+            continue
+
+        fields = current_model.model_fields
+        if component not in fields:
+            return None
+
+        annotation = fields[component].annotation
+        if get_origin(annotation) is list:
+            args = get_args(annotation)
+            annotation = args[0] if args else None
+
+        if annotation is None:
+            return None
+
+        try:
+            if issubclass(annotation, PydanticClassRegistryMixin):
+                return annotation
+            if issubclass(annotation, BaseModel):
+                current_model = annotation
+                continue
+        except TypeError:
+            return None
+
+        return None
+
+    return None
+
+
 def format_validation_errors(
     ctx: click.Context,
     err: ValidationError,
@@ -338,6 +515,10 @@ def format_validation_errors(
     ``data[0].synthetic_text.output_tokens``, so callers can identify which
     nested subfield failed rather than only the top-level CLI option.
 
+    For registry shape failures where the stock message does not list kinds
+    (non-object input), appends a usage hint with expected format and valid kinds.
+    Invalid ``kind`` tags are left as-is because pydantic already lists them.
+
     :param ctx: The active Click context
     :param err: The pydantic validation error to translate
     :param base_class: Optional root model class for resolving argument aliases
@@ -348,8 +529,10 @@ def format_validation_errors(
     param_names = set()
     msgs = []
     for e in errs:
-        loc = e.get("loc", ())
+        original_loc = e.get("loc", ())
+        loc = original_loc
         msg = e.get("msg", "validation error")
+        err_type = e.get("type")
 
         top_field: str | None = None
         if len(loc) > 0:
@@ -361,7 +544,17 @@ def format_validation_errors(
             if top_field:
                 param_names.add("--" + top_field.replace("_", "-"))
 
-        msgs.append(_error_to_message(loc, msg))
+        formatted = _error_to_message(loc, msg)
+
+        if (
+            base_class is not None
+            and err_type in _REGISTRY_SHAPE_ERROR_TYPES
+            and (registry := _resolve_registry_type(original_loc, base_class))
+            is not None
+        ):
+            formatted = f"{formatted}\n{format_kind_config_usage(registry)}"
+
+        msgs.append(formatted)
 
     error_msg = "".join(f"\n  - {msg}" for msg in msgs)
     return click.BadParameter(error_msg, ctx=ctx, param_hint=list(param_names))
