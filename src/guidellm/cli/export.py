@@ -1,4 +1,4 @@
-"""Benchmark from-file command."""
+"""Export command for loading and re-exporting saved benchmark reports."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from guidellm.benchmark import reimport_benchmarks_report
 from guidellm.benchmark.schemas import BenchmarkOutputArgs
 from guidellm.utils.click_pydantic import RegistryAwareCommand, registry_option
 
-__all__ = ["from_file"]
+__all__ = ["export"]
 
 
 @click.command(
-    "from-file",
+    "export",
     cls=RegistryAwareCommand,
     help=(
         "Load a saved benchmark report and optionally re-export to other formats. "
@@ -35,5 +35,5 @@ __all__ = ["from_file"]
     default=[{"kind": "console"}, {"kind": "json"}, {"kind": "html"}, {"kind": "csv"}],
     help="Output formats for the report (default: console, json, html, csv).",
 )
-def from_file(path, outputs):
+def export(path, outputs):
     asyncio.run(reimport_benchmarks_report(path, outputs))

@@ -11,8 +11,11 @@ through CLI options and environment variables.
 Example:
 ::
     # Run a benchmark against a model
-    guidellm benchmark run --target http://localhost:8000 --data dataset.json \\
-        --profile sweep
+    guidellm run --backend kind=openai_http,target=http://localhost:8000 \\
+        --profile kind=sweep --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+
+    # Export a saved benchmark report
+    guidellm export benchmarks.json --output kind=json,path=report.json
 
     # Preprocess a dataset
     guidellm preprocess dataset kind=json_file,path=input.json \\
@@ -27,8 +30,8 @@ from __future__ import annotations
 
 import click
 
-from .benchmark import benchmark
 from .env import env
+from .export import export
 from .mock_server import mock_server
 from .preprocess import preprocess
 from .run import run
@@ -47,4 +50,4 @@ cli.add_command(env)
 cli.add_command(mock_server)
 cli.add_command(preprocess)
 cli.add_command(run)
-cli.add_command(benchmark)
+cli.add_command(export)
