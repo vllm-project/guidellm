@@ -10,6 +10,10 @@ Welcome to the GuideLLM examples section! This area is designed to showcase prac
 
 Currently, we do not have many specific examples available, but we welcome contributions from the community! If you have examples of how you've used GuideLLM to solve real-world problems or optimize your LLM deployments, we'd love to feature them here.
 
+## Available examples
+
+- [Benchmark a governed OpenAI-compatible endpoint](benchmark_tuning_engines.md)
+
 To contribute an example:
 
 1. Fork the [GuideLLM repository](https://github.com/vllm-project/guidellm)
