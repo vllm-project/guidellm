@@ -10,6 +10,7 @@ from guidellm.cli.preprocess.args import PreprocessDatasetArgs
 from guidellm.data import process_dataset
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.click_pydantic import (
+    RegistryAwareCommand,
     format_validation_errors,
     registry_options_from_model,
 )
@@ -19,6 +20,7 @@ __all__ = ["dataset"]
 
 @click.command(
     "dataset",
+    cls=RegistryAwareCommand,
     help=(
         "Process a dataset to have specific prompt and output token sizes. "
         "Supports multiple strategies for handling prompts and optional "

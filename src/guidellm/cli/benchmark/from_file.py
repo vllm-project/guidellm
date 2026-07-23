@@ -9,13 +9,14 @@ import click
 
 from guidellm.benchmark import reimport_benchmarks_report
 from guidellm.benchmark.schemas import BenchmarkOutputArgs
-from guidellm.utils.click_pydantic import registry_option
+from guidellm.utils.click_pydantic import RegistryAwareCommand, registry_option
 
 __all__ = ["from_file"]
 
 
 @click.command(
     "from-file",
+    cls=RegistryAwareCommand,
     help=(
         "Load a saved benchmark report and optionally re-export to other formats. "
         "PATH: Path to the saved benchmark report file (default: ./benchmarks.json)."
