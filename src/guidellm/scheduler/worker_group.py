@@ -15,7 +15,7 @@ import math
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Generator, Iterable
+from collections.abc import AsyncIterator, Generator
 from multiprocessing import get_context
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
@@ -31,7 +31,6 @@ from guidellm.scheduler.schemas import (
     BackendInterface,
     ConversationT,
     DatasetIterT,
-    RequestDataT,
     RequestT,
     ResponseT,
     SchedulerState,
@@ -39,7 +38,7 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
-from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas import DAGNode, RequestInfo, RequestNode
 from guidellm.settings import settings
 from guidellm.utils.messaging import (
     InterProcessMessaging,
@@ -565,41 +564,45 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             count = 0
             stop_queueing: bool = False
 
-            def _turn_iter(
-                requests_chain: Iterable[tuple[RequestT, RequestSettings]],
-            ) -> Generator[RequestDataT[RequestT], None, None]:
+            def apply_request_info(
+                node: DAGNode[RequestT], conv_id: str, turn_idx: int
+            ):
                 nonlocal count, stop_queueing
-                # NOTE: This allows users to correlate requests in post-processing
-                conv_id = str(uuid.uuid4())
-                for i, (request, setting) in enumerate(requests_chain):
-                    count += 1
+                if not isinstance(node, RequestNode):
+                    return
 
-                    request_id = self._find_request_id(request)
-                    request_info: RequestInfo = RequestInfo(
-                        request_id=request_id,
-                        conversation_id=conv_id,
-                        turn_index=i,
-                        status="queued",
-                        scheduler_process_id=0,
-                        scheduler_start_time=self.start_time,
-                        settings=setting,
-                    )
-                    state_update = self._locked_update(request_info)
-                    request_info.timings.queued = time.time()
-                    if self.messaging.buffer_receive_queue is None:
-                        raise RuntimeError("buffer receive queue is None")
-                    self.messaging.buffer_receive_queue.sync_put(
-                        (None, request, request_info, state_update.state)
-                    )
+                count += 1
 
-                    yield request, request_info
+                request_id = self._find_request_id(node.request)
+                request_info: RequestInfo = RequestInfo(
+                    request_id=request_id,
+                    conversation_id=conv_id,
+                    turn_index=turn_idx,
+                    status="queued",
+                    scheduler_process_id=0,
+                    scheduler_start_time=self.start_time,
+                    settings=node.settings,
+                )
+                state_update = self._locked_update(request_info)
+                request_info.timings.queued = time.time()
+                if self.messaging.buffer_receive_queue is None:
+                    raise RuntimeError("buffer receive queue is None")
+                self.messaging.buffer_receive_queue.sync_put(
+                    (None, node.request, request_info, state_update.state)
+                )
 
-                    if state_update.stop_queueing:
-                        stop_queueing = True
-                        return
+                if state_update.stop_queueing:
+                    stop_queueing = True
 
             for request_chain in requests:
-                yield list(_turn_iter(request_chain))
+                # TODO Spawn should probably rotate conversation ID
+                conv_id = str(uuid.uuid4())
+                node_iter = request_chain.apply_to_all(apply_request_info)
+                # FIXME this is wrong node_idx != turn_idx
+                for node_idx in node_iter:
+                    node_iter.send({"conv_id": conv_id, "turn_idx": node_idx})
+
+                yield request_chain
 
                 if stop_queueing:
                     self.stop_send_requests_event.set()

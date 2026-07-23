@@ -16,7 +16,7 @@ from typing import Any, Generic, Literal, Protocol, TypeVar
 from pydantic import Field
 from typing_extensions import TypeAliasType
 
-from guidellm.schemas import RequestInfo, RequestSettings, StandardBaseModel
+from guidellm.schemas import RequestInfo, StandardBaseModel, StartNode
 from guidellm.utils.registry import RegistryMixin, RegistryObjT
 
 __all__ = [
@@ -63,7 +63,7 @@ HistoryT = TypeAliasType(
 # NOTE: This is the interface between data and scheduler.
 DatasetIterT = TypeAliasType(
     "DatasetIterT",
-    Iterable[Iterable[tuple[RequestT, RequestSettings]]],
+    Iterable[StartNode[RequestT]],
     type_params=(RequestT,),
 )
 """

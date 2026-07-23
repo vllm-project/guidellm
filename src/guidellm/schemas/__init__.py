@@ -23,6 +23,7 @@ from .base import (
     TotalT,
     standard_model_config,
 )
+from .dag import DAGNode, ForkNode, JoinNode, RequestNode, SpawnNode, StartNode
 from .info import RequestInfo, RequestSettings, RequestTimings
 from .request import (
     GenerationRequest,
@@ -42,23 +43,29 @@ from .tool_call import ToolCall, ToolCallFunction
 
 __all__ = [
     "BaseModelT",
+    "DAGNode",
     "DistributionSummary",
     "ErroredT",
+    "ForkNode",
     "FunctionObjT",
     "GenerationRequest",
     "GenerationRequestArguments",
     "GenerationResponse",
     "GenerativeRequestStats",
     "IncompleteT",
+    "JoinNode",
     "Percentiles",
     "PydanticClassRegistryMixin",
     "RegisterClassT",
     "ReloadableBaseModel",
     "RequestInfo",
+    "RequestNode",
     "RequestSettings",
     "RequestTimings",
+    "SpawnNode",
     "StandardBaseDict",
     "StandardBaseModel",
+    "StartNode",
     "StatusBreakdown",
     "StatusDistributionSummary",
     "SuccessfulT",
