@@ -147,6 +147,41 @@ class TestGenerativeRequestFinalizerMultimodal:
         assert gen_req.input_metrics.text_words > 0
         assert gen_req.input_metrics.text_characters > 0
 
+    @pytest.mark.regression
+    def test_finalize_structured_text_preserves_metadata(self, valid_instances):
+        """Structured prompts retain metadata while metrics use their text.
+
+        ## WRITTEN BY AI ##
+        """
+        prompt = {
+            "type": "text",
+            "text": "The quick brown fox",
+            "metadata": {"category": "example"},
+            "priority": 1,
+        }
+
+        gen_req, _ = valid_instances.finalize_turn({"text_column": [prompt]})
+
+        assert gen_req.columns["text_column"] == [prompt]
+        assert gen_req.input_metrics.text_words == 4
+        assert gen_req.input_metrics.text_characters == len(prompt["text"])
+
+    @pytest.mark.regression
+    def test_finalize_rejects_structured_text_without_string_text(
+        self, valid_instances
+    ):
+        """Malformed structured prompts fail with a useful validation message.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(
+            ValueError,
+            match="must contain a string 'text' field",
+        ):
+            valid_instances.finalize_turn(
+                {"text_column": [{"type": "text", "text": 123}]}
+            )
+
     @pytest.mark.sanity
     def test_finalize_multi_value_image_columns(self, valid_instances):
         """Test finalize sums image pixels and bytes across multiple images.

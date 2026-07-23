@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import click
 from pydantic import ValidationError
@@ -26,6 +27,22 @@ from guidellm.utils.typing import BLANK
 __all__ = [
     "run",
 ]
+
+
+def _parse_append_payloads(
+    ctx: click.Context, param: click.Parameter, value: str | None
+) -> dict[str, Any] | None:
+    """Parse and validate structured content payload fields from the CLI."""
+    if value is None:
+        return None
+    parsed = cli_tools.parse_arguments(ctx, param, value)
+    if not isinstance(parsed, dict):
+        raise click.BadParameter(
+            "must be a JSON, YAML, or key=value object",
+            ctx=ctx,
+            param=param,
+        )
+    return parsed
 
 
 @click.command(
@@ -69,6 +86,15 @@ __all__ = [
 )
 @registry_options_from_model(model=BenchmarkArgs, group_key="spec")
 @click.option(
+    "--append-payloads",
+    callback=_parse_append_payloads,
+    help=(
+        "Append key-value fields to structured content objects in chat completion "
+        "requests. Values override matching metadata from custom datasets. "
+        'Example: `--append-payloads \'{"key":"value"}\'`'
+    ),
+)
+@click.option(
     "--override",
     "benchmarks",
     nargs=2,
@@ -106,6 +132,12 @@ def run(**kwargs):  # noqa: C901, PLR0915
     disable_console_interactive = (
         kwargs.pop("disable_console_interactive", False) or disable_console
     )
+    append_payloads = kwargs.pop("append_payloads", None)
+    if append_payloads is not None:
+        spec = kwargs.setdefault("spec", {})
+        backend = spec.setdefault("backend", {})
+        backend.setdefault("kind", "openai_http")
+        backend["append_payloads"] = append_payloads
     console = Console() if not disable_console else None
 
     if console:
