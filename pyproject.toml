@@ -8,6 +8,7 @@ where = ["src"]
 include = ["*"]
 
 [tool.setuptools.package-data]
+guidellm = ["py.typed"]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
 
