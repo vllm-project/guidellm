@@ -10,10 +10,14 @@ Usage::
     python scripts/extract_conversation.py benchmarks.json --limit 5
     python scripts/extract_conversation.py benchmarks.json -n 30
     python scripts/extract_conversation.py benchmarks.json --turn 3
+    python scripts/extract_conversation.py benchmarks.json --detail request
+    python scripts/extract_conversation.py benchmarks.json -d roles
 
 If no path is given, defaults to ``benchmarks.json`` in the current directory.
 The ``--limit`` / ``-n`` flag caps the number of requests printed (default: 15).
 The ``--turn`` / ``-t`` flag prints only the request at the given 1-based index.
+The ``--detail`` / ``-d`` flag controls output verbosity: ``request`` (metadata
+only), ``roles`` (metadata plus role markers), or ``full`` (default).
 """
 
 from __future__ import annotations
@@ -189,12 +193,14 @@ def extract_conversations(
     *,
     limit: int = 15,
     turn: int | None = None,
+    detail: str = "full",
 ) -> None:
     """Extract and print conversations from a benchmark JSON file.
 
     :param path: Path to the benchmark JSON file.
     :param limit: Maximum number of requests to print.
     :param turn: If set, print only the request at this 1-based index.
+    :param detail: Output verbosity: ``request``, ``roles``, or ``full``.
     """
     data = json.loads(path.read_text())
 
@@ -242,6 +248,7 @@ def extract_conversations(
             total=total,
             show_agent_context=multi_agent,
             node_index=node_index,
+            detail=detail,
         )
 
     if truncated:
@@ -300,6 +307,7 @@ def _print_request(
     total: int,
     show_agent_context: bool = False,
     node_index: dict[str, dict[str, Any]] | None = None,
+    detail: str = "full",
 ) -> None:
     """Print a single request's conversation and response.
 
@@ -308,6 +316,7 @@ def _print_request(
     :param total: Total number of requests in the benchmark.
     :param show_agent_context: Whether to print subagent/graph metadata.
     :param node_index: Node index for DAG traversal (used for history path).
+    :param detail: Output verbosity: ``request``, ``roles``, or ``full``.
     """
     args = json.loads(req["request_args"]) if req.get("request_args") else {}
     body = args.get("body", {})
@@ -329,8 +338,12 @@ def _print_request(
     if body.get("tool_choice"):
         print(f"  {_dim('tool_choice:')} {_yellow(str(body['tool_choice']))}")
 
+    # request mode: metadata only
+    if detail == "request":
+        return
+
     for m in msgs:
-        _print_message(m)
+        _print_message(m, detail=detail)
 
     # Response produced by this turn
     tc = req.get("tool_calls")
@@ -338,20 +351,23 @@ def _print_request(
 
     if tc:
         print(f"  {_bright_cyan('[RESPONSE - TOOL CALLS]')}")
-        for t in tc:
-            _print_tool_call_yaml(t)
+        if detail == "full":
+            for t in tc:
+                _print_tool_call_yaml(t)
     elif output:
         print(f"  {_bright_green('[RESPONSE]')}")
-        for line in output.split("\n"):
-            print(f"    {_green(line)}")
+        if detail == "full":
+            for line in output.split("\n"):
+                print(f"    {_green(line)}")
     else:
         print(f"  {_dim('[NO RESPONSE]')}")
 
 
-def _print_message(m: dict[str, Any]) -> None:
+def _print_message(m: dict[str, Any], *, detail: str = "full") -> None:
     """Print a single conversation message to stdout.
 
     :param m: Message dict with role, content, and optional tool_calls.
+    :param detail: Output verbosity: ``roles`` (markers only) or ``full``.
     """
     role = m["role"].upper()
     content = m.get("content")
@@ -359,6 +375,10 @@ def _print_message(m: dict[str, Any]) -> None:
     tool_call_id = m.get("tool_call_id")
 
     print(f"  {_role_color(role, f'[{role}]')}")
+
+    # roles mode: markers only, no body text or tool-call YAML
+    if detail != "full":
+        return
 
     if tool_call_id:
         print(f"    {_dim('tool_call_id:')} {_dim(tool_call_id)}")
@@ -432,9 +452,21 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Print only the request at this 1-based turn index",
     )
+    parser.add_argument(
+        "-d",
+        "--detail",
+        choices=["request", "roles", "full"],
+        default="full",
+        help="Output detail: request metadata only, roles without text, or full (default)",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     ns = _parse_args()
-    extract_conversations(Path(ns.path), limit=ns.limit, turn=ns.turn)
+    extract_conversations(
+        Path(ns.path),
+        limit=ns.limit,
+        turn=ns.turn,
+        detail=ns.detail,
+    )
