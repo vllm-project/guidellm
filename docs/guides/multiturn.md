@@ -116,13 +116,13 @@ For this configuration:
 
 #### Sub-Agent Branches
 
-GuideLLM supports simulating multi-agent workloads where an orchestrator spawns parallel sub-agents during a conversation. Use the `branches` parameter to specify sub-agent branches that fork from the main conversation at a specific turn and merge back at the next turn.
+GuideLLM supports simulating multi-agent workloads where an orchestrator spawns parallel sub-agents during a conversation. Use the `branches` parameter to specify sub-agent branches that fork from the main conversation at a specific turn and merge back later.
 
 Each branch:
 
 - **Spawns** at `at_turn` with fresh context (the sub-agent does not see the main conversation history)
 - **Runs** for `turns` turns independently
-- **Merges** back at `at_turn + 1`, where the main conversation receives the sub-agent's final output
+- **Merges** back at `at_turn + merge_after` (default `merge_after=1`), where the main conversation receives the sub-agent's final output
 
 Multiple branches at the same turn are supported and may have different lengths. All branches must complete before the main conversation continues past the merge point.
 
@@ -133,6 +133,14 @@ Multiple branches at the same turn are supported and may have different lengths.
 ```
 
 This creates a 5-turn main conversation with one sub-agent branch that spawns at turn 2, runs for 3 turns, and merges back at turn 3.
+
+**Delayed Merge:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":1,"turns":2,"merge_after":2}]}'
+```
+
+This spawns a sub-agent at turn 1 that runs for 2 turns and merges back at turn 3 (`at_turn + merge_after`), while the main conversation continues through turn 2 in parallel.
 
 **Multiple Branches:**
 
@@ -149,11 +157,12 @@ This spawns two sub-agents at turn 2: one that runs for 3 turns and one that run
 | `at_turn`       | `int`         | (required) | Main chain turn index where the branch spawns         |
 | `turns`         | `int`         | (required) | Number of turns in this branch                        |
 | `agent_id`      | `str`         | `"worker"` | Agent identity for branch nodes                       |
+| `merge_after`   | `int`         | `1`        | Main-chain turns after `at_turn` before merge         |
 | `prompt_tokens` | `int \| null` | `null`     | Override prompt token count (defaults to main config) |
 | `output_tokens` | `int \| null` | `null`     | Override output token count (defaults to main config) |
 
 > [!NOTE]\
-> `at_turn` must be less than `turns - 1` so that a merge point exists at `at_turn + 1`. Branching from the last turn is not allowed.
+> `at_turn + merge_after` must be less than `turns` so that a merge point exists. Branching that would merge at or past the end of the main conversation is not allowed.
 
 ### Request Formatting
 

@@ -116,13 +116,13 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
         Build a graph from a main chain with sub-agent branches.
 
         Each branch spawns at ``at_turn`` via a ``new`` edge and merges
-        back at ``at_turn + 1`` via a ``last`` edge. Multiple branches
-        at the same turn are supported.
+        back at ``at_turn + merge_after`` (default 1) via a ``last``
+        edge. Multiple branches at the same turn are supported.
 
         :param main_requests: Ordered list of main-chain
             ``(request, settings)`` pairs.
         :param branches: List of branch specs, each with ``at_turn``,
-            ``turns``, and optionally ``agent_id``.
+            ``turns``, and optionally ``agent_id`` and ``merge_after``.
         :param branch_request_factory: Callable that takes
             ``(branch_index, turn_index)`` and returns a
             ``(GenerationRequest, RequestSettings)`` pair for that
@@ -166,7 +166,8 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
             at_turn: int = branch["at_turn"]
             num_turns: int = branch["turns"]
             agent_id: str = branch.get("agent_id", "worker")
-            merge_turn = at_turn + 1
+            merge_after: int = branch.get("merge_after", 1)
+            merge_turn = at_turn + merge_after
 
             branch_ids: list[str] = []
             for t in range(num_turns):

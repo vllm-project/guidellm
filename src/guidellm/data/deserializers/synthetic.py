@@ -75,13 +75,15 @@ class BranchSpec(StandardBaseModel):
     Specifies a sub-agent branch spawned from the main conversation.
 
     Each branch spawns at ``at_turn`` in the main chain and merges
-    back at ``at_turn + 1`` via a ``last`` edge. The branch runs for
-    ``turns`` turns with an independent context (``new`` edge from
-    the spawn point).
+    back at ``at_turn + merge_after`` via a ``last`` edge. The branch
+    runs for ``turns`` turns with an independent context (``new`` edge
+    from the spawn point).
 
     :param at_turn: Main conversation turn index where the branch spawns.
     :param turns: Number of turns in this branch.
     :param agent_id: Agent identity for branch nodes.
+    :param merge_after: How many main-chain turns after ``at_turn`` the
+        branch merges back. Default 1 merges at ``at_turn + 1``.
     :param prompt_tokens: Override prompt token count for branch turns.
     :param output_tokens: Override output token count for branch turns.
     """
@@ -97,6 +99,14 @@ class BranchSpec(StandardBaseModel):
     agent_id: str = Field(
         description="Agent identity for branch nodes.",
         default="worker",
+    )
+    merge_after: int = Field(
+        description=(
+            "How many main-chain turns after at_turn the branch merges back. "
+            "Default 1 merges at at_turn + 1."
+        ),
+        default=1,
+        ge=1,
     )
     prompt_tokens: int | None = Field(
         description=(
@@ -292,8 +302,8 @@ class SyntheticTextDataArgs(DataArgs):
         description=(
             "Sub-agent branches spawned from the main conversation. "
             "Each branch spawns at a specified main-chain turn and merges "
-            "back at the next turn. Multiple branches at the same turn "
-            "are supported and may have different lengths."
+            "back at at_turn + merge_after (default 1). Multiple branches "
+            "at the same turn are supported and may have different lengths."
         ),
         default_factory=list,
     )
@@ -411,13 +421,15 @@ class SyntheticTextDataArgs(DataArgs):
                 f"overlapping indices: {sorted(overlap)}"
             )
 
-        # Validate branch specs: at_turn must be in [0, turns-1) so that
-        # at_turn+1 exists as the merge point
+        # Validate branch specs: merge_turn = at_turn + merge_after must
+        # exist on the main chain
         for i, branch in enumerate(self.branches):
-            if branch.at_turn >= self.turns - 1:
+            merge_turn = branch.at_turn + branch.merge_after
+            if merge_turn >= self.turns:
                 raise ValueError(
-                    f"branches[{i}].at_turn={branch.at_turn} must be less "
-                    f"than turns-1={self.turns - 1} (merge point is at_turn+1)"
+                    f"branches[{i}].at_turn={branch.at_turn} + "
+                    f"merge_after={branch.merge_after} = {merge_turn} must be "
+                    f"less than turns={self.turns} (merge point must exist)"
                 )
 
         return self
@@ -621,7 +633,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                     )
                 )
             for b_idx, branch in enumerate(self.config.branches):
-                if branch.at_turn + 1 == turn_idx:
+                if branch.at_turn + branch.merge_after == turn_idx:
                     parents.append(
                         ConversationParentRef(
                             parent_node_id=f"branch_{b_idx}_{branch.turns - 1}",

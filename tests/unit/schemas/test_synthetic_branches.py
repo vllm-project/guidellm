@@ -169,6 +169,29 @@ class TestFromLinearChainWithBranches:
         assert state.assemble_history("branch_0_0") is None
 
     @pytest.mark.sanity
+    def test_branch_merge_after_delayed(self):
+        """
+        merge_after > 1 merges into a later main-chain turn.
+
+        ## WRITTEN BY AI ##
+        """
+        main = [_make_request(f"main_{i}") for i in range(5)]
+        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+            main_requests=main,
+            branches=[{"at_turn": 1, "turns": 2, "merge_after": 2}],
+            branch_request_factory=_branch_factory,
+        )
+
+        edge_map = {
+            (e.source_node_id, e.target_node_id): e.history_context for e in graph.edges
+        }
+        # Spawn still at main_1
+        assert edge_map[("main_1", "branch_0_0")] == "new"
+        # Merge at main_3 (at_turn + merge_after), not main_2
+        assert edge_map[("branch_0_1", "main_3")] == "last"
+        assert ("branch_0_1", "main_2") not in edge_map
+
+    @pytest.mark.sanity
     def test_branches_at_different_turns(self):
         """
         Branches at different turns in the same graph.
@@ -249,6 +272,37 @@ class TestBranchSpecValidation:
         )
         assert len(args.branches) == 1
         assert args.branches[0].at_turn == 2
+        assert args.branches[0].merge_after == 1
+
+    @pytest.mark.sanity
+    def test_merge_after_defaults_to_one(self):
+        """
+        Omitting merge_after keeps the default merge at at_turn + 1.
+
+        ## WRITTEN BY AI ##
+        """
+        args = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=100,
+            turns=5,
+            branches=[BranchSpec(at_turn=1, turns=2, merge_after=1)],
+        )
+        assert args.branches[0].merge_after == 1
+
+    @pytest.mark.sanity
+    def test_merge_after_past_last_turn_fails(self):
+        """
+        merge_after that lands at or past the last main turn should fail.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="merge_after"):
+            SyntheticTextDataArgs(
+                kind="synthetic_text",
+                prompt_tokens=100,
+                turns=4,
+                branches=[BranchSpec(at_turn=1, turns=1, merge_after=3)],
+            )
 
     @pytest.mark.sanity
     def test_branch_at_last_turn_fails(self):
@@ -358,6 +412,45 @@ class TestSyntheticBranchesEmitConversationTurns:
         assert [
             (p.parent_node_id, p.history_context) for p in by_id["main_2"].parents
         ] == [("main_1", "full")]
+
+    @pytest.mark.sanity
+    def test_branched_row_delayed_merge_after(self):
+        """
+        merge_after attaches the branch parent to a later main turn.
+
+        ## WRITTEN BY AI ##
+        """
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"tok{t}" for t in tokens)
+        )
+
+        config = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=20,
+            output_tokens=10,
+            turns=4,
+            branches=[BranchSpec(at_turn=0, turns=1, merge_after=2)],
+        )
+        iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
+        _key, row = next(iter(iterable))
+
+        graph_data = ConversationGraphData.model_validate(
+            json.loads(row["conversation_turns"])
+        )
+        by_id = {turn.node_id: turn for turn in graph_data.turns}
+
+        # main_1 continues without the branch; merge is at main_2
+        assert [
+            (p.parent_node_id, p.history_context) for p in by_id["main_1"].parents
+        ] == [("main_0", "full")]
+        assert {
+            (p.parent_node_id, p.history_context) for p in by_id["main_2"].parents
+        } == {("main_1", "full"), ("branch_0_0", "last")}
+        assert [
+            (p.parent_node_id, p.history_context) for p in by_id["main_3"].parents
+        ] == [("main_2", "full")]
 
     @pytest.mark.smoke
     def test_branched_row_with_client_tool_turn_expands_injection(self):
