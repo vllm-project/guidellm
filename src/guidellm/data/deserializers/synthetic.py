@@ -84,8 +84,12 @@ class BranchSpec(StandardBaseModel):
     :param agent_id: Agent identity for branch nodes.
     :param merge_after: How many main-chain turns after ``at_turn`` the
         branch merges back. Default 1 merges at ``at_turn + 1``.
-    :param prompt_tokens: Override prompt token count for branch turns.
-    :param output_tokens: Override output token count for branch turns.
+    :param prompt_tokens: Fixed prompt token count applied to every turn
+        in this branch. If None, inherits the main chain's sampled count
+        for that conversation.
+    :param output_tokens: Fixed output token count applied to every turn
+        in this branch. If None, inherits the main chain's sampled count
+        for that conversation.
     """
 
     at_turn: int = Field(
@@ -110,16 +114,18 @@ class BranchSpec(StandardBaseModel):
     )
     prompt_tokens: int | None = Field(
         description=(
-            "Override prompt token count for branch turns. "
-            "If None, uses the main chain's prompt_tokens."
+            "Fixed prompt token count applied to every turn in this branch. "
+            "If None, inherits the main chain's sampled prompt token count "
+            "for that conversation (not re-sampled)."
         ),
         default=None,
         gt=0,
     )
     output_tokens: int | None = Field(
         description=(
-            "Override output token count for branch turns. "
-            "If None, uses the main chain's output_tokens."
+            "Fixed output token count applied to every turn in this branch. "
+            "If None, inherits the main chain's sampled output token count "
+            "for that conversation (not re-sampled)."
         ),
         default=None,
         gt=0,
@@ -135,7 +141,11 @@ class SyntheticTextDataArgs(DataArgs):
         description="Type identifier for the synthetic text dataset configuration.",
     )
     prompt_tokens: int = Field(
-        description="The average number of text tokens generated for prompts.",
+        description=(
+            "The average number of text tokens generated for prompts. "
+            "For multiturn, one value is sampled per conversation and applied "
+            "to every turn (including branch turns that do not override it)."
+        ),
         gt=0,
         examples=[30],
     )
@@ -160,6 +170,8 @@ class SyntheticTextDataArgs(DataArgs):
     output_tokens: int | None = Field(
         description=(
             "The average number of text tokens generated for outputs. "
+            "For multiturn, one value is sampled per conversation and applied "
+            "to every turn (including branch turns that do not override it). "
             "When omitted, output tokens are not sampled and ``max_tokens`` is left "
             "to the backend default. Useful for endpoints that do not produce "
             "output tokens (e.g. embeddings)."
