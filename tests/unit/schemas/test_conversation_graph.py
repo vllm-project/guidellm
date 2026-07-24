@@ -173,7 +173,7 @@ class TestConversationGraphValidation:
                 ),
             ],
         )
-        assert sorted(g.root_node_ids) == ["r1", "r2"]
+        assert g.root_node_ids == ["r1", "r2"]
 
     @pytest.mark.sanity
     def test_mixed_history_context_types(self):

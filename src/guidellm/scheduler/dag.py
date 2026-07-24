@@ -106,7 +106,8 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         Find nodes that are dependency-ready, past their think-time gate,
         and not already claimed or completed.
 
-        :return: Sorted list of node IDs ready for execution.
+        :return: Node IDs ready for execution, in ``graph.nodes``
+            insertion order.
         """
         if self._aborted:
             return []
@@ -121,7 +122,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                 and now >= self._available_after[nid]
             ):
                 ready.append(nid)
-        return sorted(ready)
+        return ready
 
     def next_delayed_ready_at(self) -> float | None:
         """
@@ -182,7 +183,8 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         :param node_id: The ID of the completed node.
         :param request: The request that was executed.
         :param response: The response from the backend, if any.
-        :return: Sorted list of child node IDs that became dependency-ready.
+        :return: Child node IDs that became dependency-ready, in
+            ``graph.edges`` order among this node's outgoing edges.
         :raises ValueError: If the node is already completed or doesn't exist.
         """
         if node_id not in self._graph.nodes:
@@ -208,16 +210,16 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                 self._available_after[child_id] = unlock_at
                 newly_ready.append(child_id)
 
-        return sorted(newly_ready)
+        return newly_ready
 
     def abort(self) -> list[str]:
         """
         Abort the graph, cancelling all remaining nodes.
 
-        :return: List of node IDs that were not yet completed.
+        :return: Incomplete node IDs in ``graph.nodes`` insertion order.
         """
         self._aborted = True
-        return sorted(nid for nid in self._graph.nodes if nid not in self._completed)
+        return [nid for nid in self._graph.nodes if nid not in self._completed]
 
     def assemble_history(
         self, node_id: str
@@ -254,8 +256,8 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             has_any_history = True
             full_chain = self._walk_back_full(full_edge.source_node_id)
 
-        # Collect last entries (sorted by source_node_id for determinism)
-        for edge in sorted(incoming, key=lambda e: e.source_node_id):
+        # Collect last entries in graph.edges (incoming) creation order
+        for edge in incoming:
             if edge.history_context == "last":
                 has_any_history = True
                 completed = self._completed.get(edge.source_node_id)
@@ -324,7 +326,7 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             # (has a full parent). At the stopping node, last parents are
             # the node's own context, not part of downstream history.
             if full_edge is not None:
-                for edge in sorted(current_incoming, key=lambda e: e.source_node_id):
+                for edge in current_incoming:
                     if edge.history_context == "last":
                         last_completed = self._completed.get(edge.source_node_id)
                         if last_completed is not None:
@@ -352,9 +354,9 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         """
         Get all node IDs that haven't been completed yet.
 
-        :return: Sorted list of incomplete node IDs.
+        :return: Incomplete node IDs in ``graph.nodes`` insertion order.
         """
-        return sorted(nid for nid in self._graph.nodes if nid not in self._completed)
+        return [nid for nid in self._graph.nodes if nid not in self._completed]
 
     def topological_order(self) -> list[str]:
         """

@@ -152,10 +152,10 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
         """
         Node IDs with no incoming edges, derived from ``nodes`` and ``edges``.
 
-        :return: Sorted list of root node IDs.
+        :return: Root node IDs in ``nodes`` insertion order.
         """
         incoming = {edge.target_node_id for edge in self.edges}
-        return sorted(nid for nid in self.nodes if nid not in incoming)
+        return [nid for nid in self.nodes if nid not in incoming]
 
     @classmethod
     def from_linear_chain(

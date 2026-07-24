@@ -176,7 +176,7 @@ class TestDAGExecutionStateReadiness:
         newly_ready = state.mark_completed("M3", "req_M3", "resp_M3")
 
         # M3 completes -> W1, W2 become ready; M4 not yet (workers pending)
-        assert sorted(newly_ready) == ["W1", "W2"]
+        assert newly_ready == ["W1", "W2"]
         assert "M4" not in state.get_ready_nodes()
 
         state.mark_completed("W1", "req_W1", "resp_W1")
@@ -334,7 +334,7 @@ class TestDAGExecutionStateWalkBack:
     def test_last_only_node(self):
         """
         A node with only last incoming edges should see only direct
-        parent outputs, sorted by source_node_id.
+        parent outputs, in edge creation order.
 
         ## WRITTEN BY AI ##
         """
@@ -363,8 +363,44 @@ class TestDAGExecutionStateWalkBack:
         state.mark_completed("b", "rB", "respB")
 
         hist = state.assemble_history("c")
-        # Sorted by source_node_id: a before b
+        # Edge creation order: a before b
         assert hist == [("rA", "respA"), ("rB", "respB")]
+
+    @pytest.mark.sanity
+    def test_last_only_node_edge_creation_order(self):
+        """
+        Last-edge history follows edge list order, not lexicographic
+        source_node_id order.
+
+        ## WRITTEN BY AI ##
+        """
+        g = ConversationGraph(
+            graph_id="last_only_reverse",
+            nodes={
+                "a": _make_node("a"),
+                "b": _make_node("b"),
+                "c": _make_node("c"),
+            },
+            edges=[
+                ConversationEdge(
+                    source_node_id="b",
+                    target_node_id="c",
+                    history_context="last",
+                ),
+                ConversationEdge(
+                    source_node_id="a",
+                    target_node_id="c",
+                    history_context="last",
+                ),
+            ],
+        )
+        state = DAGExecutionState(g)
+        state.mark_completed("a", "rA", "respA")
+        state.mark_completed("b", "rB", "respB")
+
+        hist = state.assemble_history("c")
+        # Edge creation order: b before a (not ID sort)
+        assert hist == [("rB", "respB"), ("rA", "respA")]
 
 
 class TestDAGExecutionStateAbort:
@@ -383,7 +419,7 @@ class TestDAGExecutionStateAbort:
         state = DAGExecutionState(_linear_graph(3))
         state.mark_completed("n0", "r0", "resp0")
         remaining = state.abort()
-        assert sorted(remaining) == ["n1", "n2"]
+        assert remaining == ["n1", "n2"]
 
     @pytest.mark.smoke
     def test_abort_prevents_further_ready_nodes(self):
