@@ -5,7 +5,7 @@ from collections import deque
 from collections.abc import Iterable
 from typing import Generic, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, computed_field, model_validator
 from typing_extensions import Self, TypeAliasType
 
 from guidellm.schemas import RequestInfo, RequestSettings, StandardBaseModel
@@ -123,8 +123,9 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
 
     - Cycle detection via topological sort (raises if cycles found)
     - All edge source/target node IDs reference existing nodes
-    - ``root_node_ids`` derived as nodes with no incoming edges
     - At most one ``full`` incoming edge per node (initially)
+
+    ``root_node_ids`` is a computed field: nodes with no incoming edges.
     """
 
     graph_id: str = Field(
@@ -137,13 +138,6 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
         default_factory=list,
         description="Directed edges connecting nodes in the graph.",
     )
-    root_node_ids: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Node IDs with no incoming edges. Computed during validation; "
-            "user-provided values are overwritten."
-        ),
-    )
     request_infos: dict[str, RequestInfo] = Field(
         default_factory=dict,
         description=(
@@ -151,6 +145,17 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
             "before dispatch. Not part of the dataset -- created at runtime."
         ),
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def root_node_ids(self) -> list[str]:
+        """
+        Node IDs with no incoming edges, derived from ``nodes`` and ``edges``.
+
+        :return: Sorted list of root node IDs.
+        """
+        incoming = {edge.target_node_id for edge in self.edges}
+        return sorted(nid for nid in self.nodes if nid not in incoming)
 
     @classmethod
     def from_linear_chain(
@@ -203,8 +208,8 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
         Validate the DAG structure on construction.
 
         Checks that all edge endpoints reference existing nodes, enforces
-        the single-``full``-parent constraint, verifies acyclicity via
-        Kahn's algorithm, and derives ``root_node_ids``.
+        the single-``full``-parent constraint, and verifies acyclicity via
+        Kahn's algorithm.
 
         :raises ValueError: If edges reference missing nodes, a node has
             multiple ``full`` incoming edges, or the graph contains a cycle.
@@ -213,7 +218,6 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
         self._validate_edge_endpoints(node_ids)
         in_degree, children = self._build_adjacency(node_ids)
         self._check_acyclicity(node_ids, in_degree, children)
-        self._derive_root_node_ids(node_ids)
         return self
 
     def _validate_edge_endpoints(self, node_ids: set[str]) -> None:
@@ -270,10 +274,6 @@ class ConversationGraph(StandardBaseModel, Generic[RequestT]):
                 f"{len(node_ids) - visited_count} nodes are unreachable "
                 f"via topological sort"
             )
-
-    def _derive_root_node_ids(self, node_ids: set[str]) -> None:
-        incoming: set[str] = {edge.target_node_id for edge in self.edges}
-        self.root_node_ids = sorted(nid for nid in node_ids if nid not in incoming)
 
     def subgraph_for_nodes(self, node_ids: set[str]) -> Self:
         """

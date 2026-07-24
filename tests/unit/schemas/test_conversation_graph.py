@@ -149,8 +149,7 @@ class TestConversationGraphValidation:
     @pytest.mark.sanity
     def test_root_node_ids_derived_correctly(self):
         """
-        root_node_ids should be derived from the graph structure,
-        overwriting any user-provided values.
+        root_node_ids should be computed from nodes with no incoming edges.
 
         ## WRITTEN BY AI ##
         """
@@ -173,7 +172,6 @@ class TestConversationGraphValidation:
                     history_context="last",
                 ),
             ],
-            root_node_ids=["wrong"],
         )
         assert sorted(g.root_node_ids) == ["r1", "r2"]
 
