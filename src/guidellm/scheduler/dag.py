@@ -90,9 +90,9 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
     @property
     def is_complete(self) -> bool:
         """
-        :return: True if all nodes have completed (or the graph was aborted).
+        :return: True if all nodes have completed successfully.
         """
-        return self._aborted or len(self._completed) == len(self._graph.nodes)
+        return len(self._completed) == len(self._graph.nodes)
 
     @property
     def is_aborted(self) -> bool:

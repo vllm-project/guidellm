@@ -434,15 +434,16 @@ class TestDAGExecutionStateAbort:
         assert state.is_aborted
 
     @pytest.mark.sanity
-    def test_abort_marks_complete(self):
+    def test_abort_does_not_mark_complete(self):
         """
-        An aborted graph should report as complete.
+        An aborted graph should report as aborted, not complete.
 
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_linear_graph(2))
         state.abort()
-        assert state.is_complete
+        assert state.is_aborted
+        assert not state.is_complete
 
 
 class TestDAGExecutionStateTopologicalOrder:
