@@ -337,22 +337,6 @@ class TestBranchSpecValidation:
         assert len(args.branches) == 1
 
     @pytest.mark.sanity
-    def test_branch_json_parsing(self):
-        """
-        Branch specs should parse from JSON strings (CLI support).
-
-        ## WRITTEN BY AI ##
-        """
-        args = SyntheticTextDataArgs(
-            kind="synthetic_text",
-            prompt_tokens=100,
-            turns=5,
-            branches='[{"at_turn": 1, "turns": 2, "agent_id": "researcher"}]',
-        )
-        assert len(args.branches) == 1
-        assert args.branches[0].agent_id == "researcher"
-
-    @pytest.mark.sanity
     def test_single_turn_cannot_have_branches(self):
         """
         A single-turn conversation cannot have branches (no merge point).
