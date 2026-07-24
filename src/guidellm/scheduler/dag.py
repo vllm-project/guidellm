@@ -237,44 +237,27 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         - ``last``: Collect only the parent's final (request, response).
         - ``new``: Skip -- no history from this parent.
 
+        Required ``full`` / ``last`` parents must already be in
+        ``_completed``; incomplete parents raise ``ValueError``.
+
         :param node_id: The node to assemble history for.
         :return: Flat list of (request, response) pairs in chronological
             order, or None if the node has no history (only ``new`` edges
             or no incoming edges).
+        :raises ValueError: If a required parent has not completed.
         """
         incoming = self._incoming_edges.get(node_id, [])
         if not incoming:
             return None
 
-        full_chain: list[tuple[_RequestT, _ResponseT | None]] = []
-        last_entries: list[tuple[str, tuple[_RequestT, _ResponseT | None]]] = []
-        has_any_history = False
-
-        # Walk-back through the single full parent (if any)
+        # Combine: full chain in chronological order, then last outputs
+        result: list[tuple[_RequestT, _ResponseT | None]] = []
         full_edge = self._find_full_parent_edge(incoming)
         if full_edge is not None:
-            has_any_history = True
-            full_chain = self._walk_back_full(full_edge.source_node_id)
-
-        # Collect last entries in graph.edges (incoming) creation order
-        for edge in incoming:
-            if edge.history_context == "last":
-                has_any_history = True
-                completed = self._completed.get(edge.source_node_id)
-                if completed is not None:
-                    last_entries.append(
-                        (edge.source_node_id, (completed.request, completed.response))
-                    )
-
-        if not has_any_history:
-            return None
-
-        # Combine: full chain in chronological order, then last outputs
-        result: list[tuple[_RequestT, _ResponseT | None]] = list(full_chain)
-        for _, entry in last_entries:
-            result.append(entry)
-
-        return result if result else None
+            result.extend(self._walk_back_full(full_edge.source_node_id))
+        # This only adds the last pairs for the current node.
+        result.extend(self._collect_last_pairs(incoming))
+        return result or None
 
     def _find_full_parent_edge(
         self, incoming: Iterable[ConversationEdge]
@@ -292,6 +275,32 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                 return edge
         return None
 
+    def _collect_last_pairs(
+        self, incoming: Iterable[ConversationEdge]
+    ) -> list[tuple[_RequestT, _ResponseT | None]]:
+        """
+        Collect ``(request, response)`` pairs from ``last`` incoming edges.
+
+        Pairs are returned in ``incoming`` (edge creation) order. Each
+        ``last`` parent must already be completed.
+
+        :param incoming: Incoming edges for a node.
+        :return: List of completed last-parent pairs.
+        :raises ValueError: If a ``last`` parent has not completed.
+        """
+        pairs: list[tuple[_RequestT, _ResponseT | None]] = []
+        for edge in incoming:
+            if edge.history_context != "last":
+                continue
+            completed = self._completed.get(edge.source_node_id)
+            if completed is None:
+                raise ValueError(
+                    f"Cannot assemble history: parent '{edge.source_node_id}' "
+                    "has not completed"
+                )
+            pairs.append((completed.request, completed.response))
+        return pairs
+
     def _walk_back_full(
         self, start_node_id: str
     ) -> list[tuple[_RequestT, _ResponseT | None]]:
@@ -305,17 +314,24 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         ``last`` parent outputs. ``last`` parents at the stopping node are
         NOT collected -- they belong to the stopping node's own context.
 
+        Every node on the walk (and its mid-chain ``last`` parents) must
+        already be in ``_completed``.
+
         :param start_node_id: The node to start walking back from.
         :return: List of (request, response) pairs in chronological order.
+        :raises ValueError: If a required ancestor or mid-chain ``last``
+            parent has not completed.
         """
         chain_reversed: list[tuple[_RequestT, _ResponseT | None]] = []
-        interleaved_last: list[tuple[str, tuple[_RequestT, _ResponseT | None]]] = []
+        interleaved_last: list[tuple[_RequestT, _ResponseT | None]] = []
         current_id: str | None = start_node_id
 
         while current_id is not None:
             completed = self._completed.get(current_id)
             if completed is None:
-                break
+                raise ValueError(
+                    f"Cannot assemble history: parent '{current_id}' has not completed"
+                )
 
             chain_reversed.append((completed.request, completed.response))
 
@@ -326,29 +342,12 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             # (has a full parent). At the stopping node, last parents are
             # the node's own context, not part of downstream history.
             if full_edge is not None:
-                for edge in current_incoming:
-                    if edge.history_context == "last":
-                        last_completed = self._completed.get(edge.source_node_id)
-                        if last_completed is not None:
-                            interleaved_last.append(
-                                (
-                                    edge.source_node_id,
-                                    (
-                                        last_completed.request,
-                                        last_completed.response,
-                                    ),
-                                )
-                            )
+                interleaved_last.extend(self._collect_last_pairs(current_incoming))
 
             current_id = full_edge.source_node_id if full_edge is not None else None
 
         chain_reversed.reverse()
-
-        result = list(chain_reversed)
-        for _, entry in interleaved_last:
-            result.append(entry)
-
-        return result
+        return chain_reversed + interleaved_last
 
     def get_remaining_node_ids(self) -> list[str]:
         """

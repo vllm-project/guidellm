@@ -402,6 +402,53 @@ class TestDAGExecutionStateWalkBack:
         # Edge creation order: b before a (not ID sort)
         assert hist == [("rB", "respB"), ("rA", "respA")]
 
+    @pytest.mark.regression
+    def test_incomplete_last_parent_raises(self):
+        """
+        Assembling history with an incomplete last parent raises ValueError.
+
+        ## WRITTEN BY AI ##
+        """
+        g = ConversationGraph(
+            graph_id="incomplete_last",
+            nodes={
+                "a": _make_node("a"),
+                "b": _make_node("b"),
+                "c": _make_node("c"),
+            },
+            edges=[
+                ConversationEdge(
+                    source_node_id="a",
+                    target_node_id="c",
+                    history_context="last",
+                ),
+                ConversationEdge(
+                    source_node_id="b",
+                    target_node_id="c",
+                    history_context="last",
+                ),
+            ],
+        )
+        state = DAGExecutionState(g)
+        state.mark_completed("a", "rA", "respA")
+
+        with pytest.raises(ValueError, match="parent 'b' has not completed"):
+            state.assemble_history("c")
+
+    @pytest.mark.regression
+    def test_incomplete_full_parent_raises(self):
+        """
+        Assembling history with an incomplete full parent raises ValueError.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_linear_graph(3))
+        state.mark_completed("n0", "r0", "resp0")
+        # n1 not completed; n2's full walk starts at n1
+
+        with pytest.raises(ValueError, match="parent 'n1' has not completed"):
+            state.assemble_history("n2")
+
 
 class TestDAGExecutionStateAbort:
     """Test graph abort behavior.
