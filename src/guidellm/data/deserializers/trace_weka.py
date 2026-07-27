@@ -37,7 +37,7 @@ def _create_distinct_token_block(
     processor: PreTrainedTokenizerBase,
     faker: Faker,
     max_attempts: int = 20,
-) -> list[int]:
+) -> tuple[int]:
     """Constructs a new token block of `block_size` that does not appear in
     `sibling_token_blocks`."""
     attempt = 0
@@ -53,7 +53,7 @@ def _create_distinct_token_block(
 
 def _create_prompt_from_hash_ids(
     hash_ids: list[int],
-    hash_id_table: dict[int, list[int]],
+    hash_id_table: dict[int, tuple[int]],
     processor: PreTrainedTokenizerBase,
 ) -> str:
     """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
@@ -117,7 +117,7 @@ class WEKATraceFormat(TraceFormatBase):
     Generated prompts match the prompt token count of the row."""
 
     def __init__(self) -> None:
-        self.hash_id_table: dict[int, list[int]] = {}
+        self.hash_id_table: dict[int, tuple[int]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
 
     def reset(self) -> None:

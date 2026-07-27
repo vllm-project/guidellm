@@ -67,7 +67,7 @@ def generate_token_ids(
     processor: PreTrainedTokenizerBase,
     faker: Faker,
     margin_of_safety: int = 8,
-) -> list[int]:
+) -> tuple[int]:
     """Generate `token_count` synthetic token ids for trace prompt construction.
 
     Ideally, `margin_of_safety` should be set to slighty more than
@@ -77,10 +77,10 @@ def generate_token_ids(
         attempt += 1
         # The Faker.text() can only generate text of at least 5 characters.
         num_chars = max(token_count * margin_of_safety * attempt, 5)
-        text = faker.text(max_nb_chars=num_chars)
+        text = faker.text(num_chars)
         token_ids = processor.encode(text)
         if len(token_ids) >= token_count:
-            return token_ids[:token_count]
+            return tuple(token_ids[:token_count])
 
 
 class TraceFormatBase(Protocol):
@@ -329,12 +329,13 @@ def _find_required_columns(
 
 def _make_columns_from_virtual(
     batch: dict[str, list],
-    indices,
+    *args,
     wrapper_col: str,
     virtual_cols: list[str],
     conversation_id_col: str | None = None,
 ) -> dict[str, list]:
     """Intended to be used with `datasets.Dataset.map()`."""
+    indices = args[0] if args else None
     json_dicts = []
     conv_ids = []
     for batch_idx, json_dicts_list in enumerate(batch[wrapper_col]):
@@ -438,7 +439,9 @@ def _load_trace_rows(
         except ValueError as e:
             raise DataNotSupportedError(str(e)) from e
 
-    return dataset.sort([conversation_id_column_name, timestamp_column_name])
+    if conversation_id_column_name:
+        return dataset.sort([conversation_id_column_name, timestamp_column_name])
+    return dataset.sort(timestamp_column_name)
 
 
 def validate_path(path: Path) -> None:
@@ -498,7 +501,10 @@ class TraceDatasetDeserializer(DatasetDeserializer):
         random_seed: int = 42,
     ) -> IterableDataset:
         validate_path(config.path)
-        dataset = load_dataset_from_file(config.path, **config.load_kwargs)
+        try:
+            dataset = load_dataset_from_file(config.path, **config.load_kwargs)
+        except ValueError as e:
+            raise DataNotSupportedError(str(e)) from e
         if not dataset:
             raise DataNotSupportedError(f"Trace file has no valid rows: {config.path}")
         trace_rows = try_load_trace(config, dataset)
