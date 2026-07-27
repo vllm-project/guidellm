@@ -29,7 +29,12 @@ from guidellm.data.finalizers.generative import (
     GenerativeRequestFinalizer,
     GenerativeRequestFinalizerArgs,
 )
-from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationRequestArguments,
+    GenerationResponse,
+    UsageMetrics,
+)
 from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
 from guidellm.utils.registry import RegistryMixin
@@ -954,64 +959,8 @@ class TestChatCompletionsRequestHandler:
         assert result.body["messages"][0]["content"][1]["text"] == "How are you?"
 
     @pytest.mark.regression
-    def test_format_preserves_structured_text_metadata(self, valid_instances):
-        """Structured dataset prompts retain model-specific content fields.
-
-        ## WRITTEN BY AI ##
-        """
-        prompt = {
-            "type": "text",
-            "text": "Handle this request",
-            "metadata": {"category": "support"},
-            "priority": 1,
-        }
-        data = GenerationRequest(columns={"text_column": [prompt]})
-
-        result = valid_instances.format(data)
-
-        content = result.body["messages"][0]["content"][0]
-        assert content == prompt
-        assert content is not prompt
-
-    @pytest.mark.regression
-    def test_append_payloads_override_structured_text_metadata(self, valid_instances):
-        """CLI payload values take precedence over custom dataset metadata.
-
-        ## WRITTEN BY AI ##
-        """
-        prompt = {
-            "type": "text",
-            "text": "Handle this request",
-            "priority": 1,
-            "metadata": {"source": "dataset"},
-            "dataset_only": True,
-        }
-        data = GenerationRequest(columns={"text_column": [prompt]})
-
-        result = valid_instances.format(
-            data,
-            append_payloads={
-                "priority": 2,
-                "metadata": {"source": "cli"},
-                "cli_only": True,
-            },
-        )
-
-        content = result.body["messages"][0]["content"][0]
-        assert content == {
-            "type": "text",
-            "text": "Handle this request",
-            "priority": 2,
-            "metadata": {"source": "cli"},
-            "dataset_only": True,
-            "cli_only": True,
-        }
-        assert prompt["priority"] == 1
-        assert prompt["metadata"] == {"source": "dataset"}
-
-    @pytest.mark.regression
-    def test_append_payloads_enrich_plain_text_only(self, valid_instances):
-        """Append payloads enrich text without changing multimodal parts.
+    def test_content_extras_enrich_plain_text_only(self, valid_instances):
+        """Content extras enrich text without changing multimodal parts.
 
         ## WRITTEN BY AI ##
         """
@@ -1024,10 +973,12 @@ class TestChatCompletionsRequestHandler:
 
         result = valid_instances.format(
             data,
-            append_payloads={
-                "metadata": {"category": "vision"},
-                "priority": 1,
-            },
+            extras=GenerationRequestArguments(
+                content={
+                    "metadata": {"category": "vision"},
+                    "priority": 1,
+                }
+            ),
         )
 
         text_content, image_content = result.body["messages"][0]["content"]
@@ -1035,19 +986,6 @@ class TestChatCompletionsRequestHandler:
         assert text_content["priority"] == 1
         assert "metadata" not in image_content
         assert "priority" not in image_content
-
-    @pytest.mark.regression
-    def test_format_rejects_invalid_structured_text(self, valid_instances):
-        """Invalid structured prompt objects are rejected explicitly.
-
-        ## WRITTEN BY AI ##
-        """
-        data = GenerationRequest(
-            columns={"text_column": [{"type": "text", "text": 123}]}
-        )
-
-        with pytest.raises(ValueError, match="must contain a string 'text' field"):
-            valid_instances.format(data)
 
     @pytest.mark.sanity
     def test_format_messages_prefix(self, valid_instances):
@@ -2723,45 +2661,23 @@ class TestChatCompletionsRequestHandlerMultiturn:
         assert messages[2]["role"] == "user"
 
     @pytest.mark.regression
-    def test_append_payloads_override_history_and_current_metadata(
-        self, valid_instances
-    ):
-        """Append payload precedence is consistent across conversation turns.
+    def test_content_extras_apply_to_history_and_current_turn(self, valid_instances):
+        """Content extras are applied consistently across conversation turns.
 
         ## WRITTEN BY AI ##
         """
-        prev_request = GenerationRequest(
-            columns={
-                "text_column": [
-                    {
-                        "type": "text",
-                        "text": "Previous",
-                        "priority": 1,
-                    }
-                ]
-            }
-        )
+        prev_request = GenerationRequest(columns={"text_column": ["Previous"]})
         prev_response = GenerationResponse(
             request_id="prev",
             request_args=None,
             text="Previous response",
         )
-        data = GenerationRequest(
-            columns={
-                "text_column": [
-                    {
-                        "type": "text",
-                        "text": "Current",
-                        "priority": 2,
-                    }
-                ]
-            }
-        )
+        data = GenerationRequest(columns={"text_column": ["Current"]})
 
         result = valid_instances.format(
             data,
             history=[(prev_request, prev_response)],
-            append_payloads={"priority": 3},
+            extras=GenerationRequestArguments(content={"priority": 3}),
         )
 
         messages = result.body["messages"]
@@ -2954,6 +2870,56 @@ class TestResponsesRequestHandler:
         """
         handler = OpenAIRequestHandlerFactory.create("/v1/responses")
         assert isinstance(handler, ResponsesRequestHandler)
+
+    @pytest.mark.regression
+    def test_content_extras_enrich_text(self, valid_instances):
+        """Content extras are added to Responses API text content.
+
+        ## WRITTEN BY AI ##
+        """
+        data = GenerationRequest(columns={"text_column": ["Handle this request"]})
+
+        result = valid_instances.format(
+            data,
+            extras=GenerationRequestArguments(
+                content={
+                    "priority": 2,
+                    "metadata": {"category": "support"},
+                }
+            ),
+        )
+
+        content = result.body["input"][0]["content"][0]
+        assert content == {
+            "type": "input_text",
+            "text": "Handle this request",
+            "priority": 2,
+            "metadata": {"category": "support"},
+        }
+
+    @pytest.mark.regression
+    def test_content_extras_apply_to_history_and_current_turn(self, valid_instances):
+        """Content extras apply to all Responses API conversation turns.
+
+        ## WRITTEN BY AI ##
+        """
+        prev_request = GenerationRequest(columns={"text_column": ["Previous"]})
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="Previous response",
+        )
+        data = GenerationRequest(columns={"text_column": ["Current"]})
+
+        result = valid_instances.format(
+            data,
+            history=[(prev_request, prev_response)],
+            extras=GenerationRequestArguments(content={"priority": 3}),
+        )
+
+        input_items = result.body["input"]
+        assert input_items[0]["content"][0]["priority"] == 3
+        assert input_items[2]["content"][0]["priority"] == 3
 
     @pytest.mark.smoke
     def test_format_minimal(self, valid_instances):

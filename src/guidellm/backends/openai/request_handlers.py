@@ -193,6 +193,21 @@ def _check_streaming_error(data: Any) -> None:
     raise ValueError(f"Streaming response returned an error: {message}")
 
 
+def _get_content_extras(
+    extras: GenerationRequestArguments | dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Extract content-object fields from generation request extras.
+
+    :param extras: Additional generation request arguments.
+    :return: Fields to merge into generated text content objects.
+    """
+    if isinstance(extras, GenerationRequestArguments):
+        return extras.content
+    if isinstance(extras, dict):
+        return extras.get("content")
+    return None
+
+
 class WSEventResult(Enum):
     """Classification of a processed WebSocket streaming event."""
 
@@ -706,56 +721,23 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             return {"type": tool.get("type", "function"), "function": fn}
         return tool
 
-    @staticmethod
-    def _format_text_prompt(
-        item: Any,
-        append_payloads: dict[str, Any] | None,
-    ) -> dict[str, Any]:
-        """Format one plain or structured dataset prompt as text content.
-
-        :param item: A plain string or structured text content dictionary.
-        :param append_payloads: Backend fields that override dataset metadata.
-        :return: A copied, validated text content dictionary.
-        :raises ValueError: If the prompt is not valid structured text content.
-        """
-        if isinstance(item, str):
-            content = {"type": "text", "text": item}
-        elif isinstance(item, dict):
-            content = item.copy()
-            content.setdefault("type", "text")
-            if content["type"] != "text":
-                raise ValueError("Structured text prompts must use content type 'text'")
-            if not isinstance(content.get("text"), str):
-                raise ValueError(
-                    "Structured text prompts must contain a string 'text' field"
-                )
-        else:
-            raise ValueError(
-                "Text prompts must be strings or structured content objects"
-            )
-
-        if append_payloads:
-            content.update(append_payloads)
-        return content
-
     def _format_prompts(
         self,
-        column_data: list[Any],
+        column_data: list,
         column_type: str,
-        append_payloads: dict[str, Any] | None = None,
+        content_extras: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Helper method to format different types of data columns
         into the appropriate structure for chat messages.
-
-        Structured text dictionaries are copied as-is so model-specific metadata
-        from datasets is preserved. Backend-provided ``append_payloads`` are applied
-        last and therefore override matching dataset metadata.
         """
         formatted_data = []
         for item in column_data:
             if column_type == "text_column":
-                formatted_data.append(self._format_text_prompt(item, append_payloads))
+                content = {"type": "text", "text": item}
+                if content_extras:
+                    content.update(content_extras)
+                formatted_data.append(content)
             elif column_type == "image_column":
                 formatted_data.append(
                     {
@@ -949,11 +931,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             if prefix:
                 messages.append({"role": "system", "content": prefix})
 
+            content_extras = _get_content_extras(kwargs.get("extras"))
             prompts = [
                 self._format_prompts(
                     req.columns.get(col, []),
                     col,
-                    kwargs.get("append_payloads") if col == "text_column" else None,
+                    content_extras,
                 )
                 for col in (
                     "text_column",
@@ -1061,11 +1044,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             if prefix:
                 arguments.body["messages"].append({"role": "system", "content": prefix})
 
+            content_extras = _get_content_extras(kwargs.get("extras"))
             prompts = [
                 self._format_prompts(
                     data.columns.get(col, []),
                     col,
-                    kwargs.get("append_payloads") if col == "text_column" else None,
+                    content_extras,
                 )
                 for col in (
                     "text_column",
@@ -1544,12 +1528,18 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         return tool
 
     def _format_prompts(
-        self, column_data: list, column_type: str
+        self,
+        column_data: list,
+        column_type: str,
+        content_extras: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         formatted_data: list[dict[str, Any]] = []
         for item in column_data:
             if column_type == "text_column":
-                formatted_data.append({"type": "input_text", "text": item})
+                content = {"type": "input_text", "text": item}
+                if content_extras:
+                    content.update(content_extras)
+                formatted_data.append(content)
             elif column_type == "image_column":
                 formatted_data.append(
                     {
@@ -1629,8 +1619,13 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 items.append({"role": "assistant", "content": content})
         else:
             # Standard or tool_call turn: user content.
+            content_extras = _get_content_extras(kwargs.get("extras"))
             prompts = [
-                self._format_prompts(req.columns.get(col, []), col)
+                self._format_prompts(
+                    req.columns.get(col, []),
+                    col,
+                    content_extras,
+                )
                 for col in (
                     "text_column",
                     "image_column",
@@ -1798,8 +1793,13 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 )
         elif data.turn_type != "tool_response_injection":
             # Standard or tool_call turn: user content.
+            content_extras = _get_content_extras(kwargs.get("extras"))
             prompts = [
-                self._format_prompts(data.columns.get(col, []), col)
+                self._format_prompts(
+                    data.columns.get(col, []),
+                    col,
+                    content_extras,
+                )
                 for col in (
                     "text_column",
                     "image_column",
