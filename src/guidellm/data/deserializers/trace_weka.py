@@ -31,22 +31,9 @@ from guidellm.data.schemas import DataArgs
 __all__ = ["WEKATraceFormatArgs"]
 
 
-def _is_in_table(hash_id_table: list[Any], hash_id: int) -> bool:
-    return (
-        hash_id < len(hash_id_table)
-        and hash_id >= 0
-        and hash_id_table[hash_id] is not None
-    )
-
-
-def _resize_to_hold_id(hash_id_table: list[Any], hash_id: int) -> None:
-    num_new_entries = hash_id - (len(hash_id_table) - 1)
-    hash_id_table.extend(None for _ in range(num_new_entries))
-
-
 def _create_distinct_token_block(
     block_size: int,
-    sibling_token_blocks: list[list[int]],
+    sibling_token_blocks: set[tuple[int, ...]],
     processor: PreTrainedTokenizerBase,
     faker: Faker,
     max_attempts: int = 20,
@@ -66,7 +53,7 @@ def _create_distinct_token_block(
 
 def _create_prompt_from_hash_ids(
     hash_ids: list[int],
-    hash_id_table: list[list[int]],
+    hash_id_table: dict[int, list[int]],
     processor: PreTrainedTokenizerBase,
 ) -> str:
     """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
@@ -95,6 +82,10 @@ class WEKATraceFormatArgs(TraceDataArgs):
     kind: Literal["weka"] = Field(
         default="weka",
         description="Type identifier for the WEKA trace format.",
+    )
+    conversation_id_column: str = Field(
+        default="id",
+        description="Column name for conversation UUIDs in the trace file.",
     )
     hash_ids_column: str = Field(
         default="hash_ids",
@@ -126,22 +117,31 @@ class WEKATraceFormat(TraceFormatBase):
     Generated prompts match the prompt token count of the row."""
 
     def __init__(self) -> None:
-        self.hash_id_table: list[Any] = []
-        self.sibling_token_blocks: dict[Any, list[list[int]]] = {}
+        self.hash_id_table: dict[int, list[int]] = {}
+        self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+
+    def reset(self) -> None:
+        self.hash_id_table = {}
+        self.sibling_token_blocks = {}
 
     def required_columns(self, config: WEKATraceFormatArgs) -> Features:
-        return Features({config.hash_ids_column: List(Value("int32"))})
+        return Features(
+            {
+                config.hash_ids_column: List(Value("int32")),
+                config.conversation_id_column: Value("string"),
+            }
+        )
 
     def validate_row(self, config: WEKATraceFormatArgs, row: dict) -> None:
         n_in = row[config.prompt_tokens_column]
         n_blocks = len(row[config.hash_ids_column])
         for hash_id in row[config.hash_ids_column]:
-            if hash_id < 1:
+            if hash_id < 0:
                 raise DataNotSupportedError(
-                    f"Hash ID must be greater than 0, got {hash_id}"
+                    f"Hash ID must be non-negative, got {hash_id}"
                 )
         # WEKA format drops what would be the partially filled hash ID
-        if math.floor(n_in / config.hash_id_block_size) != n_blocks:
+        if math.ceil(n_in / config.hash_id_block_size) != n_blocks:
             raise DataNotSupportedError(
                 f"Input token count of {n_in} split into blocks of size "
                 f"{config.hash_id_block_size} full blocks does not match given "
@@ -160,19 +160,18 @@ class WEKATraceFormat(TraceFormatBase):
 
         Internally (after validation) hash IDs are decremented so that they start from
         0 instead of WEKA format's default of 1."""
-        ids = [hash_id - 1 for hash_id in row[config.hash_ids_column]]
+        ids = row[config.hash_ids_column]
         for idx, hash_id in enumerate(ids):
-            if not _is_in_table(self.hash_id_table, hash_id):
-                _resize_to_hold_id(self.hash_id_table, hash_id)
+            if not hash_id in self.hash_id_table:
                 prev_id = None if idx == 0 else ids[idx - 1]
-                self.sibling_token_blocks.setdefault(prev_id, [])
+                self.sibling_token_blocks.setdefault(prev_id, set())
                 self.hash_id_table[hash_id] = _create_distinct_token_block(
                     config.hash_id_block_size,
                     self.sibling_token_blocks[prev_id],
                     processor,
                     faker,
                 )
-                self.sibling_token_blocks[prev_id].append(self.hash_id_table[hash_id])
+                self.sibling_token_blocks[prev_id].add(self.hash_id_table[hash_id])
         prompt = _create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
         remainder = _generate_remaining_prompt(
             row[config.prompt_tokens_column] % config.hash_id_block_size,

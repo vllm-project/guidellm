@@ -34,19 +34,6 @@ from guidellm.data.schemas import DataArgs
 __all__ = ["MooncakeTraceFormatArgs"]
 
 
-def _is_in_table(hash_id_table: list[Any], hash_id: int) -> bool:
-    return (
-        hash_id < len(hash_id_table)
-        and hash_id >= 0
-        and hash_id_table[hash_id] is not None
-    )
-
-
-def _resize_to_hold_id(hash_id_table: list[Any], hash_id: int) -> None:
-    num_new_entries = hash_id - (len(hash_id_table) - 1)
-    hash_id_table.extend(None for _ in range(num_new_entries))
-
-
 def _calculate_required_prompt_tokens(
     config: MooncakeTraceFormatArgs, row: dict, hash_id: int
 ) -> int:
@@ -61,7 +48,7 @@ def _calculate_required_prompt_tokens(
 
 def _create_distinct_token_block(
     block_size: int,
-    sibling_token_blocks: list[list[int]],
+    sibling_token_blocks: set[tuple[int, ...]],
     processor: PreTrainedTokenizerBase,
     faker: Faker,
     max_attempts: int = 20,
@@ -81,7 +68,7 @@ def _create_distinct_token_block(
 
 def _create_prompt_from_hash_ids(
     hash_ids: list[int],
-    hash_id_table: list[list[int]],
+    hash_id_table: dict[int, list[int]],
     processor: PreTrainedTokenizerBase,
 ) -> str:
     """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
@@ -130,8 +117,8 @@ class MooncakeTraceFormat(TraceFormatBase):
     Generated prompts match the prompt token count of the row."""
 
     def __init__(self) -> None:
-        self.hash_id_table: list[Any] = []
-        self.sibling_token_blocks: dict[Any, list[list[int]]] = {}
+        self.hash_id_table: dict[int, list[int]] = {}
+        self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
 
     def required_columns(self, config: MooncakeTraceFormatArgs) -> Features:
         return Features({config.hash_ids_column: List(Value("int32"))})
@@ -161,16 +148,15 @@ class MooncakeTraceFormat(TraceFormatBase):
         each hash ID that has not already been seen."""
         ids = row[config.hash_ids_column]
         for idx, hash_id in enumerate(ids):
-            if not _is_in_table(self.hash_id_table, hash_id):
-                _resize_to_hold_id(self.hash_id_table, hash_id)
+            if not hash_id in self.hash_id_table:
                 prev_id = None if idx == 0 else ids[idx - 1]
                 num_tokens = _calculate_required_prompt_tokens(config, row, hash_id)
-                self.sibling_token_blocks.setdefault(prev_id, [])
+                self.sibling_token_blocks.setdefault(prev_id, set())
                 self.hash_id_table[hash_id] = _create_distinct_token_block(
                     num_tokens,
                     self.sibling_token_blocks[prev_id],
                     processor,
                     faker,
                 )
-                self.sibling_token_blocks[prev_id].append(self.hash_id_table[hash_id])
+                self.sibling_token_blocks[prev_id].add(self.hash_id_table[hash_id])
         return _create_prompt_from_hash_ids(ids, self.hash_id_table, processor)

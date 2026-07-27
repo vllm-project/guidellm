@@ -83,169 +83,11 @@ def generate_token_ids(
             return token_ids[:token_count]
 
 
-def _validate_trace_path(path: Path | str) -> Path:
-    path = Path(path)
-    if path.stat().st_size == 0:
-        raise ValueError(f"Trace file is empty: {path}")
-    return path
-
-
-def _get_missing_columns(
-    required_columns: list[str], actual_columns: list[str]
-) -> list[str]:
-    return [c for c in required_columns if c not in actual_columns]
-
-
-class Status(enum.Enum):
-    FAILURE = enum.auto()
-    SUCCESS = enum.auto()
-
-
-@dataclasses.dataclass
-class ColumnSearchResult:
-    status: Status
-    checked_json_columns: bool
-    apropos_column_names: Sequence[str | VirtualColumnLocation]
-
-
-def _is_supported_json_data_type(data: Any) -> bool:
-    """Currently, only JSON data in the form of a list of JSON objects is supported."""
-    return isinstance(data, list) and (len(data) == 0 or isinstance(data[0], dict))
-
-
-def _find_virtual_columns(
-    sample_row: dict[str, Any],
-    json_column_names: list[str],
-    target_columns: list[str],
-) -> ColumnSearchResult:
-    """Required columns must all be stored within the same column."""
-    completely_missing = set(target_columns)
-    for col in json_column_names:
-        parsed = sample_row[col]
-        if _is_supported_json_data_type(parsed) and len(parsed) > 0:
-            virtual_columns = [] if parsed is None else list(parsed[0].keys())
-            missing = _get_missing_columns(target_columns, virtual_columns)
-            if not missing:
-                locations = construct_virtual_column_locations(col, target_columns)
-                return ColumnSearchResult(Status.SUCCESS, True, locations)
-            completely_missing = completely_missing.difference(missing)
-    if json_column_names:
-        return ColumnSearchResult(Status.FAILURE, True, list(completely_missing))
-    return ColumnSearchResult(Status.FAILURE, False, [])
-
-
-def _find_required_columns(columns: list[str], dataset: Dataset) -> ColumnSearchResult:
-    """Returns a list of all missing columns on failure. Otherwise returns a list of
-    the locations of any required columns embedded inside a JSON dict."""
-    missing = _get_missing_columns(columns, dataset.column_names)
-    if missing:
-        json_column_names = get_json_column_names(dataset)
-        sample = dataset[0]
-        result = _find_virtual_columns(sample, json_column_names, columns)
-        if result.status is Status.FAILURE and not result.checked_json_columns:
-            result.apropos_column_names = missing
-        return result
-    return ColumnSearchResult(Status.SUCCESS, False, [])
-
-
-def _make_columns_from_virtual(
-    batch: dict[str, list], wrapper_col: str, virtual_cols: list[str]
-) -> dict[str, list]:
-    """Intended to be used with `datasets.Dataset.map()`."""
-    json_dicts = []
-    for json_dicts_list in batch[wrapper_col]:
-        json_dicts.extend(json_dicts_list)
-    return {c: [row[c] for row in json_dicts] for c in virtual_cols}
-
-
-def _make_dataset_from_virtual(
-    dataset: Dataset, columns: list[VirtualColumnLocation]
-) -> Dataset:
-    """Assumes all virtual columns are stored inside the same column.
-    (Currently ensured by `_is_supported_json_data_type`)."""
-    wrapper_cols, virt_cols = unzip_virtual_column_locations(columns)
-    return dataset.map(
-        _make_columns_from_virtual,
-        batched=True,
-        remove_columns=dataset.column_names,
-        fn_kwargs={"wrapper_col": wrapper_cols[0], "virtual_cols": virt_cols},
-    )
-
-
-def _handle_column_search_result(
-    result: ColumnSearchResult, dataset: Dataset
-) -> Dataset:
-    """Returns an updated dataset where any required columns found wrapped inside
-    JSON dicts are unwrapped and added as columns to the dataset.
-
-    :raises KeyError: If a required column is missing in the dataset."""
-    if result.status is Status.FAILURE:
-        additional_info = ""
-        if result.checked_json_columns:
-            additional_info = (
-                "Note: GuideLLM searched columns with lists of JSON objects after"
-                "failing to find them at the top level."
-                "Ensure that all required columns are wrapped in the same column if"
-                "this is where they are intended to be found."
-            )
-        raise KeyError(
-            f"Trace row missing required columns: {result.apropos_column_names} "
-            f"{additional_info}"
-        )
-    if not result.checked_json_columns:
-        return dataset
-    return _make_dataset_from_virtual(
-        dataset, cast("list[VirtualColumnLocation]", result.apropos_column_names)
-    )
-
-
-def _load_trace_rows(
-    path: Path | str,
-    timestamp_column_name: str,
-    required_columns: Features,
-    **data_kwargs: Any,
-) -> Dataset:
-    """
-    Load trace file rows as a HuggingFace Dataset.
-
-    Every column in required_columns must exist in the dataset;
-    otherwise KeyError is raised with a descriptive message.
-    Rows are sorted by column timestamp_column_name.
-
-    :param path: Path to the trace file.
-    :param timestamp_column_name: Name of the timestamp column used to sort trace rows.
-    :param required_columns: List of column/fields that each row must have. Must contain
-    the timestamp column.
-    :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
-    :return: HuggingFace Dataset (iterable as dicts, column-accessible).
-    :raises DataNotSupportedError: For any of the following reasons:
-    - The dataset is empty or has no valid rows
-    - A required column contains a NoneType
-    - A required column failed during cast to feature type
-
-    :raises ValueError: If the file format is not .jsonl, .json, .csv or .parquet.
-    """
-    path = _validate_trace_path(path)
-    trace_dataset = load_dataset_from_file(path, **data_kwargs)
-    if not trace_dataset:
-        raise DataNotSupportedError(f"Trace file has no valid rows: {path}")
-
-    result = _find_required_columns(required_columns.keys(), trace_dataset)
-    trace_dataset = _handle_column_search_result(result, trace_dataset)
-
-    for name, val in required_columns.items():
-        if trace_dataset.data[name].null_count != 0:
-            raise DataNotSupportedError(f"Missing column values in {name}")
-        try:
-            trace_dataset.cast_column(name, val)
-        except ValueError as e:
-            raise DataNotSupportedError(str(e)) from e
-
-    return trace_dataset.sort(timestamp_column_name)
-
-
 class TraceFormatBase(Protocol):
     def __init__(self) -> None: ...
+
+    def reset(self) -> None:
+        pass
 
     def required_columns(self, config) -> Features: ...
 
@@ -295,16 +137,13 @@ class TraceDataArgs(DataArgs):
         default="output_length",
         description="Column name for output token counts in the trace file.",
     )
-
-
-def _validate_row(row: dict, config: TraceDataArgs) -> None:
-    n_in = row[config.prompt_tokens_column]
-    n_out = row[config.output_tokens_column]
-    if n_in < 0 or n_out < 0:
-        raise DataNotSupportedError(
-            f"Trace token counts must be non-negative, got "
-            f"input_length={n_in}, output_length={n_out}"
+    conversation_id_column: str | None = Field(
+        default=None,
+        description=(
+            "Column name for conversation IDs. Required for formats "
+            "with conversation-scoped trace data such as hash IDs."
         )
+    )
 
 
 class TraceExamplesIterable(_BaseExamplesIterable):
@@ -314,6 +153,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     def __init__(
         self,
         config: TraceDataArgs,
+        trace_rows: Dataset,
         processor: PreTrainedTokenizerBase,
         random_seed: int,
     ):
@@ -323,42 +163,27 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         self.processor = processor
         self.faker = Faker()
         self.faker.seed_instance(random_seed)
-        try:
-            self.trace_rows = _load_trace_rows(
-                config.path,
-                config.timestamp_column,
-                required_columns=Features(
-                    {
-                        config.timestamp_column: Value("float"),
-                        config.prompt_tokens_column: Value("int32"),
-                        config.output_tokens_column: Value("int32"),
-                        **dict(self.format.required_columns(self.config)),
-                    }
-                ),
-                **config.load_kwargs,
-            )
-        except (DatasetGenerationError, KeyError, ValueError) as e:
-            raise DataNotSupportedError(str(e)) from e
-
-        for row in self.trace_rows:
-            _validate_row(row, self.config)
-            self.format.validate_row(self.config, row)
+        self.trace_rows = trace_rows
         self.iteration_count = 0
 
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
-        row_idx = 0
         timestamps = self.trace_rows[self.config.timestamp_column]
-        while True:
-            try:
-                row = self.trace_rows[row_idx]
-            except IndexError:
-                break
+        conv_col = self.config.conversation_id_column
+        current_conv = None
+        conv_start_ts = None
+        for row_idx, row in enumerate(self.trace_rows):
+            if conv_col:
+                conv_id = row[conv_col]
+                if conv_id != current_conv:
+                    current_conv = conv_id
+                    conv_start_ts = row[self.config.timestamp_column]
+                    self.format.reset()
 
             prompt = self.format.create_prompt(
                 self.config, row, self.processor, self.faker
             )
-            relative_timestamp = timestamps[row_idx] - timestamps[0]
+            relative_timestamp = timestamps[row_idx] - (conv_start_ts or timestamps[0])
             yield (
                 row_idx,
                 {
@@ -368,7 +193,6 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                     "relative_timestamp": relative_timestamp,
                 },
             )
-            row_idx += 1
 
     @property
     def is_typed(self) -> bool:
@@ -419,10 +243,11 @@ class TraceDataset(IterableDataset):
     def __init__(
         self,
         config: TraceDataArgs,
+        trace_rows: Dataset,
         processor: PreTrainedTokenizerBase,
         random_seed: int,
     ):
-        ex_iterable = TraceExamplesIterable(config, processor, random_seed)
+        ex_iterable = TraceExamplesIterable(config, trace_rows, processor, random_seed)
         super().__init__(
             ex_iterable=ex_iterable,
             info=DatasetInfo(
@@ -437,11 +262,229 @@ class TraceDataset(IterableDataset):
             self._ex_iterable.iteration_count = epoch
 
 
-def _validate_path(path: Path) -> None:
+def _get_missing_columns(
+    required_columns: list[str], actual_columns: list[str]
+) -> list[str]:
+    return [c for c in required_columns if c not in actual_columns]
+
+
+class Status(enum.Enum):
+    FAILURE = enum.auto()
+    SUCCESS = enum.auto()
+
+
+@dataclasses.dataclass
+class ColumnSearchResult:
+    status: Status
+    checked_json_columns: bool
+    apropos_column_names: Sequence[str | VirtualColumnLocation]
+
+
+def _is_supported_json_data_type(data: Any) -> bool:
+    """Currently, only JSON data in the form of a list of JSON objects is supported."""
+    return isinstance(data, list) and (len(data) == 0 or isinstance(data[0], dict))
+
+
+def _find_virtual_columns(
+    sample_row: dict[str, Any],
+    json_column_names: list[str],
+    target_columns: list[str],
+) -> ColumnSearchResult:
+    """Required columns must all be stored within the same column."""
+    completely_missing = set(target_columns)
+    for col in json_column_names:
+        parsed = sample_row[col]
+        if _is_supported_json_data_type(parsed) and len(parsed) > 0:
+            virtual_columns = [] if parsed is None else list(parsed[0].keys())
+            missing = _get_missing_columns(target_columns, virtual_columns)
+            if not missing:
+                locations = construct_virtual_column_locations(col, target_columns)
+                return ColumnSearchResult(Status.SUCCESS, True, locations)
+            completely_missing = completely_missing.difference(missing)
+    if json_column_names:
+        return ColumnSearchResult(Status.FAILURE, True, list(completely_missing))
+    return ColumnSearchResult(Status.FAILURE, False, [])
+
+
+def _find_required_columns(
+    columns: list[str], dataset: Dataset, conversation_id_col: str | None = None
+) -> ColumnSearchResult:
+    """Returns a list of all missing columns on failure. Otherwise returns a list of
+    the locations of any required columns embedded inside a JSON dict."""
+    missing = _get_missing_columns(columns, dataset.column_names)
+    if missing:
+        # The conversation IDs should always be top-level.
+        if conversation_id_col:
+            if conversation_id_col in missing:
+                return ColumnSearchResult(Status.FAILURE, False, conversation_id_col)
+            columns.remove(conversation_id_col)
+        json_column_names = get_json_column_names(dataset)
+        sample = dataset[0]
+        result = _find_virtual_columns(sample, json_column_names, columns)
+        if result.status is Status.FAILURE and not result.checked_json_columns:
+            result.apropos_column_names = missing
+        return result
+    return ColumnSearchResult(Status.SUCCESS, False, [])
+
+
+def _make_columns_from_virtual(
+    batch: dict[str, list],
+    indices,
+    wrapper_col: str,
+    virtual_cols: list[str],
+    conversation_id_col: str | None = None,
+) -> dict[str, list]:
+    """Intended to be used with `datasets.Dataset.map()`."""
+    json_dicts = []
+    conv_ids = []
+    for batch_idx, json_dicts_list in enumerate(batch[wrapper_col]):
+        json_dicts.extend(json_dicts_list)
+        if conversation_id_col:
+            conv_ids.extend([indices[batch_idx]] * len(json_dicts_list))
+    result = {c: [row[c] for row in json_dicts] for c in virtual_cols}
+    if conversation_id_col:
+        result[conversation_id_col] = conv_ids
+    return result
+
+
+def _make_dataset_from_virtual(
+    dataset: Dataset,
+    columns: list[VirtualColumnLocation],
+    conversation_id_col: str | None = None,
+) -> Dataset:
+    """Assumes all virtual columns are stored inside the same column.
+    (Currently ensured by `_is_supported_json_data_type`)."""
+    wrapper_cols, virt_cols = unzip_virtual_column_locations(columns)
+    return dataset.map(
+        _make_columns_from_virtual,
+        batched=True,
+        with_indices=conversation_id_col is not None,
+        remove_columns=dataset.column_names,
+        fn_kwargs={
+            "wrapper_col": wrapper_cols[0],
+            "virtual_cols": virt_cols,
+            "conversation_id_col": conversation_id_col,
+        },
+    )
+
+
+def _handle_column_search_result(
+    result: ColumnSearchResult,
+    dataset: Dataset,
+    conversation_id_col: str | None = None,
+) -> Dataset:
+    """Returns an updated dataset where any required columns found wrapped inside
+    JSON dicts are unwrapped and added as columns to the dataset.
+
+    :raises KeyError: If a required column is missing in the dataset."""
+    if result.status is Status.FAILURE:
+        additional_info = ""
+        if result.checked_json_columns:
+            additional_info = (
+                "Note: GuideLLM searched columns with lists of JSON objects after "
+                "failing to find them at the top level. "
+                "Ensure that all required columns are wrapped in the same column if "
+                "this is where they are intended to be found."
+            )
+        raise KeyError(
+            f"Trace row missing required columns: {result.apropos_column_names} "
+            f"{additional_info}"
+        )
+    if not result.checked_json_columns:
+        return dataset
+    return _make_dataset_from_virtual(
+        dataset,
+        cast("list[VirtualColumnLocation]", result.apropos_column_names),
+        conversation_id_col,
+    )
+
+
+def _load_trace_rows(
+    dataset: Dataset,
+    timestamp_column_name: str,
+    required_columns: Features,
+    conversation_id_column_name: str | None = None,
+) -> Dataset:
+    """
+    Load trace file rows as a HuggingFace Dataset.
+
+    Every column in required_columns must exist in the dataset;
+    otherwise KeyError is raised with a descriptive message.
+    Rows are sorted by column timestamp_column_name.
+
+    :param path: Path to the trace file.
+    :param timestamp_column_name: Name of the timestamp column used to sort trace rows.
+    :param required_columns: List of column/fields that each row must have. Must contain
+    the timestamp column.
+    :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
+    :return: HuggingFace Dataset (iterable as dicts, column-accessible).
+    :raises DataNotSupportedError: For any of the following reasons:
+    - The dataset is empty or has no valid rows
+    - A required column contains a NoneType
+    - A required column failed during cast to feature type
+    """
+    result = _find_required_columns(
+        list(required_columns.keys()), dataset, conversation_id_column_name
+    )
+    dataset = _handle_column_search_result(
+        result, dataset, conversation_id_column_name
+    )
+
+    for name, val in required_columns.items():
+        if dataset.data[name].null_count != 0:
+            raise DataNotSupportedError(f"Missing column values in {name}")
+        try:
+            dataset.cast_column(name, val)
+        except ValueError as e:
+            raise DataNotSupportedError(str(e)) from e
+
+    return dataset.sort([conversation_id_column_name, timestamp_column_name])
+
+
+def validate_path(path: Path) -> None:
     if not path.exists():
         raise DataNotSupportedError(f"Trace file not found: {path}")
     if not path.is_file():
         raise DataNotSupportedError(f"Trace path is not a file: {path}")
+    if path.stat().st_size == 0:
+        raise DataNotSupportedError(f"Trace file is empty: {path}")
+
+
+def try_load_trace(config: TraceDataArgs, dataset: Dataset) -> Dataset:
+    format = TraceFormatRegistry.dispatch(config)
+    try:
+        return _load_trace_rows(
+            dataset,
+            config.timestamp_column,
+            required_columns=Features(
+                {
+                    config.timestamp_column: Value("float"),
+                    config.prompt_tokens_column: Value("int32"),
+                    config.output_tokens_column: Value("int32"),
+                    **dict(format.required_columns(config)),
+                }
+            ),
+            conversation_id_column_name=config.conversation_id_column,
+        )
+    except (DatasetGenerationError, KeyError, ValueError) as e:
+        raise DataNotSupportedError(str(e)) from e
+
+
+def _validate_row(row: dict, config: TraceDataArgs) -> None:
+    n_in = row[config.prompt_tokens_column]
+    n_out = row[config.output_tokens_column]
+    if n_in < 0 or n_out < 0:
+        raise DataNotSupportedError(
+            f"Trace token counts must be non-negative, got "
+            f"input_length={n_in}, output_length={n_out}"
+        )
+
+
+def validate_rows(config: TraceDataArgs, trace_rows: Dataset) -> None:
+    format = TraceFormatRegistry.dispatch(config)
+    for row in trace_rows:
+        _validate_row(row, config)
+        format.validate_row(config, row)
 
 
 @DatasetDeserializerFactory.register(["trace_synthetic"])
@@ -454,5 +497,10 @@ class TraceDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int = 42,
     ) -> IterableDataset:
-        _validate_path(config.path)
-        return TraceDataset(config, processor_factory(), random_seed)
+        validate_path(config.path)
+        dataset = load_dataset_from_file(config.path, **config.load_kwargs)
+        if not dataset:
+            raise DataNotSupportedError(f"Trace file has no valid rows: {config.path}")
+        trace_rows = try_load_trace(config, dataset)
+        validate_rows(config, trace_rows)
+        return TraceDataset(config, trace_rows, processor_factory(), random_seed)
