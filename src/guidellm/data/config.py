@@ -4,12 +4,12 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from guidellm.data.schemas import DataNotSupportedError, PreprocessDatasetConfig
+from guidellm.data.schemas import DataNotSupportedError
 from guidellm.utils import arg_string
 
-ConfigT = TypeVar("ConfigT", bound=PreprocessDatasetConfig)
+ConfigT = TypeVar("ConfigT", bound=BaseModel)
 
 
 def load_config(config: Any, config_class: type[ConfigT]) -> ConfigT | None:

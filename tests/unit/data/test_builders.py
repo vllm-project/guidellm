@@ -16,14 +16,17 @@ from datasets import Dataset
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.builders import (
-    STRATEGY_HANDLERS,
-    PromptTooShortError,
-    ShortPromptStrategy,
-    ShortPromptStrategyHandler,
     push_dataset_to_hub,
 )
 from guidellm.data.entrypoints import (
     process_dataset,
+)
+from guidellm.data.schemas import (
+    ConcatenatePreprocessStrategyArgs,
+    ErrorPreprocessStrategyArgs,
+    IgnorePreprocessStrategyArgs,
+    PadPreprocessStrategyArgs,
+    PromptTooShortError,
 )
 
 
@@ -128,15 +131,32 @@ def sample_data_column_mapper():
 
 
 @pytest.fixture
-def sample_config_json():
-    """Sample config as JSON string."""
-    return '{"prompt_tokens": 50, "output_tokens": 30}'
+def sample_strategy_ignore():
+    """Sample ignore preprocess strategy."""
+    return {"kind": "ignore", "prompt_tokens": 50, "output_tokens": 30}
 
 
 @pytest.fixture
-def sample_config_key_value():
-    """Sample config as key-value pairs."""
-    return "prompt_tokens=50,output_tokens=30"
+def sample_strategy_pad():
+    """Sample pad preprocess strategy."""
+    return {"kind": "pad", "prompt_tokens": 50, "output_tokens": 30, "pad": "X"}
+
+
+@pytest.fixture
+def sample_strategy_concatenate():
+    """Sample concatenate preprocess strategy."""
+    return {
+        "kind": "concatenate",
+        "prompt_tokens": 50,
+        "output_tokens": 30,
+        "delimiter": "",
+    }
+
+
+@pytest.fixture
+def sample_strategy_error():
+    """Sample error preprocess strategy."""
+    return {"kind": "error", "prompt_tokens": 50, "output_tokens": 30}
 
 
 @pytest.fixture
@@ -146,21 +166,21 @@ def temp_output_path(tmp_path):
 
 
 class TestProcessDatasetShortPromptStrategies:
-    """Test cases for different ShortPromptStrategy types."""
+    """Test cases for different PreprocessStrategyArgs kinds."""
 
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_ignore_strategy(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -168,7 +188,9 @@ class TestProcessDatasetShortPromptStrategies:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -177,9 +199,8 @@ class TestProcessDatasetShortPromptStrategies:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
-            short_prompt_strategy=ShortPromptStrategy.IGNORE,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -196,10 +217,10 @@ class TestProcessDatasetShortPromptStrategies:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_concatenate_strategy(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -212,7 +233,12 @@ class TestProcessDatasetShortPromptStrategies:
         """
         # Create a dataset with short prompts that can be concatenated to reach target
         # Use a lower target (15 tokens) so concatenation is achievable
-        short_config = '{"prompt_tokens": 15, "output_tokens": 10}'
+        short_strategy = {
+            "kind": "concatenate",
+            "prompt_tokens": 15,
+            "output_tokens": 10,
+            "delimiter": "\n",
+        }
         short_prompts_dataset = Dataset.from_dict(
             {
                 "prompt": [
@@ -241,17 +267,17 @@ class TestProcessDatasetShortPromptStrategies:
         )
 
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = short_prompts_dataset
 
         # Run process_dataset with the `concatenate` strategy
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=short_config,
-            short_prompt_strategy=ShortPromptStrategy.CONCATENATE,
-            concat_delimiter="\n",
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=short_strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -298,16 +324,16 @@ class TestProcessDatasetShortPromptStrategies:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_pad_strategy(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_pad,
         temp_output_path,
     ):
         """
@@ -315,7 +341,9 @@ class TestProcessDatasetShortPromptStrategies:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -324,10 +352,8 @@ class TestProcessDatasetShortPromptStrategies:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
-            short_prompt_strategy=ShortPromptStrategy.PAD,
-            pad_char="X",
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_pad,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -367,15 +393,15 @@ class TestProcessDatasetShortPromptStrategies:
 
     @pytest.mark.sanity
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_error_strategy(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_error,
         temp_output_path,
     ):
         """
@@ -383,7 +409,9 @@ class TestProcessDatasetShortPromptStrategies:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -393,9 +421,8 @@ class TestProcessDatasetShortPromptStrategies:
             process_dataset(
                 data={"kind": "huggingface", "source": "test_data"},
                 output_path=temp_output_path,
-                processor=tokenizer_mock,
-                config=sample_config_json,
-                short_prompt_strategy=ShortPromptStrategy.ERROR,
+                tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+                strategy=sample_strategy_error,
                 data_column_mapper=sample_data_column_mapper,
             )
 
@@ -406,16 +433,16 @@ class TestProcessDatasetColumnNames:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_default_columns(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -423,7 +450,9 @@ class TestProcessDatasetColumnNames:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -432,8 +461,8 @@ class TestProcessDatasetColumnNames:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -452,16 +481,16 @@ class TestProcessDatasetColumnNames:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_custom_columns_with_mapping(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_custom_columns,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -469,7 +498,9 @@ class TestProcessDatasetColumnNames:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_custom_columns
         )
@@ -478,8 +509,8 @@ class TestProcessDatasetColumnNames:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -498,16 +529,16 @@ class TestProcessDatasetColumnNames:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_with_prefix_column(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_with_prefix,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -515,7 +546,9 @@ class TestProcessDatasetColumnNames:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_with_prefix
         )
@@ -524,8 +557,8 @@ class TestProcessDatasetColumnNames:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -545,15 +578,15 @@ class TestProcessDatasetColumnNames:
     @pytest.mark.regression
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_with_instruction_column(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -572,15 +605,17 @@ class TestProcessDatasetColumnNames:
         )
 
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = dataset
 
         # Run process_dataset without column mapping (should auto-detect 'instruction')
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -599,16 +634,16 @@ class TestProcessDatasetConfigFormats:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_config_json(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -616,7 +651,9 @@ class TestProcessDatasetConfigFormats:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -624,8 +661,8 @@ class TestProcessDatasetConfigFormats:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -635,16 +672,16 @@ class TestProcessDatasetConfigFormats:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_config_key_value(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_data_column_mapper,
-        sample_config_key_value,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -652,7 +689,9 @@ class TestProcessDatasetConfigFormats:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -661,8 +700,8 @@ class TestProcessDatasetConfigFormats:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_key_value,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -672,10 +711,10 @@ class TestProcessDatasetConfigFormats:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_config_file_json(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -689,13 +728,19 @@ class TestProcessDatasetConfigFormats:
         """
         # Create a temporary JSON config file
         config_file = tmp_path / "config.json"
-        config_data = {"prompt_tokens": 50, "output_tokens": 30}
+        config_data = {
+            "kind": "ignore",
+            "prompt_tokens": 50,
+            "output_tokens": 30,
+        }
         config_file.write_text(json.dumps(config_data))
 
         output_path = tmp_path / "output.json"
 
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -704,8 +749,8 @@ class TestProcessDatasetConfigFormats:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=output_path,
-            processor=tokenizer_mock,
-            config=str(config_file),
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=config_data,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -715,16 +760,16 @@ class TestProcessDatasetConfigFormats:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_config_file_yaml(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         sample_data_column_mapper,
         tokenizer_mock,
         sample_dataset_default_columns,
-        sample_config_json,
+        sample_strategy_ignore,
         tmp_path,
     ):
         """
@@ -733,13 +778,19 @@ class TestProcessDatasetConfigFormats:
         """
         # Create a temporary YAML config file
         config_file = tmp_path / "config.yaml"
-        config_data = {"prompt_tokens": 50, "output_tokens": 30}
+        config_data = {
+            "kind": "ignore",
+            "prompt_tokens": 50,
+            "output_tokens": 30,
+        }
         config_file.write_text(yaml.dump(config_data))
 
         output_path = tmp_path / "output.json"
 
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -748,8 +799,8 @@ class TestProcessDatasetConfigFormats:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=output_path,
-            processor=tokenizer_mock,
-            config=str(config_file),
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=config_data,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -759,10 +810,10 @@ class TestProcessDatasetConfigFormats:
     @pytest.mark.regression
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_config_file_config_extension(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -776,13 +827,19 @@ class TestProcessDatasetConfigFormats:
         """
         # Create a temporary .config file
         config_file = tmp_path / "config.config"
-        config_data = {"prompt_tokens": 50, "output_tokens": 30}
+        config_data = {
+            "kind": "ignore",
+            "prompt_tokens": 50,
+            "output_tokens": 30,
+        }
         config_file.write_text(yaml.dump(config_data))
 
         output_path = tmp_path / "output.json"
 
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -791,8 +848,8 @@ class TestProcessDatasetConfigFormats:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=output_path,
-            processor=tokenizer_mock,
-            config=str(config_file),
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=config_data,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -806,16 +863,16 @@ class TestProcessDatasetIntegration:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_successful_processing(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_default_columns,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -823,7 +880,9 @@ class TestProcessDatasetIntegration:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -832,13 +891,13 @@ class TestProcessDatasetIntegration:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify all expected calls were made
-        mock_check_processor.assert_called_once()
+        mock_tokenizer_registry.create.assert_called_once()
         mock_deserializer_factory_class.deserialize.assert_called_once()
         assert mock_save_to_file.called
 
@@ -858,15 +917,63 @@ class TestProcessDatasetIntegration:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
-    def test_process_dataset_empty_after_filtering(
+    @patch("guidellm.data.builders.TokenizerRegistry")
+    def test_process_dataset_limits_samples(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_data_column_mapper,
-        sample_config_json,
+        sample_strategy_pad,
+        temp_output_path,
+    ):
+        """
+        data_loader.samples should cap successfully processed output rows.
+
+        ## WRITTEN BY AI ##
+        """
+        dataset = Dataset.from_dict(
+            {
+                "prompt": [
+                    ("Long enough prompt for preprocessing tests. " * 10),
+                    ("Another long enough prompt for preprocessing. " * 10),
+                    ("Yet another long enough prompt for tests. " * 10),
+                    ("Fourth long enough prompt for sample limits. " * 10),
+                    ("Fifth long enough prompt for sample limits. " * 10),
+                ],
+            }
+        )
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
+        mock_deserializer_factory_class.deserialize.return_value = dataset
+
+        process_dataset(
+            data={"kind": "huggingface", "source": "test_data"},
+            output_path=temp_output_path,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_pad,
+            data_column_mapper=sample_data_column_mapper,
+            data_loader={"kind": "pytorch", "samples": 2},
+        )
+
+        assert mock_save_to_file.called
+        saved_dataset = mock_save_to_file.call_args[0][0]
+        assert len(saved_dataset) == 2
+
+    @pytest.mark.sanity
+    @patch("guidellm.data.builders.save_dataset_to_file")
+    @patch("guidellm.data.builders.DatasetDeserializerFactory")
+    @patch("guidellm.data.builders.TokenizerRegistry")
+    def test_process_dataset_empty_after_filtering(
+        self,
+        mock_tokenizer_registry,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        tokenizer_mock,
+        sample_data_column_mapper,
+        sample_strategy_ignore,
         temp_output_path,
     ):
         """
@@ -882,21 +989,22 @@ class TestProcessDatasetIntegration:
         )
 
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = dataset
 
         # Run process_dataset with IGNORE strategy
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
-            short_prompt_strategy=ShortPromptStrategy.IGNORE,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=sample_strategy_ignore,
             data_column_mapper=sample_data_column_mapper,
         )
 
         # Verify all expected calls were made (even though dataset is empty)
-        mock_check_processor.assert_called_once()
+        mock_tokenizer_registry.create.assert_called_once()
         mock_deserializer_factory_class.deserialize.assert_called_once()
         # When all prompts are filtered out, save_dataset_to_file is not called
         # (the function returns early in _finalize_processed_dataset)
@@ -906,10 +1014,10 @@ class TestProcessDatasetIntegration:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_with_prefix_tokens(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -922,18 +1030,24 @@ class TestProcessDatasetIntegration:
         ## WRITTEN BY AI ##
         """
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_with_prefix
         )
-        config = '{"prompt_tokens": 50, "output_tokens": 30, "prefix_tokens_max": 10}'
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 50,
+            "output_tokens": 30,
+            "prefix_tokens_max": 10,
+        }
         # Run process_dataset with prefix_tokens
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -964,32 +1078,33 @@ class TestProcessDatasetIntegration:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
-    def test_process_dataset_include_prefix_in_token_count(
+    @patch("guidellm.data.builders.TokenizerRegistry")
+    def test_process_dataset_count_prefix(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_dataset_with_prefix,
-        sample_config_json,
+        sample_strategy_ignore,
         temp_output_path,
         sample_data_column_mapper,
     ):
-        """Test process_dataset with include_prefix_in_token_count flag."""
+        """Test process_dataset with count_prefix flag."""
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_with_prefix
         )
 
-        # Run process_dataset with include_prefix_in_token_count
+        # Run process_dataset with count_prefix
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=sample_config_json,
-            include_prefix_in_token_count=True,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy={**sample_strategy_ignore, "kind": "ignore", "count_prefix": True},
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1002,7 +1117,7 @@ class TestProcessDatasetIntegration:
         assert len(saved_dataset) > 0
 
         # Verify that the token count accounts for the prefix
-        # When include_prefix_in_token_count=True, the prefix tokens are subtracted from
+        # When count_prefix=True, the prefix tokens are subtracted from
         # the target prompt length, so prompt_tokens_count is just the prompt part,
         # but the total effective tokens (prefix + prompt) should equal the target
         for row in saved_dataset:
@@ -1033,16 +1148,16 @@ class TestProcessDatasetIntegration:
             assert 40 <= total_effective_tokens <= 60, (
                 f"Total effective tokens (prefix: {prefix_tokens} + prompt: "
                 f"{prompt_tokens} = {total_effective_tokens}) should be close "
-                f"to target of 50 when include_prefix_in_token_count=True"
+                f"to target of 50 when count_prefix=True"
             )
 
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_with_different_config_values(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1055,15 +1170,21 @@ class TestProcessDatasetIntegration:
         ## WRITTEN BY AI ##
         """
         # Create config with min, max, and stdev
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_min": 50, '
-            '"prompt_tokens_max": 150, "prompt_tokens_stdev": 10, '
-            '"output_tokens": 50, "output_tokens_min": 25, '
-            '"output_tokens_max": 75, "output_tokens_stdev": 5}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "prompt_tokens_min": 50,
+            "prompt_tokens_max": 150,
+            "prompt_tokens_stdev": 10,
+            "output_tokens": 50,
+            "output_tokens_min": 25,
+            "output_tokens_max": 75,
+            "output_tokens_stdev": 5,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             sample_dataset_default_columns
         )
@@ -1072,8 +1193,8 @@ class TestProcessDatasetIntegration:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1103,10 +1224,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_fixed_prompt_token_count(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1119,13 +1240,17 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with fixed prompt tokens (min=max=100)
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_min": 100, '
-            '"prompt_tokens_max": 100, "output_tokens": 50}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "prompt_tokens_min": 100,
+            "prompt_tokens_max": 100,
+            "output_tokens": 50,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1134,8 +1259,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1154,10 +1279,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_fixed_output_token_count(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1170,13 +1295,17 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with fixed output tokens (min=max=75)
-        config = (
-            '{"prompt_tokens": 100, "output_tokens": 75, '
-            '"output_tokens_min": 75, "output_tokens_max": 75}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "output_tokens": 75,
+            "output_tokens_min": 75,
+            "output_tokens_max": 75,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1185,8 +1314,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1202,10 +1331,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_prompt_min_max_constraints(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1218,13 +1347,17 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with prompt min=80, max=120
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_min": 80, '
-            '"prompt_tokens_max": 120, "output_tokens": 50}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "prompt_tokens_min": 80,
+            "prompt_tokens_max": 120,
+            "output_tokens": 50,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1233,8 +1366,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1264,10 +1397,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_output_min_max_constraints(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1280,13 +1413,17 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with output min=40, max=60
-        config = (
-            '{"prompt_tokens": 100, "output_tokens": 50, '
-            '"output_tokens_min": 40, "output_tokens_max": 60}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "output_tokens": 50,
+            "output_tokens_min": 40,
+            "output_tokens_max": 60,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1295,8 +1432,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1318,10 +1455,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.regression
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_prompt_stdev_distribution(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1334,14 +1471,18 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with prompt average=100, stdev=10, min=70, max=130
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_stdev": 10, '
-            '"prompt_tokens_min": 70, "prompt_tokens_max": 130, '
-            '"output_tokens": 50}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "prompt_tokens_stdev": 10,
+            "prompt_tokens_min": 70,
+            "prompt_tokens_max": 130,
+            "output_tokens": 50,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1350,8 +1491,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             random_seed=42,  # Fixed seed for reproducibility
             data_column_mapper=sample_data_column_mapper,
         )
@@ -1382,10 +1523,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.regression
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_output_stdev_distribution(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1398,14 +1539,18 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with output average=50, stdev=5, min=35, max=65
-        config = (
-            '{"prompt_tokens": 100, "output_tokens": 50, '
-            '"output_tokens_stdev": 5, "output_tokens_min": 35, '
-            '"output_tokens_max": 65}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "output_tokens": 50,
+            "output_tokens_stdev": 5,
+            "output_tokens_min": 35,
+            "output_tokens_max": 65,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1414,8 +1559,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             random_seed=42,  # Fixed seed for reproducibility
             data_column_mapper=sample_data_column_mapper,
         )
@@ -1440,10 +1585,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_token_count_accuracy(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1455,13 +1600,17 @@ class TestProcessDatasetConfigValidation:
         Test that stored token counts match actual tokenized lengths.
         ## WRITTEN BY AI ##
         """
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_min": 80, '
-            '"prompt_tokens_max": 120, "output_tokens": 50}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "prompt_tokens_min": 80,
+            "prompt_tokens_max": 120,
+            "output_tokens": 50,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1470,8 +1619,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1494,10 +1643,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_prompt_trimming_accuracy(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1510,13 +1659,17 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Use a small max to force trimming
-        config = (
-            '{"prompt_tokens": 50, "prompt_tokens_min": 50, '
-            '"prompt_tokens_max": 50, "output_tokens": 30}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 50,
+            "prompt_tokens_min": 50,
+            "prompt_tokens_max": 50,
+            "output_tokens": 30,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1525,8 +1678,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1545,10 +1698,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.sanity
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_prompt_padding_accuracy(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1564,23 +1717,26 @@ class TestProcessDatasetConfigValidation:
         dataset = Dataset.from_dict({"prompt": short_prompts})
 
         # Use a large target to force padding
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_min": 100, '
-            '"prompt_tokens_max": 100, "output_tokens": 30}'
-        )
-
+        strategy = {
+            "kind": "pad",
+            "prompt_tokens": 100,
+            "prompt_tokens_min": 100,
+            "prompt_tokens_max": 100,
+            "output_tokens": 30,
+            "pad": "X",
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = dataset
 
         # Run process_dataset with PAD strategy
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
-            short_prompt_strategy=ShortPromptStrategy.PAD,
-            pad_char="X",
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1621,10 +1777,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.regression
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_combined_config_constraints(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1638,15 +1794,21 @@ class TestProcessDatasetConfigValidation:
         ## WRITTEN BY AI ##
         """
         # Config with all parameters
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_min": 80, '
-            '"prompt_tokens_max": 120, "prompt_tokens_stdev": 10, '
-            '"output_tokens": 50, "output_tokens_min": 40, '
-            '"output_tokens_max": 60, "output_tokens_stdev": 5}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "prompt_tokens_min": 80,
+            "prompt_tokens_max": 120,
+            "prompt_tokens_stdev": 10,
+            "output_tokens": 50,
+            "output_tokens_min": 40,
+            "output_tokens_max": 60,
+            "output_tokens_stdev": 5,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1655,8 +1817,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             random_seed=42,
             data_column_mapper=sample_data_column_mapper,
         )
@@ -1684,10 +1846,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.regression
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_edge_cases_token_counts(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1701,13 +1863,19 @@ class TestProcessDatasetConfigValidation:
         """
         # Test 1: Very small token counts (use PAD strategy to ensure prompts
         # are processed)
-        config_small = (
-            '{"prompt_tokens": 7, "prompt_tokens_min": 5, '
-            '"prompt_tokens_max": 10, "output_tokens": 5, '
-            '"output_tokens_min": 3, "output_tokens_max": 8}'
+        strategy_small = {
+            "kind": "pad",
+            "prompt_tokens": 7,
+            "prompt_tokens_min": 5,
+            "prompt_tokens_max": 10,
+            "output_tokens": 5,
+            "output_tokens_min": 3,
+            "output_tokens_max": 8,
+            "pad": "X",
+        }
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
         )
-
-        mock_check_processor.return_value = tokenizer_mock
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1715,10 +1883,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config_small,
-            short_prompt_strategy=ShortPromptStrategy.PAD,
-            pad_char="X",
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy_small,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1736,12 +1902,16 @@ class TestProcessDatasetConfigValidation:
 
         # Test 2: min=max=1 (minimum valid value) - use PAD strategy to
         # ensure processing
-        config_min = (
-            '{"prompt_tokens": 1, "prompt_tokens_min": 1, '
-            '"prompt_tokens_max": 1, "output_tokens": 1, '
-            '"output_tokens_min": 1, "output_tokens_max": 1}'
-        )
-
+        strategy_min = {
+            "kind": "pad",
+            "prompt_tokens": 1,
+            "prompt_tokens_min": 1,
+            "prompt_tokens_max": 1,
+            "output_tokens": 1,
+            "output_tokens_min": 1,
+            "output_tokens_max": 1,
+            "pad": "X",
+        }
         mock_save_to_file.reset_mock()
         # Create a dataset with very short prompts for this test
         short_dataset = Dataset.from_dict({"prompt": ["A"] * 5})
@@ -1749,10 +1919,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config_min,
-            short_prompt_strategy=ShortPromptStrategy.PAD,
-            pad_char="X",
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy_min,
             data_column_mapper=sample_data_column_mapper,
         )
 
@@ -1767,10 +1935,10 @@ class TestProcessDatasetConfigValidation:
     @pytest.mark.regression
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_no_stdev_behavior(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
@@ -1785,14 +1953,19 @@ class TestProcessDatasetConfigValidation:
         """
         # Config without stdev (omitted entirely) - should use uniform
         # distribution
-        config = (
-            '{"prompt_tokens": 100, "prompt_tokens_min": 90, '
-            '"prompt_tokens_max": 110, "output_tokens": 50, '
-            '"output_tokens_min": 45, "output_tokens_max": 55}'
-        )
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 100,
+            "prompt_tokens_min": 90,
+            "prompt_tokens_max": 110,
+            "output_tokens": 50,
+            "output_tokens_min": 45,
+            "output_tokens_max": 55,
+        }
         # Setup mocks
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = (
             large_dataset_for_validation
         )
@@ -1801,8 +1974,8 @@ class TestProcessDatasetConfigValidation:
         process_dataset(
             data={"kind": "huggingface", "source": "test_data"},
             output_path=temp_output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             random_seed=42,
             data_column_mapper=sample_data_column_mapper,
         )
@@ -1822,63 +1995,101 @@ class TestProcessDatasetConfigValidation:
         assert max(output_counts) <= 55
 
 
-class TestShortPromptStrategyHandlers:
-    """Unit tests for individual short prompt strategy handler functions."""
+class TestPreprocessStrategyHandlers:
+    """Unit tests for short-prompt handlers on PreprocessStrategyArgs subclasses."""
 
     @pytest.mark.sanity
     def test_handle_ignore_strategy_too_short(self, tokenizer_mock):
-        """Test handle_ignore returns None for short prompts."""
-        result = ShortPromptStrategyHandler.handle_ignore("short", 10, tokenizer_mock)
+        """Ignore strategy returns None for short prompts.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = IgnorePreprocessStrategyArgs(prompt_tokens=50, output_tokens=30)
+        result = strategy.handle_short_prompt("short", 10, tokenizer_mock)
         assert result is None
         tokenizer_mock.encode.assert_called_with("short")
 
     @pytest.mark.sanity
     def test_handle_ignore_strategy_sufficient_length(self, tokenizer_mock):
-        """Test handle_ignore returns prompt for sufficient length."""
-        result = ShortPromptStrategyHandler.handle_ignore(
-            "long prompt", 5, tokenizer_mock
-        )
+        """Ignore strategy returns prompt for sufficient length.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = IgnorePreprocessStrategyArgs(prompt_tokens=50, output_tokens=30)
+        result = strategy.handle_short_prompt("long prompt", 5, tokenizer_mock)
         assert result == "long prompt"
         tokenizer_mock.encode.assert_called_with("long prompt")
 
     @pytest.mark.sanity
     def test_handle_concatenate_strategy_enough_prompts(self, tokenizer_mock):
-        """Test handle_concatenate with enough prompts."""
+        """Concatenate strategy joins prompts with delimiter.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = ConcatenatePreprocessStrategyArgs(
+            prompt_tokens=50, output_tokens=30, delimiter="\n"
+        )
         dataset_iter = iter([{"prompt": "longer"}])
-        result = ShortPromptStrategyHandler.handle_concatenate(
-            "short", 10, dataset_iter, "prompt", tokenizer_mock, "\n"
+        result = strategy.handle_short_prompt(
+            "short",
+            10,
+            tokenizer_mock,
+            dataset_iterator=dataset_iter,
+            prompt_column="prompt",
         )
         assert result == "short\nlonger"
 
     @pytest.mark.sanity
     def test_handle_concatenate_strategy_not_enough_prompts(self, tokenizer_mock):
-        """Test handle_concatenate without enough prompts."""
+        """Concatenate strategy returns None when data is exhausted.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = ConcatenatePreprocessStrategyArgs(
+            prompt_tokens=50, output_tokens=30, delimiter=""
+        )
         dataset_iter: Iterator = iter([])
-        result = ShortPromptStrategyHandler.handle_concatenate(
-            "short", 10, dataset_iter, "prompt", tokenizer_mock, ""
+        result = strategy.handle_short_prompt(
+            "short",
+            10,
+            tokenizer_mock,
+            dataset_iterator=dataset_iter,
+            prompt_column="prompt",
         )
         assert result is None
 
     @pytest.mark.sanity
     def test_handle_pad_strategy(self, tokenizer_mock):
-        """Test handle_pad pads short prompts."""
-        result = ShortPromptStrategyHandler.handle_pad("short", 10, tokenizer_mock, "p")
+        """Pad strategy pads short prompts.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = PadPreprocessStrategyArgs(
+            prompt_tokens=50, output_tokens=30, pad="p"
+        )
+        result = strategy.handle_short_prompt("short", 10, tokenizer_mock)
         assert result.startswith("shortppppp")
 
     @pytest.mark.sanity
     def test_handle_error_strategy_valid_prompt(self, tokenizer_mock):
-        """Test handle_error returns prompt for valid length."""
-        result = ShortPromptStrategyHandler.handle_error(
-            "valid prompt", 5, tokenizer_mock
-        )
+        """Error strategy returns prompt for valid length.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = ErrorPreprocessStrategyArgs(prompt_tokens=50, output_tokens=30)
+        result = strategy.handle_short_prompt("valid prompt", 5, tokenizer_mock)
         assert result == "valid prompt"
         tokenizer_mock.encode.assert_called_with("valid prompt")
 
     @pytest.mark.sanity
     def test_handle_error_strategy_too_short_prompt(self, tokenizer_mock):
-        """Test handle_error raises error for short prompts."""
+        """Error strategy raises for short prompts.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = ErrorPreprocessStrategyArgs(prompt_tokens=50, output_tokens=30)
         with pytest.raises(PromptTooShortError):
-            ShortPromptStrategyHandler.handle_error("short", 10, tokenizer_mock)
+            strategy.handle_short_prompt("short", 10, tokenizer_mock)
 
 
 class TestProcessDatasetPushToHub:
@@ -1888,10 +2099,10 @@ class TestProcessDatasetPushToHub:
     @patch("guidellm.data.builders.push_dataset_to_hub")
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_push_to_hub_called(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         mock_push,
@@ -1907,17 +2118,22 @@ class TestProcessDatasetPushToHub:
             }
         )
 
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = sample_dataset
 
         output_path = tmp_path / "output.json"
-        config = '{"prompt_tokens": 10, "output_tokens": 5}'
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 10,
+            "output_tokens": 5,
+        }
         process_dataset(
             data={"kind": "huggingface", "source": "input"},
             output_path=output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             push_to_hub=True,
             hub_dataset_id="id123",
             data_column_mapper=sample_data_column_mapper,
@@ -1933,10 +2149,10 @@ class TestProcessDatasetPushToHub:
     @patch("guidellm.data.builders.push_dataset_to_hub")
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_process_dataset_push_to_hub_not_called(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         mock_push,
@@ -1952,17 +2168,22 @@ class TestProcessDatasetPushToHub:
             }
         )
 
-        mock_check_processor.return_value = tokenizer_mock
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
         mock_deserializer_factory_class.deserialize.return_value = sample_dataset
 
         output_path = tmp_path / "output.json"
-        config = '{"prompt_tokens": 10, "output_tokens": 5}'
-
+        strategy = {
+            "kind": "ignore",
+            "prompt_tokens": 10,
+            "output_tokens": 5,
+        }
         process_dataset(
             data={"kind": "huggingface", "source": "input"},
             output_path=output_path,
-            processor=tokenizer_mock,
-            config=config,
+            tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+            strategy=strategy,
             push_to_hub=False,
             data_column_mapper=sample_data_column_mapper,
         )
@@ -2002,49 +2223,50 @@ class TestProcessDatasetStrategyHandlerIntegration:
     @pytest.mark.smoke
     @patch("guidellm.data.builders.save_dataset_to_file")
     @patch("guidellm.data.builders.DatasetDeserializerFactory")
-    @patch("guidellm.data.builders.check_load_processor")
+    @patch("guidellm.data.builders.TokenizerRegistry")
     def test_strategy_handler_called(
         self,
-        mock_check_processor,
+        mock_tokenizer_registry,
         mock_deserializer_factory_class,
         mock_save_to_file,
         tokenizer_mock,
         sample_data_column_mapper,
         tmp_path,
     ):
-        """Test that strategy handlers are called during dataset processing."""
-        mock_handler = MagicMock(return_value="processed_prompt")
-        with patch.dict(STRATEGY_HANDLERS, {ShortPromptStrategy.IGNORE: mock_handler}):
-            # Create a dataset with prompts that need processing
-            sample_dataset = Dataset.from_dict(
-                {
-                    "prompt": [
-                        "abc" * 20,  # Long enough to pass
-                        "def" * 20,  # Long enough to pass
-                    ],
-                }
-            )
+        """Test that strategy handlers are called during dataset processing.
 
-            mock_check_processor.return_value = tokenizer_mock
-            mock_deserializer_factory_class.deserialize.return_value = sample_dataset
+        ## WRITTEN BY AI ##
+        """
+        sample_dataset = Dataset.from_dict(
+            {
+                "prompt": [
+                    "abc" * 20,
+                    "def" * 20,
+                ],
+            }
+        )
 
-            output_path = tmp_path / "output.json"
-            config = '{"prompt_tokens": 10, "output_tokens": 5}'
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=tokenizer_mock
+        )
+        mock_deserializer_factory_class.deserialize.return_value = sample_dataset
 
+        output_path = tmp_path / "output.json"
+        strategy = {"kind": "ignore", "prompt_tokens": 10, "output_tokens": 5}
+
+        with patch.object(
+            IgnorePreprocessStrategyArgs,
+            "handle_short_prompt",
+            return_value="processed_prompt",
+        ) as mock_handler:
             process_dataset(
                 data={"kind": "huggingface", "source": "input"},
                 output_path=output_path,
-                processor=tokenizer_mock,
-                config=config,
+                tokenizer={"kind": "huggingface_auto", "model": "gpt2"},
+                strategy=strategy,
                 data_column_mapper=sample_data_column_mapper,
-                short_prompt_strategy=ShortPromptStrategy.IGNORE,
             )
 
-            # Verify that the handler was called during processing
-            # The handler is called for each row that needs processing
             mock_deserializer_factory_class.deserialize.assert_called_once()
-            mock_check_processor.assert_called_once()
-            assert mock_save_to_file.called
-            # Verify handler was called (at least once if there are rows to process)
-            if len(sample_dataset) > 0:
-                assert mock_handler.called
+            mock_tokenizer_registry.create.assert_called_once()
+            assert mock_handler.called

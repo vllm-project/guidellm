@@ -16,6 +16,7 @@ from guidellm.benchmark import (
 )
 from guidellm.settings import Settings
 from guidellm.utils.click_pydantic import (
+    RegistryAwareCommand,
     format_validation_errors,
     registry_options_from_model,
 )
@@ -30,6 +31,7 @@ __all__ = [
 
 @click.command(
     "run",
+    cls=RegistryAwareCommand,
     help=(
         "Run a benchmark against a generative model. "
         "Supports multiple backends, data sources, strategies, and output formats. "
@@ -62,9 +64,9 @@ __all__ = [
     multiple=True,
     callback=cli_tools.parse_kv_str,
     help=(
-        "Define a labels in key-value pair for the run. "
-        "Example: `--label timestamp=1999-09-12@12:00:00 --label env=staging`"
-        "  [repeatable]"
+        "Define a label as a key-value pair for the run. "
+        "Example: `--label timestamp=1999-09-12@12:00:00 --label env=staging` "
+        " [repeatable]"
     ),
 )
 @registry_options_from_model(model=BenchmarkArgs, group_key="spec")
@@ -77,8 +79,8 @@ __all__ = [
     help=(
         "Define overrides for each sub-benchmark. "
         "Currently this only supports `profile.streams` or `profile.rate`. "
-        "Example: `--profile kind=concurrent --override 'profile.streams' 1,2,4,8,16`"
-        "  [repeatable]"
+        "Example: `--profile kind=concurrent --override 'profile.streams' 1,2,4,8,16` "
+        " [repeatable]"
     ),
 )
 @click.option(
