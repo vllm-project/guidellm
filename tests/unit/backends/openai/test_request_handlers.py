@@ -507,7 +507,7 @@ class TestTextCompletionsRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"temperature": 0.7, "top_p": 0.9}}
+        extras = GenerationRequestArguments(body={"temperature": 0.7, "top_p": 0.9})
 
         result = instance.format(data, extras=extras)
 
@@ -930,7 +930,7 @@ class TestChatCompletionsRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"temperature": 0.5, "top_k": 40}}
+        extras = GenerationRequestArguments(body={"temperature": 0.5, "top_k": 40})
 
         result = instance.format(data, extras=extras)
 
@@ -2095,7 +2095,10 @@ class TestChatCompletionsRequestHandler:
             turn_type="standard",
         )
 
-        result = instance.format(data, extras={"body": {"tool_choice": "required"}})
+        result = instance.format(
+            data,
+            extras=GenerationRequestArguments(body={"tool_choice": "required"}),
+        )
 
         assert "tool_choice" not in result.body
         assert "tools" not in result.body
@@ -2307,7 +2310,7 @@ class TestAudioRequestHandler:
                 ]
             },
         )
-        extras = {"body": {"language": "en", "temperature": 0.0}}
+        extras = GenerationRequestArguments(body={"language": "en", "temperature": 0.0})
 
         result = instance.format(data, extras=extras)
 
@@ -4455,7 +4458,10 @@ class TestResponsesRequestHandler:
         tools = [{"type": "function", "function": {"name": "fn", "parameters": {}}}]
         data = GenerationRequest(turn_type="standard")
 
-        result = instance.format(data, extras={"body": {"tools": tools}})
+        result = instance.format(
+            data,
+            extras=GenerationRequestArguments(body={"tools": tools}),
+        )
 
         assert result.body["tools"] == tools
         assert result.body["tool_choice"] == "none"
@@ -4474,7 +4480,10 @@ class TestResponsesRequestHandler:
             turn_type="standard",
         )
 
-        result = instance.format(data, extras={"body": {"tool_choice": "required"}})
+        result = instance.format(
+            data,
+            extras=GenerationRequestArguments(body={"tool_choice": "required"}),
+        )
 
         assert "tool_choice" not in result.body
         assert "tools" not in result.body
@@ -4752,7 +4761,7 @@ class TestPoolingRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"temperature": 0.5, "top_k": 40}}
+        extras = GenerationRequestArguments(body={"temperature": 0.5, "top_k": 40})
 
         result = instance.format(data, extras=extras)
 
@@ -4976,7 +4985,7 @@ class TestEmbeddingsRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"user": "test-user"}}
+        extras = GenerationRequestArguments(body={"user": "test-user"})
 
         result = instance.format(data, extras=extras)
 
@@ -5081,7 +5090,7 @@ class TestChatCompletionsToolChoiceOverride:
             },
             turn_type="standard",
         )
-        extras = {"body": {"tool_choice": "required"}}
+        extras = GenerationRequestArguments(body={"tool_choice": "required"})
         result = handler.format(data, extras=extras)
 
         assert result.body["tool_choice"] == "none"
@@ -5100,7 +5109,7 @@ class TestChatCompletionsToolChoiceOverride:
             },
             turn_type="client_tool_call",
         )
-        extras = {"body": {"tool_choice": "required"}}
+        extras = GenerationRequestArguments(body={"tool_choice": "required"})
         result = handler.format(data, extras=extras)
 
         assert result.body["tool_choice"] == "required"
@@ -5119,7 +5128,7 @@ class TestChatCompletionsToolChoiceOverride:
             },
             turn_type="client_tool_call",
         )
-        extras = {"body": {"tool_choice": "auto"}}
+        extras = GenerationRequestArguments(body={"tool_choice": "auto"})
         result = handler.format(data, extras=extras)
 
         assert result.body["tool_choice"] == "auto"

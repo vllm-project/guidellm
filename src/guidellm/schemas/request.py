@@ -72,9 +72,6 @@ class GenerationRequestArguments(StandardBaseDict):
         default=None,
         description="Files to include in the request, if applicable.",
     )
-    # used this explicitly here so backend ``extras.content`` is typed, validated,
-    # and included in generated schemas instead of existing only as an allowed
-    # arbitrary field on StandardBaseDict.
     content: dict[str, Any] | None = Field(
         default=None,
         description=(

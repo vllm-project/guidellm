@@ -194,18 +194,14 @@ def _check_streaming_error(data: Any) -> None:
 
 
 def _get_content_extras(
-    extras: GenerationRequestArguments | dict[str, Any] | None,
+    extras: GenerationRequestArguments | None,
 ) -> dict[str, Any] | None:
     """Extract content-object fields from generation request extras.
 
     :param extras: Additional generation request arguments.
     :return: Fields to merge into generated text content objects.
     """
-    if isinstance(extras, GenerationRequestArguments):
-        return extras.content
-    if isinstance(extras, dict):
-        return extras.get("content")
-    return None
+    return extras.content if extras is not None else None
 
 
 class WSEventResult(Enum):
