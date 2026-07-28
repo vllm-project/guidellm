@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_weka import WEKATraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
@@ -105,7 +106,17 @@ def all_distinct(items: list):
 
 class TestWEKATraceFormat:
     @pytest.mark.regression
-    def test_format_registered_with_deserializer(self, tmp_path: Path): ...
+    def test_format_registered_with_deserializer(self, tmp_path: Path):
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": [{"timestamp": 0, "input_length": 10,'
+            '"output_length": 5, "hash_ids": []}]}\n',
+        )
+        DatasetDeserializerFactory.deserialize(
+            config=WEKATraceFormatArgs(path=trace),
+            processor_factory=ascending_processor,
+            random_seed=42,
+        )
 
     @pytest.fixture
     def default_block_size(self, tmp_path: Path) -> int:
@@ -369,3 +380,81 @@ class TestWEKATraceFormat:
         )
         assert all_equal(root_blocks)
         assert all_distinct(sibling_blocks)
+
+    @pytest.mark.smoke
+    def test_multi_conversation_resets_relative_timestamp(
+        self, tmp_path: Path, deserializer
+    ):
+        n_rows = 2
+        n_virtual_rows = 3
+        trace = write_trace(
+            tmp_path,
+            generate_weka_trace(
+                n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: 10),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda _: []),
+                ],
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        timestamps = [row["relative_timestamp"] for row in ds]
+        assert timestamps[0] == 0.0
+        assert timestamps[1] != 0.0
+        assert timestamps[3] == 0.0
+
+    @pytest.mark.sanity
+    def test_multi_conversation_resets_hash_id_state(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        n_rows = 2
+        n_virtual_rows = 2
+        n_in = default_block_size * 2
+        trace = write_trace(
+            tmp_path,
+            generate_weka_trace(
+                n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: n_in),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: [1, i + 2]),
+                ],
+            ),
+        )
+        ds = deserializer(
+            config=WEKATraceFormatArgs(path=trace),
+            processor_factory=compatible_processor,
+            random_seed=42,
+        )
+        prompts = [row["prompt"] for row in ds]
+        assert prompts[0] != prompts[2]
+
+    @pytest.mark.sanity
+    def test_zero_prompt_tokens_empty_hash_ids(
+        self, tmp_path: Path, deserializer
+    ):
+        trace = write_trace(
+            tmp_path,
+            generate_weka_trace(
+                1,
+                1,
+                [TraceColumnGenerator("id", lambda _: '"conv0"')],
+                [
+                    TraceColumnGenerator("timestamp", lambda _: 0.0),
+                    TraceColumnGenerator("input_length", lambda _: 0),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda _: []),
+                ],
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        rows = list(ds)
+        assert rows[0]["prompt_tokens_count"] == 0
+        assert rows[0]["output_tokens_count"] == 5
