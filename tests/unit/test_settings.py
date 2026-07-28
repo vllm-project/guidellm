@@ -22,7 +22,7 @@ def test_default_settings(mocker):
         {k: v for k, v in os.environ.items() if not k.startswith("GUIDELLM__")},
         clear=True,
     )
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.logging == LoggingSettings()
     assert settings.report_generation.source.startswith(BASE_URL)
 
@@ -68,7 +68,7 @@ def test_generate_env_file(mocker):
         {k: v for k, v in os.environ.items() if not k.startswith("GUIDELLM__")},
         clear=True,
     )
-    settings = Settings()
+    settings = Settings(_env_file=None)
     env_file_content = settings.generate_env_file()
     assert "GUIDELLM__LOGGING__DISABLED" in env_file_content
 
@@ -124,7 +124,7 @@ def test_table_properties_defaults(mocker):
         {k: v for k, v in os.environ.items() if not k.startswith("GUIDELLM__")},
         clear=True,
     )
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.table_border_char == "="
     assert settings.table_headers_border_char == "-"
     assert settings.table_column_separator_char == "|"
