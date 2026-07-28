@@ -15,7 +15,7 @@ guidellm run \
   --output kind=html,path=results/benchmark.html
 ```
 
-Supported output types: `json`, `yaml`, `csv`, `html`, `plot`, and `console`. Each accepts a `path` parameter (defaults vary by type; for example `benchmarks.json` for JSON). The `plot` type additionally accepts a `dpi` parameter to control the resolution of the generated image.
+Supported output types: `json`, `yaml`, `csv`, `html`, `plot`, and `console`. Each accepts a `path` parameter (defaults vary by type; for example `benchmarks.json` for JSON).
 
 ## Console Output
 
@@ -62,7 +62,7 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 2. **YAML**: Contains all benchmark results, including full statistics and request data, in YAML format which is human-readable and easy to work with in various tools.
 3. **CSV**: Provides a summary of the benchmark data, focusing on key metrics and statistics. Note that CSV does not include detailed request-level data.
 4. **HTML**: Interactive HTML report with tables and visualizations of benchmark results.
-5. **PLOT**: Static image chart of benchmark metrics. The image format is selected from the `path` file extension — supported formats are PNG, JPG/JPEG, SVG, and PDF. A path with no extension defaults to `.png`, and an unsupported extension raises an error. The `dpi` parameter (default `100`) sets the output image resolution in dots per inch.
+5. **PLOT**: Static image chart of benchmark metrics. The image format is selected from the `path` file extension — supported formats are PNG, JPG/JPEG, SVG, and PDF. A path with no extension defaults to `.png`, and an unsupported extension raises an error. The `dpi` parameter (default `100`) sets the output image resolution in dots per inch — for example, `--output kind=plot,path=plot.png,dpi=72`.
 6. **Console**: Terminal output displayed during execution (can be disabled).
 
 ### Configuring File Outputs
