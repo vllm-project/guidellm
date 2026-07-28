@@ -48,10 +48,10 @@ def test_decode_prompt(token_ids, expected):
 @pytest.mark.parametrize(
     ("token_count", "expected"),
     [
-        (0, []),
-        (1, [0]),
-        (10, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
-        (1000, list(range(1000))),
+        (0, ()),
+        (1, (0,)),
+        (10, (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
+        (1000, tuple(range(1000))),
     ],
 )
 def test_generate_token_ids(token_count, expected):

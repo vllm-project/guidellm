@@ -141,7 +141,7 @@ class WEKATraceFormat(TraceFormatBase):
                     f"Hash ID must be non-negative, got {hash_id}"
                 )
         # WEKA format drops what would be the partially filled hash ID
-        if math.ceil(n_in / config.hash_id_block_size) != n_blocks:
+        if math.floor(n_in / config.hash_id_block_size) != n_blocks:
             raise DataNotSupportedError(
                 f"Input token count of {n_in} split into blocks of size "
                 f"{config.hash_id_block_size} full blocks does not match given "

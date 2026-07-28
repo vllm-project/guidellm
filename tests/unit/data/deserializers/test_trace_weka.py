@@ -1,4 +1,5 @@
 import dataclasses
+import json
 import math
 import random
 from collections.abc import Callable
@@ -66,12 +67,27 @@ class TraceColumnGenerator:
 
 
 def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
+    """Returns valid JSON lines."""
     return "\n".join(
         "{"
-        + ", ".join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
+        + ", ".join(
+            f'"{col.name}": {col.data_generator(idx)}' for col in columns
+        ).replace("'", '"')
         + "}"
         for idx in range(num_rows)
     )
+
+
+def generate_weka_trace(
+    num_rows: int,
+    num_virtual_rows: int,
+    non_wrapper_cols: list[TraceColumnGenerator],
+    virtual_cols: list[TraceColumnGenerator],
+) -> str:
+    trace_rows = generate_trace(num_virtual_rows, virtual_cols)
+    json_data = [json.loads(s) for s in trace_rows.split("\n")]
+    cols = non_wrapper_cols + [TraceColumnGenerator("requests", lambda _: json_data)]
+    return generate_trace(num_rows, cols)
 
 
 def get_from_kwargs(keys, kwargs) -> dict:
@@ -102,6 +118,7 @@ class TestWEKATraceFormat:
     def deserialize(self, deserializer, data, **kwargs):
         col_kwargs = get_from_kwargs(
             (
+                "conversation_id_column",
                 "timestamp_column",
                 "prompt_tokens_column",
                 "output_tokens_column",
@@ -119,11 +136,14 @@ class TestWEKATraceFormat:
 
     @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
-        n_rows = 3
+        n_rows = 1
+        n_virtual_rows = 3
         trace = write_trace(
             tmp_path,
-            generate_trace(
+            generate_weka_trace(
                 n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("conv_id", lambda i: f"\"conv{i}\"")],
                 [
                     TraceColumnGenerator("ts", lambda i: i),
                     TraceColumnGenerator("input_tokens", lambda i: i + 1),
@@ -135,6 +155,7 @@ class TestWEKATraceFormat:
         self.deserialize(
             deserializer,
             trace,
+            conversation_id_column="conv_id",
             timestamp_column="ts",
             prompt_tokens_column="input_tokens",
             output_tokens_column="generated_tokens",
@@ -144,11 +165,14 @@ class TestWEKATraceFormat:
     @pytest.mark.smoke
     def test_custom_hash_id_block_size(self, tmp_path: Path, deserializer):
         n_rows = 1
+        n_virtual_rows = 1
         n_in = 1000
         trace = write_trace(
             tmp_path,
-            generate_trace(
+            generate_weka_trace(
                 n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
@@ -166,16 +190,21 @@ class TestWEKATraceFormat:
         self, tmp_path: Path, deserializer, default_block_size
     ):
         random.seed(0)
-        n_rows = 25
-        prompt_lengths = [random.randint(2000, 100000) for _ in range(n_rows)]
-        output_lengths = [random.randint(3, 800) for _ in range(n_rows)]
+        n_rows = 1
+        n_virtual_rows = 25
+        prompt_lengths = [random.randint(2000, 100000) for _ in range(n_virtual_rows)]
+        output_lengths = [random.randint(3, 800) for _ in range(n_virtual_rows)]
         times = [0.0, 0.5, 1.0, 2.0]
-        timestamps = [times[int(i / n_rows * len(times))] for i in range(n_rows)]
+        timestamps = [
+            times[int(i / n_virtual_rows * len(times))] for i in range(n_virtual_rows)
+        ]
         hash_ids = make_valid_hash_ids(prompt_lengths, default_block_size)
         trace = write_trace(
             tmp_path,
-            generate_trace(
+            generate_weka_trace(
                 n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
                 [
                     TraceColumnGenerator("timestamp", lambda i: timestamps[i]),
                     TraceColumnGenerator("input_length", lambda i: prompt_lengths[i]),
@@ -199,13 +228,16 @@ class TestWEKATraceFormat:
     def test_prompt_matching_or_bordering_block_size(
         self, tmp_path: Path, deserializer, default_block_size
     ):
-        n_rows = 3
+        n_rows = 1
+        n_virtual_rows = 3
         n_in = list(range(default_block_size - 1, default_block_size + 2))
         hash_ids = make_valid_hash_ids(n_in, default_block_size)
         trace = write_trace(
             tmp_path,
-            generate_trace(
+            generate_weka_trace(
                 n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda i: n_in[i]),
@@ -226,14 +258,14 @@ class TestWEKATraceFormat:
         ("content", "kwargs", "match"),
         [
             (
-                '{"timestamp": 0, "input_length": 10, "output_length": 5, '
-                '"hash_ids": [0]}\n',
+                '{"id": "conv0", "requests": [{"timestamp": 0, "input_length": 10,'
+                '"output_length": 5, "hash_ids": [-1]}]}\n',
                 {},
-                "greater than 0",
+                "non-negative",
             ),
             (
-                '{"timestamp": 0, "input_length": 1024, "output_length": 5, '
-                '"hash_ids": [1]}\n',
+                '{"id": "conv0", "requests": [{"timestamp": 0, "input_length": 1024,'
+                '"output_length": 5, "hash_ids": [1]}]}\n',
                 {},
                 "given 1 blocks",
             ),
@@ -250,12 +282,15 @@ class TestWEKATraceFormat:
     def test_incompatible_encoding_raises(
         self, tmp_path: Path, deserializer, default_block_size
     ):
-        n_rows = 2
+        n_rows = 1
+        n_virtual_rows = 2
         n_in = default_block_size * 2
         trace = write_trace(
             tmp_path,
-            generate_trace(
+            generate_weka_trace(
                 n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
@@ -277,12 +312,15 @@ class TestWEKATraceFormat:
     def test_token_block_distinctness(
         self, tmp_path: Path, deserializer, default_block_size
     ):
-        n_rows = 4
+        n_rows = 1
+        n_virtual_rows = 4
         n_in = default_block_size * 2
         trace = write_trace(
             tmp_path,
-            generate_trace(
+            generate_weka_trace(
                 n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
