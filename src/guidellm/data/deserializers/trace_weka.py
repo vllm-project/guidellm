@@ -133,6 +133,12 @@ class WEKATraceFormat(TraceFormatBase):
         )
 
     def validate_row(self, config: WEKATraceFormatArgs, row: dict) -> None:
+        """WEKA format drops what would be the partially filled hash ID at the end of
+        the chain. Some popular datasets
+        (e.g. `semianalysisai/cc-traces-weka-no-subagents-051226`) still contain the
+        trailing hash ID.
+        In this case, `validate_row` tolerates the addition, and handles it in
+        `create_prompt`."""
         n_in = row[config.prompt_tokens_column]
         n_blocks = len(row[config.hash_ids_column])
         for hash_id in row[config.hash_ids_column]:
@@ -140,12 +146,13 @@ class WEKATraceFormat(TraceFormatBase):
                 raise DataNotSupportedError(
                     f"Hash ID must be non-negative, got {hash_id}"
                 )
-        # WEKA format drops what would be the partially filled hash ID
-        if math.floor(n_in / config.hash_id_block_size) != n_blocks:
+        expected = n_in / config.hash_id_block_size
+        if math.floor(expected) != n_blocks and math.ceil(expected) != n_blocks:
             raise DataNotSupportedError(
                 f"Input token count of {n_in} split into blocks of size "
-                f"{config.hash_id_block_size} full blocks does not match given "
-                f"{n_blocks} blocks"
+                f"{config.hash_id_block_size} full blocks and "
+                f"{config.hash_id_block_size} full blocks + partially filled "
+                f"trailing block does not match given {n_blocks} blocks"
             )
 
     def create_prompt(
@@ -158,9 +165,11 @@ class WEKATraceFormat(TraceFormatBase):
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen.
 
-        Internally (after validation) hash IDs are decremented so that they start from
-        0 instead of WEKA format's default of 1."""
+        Hash IDs that are partially filled are discarded to match the specification."""
         ids = row[config.hash_ids_column]
+        expected = row[config.prompt_tokens_column] / config.hash_id_block_size
+        if math.floor(expected) != len(ids) and math.ceil(expected) == len(ids):
+            ids.pop()
         for idx, hash_id in enumerate(ids):
             if not hash_id in self.hash_id_table:
                 prev_id = None if idx == 0 else ids[idx - 1]

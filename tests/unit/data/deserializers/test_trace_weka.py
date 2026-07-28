@@ -252,6 +252,35 @@ class TestWEKATraceFormat:
             actual_prompt_length = len(processor.encode(row["prompt"]))
             if actual_prompt_length != row["prompt_tokens_count"]:
                 pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
+    
+    @pytest.mark.sanity
+    def test_removes_partially_filled_hash_ids(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        n_rows = 1
+        n_virtual_rows = 2
+        n_in = default_block_size + 1
+        hash_ids = make_valid_hash_ids([n_in], default_block_size)[0]
+        trace = write_trace(
+            tmp_path,
+            generate_weka_trace(
+                n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: n_in),
+                    TraceColumnGenerator("output_length", lambda i: i),
+                    TraceColumnGenerator("hash_ids", lambda i: hash_ids + [i + 2]),
+                ],
+            ),
+        )
+        processor = ascending_processor()
+        ds = self.deserialize(deserializer, trace)
+        for row in ds:
+            actual_prompt_length = len(processor.encode(row["prompt"]))
+            if actual_prompt_length != row["prompt_tokens_count"]:
+                pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
