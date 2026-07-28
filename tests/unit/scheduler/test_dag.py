@@ -4,6 +4,8 @@ Unit tests for DAG execution utilities.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from guidellm.scheduler.dag import DAGExecutionState
@@ -12,7 +14,7 @@ from guidellm.scheduler.schemas import (
     ConversationGraph,
     ConversationNode,
 )
-from guidellm.schemas import RequestSettings
+from guidellm.schemas import RequestInfo, RequestSettings
 
 
 def _make_node(
@@ -130,6 +132,28 @@ def _compaction_graph() -> ConversationGraph[str]:
     return ConversationGraph(graph_id="compaction", nodes=nodes, edges=edges)
 
 
+class TestDAGExecutionStateRequestInfos:
+    """Test request_infos property on DAGExecutionState.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_request_infos_mirrors_graph(self):
+        """
+        state.request_infos should be the same dict as state.graph.request_infos.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _linear_graph(2)
+        graph.request_infos["n0"] = RequestInfo(request_id="id0", node_id="n0")
+        graph.request_infos["n1"] = RequestInfo(request_id="id1", node_id="n1")
+        state = DAGExecutionState(graph)
+
+        assert state.request_infos is state.graph.request_infos
+        assert set(state.request_infos) == {"n0", "n1"}
+
+
 class TestDAGExecutionStateReadiness:
     """Test readiness tracking for DAG nodes.
 
@@ -144,7 +168,10 @@ class TestDAGExecutionStateReadiness:
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_linear_graph(3))
-        assert state.get_ready_nodes() == ["n0"]
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "n0"
+        assert nxt[1] <= time.time()
 
     @pytest.mark.smoke
     def test_completing_node_readies_children(self):
@@ -169,7 +196,9 @@ class TestDAGExecutionStateReadiness:
         state = DAGExecutionState(_fork_join_graph())
 
         # Only M1 is initially ready
-        assert state.get_ready_nodes() == ["M1"]
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "M1"
 
         state.mark_completed("M1", "req_M1", "resp_M1")
         state.mark_completed("M2", "req_M2", "resp_M2")
@@ -177,11 +206,14 @@ class TestDAGExecutionStateReadiness:
 
         # M3 completes -> W1, W2 become ready; M4 not yet (workers pending)
         assert newly_ready == ["W1", "W2"]
-        assert "M4" not in state.get_ready_nodes()
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] != "M4"
 
         state.mark_completed("W1", "req_W1", "resp_W1")
         # M4 still not ready (W2 pending)
-        assert "M4" not in state.get_ready_nodes()
+        nxt = state.next_node_ready_at()
+        assert nxt is None or nxt[0] != "M4"
 
         newly_ready = state.mark_completed("W2", "req_W2", "resp_W2")
         assert newly_ready == ["M4"]
@@ -477,7 +509,7 @@ class TestDAGExecutionStateAbort:
         """
         state = DAGExecutionState(_linear_graph(3))
         state.abort()
-        assert state.get_ready_nodes() == []
+        assert state.next_node_ready_at() is None
         assert state.is_aborted
 
     @pytest.mark.sanity
@@ -566,13 +598,17 @@ class TestDAGExecutionStateRequeueDelay:
         )
 
         state.mark_completed("n0", "r0", "resp0")
-        assert state.get_ready_nodes() == []
-        assert state.next_delayed_ready_at() == pytest.approx(1000.5)
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "n1"
+        assert nxt[1] == pytest.approx(1000.5)
 
         now = 1000.5
         monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: now)
-        assert state.get_ready_nodes() == ["n1"]
-        assert state.next_delayed_ready_at() is None
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "n1"
+        assert nxt[1] <= now
 
     @pytest.mark.smoke
     def test_none_delay_makes_child_immediately_ready(self, monkeypatch):
@@ -585,8 +621,10 @@ class TestDAGExecutionStateRequeueDelay:
 
         state = DAGExecutionState(_linear_graph(2))
         state.mark_completed("n0", "r0", "resp0")
-        assert state.get_ready_nodes() == ["n1"]
-        assert state.next_delayed_ready_at() is None
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "n1"
+        assert nxt[1] <= 50.0
 
     @pytest.mark.sanity
     def test_join_think_timer_starts_when_last_parent_completes(self, monkeypatch):
@@ -623,22 +661,27 @@ class TestDAGExecutionStateRequeueDelay:
         # A finishes early with a long delay; J is not dependency-ready yet.
         clock["t"] = 1.0
         state.mark_completed("A", "rA", "respA")
-        assert "J" not in state.get_ready_nodes()
-        assert state.next_delayed_ready_at() is None
+        nxt = state.next_node_ready_at()
+        assert nxt is None or nxt[0] != "J"
 
         # Last parent B unlocks J; think timer uses B's delay from now.
         clock["t"] = 5.0
         state.mark_completed("B", "rB", "respB")
-        assert state.get_ready_nodes() == []
-        assert state.next_delayed_ready_at() == pytest.approx(5.2)
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "J"
+        assert nxt[1] == pytest.approx(5.2)
 
         clock["t"] = 5.2
-        assert state.get_ready_nodes() == ["J"]
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "J"
+        assert nxt[1] <= clock["t"]
 
     @pytest.mark.sanity
     def test_claim_excludes_node_from_ready(self, monkeypatch):
         """
-        Claiming a ready node removes it from get_ready_nodes until
+        Claiming a ready node removes it from next_node_ready_at until
         mark_completed clears the in-progress set.
 
         ## WRITTEN BY AI ##
@@ -646,9 +689,13 @@ class TestDAGExecutionStateRequeueDelay:
         monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: 0.0)
 
         state = DAGExecutionState(_linear_graph(2))
-        assert state.get_ready_nodes() == ["n0"]
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "n0"
         state.claim_node("n0")
-        assert state.get_ready_nodes() == []
+        assert state.next_node_ready_at() is None
 
         state.mark_completed("n0", "r0", "resp0")
-        assert state.get_ready_nodes() == ["n1"]
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "n1"

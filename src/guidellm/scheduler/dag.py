@@ -20,6 +20,7 @@ from guidellm.scheduler.schemas import (
     ConversationEdge,
     ConversationGraph,
 )
+from guidellm.schemas import RequestInfo
 
 __all__ = [
     "CompletedNodeData",
@@ -88,6 +89,13 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         return self._graph
 
     @property
+    def request_infos(self) -> dict[str, RequestInfo]:
+        """
+        :return: Per-node RequestInfo from the underlying graph.
+        """
+        return self._graph.request_infos
+
+    @property
     def is_complete(self) -> bool:
         """
         :return: True if all nodes have completed successfully.
@@ -101,53 +109,37 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         """
         return self._aborted
 
-    def get_ready_nodes(self) -> list[str]:
+    def next_node_ready_at(self) -> tuple[str, float] | None:
         """
-        Find nodes that are dependency-ready, past their think-time gate,
-        and not already claimed or completed.
+        Next claimable node and when it becomes schedulable.
 
-        :return: Node IDs ready for execution, in ``graph.nodes``
-            insertion order.
-        """
-        if self._aborted:
-            return []
+        Prefer the first insertion-order node that is ready now; otherwise
+        the dependency-ready node with the earliest think-time unlock.
 
-        now = time.time()
-        ready = []
-        for nid in self._graph.nodes:
-            if (
-                nid not in self._completed
-                and nid not in self._in_progress
-                and self._remaining_parents[nid] == 0
-                and now >= self._available_after[nid]
-            ):
-                ready.append(nid)
-        return ready
-
-    def next_delayed_ready_at(self) -> float | None:
-        """
-        Earliest time when a dependency-ready but delayed node becomes
-        schedulable.
-
-        :return: Absolute timestamp, or ``None`` if no delayed nodes are
-            waiting.
+        :return: ``(node_id, ready_at)`` where ``ready_at <= time.time()``
+            means claimable now, or ``None`` if nothing is pending.
         """
         if self._aborted:
             return None
 
         now = time.time()
-        earliest: float | None = None
+        earliest_delayed: tuple[str, float] | None = None
         for nid in self._graph.nodes:
             if (
-                nid not in self._completed
-                and nid not in self._in_progress
-                and self._remaining_parents[nid] == 0
-                and self._available_after[nid] > now
+                nid in self._completed
+                or nid in self._in_progress
+                or self._remaining_parents[nid] != 0
             ):
-                unlock_at = self._available_after[nid]
-                if earliest is None or unlock_at < earliest:
-                    earliest = unlock_at
-        return earliest
+                continue
+
+            ready_at = self._available_after[nid]
+            if now >= ready_at:
+                return nid, ready_at
+
+            if earliest_delayed is None or ready_at < earliest_delayed[1]:
+                earliest_delayed = (nid, ready_at)
+
+        return earliest_delayed
 
     def claim_node(self, node_id: str) -> None:
         """

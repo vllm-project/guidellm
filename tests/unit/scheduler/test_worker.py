@@ -733,15 +733,6 @@ class TestWorkerProcessMultiturn:
         assert hasattr(worker_instance, "turns_queue")
         assert worker_instance.turns_queue == []
 
-    @pytest.mark.smoke
-    def test_graph_request_infos_initialization(self, worker_instance):
-        """Test that graph_request_infos is initialized as empty dict.
-
-        ## WRITTEN BY AI ##
-        """
-        assert hasattr(worker_instance, "graph_request_infos")
-        assert worker_instance.graph_request_infos == {}
-
     @pytest.mark.sanity
     @pytest.mark.asyncio
     async def test_get_next_ready_node_waits_for_delay(self, worker_instance):
@@ -824,8 +815,9 @@ class TestWorkerProcessMultiturn:
         state = DAGExecutionState(graph)
         state.mark_completed("n0", "r0", "resp0")
         worker_instance.turns_queue.append(state)
-        worker_instance.graph_request_infos[graph.graph_id] = dict(graph.request_infos)
-        assert state.next_delayed_ready_at() is not None
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[1] > time.time()
 
         cancel_task = asyncio.create_task(worker_instance._cancel_requests_loop())
         await asyncio.sleep(0.05)
@@ -834,7 +826,81 @@ class TestWorkerProcessMultiturn:
             await cancel_task
 
         assert worker_instance.turns_queue == []
-        assert worker_instance.graph_request_infos == {}
         assert state.is_aborted
-        assert state.get_ready_nodes() == []
-        assert state.next_delayed_ready_at() is None
+        assert state.next_node_ready_at() is None
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_cancel_preserves_partial_backend_response(self):
+        """Cancelled node update keeps the final partial response from the backend.
+
+        Backends yield a compiled partial result before re-raising CancelledError.
+        ``_execute_node`` must yield those chunks so the outer cancel handler can
+        publish them.
+        ## WRITTEN BY AI ##
+        """
+
+        class CancelYieldBackend(MockBackend):
+            """Yield a partial response on cancel, matching real backends."""
+
+            def __init__(self):
+                super().__init__(lifecycle_delay=0.0, resolve_delay=0.0)
+                self.entered_resolve = asyncio.Event()
+                self.partial_response = "partial_cancel_response"
+
+            async def resolve(self, request, request_info, request_history):
+                self.resolve_called = True
+                self.entered_resolve.set()
+                try:
+                    await asyncio.sleep(1000.0)
+                except asyncio.CancelledError as err:
+                    yield self.partial_response, request_info
+                    raise err
+
+        backend = CancelYieldBackend()
+        worker = WorkerProcess(
+            worker_index=1,
+            messaging=MockMessaging(),
+            backend=backend,
+            strategy=SynchronousStrategy(),
+            async_limit=5,
+            fut_scheduling_time_limit=10.0,
+            startup_barrier=Barrier(2),
+            requests_generated_event=Event(),
+            constraint_reached_event=Event(),
+            shutdown_event=Event(),
+            error_event=Event(),
+        )
+        graph = ConversationGraph(
+            graph_id="cancel_partial",
+            nodes={
+                "n0": ConversationNode(
+                    node_id="n0",
+                    agent_id="a",
+                    request="r0",
+                ),
+            },
+            edges=[],
+            request_infos={"n0": RequestInfo(request_id="id0", node_id="n0")},
+        )
+        await worker.messaging.put(graph)
+
+        task = asyncio.create_task(
+            worker._process_next_graph_node(target_start=time.time())
+        )
+        await backend.entered_resolve.wait()
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        cancelled = [
+            item
+            for item in worker.messaging._sent_items
+            if item[2].status == "cancelled"
+        ]
+        assert len(cancelled) == 1
+        response, request, request_info = cancelled[0]
+        assert response == backend.partial_response
+        assert request == "r0"
+        assert request_info.error == "Request was cancelled"
