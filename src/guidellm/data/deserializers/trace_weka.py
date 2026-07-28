@@ -1,7 +1,17 @@
 """
 The WEKA trace format and data arguments.
 
-TODO
+Reads a trace file and yields one row per line with a
+synthetic prompt matching the requested input_length for replay
+benchmarks. Checks for distinctness between hash IDs that share the
+same previous hash ID.
+
+Generates prompts starting from the first conversation.
+When the conversation ends, the next conversation will be used.
+
+Some features such as subagent conversations,
+tool call events and non-linear histories are still missing.
+The results from datasets including these features will be unreliable.
 """
 
 from __future__ import annotations
@@ -127,8 +137,8 @@ class WEKATraceFormat(TraceFormatBase):
     def required_columns(self, config: WEKATraceFormatArgs) -> Features:
         return Features(
             {
-                config.hash_ids_column: List(Value("int32")),
                 config.conversation_id_column: Value("string"),
+                config.hash_ids_column: List(Value("int32")),
             }
         )
 
@@ -165,7 +175,9 @@ class WEKATraceFormat(TraceFormatBase):
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen.
 
-        Hash IDs that are partially filled are discarded to match the specification."""
+        Hash IDs that are partially filled are discarded to match the specification.
+        Remainder of the prompt is created after the creation via hash IDs token
+        blocks."""
         ids = row[config.hash_ids_column]
         expected = row[config.prompt_tokens_column] / config.hash_id_block_size
         if math.floor(expected) != len(ids) and math.ceil(expected) == len(ids):
