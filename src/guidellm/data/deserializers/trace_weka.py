@@ -71,7 +71,7 @@ def _generate_remaining_prompt(
     if num_tokens == 0:
         return ""
     token_ids = generate_token_ids(num_tokens, processor, faker)
-    return decode_prompt(processor, token_ids)
+    return decode_prompt(processor, list(token_ids))
 
 
 DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, "weka")
@@ -171,7 +171,7 @@ class WEKATraceFormat(TraceFormatBase):
         if math.floor(expected) != len(ids) and math.ceil(expected) == len(ids):
             ids.pop()
         for idx, hash_id in enumerate(ids):
-            if not hash_id in self.hash_id_table:
+            if hash_id not in self.hash_id_table:
                 prev_id = None if idx == 0 else ids[idx - 1]
                 self.sibling_token_blocks.setdefault(prev_id, set())
                 self.hash_id_table[hash_id] = _create_distinct_token_block(

@@ -154,7 +154,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("conv_id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("conv_id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("ts", lambda i: i),
                     TraceColumnGenerator("input_tokens", lambda i: i + 1),
@@ -183,7 +183,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
@@ -215,7 +215,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: timestamps[i]),
                     TraceColumnGenerator("input_length", lambda i: prompt_lengths[i]),
@@ -248,7 +248,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda i: n_in[i]),
@@ -263,7 +263,7 @@ class TestWEKATraceFormat:
             actual_prompt_length = len(processor.encode(row["prompt"]))
             if actual_prompt_length != row["prompt_tokens_count"]:
                 pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
-    
+
     @pytest.mark.sanity
     def test_removes_partially_filled_hash_ids(
         self, tmp_path: Path, deserializer, default_block_size
@@ -277,7 +277,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
@@ -330,7 +330,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
@@ -360,7 +360,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
@@ -392,7 +392,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: 10),
@@ -419,7 +419,7 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f"\"conv{i}\"")],
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
                     TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_length", lambda _: n_in),
@@ -437,9 +437,7 @@ class TestWEKATraceFormat:
         assert prompts[0] != prompts[2]
 
     @pytest.mark.sanity
-    def test_zero_prompt_tokens_empty_hash_ids(
-        self, tmp_path: Path, deserializer
-    ):
+    def test_zero_prompt_tokens_empty_hash_ids(self, tmp_path: Path, deserializer):
         trace = write_trace(
             tmp_path,
             generate_weka_trace(

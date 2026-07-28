@@ -22,9 +22,9 @@ def unzip_virtual_column_locations(
 ) -> tuple[tuple[str], tuple[str]]:
     """Returns a tuple of wrapper columns and a tuple of virtual columns,
     in that order."""
-    wrapper_cols, virt_cols = tuple(zip(
-        *(dataclasses.astuple(c) for c in column_locations), strict=True
-    )) or ((), ())
+    wrapper_cols, virt_cols = tuple(
+        zip(*(dataclasses.astuple(c) for c in column_locations), strict=True)
+    ) or ((), ())
     return (wrapper_cols, virt_cols)
 
 

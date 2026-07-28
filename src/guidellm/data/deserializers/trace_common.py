@@ -142,7 +142,7 @@ class TraceDataArgs(DataArgs):
         description=(
             "Column name for conversation IDs. Required for formats "
             "with conversation-scoped trace data such as hash IDs."
-        )
+        ),
     )
 
 
@@ -335,7 +335,7 @@ def _make_columns_from_virtual(
     conversation_id_col: str | None = None,
 ) -> dict[str, list]:
     """Intended to be used with `datasets.Dataset.map()`."""
-    indices = args[0] if args else None
+    indices = args[0] if args else []
     json_dicts = []
     conv_ids = []
     for batch_idx, json_dicts_list in enumerate(batch[wrapper_col]):
@@ -427,9 +427,7 @@ def _load_trace_rows(
     result = _find_required_columns(
         list(required_columns.keys()), dataset, conversation_id_column_name
     )
-    dataset = _handle_column_search_result(
-        result, dataset, conversation_id_column_name
-    )
+    dataset = _handle_column_search_result(result, dataset, conversation_id_column_name)
 
     for name, val in required_columns.items():
         if dataset.data[name].null_count != 0:
@@ -454,7 +452,7 @@ def validate_path(path: Path) -> None:
 
 
 def try_load_trace(config: TraceDataArgs, dataset: Dataset) -> Dataset:
-    format = TraceFormatRegistry.dispatch(config)
+    trace_format = TraceFormatRegistry.dispatch(config)
     try:
         return _load_trace_rows(
             dataset,
@@ -464,7 +462,7 @@ def try_load_trace(config: TraceDataArgs, dataset: Dataset) -> Dataset:
                     config.timestamp_column: Value("float"),
                     config.prompt_tokens_column: Value("int32"),
                     config.output_tokens_column: Value("int32"),
-                    **dict(format.required_columns(config)),
+                    **dict(trace_format.required_columns(config)),
                 }
             ),
             conversation_id_column_name=config.conversation_id_column,
@@ -484,10 +482,10 @@ def _validate_row(row: dict, config: TraceDataArgs) -> None:
 
 
 def validate_rows(config: TraceDataArgs, trace_rows: Dataset) -> None:
-    format = TraceFormatRegistry.dispatch(config)
+    trace_format = TraceFormatRegistry.dispatch(config)
     for row in trace_rows:
         _validate_row(row, config)
-        format.validate_row(config, row)
+        trace_format.validate_row(config, row)
 
 
 @DatasetDeserializerFactory.register(["trace_synthetic"])

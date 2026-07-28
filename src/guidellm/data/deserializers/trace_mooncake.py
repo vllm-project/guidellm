@@ -148,7 +148,7 @@ class MooncakeTraceFormat(TraceFormatBase):
         each hash ID that has not already been seen."""
         ids = row[config.hash_ids_column]
         for idx, hash_id in enumerate(ids):
-            if not hash_id in self.hash_id_table:
+            if hash_id not in self.hash_id_table:
                 prev_id = None if idx == 0 else ids[idx - 1]
                 num_tokens = _calculate_required_prompt_tokens(config, row, hash_id)
                 self.sibling_token_blocks.setdefault(prev_id, set())

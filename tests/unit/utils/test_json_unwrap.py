@@ -122,7 +122,6 @@ def test_get_json_column_names(data, expected):
 )
 def test_unzip_virtual_column_locations(locations, expected):
     actual = unzip_virtual_column_locations(locations)
-    print(actual)
     assert isinstance(actual, tuple)
     for idx in range(len(actual)):
         assert isinstance(actual[idx], tuple)
