@@ -345,7 +345,15 @@ def _print_request(
     for m in msgs:
         _print_message(m, detail=detail)
 
-    # Response produced by this turn
+    _print_response(req, detail=detail)
+
+
+def _print_response(req: dict[str, Any], *, detail: str = "full") -> None:
+    """Print the response produced by a turn.
+
+    :param req: Request dict from the benchmark data.
+    :param detail: Output verbosity: ``roles`` (markers only) or ``full``.
+    """
     tc = req.get("tool_calls")
     output = req.get("output")
 
@@ -457,7 +465,10 @@ def _parse_args() -> argparse.Namespace:
         "--detail",
         choices=["request", "roles", "full"],
         default="full",
-        help="Output detail: request metadata only, roles without text, or full (default)",
+        help=(
+            "Output detail: request metadata only, roles without text,"
+            " or full (default)"
+        ),
     )
     return parser.parse_args()
 
