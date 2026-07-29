@@ -193,17 +193,6 @@ def _check_streaming_error(data: Any) -> None:
     raise ValueError(f"Streaming response returned an error: {message}")
 
 
-def _get_content_extras(
-    extras: GenerationRequestArguments | None,
-) -> dict[str, Any] | None:
-    """Extract content-object fields from generation request extras.
-
-    :param extras: Additional generation request arguments.
-    :return: Fields to merge into generated text content objects.
-    """
-    return extras.content if extras is not None else None
-
-
 class WSEventResult(Enum):
     """Classification of a processed WebSocket streaming event."""
 
@@ -927,7 +916,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             if prefix:
                 messages.append({"role": "system", "content": prefix})
 
-            content_extras = _get_content_extras(kwargs.get("extras"))
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
                 self._format_prompts(
                     req.columns.get(col, []),
@@ -1040,7 +1030,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             if prefix:
                 arguments.body["messages"].append({"role": "system", "content": prefix})
 
-            content_extras = _get_content_extras(kwargs.get("extras"))
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
                 self._format_prompts(
                     data.columns.get(col, []),
@@ -1615,7 +1606,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 items.append({"role": "assistant", "content": content})
         else:
             # Standard or tool_call turn: user content.
-            content_extras = _get_content_extras(kwargs.get("extras"))
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
                 self._format_prompts(
                     req.columns.get(col, []),
@@ -1789,7 +1781,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 )
         elif data.turn_type != "tool_response_injection":
             # Standard or tool_call turn: user content.
-            content_extras = _get_content_extras(kwargs.get("extras"))
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
                 self._format_prompts(
                     data.columns.get(col, []),
