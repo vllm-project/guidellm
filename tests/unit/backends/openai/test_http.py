@@ -179,6 +179,34 @@ class TestOpenAIHTTPBackend:
         )
         assert backend._args.server_history is True
 
+    @pytest.mark.asyncio
+    @pytest.mark.regression
+    async def test_content_extras_are_forwarded_to_request_handler(
+        self,
+        mock_request_handler,
+    ):
+        """The HTTP backend forwards content extras through its handler boundary.
+
+        ## WRITTEN BY AI ##
+        """
+        extras = GenerationRequestArguments(
+            content={
+                "metadata": {"category": "support"},
+                "priority": 1,
+            }
+        )
+        backend = _make_backend(
+            target="http://localhost:8000",
+            model="test-model",
+            extras=extras,
+        )
+        mock_handler, handler_patch = mock_request_handler
+
+        with handler_patch:
+            await backend._prepare_resolve_request(GenerationRequest())
+
+        assert mock_handler.format.call_args.kwargs["extras"] == extras
+
     @pytest.mark.smoke
     def test_factory_registration(self):
         """Test that OpenAIHTTPBackend is registered with Backend factory."""

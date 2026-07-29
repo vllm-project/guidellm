@@ -37,6 +37,7 @@ class TestGenerationRequestArguments:
                 "params": {"limit": 10},
                 "body": {"prompt": "hello"},
                 "files": {"file": "data.txt"},
+                "content": {"metadata": {"category": "support"}},
             },
         ],
         ids=["empty", "method_body", "method_headers_params", "all_fields"],
@@ -57,7 +58,15 @@ class TestGenerationRequestArguments:
 
         # Check fields
         fields = GenerationRequestArguments.model_fields
-        expected_fields = ["method", "stream", "headers", "params", "body", "files"]
+        expected_fields = [
+            "method",
+            "stream",
+            "headers",
+            "params",
+            "body",
+            "files",
+            "content",
+        ]
         for field in expected_fields:
             assert field in fields
 
@@ -72,7 +81,15 @@ class TestGenerationRequestArguments:
             assert getattr(instance, key) == expected_value
 
         # Check defaults for fields not provided
-        for field in ["method", "stream", "headers", "params", "body", "files"]:
+        for field in [
+            "method",
+            "stream",
+            "headers",
+            "params",
+            "body",
+            "files",
+            "content",
+        ]:
             if field not in constructor_args:
                 assert getattr(instance, field) is None
 
@@ -99,6 +116,10 @@ class TestGenerationRequestArguments:
         with pytest.raises(ValidationError):
             GenerationRequestArguments(body="not_dict")
 
+        # Invalid content type
+        with pytest.raises(ValidationError):
+            GenerationRequestArguments(content="not_dict")
+
     @pytest.mark.sanity
     def test_invalid_initialization_missing(self):
         """Test GenerationRequestArguments initialization without any fields."""
@@ -111,6 +132,7 @@ class TestGenerationRequestArguments:
         assert instance.params is None
         assert instance.body is None
         assert instance.files is None
+        assert instance.content is None
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
