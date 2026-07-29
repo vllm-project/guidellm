@@ -72,6 +72,13 @@ class GenerationRequestArguments(StandardBaseDict):
         default=None,
         description="Files to include in the request, if applicable.",
     )
+    content: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional fields to include in generated text content objects, "
+            "if applicable."
+        ),
+    )
 
     def model_combine(
         self, additional: GenerationRequestArguments | dict[str, Any]

@@ -707,7 +707,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         return tool
 
     def _format_prompts(
-        self, column_data: list[dict[str, Any]], column_type: str
+        self,
+        column_data: list,
+        column_type: str,
+        content_extras: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Helper method to format different types of data columns
@@ -716,7 +719,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         formatted_data = []
         for item in column_data:
             if column_type == "text_column":
-                formatted_data.append({"type": "text", "text": item})
+                content = {"type": "text", "text": item}
+                if content_extras:
+                    content.update(content_extras)
+                formatted_data.append(content)
             elif column_type == "image_column":
                 formatted_data.append(
                     {
@@ -910,8 +916,14 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             if prefix:
                 messages.append({"role": "system", "content": prefix})
 
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
-                self._format_prompts(req.columns.get(col, []), col)
+                self._format_prompts(
+                    req.columns.get(col, []),
+                    col,
+                    content_extras,
+                )
                 for col in (
                     "text_column",
                     "image_column",
@@ -1018,8 +1030,14 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             if prefix:
                 arguments.body["messages"].append({"role": "system", "content": prefix})
 
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
-                self._format_prompts(data.columns.get(col, []), col)
+                self._format_prompts(
+                    data.columns.get(col, []),
+                    col,
+                    content_extras,
+                )
                 for col in (
                     "text_column",
                     "image_column",
@@ -1497,12 +1515,18 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         return tool
 
     def _format_prompts(
-        self, column_data: list, column_type: str
+        self,
+        column_data: list,
+        column_type: str,
+        content_extras: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         formatted_data: list[dict[str, Any]] = []
         for item in column_data:
             if column_type == "text_column":
-                formatted_data.append({"type": "input_text", "text": item})
+                content = {"type": "input_text", "text": item}
+                if content_extras:
+                    content.update(content_extras)
+                formatted_data.append(content)
             elif column_type == "image_column":
                 formatted_data.append(
                     {
@@ -1582,8 +1606,14 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 items.append({"role": "assistant", "content": content})
         else:
             # Standard or tool_call turn: user content.
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
-                self._format_prompts(req.columns.get(col, []), col)
+                self._format_prompts(
+                    req.columns.get(col, []),
+                    col,
+                    content_extras,
+                )
                 for col in (
                     "text_column",
                     "image_column",
@@ -1751,8 +1781,14 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 )
         elif data.turn_type != "tool_response_injection":
             # Standard or tool_call turn: user content.
+            extras = kwargs.get("extras")
+            content_extras = extras.content if extras is not None else None
             prompts = [
-                self._format_prompts(data.columns.get(col, []), col)
+                self._format_prompts(
+                    data.columns.get(col, []),
+                    col,
+                    content_extras,
+                )
                 for col in (
                     "text_column",
                     "image_column",
