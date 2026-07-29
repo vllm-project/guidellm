@@ -169,9 +169,14 @@ class RequestInfo(StandardBaseModel):
             "Identifier for the conversation this request is part of, if applicable."
         ),
     )
-    turn_index: int = Field(
+    history_len: int = Field(
         default=0,
-        description="Index of the request within the conversation, if applicable.",
+        description=(
+            "Number of prior messages in the assembled history sent to the "
+            "server with this request. May include messages from diverging "
+            "or merged paths (``last`` edges). Branches that start with a "
+            "``new`` edge restart at 0."
+        ),
     )
     node_id: str | None = Field(
         default=None,

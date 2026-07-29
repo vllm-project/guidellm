@@ -150,6 +150,10 @@ This spawns a sub-agent at turn 1 that runs for 2 turns and merges back at turn 
 
 This spawns two sub-agents at turn 2: one that runs for 3 turns and one that runs for 1 turn. Both merge back at turn 3. The main conversation at turn 3 receives the full history from turns 0-2 plus the final output from each sub-agent.
 
+**History length in results:**
+
+Each per-request entry in `benchmarks.json` includes `info.history_len`: the number of prior messages in the assembled history sent to the server with that request. Because history can include messages from diverging paths that merge via `last` edges, `history_len` may jump at merge points rather than increment by one. Branch roots spawned with fresh (`new`) context start at `0`.
+
 **Branch Configuration Fields:**
 
 | Field           | Type          | Default    | Description                                           |

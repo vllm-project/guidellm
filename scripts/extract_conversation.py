@@ -257,6 +257,21 @@ def extract_conversations(
         print(f"\n  {_dim(msg)}")
 
 
+def _history_len_fragment(req: dict[str, Any]) -> str:
+    """Format history_len for the request header when present.
+
+    Falls back to ``turn_index`` for older benchmark JSON files.
+
+    :param req: Request dict from the benchmark data.
+    :return: Colored `` | history_len: N`` fragment, or empty string.
+    """
+    info = req.get("info", {})
+    history_len = info.get("history_len", info.get("turn_index"))
+    if history_len is None:
+        return ""
+    return f" {_dim('|')} history_len: {_bright_cyan(str(history_len))}"
+
+
 def _print_agent_context(
     req: dict[str, Any],
     node_index: dict[str, dict[str, Any]],
@@ -274,6 +289,7 @@ def _print_agent_context(
     node_id = info.get("node_id")
     parent_node_ids = info.get("parent_node_ids", [])
     graph_id = info.get("graph_id") or info.get("conversation_id")
+    history_len = info.get("history_len", info.get("turn_index"))
 
     parts: list[str] = []
     if agent_id:
@@ -282,6 +298,8 @@ def _print_agent_context(
         parts.append(f"{_dim('node:')} {_blue(node_id)}")
     if parent_node_ids:
         parts.append(f"{_dim('parents:')} {_blue(str(parent_node_ids))}")
+    if history_len is not None:
+        parts.append(f"{_dim('history_len:')} {_blue(str(history_len))}")
     if graph_id:
         parts.append(f"{_dim('graph:')} {_blue(graph_id)}")
 
@@ -329,7 +347,8 @@ def _print_request(
     print(
         f" {_bold(f'Turn {turn_number} of {total}')}"
         f"    {_dim('(')}prompt_tokens: {prompt_tokens}"
-        f" {_dim('|')} output_tokens: {output_tokens}{_dim(')')}"
+        f" {_dim('|')} output_tokens: {output_tokens}"
+        f"{_history_len_fragment(req)}{_dim(')')}"
     )
 
     if show_agent_context:

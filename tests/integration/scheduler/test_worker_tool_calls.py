@@ -124,7 +124,7 @@ def _make_graph(num_turns: int, tool_call_turns: int) -> GenerativeConversationG
             request_id=node.request.request_id,
             conversation_id=graph.graph_id,
             node_id=node_id,
-            turn_index=i,
+            history_len=i,
             status="queued",
         )
     return graph

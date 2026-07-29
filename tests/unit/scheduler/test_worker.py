@@ -904,3 +904,72 @@ class TestWorkerProcessMultiturn:
         assert response == backend.partial_response
         assert request == "r0"
         assert request_info.error == "Request was cancelled"
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_execute_node_sets_history_len_from_history(self, worker_instance):
+        """history_len is len(history); new-edge branches restart at 0.
+
+        ## WRITTEN BY AI ##
+        """
+        nodes = {
+            "m0": ConversationNode(node_id="m0", agent_id="main", request="rm0"),
+            "m1": ConversationNode(node_id="m1", agent_id="main", request="rm1"),
+            "b0": ConversationNode(node_id="b0", agent_id="worker", request="rb0"),
+            "b1": ConversationNode(node_id="b1", agent_id="worker", request="rb1"),
+        }
+        graph = ConversationGraph(
+            graph_id="history_len",
+            nodes=nodes,
+            edges=[
+                ConversationEdge(
+                    source_node_id="m0",
+                    target_node_id="m1",
+                    history_context="full",
+                ),
+                ConversationEdge(
+                    source_node_id="m0",
+                    target_node_id="b0",
+                    history_context="new",
+                ),
+                ConversationEdge(
+                    source_node_id="b0",
+                    target_node_id="b1",
+                    history_context="full",
+                ),
+            ],
+        )
+        state = DAGExecutionState(graph)
+        target_start = time.time()
+
+        info_m0 = RequestInfo(request_id="id_m0", node_id="m0", history_len=99)
+        async for _ in worker_instance._execute_node(
+            state, "m0", "rm0", info_m0, target_start
+        ):
+            pass
+        assert info_m0.history_len == 0
+
+        state.mark_completed("m0", "rm0", "resp_m0")
+
+        info_m1 = RequestInfo(request_id="id_m1", node_id="m1", history_len=99)
+        async for _ in worker_instance._execute_node(
+            state, "m1", "rm1", info_m1, target_start
+        ):
+            pass
+        assert info_m1.history_len == 1
+
+        info_b0 = RequestInfo(request_id="id_b0", node_id="b0", history_len=99)
+        async for _ in worker_instance._execute_node(
+            state, "b0", "rb0", info_b0, target_start
+        ):
+            pass
+        assert info_b0.history_len == 0
+
+        state.mark_completed("b0", "rb0", "resp_b0")
+
+        info_b1 = RequestInfo(request_id="id_b1", node_id="b1", history_len=99)
+        async for _ in worker_instance._execute_node(
+            state, "b1", "rb1", info_b1, target_start
+        ):
+            pass
+        assert info_b1.history_len == 1

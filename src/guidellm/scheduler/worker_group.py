@@ -571,7 +571,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 for edge in graph.edges:
                     incoming_map[edge.target_node_id].append(edge.source_node_id)
 
-                for i, node_id in enumerate(topo_dag_nodes):
+                for node_id in topo_dag_nodes:
                     node = graph.nodes[node_id]
                     count += 1
 
@@ -582,7 +582,6 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         node_id=node_id,
                         agent_id=node.agent_id,
                         parent_node_ids=incoming_map[node_id],
-                        turn_index=i,
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,

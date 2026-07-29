@@ -470,6 +470,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         await self._schedule_request(request, request_info, effective_target_start)
 
         history = state.assemble_history(node_id)
+        # Prior messages sent with this request (``new`` edges restart at 0).
+        request_info.history_len = len(history) if history else 0
         async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
             request, request_info, history
         ):
