@@ -123,8 +123,8 @@ class BranchSpec(StandardBaseModel):
     :param at_turn: Main conversation turn index where the branch spawns.
     :param turns: Number of turns in this branch.
     :param agent_id: Agent identity for branch nodes.
-    :param merge_after: How many main-chain turns after ``at_turn`` the
-        branch merges back. Default 1 merges at ``at_turn + 1``.
+    :param merge_after: How many main (parent) conversation turns after ``at_turn``
+        the branch merges back. Default 1 merges at ``at_turn + 1``.
     :param first_prompt_tokens: Optional average prompt tokens for this
         branch's first turn. If None, inherits the parent's
         ``first_prompt_tokens`` (or the main ``prompt_tokens`` distribution).
@@ -147,8 +147,8 @@ class BranchSpec(StandardBaseModel):
     )
     merge_after: int = Field(
         description=(
-            "How many main-chain turns after at_turn the branch merges back. "
-            "Default 1 merges at at_turn + 1."
+            "How many main (parent) conversation turns after at_turn the branch "
+            "merges back. Default 1 merges at at_turn + 1."
         ),
         default=1,
         ge=1,

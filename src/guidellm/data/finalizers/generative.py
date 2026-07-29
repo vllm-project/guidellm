@@ -18,7 +18,6 @@ from guidellm.schemas.conversation_graph import (
     GenerativeConversationGraph,
     GenerativeConversationNode,
 )
-from guidellm.utils.imports import json
 
 __all__ = [
     "GenerativeRequestFinalizer",
@@ -110,7 +109,7 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
 
         raw = raw_values[0]
         if isinstance(raw, str):
-            graph_data = ConversationGraphData.model_validate(json.loads(raw))
+            graph_data = ConversationGraphData.model_validate_json(raw)
         else:
             graph_data = ConversationGraphData.model_validate(raw)
 
