@@ -129,11 +129,34 @@ guidellm run \
 
 This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
 
+## Structured Chat Content Payloads
+
+Some chat templates require metadata alongside the text in each structured content object. Pass these fields through `extras.content` in the `openai_http` backend configuration. GuideLLM adds them to every generated text content object for Chat Completions and Responses API requests.
+
+```bash
+guidellm run \
+  --backend '{
+    "kind": "openai_http",
+    "target": "http://localhost:8000",
+    "model": "google/translategemma-12b-it",
+    "request_format": "/v1/chat/completions",
+    "extras": {
+      "content": {
+        "source_lang_code": "en",
+        "target_lang_code": "es"
+      }
+    }
+  }' \
+  --data kind=synthetic_text,prompt_tokens=1000,output_tokens=1000 \
+  --constraint kind=max_duration,seconds=60
+```
+
 ### How It Works
 
 The `--backend` config is parsed into keyword arguments for the backend constructor. The `extras` field within that config maps to a `GenerationRequestArguments` object that supports the following sub-fields:
 
 - `body`: A dictionary of key-value pairs merged into the HTTP request body. Use this for sampling parameters like `temperature`, `top_p`, `top_k`, `repetition_penalty`, etc.
+- `content`: A dictionary of fields merged into each generated text content object.
 - `headers`: A dictionary of additional HTTP headers to include in requests.
 - `params`: A dictionary of query parameters to append to the request URL.
 

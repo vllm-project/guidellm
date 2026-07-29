@@ -29,7 +29,12 @@ from guidellm.data.finalizers.generative import (
     GenerativeRequestFinalizer,
     GenerativeRequestFinalizerArgs,
 )
-from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationRequestArguments,
+    GenerationResponse,
+    UsageMetrics,
+)
 from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
 from guidellm.utils.registry import RegistryMixin
@@ -502,7 +507,7 @@ class TestTextCompletionsRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"temperature": 0.7, "top_p": 0.9}}
+        extras = GenerationRequestArguments(body={"temperature": 0.7, "top_p": 0.9})
 
         result = instance.format(data, extras=extras)
 
@@ -925,7 +930,7 @@ class TestChatCompletionsRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"temperature": 0.5, "top_k": 40}}
+        extras = GenerationRequestArguments(body={"temperature": 0.5, "top_k": 40})
 
         result = instance.format(data, extras=extras)
 
@@ -952,6 +957,35 @@ class TestChatCompletionsRequestHandler:
         assert result.body["messages"][0]["content"][0]["text"] == "Hello"
         assert result.body["messages"][0]["content"][1]["type"] == "text"
         assert result.body["messages"][0]["content"][1]["text"] == "How are you?"
+
+    @pytest.mark.regression
+    def test_content_extras_enrich_plain_text_only(self, valid_instances):
+        """Content extras enrich text without changing multimodal parts.
+
+        ## WRITTEN BY AI ##
+        """
+        data = GenerationRequest(
+            columns={
+                "text_column": ["Describe this"],
+                "image_column": [{"image": "https://example.com/image.jpg"}],
+            }
+        )
+
+        result = valid_instances.format(
+            data,
+            extras=GenerationRequestArguments(
+                content={
+                    "metadata": {"category": "vision"},
+                    "priority": 1,
+                }
+            ),
+        )
+
+        text_content, image_content = result.body["messages"][0]["content"]
+        assert text_content["metadata"] == {"category": "vision"}
+        assert text_content["priority"] == 1
+        assert "metadata" not in image_content
+        assert "priority" not in image_content
 
     @pytest.mark.sanity
     def test_format_messages_prefix(self, valid_instances):
@@ -2061,7 +2095,10 @@ class TestChatCompletionsRequestHandler:
             turn_type="standard",
         )
 
-        result = instance.format(data, extras={"body": {"tool_choice": "required"}})
+        result = instance.format(
+            data,
+            extras=GenerationRequestArguments(body={"tool_choice": "required"}),
+        )
 
         assert "tool_choice" not in result.body
         assert "tools" not in result.body
@@ -2273,7 +2310,7 @@ class TestAudioRequestHandler:
                 ]
             },
         )
-        extras = {"body": {"language": "en", "temperature": 0.0}}
+        extras = GenerationRequestArguments(body={"language": "en", "temperature": 0.0})
 
         result = instance.format(data, extras=extras)
 
@@ -2626,6 +2663,30 @@ class TestChatCompletionsRequestHandlerMultiturn:
         assert messages[1]["content"] == "The answer is 4"
         assert messages[2]["role"] == "user"
 
+    @pytest.mark.regression
+    def test_content_extras_apply_to_history_and_current_turn(self, valid_instances):
+        """Content extras are applied consistently across conversation turns.
+
+        ## WRITTEN BY AI ##
+        """
+        prev_request = GenerationRequest(columns={"text_column": ["Previous"]})
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="Previous response",
+        )
+        data = GenerationRequest(columns={"text_column": ["Current"]})
+
+        result = valid_instances.format(
+            data,
+            history=[(prev_request, prev_response)],
+            extras=GenerationRequestArguments(content={"priority": 3}),
+        )
+
+        messages = result.body["messages"]
+        assert messages[0]["content"][0]["priority"] == 3
+        assert messages[2]["content"][0]["priority"] == 3
+
     @pytest.mark.sanity
     def test_chat_format_with_multi_turn_history(self, valid_instances):
         """Test format with multiple turns alternates user/assistant.
@@ -2812,6 +2873,56 @@ class TestResponsesRequestHandler:
         """
         handler = OpenAIRequestHandlerFactory.create("/v1/responses")
         assert isinstance(handler, ResponsesRequestHandler)
+
+    @pytest.mark.regression
+    def test_content_extras_enrich_text(self, valid_instances):
+        """Content extras are added to Responses API text content.
+
+        ## WRITTEN BY AI ##
+        """
+        data = GenerationRequest(columns={"text_column": ["Handle this request"]})
+
+        result = valid_instances.format(
+            data,
+            extras=GenerationRequestArguments(
+                content={
+                    "priority": 2,
+                    "metadata": {"category": "support"},
+                }
+            ),
+        )
+
+        content = result.body["input"][0]["content"][0]
+        assert content == {
+            "type": "input_text",
+            "text": "Handle this request",
+            "priority": 2,
+            "metadata": {"category": "support"},
+        }
+
+    @pytest.mark.regression
+    def test_content_extras_apply_to_history_and_current_turn(self, valid_instances):
+        """Content extras apply to all Responses API conversation turns.
+
+        ## WRITTEN BY AI ##
+        """
+        prev_request = GenerationRequest(columns={"text_column": ["Previous"]})
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="Previous response",
+        )
+        data = GenerationRequest(columns={"text_column": ["Current"]})
+
+        result = valid_instances.format(
+            data,
+            history=[(prev_request, prev_response)],
+            extras=GenerationRequestArguments(content={"priority": 3}),
+        )
+
+        input_items = result.body["input"]
+        assert input_items[0]["content"][0]["priority"] == 3
+        assert input_items[2]["content"][0]["priority"] == 3
 
     @pytest.mark.smoke
     def test_format_minimal(self, valid_instances):
@@ -4347,7 +4458,10 @@ class TestResponsesRequestHandler:
         tools = [{"type": "function", "function": {"name": "fn", "parameters": {}}}]
         data = GenerationRequest(turn_type="standard")
 
-        result = instance.format(data, extras={"body": {"tools": tools}})
+        result = instance.format(
+            data,
+            extras=GenerationRequestArguments(body={"tools": tools}),
+        )
 
         assert result.body["tools"] == tools
         assert result.body["tool_choice"] == "none"
@@ -4366,7 +4480,10 @@ class TestResponsesRequestHandler:
             turn_type="standard",
         )
 
-        result = instance.format(data, extras={"body": {"tool_choice": "required"}})
+        result = instance.format(
+            data,
+            extras=GenerationRequestArguments(body={"tool_choice": "required"}),
+        )
 
         assert "tool_choice" not in result.body
         assert "tools" not in result.body
@@ -4644,7 +4761,7 @@ class TestPoolingRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"temperature": 0.5, "top_k": 40}}
+        extras = GenerationRequestArguments(body={"temperature": 0.5, "top_k": 40})
 
         result = instance.format(data, extras=extras)
 
@@ -4868,7 +4985,7 @@ class TestEmbeddingsRequestHandler:
         """
         instance = valid_instances
         data = GenerationRequest()
-        extras = {"body": {"user": "test-user"}}
+        extras = GenerationRequestArguments(body={"user": "test-user"})
 
         result = instance.format(data, extras=extras)
 
@@ -4973,7 +5090,7 @@ class TestChatCompletionsToolChoiceOverride:
             },
             turn_type="standard",
         )
-        extras = {"body": {"tool_choice": "required"}}
+        extras = GenerationRequestArguments(body={"tool_choice": "required"})
         result = handler.format(data, extras=extras)
 
         assert result.body["tool_choice"] == "none"
@@ -4992,7 +5109,7 @@ class TestChatCompletionsToolChoiceOverride:
             },
             turn_type="client_tool_call",
         )
-        extras = {"body": {"tool_choice": "required"}}
+        extras = GenerationRequestArguments(body={"tool_choice": "required"})
         result = handler.format(data, extras=extras)
 
         assert result.body["tool_choice"] == "required"
@@ -5011,7 +5128,7 @@ class TestChatCompletionsToolChoiceOverride:
             },
             turn_type="client_tool_call",
         )
-        extras = {"body": {"tool_choice": "auto"}}
+        extras = GenerationRequestArguments(body={"tool_choice": "auto"})
         result = handler.format(data, extras=extras)
 
         assert result.body["tool_choice"] == "auto"
