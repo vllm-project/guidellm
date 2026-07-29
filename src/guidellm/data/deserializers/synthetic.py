@@ -70,6 +70,44 @@ class SyntheticTextPrefixBucketConfig(BaseModel):
     )
 
 
+def _integer_range_sampler(
+    average: int | None,
+    variance: int | None,
+    min_value: int | None,
+    max_value: int | None,
+    random_seed: int,
+) -> Iterator[int] | None:
+    """Build an ``IntegerRangeSampler`` iterator, or ``None`` if average is unset."""
+    if average is None:
+        return None
+    return iter(
+        IntegerRangeSampler(
+            average=average,
+            variance=variance,
+            min_value=min_value,
+            max_value=max_value,
+            random_seed=random_seed,
+        )
+    )
+
+
+def _require_mean_if_distribution_knobs(
+    mean: int | None,
+    stdev: int | None,
+    min_value: int | None,
+    max_value: int | None,
+    mean_name: str,
+) -> None:
+    """Reject stdev/min/max when the corresponding mean field is unset."""
+    if mean is None and (
+        stdev is not None or min_value is not None or max_value is not None
+    ):
+        raise ValueError(
+            f"{mean_name} must be set when {mean_name}_stdev, "
+            f"{mean_name}_min, or {mean_name}_max are provided"
+        )
+
+
 class BranchSpec(StandardBaseModel):
     """
     Specifies a sub-agent branch spawned from the main conversation.
@@ -77,19 +115,22 @@ class BranchSpec(StandardBaseModel):
     Each branch spawns at ``at_turn`` in the main chain and merges
     back at ``at_turn + merge_after`` via a ``last`` edge. The branch
     runs for ``turns`` turns with an independent context (``new`` edge
-    from the spawn point).
+    from the spawn point). Token sizes for branch turns are sampled from
+    the parent conversation's ``prompt_tokens`` / ``output_tokens``
+    distribution. Optional ``first_*`` fields override only the branch's
+    first turn; when unset they inherit the parent's ``first_*`` settings.
 
     :param at_turn: Main conversation turn index where the branch spawns.
     :param turns: Number of turns in this branch.
     :param agent_id: Agent identity for branch nodes.
     :param merge_after: How many main-chain turns after ``at_turn`` the
         branch merges back. Default 1 merges at ``at_turn + 1``.
-    :param prompt_tokens: Fixed prompt token count applied to every turn
-        in this branch. If None, inherits the main chain's sampled count
-        for that conversation.
-    :param output_tokens: Fixed output token count applied to every turn
-        in this branch. If None, inherits the main chain's sampled count
-        for that conversation.
+    :param first_prompt_tokens: Optional average prompt tokens for this
+        branch's first turn. If None, inherits the parent's
+        ``first_prompt_tokens`` (or the main ``prompt_tokens`` distribution).
+    :param first_output_tokens: Optional average output tokens for this
+        branch's first turn. If None, inherits the parent's
+        ``first_output_tokens`` (or the main ``output_tokens`` distribution).
     """
 
     at_turn: int = Field(
@@ -112,24 +153,72 @@ class BranchSpec(StandardBaseModel):
         default=1,
         ge=1,
     )
-    prompt_tokens: int | None = Field(
+    first_prompt_tokens: int | None = Field(
         description=(
-            "Fixed prompt token count applied to every turn in this branch. "
-            "If None, inherits the main chain's sampled prompt token count "
-            "for that conversation (not re-sampled)."
+            "Average prompt tokens for this branch's first turn only. "
+            "If None, inherits the parent conversation's first_prompt_tokens "
+            "(or the main prompt_tokens distribution when that is also unset)."
         ),
         default=None,
         gt=0,
     )
-    output_tokens: int | None = Field(
+    first_prompt_tokens_stdev: int | None = Field(
+        description="Standard deviation for this branch's first-turn prompt tokens.",
+        gt=0,
+        default=None,
+    )
+    first_prompt_tokens_min: int | None = Field(
+        description="Minimum prompt tokens for this branch's first turn.",
+        gt=0,
+        default=None,
+    )
+    first_prompt_tokens_max: int | None = Field(
+        description="Maximum prompt tokens for this branch's first turn.",
+        gt=0,
+        default=None,
+    )
+    first_output_tokens: int | None = Field(
         description=(
-            "Fixed output token count applied to every turn in this branch. "
-            "If None, inherits the main chain's sampled output token count "
-            "for that conversation (not re-sampled)."
+            "Average output tokens for this branch's first turn only. "
+            "If None, inherits the parent conversation's first_output_tokens "
+            "(or the main output_tokens distribution when that is also unset)."
         ),
         default=None,
         gt=0,
     )
+    first_output_tokens_stdev: int | None = Field(
+        description="Standard deviation for this branch's first-turn output tokens.",
+        gt=0,
+        default=None,
+    )
+    first_output_tokens_min: int | None = Field(
+        description="Minimum output tokens for this branch's first turn.",
+        gt=0,
+        default=None,
+    )
+    first_output_tokens_max: int | None = Field(
+        description="Maximum output tokens for this branch's first turn.",
+        gt=0,
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def _validate_first_token_means(self) -> BranchSpec:
+        _require_mean_if_distribution_knobs(
+            self.first_prompt_tokens,
+            self.first_prompt_tokens_stdev,
+            self.first_prompt_tokens_min,
+            self.first_prompt_tokens_max,
+            "first_prompt_tokens",
+        )
+        _require_mean_if_distribution_knobs(
+            self.first_output_tokens,
+            self.first_output_tokens_stdev,
+            self.first_output_tokens_min,
+            self.first_output_tokens_max,
+            "first_output_tokens",
+        )
+        return self
 
 
 @DataArgs.register("synthetic_text")
@@ -141,11 +230,7 @@ class SyntheticTextDataArgs(DataArgs):
         description="Type identifier for the synthetic text dataset configuration.",
     )
     prompt_tokens: int = Field(
-        description=(
-            "The average number of text tokens generated for prompts. "
-            "For multiturn, one value is sampled per conversation and applied "
-            "to every turn (including branch turns that do not override it)."
-        ),
+        description="The average number of text tokens generated for each prompt.",
         gt=0,
         examples=[30],
     )
@@ -169,9 +254,7 @@ class SyntheticTextDataArgs(DataArgs):
     )
     output_tokens: int | None = Field(
         description=(
-            "The average number of text tokens generated for outputs. "
-            "For multiturn, one value is sampled per conversation and applied "
-            "to every turn (including branch turns that do not override it). "
+            "The average number of text tokens generated for each output. "
             "When omitted, output tokens are not sampled and ``max_tokens`` is left "
             "to the backend default. Useful for endpoints that do not produce "
             "output tokens (e.g. embeddings)."
@@ -197,6 +280,62 @@ class SyntheticTextDataArgs(DataArgs):
         gt=0,
         default=None,
         examples=[30],
+    )
+    first_prompt_tokens: int | None = Field(
+        description=(
+            "Optional average prompt tokens for the first turn of a multiturn "
+            "conversation. When unset, turn 0 uses prompt_tokens like later turns. "
+            "Sub-agent branches inherit this setting for their first turn unless "
+            "they override it on BranchSpec."
+        ),
+        gt=0,
+        default=None,
+        examples=[512],
+    )
+    first_prompt_tokens_stdev: int | None = Field(
+        description=(
+            "Standard deviation for first-turn prompt tokens (multiturn only)."
+        ),
+        gt=0,
+        default=None,
+    )
+    first_prompt_tokens_min: int | None = Field(
+        description="Minimum prompt tokens for the first multiturn turn.",
+        gt=0,
+        default=None,
+    )
+    first_prompt_tokens_max: int | None = Field(
+        description="Maximum prompt tokens for the first multiturn turn.",
+        gt=0,
+        default=None,
+    )
+    first_output_tokens: int | None = Field(
+        description=(
+            "Optional average output tokens for the first turn of a multiturn "
+            "conversation. When unset, turn 0 uses output_tokens like later turns. "
+            "Sub-agent branches inherit this setting for their first turn unless "
+            "they override it on BranchSpec."
+        ),
+        gt=0,
+        default=None,
+        examples=[128],
+    )
+    first_output_tokens_stdev: int | None = Field(
+        description=(
+            "Standard deviation for first-turn output tokens (multiturn only)."
+        ),
+        gt=0,
+        default=None,
+    )
+    first_output_tokens_min: int | None = Field(
+        description="Minimum output tokens for the first multiturn turn.",
+        gt=0,
+        default=None,
+    )
+    first_output_tokens_max: int | None = Field(
+        description="Maximum output tokens for the first multiturn turn.",
+        gt=0,
+        default=None,
     )
     delay: float | None = Field(
         description='The average requeue delay, or "think time" for prompts.',
@@ -386,6 +525,25 @@ class SyntheticTextDataArgs(DataArgs):
         return sorted(v)
 
     @model_validator(mode="after")
+    def _validate_first_token_means(self) -> SyntheticTextDataArgs:
+        """Require first_* means when their distribution knobs are set."""
+        _require_mean_if_distribution_knobs(
+            self.first_prompt_tokens,
+            self.first_prompt_tokens_stdev,
+            self.first_prompt_tokens_min,
+            self.first_prompt_tokens_max,
+            "first_prompt_tokens",
+        )
+        _require_mean_if_distribution_knobs(
+            self.first_output_tokens,
+            self.first_output_tokens_stdev,
+            self.first_output_tokens_min,
+            self.first_output_tokens_max,
+            "first_output_tokens",
+        )
+        return self
+
+    @model_validator(mode="after")
     def _validate_tool_call_turn_indices(self) -> SyntheticTextDataArgs:
         """Ensure all tool call turn indices are within [0, turns) and don't overlap.
 
@@ -444,13 +602,13 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         self.random_seed = random_seed
         self.iteration_count = 0
 
-    def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:  # noqa: C901
+    def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:  # noqa: C901, PLR0915
         iter_random_seed = self.random_seed + self.iteration_count
         self.iteration_count += 1
 
         faker = Faker()
         faker.seed_instance(iter_random_seed)
-        prompt_tokens_sampler = iter(
+        prompt_tokens_sampler: Iterator[int] = iter(
             IntegerRangeSampler(
                 average=self.config.prompt_tokens,
                 variance=self.config.prompt_tokens_stdev,
@@ -459,18 +617,26 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 random_seed=iter_random_seed,
             )
         )
-        output_tokens_sampler = (
-            iter(
-                IntegerRangeSampler(
-                    average=self.config.output_tokens,
-                    variance=self.config.output_tokens_stdev,
-                    min_value=self.config.output_tokens_min,
-                    max_value=self.config.output_tokens_max,
-                    random_seed=iter_random_seed + 1,  # ensure diff dist from prompts
-                )
-            )
-            if self.config.output_tokens is not None
-            else None
+        output_tokens_sampler = _integer_range_sampler(
+            average=self.config.output_tokens,
+            variance=self.config.output_tokens_stdev,
+            min_value=self.config.output_tokens_min,
+            max_value=self.config.output_tokens_max,
+            random_seed=iter_random_seed + 1,  # ensure diff dist from prompts
+        )
+        first_prompt_tokens_sampler = _integer_range_sampler(
+            average=self.config.first_prompt_tokens,
+            variance=self.config.first_prompt_tokens_stdev,
+            min_value=self.config.first_prompt_tokens_min,
+            max_value=self.config.first_prompt_tokens_max,
+            random_seed=iter_random_seed + 4,
+        )
+        first_output_tokens_sampler = _integer_range_sampler(
+            average=self.config.first_output_tokens,
+            variance=self.config.first_output_tokens_stdev,
+            min_value=self.config.first_output_tokens_min,
+            max_value=self.config.first_output_tokens_max,
+            random_seed=iter_random_seed + 5,
         )
         delay_sampler = (
             iter(
@@ -513,24 +679,21 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             )
 
         while True:
-            prompt_tokens_count = next(prompt_tokens_sampler)
-            output_tokens_count = (
-                next(output_tokens_sampler)
-                if output_tokens_sampler is not None
-                else None
-            )
             delay = next(delay_sampler) if delay_sampler is not None else None
 
             if self.config.branches:
                 branched_row = self._create_branched_row(
                     faker=faker,
                     samples_count=samples_count,
-                    prompt_tokens_count=prompt_tokens_count,
-                    output_tokens_count=output_tokens_count,
+                    prompt_tokens_sampler=prompt_tokens_sampler,
+                    output_tokens_sampler=output_tokens_sampler,
+                    first_prompt_tokens_sampler=first_prompt_tokens_sampler,
+                    first_output_tokens_sampler=first_output_tokens_sampler,
                     delay=delay,
                     prefix=next(prefix_iter),
                     tools_defs=tools_defs,
                     tool_response_sampler=tool_response_sampler,
+                    iter_random_seed=iter_random_seed,
                 )
                 # Count main nodes (plus client-tool injections) and branch nodes
                 client_tool_extras = sum(
@@ -546,6 +709,16 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
             row: dict[str, Any] = {"prefix": next(prefix_iter)}
             for turn in range(self.config.turns):
+                prompt_tokens_count = self._sample_required_turn_tokens(
+                    turn_index=turn,
+                    main_sampler=prompt_tokens_sampler,
+                    first_sampler=first_prompt_tokens_sampler,
+                )
+                output_tokens_count = self._sample_turn_tokens(
+                    turn_index=turn,
+                    main_sampler=output_tokens_sampler,
+                    first_sampler=first_output_tokens_sampler,
+                )
                 row[f"prompt_{turn}"] = self._create_prompt(
                     prompt_tokens_count,
                     faker,
@@ -576,16 +749,52 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
             yield samples_count, row
 
+    @staticmethod
+    def _sample_turn_tokens(
+        turn_index: int,
+        main_sampler: Iterator[int] | None,
+        first_sampler: Iterator[int] | None,
+    ) -> int | None:
+        """Sample token count for a turn, using first_* on turn 0 when configured.
+
+        Returns ``None`` when neither a first-turn nor main sampler applies
+        (e.g. ``output_tokens`` omitted and no ``first_output_tokens``).
+        """
+        if turn_index == 0 and first_sampler is not None:
+            return next(first_sampler)
+        if main_sampler is not None:
+            return next(main_sampler)
+        return None
+
+    @staticmethod
+    def _sample_required_turn_tokens(
+        turn_index: int,
+        main_sampler: Iterator[int],
+        first_sampler: Iterator[int] | None,
+    ) -> int:
+        """Sample a required prompt token count for a turn."""
+        count = _SyntheticTextExamplesIterable._sample_turn_tokens(
+            turn_index=turn_index,
+            main_sampler=main_sampler,
+            first_sampler=first_sampler,
+        )
+        if count is None:
+            raise ValueError("prompt token sampler produced no value")
+        return count
+
     def _create_branched_row(  # noqa: C901 PLR0912 PLR0915
         self,
         faker: Faker,
         samples_count: int,
-        prompt_tokens_count: int,
-        output_tokens_count: int | None,
+        prompt_tokens_sampler: Iterator[int],
+        output_tokens_sampler: Iterator[int] | None,
+        first_prompt_tokens_sampler: Iterator[int] | None,
+        first_output_tokens_sampler: Iterator[int] | None,
         delay: float | None,
         prefix: str,
         tools_defs: list[dict[str, Any]] | None,
         tool_response_sampler: Iterator[int] | None,
+        iter_random_seed: int,
     ) -> dict[str, Any]:
         """
         Build a conversation_turns payload for BranchSpec fork/join graphs.
@@ -594,14 +803,21 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         injection nodes so the finalizer graph path does not need to rewrite
         the DAG. ``BranchSpec.at_turn`` remains a logical conversation index.
 
+        Token sizes are sampled independently per turn from the main
+        distribution. Turn 0 of the main chain and of each branch may use
+        ``first_*`` overrides (branch first inherits parent first when unset).
+
         :param faker: Seeded Faker for prompt text.
         :param samples_count: Counter used to uniquify prompts.
-        :param prompt_tokens_count: Default prompt tokens for main turns.
-        :param output_tokens_count: Default output tokens, if configured.
+        :param prompt_tokens_sampler: Main prompt token sampler.
+        :param output_tokens_sampler: Main output token sampler, if configured.
+        :param first_prompt_tokens_sampler: Optional parent first-turn prompt sampler.
+        :param first_output_tokens_sampler: Optional parent first-turn output sampler.
         :param delay: Optional requeue delay for main turns.
         :param prefix: Optional system prefix applied to the first main turn.
         :param tools_defs: Tool definitions for client tool-call turns.
         :param tool_response_sampler: Optional sampler for tool response size.
+        :param iter_random_seed: Seed base for per-branch first-turn samplers.
         :return: A dataset row with a JSON ``conversation_turns`` column.
         """
         tool_call_turns = set(self.config.tool_call_turns)
@@ -635,6 +851,16 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                         )
                     )
 
+            prompt_tokens_count = self._sample_required_turn_tokens(
+                turn_index=turn_idx,
+                main_sampler=prompt_tokens_sampler,
+                first_sampler=first_prompt_tokens_sampler,
+            )
+            output_tokens_count = self._sample_turn_tokens(
+                turn_index=turn_idx,
+                main_sampler=output_tokens_sampler,
+                first_sampler=first_output_tokens_sampler,
+            )
             text = self._create_prompt(
                 prompt_tokens_count,
                 faker,
@@ -719,12 +945,32 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 )
 
         for b_idx, branch in enumerate(self.config.branches):
-            branch_prompt_tokens = branch.prompt_tokens or prompt_tokens_count
-            branch_output_tokens = (
-                branch.output_tokens
-                if branch.output_tokens is not None
-                else output_tokens_count
+            # Branch-local first_* overrides; otherwise inherit parent first_* samplers
+            branch_first_prompt = _integer_range_sampler(
+                average=branch.first_prompt_tokens,
+                variance=branch.first_prompt_tokens_stdev,
+                min_value=branch.first_prompt_tokens_min,
+                max_value=branch.first_prompt_tokens_max,
+                random_seed=iter_random_seed + 10 + b_idx * 2,
             )
+            branch_first_output = _integer_range_sampler(
+                average=branch.first_output_tokens,
+                variance=branch.first_output_tokens_stdev,
+                min_value=branch.first_output_tokens_min,
+                max_value=branch.first_output_tokens_max,
+                random_seed=iter_random_seed + 11 + b_idx * 2,
+            )
+            resolved_first_prompt = (
+                branch_first_prompt
+                if branch_first_prompt is not None
+                else first_prompt_tokens_sampler
+            )
+            resolved_first_output = (
+                branch_first_output
+                if branch_first_output is not None
+                else first_output_tokens_sampler
+            )
+
             for t in range(branch.turns):
                 if t == 0:
                     parents = [
@@ -740,6 +986,17 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                             history_context="full",
                         )
                     ]
+
+                branch_prompt_tokens = self._sample_required_turn_tokens(
+                    turn_index=t,
+                    main_sampler=prompt_tokens_sampler,
+                    first_sampler=resolved_first_prompt,
+                )
+                branch_output_tokens = self._sample_turn_tokens(
+                    turn_index=t,
+                    main_sampler=output_tokens_sampler,
+                    first_sampler=resolved_first_output,
+                )
 
                 branch_columns: dict[str, list[Any]] = {
                     "text_column": [

@@ -70,7 +70,17 @@ To generate multiturn synthetic data, use the `--data` argument with `turns` spe
 --data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3
 ```
 
-This creates a 3-turn conversation where each turn has 256 prompt tokens and requests 128 output tokens.
+This creates a 3-turn conversation where each turn samples independently from the configured `prompt_tokens` / `output_tokens` distribution (here, fixed at 256 and 128 when no standard deviation is set).
+
+#### First Message Size
+
+By default every turn (including the first) uses the same `prompt_tokens` / `output_tokens` distribution. Set optional `first_prompt_tokens` / `first_output_tokens` (with the usual `_stdev` / `_min` / `_max` knobs) when the opening message should differ—for example mocking a conversation that starts with a large file or essay to review, followed by shorter question prompts:
+
+```bash
+--data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=4,first_prompt_tokens=4096
+```
+
+This keeps follow-up turns around 256 prompt tokens while the first user message averages 4096 tokens. Sub-agent branches inherit the parent `first_*` settings for their first turn unless a branch overrides them (see [Sub-Agent Branches](#sub-agent-branches)).
 
 #### Synthetic Data with Prefixes
 
@@ -156,14 +166,16 @@ Each per-request entry in `benchmarks.json` includes `info.history_len`: the num
 
 **Branch Configuration Fields:**
 
-| Field           | Type          | Default    | Description                                           |
-| --------------- | ------------- | ---------- | ----------------------------------------------------- |
-| `at_turn`       | `int`         | (required) | Main chain turn index where the branch spawns         |
-| `turns`         | `int`         | (required) | Number of turns in this branch                        |
-| `agent_id`      | `str`         | `"worker"` | Agent identity for branch nodes                       |
-| `merge_after`   | `int`         | `1`        | Main-chain turns after `at_turn` before merge         |
-| `prompt_tokens` | `int \| null` | `null`     | Override prompt token count (defaults to main config) |
-| `output_tokens` | `int \| null` | `null`     | Override output token count (defaults to main config) |
+| Field                 | Type          | Default    | Description                                                                |
+| --------------------- | ------------- | ---------- | -------------------------------------------------------------------------- |
+| `at_turn`             | `int`         | (required) | Main chain turn index where the branch spawns                              |
+| `turns`               | `int`         | (required) | Number of turns in this branch                                             |
+| `agent_id`            | `str`         | `"worker"` | Agent identity for branch nodes                                            |
+| `merge_after`         | `int`         | `1`        | Main-chain turns after `at_turn` before merge                              |
+| `first_prompt_tokens` | `int \| null` | `null`     | First-turn prompt size override (defaults to parent `first_prompt_tokens`) |
+| `first_output_tokens` | `int \| null` | `null`     | First-turn output size override (defaults to parent `first_output_tokens`) |
+
+Branch turns sample from the main `prompt_tokens` / `output_tokens` distribution. Unset branch `first_*` fields inherit the parent conversation's `first_*` settings (and fall back to the main distribution when those are also unset). The same `_stdev` / `_min` / `_max` distribution knobs are supported on branch `first_*` fields.
 
 > [!NOTE]\
 > `at_turn + merge_after` must be less than `turns` so that a merge point exists. Branching that would merge at or past the end of the main conversation is not allowed.
@@ -341,7 +353,7 @@ guidellm run \
 - `--constraint kind=max_requests,count=30`: Maximum number of requests to send (30 requests ~= 10 conversations with 3 turns each)
 - `--data`: Synthetic data configuration with 200 prompt tokens, 100 output tokens, and 3 turns
 
-This command benchmarks 10 three-turn conversations, where each turn has 200 input tokens and generates 100 output tokens. The model maintains conversation history across all three turns.
+This command benchmarks 10 three-turn conversations, where each turn uses the configured token sizes (200 prompt / 100 output when no stdev is set). The model maintains conversation history across all three turns.
 
 ### 2. Multiturn with System Prompts (Prefixes)
 

@@ -536,3 +536,79 @@ class TestSyntheticBranchesEmitConversationTurns:
         assert [
             (p.parent_node_id, p.history_context) for p in by_id["branch_0_0"].parents
         ] == [("main_0", "new")]
+
+    @pytest.mark.regression
+    def test_branch_inherits_parent_first_prompt_tokens(self):
+        """Branch first turn inherits parent first_prompt_tokens when unset.
+
+        ## WRITTEN BY AI ##
+        """
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"tok{t}" for t in tokens)
+        )
+
+        config = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=20,
+            output_tokens=10,
+            first_prompt_tokens=100,
+            turns=3,
+            branches=[BranchSpec(at_turn=0, turns=2)],
+        )
+        iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
+        _key, row = next(iter(iterable))
+        graph_data = ConversationGraphData.model_validate(
+            json.loads(row["conversation_turns"])
+        )
+        by_id = {turn.node_id: turn for turn in graph_data.turns}
+
+        assert by_id["main_0"].columns["prompt_tokens_count_column"] == [100]
+        assert by_id["main_1"].columns["prompt_tokens_count_column"] == [20]
+        assert by_id["branch_0_0"].columns["prompt_tokens_count_column"] == [100]
+        assert by_id["branch_0_1"].columns["prompt_tokens_count_column"] == [20]
+
+    @pytest.mark.regression
+    def test_branch_first_prompt_tokens_override(self):
+        """BranchSpec.first_prompt_tokens overrides parent first_prompt_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        tokenizer = Mock()
+        tokenizer.encode.side_effect = lambda text: list(range(max(1, len(text) // 4)))
+        tokenizer.decode.side_effect = lambda tokens, skip_special_tokens=False: (
+            " ".join(f"tok{t}" for t in tokens)
+        )
+
+        config = SyntheticTextDataArgs(
+            kind="synthetic_text",
+            prompt_tokens=20,
+            output_tokens=10,
+            first_prompt_tokens=100,
+            turns=3,
+            branches=[
+                BranchSpec(at_turn=0, turns=2, first_prompt_tokens=200),
+                BranchSpec(at_turn=0, turns=1, agent_id="reviewer"),
+            ],
+        )
+        iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
+        _key, row = next(iter(iterable))
+        graph_data = ConversationGraphData.model_validate(
+            json.loads(row["conversation_turns"])
+        )
+        by_id = {turn.node_id: turn for turn in graph_data.turns}
+
+        assert by_id["main_0"].columns["prompt_tokens_count_column"] == [100]
+        assert by_id["branch_0_0"].columns["prompt_tokens_count_column"] == [200]
+        assert by_id["branch_0_1"].columns["prompt_tokens_count_column"] == [20]
+        assert by_id["branch_1_0"].columns["prompt_tokens_count_column"] == [100]
+
+    @pytest.mark.sanity
+    def test_branch_first_prompt_tokens_requires_mean(self):
+        """Reject branch first_prompt_tokens_stdev without first_prompt_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="first_prompt_tokens must be set"):
+            BranchSpec(at_turn=0, turns=1, first_prompt_tokens_stdev=5)

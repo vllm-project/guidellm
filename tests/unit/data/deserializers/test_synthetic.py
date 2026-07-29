@@ -751,10 +751,10 @@ class TestSyntheticTextDatasetMultiturn:
             assert f"output_tokens_count_{turn}" in features
 
     @pytest.mark.regression
-    def test_synthetic_turn_token_counts_consistent(self, mock_tokenizer):
-        """Test token counts are consistent across turns in a sample.
+    def test_synthetic_turn_token_counts_fixed_without_stdev(self, mock_tokenizer):
+        """Without stdev, every turn equals the configured token means.
 
-        ### WRITTEN BY AI ###
+        ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(
             prompt_tokens=50,
@@ -762,25 +762,79 @@ class TestSyntheticTextDatasetMultiturn:
             turns=3,
         )
         dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
-
-        # Get one item
         item = next(iter(dataset))
 
-        # All turns in a sample should have the same token counts
-        # (based on how synthetic generation works - same counts per sample)
-        prompt_count_0 = item["prompt_tokens_count_0"]
-        prompt_count_1 = item["prompt_tokens_count_1"]
-        prompt_count_2 = item["prompt_tokens_count_2"]
+        assert (
+            item["prompt_tokens_count_0"]
+            == item["prompt_tokens_count_1"]
+            == item["prompt_tokens_count_2"]
+            == 50
+        )
+        assert (
+            item["output_tokens_count_0"]
+            == item["output_tokens_count_1"]
+            == item["output_tokens_count_2"]
+            == 25
+        )
 
-        # These should all be the same for a given sample
-        assert prompt_count_0 == prompt_count_1 == prompt_count_2
+    @pytest.mark.regression
+    def test_synthetic_turn_token_counts_independent_with_stdev(self, mock_tokenizer):
+        """With stdev, turns sample independently and are not forced equal.
 
-        output_count_0 = item["output_tokens_count_0"]
-        output_count_1 = item["output_tokens_count_1"]
-        output_count_2 = item["output_tokens_count_2"]
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            prompt_tokens_stdev=20,
+            prompt_tokens_min=10,
+            prompt_tokens_max=100,
+            output_tokens=25,
+            output_tokens_stdev=10,
+            output_tokens_min=5,
+            output_tokens_max=50,
+            turns=8,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        item = next(iter(dataset))
 
-        # These should all be the same for a given sample
-        assert output_count_0 == output_count_1 == output_count_2
+        prompt_counts = [item[f"prompt_tokens_count_{i}"] for i in range(8)]
+        output_counts = [item[f"output_tokens_count_{i}"] for i in range(8)]
+        assert len(set(prompt_counts)) > 1
+        assert len(set(output_counts)) > 1
+
+    @pytest.mark.regression
+    def test_synthetic_first_prompt_tokens_override(self, mock_tokenizer):
+        """first_prompt_tokens applies only to turn 0; later turns use prompt_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            output_tokens=25,
+            first_prompt_tokens=200,
+            turns=3,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        item = next(iter(dataset))
+
+        assert item["prompt_tokens_count_0"] == 200
+        assert item["prompt_tokens_count_1"] == 50
+        assert item["prompt_tokens_count_2"] == 50
+        assert item["output_tokens_count_0"] == 25
+
+    @pytest.mark.sanity
+    def test_first_prompt_tokens_requires_mean(self):
+        """Reject first_prompt_tokens_stdev without first_prompt_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="first_prompt_tokens must be set"):
+            SyntheticTextDataArgs(
+                prompt_tokens=50,
+                output_tokens=25,
+                turns=3,
+                first_prompt_tokens_stdev=10,
+            )
 
 
 class TestSyntheticTextDatasetConfigToolCallFields:
