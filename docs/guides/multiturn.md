@@ -160,9 +160,14 @@ This spawns a sub-agent at turn 1 that runs for 2 turns and merges back at turn 
 
 This spawns two sub-agents at turn 2: one that runs for 3 turns and one that runs for 1 turn. Both merge back at turn 3. The main conversation at turn 3 receives the full history from turns 0-2 plus the final output from each sub-agent.
 
-**History length in results:**
+**History length and turn index in results:**
 
-Each per-request entry in `benchmarks.json` includes `info.history_len`: the number of prior messages in the assembled history sent to the server with that request. Because history can include messages from diverging paths that merge via `last` edges, `history_len` may jump at merge points rather than increment by one. Branch roots spawned with fresh (`new`) context start at `0`.
+Each per-request entry in `benchmarks.json` includes:
+
+- `info.history_len`: the number of prior messages in the assembled history sent to the server with that request. Because history can include messages from diverging paths that merge via `last` edges, `history_len` may jump at merge points rather than increment by one. Branch roots spawned with fresh (`new`) context start at `0`.
+- `info.turn_index`: a simpler path-depth counter. It resets to `0` on `new` edges, increments by one through `full` edges, and treats each `last` edge as adding up to `1` without walking further into that parent’s ancestors. When a node has multiple parents, `turn_index` is the maximum over those contributions (the longest path).
+
+At a merge after a sub-agent branch, `history_len` often exceeds `turn_index` because merged `last` outputs are counted in assembled history but only add up to a non-recursive `1` toward path depth (and do not increase `turn_index` when the `full` path is already longer).
 
 **Branch Configuration Fields:**
 

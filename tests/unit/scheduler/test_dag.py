@@ -565,6 +565,91 @@ class TestDAGExecutionStateTopologicalOrder:
         assert order.index("M3") < order.index("M4")
 
 
+class TestDAGExecutionStateTurnIndex:
+    """Test compute_turn_index path-depth rules.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_linear_turn_index(self):
+        """Linear full chain increments turn_index by 1 each step.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_linear_graph(4))
+        assert state.compute_turn_index("n0") == 0
+        assert state.compute_turn_index("n1") == 1
+        assert state.compute_turn_index("n2") == 2
+        assert state.compute_turn_index("n3") == 3
+
+    @pytest.mark.sanity
+    def test_new_edge_resets_turn_index(self):
+        """Branch roots spawned via new edges restart at turn_index 0.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_fork_join_graph())
+        assert state.compute_turn_index("M1") == 0
+        assert state.compute_turn_index("M2") == 1
+        assert state.compute_turn_index("M3") == 2
+        assert state.compute_turn_index("W1") == 0
+        assert state.compute_turn_index("W2") == 0
+
+    @pytest.mark.sanity
+    def test_merge_last_does_not_recurse(self):
+        """At merge, last adds up to 1 without recurse; max with full path.
+
+        M4 = max(turn(M3)+1, 1, 1) = max(3, 1, 1) = 3.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_fork_join_graph())
+        assert state.compute_turn_index("M4") == 3
+
+    @pytest.mark.sanity
+    def test_last_only_node_turn_index(self):
+        """A node reached only via last edges has turn_index 1.
+
+        ## WRITTEN BY AI ##
+        """
+        nodes = {
+            "a": _make_node("a"),
+            "b": _make_node("b"),
+            "c": _make_node("c"),
+        }
+        graph = ConversationGraph(
+            graph_id="last_only",
+            nodes=nodes,
+            edges=[
+                ConversationEdge(
+                    source_node_id="a",
+                    target_node_id="b",
+                    history_context="full",
+                ),
+                ConversationEdge(
+                    source_node_id="b",
+                    target_node_id="c",
+                    history_context="last",
+                ),
+            ],
+        )
+        state = DAGExecutionState(graph)
+        assert state.compute_turn_index("a") == 0
+        assert state.compute_turn_index("b") == 1
+        assert state.compute_turn_index("c") == 1
+
+    @pytest.mark.smoke
+    def test_unknown_node_raises(self):
+        """compute_turn_index raises KeyError for unknown node_id.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_linear_graph(2))
+        with pytest.raises(KeyError, match="Unknown node_id"):
+            state.compute_turn_index("missing")
+
+
 class TestDAGExecutionStateRequeueDelay:
     """Test think-time gating via requeue_delay.
 

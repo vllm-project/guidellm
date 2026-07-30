@@ -472,6 +472,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         history = state.assemble_history(node_id)
         # Prior messages sent with this request (``new`` edges restart at 0).
         request_info.history_len = len(history) if history else 0
+        request_info.turn_index = state.compute_turn_index(node_id)
         async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
             request, request_info, history
         ):

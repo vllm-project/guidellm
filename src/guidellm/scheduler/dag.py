@@ -251,6 +251,48 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         result.extend(self._collect_last_pairs(incoming))
         return result or None
 
+    def compute_turn_index(self, node_id: str) -> int:
+        """
+        Compute path-depth turn index for a node.
+
+        Longest path to ``node_id`` with edge rules:
+
+        - ``new``: no contribution (fresh context starts at 0)
+        - ``full``: ``turn_index(parent) + 1`` (recurse)
+        - ``last``: adds up to ``1`` (parent itself; no recurse)
+        - no contributing edges: ``0``
+        - multiple parents: maximum over edge contributions
+
+        Pure graph structure; does not require completed responses.
+
+        :param node_id: The node to compute the turn index for.
+        :return: Turn index for the node.
+        :raises KeyError: If ``node_id`` is not in the graph.
+        """
+        if node_id not in self._graph.nodes:
+            raise KeyError(f"Unknown node_id '{node_id}'")
+
+        memo: dict[str, int] = {}
+
+        def _depth(nid: str) -> int:
+            if nid in memo:
+                return memo[nid]
+
+            contributions: list[int] = []
+            for edge in self._incoming_edges.get(nid, []):
+                if edge.history_context == "new":
+                    continue
+                if edge.history_context == "last":
+                    contributions.append(1)
+                elif edge.history_context == "full":
+                    contributions.append(_depth(edge.source_node_id) + 1)
+
+            result = max(contributions) if contributions else 0
+            memo[nid] = result
+            return result
+
+        return _depth(node_id)
+
     def _find_full_parent_edge(
         self, incoming: Iterable[ConversationEdge]
     ) -> ConversationEdge | None:

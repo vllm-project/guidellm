@@ -178,6 +178,15 @@ class RequestInfo(StandardBaseModel):
             "``new`` edge restart at 0."
         ),
     )
+    turn_index: int = Field(
+        default=0,
+        description=(
+            "Path-depth turn index for this request: longest path that "
+            "resets on ``new`` edges, increments through ``full`` edges, "
+            "and treats each ``last`` edge as adding up to 1 without "
+            "recursion. Multiple parents take the maximum."
+        ),
+    )
     node_id: str | None = Field(
         default=None,
         description="Node ID within a conversation graph, if applicable.",

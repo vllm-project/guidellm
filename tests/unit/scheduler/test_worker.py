@@ -907,24 +907,33 @@ class TestWorkerProcessMultiturn:
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
-    async def test_execute_node_sets_history_len_from_history(self, worker_instance):
-        """history_len is len(history); new-edge branches restart at 0.
+    async def test_execute_node_sets_history_len_and_turn_index(self, worker_instance):
+        """history_len is len(history); turn_index is path depth resetting on new.
+
+        At merge m2: history_len=3 ([m0, m1, b1]) while turn_index=2
+        (max(turn(m1)+1, 1) = max(2, 1)).
 
         ## WRITTEN BY AI ##
         """
         nodes = {
             "m0": ConversationNode(node_id="m0", agent_id="main", request="rm0"),
             "m1": ConversationNode(node_id="m1", agent_id="main", request="rm1"),
+            "m2": ConversationNode(node_id="m2", agent_id="main", request="rm2"),
             "b0": ConversationNode(node_id="b0", agent_id="worker", request="rb0"),
             "b1": ConversationNode(node_id="b1", agent_id="worker", request="rb1"),
         }
         graph = ConversationGraph(
-            graph_id="history_len",
+            graph_id="history_len_turn_index",
             nodes=nodes,
             edges=[
                 ConversationEdge(
                     source_node_id="m0",
                     target_node_id="m1",
+                    history_context="full",
+                ),
+                ConversationEdge(
+                    source_node_id="m1",
+                    target_node_id="m2",
                     history_context="full",
                 ),
                 ConversationEdge(
@@ -937,39 +946,69 @@ class TestWorkerProcessMultiturn:
                     target_node_id="b1",
                     history_context="full",
                 ),
+                ConversationEdge(
+                    source_node_id="b1",
+                    target_node_id="m2",
+                    history_context="last",
+                ),
             ],
         )
         state = DAGExecutionState(graph)
         target_start = time.time()
 
-        info_m0 = RequestInfo(request_id="id_m0", node_id="m0", history_len=99)
+        info_m0 = RequestInfo(
+            request_id="id_m0", node_id="m0", history_len=99, turn_index=99
+        )
         async for _ in worker_instance._execute_node(
             state, "m0", "rm0", info_m0, target_start
         ):
             pass
         assert info_m0.history_len == 0
+        assert info_m0.turn_index == 0
 
         state.mark_completed("m0", "rm0", "resp_m0")
 
-        info_m1 = RequestInfo(request_id="id_m1", node_id="m1", history_len=99)
+        info_m1 = RequestInfo(
+            request_id="id_m1", node_id="m1", history_len=99, turn_index=99
+        )
         async for _ in worker_instance._execute_node(
             state, "m1", "rm1", info_m1, target_start
         ):
             pass
         assert info_m1.history_len == 1
+        assert info_m1.turn_index == 1
 
-        info_b0 = RequestInfo(request_id="id_b0", node_id="b0", history_len=99)
+        info_b0 = RequestInfo(
+            request_id="id_b0", node_id="b0", history_len=99, turn_index=99
+        )
         async for _ in worker_instance._execute_node(
             state, "b0", "rb0", info_b0, target_start
         ):
             pass
         assert info_b0.history_len == 0
+        assert info_b0.turn_index == 0
 
         state.mark_completed("b0", "rb0", "resp_b0")
 
-        info_b1 = RequestInfo(request_id="id_b1", node_id="b1", history_len=99)
+        info_b1 = RequestInfo(
+            request_id="id_b1", node_id="b1", history_len=99, turn_index=99
+        )
         async for _ in worker_instance._execute_node(
             state, "b1", "rb1", info_b1, target_start
         ):
             pass
         assert info_b1.history_len == 1
+        assert info_b1.turn_index == 1
+
+        state.mark_completed("m1", "rm1", "resp_m1")
+        state.mark_completed("b1", "rb1", "resp_b1")
+
+        info_m2 = RequestInfo(
+            request_id="id_m2", node_id="m2", history_len=99, turn_index=99
+        )
+        async for _ in worker_instance._execute_node(
+            state, "m2", "rm2", info_m2, target_start
+        ):
+            pass
+        assert info_m2.history_len == 3
+        assert info_m2.turn_index == 2
