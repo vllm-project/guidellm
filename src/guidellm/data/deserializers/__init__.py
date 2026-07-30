@@ -43,6 +43,7 @@ from .trace_common import (
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
+    create_prompt_from_hash_ids,
     decode_prompt,
     generate_token_ids,
 )
@@ -87,6 +88,7 @@ __all__ = [
     "TraceFormatBase",
     "TraceFormatRegistry",
     "WEKATraceFormatArgs",
+    "create_prompt_from_hash_ids",
     "decode_prompt",
     "generate_token_ids",
 ]

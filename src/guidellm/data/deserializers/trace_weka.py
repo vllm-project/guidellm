@@ -33,6 +33,7 @@ from guidellm.data.deserializers.trace_common import (
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
+    create_prompt_from_hash_ids,
     decode_prompt,
     generate_token_ids,
 )
@@ -59,20 +60,6 @@ def _create_distinct_token_block(
     raise ValueError(
         f"Failed to generate distinct synthetic token block after {attempt} attempts"
     )
-
-
-def _create_prompt_from_hash_ids(
-    hash_ids: list[int],
-    hash_id_table: dict[int, tuple[int]],
-    processor: PreTrainedTokenizerBase,
-) -> str:
-    """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
-
-    Precondition: All ids in `hash_ids` appear in `hash_id_table`."""
-    prompt_token_ids = [
-        token for hash_id in hash_ids for token in hash_id_table[hash_id]
-    ]
-    return decode_prompt(processor, prompt_token_ids)
 
 
 def _generate_remaining_prompt(
@@ -193,7 +180,7 @@ class WEKATraceFormat(TraceFormatBase):
                     faker,
                 )
                 self.sibling_token_blocks[prev_id].add(self.hash_id_table[hash_id])
-        prompt = _create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
+        prompt = create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
         remainder = _generate_remaining_prompt(
             row[config.prompt_tokens_column] % config.hash_id_block_size,
             processor,

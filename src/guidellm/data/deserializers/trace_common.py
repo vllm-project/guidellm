@@ -46,6 +46,7 @@ __all__ = [
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
+    "create_prompt_from_hash_ids",
     "decode_prompt",
     "generate_token_ids",
 ]
@@ -81,6 +82,20 @@ def generate_token_ids(
         token_ids = processor.encode(text)
         if len(token_ids) >= token_count:
             return tuple(token_ids[:token_count])
+
+
+def create_prompt_from_hash_ids(
+    hash_ids: list[int],
+    hash_id_table: dict[int, tuple[int]],
+    processor: PreTrainedTokenizerBase,
+) -> str:
+    """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
+
+    Precondition: All ids in `hash_ids` appear in `hash_id_table`."""
+    prompt_token_ids = [
+        token for hash_id in hash_ids for token in hash_id_table[hash_id]
+    ]
+    return decode_prompt(processor, prompt_token_ids)
 
 
 class TraceFormatBase(Protocol):
