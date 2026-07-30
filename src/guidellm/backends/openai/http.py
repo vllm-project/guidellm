@@ -483,6 +483,7 @@ class OpenAIHTTPBackend(Backend):
         response.raise_for_status()
         data = response.json()
         gen_response = request_handler.compile_non_streaming(request, arguments, data)
+        request_handler.post_validation(gen_response)
         yield gen_response, request_info
         self._check_tool_call_expectations(request, gen_response)
 
@@ -553,6 +554,7 @@ class OpenAIHTTPBackend(Backend):
 
             request_info.timings.request_end = time.time()
             gen_response = request_handler.compile_streaming(request, arguments)
+            request_handler.post_validation(gen_response)
             self._check_tool_call_expectations(request, gen_response)
             yield gen_response, request_info
         except asyncio.CancelledError as err:
