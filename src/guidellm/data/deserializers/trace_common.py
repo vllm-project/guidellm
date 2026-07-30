@@ -171,7 +171,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         timestamps = self.trace_rows[self.config.timestamp_column]
         conv_col = self.config.conversation_id_column
         current_conv = None
-        conv_start_ts = None
+        conv_start_ts = timestamps[0]
         for row_idx, row in enumerate(self.trace_rows):
             if conv_col:
                 conv_id = row[conv_col]
@@ -183,7 +183,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
             prompt = self.format.create_prompt(
                 self.config, row, self.processor, self.faker
             )
-            relative_timestamp = timestamps[row_idx] - (conv_start_ts or timestamps[0])
+            relative_timestamp = timestamps[row_idx] - conv_start_ts
             yield (
                 row_idx,
                 {
