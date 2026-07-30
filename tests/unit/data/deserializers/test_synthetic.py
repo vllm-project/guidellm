@@ -42,9 +42,7 @@ def _main_turn_map(row: dict) -> dict[str, object]:
     """
     graph = _conversation_graph(row)
     return {
-        turn.node_id: turn
-        for turn in graph.turns
-        if turn.node_id.startswith("main_")
+        turn.node_id: turn for turn in graph.turns if turn.node_id.startswith("main_")
     }
 
 

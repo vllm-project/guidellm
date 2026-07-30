@@ -362,18 +362,16 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         """
         while True:
             now = time.time()
-            for state in self.turns_queue:
-                nxt = state.next_node_ready_at()
-                if nxt is not None and nxt[1] <= now:
-                    node_id, _ = nxt
-                    state.claim_node(node_id)
-                    return state, node_id
-
             earliest: float | None = None
             for state in self.turns_queue:
                 nxt = state.next_node_ready_at()
-                if nxt is not None and (earliest is None or nxt[1] < earliest):
-                    earliest = nxt[1]
+                if nxt is not None:
+                    if nxt[1] <= now:
+                        node_id, _ = nxt
+                        state.claim_node(node_id)
+                        return state, node_id
+                    if earliest is None or nxt[1] < earliest:
+                        earliest = nxt[1]
 
             if earliest is not None:
                 timeout = max(0.0, earliest - time.time())

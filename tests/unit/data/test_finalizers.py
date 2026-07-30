@@ -39,7 +39,6 @@ def _ordered_requests(
     return [graph.nodes[nid].request for nid in sorted(graph.nodes, key=_sort_key)]
 
 
-
 class TestGenerativeRequestFinalizerTokenAggregation:
     """Test cases for GenerativeRequestFinalizer token aggregation.
 
