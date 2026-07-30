@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
+from guidellm import settings
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
     BenchmarkOutputArgs,
@@ -56,7 +57,7 @@ class PlotBenchmarkOutputArgs(BenchmarkOutputArgs):
         description="Type identifier for the plot configuration.",
     )
     path: Path = Field(
-        default_factory=lambda: Path("./benchmarks.png"),
+        default_factory=lambda: settings.default_results_dir / "benchmarks.png",
         description="The file to save the output plot to.",
     )
     dpi: int = Field(
