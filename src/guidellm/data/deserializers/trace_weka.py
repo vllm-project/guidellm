@@ -186,4 +186,4 @@ class WEKATraceFormat(TraceFormatBase):
             processor,
             faker,
         )
-        return prompt + " " + remainder
+        return (prompt + " " if prompt else "") + remainder
