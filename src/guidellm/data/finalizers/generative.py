@@ -4,9 +4,12 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from guidellm.data.finalizers.conversation_graph import (
+    expand_client_tool_turns,
+    turns_from_mapped_items,
+)
 from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.schemas import DataFinalizerArgs
-from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
 from guidellm.scheduler.schemas import HistoryContext
 from guidellm.schemas import (
     GenerationRequest,
@@ -55,80 +58,19 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
     def __call__(
         self, items: list[dict[str, Any]]
     ) -> GenerativeConversationGraph | list:
-        # Branched / multi-agent path: one mapped item carries conversation_turns.
-        for item in items:
-            if item.get("conversation_turns_column"):
-                return self._finalize_conversation_turns(item)
-
-        results: list[tuple[GenerationRequest, RequestSettings]] = []
-        for item in items:
-            request, settings = self.finalize_turn(item)
-            if request.turn_type == "client_tool_call":
-                # Split tool-calling turns: the tool_response_column moves
-                # to a separate injection turn that follows the tool call.
-                tool_response_data = request.columns.pop("tool_response_column", [])
-                injection_columns: dict[str, list[Any]] = {}
-                if tool_response_data:
-                    injection_columns["tool_response_column"] = tool_response_data
-                # Move output metrics to next turn
-                metrics_config = request.output_metrics
-                request.output_metrics = UsageMetrics()
-                results.append((request, RequestSettings()))
-                results.append(
-                    (
-                        GenerationRequest(
-                            columns=injection_columns,
-                            turn_type="tool_response_injection",
-                            output_metrics=metrics_config,
-                        ),
-                        settings,
-                    )
-                )
-            else:
-                results.append((request, settings))
-
-        # Empty results stay as [] so the loader can skip the row.
-        if not results:
+        graph_data = turns_from_mapped_items(items)
+        if not graph_data.turns:
             return []
 
-        return GenerativeConversationGraph.from_linear_chain(results)
-
-    def _finalize_conversation_turns(
-        self, item: dict[str, Any]
-    ) -> GenerativeConversationGraph:
-        """
-        Assemble a graph from a ``conversation_turns_column`` payload.
-
-        :param item: Mapped row containing ``conversation_turns_column``.
-        :return: A generative conversation graph.
-        :raises ValueError: If the payload is missing or invalid.
-        """
-        raw_values = item.get("conversation_turns_column") or []
-        if not raw_values:
-            raise ValueError("conversation_turns_column is empty")
-
-        raw = raw_values[0]
-        if isinstance(raw, str):
-            graph_data = ConversationGraphData.model_validate_json(raw)
-        else:
-            graph_data = ConversationGraphData.model_validate(raw)
-
-        if not graph_data.turns:
-            raise ValueError("ConversationGraphData.turns must not be empty")
+        graph_data = expand_client_tool_turns(
+            graph_data, tool_call_mode=self.config.tool_call_mode
+        )
 
         nodes: dict[str, GenerativeConversationNode] = {}
         parents_by_node: dict[str, list[tuple[str, HistoryContext]]] = {}
         for turn in graph_data.turns:
-            request, settings = self.finalize_turn(dict(turn.columns))
-            # Prefer explicit turn-level scheduling fields over column values.
-            if turn.relative_timestamp is not None:
-                settings = settings.model_copy(
-                    update={"relative_timestamp": turn.relative_timestamp}
-                )
-            if turn.requeue_delay is not None:
-                settings = settings.model_copy(
-                    update={"requeue_delay": turn.requeue_delay}
-                )
+            request, column_settings = self.finalize_turn(dict(turn.columns))
+            settings = turn.settings if turn.settings is not None else column_settings
             nodes[turn.node_id] = GenerativeConversationNode(
                 node_id=turn.node_id,
                 agent_id=turn.agent_id,
@@ -146,7 +88,7 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
             graph_id=graph_data.graph_id,
         )
 
-    def finalize_turn(  # noqa: C901 PLR0912
+    def finalize_turn(  # noqa: C901 PLR0912 PLR0915
         self, columns: dict[str, Any]
     ) -> tuple[GenerationRequest, RequestSettings]:
         input_metrics = UsageMetrics()
@@ -249,18 +191,22 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
         else:
             turn_type = "standard"
 
+        # Scheduling metadata belongs on RequestSettings, not request columns.
+        relative_timestamp = self._get_optional_column_value(
+            columns, "relative_timestamp_column"
+        )
+        requeue_delay = self._get_optional_column_value(columns, "requeue_delay_column")
+        columns.pop("relative_timestamp_column", None)
+        columns.pop("requeue_delay_column", None)
+
         return GenerationRequest(
             columns=columns,
             turn_type=turn_type,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         ), RequestSettings(
-            relative_timestamp=self._get_optional_column_value(
-                columns, "relative_timestamp_column"
-            ),
-            requeue_delay=self._get_optional_column_value(
-                columns, "requeue_delay_column"
-            ),
+            relative_timestamp=relative_timestamp,
+            requeue_delay=requeue_delay,
         )
 
     @staticmethod

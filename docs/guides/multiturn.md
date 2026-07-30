@@ -30,6 +30,12 @@ For a 3-turn conversation, the dataset could contain the following columns:
 - **prompt_1**, **output_tokens_count_1**: Turn 2 prompt and requested output tokens
 - **prompt_2**, **output_tokens_count_2**: Turn 3 prompt and requested output tokens
 
+Indexed columns remain the authoring format for file / HuggingFace datasets. After mapping, both indexed rows and graph payloads share one finalizer pathway: normalize to `ConversationGraphData`, expand client tool-call turns into tool-call + injection nodes, then build a runtime conversation graph.
+
+### Synthetic Data Always Emits a Graph
+
+Synthetic multiturn data (including single-turn and branched sub-agent configs) emits a `conversation_turns` JSON column rather than indexed `prompt_0` / `prompt_1` columns. The same finalizer pathway consumes that graph payload.
+
 ### How Multiturn Orchestration Works
 
 When executing a multiturn benchmark, GuideLLM:

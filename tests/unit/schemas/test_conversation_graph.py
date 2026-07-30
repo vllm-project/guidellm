@@ -317,30 +317,40 @@ class TestConversationGraphSubgraphForNodes:
     @pytest.fixture
     def branched_graph(self) -> GenerativeConversationGraph:
         """Build a main chain with one branch for truncation tests."""
-        main_reqs = [
-            (
-                GenerationRequest(columns={"text_column": [f"main {i}"]}),
-                RequestSettings(),
-            )
-            for i in range(3)
-        ]
-
-        def branch_factory(
-            branch_index: int, turn_index: int
-        ) -> tuple[GenerationRequest, RequestSettings]:
-            return (
-                GenerationRequest(
-                    columns={
-                        "text_column": [f"branch {branch_index} turn {turn_index}"]
-                    }
-                ),
-                RequestSettings(),
-            )
-
-        return GenerativeConversationGraph.from_linear_chain_with_branches(
-            main_requests=main_reqs,
-            branches=[{"at_turn": 0, "turns": 1, "agent_id": "worker"}],
-            branch_request_factory=branch_factory,
+        nodes = {
+            "main_0": GenerativeConversationNode(
+                node_id="main_0",
+                agent_id="default",
+                request=GenerationRequest(columns={"text_column": ["main 0"]}),
+                settings=RequestSettings(),
+            ),
+            "main_1": GenerativeConversationNode(
+                node_id="main_1",
+                agent_id="default",
+                request=GenerationRequest(columns={"text_column": ["main 1"]}),
+                settings=RequestSettings(),
+            ),
+            "main_2": GenerativeConversationNode(
+                node_id="main_2",
+                agent_id="default",
+                request=GenerationRequest(columns={"text_column": ["main 2"]}),
+                settings=RequestSettings(),
+            ),
+            "branch_0_0": GenerativeConversationNode(
+                node_id="branch_0_0",
+                agent_id="worker",
+                request=GenerationRequest(columns={"text_column": ["branch 0 turn 0"]}),
+                settings=RequestSettings(),
+            ),
+        }
+        return GenerativeConversationGraph.from_nodes_with_parents(
+            nodes=nodes,
+            parents_by_node={
+                "main_0": [],
+                "main_1": [("main_0", "full"), ("branch_0_0", "last")],
+                "main_2": [("main_1", "full")],
+                "branch_0_0": [("main_0", "new")],
+            },
         )
 
     @pytest.mark.smoke

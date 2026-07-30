@@ -19,8 +19,12 @@ from guidellm.data.finalizers.generative import (
 )
 from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
 from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.schemas import HistoryContext
 from guidellm.schemas import GenerationRequest, RequestSettings
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
+from guidellm.schemas.conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
+)
 from guidellm.utils.imports import json
 
 
@@ -39,7 +43,64 @@ def _branch_factory(
     return _make_request(f"branch_{b_idx}_turn_{t_idx}")
 
 
-class TestFromLinearChainWithBranches:
+def _graph_from_main_and_branches(
+    main_requests: list[tuple[GenerationRequest, RequestSettings]],
+    branches: list[dict],
+    branch_request_factory=_branch_factory,
+    main_agent_id: str = "default",
+) -> GenerativeConversationGraph:
+    """Build a fork/join graph via from_nodes_with_parents.
+
+    ## WRITTEN BY AI ##
+    """
+    if not main_requests:
+        raise ValueError("Cannot create a graph from an empty request list")
+
+    nodes: dict[str, GenerativeConversationNode] = {}
+    parents_by_node: dict[str, list[tuple[str, HistoryContext]]] = {}
+
+    for i, (request, settings) in enumerate(main_requests):
+        node_id = f"main_{i}"
+        nodes[node_id] = GenerativeConversationNode(
+            node_id=node_id,
+            agent_id=main_agent_id,
+            request=request,
+            settings=settings,
+        )
+        parents_by_node[node_id] = [(f"main_{i - 1}", "full")] if i > 0 else []
+
+    for b_idx, branch in enumerate(branches):
+        at_turn: int = branch["at_turn"]
+        num_turns: int = branch["turns"]
+        agent_id: str = branch.get("agent_id", "worker")
+        merge_after: int = branch.get("merge_after", 1)
+        merge_turn = at_turn + merge_after
+
+        for t in range(num_turns):
+            node_id = f"branch_{b_idx}_{t}"
+            request, settings = branch_request_factory(b_idx, t)
+            nodes[node_id] = GenerativeConversationNode(
+                node_id=node_id,
+                agent_id=agent_id,
+                request=request,
+                settings=settings,
+            )
+            if t == 0:
+                parents_by_node[node_id] = [(f"main_{at_turn}", "new")]
+            else:
+                parents_by_node[node_id] = [(f"branch_{b_idx}_{t - 1}", "full")]
+
+        parents_by_node[f"main_{merge_turn}"].append(
+            (f"branch_{b_idx}_{num_turns - 1}", "last")
+        )
+
+    return GenerativeConversationGraph.from_nodes_with_parents(
+        nodes=nodes,
+        parents_by_node=parents_by_node,
+    )
+
+
+class TestFromNodesWithParentsBranches:
     """Test ConversationGraph construction with sub-agent branches.
 
     ## WRITTEN BY AI ##
@@ -53,10 +114,9 @@ class TestFromLinearChainWithBranches:
         ## WRITTEN BY AI ##
         """
         main = [_make_request(f"main_{i}") for i in range(4)]
-        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+        graph = _graph_from_main_and_branches(
             main_requests=main,
             branches=[{"at_turn": 1, "turns": 2}],
-            branch_request_factory=_branch_factory,
         )
 
         assert len(graph.nodes) == 6  # 4 main + 2 branch
@@ -85,13 +145,12 @@ class TestFromLinearChainWithBranches:
         ## WRITTEN BY AI ##
         """
         main = [_make_request(f"main_{i}") for i in range(5)]
-        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+        graph = _graph_from_main_and_branches(
             main_requests=main,
             branches=[
                 {"at_turn": 2, "turns": 3, "agent_id": "researcher"},
                 {"at_turn": 2, "turns": 1, "agent_id": "reviewer"},
             ],
-            branch_request_factory=_branch_factory,
         )
 
         # 5 main + 3 branch_0 + 1 branch_1 = 9 nodes
@@ -119,13 +178,12 @@ class TestFromLinearChainWithBranches:
         ## WRITTEN BY AI ##
         """
         main = [_make_request(f"main_{i}") for i in range(4)]
-        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+        graph = _graph_from_main_and_branches(
             main_requests=main,
             branches=[
                 {"at_turn": 1, "turns": 2},
                 {"at_turn": 1, "turns": 1},
             ],
-            branch_request_factory=_branch_factory,
         )
 
         state = DAGExecutionState(graph)
@@ -157,10 +215,9 @@ class TestFromLinearChainWithBranches:
         ## WRITTEN BY AI ##
         """
         main = [_make_request(f"main_{i}") for i in range(3)]
-        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+        graph = _graph_from_main_and_branches(
             main_requests=main,
             branches=[{"at_turn": 0, "turns": 1}],
-            branch_request_factory=_branch_factory,
         )
 
         state = DAGExecutionState(graph)
@@ -176,10 +233,9 @@ class TestFromLinearChainWithBranches:
         ## WRITTEN BY AI ##
         """
         main = [_make_request(f"main_{i}") for i in range(5)]
-        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+        graph = _graph_from_main_and_branches(
             main_requests=main,
             branches=[{"at_turn": 1, "turns": 2, "merge_after": 2}],
-            branch_request_factory=_branch_factory,
         )
 
         edge_map = {
@@ -199,13 +255,12 @@ class TestFromLinearChainWithBranches:
         ## WRITTEN BY AI ##
         """
         main = [_make_request(f"main_{i}") for i in range(6)]
-        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+        graph = _graph_from_main_and_branches(
             main_requests=main,
             branches=[
                 {"at_turn": 1, "turns": 1},
                 {"at_turn": 3, "turns": 2},
             ],
-            branch_request_factory=_branch_factory,
         )
 
         # 6 main + 1 + 2 = 9 nodes
@@ -221,15 +276,14 @@ class TestFromLinearChainWithBranches:
     @pytest.mark.sanity
     def test_no_branches_produces_linear_graph(self):
         """
-        With no branches, should produce the same result as from_linear_chain.
+        With no branches, should produce a linear main chain.
 
         ## WRITTEN BY AI ##
         """
         main = [_make_request(f"main_{i}") for i in range(3)]
-        graph = GenerativeConversationGraph.from_linear_chain_with_branches(
+        graph = _graph_from_main_and_branches(
             main_requests=main,
             branches=[],
-            branch_request_factory=_branch_factory,
         )
 
         assert len(graph.nodes) == 3
@@ -244,10 +298,9 @@ class TestFromLinearChainWithBranches:
         ## WRITTEN BY AI ##
         """
         with pytest.raises(ValueError, match="empty"):
-            GenerativeConversationGraph.from_linear_chain_with_branches(
+            _graph_from_main_and_branches(
                 main_requests=[],
                 branches=[],
-                branch_request_factory=_branch_factory,
             )
 
 
@@ -439,7 +492,7 @@ class TestSyntheticBranchesEmitConversationTurns:
     @pytest.mark.smoke
     def test_branched_row_with_client_tool_turn_expands_injection(self):
         """
-        Client tool turns on the main chain expand to tool-call + injection nodes.
+        Synthetic emits a logical tool turn; the finalizer expands injection nodes.
 
         ## WRITTEN BY AI ##
         """
@@ -464,36 +517,42 @@ class TestSyntheticBranchesEmitConversationTurns:
         )
         by_id = {turn.node_id: turn for turn in graph_data.turns}
 
+        # Logical (unsplit) emission — expander owns injection insertion.
         assert set(by_id) == {
+            "main_0",
+            "main_1",
+            "main_2",
+            "branch_0_0",
+        }
+        assert "tools_column" in by_id["main_0"].columns
+        assert "tool_response_column" in by_id["main_0"].columns
+        assert "output_tokens_count_column" in by_id["main_0"].columns
+        assert [
+            (p.parent_node_id, p.history_context) for p in by_id["branch_0_0"].parents
+        ] == [("main_0", "new")]
+        assert {
+            (p.parent_node_id, p.history_context) for p in by_id["main_1"].parents
+        } == {("main_0", "full"), ("branch_0_0", "last")}
+
+        graph = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())(
+            [{"conversation_turns_column": [graph_data.model_dump(mode="json")]}]
+        )
+        assert set(graph.nodes) == {
             "main_0",
             "main_0_injection",
             "main_1",
             "main_2",
             "branch_0_0",
         }
-        assert "tools_column" in by_id["main_0"].columns
-        assert "output_tokens_count_column" not in by_id["main_0"].columns
-        assert by_id["main_0_injection"].columns["turn_type_column"] == [
-            "tool_response_injection"
-        ]
-        assert [
-            (p.parent_node_id, p.history_context)
-            for p in by_id["main_0_injection"].parents
-        ] == [("main_0", "full")]
-        assert [
-            (p.parent_node_id, p.history_context) for p in by_id["branch_0_0"].parents
-        ] == [("main_0_injection", "new")]
-        assert {
-            (p.parent_node_id, p.history_context) for p in by_id["main_1"].parents
-        } == {("main_0_injection", "full"), ("branch_0_0", "last")}
-
-        graph = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())(
-            [{"conversation_turns_column": [graph_data.model_dump(mode="json")]}]
-        )
         assert graph.nodes["main_0"].request.turn_type == "client_tool_call"
         assert (
             graph.nodes["main_0_injection"].request.turn_type
             == "tool_response_injection"
+        )
+        assert "tools_column" not in graph.nodes["main_0_injection"].request.columns
+        assert (
+            "output_tokens_count_column"
+            in graph.nodes["main_0_injection"].request.columns
         )
         edge_triples = {
             (e.source_node_id, e.target_node_id, e.history_context) for e in graph.edges

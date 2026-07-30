@@ -23,17 +23,18 @@ from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 
 
 def _ordered_requests(graph: GenerativeConversationGraph) -> list[GenerationRequest]:
-    """Return graph node requests ordered by turn index suffix.
+    """Return graph node requests in chain order (tool call before injection).
 
     ## WRITTEN BY AI ##
     """
-    return [
-        graph.nodes[nid].request
-        for nid in sorted(
-            graph.nodes,
-            key=lambda nid: int(nid.rsplit("_", 1)[-1]),
-        )
-    ]
+
+    def _sort_key(nid: str) -> tuple[int, int]:
+        if nid.endswith("_injection"):
+            base = nid[: -len("_injection")]
+            return (int(base.rsplit("_", 1)[-1]), 1)
+        return (int(nid.rsplit("_", 1)[-1]), 0)
+
+    return [graph.nodes[nid].request for nid in sorted(graph.nodes, key=_sort_key)]
 
 
 def _run_row_through_pipeline(row: dict[str, Any]) -> list[GenerationRequest]:

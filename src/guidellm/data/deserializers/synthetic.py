@@ -23,6 +23,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationTurnData,
 )
 from guidellm.schemas.base import StandardBaseModel
+from guidellm.schemas.info import RequestSettings
 from guidellm.settings import settings
 from guidellm.utils.imports import json
 from guidellm.utils.random import FloatRangeSampler, IntegerRangeSampler
@@ -660,7 +661,6 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
         # Resolve tool definitions for client-side tool-call turns
         tool_call_turns_set = set(self.config.tool_call_turns)
-        server_tool_call_turns_set = set(self.config.server_tool_call_turns)
         tools_defs: list[dict[str, Any]] | None = None
         if tool_call_turns_set:
             tools_defs = self.config.tools or DEFAULT_SYNTHETIC_TOOLS
@@ -680,73 +680,29 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
         while True:
             delay = next(delay_sampler) if delay_sampler is not None else None
-
-            if self.config.branches:
-                branched_row = self._create_branched_row(
-                    faker=faker,
-                    samples_count=samples_count,
-                    prompt_tokens_sampler=prompt_tokens_sampler,
-                    output_tokens_sampler=output_tokens_sampler,
-                    first_prompt_tokens_sampler=first_prompt_tokens_sampler,
-                    first_output_tokens_sampler=first_output_tokens_sampler,
-                    delay=delay,
-                    prefix=next(prefix_iter),
-                    tools_defs=tools_defs,
-                    tool_response_sampler=tool_response_sampler,
-                    iter_random_seed=iter_random_seed,
-                )
-                # Count main nodes (plus client-tool injections) and branch nodes
-                client_tool_extras = sum(
-                    1 for i in tool_call_turns_set if i < self.config.turns
-                )
-                samples_count += (
-                    self.config.turns
-                    + client_tool_extras
-                    + sum(b.turns for b in self.config.branches)
-                )
-                yield samples_count, branched_row
-                continue
-
-            row: dict[str, Any] = {"prefix": next(prefix_iter)}
-            for turn in range(self.config.turns):
-                prompt_tokens_count = self._sample_required_turn_tokens(
-                    turn_index=turn,
-                    main_sampler=prompt_tokens_sampler,
-                    first_sampler=first_prompt_tokens_sampler,
-                )
-                output_tokens_count = self._sample_turn_tokens(
-                    turn_index=turn,
-                    main_sampler=output_tokens_sampler,
-                    first_sampler=first_output_tokens_sampler,
-                )
-                row[f"prompt_{turn}"] = self._create_prompt(
-                    prompt_tokens_count,
-                    faker,
-                    f"{self.iteration_count} {samples_count} ",
-                )
-                row[f"prompt_tokens_count_{turn}"] = prompt_tokens_count
-                if output_tokens_count is not None:
-                    row[f"output_tokens_count_{turn}"] = output_tokens_count
-                if delay is not None:
-                    row[f"requeue_delay_{turn}"] = delay
-
-                if tools_defs is not None and turn in tool_call_turns_set:
-                    row[f"tools_{turn}"] = json.dumps(tools_defs)
-
-                    if tool_response_sampler is not None:
-                        tr_tokens = next(tool_response_sampler)
-                        body = self._create_prompt(tr_tokens, faker)
-                        row[f"tool_response_{turn}"] = json.dumps({"result": body})
-                    else:
-                        row[f"tool_response_{turn}"] = (
-                            settings.default_synthetic_tool_response
-                        )
-
-                if turn in server_tool_call_turns_set:
-                    row[f"turn_type_{turn}"] = "server_tool_call"
-
-                samples_count += 1
-
+            row = self._create_conversation_row(
+                faker=faker,
+                samples_count=samples_count,
+                prompt_tokens_sampler=prompt_tokens_sampler,
+                output_tokens_sampler=output_tokens_sampler,
+                first_prompt_tokens_sampler=first_prompt_tokens_sampler,
+                first_output_tokens_sampler=first_output_tokens_sampler,
+                delay=delay,
+                prefix=next(prefix_iter),
+                tools_defs=tools_defs,
+                tool_response_sampler=tool_response_sampler,
+                iter_random_seed=iter_random_seed,
+            )
+            # Count logical main turns, client-tool injection nodes (added by
+            # the shared finalizer expander), and branch turns.
+            client_tool_extras = sum(
+                1 for i in tool_call_turns_set if i < self.config.turns
+            )
+            samples_count += (
+                self.config.turns
+                + client_tool_extras
+                + sum(b.turns for b in self.config.branches)
+            )
             yield samples_count, row
 
     @staticmethod
@@ -782,7 +738,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             raise ValueError("prompt token sampler produced no value")
         return count
 
-    def _create_branched_row(  # noqa: C901 PLR0912 PLR0915
+    def _create_conversation_row(  # noqa: C901 PLR0912 PLR0915
         self,
         faker: Faker,
         samples_count: int,
@@ -797,11 +753,13 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         iter_random_seed: int,
     ) -> dict[str, Any]:
         """
-        Build a conversation_turns payload for BranchSpec fork/join graphs.
+        Build a ``conversation_turns`` payload for linear or branched graphs.
 
-        Main-chain ``tool_call_turns`` are pre-expanded into tool-call +
-        injection nodes so the finalizer graph path does not need to rewrite
-        the DAG. ``BranchSpec.at_turn`` remains a logical conversation index.
+        Client ``tool_call_turns`` are emitted as a single logical turn that
+        still carries ``tools_column`` and ``tool_response_column``. The shared
+        finalizer expander splits those into tool-call + injection nodes and
+        rewrites parent refs. ``BranchSpec.at_turn`` remains a logical
+        conversation index.
 
         Token sizes are sampled independently per turn from the main
         distribution. Turn 0 of the main chain and of each branch may use
@@ -822,14 +780,9 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         """
         tool_call_turns = set(self.config.tool_call_turns)
         server_tool_call_turns = set(self.config.server_tool_call_turns)
-
-        def start_id(logical_idx: int) -> str:
-            return f"main_{logical_idx}"
-
-        def end_id(logical_idx: int) -> str:
-            if logical_idx in tool_call_turns:
-                return f"main_{logical_idx}_injection"
-            return f"main_{logical_idx}"
+        turn_settings = (
+            RequestSettings(requeue_delay=delay) if delay is not None else None
+        )
 
         turns: list[ConversationTurnData] = []
 
@@ -838,7 +791,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             if turn_idx > 0:
                 parents.append(
                     ConversationParentRef(
-                        parent_node_id=end_id(turn_idx - 1),
+                        parent_node_id=f"main_{turn_idx - 1}",
                         history_context="full",
                     )
                 )
@@ -866,32 +819,22 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 faker,
                 f"{self.iteration_count} {samples_count} m{turn_idx} ",
             )
-            base_columns: dict[str, list[Any]] = {
+            columns: dict[str, list[Any]] = {
                 "text_column": [text],
                 "prompt_tokens_count_column": [prompt_tokens_count],
             }
             if turn_idx == 0 and prefix:
-                base_columns["prefix_column"] = [prefix]
-            if delay is not None:
-                base_columns["requeue_delay_column"] = [delay]
+                columns["prefix_column"] = [prefix]
+            if output_tokens_count is not None:
+                columns["output_tokens_count_column"] = [output_tokens_count]
+            if turn_idx in server_tool_call_turns:
+                columns["turn_type_column"] = ["server_tool_call"]
 
             if turn_idx in tool_call_turns:
-                tool_columns = dict(base_columns)
-                # orjson.dumps returns bytes; columns must be str for nested JSON
                 tools_raw = json.dumps(tools_defs or DEFAULT_SYNTHETIC_TOOLS)
-                tool_columns["tools_column"] = [
+                columns["tools_column"] = [
                     tools_raw.decode() if isinstance(tools_raw, bytes) else tools_raw
                 ]
-                # Output tokens live on the injection turn (mirror finalizer split)
-                turns.append(
-                    ConversationTurnData(
-                        node_id=start_id(turn_idx),
-                        agent_id="default",
-                        parents=parents,
-                        columns=tool_columns,
-                    )
-                )
-
                 if tool_response_sampler is not None:
                     tr_tokens = next(tool_response_sampler)
                     body = self._create_prompt(tr_tokens, faker)
@@ -903,46 +846,17 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                     )
                 else:
                     tool_response = settings.default_synthetic_tool_response
+                columns["tool_response_column"] = [tool_response]
 
-                injection_columns: dict[str, list[Any]] = {
-                    "tool_response_column": [tool_response],
-                    "turn_type_column": ["tool_response_injection"],
-                }
-                if output_tokens_count is not None:
-                    injection_columns["output_tokens_count_column"] = [
-                        output_tokens_count
-                    ]
-                if delay is not None:
-                    injection_columns["requeue_delay_column"] = [delay]
-
-                turns.append(
-                    ConversationTurnData(
-                        node_id=end_id(turn_idx),
-                        agent_id="default",
-                        parents=[
-                            ConversationParentRef(
-                                parent_node_id=start_id(turn_idx),
-                                history_context="full",
-                            )
-                        ],
-                        columns=injection_columns,
-                    )
+            turns.append(
+                ConversationTurnData(
+                    node_id=f"main_{turn_idx}",
+                    agent_id="default",
+                    parents=parents,
+                    columns=columns,
+                    settings=turn_settings,
                 )
-            else:
-                columns = dict(base_columns)
-                if output_tokens_count is not None:
-                    columns["output_tokens_count_column"] = [output_tokens_count]
-                if turn_idx in server_tool_call_turns:
-                    columns["turn_type_column"] = ["server_tool_call"]
-
-                turns.append(
-                    ConversationTurnData(
-                        node_id=start_id(turn_idx),
-                        agent_id="default",
-                        parents=parents,
-                        columns=columns,
-                    )
-                )
+            )
 
         for b_idx, branch in enumerate(self.config.branches):
             # Branch-local first_* overrides; otherwise inherit parent first_* samplers
@@ -975,7 +889,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 if t == 0:
                     parents = [
                         ConversationParentRef(
-                            parent_node_id=end_id(branch.at_turn),
+                            parent_node_id=f"main_{branch.at_turn}",
                             history_context="new",
                         )
                     ]
@@ -1036,28 +950,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
 
     @property
     def features(self) -> Features:
-        if self.config.branches:
-            return Features({"conversation_turns": Value("large_string")})
-
-        features: dict[str, Any] = {"prefix": Value("string")}
-        for i in range(self.config.turns):
-            features[f"prompt_{i}"] = Value("string")
-            features[f"prompt_tokens_count_{i}"] = Value("int32")
-            if self.config.output_tokens is not None:
-                features[f"output_tokens_count_{i}"] = Value("int32")
-            if self.config.delay is not None:
-                features[f"requeue_delay_{i}"] = Value("float")
-
-            if i in set(self.config.tool_call_turns):
-                # Tools column is a JSON-serialised list; store as string
-                # to keep the HuggingFace Features schema simple.
-                features[f"tools_{i}"] = Value("large_string")
-                features[f"tool_response_{i}"] = Value("large_string")
-
-            if i in set(self.config.server_tool_call_turns):
-                features[f"turn_type_{i}"] = Value("string")
-
-        return Features(features)
+        return Features({"conversation_turns": Value("large_string")})
 
     @property
     def num_shards(self) -> int:

@@ -25,17 +25,19 @@ from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 def _ordered_requests(
     graph: GenerativeConversationGraph,
 ) -> list[GenerationRequest]:
-    """Return graph node requests ordered by turn index suffix.
+    """Return graph node requests in chain order (tool call before injection).
 
     ## WRITTEN BY AI ##
     """
-    return [
-        graph.nodes[nid].request
-        for nid in sorted(
-            graph.nodes,
-            key=lambda nid: int(nid.rsplit("_", 1)[-1]),
-        )
-    ]
+
+    def _sort_key(nid: str) -> tuple[int, int]:
+        if nid.endswith("_injection"):
+            base = nid[: -len("_injection")]
+            return (int(base.rsplit("_", 1)[-1]), 1)
+        return (int(nid.rsplit("_", 1)[-1]), 0)
+
+    return [graph.nodes[nid].request for nid in sorted(graph.nodes, key=_sort_key)]
+
 
 
 class TestGenerativeRequestFinalizerTokenAggregation:
@@ -705,11 +707,11 @@ class TestGenerativeRequestFinalizerRequestSettings:
     @pytest.mark.smoke
     def test_relative_timestamp_column_sets_settings(self, finalizer):
         """### WRITTEN BY AI ###"""
-        _gen_req, req_settings = finalizer.finalize_turn(
-            {"relative_timestamp_column": [2.5]}
-        )
+        columns = {"relative_timestamp_column": [2.5], "text_column": ["hi"]}
+        gen_req, req_settings = finalizer.finalize_turn(columns)
 
         assert req_settings == RequestSettings(relative_timestamp=2.5)
+        assert "relative_timestamp_column" not in gen_req.columns
 
     @pytest.mark.smoke
     def test_missing_relative_timestamp_column_uses_empty_settings(self, finalizer):
@@ -777,6 +779,35 @@ class TestFinalizerConversationGraph:
         assert node.settings == RequestSettings(
             relative_timestamp=1.5,
             requeue_delay=0.25,
+        )
+        assert "relative_timestamp_column" not in node.request.columns
+        assert "requeue_delay_column" not in node.request.columns
+
+    @pytest.mark.smoke
+    def test_turn_settings_preferred_over_columns(self):
+        """ConversationTurnData.settings wins over scheduling columns.
+
+        ## WRITTEN BY AI ##
+        """
+        graph_data = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="main_0",
+                    columns={
+                        "text_column": ["hello"],
+                        "relative_timestamp_column": [9.0],
+                    },
+                    settings=RequestSettings(relative_timestamp=1.5, requeue_delay=0.5),
+                ),
+            ]
+        )
+        finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+        graph = finalizer(
+            [{"conversation_turns_column": [graph_data.model_dump(mode="json")]}]
+        )
+        assert graph.nodes["main_0"].settings == RequestSettings(
+            relative_timestamp=1.5,
+            requeue_delay=0.5,
         )
 
     @pytest.mark.smoke

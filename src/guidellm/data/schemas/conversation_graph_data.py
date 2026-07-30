@@ -15,6 +15,7 @@ from pydantic import Field, model_validator
 
 from guidellm.scheduler.schemas import HistoryContext
 from guidellm.schemas.base import StandardBaseModel
+from guidellm.schemas.info import RequestSettings
 
 __all__ = [
     "ConversationGraphData",
@@ -53,8 +54,8 @@ class ConversationTurnData(StandardBaseModel):
     :param parents: Inline parent dependencies (empty for roots).
     :param columns: Column dict in the shape expected by
         :meth:`~guidellm.data.finalizers.generative.GenerativeRequestFinalizer.finalize_turn`.
-    :param relative_timestamp: Optional scheduling timestamp override.
-    :param requeue_delay: Optional think-time / requeue delay override.
+    :param settings: Optional per-turn scheduling metadata
+        (:class:`~guidellm.schemas.info.RequestSettings`).
     """
 
     node_id: str = Field(
@@ -75,13 +76,9 @@ class ConversationTurnData(StandardBaseModel):
             "prompt_tokens_count_column)."
         ),
     )
-    relative_timestamp: float | None = Field(
+    settings: RequestSettings | None = Field(
         default=None,
-        description="Optional relative timestamp for trace-style replay.",
-    )
-    requeue_delay: float | None = Field(
-        default=None,
-        description="Optional requeue / think-time delay for this turn.",
+        description="Optional per-turn scheduling metadata for the scheduler.",
     )
 
 
