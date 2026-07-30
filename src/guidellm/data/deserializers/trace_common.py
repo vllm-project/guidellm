@@ -37,6 +37,7 @@ from guidellm.utils.json_unwrap import (
     VirtualColumnLocation,
     construct_virtual_column_locations,
     get_json_column_names,
+    try_json_load,
     unzip_virtual_column_locations,
 )
 from guidellm.utils.registry import RegistryMixin
@@ -308,7 +309,8 @@ def _find_virtual_columns(
     """Required columns must all be stored within the same column."""
     completely_missing = set(target_columns)
     for col in json_column_names:
-        parsed = sample_row[col]
+        sample = sample_row[col]
+        parsed = try_json_load(sample) if isinstance(sample, str) else sample
         if _is_supported_json_data_type(parsed) and len(parsed) > 0:
             virtual_columns = [] if parsed is None else list(parsed[0].keys())
             missing = _get_missing_columns(target_columns, virtual_columns)
@@ -354,7 +356,10 @@ def _make_columns_from_virtual(
     json_dicts = []
     conv_ids = []
     for batch_idx, json_dicts_list in enumerate(batch[wrapper_col]):
-        json_dicts.extend(json_dicts_list)
+        if len(json_dicts_list) > 0 and isinstance(json_dicts_list[0], str):
+            json_dicts.extend(list(map(try_json_load, json_dicts_list)))
+        else:
+            json_dicts.extend(json_dicts_list)
         if conversation_id_col:
             conv_ids.extend([indices[batch_idx]] * len(json_dicts_list))
     result = {c: [row[c] for row in json_dicts] for c in virtual_cols}
