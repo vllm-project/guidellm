@@ -292,7 +292,7 @@ class Status(enum.Enum):
 class ColumnSearchResult:
     status: Status
     checked_json_columns: bool
-    apropos_column_names: Sequence[str | VirtualColumnLocation]
+    relevant_column_names: Sequence[str | VirtualColumnLocation]
 
 
 def _is_supported_json_data_type(data: Any) -> bool:
@@ -337,7 +337,7 @@ def _find_required_columns(
         sample = dataset[0]
         result = _find_virtual_columns(sample, json_column_names, columns)
         if result.status is Status.FAILURE and not result.checked_json_columns:
-            result.apropos_column_names = missing
+            result.relevant_column_names = missing
         return result
     return ColumnSearchResult(Status.SUCCESS, False, [])
 
@@ -403,14 +403,14 @@ def _handle_column_search_result(
                 "this is where they are intended to be found."
             )
         raise KeyError(
-            f"Trace row missing required columns: {result.apropos_column_names} "
+            f"Trace row missing required columns: {result.relevant_column_names} "
             f"{additional_info}"
         )
     if not result.checked_json_columns:
         return dataset
     return _make_dataset_from_virtual(
         dataset,
-        cast("list[VirtualColumnLocation]", result.apropos_column_names),
+        cast("list[VirtualColumnLocation]", result.relevant_column_names),
         conversation_id_col,
     )
 
@@ -428,11 +428,12 @@ def _load_trace_rows(
     otherwise KeyError is raised with a descriptive message.
     Rows are sorted by column timestamp_column_name.
 
-    :param path: Path to the trace file.
+    :param dataset: The dataset to load.
     :param timestamp_column_name: Name of the timestamp column used to sort trace rows.
     :param required_columns: List of column/fields that each row must have. Must contain
     the timestamp column.
-    :param data_kwargs: Additional keyword arguments forwarded to load_dataset.
+    :param conversation_id_column_name: The conversation id column used to sort rows,
+    if applicable.
     :return: HuggingFace Dataset (iterable as dicts, column-accessible).
     :raises DataNotSupportedError: For any of the following reasons:
     - The dataset is empty or has no valid rows
