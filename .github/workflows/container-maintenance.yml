@@ -32,7 +32,7 @@ jobs:
     if: always() # Run after cleanup even if it fails
     steps:
       - name: Log into ghcr.io
-        uses: redhat-actions/podman-login@4934294ad0449894bcd1e9f191899d7292469603 # v1.7
+        uses: redhat-actions/podman-login@50c2d9a331bb67c8fdab99b86455fad05e2e3252 # v2.0
         with:
           username: ${{ github.repository_owner }}
           password: ${{ github.token }}
