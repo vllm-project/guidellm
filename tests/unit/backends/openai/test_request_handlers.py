@@ -5303,12 +5303,16 @@ class TestChatCompletionsToolChoiceOverride:
         ]
         rows = finalizer(items)
         assert isinstance(rows, GenerativeConversationGraph)
+
+        def _sort_key(nid: str) -> tuple[int, int]:
+            # turn_0 before turn_0_injection before turn_1
+            if nid.endswith("_injection"):
+                base = nid[: -len("_injection")]
+                return (int(base.rsplit("_", 1)[-1]), 1)
+            return (int(nid.rsplit("_", 1)[-1]), 0)
+
         requests = [
-            rows.nodes[nid].request
-            for nid in sorted(
-                rows.nodes,
-                key=lambda nid: int(nid.rsplit("_", 1)[-1]),
-            )
+            rows.nodes[nid].request for nid in sorted(rows.nodes, key=_sort_key)
         ]
 
         assert len(requests) == 2

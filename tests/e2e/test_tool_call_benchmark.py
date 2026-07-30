@@ -1,6 +1,7 @@
 # E2E tests for client-side tool calling benchmark scenarios
 
 import multiprocessing
+import socket
 import time
 from pathlib import Path
 
@@ -15,23 +16,21 @@ from tests.e2e.utils import (
     load_benchmark_report,
 )
 
-MOCK_SERVER_PORT = 8013
 MOCK_SERVER_HOST = "127.0.0.1"
 
 # macOS workers segfault with fork; use spawn for maximum compatibility
 _BENCHMARK_ENV = {"GUIDELLM__MP_CONTEXT_TYPE": "spawn"}
 
 
-def _start_mock_server():
+def _free_port() -> int:
+    """Bind to port 0 and return the OS-assigned free port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((MOCK_SERVER_HOST, 0))
+        return int(sock.getsockname()[1])
+
+
+def _start_mock_server(config: MockServerConfig) -> None:
     """Start the MockServer in a subprocess."""
-    config = MockServerConfig(
-        host=MOCK_SERVER_HOST,
-        port=MOCK_SERVER_PORT,
-        model="test-tool-model",
-        ttft_ms=5.0,
-        itl_ms=1.0,
-        output_tokens=32,
-    )
     server = MockServer(config)
     server.run()
 
@@ -42,16 +41,33 @@ def server():
     Start and stop a MockServer for tool calling E2E tests.
 
     Uses the built-in MockServer which supports tool_calls responses
-    when tool_choice="required" is present in the request.
+    when tool_choice="required" is present in the request. Uses an
+    ephemeral port so a leftover listener on a fixed port cannot mask
+    a failed bind.
     """
-    server_process = multiprocessing.Process(target=_start_mock_server, daemon=True)
+    config = MockServerConfig(
+        host=MOCK_SERVER_HOST,
+        port=_free_port(),
+        model="test-tool-model",
+        ttft_ms=5.0,
+        itl_ms=1.0,
+        output_tokens=32,
+    )
+    base_url = f"http://{config.host}:{config.port}"
+    server_process = multiprocessing.Process(
+        target=_start_mock_server, args=(config,), daemon=True
+    )
     server_process.start()
 
-    base_url = f"http://{MOCK_SERVER_HOST}:{MOCK_SERVER_PORT}"
-
-    # Poll until server is ready
+    # Poll until *this* process is serving /health (not a leftover listener)
     deadline = time.time() + 30.0
     while time.time() < deadline:
+        if not server_process.is_alive():
+            server_process.join(timeout=5)
+            pytest.fail(
+                f"MockServer process exited before becoming ready "
+                f"(exitcode={server_process.exitcode})"
+            )
         try:
             resp = httpx.get(f"{base_url}/health", timeout=1.0)
             if resp.status_code == 200:
