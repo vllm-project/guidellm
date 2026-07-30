@@ -109,8 +109,8 @@ class TestWEKATraceFormat:
     def test_format_registered_with_deserializer(self, tmp_path: Path):
         trace = write_trace(
             tmp_path,
-            '{"id": "conv0", "requests": [{"timestamp": 0, "input_length": 10,'
-            '"output_length": 5, "hash_ids": []}]}\n',
+            '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
+            '"out": 5, "hash_ids": []}]}\n',
         )
         DatasetDeserializerFactory.deserialize(
             config=WEKATraceFormatArgs(path=trace),
@@ -156,7 +156,7 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("conv_id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("ts", lambda i: i),
+                    TraceColumnGenerator("timestamp", lambda i: i),
                     TraceColumnGenerator("input_tokens", lambda i: i + 1),
                     TraceColumnGenerator("generated_tokens", lambda i: (i + 1) * 10),
                     TraceColumnGenerator("ids", lambda _: []),
@@ -167,7 +167,7 @@ class TestWEKATraceFormat:
             deserializer,
             trace,
             conversation_id_column="conv_id",
-            timestamp_column="ts",
+            timestamp_column="timestamp",
             prompt_tokens_column="input_tokens",
             output_tokens_column="generated_tokens",
             hash_ids_column="ids",
@@ -185,9 +185,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda _: n_in),
-                    TraceColumnGenerator("output_length", lambda i: i + 1),
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda i: i + 1),
                     # Would throw a DataNotSupportedError with default block size 64
                     # See row validation in trace_weka.py
                     TraceColumnGenerator("hash_ids", lambda _: [1, 2, 3, 4, 5]),
@@ -217,9 +217,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: timestamps[i]),
-                    TraceColumnGenerator("input_length", lambda i: prompt_lengths[i]),
-                    TraceColumnGenerator("output_length", lambda i: output_lengths[i]),
+                    TraceColumnGenerator("t", lambda i: timestamps[i]),
+                    TraceColumnGenerator("in", lambda i: prompt_lengths[i]),
+                    TraceColumnGenerator("out", lambda i: output_lengths[i]),
                     TraceColumnGenerator("hash_ids", lambda i: hash_ids[i]),
                 ],
             ),
@@ -250,9 +250,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda i: n_in[i]),
-                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda i: n_in[i]),
+                    TraceColumnGenerator("out", lambda _: 5),
                     TraceColumnGenerator("hash_ids", lambda i: hash_ids[i]),
                 ],
             ),
@@ -279,9 +279,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda _: n_in),
-                    TraceColumnGenerator("output_length", lambda i: i),
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda i: i),
                     TraceColumnGenerator("hash_ids", lambda i: hash_ids + [i + 2]),
                 ],
             ),
@@ -298,14 +298,14 @@ class TestWEKATraceFormat:
         ("content", "kwargs", "match"),
         [
             (
-                '{"id": "conv0", "requests": [{"timestamp": 0, "input_length": 10,'
-                '"output_length": 5, "hash_ids": [-1]}]}\n',
+                '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
+                '"out": 5, "hash_ids": [-1]}]}\n',
                 {},
                 "non-negative",
             ),
             (
-                '{"id": "conv0", "requests": [{"timestamp": 0, "input_length": 1024,'
-                '"output_length": 5, "hash_ids": [1]}]}\n',
+                '{"id": "conv0", "requests": [{"t": 0, "in": 1024,'
+                '"out": 5, "hash_ids": [1]}]}\n',
                 {},
                 "given 1 blocks",
             ),
@@ -332,9 +332,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda _: n_in),
-                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda _: 5),
                     TraceColumnGenerator("hash_ids", lambda i: [1, i + 2]),
                 ],
             ),
@@ -362,9 +362,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda _: n_in),
-                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda _: 5),
                     TraceColumnGenerator("hash_ids", lambda i: [1, i + 2]),
                 ],
             ),
@@ -394,9 +394,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda _: 10),
-                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: 10),
+                    TraceColumnGenerator("out", lambda _: 5),
                     TraceColumnGenerator("hash_ids", lambda _: []),
                 ],
             ),
@@ -421,9 +421,9 @@ class TestWEKATraceFormat:
                 n_virtual_rows,
                 [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda i: i),
-                    TraceColumnGenerator("input_length", lambda _: n_in),
-                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda _: 5),
                     TraceColumnGenerator("hash_ids", lambda i: [1, i + 2]),
                 ],
             ),
@@ -445,9 +445,9 @@ class TestWEKATraceFormat:
                 1,
                 [TraceColumnGenerator("id", lambda _: '"conv0"')],
                 [
-                    TraceColumnGenerator("timestamp", lambda _: 0.0),
-                    TraceColumnGenerator("input_length", lambda _: 0),
-                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("t", lambda _: 0.0),
+                    TraceColumnGenerator("in", lambda _: 0),
+                    TraceColumnGenerator("out", lambda _: 5),
                     TraceColumnGenerator("hash_ids", lambda _: []),
                 ],
             ),

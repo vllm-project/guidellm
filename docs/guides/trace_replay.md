@@ -59,3 +59,11 @@ GuideLLM will generate prompts starting from the first conversation. When the co
 | `conversation_id_column` | "id"       | Column name for conversation UUIDs in the trace file |
 | `hash_ids_column`        | "hash_ids" | Column name for lists of hash IDs in the trace file  |
 | `hash_id_block_size`     | 64         | Amount of tokens represented by one hash ID          |
+
+Modified defaults:
+
+| Argument               | New Default |
+| ---------------------- | ----------- |
+| `timestamp_column`     | "t"         |
+| `prompt_tokens_column` | "in"        |
+| `output_tokens_column` | "out"       |

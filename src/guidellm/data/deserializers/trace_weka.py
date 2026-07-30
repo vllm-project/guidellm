@@ -80,6 +80,18 @@ class WEKATraceFormatArgs(TraceDataArgs):
         default="weka",
         description="Type identifier for the WEKA trace format.",
     )
+    timestamp_column: str = Field(
+        default="t",
+        description="Column name for timestamps in the trace file.",
+    )
+    prompt_tokens_column: str = Field(
+        default="in",
+        description="Column name for prompt token counts in the trace file.",
+    )
+    output_tokens_column: str = Field(
+        default="out",
+        description="Column name for output token counts in the trace file.",
+    )
     conversation_id_column: str = Field(
         default="id",
         description="Column name for conversation UUIDs in the trace file.",
