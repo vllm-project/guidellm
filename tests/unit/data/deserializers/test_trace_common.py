@@ -203,7 +203,7 @@ class TestTraceDatasetDeserializer:
             assert row["prompt_tokens_count"] == i + 1
             assert row["output_tokens_count"] == (i + 1) * 10
             assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
-    
+
     @pytest.mark.sanity
     def test_loads_requests_column_stored_as_json_string(
         self, tmp_path: Path, deserializer
@@ -218,8 +218,6 @@ class TestTraceDatasetDeserializer:
             ' \\"output_length\\": 5}, {\\"timestamp\\": 1, \\"input_length\\": 20,'
             ' \\"output_length\\": 10}]"}\n',
         )
-        with open(trace, "r") as f:
-            print(f.read())
         ds = self.deserialize(deserializer, trace)
         rows = list(ds)
         assert len(rows) == 2
