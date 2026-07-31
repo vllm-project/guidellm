@@ -112,7 +112,7 @@ def test_preprocess_dataset_rejects_legacy_config_flag():
     )
 
     assert result.exit_code != 0
-    assert "No such option: --config" in result.output
+    assert "No such option '--config'" in result.output
 
 
 @pytest.mark.regression

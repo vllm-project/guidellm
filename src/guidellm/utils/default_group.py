@@ -95,7 +95,7 @@ class DefaultCommandFormatter(click.HelpFormatter):
     def __getattr__(self, attr):
         return getattr(self.formatter, attr)
 
-    def write_dl(self, rows: cabc.Sequence[tuple[str, str]], *args, **kwargs):
+    def write_dl(self, rows: cabc.Iterable[tuple[str, str]], *args, **kwargs):
         rows_: list[tuple[str, str]] = []
         for cmd_name, help_msg in rows:
             if cmd_name == self.group.default_cmd_name:
