@@ -203,6 +203,30 @@ class TestTraceDatasetDeserializer:
             assert row["prompt_tokens_count"] == i + 1
             assert row["output_tokens_count"] == (i + 1) * 10
             assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
+    
+    @pytest.mark.sanity
+    def test_loads_requests_column_stored_as_json_string(
+        self, tmp_path: Path, deserializer
+    ):
+        """Unwrap when the wrapper column is a JSON string of a list, not a native list.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"requests": "[{\\"timestamp\\": 0, \\"input_length\\": 10,'
+            ' \\"output_length\\": 5}, {\\"timestamp\\": 1, \\"input_length\\": 20,'
+            ' \\"output_length\\": 10}]"}\n',
+        )
+        with open(trace, "r") as f:
+            print(f.read())
+        ds = self.deserialize(deserializer, trace)
+        rows = list(ds)
+        assert len(rows) == 2
+        assert rows[0]["prompt_tokens_count"] == 10
+        assert rows[0]["output_tokens_count"] == 5
+        assert rows[1]["prompt_tokens_count"] == 20
+        assert rows[1]["output_tokens_count"] == 10
 
     @pytest.mark.smoke
     def test_emits_relative_timestamp_column_sorted_from_trace(

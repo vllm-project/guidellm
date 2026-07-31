@@ -344,6 +344,14 @@ def _find_required_columns(
     return ColumnSearchResult(Status.SUCCESS, False, [])
 
 
+def _get_json_dicts(data: Any) -> Any:
+    if isinstance(data, str):
+        return try_json_load(data)
+    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], str):
+        return list(map(try_json_load, data))
+    return data
+
+
 def _make_columns_from_virtual(
     batch: dict[str, list],
     *args,
@@ -356,10 +364,7 @@ def _make_columns_from_virtual(
     json_dicts = []
     conv_ids = []
     for batch_idx, json_dicts_list in enumerate(batch[wrapper_col]):
-        if len(json_dicts_list) > 0 and isinstance(json_dicts_list[0], str):
-            json_dicts.extend(list(map(try_json_load, json_dicts_list)))
-        else:
-            json_dicts.extend(json_dicts_list)
+        json_dicts.extend(_get_json_dicts(json_dicts_list))
         if conversation_id_col:
             conv_ids.extend([indices[batch_idx]] * len(json_dicts_list))
     result = {c: [row[c] for row in json_dicts] for c in virtual_cols}

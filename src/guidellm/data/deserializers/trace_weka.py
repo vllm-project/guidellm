@@ -198,4 +198,8 @@ class WEKATraceFormat(TraceFormatBase):
             processor,
             faker,
         )
-        return f"{prompt} {remainder}".strip()
+        if not prompt:
+            return remainder
+        if not remainder:
+            return prompt
+        return f"{prompt} {remainder}"
