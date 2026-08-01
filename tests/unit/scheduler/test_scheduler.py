@@ -22,7 +22,7 @@ from guidellm.scheduler.constraints import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
 )
-from guidellm.scheduler.schemas import ConversationGraph
+from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 from tests.unit.testing_utils import async_timeout
@@ -35,6 +35,25 @@ class MockRequest(BaseModel):
 
 class MockConversationGraph(ConversationGraph[MockRequest]):
     """Bound graph type so IPC deserialization restores MockRequest nodes."""
+
+
+def _single_request_graph(payload: str) -> MockConversationGraph:
+    """Build a one-node conversation graph for scheduler tests.
+
+    ## WRITTEN BY AI ##
+    """
+    return MockConversationGraph(
+        graph_id=str(uuid.uuid4()),
+        nodes={
+            "turn_0": ConversationNode(
+                node_id="turn_0",
+                agent_id="default",
+                request=MockRequest(payload=payload),
+                settings=RequestSettings(),
+            )
+        },
+        edges=[],
+    )
 
 
 class MockBackend(BackendInterface):
@@ -183,12 +202,7 @@ class TestScheduler:
     ):
         """Test Scheduler.run basic functionality with various parameters."""
         instance, _ = valid_instances
-        requests = [
-            MockConversationGraph.from_linear_chain(
-                [(MockRequest(payload=f"req_{i}"), RequestSettings())]
-            )
-            for i in range(num_requests)
-        ]
+        requests = [_single_request_graph(f"req_{i}") for i in range(num_requests)]
         backend = MockBackend(error_rate=0.0, response_delay=0.001)
         strategy = SynchronousStrategy()
         env = NonDistributedEnvironment()
@@ -214,12 +228,7 @@ class TestScheduler:
     async def test_run_with_errors(self, valid_instances):
         """Test Scheduler.run error handling."""
         instance, _ = valid_instances
-        requests = [
-            MockConversationGraph.from_linear_chain(
-                [(MockRequest(payload=f"req_{i}"), RequestSettings())]
-            )
-            for i in range(5)
-        ]
+        requests = [_single_request_graph(f"req_{i}") for i in range(5)]
         backend = MockBackend(error_rate=1.0)  # Force all requests to error
         strategy = SynchronousStrategy()
         env = NonDistributedEnvironment()
@@ -262,12 +271,7 @@ class TestScheduler:
     async def test_run_constraint_variations(self, valid_instances):
         """Test Scheduler.run with different constraint types."""
         instance, _ = valid_instances
-        requests = [
-            MockConversationGraph.from_linear_chain(
-                [(MockRequest(payload=f"req_{i}"), RequestSettings())]
-            )
-            for i in range(3)
-        ]
+        requests = [_single_request_graph(f"req_{i}") for i in range(3)]
         backend = MockBackend(error_rate=0.0, response_delay=0.001)
         strategy = SynchronousStrategy()
         env = NonDistributedEnvironment()

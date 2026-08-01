@@ -4,8 +4,8 @@ Concrete conversation graph schemas for generative benchmarks.
 Binds the generic :class:`~guidellm.scheduler.schemas.ConversationGraph` and
 :class:`~guidellm.scheduler.schemas.ConversationNode` to
 :class:`~guidellm.schemas.request.GenerationRequest`, providing the data pipeline
-and benchmark layer with typed graph models and backward-compatible helpers for
-converting linear conversation chains into degenerate single-path graphs.
+and benchmark layer with typed graph models and helpers for constructing graphs
+from node maps with parent dependency refs.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from guidellm.scheduler.schemas import (
     ConversationNode,
     HistoryContext,
 )
-from guidellm.schemas.info import RequestSettings
 from guidellm.schemas.request import GenerationRequest
 
 __all__ = [
@@ -46,60 +45,6 @@ class GenerativeConversationGraph(ConversationGraph[GenerationRequest]):
     Binds ``RequestT = GenerationRequest`` and provides convenience methods
     for constructing graphs from existing data formats.
     """
-
-    @classmethod
-    def from_linear_chain(
-        cls,
-        requests: list[tuple[GenerationRequest, RequestSettings]],
-        agent_id: str = "default",
-    ) -> Self:
-        """
-        Wrap a linear list of request/settings pairs as a single-path graph.
-
-        Each request becomes a node connected to the next via a ``full``
-        edge, preserving the existing multi-turn conversation semantics.
-        Scheduling metadata is taken from the pair's ``RequestSettings``,
-        not from the request payload (keeps ``RequestT`` generic).
-
-        :param requests: Ordered list of ``(request, settings)`` pairs
-            forming a conversation chain.
-        :param agent_id: Agent identifier to assign to all nodes.
-            Defaults to ``"default"``.
-        :return: A conversation graph with one path through all requests.
-        :raises ValueError: If the requests list is empty.
-        """
-        if not requests:
-            raise ValueError("Cannot create a graph from an empty request list")
-
-        graph_id = str(uuid.uuid4())
-        nodes: dict[str, GenerativeConversationNode] = {}
-        edges: list[ConversationEdge] = []
-
-        node_ids: list[str] = []
-        for i, (request, settings) in enumerate(requests):
-            node_id = f"turn_{i}"
-            node_ids.append(node_id)
-            nodes[node_id] = GenerativeConversationNode(
-                node_id=node_id,
-                agent_id=agent_id,
-                request=request,
-                settings=settings,
-            )
-
-        for i in range(len(node_ids) - 1):
-            edges.append(
-                ConversationEdge(
-                    source_node_id=node_ids[i],
-                    target_node_id=node_ids[i + 1],
-                    history_context="full",
-                )
-            )
-
-        return cls(
-            graph_id=graph_id,
-            nodes=cast("dict[str, ConversationNode[GenerationRequest]]", nodes),
-            edges=edges,
-        )
 
     @classmethod
     def from_nodes_with_parents(

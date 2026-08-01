@@ -22,7 +22,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
 )
 from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
-from guidellm.scheduler.schemas import ConversationGraph
+from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.schemas import RequestInfo, RequestSettings
 
 
@@ -46,6 +46,25 @@ class MockRequest(BaseModel):
 
 class MockConversationGraph(ConversationGraph[MockRequest]):
     """Bound graph type so IPC deserialization restores MockRequest nodes."""
+
+
+def _single_request_graph(payload: str) -> MockConversationGraph:
+    """Build a one-node conversation graph for scheduler tests.
+
+    ## WRITTEN BY AI ##
+    """
+    return MockConversationGraph(
+        graph_id=str(uuid.uuid4()),
+        nodes={
+            "turn_0": ConversationNode(
+                node_id="turn_0",
+                agent_id="default",
+                request=MockRequest(payload=payload),
+                settings=RequestSettings(),
+            )
+        },
+        edges=[],
+    )
 
 
 class MockBackend(BackendInterface):
@@ -134,12 +153,7 @@ async def test_scheduler_run_integration(
     num_requests = 100
 
     async for resp, req, info, state in scheduler.run(
-        requests=[
-            MockConversationGraph.from_linear_chain(
-                [(MockRequest(payload=f"req_{ind}"), RequestSettings())]
-            )
-            for ind in range(num_requests)
-        ],
+        requests=[_single_request_graph(f"req_{ind}") for ind in range(num_requests)],
         backend=MockBackend(),
         strategy=strategy,
         env=env,

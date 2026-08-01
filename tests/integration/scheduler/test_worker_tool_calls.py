@@ -19,8 +19,12 @@ import pytest
 import pytest_asyncio
 
 from guidellm.scheduler import SynchronousStrategy, WorkerProcess
+from guidellm.scheduler.schemas import ConversationEdge
 from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
+from guidellm.schemas.conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
+)
 from guidellm.utils.messaging import InterProcessMessagingQueue
 
 
@@ -108,15 +112,33 @@ def _make_graph(num_turns: int, tool_call_turns: int) -> GenerativeConversationG
 
     ## WRITTEN BY AI ##
     """
-    pairs = []
+    nodes: dict[str, GenerativeConversationNode] = {}
+    edges: list[ConversationEdge] = []
     for i in range(num_turns):
-        req = GenerationRequest(
-            columns={"text_column": [f"turn_{i}"]},
-            turn_type="client_tool_call" if i < tool_call_turns else "standard",
+        node_id = f"turn_{i}"
+        nodes[node_id] = GenerativeConversationNode(
+            node_id=node_id,
+            agent_id="default",
+            request=GenerationRequest(
+                columns={"text_column": [f"turn_{i}"]},
+                turn_type="client_tool_call" if i < tool_call_turns else "standard",
+            ),
+            settings=RequestSettings(),
         )
-        pairs.append((req, RequestSettings()))
+        if i > 0:
+            edges.append(
+                ConversationEdge(
+                    source_node_id=f"turn_{i - 1}",
+                    target_node_id=node_id,
+                    history_context="full",
+                )
+            )
 
-    graph = GenerativeConversationGraph.from_linear_chain(pairs)
+    graph = GenerativeConversationGraph(
+        graph_id="test_graph",
+        nodes=nodes,
+        edges=edges,
+    )
     for i in range(num_turns):
         node_id = f"turn_{i}"
         node = graph.nodes[node_id]

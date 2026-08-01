@@ -78,7 +78,7 @@ def turns_from_mapped_items(items: list[dict[str, Any]]) -> ConversationGraphDat
     :raises ValueError: If ``conversation_turns_column`` is present but empty.
     """
     for item in items:
-        raw_values = item.get("conversation_turns_column") or []
+        raw_values = item.get("conversation_turns_column")
         if not raw_values:
             continue
         graph_data = _parse_conversation_turns(raw_values[0])

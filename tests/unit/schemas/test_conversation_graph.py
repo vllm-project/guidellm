@@ -217,80 +217,23 @@ class TestGenerativeConversationGraph:
     """
 
     @pytest.mark.smoke
-    def test_from_linear_chain(self):
-        """
-        from_linear_chain should create a valid degenerate graph
-        with full edges connecting sequential turns.
-
-        ## WRITTEN BY AI ##
-        """
-        reqs = [
-            (
-                GenerationRequest(columns={"text_column": [f"turn {i}"]}),
-                RequestSettings(),
-            )
-            for i in range(3)
-        ]
-        graph = GenerativeConversationGraph.from_linear_chain(reqs)
-
-        assert len(graph.nodes) == 3
-        assert len(graph.edges) == 2
-        assert graph.root_node_ids == ["turn_0"]
-
-        for edge in graph.edges:
-            assert edge.history_context == "full"
-
-    @pytest.mark.smoke
-    def test_from_linear_chain_single_request(self):
-        """
-        A single request should produce a graph with one node and no edges.
-
-        ## WRITTEN BY AI ##
-        """
-        req = GenerationRequest(columns={"text_column": ["hello"]})
-        graph = GenerativeConversationGraph.from_linear_chain(
-            [(req, RequestSettings())]
-        )
-
-        assert len(graph.nodes) == 1
-        assert len(graph.edges) == 0
-        assert graph.root_node_ids == ["turn_0"]
-
-    @pytest.mark.sanity
-    def test_from_linear_chain_empty_raises(self):
-        """
-        An empty request list should raise ValueError.
-
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValueError, match="empty"):
-            GenerativeConversationGraph.from_linear_chain([])
-
-    @pytest.mark.sanity
-    def test_from_linear_chain_inherits_settings(self):
-        """
-        Node settings should be populated from the pair's RequestSettings.
-
-        ## WRITTEN BY AI ##
-        """
-        req = GenerationRequest(columns={"text_column": ["hello"]})
-        settings = RequestSettings(relative_timestamp=1.5, requeue_delay=2.0)
-        graph = GenerativeConversationGraph.from_linear_chain([(req, settings)])
-        node = graph.nodes["turn_0"]
-        assert node.settings.relative_timestamp == 1.5
-        assert node.settings.requeue_delay == 2.0
-
-    @pytest.mark.smoke
     def test_is_conversation_graph_subclass(self):
         """
         GenerativeConversationGraph should be a subclass of ConversationGraph.
 
         ## WRITTEN BY AI ##
         """
-        reqs = [
-            (GenerationRequest(columns={"text_column": ["hello"]}), RequestSettings())
-        ]
-        graph = GenerativeConversationGraph.from_linear_chain(reqs)
+        graph = GenerativeConversationGraph.from_nodes_with_parents(
+            nodes={
+                "turn_0": GenerativeConversationNode(
+                    node_id="turn_0",
+                    agent_id="default",
+                    request=GenerationRequest(columns={"text_column": ["hello"]}),
+                    settings=RequestSettings(),
+                )
+            },
+            parents_by_node={"turn_0": []},
+        )
         assert isinstance(graph, ConversationGraph)
 
     @pytest.mark.smoke

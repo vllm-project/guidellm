@@ -693,9 +693,9 @@ class TestFinalizerToolCallMode:
 
 
 class TestGenerativeRequestFinalizerRequestSettings:
-    """Verify relative_timestamp_column maps to GenerationRequest.settings.
+    """Verify relative_timestamp_column maps to returned RequestSettings.
 
-    ### WRITTEN BY AI ###
+    ## WRITTEN BY AI ##
     """
 
     @pytest.fixture
