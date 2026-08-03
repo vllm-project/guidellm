@@ -354,7 +354,7 @@ def _find_required_columns(
         # The conversation IDs should always be top-level.
         if conversation_id_col:
             if conversation_id_col in missing:
-                return ColumnSearchResult(Status.FAILURE, False, conversation_id_col)
+                return ColumnSearchResult(Status.FAILURE, False, [conversation_id_col])
             columns.remove(conversation_id_col)
         json_column_names = get_json_column_names(dataset)
         sample = dataset[0]
