@@ -17,7 +17,9 @@ Apply when the user asks for a weekly summary, team activity update, status dige
 **Do not invent ad-hoc `gh` queries.** Run the bundled fetch script, then write from its JSON.
 
 1. Determine the current date/time with `date` (do not guess).
+
 2. Use a rolling **past 7 days** window ending today unless the user specifies another range.
+
 3. From this skill directory, fetch activity (stdout = JSON, stderr = progress):
 
    ```bash
@@ -38,7 +40,9 @@ Apply when the user asks for a weekly summary, team activity update, status dige
    ```
 
 4. Parse the JSON: `window`, `releases`, `pull_requests`, and `issues`. Prefer release `overview`/`body`, and PR/issue `body`, `labels`, and `state` over titles alone when inferring what shipped or changed.
+
 5. Skip noise (trivial dependency bumps, pure formatting, bot-only churn — see `author_is_bot`) unless it is the main story.
+
 6. Run `bash scripts/fetch_activity.sh --help` only if you need flags beyond the examples above.
 
 ### Script notes
@@ -109,5 +113,5 @@ Then the fenced block containing:
 - [ ] If `releases` is non-empty, release name + 1–2 highlight sentences appear first
 - [ ] Narrative leads; links/titles are secondary
 - [ ] Nested lists only; no headers inside the report
-- [ ] Entire summary is inside a ` ```markdown ` fence so raw markdown is visible for copy-paste
+- [ ] Entire summary is inside a ```` ```markdown ```` fence so raw markdown is visible for copy-paste
 - [ ] Tone is externally shareable
