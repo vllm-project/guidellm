@@ -64,4 +64,4 @@ class MinimalTraceFormat(TraceFormatBase):
         token_ids = generate_token_ids(
             row[config.prompt_tokens_column], processor, faker
         )
-        return decode_prompt(processor, token_ids)
+        return decode_prompt(processor, list(token_ids))

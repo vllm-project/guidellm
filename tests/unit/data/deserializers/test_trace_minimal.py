@@ -14,7 +14,7 @@ from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 
 
-def _mock_processor() -> Mock:
+def mock_processor() -> Mock:
     """Tokenizer where each whitespace-delimited word is one token."""
     proc = Mock()
     proc.encode.side_effect = lambda text: list(range(len(text.split())))
@@ -24,7 +24,7 @@ def _mock_processor() -> Mock:
     return proc
 
 
-def _write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
+def write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
     path = tmp_path / f"trace{suffix}"
     path.write_text(content)
     return path
@@ -37,7 +37,7 @@ class TraceColumnGenerator:
     data_generator: Callable[[int], Any]
 
 
-def _generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
+def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
     return "\n".join(
         "{"
         + ", ".join(f'"{col.name}": {col.data_generator(idx)}' for col in columns)
@@ -46,20 +46,20 @@ def _generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
     )
 
 
-def _get_from_kwargs(keys, kwargs) -> dict:
+def get_from_kwargs(keys, kwargs) -> dict:
     return {k: v for k, v in kwargs.items() if k in keys}
 
 
 class TestMinimalTraceFormat:
     @pytest.mark.regression
     def test_format_registered_with_deserializer(self, tmp_path: Path):
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
             '{"timestamp": 0.0, "input_length": 10, "output_length": 5}\n',
         )
         DatasetDeserializerFactory.deserialize(
             config=MinimalTraceFormatArgs(path=trace),
-            processor_factory=_mock_processor,
+            processor_factory=mock_processor,
             random_seed=42,
         )
 
@@ -67,8 +67,8 @@ class TestMinimalTraceFormat:
     def deserializer(self) -> TraceDatasetDeserializer:
         return TraceDatasetDeserializer()
 
-    def _deserialize(self, deserializer, data, **kwargs):
-        col_kwargs = _get_from_kwargs(
+    def deserialize(self, deserializer, data, **kwargs):
+        col_kwargs = get_from_kwargs(
             (
                 "timestamp_column",
                 "prompt_tokens_column",
@@ -79,19 +79,19 @@ class TestMinimalTraceFormat:
         config = MinimalTraceFormatArgs(path=data, **col_kwargs)
         return deserializer(
             config=config,
-            processor_factory=_mock_processor,
+            processor_factory=mock_processor,
             random_seed=42,
         )
 
     @pytest.mark.smoke
     def test_honors_custom_column_names(self, tmp_path: Path, deserializer):
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
             '{"ts": 3.0, "input_tokens": 4, "generated_tokens": 40}\n'
             '{"ts": 1.0, "input_tokens": 2, "generated_tokens": 20}\n',
         )
 
-        ds = self._deserialize(
+        ds = self.deserialize(
             deserializer,
             trace,
             timestamp_column="ts",
@@ -115,9 +115,9 @@ class TestMinimalTraceFormat:
         output_lengths = [random.randint(3, 800) for _ in range(n_rows)]
         times = [0.0, 0.5, 1.0, 2.0]
         timestamps = [times[int(i / n_rows * len(times))] for i in range(n_rows)]
-        trace = _write_trace(
+        trace = write_trace(
             tmp_path,
-            _generate_trace(
+            generate_trace(
                 n_rows,
                 [
                     TraceColumnGenerator("timestamp", lambda i: timestamps[i]),
@@ -126,7 +126,7 @@ class TestMinimalTraceFormat:
                 ],
             ),
         )
-        processor = _mock_processor()
+        processor = mock_processor()
         config = MinimalTraceFormatArgs(path=trace)
         ds = deserializer(
             config=config,

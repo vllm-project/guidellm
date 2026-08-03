@@ -21,6 +21,7 @@ The following arguments configure datasets and their processing:
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
   - `trace_synthetic`, `mooncake` — loads a JSONL, JSON, CSV, or Parquet trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
+  - `weka` - Similar to `trace_synthetic`, but with the following changes to the optional field defaults: `timestamp_column` (default: `t`), `prompt_tokens_column` (default: `in`), `output_tokens_column` (default: `out`).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
