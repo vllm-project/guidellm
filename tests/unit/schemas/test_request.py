@@ -4,6 +4,7 @@ Unit tests for GenerationRequest, GenerationRequestArguments, and UsageMetrics.
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -256,6 +257,77 @@ class TestGenerationRequestArguments:
         reconstructed = GenerationRequestArguments.model_validate(data_dict)
         for key, expected_value in constructor_args.items():
             assert getattr(reconstructed, key) == expected_value
+
+    @pytest.mark.regression
+    def test_persistence_serialization_redacts_multipart_bytes(self):
+        """Retain multipart metadata without persisting file bytes.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = b"private audio" * 100
+        arguments = GenerationRequestArguments(
+            body={"model": "whisper-1", "language": "en"},
+            files={"file": ("recording.wav", payload, "audio/wav")},
+        )
+
+        persisted = arguments.model_dump_json_for_persistence()
+        result = json.loads(persisted)
+
+        assert len(persisted) < 500
+        assert result["body"] == {"model": "whisper-1", "language": "en"}
+        assert result["files"]["file"] == {
+            "filename": "recording.wav",
+            "mime_type": "audio/wav",
+            "byte_count": len(payload),
+        }
+        assert "private audio" not in persisted
+
+    @pytest.mark.regression
+    def test_persistence_serialization_redacts_inline_multimodal_payloads(self):
+        """Redact inline audio, file, and data URL payloads recursively.
+
+        ## WRITTEN BY AI ##
+        """
+        arguments = GenerationRequestArguments(
+            body={
+                "model": "multimodal-model",
+                "input": [
+                    {
+                        "type": "input_audio",
+                        "input_audio": {"data": "cHJpdmF0ZQ==", "format": "wav"},
+                    },
+                    {"type": "input_file", "file_data": "cGRm"},
+                    {
+                        "type": "input_image",
+                        "image_url": "data:image/png;base64,aW1hZ2U=",
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": "https://example.com/image.png",
+                    },
+                ],
+                "temperature": 0.2,
+            }
+        )
+
+        result = json.loads(arguments.model_dump_json_for_persistence())
+        inputs = result["body"]["input"]
+
+        assert inputs[0]["input_audio"] == {
+            "data": {"encoding": "base64", "byte_count": 7},
+            "format": "wav",
+        }
+        assert inputs[1]["file_data"] == {
+            "encoding": "base64",
+            "byte_count": 3,
+        }
+        assert inputs[2]["image_url"] == {
+            "mime_type": "image/png",
+            "encoding": "base64",
+            "byte_count": 5,
+        }
+        assert inputs[3]["image_url"] == "https://example.com/image.png"
+        assert result["body"]["temperature"] == 0.2
 
     @pytest.mark.regression
     def test_model_combine_deep_merge_nested_dicts(self):
