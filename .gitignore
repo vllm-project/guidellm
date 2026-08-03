@@ -187,11 +187,15 @@ cython_debug/
 !src/guidellm/benchmark/scenarios/*.yaml
 
 ## AI
-# Ignore any AI memory files except for AGENTS.md
+# Ignore any AI memory files except for AGENTS.md and shared agent skills
+
+# Shared Agent Skills (agentskills.io) — track these
+# Canonical location: .agents/skills/
 
 # Claude code
 CLAUDE.*
-.claude/
+.claude/*
+!.claude/skills
 
 # Cursor
 .cursor/

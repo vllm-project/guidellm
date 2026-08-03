@@ -101,6 +101,16 @@ Generated-by: Cursor claude-4.6-sonnet
 Assisted-by: GitHub Copilot gpt-4o
 ```
 
+## Agent skills
+
+Shared [Agent Skills](https://agentskills.io/specification) live under `.agents/skills/` (the cross-client convention). Cursor loads that path natively; Claude Code follows the tracked `.claude/skills` symlink to the same directory.
+
+| Skill | Purpose |
+| ----- | ------- |
+| [`guidellm-weekly-summary`](.agents/skills/guidellm-weekly-summary/SKILL.md) | Generate an externally shareable nested-list summary of GuideLLM GitHub activity for the past week |
+
+Ask for a weekly summary, team activity update, or status digest of GuideLLM to invoke it. Requires the `gh` CLI authenticated for `vllm-project/guidellm`.
+
 ## Running Quality, Style, and Type Checks
 
 We use Tox to simplify running various tasks in isolated environments. Tox standardizes environments to ensure consistency across local development, CI/CD pipelines, and releases. This guarantees that the code behaves the same regardless of where it is executed.
