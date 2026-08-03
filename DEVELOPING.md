@@ -105,8 +105,8 @@ Assisted-by: GitHub Copilot gpt-4o
 
 Shared [Agent Skills](https://agentskills.io/specification) live under `.agents/skills/` (the cross-client convention). Cursor loads that path natively; Claude Code follows the tracked `.claude/skills` symlink to the same directory.
 
-| Skill | Purpose |
-| ----- | ------- |
+| Skill                                                                        | Purpose                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`guidellm-weekly-summary`](.agents/skills/guidellm-weekly-summary/SKILL.md) | Generate an externally shareable nested-list summary of GuideLLM GitHub activity for the past week (`scripts/fetch_activity.sh` gathers PR/issue JSON via `gh`) |
 
 Ask for a weekly summary, team activity update, or status digest of GuideLLM to invoke it. Requires the `gh` CLI authenticated for `vllm-project/guidellm`.
