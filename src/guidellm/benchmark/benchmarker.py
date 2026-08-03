@@ -34,6 +34,7 @@ from guidellm.scheduler import (
     Scheduler,
     SchedulingStrategy,
 )
+from guidellm.tracing import start_span
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
@@ -54,7 +55,7 @@ class Benchmarker(
     scheduling strategies and execution environments.
     """
 
-    async def run(
+    async def run(  # noqa: C901
         self,
         accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
@@ -95,6 +96,13 @@ class Benchmarker(
                 await progress.on_initialize(profile)
 
             run_id = str(uuid.uuid4())
+            run_span = start_span(
+                "guidellm.run",
+                {
+                    "guidellm.run.id": run_id,
+                    "guidellm.profile.type": profile.kind,
+                },
+            )
             strategies_generator = profile.strategies_generator()
             strategy: SchedulingStrategy | None
             constraints: dict[str, Constraint] | None
@@ -128,46 +136,67 @@ class Benchmarker(
                     environment=InfoMixin.extract_from_obj(environment),
                 )
                 accumulator = accumulator_class(config=config)
+                benchmark_span = start_span(
+                    "guidellm.benchmark",
+                    {
+                        "guidellm.run.id": run_id,
+                        "guidellm.benchmark.id": config.id_,
+                        "guidellm.run.index": config.run_index,
+                        "guidellm.strategy.type": strategy.type_,
+                        "guidellm.backend.kind": config.backend.get("kind"),
+                        "server.address": config.backend.get("target"),
+                    },
+                )
                 scheduler_state = None
                 scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
-
-                async for (
-                    response,
-                    request,
-                    request_info,
-                    scheduler_state,
-                ) in scheduler.run(
-                    requests=requests,
-                    backend=backend,
-                    strategy=strategy,
-                    env=environment,
-                    **constraints or {},
-                ):
-                    try:
-                        accumulator.update_estimate(
-                            response,
-                            request,
-                            request_info,
-                            scheduler_state,
-                        )
-                        if progress:
-                            await progress.on_benchmark_update(
-                                accumulator, scheduler_state
+                try:
+                    async for (
+                        response,
+                        request,
+                        request_info,
+                        scheduler_state,
+                    ) in scheduler.run(
+                        requests=requests,
+                        backend=backend,
+                        strategy=strategy,
+                        env=environment,
+                        **constraints or {},
+                    ):
+                        try:
+                            accumulator.update_estimate(
+                                response,
+                                request,
+                                request_info,
+                                scheduler_state,
                             )
-                    except Exception as err:  # noqa: BLE001
-                        logger.error(
-                            "Error updating benchmark estimate/progress: {}", err
-                        )
+                            if progress:
+                                await progress.on_benchmark_update(
+                                    accumulator, scheduler_state
+                                )
+                        except Exception as err:  # noqa: BLE001
+                            logger.error(
+                                "Error updating benchmark estimate/progress: {}", err
+                            )
 
-                benchmark = benchmark_class.compile(
-                    accumulator=accumulator,
-                    scheduler_state=scheduler_state,  # type: ignore[arg-type]
-                )
+                    benchmark = benchmark_class.compile(
+                        accumulator=accumulator,
+                        scheduler_state=scheduler_state,  # type: ignore[arg-type]
+                    )
+                except BaseException as error:
+                    benchmark_span.end(error)
+                    run_span.end(error)
+                    raise
+                else:
+                    benchmark_span.end()
 
-                if progress:
-                    await progress.on_benchmark_complete(benchmark)
+                try:
+                    if progress:
+                        await progress.on_benchmark_complete(benchmark)
 
-                yield benchmark
+                    yield benchmark
+                except BaseException as error:
+                    run_span.end(error)
+                    raise
 
                 try:
                     strategy, constraints = strategies_generator.send(benchmark)
@@ -177,3 +206,4 @@ class Benchmarker(
 
             if progress:
                 await progress.on_finalize()
+            run_span.end()

@@ -40,7 +40,18 @@ from guidellm.scheduler.schemas import (
     ResponseT,
 )
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    RequestInfo,
+    RequestSettings,
+)
+from guidellm.tracing import (
+    activate_trace_context,
+    deactivate_trace_context,
+    shutdown_tracing,
+    start_span,
+)
 from guidellm.utils.messaging import InterProcessMessaging
 from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
@@ -105,6 +116,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         constraint_reached_event: ProcessingEvent,
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
+        trace_context: dict[str, str] | None = None,
     ):
         """
         Initialize worker process instance.
@@ -121,6 +133,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param constraint_reached_event: Event signaling processing constraint reached
         :param shutdown_event: Event signaling graceful shutdown request
         :param error_event: Event signaling error conditions across processes
+        :param trace_context: Serialized parent OpenTelemetry context
         """
         self.worker_index = worker_index
         self.messaging = messaging
@@ -133,6 +146,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.constraint_reached_event = constraint_reached_event
         self.shutdown_event = shutdown_event
         self.error_event = error_event
+        self.trace_context = trace_context
 
         # Internal states
         self.startup_completed = False
@@ -151,6 +165,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         :raises RuntimeError: If worker encounters unrecoverable error during execution
         """
+        context_token = activate_trace_context(self.trace_context)
         try:
             if HAS_UVLOOP:
                 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -161,6 +176,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 f"Worker process {self.messaging.worker_index} encountered an "
                 f"error: {err}"
             ) from err
+        finally:
+            deactivate_trace_context(context_token)
+            shutdown_tracing()
 
     async def run_async(self):
         """
@@ -369,7 +387,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_info.timings.resolve_end = time.time()
                 self._send_update("cancelled", None, request, request_info)
 
-    async def _process_next_request(  # noqa: C901
+    async def _process_next_request(  # noqa: C901, PLR0912, PLR0915
         self, target_start: float
     ) -> ProcessRequestT[RequestT, ResponseT]:
         """
@@ -386,11 +404,26 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         request_info: RequestInfo | None = None
         response: ResponseT | None = None
         premature_exit: bool = False
+        request_span = None
+        request_error: BaseException | None = None
 
         try:
             # Pull request from the queue, update state, and send "pending" update
             history, conversation = await self._dequeue_next_conversation(target_start)
             request, request_info = conversation.pop(0)
+            request_span = start_span(
+                "gen_ai.request",
+                {
+                    "guidellm.request.id": request_info.request_id,
+                    "guidellm.worker.index": self.worker_index,
+                    "guidellm.backend.kind": self.backend.info.get("kind"),
+                    "server.address": self.backend.info.get("target"),
+                    "gen_ai.request.model": self.backend.info.get("model"),
+                    "gen_ai.operation.name": "generate_content",
+                    "guidellm.strategy.type": self.strategy.type_,
+                },
+                client=True,
+            )
 
             effective_target_start = await self.strategy.resolve_dequeued_target_start(
                 self.worker_index,
@@ -426,8 +459,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # Record Turn
             history.append((request, response))
 
-            response = request = None
         except asyncio.CancelledError:
+            request_error = asyncio.CancelledError("Request was cancelled")
             premature_exit = True
             # Handle cancellation
             if request is not None and request_info is not None:
@@ -436,6 +469,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self._send_update("cancelled", response, request, request_info)
             raise
         except Exception as exc:  # noqa: BLE001
+            request_error = exc
             premature_exit = True
             if request is not None and request_info is not None:
                 request_info.error = repr(exc)
@@ -446,6 +480,43 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     f"Backend exception for request {request_info.request_id}"
                 )
         finally:
+            if request_span is not None and request_info is not None:
+                request_span.set_attributes(
+                    {
+                        "guidellm.request.outcome": request_info.status,
+                        "guidellm.request.latency_ms": (
+                            1000
+                            * (
+                                request_info.timings.request_end
+                                - request_info.timings.request_start
+                            )
+                            if request_info.timings.request_start is not None
+                            and request_info.timings.request_end is not None
+                            else None
+                        ),
+                        "guidellm.request.time_to_first_token_ms": (
+                            1000
+                            * (
+                                request_info.timings.first_token_iteration
+                                - request_info.timings.request_start
+                            )
+                            if request_info.timings.request_start is not None
+                            and request_info.timings.first_token_iteration is not None
+                            else None
+                        ),
+                        "gen_ai.usage.input_tokens": (
+                            request.input_metrics.total_tokens
+                            if isinstance(request, GenerationRequest)
+                            else None
+                        ),
+                        "gen_ai.usage.output_tokens": (
+                            response.output_metrics.total_tokens
+                            if isinstance(response, GenerationResponse)
+                            else None
+                        ),
+                    }
+                )
+                request_span.end(request_error)
             if request_info is not None:
                 self.strategy.request_completed(request_info)
             if premature_exit and conversation:

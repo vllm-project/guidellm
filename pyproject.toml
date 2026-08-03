@@ -86,7 +86,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Meta Extras
-all = ["guidellm[perf,tokenizers,audio,vision,plot]"]
+all = ["guidellm[perf,tokenizers,audio,vision,plot,otel]"]
 recommended = ["guidellm[perf,tokenizers]"]
 # Feature Extras
 plot = ["matplotlib>=3.10.9"]
@@ -104,6 +104,11 @@ vision = [
     "datasets[vision]",
     "pillow",
     "imageio[ffmpeg]",
+]
+otel = [
+    "opentelemetry-api>=1.31.0",
+    "opentelemetry-sdk>=1.31.0",
+    "opentelemetry-exporter-otlp>=1.31.0",
 ]
 
 [dependency-groups]

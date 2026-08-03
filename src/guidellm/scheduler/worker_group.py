@@ -41,6 +41,7 @@ from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.scheduler.worker import WorkerProcess
 from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.settings import settings
+from guidellm.tracing import capture_trace_context
 from guidellm.utils.messaging import (
     InterProcessMessaging,
     InterProcessMessagingManagerQueue,
@@ -230,6 +231,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             max_concurrency=max_conc,
             mp_context=self.mp_context,
         )
+        trace_context = capture_trace_context()
         for rank in range(num_processes):
             # Distribute any remainder across the first N ranks
             async_limit = per_proc_max_conc + (
@@ -252,6 +254,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 constraint_reached_event=self.constraint_reached_event,
                 shutdown_event=self.shutdown_event,
                 error_event=self.error_event,
+                trace_context=trace_context,
             )
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()
