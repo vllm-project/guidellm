@@ -1,6 +1,7 @@
 ---
 name: guidellm-weekly-summary
 description: Summarize GuideLLM team activity from GitHub PRs and issues over the past week into a concise, externally shareable nested-list update. Use when the user asks for a weekly summary, team activity update, status digest, or changelog-style overview of vllm-project/guidellm.
+compatibility: Requires gh, jq, and network access to GitHub (vllm-project/guidellm).
 ---
 
 # GuideLLM Weekly Activity Summary
@@ -13,13 +14,37 @@ Apply when the user asks for a weekly summary, team activity update, status dige
 
 ## Data collection
 
+**Do not invent ad-hoc `gh` queries.** Run the bundled fetch script, then write from its JSON.
+
 1. Determine the current date/time with `date` (do not guess).
 2. Use a rolling **past 7 days** window ending today unless the user specifies another range.
-3. Query GitHub for `vllm-project/guidellm` only (`gh` preferred):
-   - PRs updated, opened, merged, or closed in the window
-   - Issues opened, closed, or notably updated in the window
-4. Prefer PR/issue bodies, review discussion, and labels over titles alone when inferring what shipped or changed.
-5. Skip noise (trivial dependency bumps, pure formatting, bot-only churn) unless it is the main story.
+3. From this skill directory, fetch activity (stdout = JSON, stderr = progress):
+
+   ```bash
+   bash scripts/fetch_activity.sh
+   ```
+
+   Custom window examples:
+
+   ```bash
+   bash scripts/fetch_activity.sh --days 14
+   bash scripts/fetch_activity.sh --since 2026-07-16 --until 2026-07-23
+   ```
+
+   If the working directory is the repository root instead of the skill root:
+
+   ```bash
+   bash .agents/skills/guidellm-weekly-summary/scripts/fetch_activity.sh
+   ```
+
+4. Parse the JSON: `window`, `pull_requests`, and `issues`. Prefer `body`, `labels`, and `state` over titles alone when inferring what shipped or changed.
+5. Skip noise (trivial dependency bumps, pure formatting, bot-only churn — see `author_is_bot`) unless it is the main story.
+6. Run `bash scripts/fetch_activity.sh --help` only if you need flags beyond the examples above.
+
+### Script notes
+
+- **`scripts/fetch_activity.sh`** — Searches PRs and issues updated in the window via `gh`, normalizes fields, truncates bodies, and emits one JSON document on stdout.
+- Bodies are truncated (default 800 chars) and scrubbed of squash metadata / testing sections to save tokens. Raise `--body-max` only when a specific item needs more detail.
 
 ## Writing rules
 
@@ -51,7 +76,7 @@ Apply when the user asks for a weekly summary, team activity update, status dige
 - Nested bullets = brief supporting detail and secondary GitHub refs.
 - Do not open with a title/header line; start the fenced block directly with the list.
 - If the week was quiet, say so in one top-level bullet and list only notable items.
-- Optional one-line preface outside the fence is fine (e.g. date range); the copy-paste body must be only inside the fence.
+- Optional one-line preface outside the fence is fine (e.g. date range from `window.since` → `window.until`); the copy-paste body must be only inside the fence.
 
 ## Example response
 
@@ -70,7 +95,8 @@ Then the fenced block containing:
 
 ## Checklist before responding
 
-- [ ] Window is past 7 days (or user-specified) and based on `date`
+- [ ] Used `scripts/fetch_activity.sh` (not hand-written `gh` searches)
+- [ ] Window is past 7 days (or user-specified) and based on script/`date` output
 - [ ] Scope is `vllm-project/guidellm` only
 - [ ] Narrative leads; links/titles are secondary
 - [ ] Nested lists only; no headers inside the report
