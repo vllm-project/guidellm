@@ -33,6 +33,7 @@ from guidellm.data.deserializers.trace_common import (
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
+    create_distinct_token_block,
     create_prompt_from_hash_ids,
     decode_prompt,
     generate_token_ids,
@@ -40,26 +41,6 @@ from guidellm.data.deserializers.trace_common import (
 from guidellm.data.schemas import DataArgs
 
 __all__ = ["WEKATraceFormatArgs"]
-
-
-def _create_distinct_token_block(
-    block_size: int,
-    sibling_token_blocks: set[tuple[int, ...]],
-    processor: PreTrainedTokenizerBase,
-    faker: Faker,
-    max_attempts: int = 20,
-) -> tuple[int]:
-    """Constructs a new token block of `block_size` that does not appear in
-    `sibling_token_blocks`."""
-    attempt = 0
-    while attempt < max_attempts:
-        token_ids = generate_token_ids(block_size, processor, faker)
-        if token_ids not in sibling_token_blocks:
-            return token_ids
-        attempt += 1
-    raise ValueError(
-        f"Failed to generate distinct synthetic token block after {attempt} attempts"
-    )
 
 
 def _generate_remaining_prompt(
@@ -126,7 +107,7 @@ class WEKATraceFormat(TraceFormatBase):
     Generated prompts match the prompt token count of the row."""
 
     def __init__(self) -> None:
-        self.hash_id_table: dict[int, tuple[int]] = {}
+        self.hash_id_table: dict[int, tuple[int, ...]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
 
     def reset(self) -> None:
@@ -185,7 +166,7 @@ class WEKATraceFormat(TraceFormatBase):
             if hash_id not in self.hash_id_table:
                 prev_id = None if idx == 0 else ids[idx - 1]
                 self.sibling_token_blocks.setdefault(prev_id, set())
-                self.hash_id_table[hash_id] = _create_distinct_token_block(
+                self.hash_id_table[hash_id] = create_distinct_token_block(
                     config.hash_id_block_size,
                     self.sibling_token_blocks[prev_id],
                     processor,

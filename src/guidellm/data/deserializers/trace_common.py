@@ -47,6 +47,7 @@ __all__ = [
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
+    "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
     "generate_token_ids",
@@ -69,7 +70,7 @@ def generate_token_ids(
     processor: PreTrainedTokenizerBase,
     faker: Faker,
     margin_of_safety: int = 8,
-) -> tuple[int]:
+) -> tuple[int, ...]:
     """Generate `token_count` synthetic token ids for trace prompt construction.
 
     Ideally, `margin_of_safety` should be set to slighty more than
@@ -87,7 +88,7 @@ def generate_token_ids(
 
 def create_prompt_from_hash_ids(
     hash_ids: list[int],
-    hash_id_table: dict[int, tuple[int]],
+    hash_id_table: dict[int, tuple[int, ...]],
     processor: PreTrainedTokenizerBase,
 ) -> str:
     """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
@@ -97,6 +98,26 @@ def create_prompt_from_hash_ids(
         token for hash_id in hash_ids for token in hash_id_table[hash_id]
     ]
     return decode_prompt(processor, prompt_token_ids)
+
+
+def create_distinct_token_block(
+    block_size: int,
+    sibling_token_blocks: set[tuple[int, ...]],
+    processor: PreTrainedTokenizerBase,
+    faker: Faker,
+    max_attempts: int = 20,
+) -> tuple[int, ...]:
+    """Constructs a new token block of `block_size` that does not appear in
+    `sibling_token_blocks`."""
+    attempt = 0
+    while attempt < max_attempts:
+        token_ids = generate_token_ids(block_size, processor, faker)
+        if token_ids not in sibling_token_blocks:
+            return token_ids
+        attempt += 1
+    raise ValueError(
+        f"Failed to generate distinct synthetic token block after {attempt} attempts"
+    )
 
 
 class TraceFormatBase(Protocol):
