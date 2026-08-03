@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch GuideLLM GitHub PR/issue activity for weekly summary generation.
+# Fetch GuideLLM GitHub PR/issue/release activity for weekly summary generation.
 # Requires: gh, jq, date. Network access to GitHub.
 set -euo pipefail
 
@@ -9,22 +9,24 @@ SINCE=""
 UNTIL=""
 LIMIT=100
 BODY_MAX=800
+INCLUDE_PRERELEASES=0
 
 usage() {
   cat <<'EOF'
 Usage: scripts/fetch_activity.sh [OPTIONS]
 
-Fetch pull requests and issues for a date window as compact JSON on stdout.
+Fetch pull requests, issues, and releases for a date window as compact JSON on stdout.
 Diagnostics go to stderr. Designed for agent use with the guidellm-weekly-summary skill.
 
 Options:
-  --repo OWNER/NAME   GitHub repository (default: vllm-project/guidellm)
-  --days N            Rolling window ending today (default: 7). Ignored if --since set.
-  --since YYYY-MM-DD  Window start (inclusive). Default: today minus --days.
-  --until YYYY-MM-DD  Window end (inclusive). Default: today.
-  --limit N           Max results per search (default: 100)
-  --body-max N        Max characters of body text to keep per item (default: 800)
-  -h, --help          Show this help
+  --repo OWNER/NAME        GitHub repository (default: vllm-project/guidellm)
+  --days N                 Rolling window ending today (default: 7). Ignored if --since set.
+  --since YYYY-MM-DD       Window start (inclusive). Default: today minus --days.
+  --until YYYY-MM-DD       Window end (inclusive). Default: today.
+  --limit N                Max results per PR/issue search (default: 100)
+  --body-max N             Max characters of body text to keep per item (default: 800)
+  --include-prereleases    Include prerelease GitHub releases (excluded by default)
+  -h, --help               Show this help
 
 Examples:
   scripts/fetch_activity.sh
@@ -101,6 +103,10 @@ while [[ $# -gt 0 ]]; do
       BODY_MAX="$2"
       shift 2
       ;;
+    --include-prereleases)
+      INCLUDE_PRERELEASES=1
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -162,6 +168,13 @@ issues_raw="$(
   exit 2
 }
 
+releases_raw="$(
+  gh api "repos/${REPO}/releases?per_page=30"
+)" || {
+  printf 'Error: failed to list releases (check gh auth and network)\n' >&2
+  exit 2
+}
+
 fetched_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%SZ')"
 
 jq -n \
@@ -171,8 +184,10 @@ jq -n \
   --argjson days "$DAYS" \
   --arg fetched_at "$fetched_at" \
   --argjson body_max "$BODY_MAX" \
+  --argjson include_prereleases "$INCLUDE_PRERELEASES" \
   --argjson prs "$prs_raw" \
   --argjson issues "$issues_raw" \
+  --argjson releases "$releases_raw" \
   '
   def null_epoch:
     if . == null or . == "" or . == "0001-01-01T00:00:00Z" then null else . end;
@@ -189,6 +204,29 @@ jq -n \
     | sub("\\s+$"; "")
     | if ($body_max > 0) and (length > $body_max)
       then .[0:$body_max] + "\n…[truncated]"
+      else .
+      end;
+
+  def clean_release_text:
+    (. // "")
+    | gsub("\r"; "")
+    | gsub("(?s)```.*?```"; "")
+    | gsub("(?s)<!--.*?-->"; "")
+    | gsub("\n{3,}"; "\n\n")
+    | sub("^\\s+"; "")
+    | sub("\\s+$"; "");
+
+  def release_overview:
+    (. // "")
+    | clean_release_text
+    | if test("(?s)##\\s*Overview\\b") then
+        (capture("(?s)##\\s*Overview\\b\\s*(?<o>.*?)(?:\\n##\\s|$)").o | clean_release_text)
+      else
+        .
+      end
+    | split("\n\n")[0]
+    | if ($body_max > 0) and (length > $body_max)
+      then .[0:$body_max] + "…[truncated]"
       else .
       end;
 
@@ -209,25 +247,59 @@ jq -n \
       body: (.body | clean_body)
     };
 
+  def in_window($published):
+    ($published != null)
+    and ($published[0:10] >= $since)
+    and ($published[0:10] <= $until);
+
+  def simplify_release:
+    {
+      name: (.name // .tag_name),
+      tag: .tag_name,
+      url: .html_url,
+      published_at: .published_at,
+      is_prerelease: (.prerelease // false),
+      overview: (.body | release_overview),
+      body: (.body | clean_release_text | clean_body)
+    };
+
+  def window_releases:
+    [ $releases[]
+      | select(.draft == false)
+      | select(in_window(.published_at))
+      | select(($include_prereleases == 1) or (.prerelease != true))
+      | simplify_release
+    ];
+
   {
     repo: $repo,
     window: {
       since: $since,
       until: $until,
       days: $days,
-      note: "Items with updated_at on or after since; until is the report end date"
+      note: "PRs/issues: updated_at on or after since. Releases: published_at date within since..until inclusive."
     },
     fetched_at: $fetched_at,
     counts: {
+      releases: (window_releases | length),
       pull_requests: ($prs | length),
       issues: ([ $issues[] | select(.isPullRequest == false) ] | length)
     },
+    releases: window_releases,
     pull_requests: [ $prs[] | simplify_item ],
     issues: [ $issues[] | select(.isPullRequest == false) | simplify_item ]
   }
   '
 
-printf 'Fetched %s pull requests and %s issues.\n' \
+printf 'Fetched %s releases, %s pull requests, and %s issues.\n' \
+  "$(jq -n --argjson releases "$releases_raw" --arg since "$SINCE" --arg until "$UNTIL" --argjson include_prereleases "$INCLUDE_PRERELEASES" '
+      [ $releases[]
+        | select(.draft == false)
+        | select(.published_at != null)
+        | select((.published_at[0:10] >= $since) and (.published_at[0:10] <= $until))
+        | select(($include_prereleases == 1) or (.prerelease != true))
+      ] | length
+    ')" \
   "$(jq -n --argjson prs "$prs_raw" '$prs | length')" \
   "$(jq -n --argjson issues "$issues_raw" '[ $issues[] | select(.isPullRequest == false) ] | length')" \
   >&2

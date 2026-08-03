@@ -37,14 +37,16 @@ Apply when the user asks for a weekly summary, team activity update, status dige
    bash .agents/skills/guidellm-weekly-summary/scripts/fetch_activity.sh
    ```
 
-4. Parse the JSON: `window`, `pull_requests`, and `issues`. Prefer `body`, `labels`, and `state` over titles alone when inferring what shipped or changed.
+4. Parse the JSON: `window`, `releases`, `pull_requests`, and `issues`. Prefer release `overview`/`body`, and PR/issue `body`, `labels`, and `state` over titles alone when inferring what shipped or changed.
 5. Skip noise (trivial dependency bumps, pure formatting, bot-only churn — see `author_is_bot`) unless it is the main story.
 6. Run `bash scripts/fetch_activity.sh --help` only if you need flags beyond the examples above.
 
 ### Script notes
 
-- **`scripts/fetch_activity.sh`** — Searches PRs and issues updated in the window via `gh`, normalizes fields, truncates bodies, and emits one JSON document on stdout.
-- Bodies are truncated (default 800 chars) and scrubbed of squash metadata / testing sections to save tokens. Raise `--body-max` only when a specific item needs more detail.
+- **`scripts/fetch_activity.sh`** — Fetches PRs and issues updated in the window, plus GitHub releases published in the window; normalizes fields; truncates bodies; emits one JSON document on stdout.
+- Each release includes `name`, `tag`, `url`, `published_at`, `overview` (first Overview paragraph when present), and a truncated `body`.
+- Draft releases are omitted; prereleases are omitted unless `--include-prereleases` is passed.
+- Bodies are truncated (default 800 chars) and scrubbed to save tokens. Raise `--body-max` only when a specific item needs more detail.
 
 ## Writing rules
 
@@ -59,10 +61,14 @@ Apply when the user asks for a weekly summary, team activity update, status dige
 - The summary content itself uses **nested markdown lists only** — **no headers** (`#`, `##`, etc.) inside the report.
 - Use markdown that pastes cleanly into docs: `**bold**`, `[text](url)` links, `` `inline code` ``, and `-` nested lists.
 - **CRITICAL — show raw markdown, not rendered text:** Wrap the entire summary in a single fenced code block tagged `markdown` so the user sees and can copy the literal characters (`**`, `-`, `[]()`, backticks) instead of formatted rich text. Do not also emit a rendered version outside the fence.
+- **Releases first:** If `releases` is non-empty, open the list with one top-level bullet per release **before** the categorized activity bullets. Use the release `name` (e.g. GuideLLM v0.7.3) and 1–2 sentences of highlights drawn primarily from `overview` (and `body` only if needed for a second sentence). Do not dump the full changelog. Link the release as a secondary ref.
+- If there were no releases in the window, omit the release bullet and start with thematic activity as usual.
 - Response shape:
 
 ````
 ```markdown
+- **Release: GuideLLM vX.Y.Z** — One or two sentences of release highlights in plain language
+  - More detail: [GuideLLM vX.Y.Z](https://github.com/vllm-project/guidellm/releases/tag/…)
 - **Theme or area** — one-line outcome in plain language
   - Supporting detail on what landed or progressed
   - Optional secondary refs: [PR title](url), [#123](url)
@@ -72,7 +78,7 @@ Apply when the user asks for a weekly summary, team activity update, status dige
 ```
 ````
 
-- Top-level bullets = themes/outcomes.
+- Top-level bullets = release callouts (when present), then themes/outcomes.
 - Nested bullets = brief supporting detail and secondary GitHub refs.
 - Do not open with a title/header line; start the fenced block directly with the list.
 - If the week was quiet, say so in one top-level bullet and list only notable items.
@@ -80,11 +86,13 @@ Apply when the user asks for a weekly summary, team activity update, status dige
 
 ## Example response
 
-Preface (optional): `GuideLLM activity, 2026-07-16 → 2026-07-23:`
+Preface (optional): `GuideLLM activity, 2026-07-27 → 2026-08-03:`
 
 Then the fenced block containing:
 
 ```
+- **Release: GuideLLM v0.7.3** — Patch release that clears a transitive dependency CVE path and includes small reliability and docs polish around plot output and backend error handling
+  - More detail: [GuideLLM v0.7.3](https://github.com/vllm-project/guidellm/releases/tag/v0.7.3)
 - **Benchmarking UX** — Sweep runs can now target clearer stop conditions, making short validation jobs easier to reason about
   - Refined how duration and request caps interact in the CLI
   - More detail: [Clarify constraint handling for sweep profiles](https://github.com/vllm-project/guidellm/pull/…)
@@ -98,6 +106,7 @@ Then the fenced block containing:
 - [ ] Used `scripts/fetch_activity.sh` (not hand-written `gh` searches)
 - [ ] Window is past 7 days (or user-specified) and based on script/`date` output
 - [ ] Scope is `vllm-project/guidellm` only
+- [ ] If `releases` is non-empty, release name + 1–2 highlight sentences appear first
 - [ ] Narrative leads; links/titles are secondary
 - [ ] Nested lists only; no headers inside the report
 - [ ] Entire summary is inside a ` ```markdown ` fence so raw markdown is visible for copy-paste
