@@ -2411,6 +2411,90 @@ class TestAudioRequestHandler:
         assert result.body.get("temperature") == 0.0
 
     # Response handling tests
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "response",
+        [
+            {"text": "Hello world"},
+            {
+                "task": "transcribe",
+                "language": "english",
+                "duration": 1.0,
+                "text": "Hello world",
+                "segments": [],
+            },
+        ],
+    )
+    def test_compile_non_streaming_top_level_text(self, valid_instances, response):
+        """Test basic and verbose audio responses use top-level text.
+
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={})
+        arguments = GenerationRequestArguments(body={"model": "whisper"})
+
+        result = valid_instances.compile_non_streaming(request, arguments, response)
+
+        assert result.text == "Hello world"
+        assert result.output_metrics.text_words == 2
+        assert result.output_metrics.text_characters == 11
+        valid_instances.post_validation(result)
+
+    @pytest.mark.regression
+    def test_compile_non_streaming_preserves_usage(self, valid_instances):
+        """Test audio token usage is compiled with top-level text.
+
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={})
+        arguments = GenerationRequestArguments()
+        response = {
+            "id": "transcription-1",
+            "text": "Hello world",
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+        }
+
+        result = valid_instances.compile_non_streaming(request, arguments, response)
+
+        assert result.response_id == "transcription-1"
+        assert result.input_metrics.audio_tokens == 10
+        assert result.output_metrics.text_tokens == 2
+
+    @pytest.mark.regression
+    def test_post_validation_accepts_empty_transcription(self, valid_instances):
+        """Test an explicitly empty transcription remains valid.
+
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={})
+        result = valid_instances.compile_non_streaming(
+            request,
+            GenerationRequestArguments(),
+            {"text": ""},
+        )
+
+        assert result.text == ""
+        assert result.output_metrics.text_words == 0
+        assert result.output_metrics.text_characters == 0
+        valid_instances.post_validation(result)
+
+    @pytest.mark.regression
+    def test_post_validation_rejects_missing_transcription(self, valid_instances):
+        """Test a response without top-level text remains unusable.
+
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={})
+        result = valid_instances.compile_non_streaming(
+            request,
+            GenerationRequestArguments(),
+            {},
+        )
+
+        assert result.text is None
+        with pytest.raises(ValueError, match="UNUSABLE_BACKEND_RESPONSE"):
+            valid_instances.post_validation(result)
+
     @pytest.mark.smoke
     @pytest.mark.parametrize(
         (
