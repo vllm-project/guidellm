@@ -364,9 +364,10 @@ def _make_columns_from_virtual(
     json_dicts = []
     conv_ids = []
     for batch_idx, json_dicts_list in enumerate(batch[wrapper_col]):
-        json_dicts.extend(_get_json_dicts(json_dicts_list))
+        parsed = _get_json_dicts(json_dicts_list)
+        json_dicts.extend(parsed)
         if conversation_id_col:
-            conv_ids.extend([indices[batch_idx]] * len(json_dicts_list))
+            conv_ids.extend([indices[batch_idx]] * len(parsed))
     result = {c: [row[c] for row in json_dicts] for c in virtual_cols}
     if conversation_id_col:
         result[conversation_id_col] = conv_ids
