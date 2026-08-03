@@ -41,6 +41,7 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
 )
+from guidellm.tracing import inject_trace_headers
 from guidellm.utils.imports import json
 
 __all__ = [
@@ -434,7 +435,7 @@ class OpenAIWebSocketBackend(Backend):
         session_update["model"] = model_name
 
         ssl_ctx = self._ssl_context()
-        ws_headers = build_headers(self._args.api_key)
+        ws_headers = inject_trace_headers(build_headers(self._args.api_key))
 
         try:
             request_info.timings.request_start = time.time()

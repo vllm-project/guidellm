@@ -29,6 +29,7 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
 )
+from guidellm.tracing import inject_trace_headers
 from guidellm.utils.dict import deep_filter
 
 __all__ = [
@@ -448,7 +449,7 @@ class OpenAIHTTPBackend(Backend):
             "url": request_url,
             "method": arguments.method or "POST",
             "params": arguments.params,
-            "headers": self._build_headers(arguments.headers),
+            "headers": inject_trace_headers(self._build_headers(arguments.headers)),
             "json": request_json,
             "data": request_data,
             "files": request_files,
