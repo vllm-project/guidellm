@@ -2344,6 +2344,29 @@ class TestAudioRequestHandler:
         assert file_tuple[1] == audio_data
         assert file_tuple[2] == "audio/wav"
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("file_name", [None, ""], ids=["missing", "empty"])
+    def test_format_file_upload_defaults_nonempty_file_name(
+        self,
+        valid_instances: AudioRequestHandler,
+        file_name: str | None,
+    ) -> None:
+        """Use a nonempty multipart filename when metadata has none.
+
+        ## WRITTEN BY AI ##
+        """
+        audio_entry = {
+            "audio": b"fake_audio_bytes",
+            "mimetype": "audio/wav",
+        }
+        if file_name is not None:
+            audio_entry["file_name"] = file_name
+        data = GenerationRequest(columns={"audio_column": [audio_entry]})
+
+        result = valid_instances.format(data)
+
+        assert result.files["file"][0] == "audio_input"
+
     @pytest.mark.sanity
     def test_format_missing_audio(self, valid_instances):
         """Test format method raises error when no audio column provided.
