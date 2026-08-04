@@ -40,10 +40,10 @@ def test_construct_virtual_column_locations(wrapper_col, virtual_cols, expected)
 @pytest.mark.parametrize(
     ("arg", "expected"),
     [
-        ("", None),
+        (r'', None),
         (r"{}", {}),
-        ("'string'", None),
-        ("'1'", None),
+        (r'"string"', "string"),
+        (r'1', 1),
         (
             r'{"field_1": 1, "field_2": "two", "field_3": [3, 4]}',
             {"field_1": 1, "field_2": "two", "field_3": [3, 4]},
