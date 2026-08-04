@@ -493,6 +493,24 @@ class TestBatchProcessing:
     @pytest.mark.asyncio
     @pytest.mark.sanity
     @async_timeout(5.0)
+    async def test_run_generate_output_count_mismatch_signals_all_waiters(
+        self, started_backend
+    ):
+        """Output count mismatch signals all waiters so resolve() never hangs. ## WRITTEN BY AI ##"""
+        reqs = [
+            _BatchedRequest(resolved_prompt="p", multi_modal_data=None, max_tokens=10)
+            for _ in range(3)
+        ]
+        # vLLM returns fewer outputs than requested
+        started_backend._llm.generate.return_value = [_mock_request_output()]
+        await started_backend._run_generate(reqs)
+        for req in reqs:
+            assert isinstance(req.result, RuntimeError)
+            assert req.ready.is_set()
+
+    @pytest.mark.asyncio
+    @pytest.mark.sanity
+    @async_timeout(5.0)
     async def test_run_generate_multimodal_prompt_format(self, started_backend):
         """Multimodal data is passed as dict prompt. ## WRITTEN BY AI ##"""
         mm_data = {"image": Mock()}
