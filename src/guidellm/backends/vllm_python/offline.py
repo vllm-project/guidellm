@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import gc
-import multiprocessing as mp
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -21,7 +20,12 @@ from typing import Any, Literal, cast
 from pydantic import ConfigDict, Field, PositiveInt
 
 from guidellm.backends.backend import Backend, BackendArgs
-from guidellm.backends.vllm_python.common import reset_cpu_affinity
+from guidellm.backends.vllm_python.common import (
+    is_scheduler_worker_process,
+    prepare_vllm_benchmark_logging,
+    reset_cpu_affinity,
+    vllm_benchmark_engine_config,
+)
 from guidellm.backends.vllm_python.vllm import (
     _CHAT_TEMPLATE_UNSET,
     VLLMPythonBackend,
@@ -194,6 +198,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         self._in_process = True
         self._shutting_down = False
 
+        prepare_vllm_benchmark_logging()
+
         # Discard any engine handle inherited from the parent process.
         # The worker must create its own via _ensure_engine().
         self._llm = None
@@ -215,7 +221,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
                 return self._llm
 
             loop = asyncio.get_running_loop()
-            config = dict(self._args.vllm_config)
+            config = vllm_benchmark_engine_config(self._args.vllm_config)
             engine_args = vllm.EngineArgs(  # type: ignore[attr-defined]
                 **config,
             )
@@ -271,11 +277,6 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         self._in_process = False
 
-    @staticmethod
-    def _is_worker_process() -> bool:
-        """Return True when running inside a scheduler worker process."""
-        return mp.parent_process() is not None
-
     async def validate(self):
         """
         Validate backend readiness and preload the engine in workers.
@@ -296,8 +297,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
 
-        if self._is_worker_process():
-            logger.info("Preloading vLLM offline engine in worker process")
+        if is_scheduler_worker_process():
+            logger.debug("Preloading vLLM offline engine in worker process")
             await self._ensure_engine()
 
     def _validate_backend_initialized(self) -> Any:  # type: ignore[override]
@@ -449,8 +450,21 @@ class VLLMOfflineBackend(VLLMPythonBackend):
                     batched_req.ready.set()
                 return
 
-        # Distribute results back to callers
-        for batched_req, output in zip(batch, outputs, strict=True):
+        # Distribute results back to callers.
+        # Use strict=False with explicit length check: a strict zip that raises
+        # ValueError would leave the remaining waiters blocked indefinitely.
+        if len(outputs) != len(batch):
+            exc = RuntimeError(
+                f"vLLM returned {len(outputs)} outputs for {len(batch)} requests"
+            )
+            logger.error("{}", exc)
+            for batched_req in batch:
+                if not batched_req.ready.is_set():
+                    batched_req.result = exc
+                    batched_req.ready.set()
+            return
+
+        for batched_req, output in zip(batch, outputs):
             batched_req.result = output
             batched_req.ready.set()
 

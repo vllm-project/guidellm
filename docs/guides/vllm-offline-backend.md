@@ -66,6 +66,8 @@ The vLLM `LLM` engine is never loaded during `process_startup()`. Engine creatio
 - **Worker process**: when `multiprocessing.parent_process()` is set (true for both `fork` and `spawn` workers; see `GUIDELLM__MP_CONTEXT_TYPE`), `validate()` calls `_ensure_engine()` to **preload** the engine so the cold-start time is excluded from the timed benchmark phase.
 - **Inference-time safety net**: as requests are generated from the dataset, `_ensure_engine()` is called as an idempotent fallback, so inference works correctly even if `validate()` was skipped.
 
+During benchmarks, GuideLLM lowers vLLM log verbosity in scheduler workers (default `VLLM_LOGGING_LEVEL=ERROR`) so engine startup logs do not corrupt the live progress UI. Set `VLLM_LOGGING_LEVEL=DEBUG` to restore full vLLM output.
+
 ## See also
 
 - [vLLM Python Backend](vllm-python-backend.md) -- Async per-request backend.

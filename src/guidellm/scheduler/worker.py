@@ -41,6 +41,7 @@ from guidellm.scheduler.schemas import (
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
 from guidellm.utils.messaging import InterProcessMessaging
+from guidellm.utils.terminal import suppress_worker_stdio
 from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
     wait_for_sync_event,
@@ -251,7 +252,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         # Get backend ready
         await self.backend.process_startup()
         self.backend_started = True
-        await self.backend.validate()
+        with suppress_worker_stdio():
+            await self.backend.validate()
 
         # Get messaging system ready
         await self.messaging.start(
