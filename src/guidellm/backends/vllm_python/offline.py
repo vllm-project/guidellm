@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import gc
-import os
+import multiprocessing as mp
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -155,11 +155,6 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         """
         super().__init__(arguments)
 
-        # PID of the process that created this instance.
-        # Workers forked by the benchmark framework will have a
-        # different PID and can use this to detect they are children.
-        self._creator_pid = os.getpid()
-
         # Batch processing state
         self._batch_lock = asyncio.Lock()
         self._generate_lock = asyncio.Lock()
@@ -276,16 +271,21 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         self._in_process = False
 
+    @staticmethod
+    def _is_worker_process() -> bool:
+        """Return True when running inside a scheduler worker process."""
+        return mp.parent_process() is not None
+
     async def validate(self):
         """
         Validate backend readiness and preload the engine in workers.
 
-        In the parent process (PID matches ``_creator_pid``) this only
-        checks that ``process_startup()`` was called — engine creation
-        is deferred so the parent never loads model weights.
+        In the main process (``multiprocessing.parent_process()`` is
+        ``None``) this only checks that ``process_startup()`` was
+        called — engine creation is deferred so the parent never loads
+        model weights.
 
-        In a worker process — whether forked or spawned (PID differs
-        from ``_creator_pid``) — the engine is eagerly created so
+        In a scheduler worker process the engine is eagerly created so
         that the cold-start time is excluded from the timed benchmark
         phase.  ``resolve()`` calls ``_ensure_engine()`` as an
         inference-time safety net, so the engine is guaranteed to exist
@@ -296,7 +296,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
 
-        if os.getpid() != self._creator_pid:
+        if self._is_worker_process():
+            logger.info("Preloading vLLM offline engine in worker process")
             await self._ensure_engine()
 
     def _validate_backend_initialized(self) -> Any:  # type: ignore[override]

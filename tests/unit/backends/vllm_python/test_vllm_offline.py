@@ -8,7 +8,6 @@ serialization, shutdown drain, shutting-down guard, and metrics wiring.
 from __future__ import annotations
 
 import asyncio
-import os
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
@@ -359,11 +358,11 @@ class TestProcessStartupReset:
 
 
 # ------------------------------------------------------------------
-# PID-based engine preload
+# Worker-based engine preload
 # ------------------------------------------------------------------
 
 
-class TestPidBasedPreload:
+class TestWorkerBasedPreload:
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_validate_skips_engine_in_parent(self):
@@ -382,7 +381,7 @@ class TestPidBasedPreload:
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_validate_preloads_engine_in_worker(self):
-        """validate() in forked worker preloads the engine. ## WRITTEN BY AI ##"""
+        """validate() in scheduler worker preloads the engine. ## WRITTEN BY AI ##"""
         mock_llm = Mock()
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
@@ -392,26 +391,33 @@ class TestPidBasedPreload:
             patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.offline.reset_cpu_affinity"),
+            patch(
+                "guidellm.backends.vllm_python.offline.VLLMOfflineBackend._is_worker_process",
+                return_value=True,
+            ),
         ):
             backend = _make_offline_backend(model="test-model")
             await backend.process_startup()
-            # Simulate a forked worker by changing _creator_pid
-            backend._creator_pid = os.getpid() + 1
             await backend.validate()
         assert backend._llm is mock_llm
 
-    @pytest.mark.asyncio
-    @pytest.mark.sanity
-    async def test_creator_pid_set_in_init(self):
-        """_creator_pid is set to current PID in __init__. ## WRITTEN BY AI ##"""
-        mock_vllm = MagicMock()
-        mock_vllm.SamplingParams = _fake_sampling_params
-        with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
-            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+    @pytest.mark.smoke
+    def test_is_worker_process_false_in_main(self):
+        """Main process is not treated as a scheduler worker. ## WRITTEN BY AI ##"""
+        with patch(
+            "guidellm.backends.vllm_python.offline.mp.parent_process",
+            return_value=None,
         ):
-            backend = _make_offline_backend(model="test-model")
-        assert backend._creator_pid == os.getpid()
+            assert VLLMOfflineBackend._is_worker_process() is False
+
+    @pytest.mark.sanity
+    def test_is_worker_process_true_in_child(self):
+        """Child processes are treated as scheduler workers. ## WRITTEN BY AI ##"""
+        with patch(
+            "guidellm.backends.vllm_python.offline.mp.parent_process",
+            return_value=Mock(),
+        ):
+            assert VLLMOfflineBackend._is_worker_process() is True
 
 
 # ------------------------------------------------------------------
