@@ -923,6 +923,26 @@ class TestVLLMLifecycle:
         assert backend._in_process is True
 
     @pytest.mark.asyncio
+    @pytest.mark.smoke
+    async def test_process_startup_calls_reset_cpu_affinity(self):
+        """
+        process_startup() calls reset_cpu_affinity() before engine creation.
+        ## WRITTEN BY AI ##
+        """
+        mock_engine = Mock()
+        with (
+            patch("guidellm.backends.vllm_python.vllm.vllm") as mock_vllm,
+            patch(
+                "guidellm.backends.vllm_python.vllm.reset_cpu_affinity"
+            ) as mock_reset,
+        ):
+            mock_vllm.AsyncEngineArgs.return_value = Mock()
+            mock_vllm.AsyncLLMEngine.from_engine_args = Mock(return_value=mock_engine)
+            backend = _make_vllm_backend(model="test-model")
+            await backend.process_startup()
+        mock_reset.assert_called_once()
+
+    @pytest.mark.asyncio
     @pytest.mark.sanity
     async def test_process_startup_idempotency_raises(self):
         """
