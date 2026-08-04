@@ -43,6 +43,8 @@ from guidellm.schemas import (
 
 __all__ = ["VLLMOfflineBackend", "VLLMOfflineBackendArgs"]
 
+_ASYNC_LOCK_ATTRS = ("_batch_lock", "_generate_lock", "_engine_lock")
+
 
 @BackendArgs.register("vllm_offline")
 class VLLMOfflineBackendArgs(VLLMPythonBackendArgs):
@@ -159,15 +161,36 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         """
         super().__init__(arguments)
 
-        # Batch processing state
-        self._batch_lock = asyncio.Lock()
-        self._generate_lock = asyncio.Lock()
+        # Batch processing state.  Asyncio locks are created in
+        # process_startup() so the backend remains pickleable for spawn
+        # workers (locks are bound to the parent event loop).
+        self._batch_lock: asyncio.Lock | None = None
+        self._generate_lock: asyncio.Lock | None = None
         self._pending_batch: list[_BatchedRequest] = []
         self._processing_task: asyncio.Task[None] | None = None
         self._shutting_down = False
 
         # The synchronous vLLM LLM engine (set during startup)
         self._llm: Any = None  # vllm.LLM
+        self._engine_lock: asyncio.Lock | None = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Omit asyncio locks so spawn workers can pickle the backend."""
+        state = self.__dict__.copy()
+        for attr in _ASYNC_LOCK_ATTRS:
+            state.pop(attr, None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore backend state after unpickling in a worker process."""
+        self.__dict__.update(state)
+        for attr in _ASYNC_LOCK_ATTRS:
+            setattr(self, attr, None)
+
+    def _create_async_locks(self) -> None:
+        """Create asyncio locks for the current event loop."""
+        self._batch_lock = asyncio.Lock()
+        self._generate_lock = asyncio.Lock()
         self._engine_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
@@ -185,10 +208,11 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         double-startup that wastes resources reloading model
         weights and can cause CPU-affinity degradation.
 
-        Asyncio primitives are recreated here because the benchmark
-        framework forks worker processes after a parent
-        validate/shutdown cycle; locks created on the parent's
-        event loop are unusable in the child.
+        Asyncio primitives are recreated here because scheduler
+        workers are started in a child process (fork or spawn) with
+        their own event loop.  Locks are not created in
+        ``__init__`` so the backend can be pickled for spawn
+        workers; they are bound here instead.
 
         :raises RuntimeError: If backend is already initialised
         """
@@ -204,10 +228,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         # The worker must create its own via _ensure_engine().
         self._llm = None
 
-        # Recreate asyncio primitives for the current event loop.
-        self._batch_lock = asyncio.Lock()
-        self._generate_lock = asyncio.Lock()
-        self._engine_lock = asyncio.Lock()
+        # Bind asyncio primitives to the current event loop.
+        self._create_async_locks()
         self._pending_batch = []
         self._processing_task = None
 
@@ -381,6 +403,22 @@ class VLLMOfflineBackend(VLLMPythonBackend):
     # Batch processing
     # ------------------------------------------------------------------
 
+    def _signal_batch_failure(
+        self,
+        batch: list[_BatchedRequest],
+        exc: BaseException,
+    ) -> None:
+        """Set *exc* on every waiter and unblock ``resolve()`` callers."""
+        logger.error(
+            "vLLM offline batch failed: {}: {}",
+            type(exc).__name__,
+            exc,
+        )
+        for batched_req in batch:
+            if not batched_req.ready.is_set():
+                batched_req.result = exc
+                batched_req.ready.set()
+
     def _take_pending_batch(self) -> list[_BatchedRequest]:
         """Snapshot and clear ``_pending_batch``.
 
@@ -433,35 +471,20 @@ class VLLMOfflineBackend(VLLMPythonBackend):
                         use_tqdm=False,
                     ),
                 )
-            except (
-                RuntimeError,
-                ValueError,
-                TypeError,
-                OSError,
-                KeyError,
-            ) as exc:
-                logger.error(
-                    "vLLM offline generate() failed: {}: {}",
-                    type(exc).__name__,
-                    exc,
-                )
-                for batched_req in batch:
-                    batched_req.result = exc
-                    batched_req.ready.set()
+            except Exception as exc:
+                self._signal_batch_failure(batch, exc)
                 return
 
         # Distribute results back to callers.
         # Use strict=False with explicit length check: a strict zip that raises
         # ValueError would leave the remaining waiters blocked indefinitely.
         if len(outputs) != len(batch):
-            exc = RuntimeError(
-                f"vLLM returned {len(outputs)} outputs for {len(batch)} requests"
+            self._signal_batch_failure(
+                batch,
+                RuntimeError(
+                    f"vLLM returned {len(outputs)} outputs for {len(batch)} requests"
+                ),
             )
-            logger.error("{}", exc)
-            for batched_req in batch:
-                if not batched_req.ready.is_set():
-                    batched_req.result = exc
-                    batched_req.ready.set()
             return
 
         for batched_req, output in zip(batch, outputs):
