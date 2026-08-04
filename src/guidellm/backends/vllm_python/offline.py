@@ -465,7 +465,9 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        history: (list[tuple[GenerationRequest, GenerationResponse]] | None) = None,
+        history: (
+            list[tuple[GenerationRequest, GenerationResponse]] | None
+        ) = None,
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Queue a request for batch processing and yield the response.
@@ -527,7 +529,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if isinstance(result, BaseException):
             self._raise_generation_error(result)
 
-        request_output = result  # vllm.RequestOutput
+        request_output = cast("vllm.RequestOutput", result)
 
         # Wire vLLM request metrics into timing info
         self._wire_vllm_metrics(request_info, request_output)
@@ -536,7 +538,9 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         text = self._text_from_output(request_output)
         usage = self._usage_from_output(request_output)
-        response_id = request_output.request_id if request_output.request_id else None
+        response_id = (
+            request_output.request_id if request_output.request_id else None
+        )
 
         response = VLLMResponseHandler.build_response(
             request, text, usage, response_id=response_id
@@ -569,7 +573,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
     @staticmethod
     def _wire_vllm_metrics(
         request_info: RequestInfo,
-        request_output: Any,
+        request_output: vllm.RequestOutput,
     ) -> None:
         """Populate iteration counts and timing from vLLM metrics.
 
@@ -578,41 +582,39 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         wall-clock values anchored on the wall-clock
         ``arrival_time`` that vLLM also provides.
         """
-        metrics = request_output.metrics if hasattr(request_output, "metrics") else None
-        num_gen = (
-            metrics.num_generation_tokens
-            if metrics and hasattr(metrics, "num_generation_tokens")
-            else 0
-        )
+        metrics = request_output.metrics
+        num_gen = metrics.num_generation_tokens if metrics is not None else 0
 
-        if num_gen > 0:
-            request_info.timings.token_iterations = num_gen
-        elif request_output.outputs and request_output.outputs[0].token_ids is not None:
+        if (
+            num_gen == 0
+            and request_output.outputs
+            and request_output.outputs[0].token_ids is not None
+        ):
             num_gen = len(request_output.outputs[0].token_ids)
-            request_info.timings.token_iterations = num_gen
 
         if num_gen > 0:
+            request_info.timings.token_iterations = num_gen
             request_info.timings.request_iterations = 1
 
         if metrics is None:
             return
 
-        arrival = metrics.arrival_time if hasattr(metrics, "arrival_time") else 0.0
-        scheduled = metrics.scheduled_ts if hasattr(metrics, "scheduled_ts") else 0.0
-        queued = metrics.queued_ts if hasattr(metrics, "queued_ts") else 0.0
-        mono_base = scheduled or queued
-        first_tok = (
-            metrics.first_token_ts if hasattr(metrics, "first_token_ts") else 0.0
-        )
-        last_tok = metrics.last_token_ts if hasattr(metrics, "last_token_ts") else 0.0
+        arrival = metrics.arrival_time
+        mono_base = metrics.scheduled_ts or metrics.queued_ts
+        first_tok = metrics.first_token_ts
+        last_tok = metrics.last_token_ts
 
         if not (arrival and mono_base and first_tok):
             return
 
         request_info.timings.first_request_iteration = arrival
-        request_info.timings.first_token_iteration = arrival + (first_tok - mono_base)
+        request_info.timings.first_token_iteration = (
+            arrival + (first_tok - mono_base)
+        )
         if last_tok:
-            request_info.timings.last_token_iteration = arrival + (last_tok - mono_base)
+            request_info.timings.last_token_iteration = (
+                arrival + (last_tok - mono_base)
+            )
             request_info.timings.last_request_iteration = arrival + (
                 last_tok - mono_base
             )

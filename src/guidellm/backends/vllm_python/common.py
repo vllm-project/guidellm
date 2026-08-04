@@ -28,7 +28,10 @@ def reset_cpu_affinity() -> None:
 
     current = os.sched_getaffinity(0)
 
-    # Try cgroup v2 path first, then fall back to cgroup v1.
+    # Try cgroup v2 first, then fall back to cgroup v1.
+    # The `return` at the end of the loop body (outside the `if`) means
+    # "stop after the first path that is readable" — OSError on a path
+    # causes `continue` to the next, but a successful read always exits.
     for path_str in (
         "/sys/fs/cgroup/cpuset.cpus.effective",
         "/sys/fs/cgroup/cpuset/cpuset.cpus",
