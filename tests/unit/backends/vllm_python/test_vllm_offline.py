@@ -392,7 +392,7 @@ class TestWorkerBasedPreload:
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.offline.reset_cpu_affinity"),
             patch(
-                "guidellm.backends.vllm_python.offline.VLLMOfflineBackend._is_worker_process",
+                "guidellm.backends.vllm_python.offline.is_scheduler_worker_process",
                 return_value=True,
             ),
         ):
@@ -402,22 +402,30 @@ class TestWorkerBasedPreload:
         assert backend._llm is mock_llm
 
     @pytest.mark.smoke
-    def test_is_worker_process_false_in_main(self):
+    def test_is_scheduler_worker_false_in_main(self):
         """Main process is not treated as a scheduler worker. ## WRITTEN BY AI ##"""
         with patch(
-            "guidellm.backends.vllm_python.offline.mp.parent_process",
+            "guidellm.backends.vllm_python.common.mp.parent_process",
             return_value=None,
         ):
-            assert VLLMOfflineBackend._is_worker_process() is False
+            from guidellm.backends.vllm_python.common import (
+                is_scheduler_worker_process,
+            )
+
+            assert is_scheduler_worker_process() is False
 
     @pytest.mark.sanity
-    def test_is_worker_process_true_in_child(self):
+    def test_is_scheduler_worker_true_in_child(self):
         """Child processes are treated as scheduler workers. ## WRITTEN BY AI ##"""
         with patch(
-            "guidellm.backends.vllm_python.offline.mp.parent_process",
+            "guidellm.backends.vllm_python.common.mp.parent_process",
             return_value=Mock(),
         ):
-            assert VLLMOfflineBackend._is_worker_process() is True
+            from guidellm.backends.vllm_python.common import (
+                is_scheduler_worker_process,
+            )
+
+            assert is_scheduler_worker_process() is True
 
 
 # ------------------------------------------------------------------
