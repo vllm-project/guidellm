@@ -8,6 +8,7 @@ serialization, shutdown drain, shutting-down guard, and metrics wiring.
 from __future__ import annotations
 
 import asyncio
+import pickle
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
@@ -82,6 +83,7 @@ def offline_backend():
 @pytest.fixture
 def started_backend(offline_backend):
     """Offline backend with _in_process=True and a mock LLM engine."""
+    offline_backend._create_async_locks()
     offline_backend._in_process = True
     mock_llm = Mock()
     mock_llm.generate.return_value = []
@@ -304,6 +306,20 @@ class TestLifecycle:
 
 
 class TestProcessStartupReset:
+    @pytest.mark.smoke
+    def test_init_does_not_create_async_locks(self):
+        """Locks are deferred until process_startup for spawn pickling. ## WRITTEN BY AI ##"""
+        mock_vllm = MagicMock()
+        mock_vllm.SamplingParams = _fake_sampling_params
+        with (
+            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+        ):
+            backend = _make_offline_backend(model="test-model")
+        assert backend._batch_lock is None
+        assert backend._generate_lock is None
+        assert backend._engine_lock is None
+
     @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_startup_recreates_locks(self):
@@ -350,11 +366,73 @@ class TestProcessStartupReset:
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
+            await backend.process_startup()
             backend._llm = Mock()
-            backend._in_process = True
             await backend.process_shutdown()
             await backend.process_startup()
         assert backend._llm is None
+
+
+class TestSpawnPickling:
+    @pytest.mark.smoke
+    def test_backend_pickles_without_async_locks(self):
+        """Spawn workers can pickle the backend before process_startup. ## WRITTEN BY AI ##"""
+        mock_vllm = MagicMock()
+        mock_vllm.SamplingParams = _fake_sampling_params
+        with (
+            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+        ):
+            backend = _make_offline_backend(model="test-model")
+            data = pickle.dumps(backend)
+            restored = pickle.loads(data)
+
+        assert restored._batch_lock is None
+        assert restored._generate_lock is None
+        assert restored._engine_lock is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.sanity
+    async def test_process_startup_after_unpickle_creates_locks(self):
+        """Unpickled workers bind fresh locks in process_startup. ## WRITTEN BY AI ##"""
+        mock_vllm = MagicMock()
+        mock_vllm.SamplingParams = _fake_sampling_params
+        with (
+            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+        ):
+            backend = _make_offline_backend(model="test-model")
+            restored = pickle.loads(pickle.dumps(backend))
+            await restored.process_startup()
+
+        assert restored._batch_lock is not None
+        assert restored._generate_lock is not None
+        assert restored._engine_lock is not None
+        async with restored._batch_lock:
+            pass
+        async with restored._generate_lock:
+            pass
+        async with restored._engine_lock:
+            pass
+
+    @pytest.mark.asyncio
+    @pytest.mark.sanity
+    async def test_pickles_after_parent_startup_shutdown_cycle(self):
+        """Parent validate cycle leaves backend spawn-pickleable. ## WRITTEN BY AI ##"""
+        mock_vllm = MagicMock()
+        mock_vllm.SamplingParams = _fake_sampling_params
+        with (
+            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
+        ):
+            backend = _make_offline_backend(model="test-model")
+            await backend.process_startup()
+            await backend.process_shutdown()
+            restored = pickle.loads(pickle.dumps(backend))
+            await restored.process_startup()
+
+        assert restored._in_process is True
+        assert restored._batch_lock is not None
 
 
 # ------------------------------------------------------------------
@@ -506,6 +584,23 @@ class TestBatchProcessing:
         await started_backend._run_generate(reqs)
         for req in reqs:
             assert isinstance(req.result, RuntimeError)
+            assert req.ready.is_set()
+
+    @pytest.mark.asyncio
+    @pytest.mark.sanity
+    @async_timeout(5.0)
+    async def test_run_generate_unexpected_exception_signals_all_waiters(
+        self, started_backend
+    ):
+        """Any generate() failure signals all waiters so resolve() never hangs. ## WRITTEN BY AI ##"""
+        reqs = [
+            _BatchedRequest(resolved_prompt="p", multi_modal_data=None, max_tokens=10)
+            for _ in range(2)
+        ]
+        started_backend._llm.generate.side_effect = AttributeError("missing generate")
+        await started_backend._run_generate(reqs)
+        for req in reqs:
+            assert isinstance(req.result, AttributeError)
             assert req.ready.is_set()
 
     @pytest.mark.asyncio
