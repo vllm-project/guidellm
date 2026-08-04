@@ -124,6 +124,14 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
+    def cached_tokens(self) -> int | None:
+        """
+        :return: Number of input tokens served from the prefix cache, or None
+        """
+        return self.input_metrics.cached_tokens
+
+    @computed_field  # type: ignore[misc]
+    @property
     def output_tokens(self) -> int | None:
         """
         :return: Number of tokens in the generated output, or None if unavailable
