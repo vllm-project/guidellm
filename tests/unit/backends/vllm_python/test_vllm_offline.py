@@ -34,6 +34,20 @@ def _make_offline_backend(**kwargs) -> VLLMOfflineBackend:
     return VLLMOfflineBackend(args)
 
 
+def _mock_metrics(**overrides):
+    """Build a mock vLLM RequestStateStats with default timing fields."""
+    defaults = {
+        "num_generation_tokens": 0,
+        "arrival_time": 0.0,
+        "scheduled_ts": 0.0,
+        "queued_ts": 0.0,
+        "first_token_ts": 0.0,
+        "last_token_ts": 0.0,
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
 def _mock_request_output(
     text="hello",
     token_ids=None,
@@ -691,7 +705,7 @@ class TestWireVllmMetrics:
     def test_token_count_from_num_generation_tokens(self):
         """Token count uses num_generation_tokens when > 0. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
-        metrics = SimpleNamespace(num_generation_tokens=42)
+        metrics = _mock_metrics(num_generation_tokens=42)
         output = _mock_request_output(metrics=metrics)
         VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.token_iterations == 42
@@ -701,7 +715,7 @@ class TestWireVllmMetrics:
     def test_token_count_fallback_to_token_ids(self):
         """Token count falls back to len(token_ids) when 0. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
-        metrics = SimpleNamespace(num_generation_tokens=0)
+        metrics = _mock_metrics(num_generation_tokens=0)
         output = _mock_request_output(token_ids=[1, 2, 3, 4, 5], metrics=metrics)
         VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.token_iterations == 5
@@ -709,7 +723,7 @@ class TestWireVllmMetrics:
 
     @pytest.mark.sanity
     def test_no_metrics_no_crash(self):
-        """No metrics attribute does not crash. ## WRITTEN BY AI ##"""
+        """metrics=None does not crash; token count falls back to token_ids. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
         output = _mock_request_output(metrics=None)
         VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
@@ -719,7 +733,7 @@ class TestWireVllmMetrics:
     def test_timing_from_request_state_stats(self):
         """Wall-clock timings derived from RequestStateStats. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
-        metrics = SimpleNamespace(
+        metrics = _mock_metrics(
             num_generation_tokens=10,
             arrival_time=1000.0,
             scheduled_ts=100.0,
@@ -745,7 +759,7 @@ class TestWireVllmMetrics:
     def test_timing_skipped_when_first_token_ts_missing(self):
         """Timing is skipped when first_token_ts is zero. ## WRITTEN BY AI ##"""
         request_info = RequestInfo()
-        metrics = SimpleNamespace(
+        metrics = _mock_metrics(
             num_generation_tokens=5,
             arrival_time=1000.0,
             scheduled_ts=100.0,
@@ -765,7 +779,7 @@ class TestWireVllmMetrics:
         ## WRITTEN BY AI ##
         """
         request_info = RequestInfo()
-        metrics = SimpleNamespace(
+        metrics = _mock_metrics(
             num_generation_tokens=5,
             arrival_time=1000.0,
             scheduled_ts=0.0,

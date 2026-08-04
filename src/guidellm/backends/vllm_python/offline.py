@@ -287,8 +287,9 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         In a worker process — whether forked or spawned (PID differs
         from ``_creator_pid``) — the engine is eagerly created so
         that the cold-start time is excluded from the timed benchmark
-        phase.  ``resolve()`` still calls ``_ensure_engine()`` as an
-        idempotent fallback.
+        phase.  ``resolve()`` calls ``_ensure_engine()`` as an
+        inference-time safety net, so the engine is guaranteed to exist
+        before the first batch is dispatched.
 
         :raises RuntimeError: If backend is not initialised
         """
