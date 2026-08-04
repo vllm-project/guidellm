@@ -193,11 +193,11 @@ cython_debug/
 # Canonical location: .agents/skills/
 
 # Claude code
-CLAUDE.*
-.claude/*
-!.claude/skills
+# .claude is linked to .agents
+# CLAUDE.md is linked to AGENTS.md
 
 # Cursor
+# Use AGENTS.md & .agents/skills/ to manage Cursor skills & rules
 .cursor/
 .cursorrules/
 
