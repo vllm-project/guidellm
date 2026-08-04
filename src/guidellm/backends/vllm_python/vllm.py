@@ -21,6 +21,7 @@ from more_itertools import roundrobin
 from pydantic import ConfigDict, Field, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.vllm_python.common import reset_cpu_affinity
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras import vllm
 from guidellm.logger import logger
@@ -186,6 +187,7 @@ class VLLMPythonBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
+        reset_cpu_affinity()
         engine_args = vllm.AsyncEngineArgs(**self._args.vllm_config)
         self._engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self._in_process = True

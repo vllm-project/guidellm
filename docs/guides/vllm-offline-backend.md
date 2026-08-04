@@ -64,7 +64,7 @@ The vLLM `LLM` engine is never loaded during `process_startup()`. Engine creatio
 
 - **Parent preflight** (`resolve_backend`): `validate()` sees that `os.getpid()` matches `_creator_pid` and performs a cheap readiness check only — no model weights are loaded.
 - **Worker process**: when the PID differs from `_creator_pid` (true for both `fork` and `spawn` workers; see `GUIDELLM__MP_CONTEXT_TYPE`), `validate()` calls `_ensure_engine()` to **preload** the engine so the cold-start time is excluded from the timed benchmark phase.
-- **`resolve()` fallback**: each `resolve()` call still invokes `_ensure_engine()` as an idempotent safety net, so inference works correctly even if `validate()` was not called.
+- **Inference-time safety net**: as requests are generated from the dataset, `_ensure_engine()` is called as an idempotent fallback, so inference works correctly even if `validate()` was skipped.
 
 ## See also
 
