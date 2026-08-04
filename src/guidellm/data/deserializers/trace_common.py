@@ -468,7 +468,6 @@ def _load_trace_rows(
     if applicable.
     :return: HuggingFace Dataset (iterable as dicts, column-accessible).
     :raises DataNotSupportedError: For any of the following reasons:
-    - The dataset is empty or has no valid rows
     - A required column contains a NoneType
     - A required column failed during cast to feature type
     """
