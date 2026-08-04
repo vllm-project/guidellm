@@ -30,6 +30,12 @@ For a 3-turn conversation, the dataset could contain the following columns:
 - **prompt_1**, **output_tokens_count_1**: Turn 2 prompt and requested output tokens
 - **prompt_2**, **output_tokens_count_2**: Turn 3 prompt and requested output tokens
 
+Indexed columns remain the authoring format for file / HuggingFace datasets. After mapping, both indexed rows and graph payloads share one finalizer pathway: normalize to `ConversationGraphData`, expand client tool-call turns into tool-call + injection nodes, then build a runtime conversation graph.
+
+### Synthetic Data Always Emits a Graph
+
+Synthetic multiturn data (including single-turn and branched sub-agent configs) emits a `conversation_turns` JSON column rather than indexed `prompt_0` / `prompt_1` columns. The same finalizer pathway consumes that graph payload.
+
 ### How Multiturn Orchestration Works
 
 When executing a multiturn benchmark, GuideLLM:
@@ -70,7 +76,17 @@ To generate multiturn synthetic data, use the `--data` argument with `turns` spe
 --data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3
 ```
 
-This creates a 3-turn conversation where each turn has 256 prompt tokens and requests 128 output tokens.
+This creates a 3-turn conversation where each turn samples independently from the configured `prompt_tokens` / `output_tokens` distribution (here, fixed at 256 and 128 when no standard deviation is set).
+
+#### First Message Size
+
+By default every turn (including the first) uses the same `prompt_tokens` / `output_tokens` distribution. Set optional `first_prompt_tokens` / `first_output_tokens` (with the usual `_stdev` / `_min` / `_max` knobs) when the opening message should differ—for example mocking a conversation that starts with a large file or essay to review, followed by shorter question prompts:
+
+```bash
+--data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=4,first_prompt_tokens=4096
+```
+
+This keeps follow-up turns around 256 prompt tokens while the first user message averages 4096 tokens. Sub-agent branches inherit the parent `first_*` settings for their first turn unless a branch overrides them (see [Sub-Agent Branches](#sub-agent-branches)).
 
 #### Synthetic Data with Prefixes
 
@@ -113,6 +129,67 @@ For this configuration:
 
 - 60% of conversations use one of the 10 prefixes which are 100 tokens each
 - 40% of conversations use the prefix of 50 tokens
+
+#### Sub-Agent Branches
+
+GuideLLM supports simulating multi-agent workloads where an orchestrator spawns parallel sub-agents during a conversation. Use the `branches` parameter to specify sub-agent branches that fork from the main conversation at a specific turn and merge back later.
+
+Each branch:
+
+- **Spawns** at `at_turn` with fresh context (the sub-agent does not see the main conversation history)
+- **Runs** for `turns` turns independently
+- **Merges** back at `at_turn + merge_after` (default `merge_after=1`), where the main conversation receives the sub-agent's final output
+
+Multiple branches at the same turn are supported and may have different lengths. All branches must complete before the main conversation continues past the merge point.
+
+**Basic Example:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":2,"turns":3}]}'
+```
+
+This creates a 5-turn main conversation with one sub-agent branch that spawns at turn 2, runs for 3 turns, and merges back at turn 3.
+
+**Delayed Merge:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":1,"turns":2,"merge_after":2}]}'
+```
+
+This spawns a sub-agent at turn 1 that runs for 2 turns and merges back at turn 3 (`at_turn + merge_after`), while the main conversation continues through turn 2 in parallel.
+
+**Multiple Branches:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":2,"turns":3},{"at_turn":2,"turns":1,"agent_id":"reviewer"}]}'
+```
+
+This spawns two sub-agents at turn 2: one that runs for 3 turns and one that runs for 1 turn. Both merge back at turn 3. The main conversation at turn 3 receives the full history from turns 0-2 plus the final output from each sub-agent.
+
+**History length and turn index in results:**
+
+Each per-request entry in `benchmarks.json` includes:
+
+- `info.history_len`: the number of prior messages in the assembled history sent to the server with that request. Because history can include messages from diverging paths that merge via `last` edges, `history_len` may jump at merge points rather than increment by one. Branch roots spawned with fresh (`new`) context start at `0`.
+- `info.turn_index`: a simpler path-depth counter. It resets to `0` on `new` edges, increments by one through `full` edges, and treats each `last` edge as adding up to `1` without walking further into that parent’s ancestors. When a node has multiple parents, `turn_index` is the maximum over those contributions (the longest path).
+
+At a merge after a sub-agent branch, `history_len` often exceeds `turn_index` because merged `last` outputs are counted in assembled history but only add up to a non-recursive `1` toward path depth (and do not increase `turn_index` when the `full` path is already longer).
+
+**Branch Configuration Fields:**
+
+| Field                 | Type          | Default    | Description                                                                |
+| --------------------- | ------------- | ---------- | -------------------------------------------------------------------------- |
+| `at_turn`             | `int`         | (required) | Main chain turn index where the branch spawns                              |
+| `turns`               | `int`         | (required) | Number of turns in this branch                                             |
+| `agent_id`            | `str`         | `"worker"` | Agent identity for branch nodes                                            |
+| `merge_after`         | `int`         | `1`        | Main-chain turns after `at_turn` before merge                              |
+| `first_prompt_tokens` | `int \| null` | `null`     | First-turn prompt size override (defaults to parent `first_prompt_tokens`) |
+| `first_output_tokens` | `int \| null` | `null`     | First-turn output size override (defaults to parent `first_output_tokens`) |
+
+Branch turns sample from the main `prompt_tokens` / `output_tokens` distribution. Unset branch `first_*` fields inherit the parent conversation's `first_*` settings (and fall back to the main distribution when those are also unset). The same `_stdev` / `_min` / `_max` distribution knobs are supported on branch `first_*` fields.
+
+> [!NOTE]\
+> `at_turn + merge_after` must be less than `turns` so that a merge point exists. Branching that would merge at or past the end of the main conversation is not allowed.
 
 ### Request Formatting
 
@@ -287,7 +364,7 @@ guidellm run \
 - `--constraint kind=max_requests,count=30`: Maximum number of requests to send (30 requests ~= 10 conversations with 3 turns each)
 - `--data`: Synthetic data configuration with 200 prompt tokens, 100 output tokens, and 3 turns
 
-This command benchmarks 10 three-turn conversations, where each turn has 200 input tokens and generates 100 output tokens. The model maintains conversation history across all three turns.
+This command benchmarks 10 three-turn conversations, where each turn uses the configured token sizes (200 prompt / 100 output when no stdev is set). The model maintains conversation history across all three turns.
 
 ### 2. Multiturn with System Prompts (Prefixes)
 

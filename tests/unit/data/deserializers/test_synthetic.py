@@ -23,7 +23,27 @@ from guidellm.data.deserializers.synthetic import (
     _SyntheticTextExamplesIterable,
 )
 from guidellm.data.schemas import DataNotSupportedError
+from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
 from guidellm.settings import settings
+
+
+def _conversation_graph(row: dict) -> ConversationGraphData:
+    """Parse the conversation_turns payload from a synthetic row.
+
+    ## WRITTEN BY AI ##
+    """
+    return ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+
+
+def _main_turn_map(row: dict) -> dict[str, object]:
+    """Map main_* node ids to ConversationTurnData for a synthetic row.
+
+    ## WRITTEN BY AI ##
+    """
+    graph = _conversation_graph(row)
+    return {
+        turn.node_id: turn for turn in graph.turns if turn.node_id.startswith("main_")
+    }
 
 
 class TestPrefixBucketConfig:
@@ -305,16 +325,19 @@ class TestSyntheticTextGenerator:
         # Verify we get the expected number of items
         assert len(items) == 5
 
-        # Verify each item has the required keys (with turn index suffix for multiturn)
+        # Verify each item is a conversation_turns graph payload
         for item in items:
-            assert "prefix" in item
-            assert "prompt_0" in item
-            assert "prompt_tokens_count_0" in item
-            assert "output_tokens_count_0" in item
-            assert isinstance(item["prefix"], str)
-            assert isinstance(item["prompt_0"], str)
-            assert isinstance(item["prompt_tokens_count_0"], int)
-            assert isinstance(item["output_tokens_count_0"], int)
+            assert set(item) == {"conversation_turns"}
+            graph = _conversation_graph(item)
+            assert len(graph.turns) == 1
+            turn = graph.turns[0]
+            assert turn.node_id == "main_0"
+            assert "text_column" in turn.columns
+            assert "prompt_tokens_count_column" in turn.columns
+            assert "output_tokens_count_column" in turn.columns
+            assert isinstance(turn.columns["text_column"][0], str)
+            assert isinstance(turn.columns["prompt_tokens_count_column"][0], int)
+            assert isinstance(turn.columns["output_tokens_count_column"][0], int)
 
     @pytest.mark.sanity
     def test_create_prompt_method(self, simple_config, mock_tokenizer):
@@ -355,9 +378,11 @@ class TestSyntheticTextGenerator:
             if i >= 2:  # Only get 3 items
                 break
 
-        # Verify prefix is present in items
+        # Verify prefix is present on the first main turn
         for item in items:
-            assert isinstance(item["prefix"], str)
+            turn = _main_turn_map(item)["main_0"]
+            assert "prefix_column" in turn.columns
+            assert isinstance(turn.columns["prefix_column"][0], str)
 
     @pytest.mark.regression
     def test_random_seeding_consistency(self, simple_config, mock_tokenizer):
@@ -380,8 +405,16 @@ class TestSyntheticTextGenerator:
         # With same seed and deterministic mocks, results should be identical
         assert len(items1) == len(items2)
         for item1, item2 in zip(items1, items2, strict=False):
-            assert item1["prompt_tokens_count_0"] == item2["prompt_tokens_count_0"]
-            assert item1["output_tokens_count_0"] == item2["output_tokens_count_0"]
+            turns1 = _main_turn_map(item1)
+            turns2 = _main_turn_map(item2)
+            assert (
+                turns1["main_0"].columns["prompt_tokens_count_column"]
+                == turns2["main_0"].columns["prompt_tokens_count_column"]
+            )
+            assert (
+                turns1["main_0"].columns["output_tokens_count_column"]
+                == turns2["main_0"].columns["output_tokens_count_column"]
+            )
 
 
 class TestSyntheticDatasetDeserializer:
@@ -614,7 +647,7 @@ class TestSyntheticTextDatasetMultiturn:
 
     @pytest.mark.smoke
     def test_synthetic_single_turn_columns(self, mock_tokenizer):
-        """Test synthetic dataset generates correct columns for single turn.
+        """Test synthetic dataset generates a one-node conversation graph.
 
         ### WRITTEN BY AI ###
         """
@@ -629,20 +662,18 @@ class TestSyntheticTextDatasetMultiturn:
         # Get one item
         item = next(iter(dataset))
 
-        # Should have turn-indexed columns
-        assert "prefix" in item
-        assert "prompt_0" in item
-        assert "prompt_tokens_count_0" in item
-        assert "output_tokens_count_0" in item
-        assert "requeue_delay_0" in item
-
-        # Should not have prompt_1, etc
-        assert "prompt_1" not in item
-        assert "prompt_tokens_count_1" not in item
+        assert set(item) == {"conversation_turns"}
+        turns = _main_turn_map(item)
+        assert set(turns) == {"main_0"}
+        assert turns["main_0"].settings is not None
+        assert turns["main_0"].settings.requeue_delay == 3.0
+        assert "text_column" in turns["main_0"].columns
+        assert turns["main_0"].columns["prompt_tokens_count_column"] == [50]
+        assert turns["main_0"].columns["output_tokens_count_column"] == [25]
 
     @pytest.mark.smoke
     def test_synthetic_multi_turn_columns(self, mock_tokenizer):
-        """Test synthetic dataset generates correct columns for multiple turns.
+        """Test synthetic dataset generates a multi-node conversation graph.
 
         ### WRITTEN BY AI ###
         """
@@ -657,19 +688,18 @@ class TestSyntheticTextDatasetMultiturn:
         # Get one item
         item = next(iter(dataset))
 
-        # Should have turn-indexed columns for all 3 turns
-        for turn in range(3):
-            assert f"prompt_{turn}" in item
-            assert f"prompt_tokens_count_{turn}" in item
-            assert f"output_tokens_count_{turn}" in item
-            assert f"requeue_delay_{turn}" in item
-
-        # Should not have prompt_3
-        assert "prompt_3" not in item
+        turns = _main_turn_map(item)
+        assert set(turns) == {"main_0", "main_1", "main_2"}
+        for turn in turns.values():
+            assert turn.settings is not None
+            assert turn.settings.requeue_delay == 3.0
+            assert turn.columns["prompt_tokens_count_column"] == [50]
+            assert turn.columns["output_tokens_count_column"] == [25]
+            assert "text_column" in turn.columns
 
     @pytest.mark.sanity
     def test_synthetic_turn_column_values_unique(self, mock_tokenizer):
-        """Test each turn column has unique content.
+        """Test each turn has unique prompt content.
 
         ### WRITTEN BY AI ###
         """
@@ -682,22 +712,19 @@ class TestSyntheticTextDatasetMultiturn:
 
         # Get one item
         item = next(iter(dataset))
+        turns = _main_turn_map(item)
 
-        # Prompts for different turns should be different
-        # (Due to the unique prefix in _create_prompt that includes sample count)
-        prompt_0 = item["prompt_0"]
-        prompt_1 = item["prompt_1"]
-        prompt_2 = item["prompt_2"]
+        prompt_0 = turns["main_0"].columns["text_column"][0]
+        prompt_1 = turns["main_1"].columns["text_column"][0]
+        prompt_2 = turns["main_2"].columns["text_column"][0]
 
-        # Note: With our mock tokenizer, the prompts will be similar but should
-        # have different indices in the unique prefix, making them different
         assert isinstance(prompt_0, str)
         assert isinstance(prompt_1, str)
         assert isinstance(prompt_2, str)
 
     @pytest.mark.regression
     def test_synthetic_iteration_with_turns(self, mock_tokenizer):
-        """Test iterating dataset with turns generates all columns per row.
+        """Test iterating dataset with turns generates graph payloads.
 
         ### WRITTEN BY AI ###
         """
@@ -715,21 +742,17 @@ class TestSyntheticTextDatasetMultiturn:
             if i >= 2:  # Get 3 items
                 break
 
-        # Each item should have all turn columns
         for item in items:
-            assert "prefix" in item
-            for turn in range(2):
-                assert f"prompt_{turn}" in item
-                assert f"prompt_tokens_count_{turn}" in item
-                assert f"output_tokens_count_{turn}" in item
-                # Values should be populated
-                assert isinstance(item[f"prompt_{turn}"], str)
-                assert isinstance(item[f"prompt_tokens_count_{turn}"], int)
-                assert isinstance(item[f"output_tokens_count_{turn}"], int)
+            turns = _main_turn_map(item)
+            assert set(turns) == {"main_0", "main_1"}
+            for turn in turns.values():
+                assert isinstance(turn.columns["text_column"][0], str)
+                assert isinstance(turn.columns["prompt_tokens_count_column"][0], int)
+                assert isinstance(turn.columns["output_tokens_count_column"][0], int)
 
     @pytest.mark.sanity
     def test_synthetic_features_match_turns(self, mock_tokenizer):
-        """Test dataset features match configured turns.
+        """Test dataset features are the conversation_turns graph column.
 
         ### WRITTEN BY AI ###
         """
@@ -740,21 +763,14 @@ class TestSyntheticTextDatasetMultiturn:
         )
         dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
 
-        # Access the features through the examples iterable
         features = dataset._ex_iterable.features
-
-        # Should have prefix + 4 sets of turn columns
-        assert "prefix" in features
-        for turn in range(4):
-            assert f"prompt_{turn}" in features
-            assert f"prompt_tokens_count_{turn}" in features
-            assert f"output_tokens_count_{turn}" in features
+        assert set(features) == {"conversation_turns"}
 
     @pytest.mark.regression
-    def test_synthetic_turn_token_counts_consistent(self, mock_tokenizer):
-        """Test token counts are consistent across turns in a sample.
+    def test_synthetic_turn_token_counts_fixed_without_stdev(self, mock_tokenizer):
+        """Without stdev, every turn equals the configured token means.
 
-        ### WRITTEN BY AI ###
+        ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(
             prompt_tokens=50,
@@ -762,25 +778,85 @@ class TestSyntheticTextDatasetMultiturn:
             turns=3,
         )
         dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        turns = _main_turn_map(next(iter(dataset)))
 
-        # Get one item
-        item = next(iter(dataset))
+        assert (
+            turns["main_0"].columns["prompt_tokens_count_column"]
+            == turns["main_1"].columns["prompt_tokens_count_column"]
+            == turns["main_2"].columns["prompt_tokens_count_column"]
+            == [50]
+        )
+        assert (
+            turns["main_0"].columns["output_tokens_count_column"]
+            == turns["main_1"].columns["output_tokens_count_column"]
+            == turns["main_2"].columns["output_tokens_count_column"]
+            == [25]
+        )
 
-        # All turns in a sample should have the same token counts
-        # (based on how synthetic generation works - same counts per sample)
-        prompt_count_0 = item["prompt_tokens_count_0"]
-        prompt_count_1 = item["prompt_tokens_count_1"]
-        prompt_count_2 = item["prompt_tokens_count_2"]
+    @pytest.mark.regression
+    def test_synthetic_turn_token_counts_independent_with_stdev(self, mock_tokenizer):
+        """With stdev, turns sample independently and are not forced equal.
 
-        # These should all be the same for a given sample
-        assert prompt_count_0 == prompt_count_1 == prompt_count_2
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            prompt_tokens_stdev=20,
+            prompt_tokens_min=10,
+            prompt_tokens_max=100,
+            output_tokens=25,
+            output_tokens_stdev=10,
+            output_tokens_min=5,
+            output_tokens_max=50,
+            turns=8,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        turns = _main_turn_map(next(iter(dataset)))
 
-        output_count_0 = item["output_tokens_count_0"]
-        output_count_1 = item["output_tokens_count_1"]
-        output_count_2 = item["output_tokens_count_2"]
+        prompt_counts = [
+            turns[f"main_{i}"].columns["prompt_tokens_count_column"][0]
+            for i in range(8)
+        ]
+        output_counts = [
+            turns[f"main_{i}"].columns["output_tokens_count_column"][0]
+            for i in range(8)
+        ]
+        assert len(set(prompt_counts)) > 1
+        assert len(set(output_counts)) > 1
 
-        # These should all be the same for a given sample
-        assert output_count_0 == output_count_1 == output_count_2
+    @pytest.mark.regression
+    def test_synthetic_first_prompt_tokens_override(self, mock_tokenizer):
+        """first_prompt_tokens applies only to turn 0; later turns use prompt_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            output_tokens=25,
+            first_prompt_tokens=200,
+            turns=3,
+        )
+        dataset = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        turns = _main_turn_map(next(iter(dataset)))
+
+        assert turns["main_0"].columns["prompt_tokens_count_column"] == [200]
+        assert turns["main_1"].columns["prompt_tokens_count_column"] == [50]
+        assert turns["main_2"].columns["prompt_tokens_count_column"] == [50]
+        assert turns["main_0"].columns["output_tokens_count_column"] == [25]
+
+    @pytest.mark.sanity
+    def test_first_prompt_tokens_requires_mean(self):
+        """Reject first_prompt_tokens_stdev without first_prompt_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="first_prompt_tokens must be set"):
+            SyntheticTextDataArgs(
+                prompt_tokens=50,
+                output_tokens=25,
+                turns=3,
+                first_prompt_tokens_stdev=10,
+            )
 
 
 class TestSyntheticTextDatasetConfigToolCallFields:
@@ -887,7 +963,7 @@ class TestSyntheticTextDatasetConfigToolCallFields:
 
 
 class TestSyntheticDataToolColumns:
-    """Verify synthetic data emits tools_{turn} columns for tool_call_turns.
+    """Verify synthetic graphs embed tools on tool_call turns.
 
     ## WRITTEN BY AI ##
     """
@@ -905,21 +981,21 @@ class TestSyntheticDataToolColumns:
 
     @pytest.mark.smoke
     def test_no_tools_columns_when_tool_call_turns_zero(self, processor):
-        """With tool_call_turns=0, no tools columns are emitted.
+        """With tool_call_turns=0, no tools columns are emitted on turns.
 
         ## WRITTEN BY AI ##
         """
         config = SyntheticTextDataArgs(prompt_tokens=10, output_tokens=10, turns=3)
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert "tools_0" not in row
-        assert "tools_1" not in row
-        assert "tools_2" not in row
+        for turn in turns.values():
+            assert "tools_column" not in turn.columns
 
     @pytest.mark.smoke
     def test_tools_columns_emitted_for_tool_call_turns(self, processor):
-        """With tool_call_turns=2 and turns=3, tools_0 and tools_1 are emitted.
+        """With tool_call_turns=2 and turns=3, main_0 and main_1 carry tools.
 
         ## WRITTEN BY AI ##
         """
@@ -928,12 +1004,13 @@ class TestSyntheticDataToolColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert "tools_0" in row
-        assert "tools_1" in row
-        assert "tools_2" not in row
+        assert "tools_column" in turns["main_0"].columns
+        assert "tools_column" in turns["main_1"].columns
+        assert "tools_column" not in turns["main_2"].columns
 
-        tools_0 = json.loads(row["tools_0"])
+        tools_0 = json.loads(turns["main_0"].columns["tools_column"][0])
         assert tools_0 == DEFAULT_SYNTHETIC_TOOLS
 
     @pytest.mark.smoke
@@ -947,13 +1024,14 @@ class TestSyntheticDataToolColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert "tools_0" in row
-        assert "tools_1" not in row
-        assert "tools_2" in row
-        assert "tools_3" not in row
+        assert "tools_column" in turns["main_0"].columns
+        assert "tools_column" not in turns["main_1"].columns
+        assert "tools_column" in turns["main_2"].columns
+        assert "tools_column" not in turns["main_3"].columns
 
-        tools_0 = json.loads(row["tools_0"])
+        tools_0 = json.loads(turns["main_0"].columns["tools_column"][0])
         assert tools_0 == DEFAULT_SYNTHETIC_TOOLS
 
     @pytest.mark.sanity
@@ -972,13 +1050,14 @@ class TestSyntheticDataToolColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        tools_0 = json.loads(row["tools_0"])
+        tools_0 = json.loads(turns["main_0"].columns["tools_column"][0])
         assert tools_0 == custom_tools
 
     @pytest.mark.sanity
     def test_features_include_tools_columns(self, processor):
-        """Features property includes tools_{i} entries for tool_call_turns.
+        """Features property is always the conversation_turns column.
 
         ## WRITTEN BY AI ##
         """
@@ -986,15 +1065,11 @@ class TestSyntheticDataToolColumns:
             prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
-        features = iterable.features
-
-        assert "tools_0" in features
-        assert "tools_1" in features
-        assert "tools_2" not in features
+        assert set(iterable.features) == {"conversation_turns"}
 
     @pytest.mark.sanity
     def test_features_non_contiguous_tool_call_turns(self, processor):
-        """Features property includes tools_{i} only for listed turn indices.
+        """Features stay conversation_turns regardless of tool_call_turns list.
 
         ## WRITTEN BY AI ##
         """
@@ -1002,12 +1077,7 @@ class TestSyntheticDataToolColumns:
             prompt_tokens=10, output_tokens=10, turns=4, tool_call_turns=[1, 3]
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
-        features = iterable.features
-
-        assert "tools_0" not in features
-        assert "tools_1" in features
-        assert "tools_2" not in features
-        assert "tools_3" in features
+        assert set(iterable.features) == {"conversation_turns"}
 
 
 class TestSyntheticTextDatasetConfigServerToolCallFields:
@@ -1227,7 +1297,7 @@ class TestSyntheticTextDatasetConfigServerToolCallFields:
 
 
 class TestSyntheticDataServerToolCallColumnsAll:
-    """Verify synthetic data emits correct columns when server_tool_call_turns=-1.
+    """Verify synthetic graphs mark all turns when server_tool_call_turns=-1.
 
     ## WRITTEN BY AI ##
     """
@@ -1247,7 +1317,7 @@ class TestSyntheticDataServerToolCallColumnsAll:
     @pytest.mark.smoke
     def test_all_turns_emit_turn_type_columns(self, processor):
         """
-        All turns emit turn_type_N = "server_tool_call" when -1 is used.
+        All turns carry turn_type_column=server_tool_call when -1 is used.
 
         ## WRITTEN BY AI ##
         """
@@ -1256,15 +1326,15 @@ class TestSyntheticDataServerToolCallColumnsAll:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert row["turn_type_0"] == "server_tool_call"
-        assert row["turn_type_1"] == "server_tool_call"
-        assert row["turn_type_2"] == "server_tool_call"
+        for turn in turns.values():
+            assert turn.columns["turn_type_column"] == ["server_tool_call"]
 
     @pytest.mark.sanity
     def test_all_turns_features_include_all_turn_types(self, processor):
         """
-        Features property includes turn_type_{i} for all turns when -1 is used.
+        Features property is conversation_turns when server_tool_call_turns=-1.
 
         ## WRITTEN BY AI ##
         """
@@ -1272,15 +1342,11 @@ class TestSyntheticDataServerToolCallColumnsAll:
             prompt_tokens=10, output_tokens=10, turns=3, server_tool_call_turns=-1
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
-        features = iterable.features
-
-        assert "turn_type_0" in features
-        assert "turn_type_1" in features
-        assert "turn_type_2" in features
+        assert set(iterable.features) == {"conversation_turns"}
 
 
 class TestSyntheticDataServerToolCallColumns:
-    """Verify synthetic data emits turn_type_{turn} columns for server_tool_call_turns.
+    """Verify synthetic graphs embed server_tool_call turn types.
 
     ## WRITTEN BY AI ##
     """
@@ -1305,14 +1371,14 @@ class TestSyntheticDataServerToolCallColumns:
         config = SyntheticTextDataArgs(prompt_tokens=10, output_tokens=10, turns=3)
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert "turn_type_0" not in row
-        assert "turn_type_1" not in row
-        assert "turn_type_2" not in row
+        for turn in turns.values():
+            assert "turn_type_column" not in turn.columns
 
     @pytest.mark.smoke
     def test_turn_type_columns_emitted_for_server_tool_call_turns(self, processor):
-        """Server tool call turns emit turn_type_N = "server_tool_call".
+        """Server tool call turns emit turn_type_column=server_tool_call.
 
         ## WRITTEN BY AI ##
         """
@@ -1321,14 +1387,15 @@ class TestSyntheticDataServerToolCallColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert row["turn_type_0"] == "server_tool_call"
-        assert row["turn_type_1"] == "server_tool_call"
-        assert "turn_type_2" not in row
+        assert turns["main_0"].columns["turn_type_column"] == ["server_tool_call"]
+        assert turns["main_1"].columns["turn_type_column"] == ["server_tool_call"]
+        assert "turn_type_column" not in turns["main_2"].columns
 
     @pytest.mark.smoke
     def test_server_tool_call_turns_do_not_emit_tools_columns(self, processor):
-        """Server tool call turns do not emit tools_N or tool_response_N columns.
+        """Server tool call turns do not emit tools or tool_response columns.
 
         ## WRITTEN BY AI ##
         """
@@ -1337,15 +1404,16 @@ class TestSyntheticDataServerToolCallColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert "tools_0" not in row
-        assert "tools_1" not in row
-        assert "tool_response_0" not in row
-        assert "tool_response_1" not in row
+        assert "tools_column" not in turns["main_0"].columns
+        assert "tools_column" not in turns["main_1"].columns
+        assert "tool_response_column" not in turns["main_0"].columns
+        assert "tool_response_column" not in turns["main_1"].columns
 
     @pytest.mark.sanity
     def test_mixed_client_and_server_tool_call_turns(self, processor):
-        """Client and server tool call turns emit different columns.
+        """Client and server tool call turns embed different columns.
 
         ## WRITTEN BY AI ##
         """
@@ -1358,27 +1426,26 @@ class TestSyntheticDataServerToolCallColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
         # Client tool call turn 0: tools + tool_response, no turn_type
-        assert "tools_0" in row
-        assert "tool_response_0" in row
-        assert "turn_type_0" not in row
+        assert "tools_column" in turns["main_0"].columns
+        assert "tool_response_column" in turns["main_0"].columns
+        assert "turn_type_column" not in turns["main_0"].columns
 
         # Standard turn 1: no tools, no turn_type
-        assert "tools_1" not in row
-        assert "turn_type_1" not in row
+        assert "tools_column" not in turns["main_1"].columns
+        assert "turn_type_column" not in turns["main_1"].columns
 
         # Server tool call turns 2 and 3: turn_type, no tools
-        assert "turn_type_2" in row
-        assert row["turn_type_2"] == "server_tool_call"
-        assert "tools_2" not in row
-        assert "turn_type_3" in row
-        assert row["turn_type_3"] == "server_tool_call"
-        assert "tools_3" not in row
+        assert turns["main_2"].columns["turn_type_column"] == ["server_tool_call"]
+        assert "tools_column" not in turns["main_2"].columns
+        assert turns["main_3"].columns["turn_type_column"] == ["server_tool_call"]
+        assert "tools_column" not in turns["main_3"].columns
 
     @pytest.mark.sanity
     def test_features_include_turn_type_columns(self, processor):
-        """Features property includes turn_type_{i} for server_tool_call_turns.
+        """Features property is conversation_turns for server tool configs.
 
         ## WRITTEN BY AI ##
         """
@@ -1389,11 +1456,7 @@ class TestSyntheticDataServerToolCallColumns:
             server_tool_call_turns=[0, 2],
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
-        features = iterable.features
-
-        assert "turn_type_0" in features
-        assert "turn_type_1" not in features
-        assert "turn_type_2" in features
+        assert set(iterable.features) == {"conversation_turns"}
 
 
 class TestSyntheticTextDatasetConfigToolResponseFields:
@@ -1452,7 +1515,7 @@ class TestSyntheticTextDatasetConfigToolResponseFields:
 
 
 class TestSyntheticDataToolResponseColumns:
-    """Verify synthetic data emits tool_response_{turn} columns.
+    """Verify synthetic graphs embed tool_response on tool_call turns.
 
     ## WRITTEN BY AI ##
     """
@@ -1480,10 +1543,17 @@ class TestSyntheticDataToolResponseColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        assert row["tool_response_0"] == settings.default_synthetic_tool_response
-        assert row["tool_response_1"] == settings.default_synthetic_tool_response
-        assert "tool_response_2" not in row
+        assert (
+            turns["main_0"].columns["tool_response_column"][0]
+            == settings.default_synthetic_tool_response
+        )
+        assert (
+            turns["main_1"].columns["tool_response_column"][0]
+            == settings.default_synthetic_tool_response
+        )
+        assert "tool_response_column" not in turns["main_2"].columns
 
     @pytest.mark.smoke
     def test_variable_length_tool_response_columns(self, processor):
@@ -1500,16 +1570,17 @@ class TestSyntheticDataToolResponseColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         _, row = next(iter(iterable))
+        turns = _main_turn_map(row)
 
-        parsed_0 = json.loads(row["tool_response_0"])
-        parsed_1 = json.loads(row["tool_response_1"])
+        parsed_0 = json.loads(turns["main_0"].columns["tool_response_column"][0])
+        parsed_1 = json.loads(turns["main_1"].columns["tool_response_column"][0])
         assert "result" in parsed_0
         assert "result" in parsed_1
-        assert "tool_response_2" not in row
+        assert "tool_response_column" not in turns["main_2"].columns
 
     @pytest.mark.sanity
     def test_features_include_tool_response_columns(self, processor):
-        """Features property includes tool_response_{i} for tool_call_turns.
+        """Features property is conversation_turns for tool_call configs.
 
         ## WRITTEN BY AI ##
         """
@@ -1517,8 +1588,4 @@ class TestSyntheticDataToolResponseColumns:
             prompt_tokens=10, output_tokens=10, turns=3, tool_call_turns=2
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
-        features = iterable.features
-
-        assert "tool_response_0" in features
-        assert "tool_response_1" in features
-        assert "tool_response_2" not in features
+        assert set(iterable.features) == {"conversation_turns"}

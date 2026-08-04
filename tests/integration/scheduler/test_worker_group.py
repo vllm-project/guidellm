@@ -39,8 +39,9 @@ from guidellm.scheduler.constraints import (
     MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
 )
+from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.scheduler.strategies import SchedulingStrategy
-from guidellm.schemas import RequestTimings
+from guidellm.schemas import RequestSettings, RequestTimings
 
 
 def async_timeout(delay):
@@ -52,6 +53,25 @@ def async_timeout(delay):
         return new_func
 
     return decorator
+
+
+def _single_request_graph(request: str) -> ConversationGraph[str]:
+    """Build a one-node conversation graph for worker group tests.
+
+    ## WRITTEN BY AI ##
+    """
+    return ConversationGraph(
+        graph_id=f"graph_{request}",
+        nodes={
+            "turn_0": ConversationNode(
+                node_id="turn_0",
+                agent_id="default",
+                request=request,
+                settings=RequestSettings(),
+            )
+        },
+        edges=[],
+    )
 
 
 class MockRequestTimings(RequestTimings):
@@ -157,7 +177,7 @@ class TestWorkerGroup:
         """Test comprehensive lifecycle with different strategies and constraints."""
         # Setup
         backend = MockBackend(response_delay=0.01, processes_limit_value=1)
-        requests = [f"request_{ind}" for ind in range(1000)]
+        requests = [_single_request_graph(f"request_{ind}") for ind in range(1000)]
         group = WorkerProcessGroup(
             backend=backend,
             requests=requests,
