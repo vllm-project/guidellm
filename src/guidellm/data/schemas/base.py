@@ -23,6 +23,8 @@ GenerativeDatasetColumnType = Literal[
     "tool_response_column",
     "turn_type_column",
     "relative_timestamp_column",
+    "requeue_delay_column",
+    "conversation_turns_column",
 ]
 
 DatasetType: TypeAlias = Dataset | DatasetDict | IterableDataset | IterableDatasetDict

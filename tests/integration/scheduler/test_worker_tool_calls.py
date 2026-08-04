@@ -13,14 +13,18 @@ import asyncio
 import time
 from functools import wraps
 from multiprocessing import Barrier, Event
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
 
 from guidellm.scheduler import SynchronousStrategy, WorkerProcess
-from guidellm.schemas import GenerationRequest, RequestInfo
+from guidellm.scheduler.schemas import ConversationEdge
+from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
+from guidellm.schemas.conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
+)
 from guidellm.utils.messaging import InterProcessMessagingQueue
 
 
@@ -103,27 +107,49 @@ class _MockToolBackend:
         yield response, request_info
 
 
-def _make_conversation(
-    num_turns: int, tool_call_turns: int
-) -> list[tuple[Any, RequestInfo]]:
-    """Build a pre-planned conversation list for testing.
+def _make_graph(num_turns: int, tool_call_turns: int) -> GenerativeConversationGraph:
+    """Build a linear conversation graph for testing.
 
     ## WRITTEN BY AI ##
     """
-    conv = []
+    nodes: dict[str, GenerativeConversationNode] = {}
+    edges: list[ConversationEdge] = []
     for i in range(num_turns):
-        req = GenerationRequest(
-            columns={"text_column": [f"turn_{i}"]},
-            turn_type="client_tool_call" if i < tool_call_turns else "standard",
+        node_id = f"turn_{i}"
+        nodes[node_id] = GenerativeConversationNode(
+            node_id=node_id,
+            agent_id="default",
+            request=GenerationRequest(
+                columns={"text_column": [f"turn_{i}"]},
+                turn_type="client_tool_call" if i < tool_call_turns else "standard",
+            ),
+            settings=RequestSettings(),
         )
-        info = RequestInfo(
-            request_id=req.request_id,
-            conversation_id="conv_1",
-            turn_index=i,
+        if i > 0:
+            edges.append(
+                ConversationEdge(
+                    source_node_id=f"turn_{i - 1}",
+                    target_node_id=node_id,
+                    history_context="full",
+                )
+            )
+
+    graph = GenerativeConversationGraph(
+        graph_id="test_graph",
+        nodes=nodes,
+        edges=edges,
+    )
+    for i in range(num_turns):
+        node_id = f"turn_{i}"
+        node = graph.nodes[node_id]
+        graph.request_infos[node_id] = RequestInfo(
+            request_id=node.request.request_id,
+            conversation_id=graph.graph_id,
+            node_id=node_id,
+            history_len=i,
             status="queued",
         )
-        conv.append((req, info))
-    return conv
+    return graph
 
 
 class TestWorkerMissingToolCallBehavior:
@@ -147,7 +173,9 @@ class TestWorkerMissingToolCallBehavior:
                 max_buffer_receive_size=10,
                 poll_interval=0.01,
             )
-            await messaging.start(pydantic_models=[])
+            await messaging.start(
+                pydantic_models=[GenerativeConversationGraph, GenerationRequest]
+            )
 
             worker = WorkerProcess(
                 worker_index=0,
@@ -184,18 +212,18 @@ class TestWorkerMissingToolCallBehavior:
         )
         worker, messaging = await make_worker(backend)
 
-        conv = _make_conversation(num_turns=3, tool_call_turns=2)
-        await messaging.put(conv)
+        graph = _make_graph(num_turns=3, tool_call_turns=2)
+        await messaging.put(graph)
 
         await worker._processing_startup()
+        await worker._process_next_graph_node(target_start=time.time())
 
-        history, remaining_conv, info = await worker._process_next_request(
-            target_start=time.time()
-        )
-
-        assert len(remaining_conv) == 2
-        assert remaining_conv[0][0].turn_type == "client_tool_call"
-        assert remaining_conv[1][0].turn_type == "standard"
+        assert len(worker.turns_queue) == 1
+        state = worker.turns_queue[0]
+        remaining = state.get_remaining_node_ids()
+        assert remaining == ["turn_1", "turn_2"]
+        assert graph.nodes[remaining[0]].request.turn_type == "client_tool_call"
+        assert graph.nodes[remaining[1]].request.turn_type == "standard"
 
     @async_timeout(5.0)
     @pytest.mark.asyncio
@@ -214,8 +242,8 @@ class TestWorkerMissingToolCallBehavior:
         )
         worker, messaging = await make_worker(backend)
 
-        conv = _make_conversation(num_turns=3, tool_call_turns=2)
-        await messaging.put(conv)
+        graph = _make_graph(num_turns=3, tool_call_turns=2)
+        await messaging.put(graph)
 
         await worker._processing_startup()
 
@@ -229,10 +257,11 @@ class TestWorkerMissingToolCallBehavior:
         worker._send_update = capture_send
 
         with pytest.raises(asyncio.CancelledError):
-            await worker._process_next_request(target_start=time.time())
+            await worker._process_next_graph_node(target_start=time.time())
 
         cancelled_updates = [u for u in updates if u[0] == "cancelled"]
         assert len(cancelled_updates) == 3
+        assert worker.turns_queue == []
 
     @async_timeout(5.0)
     @pytest.mark.asyncio
@@ -243,7 +272,7 @@ class TestWorkerMissingToolCallBehavior:
         The backend raises ValueError (before yielding the response) which
         the worker catches via its generic exception handler, setting
         request_info.error and sending an "errored" status update. The
-        remaining conversation turns are cancelled in the finally block.
+        remaining conversation turns are cancelled.
 
         ## WRITTEN BY AI ##
         """
@@ -253,8 +282,8 @@ class TestWorkerMissingToolCallBehavior:
         )
         worker, messaging = await make_worker(backend)
 
-        conv = _make_conversation(num_turns=3, tool_call_turns=2)
-        await messaging.put(conv)
+        graph = _make_graph(num_turns=3, tool_call_turns=2)
+        await messaging.put(graph)
 
         await worker._processing_startup()
 
@@ -267,17 +296,14 @@ class TestWorkerMissingToolCallBehavior:
 
         worker._send_update = capture_send
 
-        history, remaining_conv, info = await worker._process_next_request(
-            target_start=time.time()
-        )
-
-        assert len(remaining_conv) == 0
+        await worker._process_next_graph_node(target_start=time.time())
 
         errored_updates = [u for u in updates if u[0] == "errored"]
         assert len(errored_updates) == 1
 
         cancelled_updates = [u for u in updates if u[0] == "cancelled"]
         assert len(cancelled_updates) == 2
+        assert worker.turns_queue == []
 
     @async_timeout(5.0)
     @pytest.mark.asyncio
@@ -293,16 +319,14 @@ class TestWorkerMissingToolCallBehavior:
         )
         worker, messaging = await make_worker(backend)
 
-        conv = _make_conversation(num_turns=3, tool_call_turns=2)
-        await messaging.put(conv)
+        graph = _make_graph(num_turns=3, tool_call_turns=2)
+        await messaging.put(graph)
 
         await worker._processing_startup()
+        await worker._process_next_graph_node(target_start=time.time())
 
-        history, remaining_conv, info = await worker._process_next_request(
-            target_start=time.time()
-        )
-
-        assert len(remaining_conv) == 2
+        assert len(worker.turns_queue) == 1
+        assert worker.turns_queue[0].get_remaining_node_ids() == ["turn_1", "turn_2"]
 
     @async_timeout(5.0)
     @pytest.mark.asyncio
@@ -318,8 +342,8 @@ class TestWorkerMissingToolCallBehavior:
         )
         worker, messaging = await make_worker(backend)
 
-        conv = _make_conversation(num_turns=2, tool_call_turns=0)
-        await messaging.put(conv)
+        graph = _make_graph(num_turns=2, tool_call_turns=0)
+        await messaging.put(graph)
 
         await worker._processing_startup()
 
@@ -332,11 +356,9 @@ class TestWorkerMissingToolCallBehavior:
 
         worker._send_update = capture_send
 
-        history, remaining_conv, info = await worker._process_next_request(
-            target_start=time.time()
-        )
+        await worker._process_next_graph_node(target_start=time.time())
 
-        assert len(remaining_conv) == 1
+        assert worker.turns_queue[0].get_remaining_node_ids() == ["turn_1"]
         errored = [u for u in updates if u[0] == "errored"]
         cancelled = [u for u in updates if u[0] == "cancelled"]
         assert len(errored) == 0
@@ -359,14 +381,13 @@ class TestWorkerMissingToolCallBehavior:
         )
         worker, messaging = await make_worker(backend)
 
-        conv = _make_conversation(num_turns=3, tool_call_turns=2)
-        await messaging.put(conv)
+        graph = _make_graph(num_turns=3, tool_call_turns=2)
+        await messaging.put(graph)
 
         await worker._processing_startup()
+        await worker._process_next_graph_node(target_start=time.time())
 
-        history, remaining_conv, _ = await worker._process_next_request(
-            target_start=time.time()
-        )
-
-        assert len(remaining_conv) == 2
-        assert remaining_conv[0][0].turn_type == "client_tool_call"
+        assert len(worker.turns_queue) == 1
+        remaining = worker.turns_queue[0].get_remaining_node_ids()
+        assert remaining == ["turn_1", "turn_2"]
+        assert graph.nodes[remaining[0]].request.turn_type == "client_tool_call"

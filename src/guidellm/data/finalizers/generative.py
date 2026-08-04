@@ -1,17 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any, Literal
 
 from pydantic import Field
 
+from guidellm.data.finalizers.conversation_graph import (
+    expand_client_tool_turns,
+    turns_from_mapped_items,
+)
 from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.schemas import DataFinalizerArgs
+from guidellm.scheduler.schemas import HistoryContext
 from guidellm.schemas import (
     GenerationRequest,
     RequestSettings,
     TurnType,
     UsageMetrics,
+)
+from guidellm.schemas.conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
 )
 
 __all__ = [
@@ -38,11 +46,9 @@ class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
 
 
 @FinalizerRegistry.register("generative")
-class GenerativeRequestFinalizer(
-    DatasetFinalizer[Iterable[tuple[GenerationRequest, RequestSettings]]]
-):
+class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | list]):
     """
-    Finalizer that converts dataset rows into GenerationRequest objects,
+    Finalizer that converts dataset rows into a GenerativeConversationGraph,
     aggregating usage metrics from the provided columns.
     """
 
@@ -51,36 +57,38 @@ class GenerativeRequestFinalizer(
 
     def __call__(
         self, items: list[dict[str, Any]]
-    ) -> list[tuple[GenerationRequest, RequestSettings]]:
-        results: list[tuple[GenerationRequest, RequestSettings]] = []
-        for item in items:
-            request, settings = self.finalize_turn(item)
-            if request.turn_type == "client_tool_call":
-                # Split tool-calling turns: the tool_response_column moves
-                # to a separate injection turn that follows the tool call.
-                tool_response_data = request.columns.pop("tool_response_column", [])
-                injection_columns: dict[str, list[Any]] = {}
-                if tool_response_data:
-                    injection_columns["tool_response_column"] = tool_response_data
-                # Move output metrics to next turn
-                metrics_config = request.output_metrics
-                request.output_metrics = UsageMetrics()
-                results.append((request, RequestSettings()))
-                results.append(
-                    (
-                        GenerationRequest(
-                            columns=injection_columns,
-                            turn_type="tool_response_injection",
-                            output_metrics=metrics_config,
-                        ),
-                        settings,
-                    )
-                )
-            else:
-                results.append((request, settings))
-        return results
+    ) -> GenerativeConversationGraph | list:
+        graph_data = turns_from_mapped_items(items)
+        if not graph_data.turns:
+            return []
 
-    def finalize_turn(  # noqa: C901 PLR0912
+        graph_data = expand_client_tool_turns(
+            graph_data, tool_call_mode=self.config.tool_call_mode
+        )
+
+        nodes: dict[str, GenerativeConversationNode] = {}
+        parents_by_node: dict[str, list[tuple[str, HistoryContext]]] = {}
+        for turn in graph_data.turns:
+            request, column_settings = self.finalize_turn(dict(turn.columns))
+            settings = turn.settings if turn.settings is not None else column_settings
+            nodes[turn.node_id] = GenerativeConversationNode(
+                node_id=turn.node_id,
+                agent_id=turn.agent_id,
+                request=request,
+                settings=settings,
+            )
+            parents_by_node[turn.node_id] = [
+                (parent.parent_node_id, parent.history_context)
+                for parent in turn.parents
+            ]
+
+        return GenerativeConversationGraph.from_nodes_with_parents(
+            nodes=nodes,
+            parents_by_node=parents_by_node,
+            graph_id=graph_data.graph_id,
+        )
+
+    def finalize_turn(  # noqa: C901 PLR0912 PLR0915
         self, columns: dict[str, Any]
     ) -> tuple[GenerationRequest, RequestSettings]:
         input_metrics = UsageMetrics()
@@ -183,18 +191,22 @@ class GenerativeRequestFinalizer(
         else:
             turn_type = "standard"
 
+        # Scheduling metadata belongs on RequestSettings, not request columns.
+        relative_timestamp = self._get_optional_column_value(
+            columns, "relative_timestamp_column"
+        )
+        requeue_delay = self._get_optional_column_value(columns, "requeue_delay_column")
+        columns.pop("relative_timestamp_column", None)
+        columns.pop("requeue_delay_column", None)
+
         return GenerationRequest(
             columns=columns,
             turn_type=turn_type,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         ), RequestSettings(
-            relative_timestamp=self._get_optional_column_value(
-                columns, "relative_timestamp_column"
-            ),
-            requeue_delay=self._get_optional_column_value(
-                columns, "requeue_delay_column"
-            ),
+            relative_timestamp=relative_timestamp,
+            requeue_delay=requeue_delay,
         )
 
     @staticmethod

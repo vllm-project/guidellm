@@ -169,9 +169,35 @@ class RequestInfo(StandardBaseModel):
             "Identifier for the conversation this request is part of, if applicable."
         ),
     )
+    history_len: int = Field(
+        default=0,
+        description=(
+            "Number of prior messages in the assembled history sent to the "
+            "server with this request. May include messages from diverging "
+            "or merged paths (``last`` edges). Branches that start with a "
+            "``new`` edge restart at 0."
+        ),
+    )
     turn_index: int = Field(
         default=0,
-        description="Index of the request within the conversation, if applicable.",
+        description=(
+            "Path-depth turn index for this request: longest path that "
+            "resets on ``new`` edges, increments through ``full`` edges, "
+            "and treats each ``last`` edge as adding up to 1 without "
+            "recursion. Multiple parents take the maximum."
+        ),
+    )
+    node_id: str | None = Field(
+        default=None,
+        description="Node ID within a conversation graph, if applicable.",
+    )
+    agent_id: str | None = Field(
+        default=None,
+        description="Identifier for the simulated agent that owns this request.",
+    )
+    parent_node_ids: list[str] = Field(
+        default_factory=list,
+        description="Node IDs of direct predecessors in the DAG.",
     )
     status: Literal[
         "queued",

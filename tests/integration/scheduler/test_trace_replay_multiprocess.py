@@ -36,6 +36,7 @@ from guidellm.scheduler import (
     WorkerProcessGroup,
 )
 from guidellm.schemas import GenerationRequest, RequestSettings
+from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 from tests.unit.testing_utils import async_timeout
 
 TIME_SCALE = 2.0
@@ -61,7 +62,7 @@ def _write_trace(path: Path, lines: list[str]) -> Path:
 
 def _requests_from_trace(
     trace_path: Path,
-) -> tuple[list[list[tuple[GenerationRequest, RequestSettings]]], list[float]]:
+) -> tuple[list[GenerativeConversationGraph], list[float]]:
     deserializer = TraceDatasetDeserializer()
     dataset = deserializer(
         config=MinimalTraceFormatArgs(path=trace_path),
@@ -73,16 +74,17 @@ def _requests_from_trace(
     mapper.setup_data([dataset])
     finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
-    conversations: list[list[tuple[GenerationRequest, RequestSettings]]] = []
+    conversations: list[GenerativeConversationGraph] = []
     relative_timestamps: list[float] = []
     for idx, row in enumerate(dataset):
         mapped = mapper([{"dataset": row}])
-        requests = finalizer(mapped)
-        assert len(requests) == 1
-        request, settings = requests[0]
-        request.request_id = f"req_{idx}"
-        conversations.append([(request, settings)])
-        offset = settings.relative_timestamp
+        graph = finalizer(mapped)
+        assert isinstance(graph, GenerativeConversationGraph)
+        assert len(graph.nodes) == 1
+        node = next(iter(graph.nodes.values()))
+        node.request.request_id = f"req_{idx}"
+        conversations.append(graph)
+        offset = node.settings.relative_timestamp
         assert offset is not None
         relative_timestamps.append(offset)
 
