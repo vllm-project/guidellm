@@ -1,2 +1,3 @@
-from litellm import acompletion as acompletion
-from litellm import completion as completion
+from litellm import acompletion, completion
+
+__all__ = ["acompletion", "completion"]

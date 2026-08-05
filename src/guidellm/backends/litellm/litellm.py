@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import Field, SecretStr
@@ -93,9 +94,10 @@ class LiteLLMBackend(Backend):
         await backend.process_shutdown()
     """
 
+    _args: LiteLLMBackendArgs
+
     def __init__(self, args: LiteLLMBackendArgs):
         super().__init__(args)
-        self._args = args
         self._in_process = False
 
     async def process_startup(self):
@@ -302,23 +304,9 @@ class LiteLLMBackend(Backend):
         )
 
 
+@dataclass(frozen=True, kw_only=True, slots=True)
 class _ChunkResult:
-    __slots__ = (
-        "first_token",
-        "input_tokens",
-        "output_tokens",
-        "response_id",
-    )
-
-    def __init__(
-        self,
-        *,
-        response_id: str | None,
-        input_tokens: int | None,
-        output_tokens: int | None,
-        first_token: bool,
-    ):
-        self.response_id = response_id
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.first_token = first_token
+    response_id: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    first_token: bool
