@@ -238,6 +238,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if self._llm is not None:
             return self._llm
 
+        if self._engine_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._engine_lock:
             if self._llm is not None:
                 return self._llm
@@ -271,6 +273,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         # Set flag under lock so no new requests can enqueue
         batch: list[_BatchedRequest] = []
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._batch_lock:
             self._shutting_down = True
             if self._pending_batch:
@@ -289,6 +293,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         # Serialize with any in-flight _run_generate (e.g. from
         # _maybe_process_batch in a concurrent resolve()) before
         # tearing down the engine.
+        if self._generate_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._generate_lock:
             if self._llm is not None:
                 if hasattr(self._llm, "shutdown"):
@@ -461,6 +467,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         loop = asyncio.get_running_loop()
 
+        if self._generate_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._generate_lock:
             try:
                 outputs = await loop.run_in_executor(
@@ -471,7 +479,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
                         use_tqdm=False,
                     ),
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 self._signal_batch_failure(batch, exc)
                 return
 
@@ -487,13 +495,15 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             )
             return
 
-        for batched_req, output in zip(batch, outputs):
+        for batched_req, output in zip(batch, outputs, strict=False):
             batched_req.result = output
             batched_req.ready.set()
 
     async def _maybe_process_batch(self) -> None:
         """Trigger batch processing if the batch is full."""
         batch: list[_BatchedRequest] = []
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._batch_lock:
             if len(self._pending_batch) >= self._args.batch_size:
                 batch = self._take_pending_batch()
@@ -504,9 +514,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         self,
         request: GenerationRequest,
         request_info: RequestInfo,
-        history: (
-            list[tuple[GenerationRequest, GenerationResponse]] | None
-        ) = None,
+        history: (list[tuple[GenerationRequest, GenerationResponse]] | None) = None,
     ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
         """
         Queue a request for batch processing and yield the response.
@@ -546,6 +554,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         request_info.timings.request_start = time.time()
 
         # Enqueue atomically with shutdown check
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._batch_lock:
             if self._shutting_down:
                 raise RuntimeError("Backend is shutting down.")
@@ -577,9 +587,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         text = self._text_from_output(request_output)
         usage = self._usage_from_output(request_output)
-        response_id = (
-            request_output.request_id if request_output.request_id else None
-        )
+        response_id = request_output.request_id if request_output.request_id else None
 
         response = VLLMResponseHandler.build_response(
             request, text, usage, response_id=response_id
@@ -599,6 +607,10 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         async def _deferred_flush() -> None:
             while True:
                 await asyncio.sleep(self._args.batch_timeout)
+                if self._batch_lock is None:
+                    raise RuntimeError(
+                        "Locks not initialized; call process_startup() first."
+                    )
                 async with self._batch_lock:
                     if not self._pending_batch:
                         return
@@ -647,13 +659,9 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             return
 
         request_info.timings.first_request_iteration = arrival
-        request_info.timings.first_token_iteration = (
-            arrival + (first_tok - mono_base)
-        )
+        request_info.timings.first_token_iteration = arrival + (first_tok - mono_base)
         if last_tok:
-            request_info.timings.last_token_iteration = (
-                arrival + (last_tok - mono_base)
-            )
+            request_info.timings.last_token_iteration = arrival + (last_tok - mono_base)
             request_info.timings.last_request_iteration = arrival + (
                 last_tok - mono_base
             )

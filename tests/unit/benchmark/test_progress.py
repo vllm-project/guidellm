@@ -12,7 +12,7 @@ from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 _MONOTONIC = "guidellm.benchmark.progress.time.monotonic"
 
 
-@pytest.fixture()
+@pytest.fixture
 def progress():
     """Return a progress instance with Live internals stubbed out."""
     with patch("guidellm.benchmark.progress.Live.__init__", return_value=None):
@@ -81,7 +81,7 @@ class TestThrottledRefresh:
 
     @pytest.mark.sanity
     def test_does_not_update_timestamp_when_skipped(self, progress):
-        """_throttled_refresh leaves _last_refresh unchanged when skipped. ## WRITTEN BY AI ##"""
+        """_throttled_refresh leaves _last_refresh unchanged when skipped."""
         progress._last_refresh = 10.0
         with patch(_MONOTONIC, return_value=10.05):
             progress._throttled_refresh()
@@ -89,7 +89,7 @@ class TestThrottledRefresh:
 
     @pytest.mark.sanity
     def test_respects_refresh_per_second_boundary(self, progress):
-        """_throttled_refresh fires exactly at the interval boundary. ## WRITTEN BY AI ##"""
+        """_throttled_refresh fires exactly at the interval boundary."""
         progress._last_refresh = 0.0
         interval = 1.0 / progress.refresh_per_second  # 0.25 s
 
