@@ -53,18 +53,21 @@ def prepare_vllm_benchmark_logging(
         handler.setLevel(level_upper)
 
     for name, candidate in logging.root.manager.loggerDict.items():
-        if name == "vllm" or name.startswith("vllm."):
-            if isinstance(candidate, logging.Logger):
-                candidate.setLevel(level_upper)
-                for handler in candidate.handlers:
-                    handler.setLevel(level_upper)
+        if (name == "vllm" or name.startswith("vllm.")) and isinstance(
+            candidate, logging.Logger
+        ):
+            candidate.setLevel(level_upper)
+            for handler in candidate.handlers:
+                handler.setLevel(level_upper)
 
     # vLLM configures its root logger at import time. Re-apply config when
     # vLLM was imported before this call (for example via EngineArgs).
     # _configure_vllm_root_logger is private; guard against renames on upgrade.
     if "vllm.logger" in sys.modules:
         try:
-            from vllm.logger import _configure_vllm_root_logger
+            from vllm.logger import (  # noqa: PLC0415
+                _configure_vllm_root_logger,
+            )
 
             _configure_vllm_root_logger()
         except (ImportError, AttributeError):

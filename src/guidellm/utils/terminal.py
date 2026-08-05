@@ -6,6 +6,7 @@ import os
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 __all__ = ["suppress_worker_stdio"]
 
@@ -30,8 +31,8 @@ def suppress_worker_stdio() -> Iterator[None]:
     saved_err_fd = os.dup(2)
     saved_sys_out = sys.stdout
     saved_sys_err = sys.stderr
-    null_out = open(os.devnull, "w")  # noqa: SIM115
-    null_err = open(os.devnull, "w")  # noqa: SIM115
+    null_out = Path(os.devnull).open("w")  # noqa: SIM115
+    null_err = Path(os.devnull).open("w")  # noqa: SIM115
     try:
         os.dup2(devnull_fd, 1)
         os.dup2(devnull_fd, 2)
