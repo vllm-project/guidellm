@@ -151,6 +151,9 @@ guidellm run \
 
 Values in `extras.body` are merged into the request body and take precedence over the defaults, so `ignore_eos: false` overrides the built-in `true`. Leave `ignore_eos` unset (the default) for models where suppressing the end-of-sequence token is safe, which lets GuideLLM control the exact output length.
 
+> [!NOTE]
+> Removing `ignore_eos: true` allows the model to stop generating at its discretion which can result in significantly shorter sequence lengths than desired.
+
 ## Structured Chat Content Payloads
 
 Some chat templates require metadata alongside the text in each structured content object. Pass these fields through `extras.content` in the `openai_http` backend configuration. GuideLLM adds them to every generated text content object for Chat Completions and Responses API requests.
