@@ -129,6 +129,30 @@ guidellm run \
 
 This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
 
+## Controlling End-of-Sequence Behavior
+
+To measure throughput and latency for an exact output length, GuideLLM asks the server to generate precisely the requested number of tokens. For the `openai_http` backend, when you request a specific output token count each request sets `ignore_eos: true` (alongside `max_tokens`/`max_completion_tokens` and `stop: null`) so the server keeps generating instead of stopping when the model emits an end-of-sequence token.
+
+Some models should not have their end-of-sequence token suppressed. Formats such as Harmony / `gpt-oss` expect the model to stop on its own end-of-turn token; forcing generation past it makes the server reject the trailing tokens and fail the request. For these (or similar) models, disable `ignore_eos` by passing `false` through the backend `extras.body` field:
+
+```bash
+guidellm run \
+  --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"openai/gpt-oss-20b","extras":{"body":{"ignore_eos":false}}}' \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+```
+
+Or using GuideLLM's compact `key=value` parser:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000/v1,model=openai/gpt-oss-20b,extras.body.ignore_eos=false \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+```
+
+Values in `extras.body` are merged into the request body and take precedence over the defaults, so `ignore_eos: false` overrides the built-in `true`. Leave `ignore_eos` unset (the default) for models where suppressing the end-of-sequence token is safe, which lets GuideLLM control the exact output length.
+
+> [!NOTE] Removing `ignore_eos: true` allows the model to stop generating at its discretion which can result in significantly shorter sequence lengths than desired.
+
 ## Structured Chat Content Payloads
 
 Some chat templates require metadata alongside the text in each structured content object. Pass these fields through `extras.content` in the `openai_http` backend configuration. GuideLLM adds them to every generated text content object for Chat Completions and Responses API requests.
