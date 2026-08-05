@@ -91,6 +91,7 @@ class TestVLLMResponseHandler:
             "total_tokens": 15,
             "prompt_tokens_details": {
                 "image_tokens": 3,
+                "cached_tokens": 8,
             },
             "completion_tokens_details": {
                 "audio_tokens": 1,
@@ -99,6 +100,7 @@ class TestVLLMResponseHandler:
         out = VLLMResponseHandler.build_response(request_fixture, "result", usage)
         assert out.input_metrics.text_tokens == 10
         assert out.input_metrics.image_tokens == 3
+        assert out.input_metrics.cached_tokens == 8
         assert out.output_metrics.text_tokens == 5
         assert out.output_metrics.audio_tokens == 1
 
