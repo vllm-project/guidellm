@@ -41,12 +41,12 @@ from guidellm.scheduler.schemas import (
 from guidellm.scheduler.strategies import SchedulingStrategy
 from guidellm.schemas import RequestInfo
 from guidellm.utils.messaging import InterProcessMessaging
-from guidellm.utils.terminal import suppress_worker_stdio
 from guidellm.utils.synchronous import (
     wait_for_sync_barrier,
     wait_for_sync_event,
     wait_for_sync_objects,
 )
+from guidellm.utils.terminal import suppress_worker_stdio
 
 __all__ = ["WorkerProcess"]
 

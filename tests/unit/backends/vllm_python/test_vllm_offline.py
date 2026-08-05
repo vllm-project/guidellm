@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from guidellm.backends.vllm_python.common import is_scheduler_worker_process
 from guidellm.backends.vllm_python.offline import (
     VLLMOfflineBackend,
     VLLMOfflineBackendArgs,
@@ -308,7 +309,11 @@ class TestLifecycle:
 class TestProcessStartupReset:
     @pytest.mark.smoke
     def test_init_does_not_create_async_locks(self):
-        """Locks are deferred until process_startup for spawn pickling. ## WRITTEN BY AI ##"""
+        """
+        Locks are deferred until process_startup for spawn pickling.
+
+        ## WRITTEN BY AI ##
+        """
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
@@ -376,7 +381,11 @@ class TestProcessStartupReset:
 class TestSpawnPickling:
     @pytest.mark.smoke
     def test_backend_pickles_without_async_locks(self):
-        """Spawn workers can pickle the backend before process_startup. ## WRITTEN BY AI ##"""
+        """
+        Spawn workers can pickle the backend before process_startup.
+
+        ## WRITTEN BY AI ##
+        """
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
@@ -385,7 +394,7 @@ class TestSpawnPickling:
         ):
             backend = _make_offline_backend(model="test-model")
             data = pickle.dumps(backend)
-            restored = pickle.loads(data)
+            restored = pickle.loads(data)  # noqa: S301
 
         assert restored._batch_lock is None
         assert restored._generate_lock is None
@@ -402,7 +411,7 @@ class TestSpawnPickling:
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
-            restored = pickle.loads(pickle.dumps(backend))
+            restored = pickle.loads(pickle.dumps(backend))  # noqa: S301
             await restored.process_startup()
 
         assert restored._batch_lock is not None
@@ -428,7 +437,7 @@ class TestSpawnPickling:
             backend = _make_offline_backend(model="test-model")
             await backend.process_startup()
             await backend.process_shutdown()
-            restored = pickle.loads(pickle.dumps(backend))
+            restored = pickle.loads(pickle.dumps(backend))  # noqa: S301
             await restored.process_startup()
 
         assert restored._in_process is True
@@ -486,10 +495,6 @@ class TestWorkerBasedPreload:
             "guidellm.backends.vllm_python.common.mp.parent_process",
             return_value=None,
         ):
-            from guidellm.backends.vllm_python.common import (
-                is_scheduler_worker_process,
-            )
-
             assert is_scheduler_worker_process() is False
 
     @pytest.mark.sanity
@@ -499,10 +504,6 @@ class TestWorkerBasedPreload:
             "guidellm.backends.vllm_python.common.mp.parent_process",
             return_value=Mock(),
         ):
-            from guidellm.backends.vllm_python.common import (
-                is_scheduler_worker_process,
-            )
-
             assert is_scheduler_worker_process() is True
 
 
@@ -574,7 +575,11 @@ class TestBatchProcessing:
     async def test_run_generate_output_count_mismatch_signals_all_waiters(
         self, started_backend
     ):
-        """Output count mismatch signals all waiters so resolve() never hangs. ## WRITTEN BY AI ##"""
+        """
+        Output count mismatch signals all waiters so resolve() never hangs.
+
+        ## WRITTEN BY AI ##
+        """
         reqs = [
             _BatchedRequest(resolved_prompt="p", multi_modal_data=None, max_tokens=10)
             for _ in range(3)
@@ -592,7 +597,11 @@ class TestBatchProcessing:
     async def test_run_generate_unexpected_exception_signals_all_waiters(
         self, started_backend
     ):
-        """Any generate() failure signals all waiters so resolve() never hangs. ## WRITTEN BY AI ##"""
+        """
+        Any generate() failure signals all waiters so resolve() never hangs.
+
+        ## WRITTEN BY AI ##
+        """
         reqs = [
             _BatchedRequest(resolved_prompt="p", multi_modal_data=None, max_tokens=10)
             for _ in range(2)
@@ -850,7 +859,11 @@ class TestWireVllmMetrics:
 
     @pytest.mark.sanity
     def test_no_metrics_no_crash(self):
-        """metrics=None does not crash; token count falls back to token_ids. ## WRITTEN BY AI ##"""
+        """
+        metrics=None does not crash; token count falls back to token_ids.
+
+        ## WRITTEN BY AI ##
+        """
         request_info = RequestInfo()
         output = _mock_request_output(metrics=None)
         VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
