@@ -10,6 +10,7 @@ consistent interaction with various AI generation APIs.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
 from pydantic import Field, computed_field
@@ -30,6 +31,69 @@ __all__ = [
     "TurnType",
     "UsageMetrics",
 ]
+
+
+def _base64_byte_count(value: str) -> int:
+    """Calculate decoded byte count without allocating the decoded payload."""
+    value_length = len(value)
+    padding = value_length - len(value.rstrip("="))
+    return max((value_length * 3) // 4 - padding, 0)
+
+
+def _sanitize_data_url(value: str) -> str | dict[str, str | int]:
+    """Replace a Base64 data URL with bounded media metadata."""
+    header, separator, payload = value.partition(",")
+    if not separator or not header.startswith("data:") or ";base64" not in header:
+        return value
+
+    mime_type = header.removeprefix("data:").split(";", maxsplit=1)[0]
+    return {
+        "mime_type": mime_type or "application/octet-stream",
+        "encoding": "base64",
+        "byte_count": _base64_byte_count(payload),
+    }
+
+
+def _sanitize_transport_value(value: Any) -> Any:
+    """Recursively replace transport payloads with bounded metadata."""
+    if isinstance(value, bytes | bytearray | memoryview):
+        return {"byte_count": len(value)}
+    if isinstance(value, str):
+        return _sanitize_data_url(value)
+    if isinstance(value, Mapping):
+        sanitized: dict[Any, Any] = {}
+        for key, item in value.items():
+            is_inline_base64 = key == "file_data" or (
+                key == "data" and "format" in value
+            )
+            if is_inline_base64 and isinstance(item, str):
+                sanitized[key] = {
+                    "encoding": "base64",
+                    "byte_count": _base64_byte_count(item),
+                }
+            else:
+                sanitized[key] = _sanitize_transport_value(item)
+        return sanitized
+    if isinstance(value, Sequence):
+        if value:
+            filename, *file_parts = value
+        else:
+            filename, file_parts = None, []
+        if (
+            file_parts
+            and isinstance(filename, str)
+            and isinstance(file_parts[0], bytes | bytearray | memoryview)
+        ):
+            payload, *metadata_parts = file_parts
+            metadata: dict[str, str | int] = {
+                "filename": filename,
+                "byte_count": len(payload),
+            }
+            if metadata_parts and isinstance(metadata_parts[0], str):
+                metadata["mime_type"] = metadata_parts[0]
+            return metadata
+        return [_sanitize_transport_value(item) for item in value]
+    return value
 
 
 class GenerationRequestArguments(StandardBaseDict):
@@ -108,6 +172,19 @@ class GenerationRequestArguments(StandardBaseDict):
                 setattr(self, combine, current)
 
         return self
+
+    def model_dump_json_for_persistence(self) -> str:
+        """
+        Serialize request arguments without retaining transport media payloads.
+
+        Raw bytes, multipart file content, Base64 data URLs, and known inline
+        Base64 file fields are replaced with bounded metadata. Ordinary request
+        parameters and remote media URLs remain unchanged.
+
+        :return: JSON request metadata safe to persist in benchmark reports.
+        """
+        sanitized = _sanitize_transport_value(self.model_dump())
+        return GenerationRequestArguments.model_validate(sanitized).model_dump_json()
 
 
 class UsageMetrics(StandardBaseDict):

@@ -2358,6 +2358,46 @@ class TestAudioRequestHandler:
         assert file_tuple[1] == audio_data
         assert file_tuple[2] == "audio/wav"
 
+    @pytest.mark.regression
+    def test_compile_redacts_audio_payload_from_request_args(self, valid_instances):
+        """Persist audio metadata without retaining the multipart payload.
+
+        ## WRITTEN BY AI ##
+        """
+        audio_data = b"private audio bytes" * 100
+        request = GenerationRequest(
+            columns={
+                "audio_column": [
+                    {
+                        "audio": audio_data,
+                        "file_name": "recording.wav",
+                        "mimetype": "audio/wav",
+                    }
+                ]
+            }
+        )
+        arguments = valid_instances.format(
+            request,
+            model="whisper-1",
+            extras=GenerationRequestArguments(body={"language": "en"}),
+        )
+
+        response = valid_instances.compile_non_streaming(
+            request,
+            arguments,
+            {"choices": [{"message": {"content": "transcript"}}]},
+        )
+        assert response.request_args is not None
+        request_args = json.loads(response.request_args)
+
+        assert request_args["body"] == {"model": "whisper-1", "language": "en"}
+        assert request_args["files"]["file"] == {
+            "filename": "recording.wav",
+            "mime_type": "audio/wav",
+            "byte_count": len(audio_data),
+        }
+        assert len(response.request_args) < 500
+
     @pytest.mark.sanity
     def test_format_missing_audio(self, valid_instances):
         """Test format method raises error when no audio column provided.
