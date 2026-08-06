@@ -40,56 +40,36 @@ class MinimalTraceFormatArgs(TraceDataArgs):
 
 @TraceFormatRegistry.register("trace_synthetic")
 class MinimalTraceFormat(TraceFormatBase):
-    def __init__(
-        self,
-        dataset: Dataset,  # noqa: ARG002
-    ) -> None:
+    def __init__(self, config: MinimalTraceFormatArgs, dataset: Dataset) -> None:
+        self.config = config
+        self.dataset = dataset
         self.conversation_locations = [[0]]
 
-    def required_columns(
-        self,
-        config: MinimalTraceFormatArgs,  # noqa: ARG002
-    ) -> Features:
-        return []
+    def __iter__(self) -> Iterable[Dataset]:
+        yield self.dataset.sort(self.config.timestamp_column)
 
-    def find_required_columns(
-        self,
-        config: MinimalTraceFormatArgs,  # noqa: ARG002
-        columns: list[str],
-        dataset: Dataset,
-    ) -> list[str]:
-        return get_missing_columns(columns, dataset.column_names)
+    def required_columns(self) -> Features:
+        return {}
+
+    def find_required_columns(self, columns: list[str]) -> list[str]:
+        return get_missing_columns(columns, self.dataset.column_names)
 
     def get_conversation_id_trace(
         self,
-        config: MinimalTraceFormatArgs,  # noqa: ARG002
         conversation_location: list[int],  # noqa: ARG002
-        dataset: Dataset,  # noqa: ARG002
     ) -> list[str] | None:
         return None
 
-    def get_conversation_iter(
-        self,
-        config: MinimalTraceFormatArgs,  # noqa: ARG002
-        dataset: Dataset,
-    ) -> Iterable[Dataset]:
-        yield dataset.sort(config.timestamp_column)
-
     def validate_row(
         self,
-        config: MinimalTraceFormatArgs,  # noqa: ARG002
         row: dict,  # noqa: ARG002
     ) -> None:
         return
 
     def create_prompt(
-        self,
-        config: MinimalTraceFormatArgs,
-        row: dict,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
+        self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
     ) -> str:
         token_ids = generate_token_ids(
-            row[config.prompt_tokens_column], processor, faker
+            row[self.config.prompt_tokens_column], processor, faker
         )
         return decode_prompt(processor, list(token_ids))

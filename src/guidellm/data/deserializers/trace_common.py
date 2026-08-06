@@ -80,6 +80,12 @@ def generate_token_ids(
             return tuple(token_ids[:token_count])
 
 
+def get_missing_columns(
+    required_columns: list[str], actual_columns: list[str]
+) -> list[str]:
+    return [c for c in required_columns if c not in actual_columns]
+
+
 def create_prompt_from_hash_ids(
     hash_ids: list[int],
     hash_id_table: dict[int, tuple[int, ...]],
@@ -117,36 +123,30 @@ def create_distinct_token_block(
 class TraceFormatBase(Protocol):
     conversation_locations: list[list[int]]
 
-    def __init__(self, dataset: Dataset) -> None: ...
+    def __init__(self, config, dataset: Dataset) -> None: ...
+
+    def __iter__(self) -> Iterable[Dataset]:
+        """TODO"""
 
     def reset(self) -> None:
         pass
 
-    def required_columns(self, config) -> Features: ...
+    def required_columns(self) -> Features: ...
 
-    def find_required_columns(
-        self, config, columns: list[str], dataset: Dataset
-    ) -> list[str]:
+    def find_required_columns(self, columns: list[str]) -> list[str]:
         """TODO"""
 
     def get_conversation_id_trace(
-        self, config, conversation_location: list[int], dataset: Dataset
+        self, conversation_location: list[int]
     ) -> list[str] | None:
         """TODO"""
 
-    def get_conversation_iter(self, config, dataset: Dataset) -> Iterable[Dataset]:
-        """TODO"""
-
-    def validate_row(self, config, row: dict) -> None:
-        """Called within `trace_common.TraceExamplesIterable` on initialization,
-        immediately after doing its own checks on the row."""
+    def validate_row(self, row: dict) -> None:
+        """OUTDATED: Called within `trace_common.TraceExamplesIterable` on
+        initialization, immediately after doing its own checks on the row."""
 
     def create_prompt(
-        self,
-        config,
-        row: dict,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
+        self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
     ) -> str:
         """Called within `trace_common.TraceExamplesIterable` on each iteration.
         Returns a generated synthetic prompt."""
@@ -160,7 +160,7 @@ class TraceFormatRegistry(RegistryMixin[type[TraceFormatBase]]):
             raise DataNotSupportedError(
                 f"Format type '{config.kind}' is not registered."
             )
-        return format_from_type(dataset)
+        return format_from_type(config, dataset)
 
 
 class TraceDataArgs(DataArgs):
@@ -199,7 +199,6 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     def __init__(
         self,
         config: TraceDataArgs,
-        dataset: Dataset,
         trace_format: TraceFormatBase,
         processor: PreTrainedTokenizerBase,
         random_seed: int,
@@ -210,18 +209,14 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         self.processor = processor
         self.faker = Faker()
         self.faker.seed_instance(random_seed)
-        self.dataset = dataset
         self.iteration_count = 0
 
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
-        conversations = self.format.get_conversation_iter(self.config, self.dataset)
-        for conv in conversations:
+        for conv in self.format:
             start_ts = conv[0][self.config.timestamp_column]
             for row_idx, row in enumerate(conv):
-                prompt = self.format.create_prompt(
-                    self.config, row, self.processor, self.faker
-                )
+                prompt = self.format.create_prompt(row, self.processor, self.faker)
                 relative_timestamp = row[self.config.timestamp_column] - start_ts
                 yield (
                     row_idx,
@@ -283,13 +278,12 @@ class TraceDataset(IterableDataset):
     def __init__(
         self,
         config: TraceDataArgs,
-        dataset: Dataset,
         trace_format: TraceFormatBase,
         processor: PreTrainedTokenizerBase,
         random_seed: int,
     ):
         ex_iterable = TraceExamplesIterable(
-            config, dataset, trace_format, processor, random_seed
+            config, trace_format, processor, random_seed
         )
         super().__init__(
             ex_iterable=ex_iterable,
@@ -303,12 +297,6 @@ class TraceDataset(IterableDataset):
         """Set the epoch for the dataset iteration."""
         if hasattr(self._ex_iterable, "iteration_count"):
             self._ex_iterable.iteration_count = epoch
-
-
-def get_missing_columns(
-    required_columns: list[str], actual_columns: list[str]
-) -> list[str]:
-    return [c for c in required_columns if c not in actual_columns]
 
 
 @dataclasses.dataclass
@@ -349,40 +337,35 @@ def _raise_if_incorrect_types(dataset: Dataset, features: Features) -> None:
         raise DataNotSupportedError(str(e)) from e
 
 
-def _validate_dataset(
-    config: TraceDataArgs, dataset: Dataset, trace_format: TraceFormatBase
-) -> None:
-    conversations = trace_format.get_conversation_iter(config, dataset)
+def _validate_dataset(config: TraceDataArgs, trace_format: TraceFormatBase) -> None:
     features = Features(
         {
             config.timestamp_column: Value("float"),
             config.prompt_tokens_column: Value("int32"),
             config.output_tokens_column: Value("int32"),
-            **dict(trace_format.required_columns(config)),
+            **dict(trace_format.required_columns()),
         }
     )
-    for conv in conversations:
+    for conv in trace_format:
         if config.conversation_id_column in features:
             features.pop(config.conversation_id_column)
         _raise_if_nonetype_found(conv)
         _raise_if_incorrect_types(conv, features)
         for row in conv:
             _validate_row(row, config)
-            trace_format.validate_row(config, row)
+            trace_format.validate_row(row)
 
 
-def _handle_column_search(
-    config: TraceDataArgs, dataset: Dataset, trace_format: TraceFormatBase
-) -> None:
+def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) -> None:
     features = Features(
         {
             config.timestamp_column: Value("float"),
             config.prompt_tokens_column: Value("int32"),
             config.output_tokens_column: Value("int32"),
-            **dict(trace_format.required_columns(config)),
+            **dict(trace_format.required_columns()),
         }
     )
-    missing = trace_format.find_required_columns(config, list(features.keys()), dataset)
+    missing = trace_format.find_required_columns(list(features.keys()))
     if missing:
         raise DataNotSupportedError(f"Trace missing required columns: {missing}")
 
@@ -429,8 +412,6 @@ class TraceDatasetDeserializer(DatasetDeserializer):
             raise DataNotSupportedError(f"Trace file has no valid rows: {config.path}")
         dataset.map(_deserialize_nested_data, batched=True)
         trace_format = TraceFormatRegistry.dispatch(config, dataset)
-        _handle_column_search(config, dataset, trace_format)
-        _validate_dataset(config, dataset, trace_format)
-        return TraceDataset(
-            config, dataset, trace_format, processor_factory(), random_seed
-        )
+        _handle_column_search(config, trace_format)
+        _validate_dataset(config, trace_format)
+        return TraceDataset(config, trace_format, processor_factory(), random_seed)
