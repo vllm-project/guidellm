@@ -7,10 +7,9 @@ requested input_length for replay benchmarks."""
 from __future__ import annotations
 
 import dataclasses
-import enum
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 import numpy as np
 from datasets import (
@@ -20,7 +19,6 @@ from datasets import (
     IterableDataset,
     Value,
 )
-from datasets.exceptions import DatasetGenerationError
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
 from pydantic import Field
@@ -33,13 +31,7 @@ from guidellm.data.deserializers.deserializer import (
 )
 from guidellm.data.schemas import DataArgs
 from guidellm.utils.hf_datasets import load_dataset_from_file
-from guidellm.utils.json_unwrap import (
-    VirtualColumnLocation,
-    construct_virtual_column_locations,
-    get_json_column_names,
-    try_json_load,
-    unzip_virtual_column_locations,
-)
+from guidellm.utils.json_unwrap import try_json_load
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
@@ -125,7 +117,7 @@ def create_distinct_token_block(
 class TraceFormatBase(Protocol):
     conversation_locations: list[list[int]]
 
-    def __init__(sel, dataset: Dataset) -> None: ...
+    def __init__(self, dataset: Dataset) -> None: ...
 
     def reset(self) -> None:
         pass
@@ -370,7 +362,7 @@ def _validate_dataset(
         }
     )
     for conv in conversations:
-        if config.conversation_id_column in features.keys():
+        if config.conversation_id_column in features:
             features.pop(config.conversation_id_column)
         _raise_if_nonetype_found(conv)
         _raise_if_incorrect_types(conv, features)
@@ -390,9 +382,7 @@ def _handle_column_search(
             **dict(trace_format.required_columns(config)),
         }
     )
-    missing = trace_format.find_required_columns(
-        config, list(features.keys()), dataset
-    )
+    missing = trace_format.find_required_columns(config, list(features.keys()), dataset)
     if missing:
         raise DataNotSupportedError(f"Trace missing required columns: {missing}")
 

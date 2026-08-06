@@ -47,9 +47,12 @@ __all__ = ["WEKATraceFormatArgs"]
 
 def _find_requests_column(dataset: Dataset) -> str | None:
     for name, val in dataset.features.items():
-        if isinstance(val, List):
-            if len(dataset[name][0]) > 0 and isinstance(dataset[name][0][0], dict):
-                return name
+        if (
+            isinstance(val, List)
+            and len(dataset[name][0]) > 0
+            and isinstance(dataset[name][0][0], dict)
+        ):
+            return name
     return None
 
 

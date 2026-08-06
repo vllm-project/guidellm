@@ -1,5 +1,4 @@
 import dataclasses
-import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -156,52 +155,22 @@ class TestTraceDatasetDeserializer:
             assert row["prompt_tokens_count"] == (i + 1) * 10
             assert row["output_tokens_count"] == i + 1
 
-    @pytest.fixture
-    def example_trace(self):
-        def generator(tmp_path: Path, n_rows: int) -> str:
-            trace_rows = generate_trace(
+    @pytest.mark.smoke
+    def test_loads_sorted_rows_and_keeps_token_columns_aligned(
+        self, tmp_path: Path, deserializer
+    ):
+        n_rows = 10
+        trace = write_trace(
+            tmp_path,
+            generate_trace(
                 n_rows,
                 [
                     TraceColumnGenerator("timestamp", lambda i: n_rows - i),
                     TraceColumnGenerator("input_length", lambda i: n_rows - i),
                     TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
                 ],
-            )
-            return write_trace(tmp_path, trace_rows)
-
-        return generator
-
-    # @pytest.fixture
-    # def example_list_json_trace(self):
-    #     def generator(tmp_path: Path, n_rows: int) -> str:
-    #         trace_rows = generate_trace(
-    #             n_rows,
-    #             [
-    #                 TraceColumnGenerator("timestamp", lambda i: n_rows - i),
-    #                 TraceColumnGenerator("input_length", lambda i: n_rows - i),
-    #                 TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
-    #             ],
-    #         )
-    #         json_data = [json.loads(s) for s in trace_rows.split("\n")]
-    #         return write_trace(
-    #             tmp_path,
-    #             generate_trace(
-    #                 1, [TraceColumnGenerator("requests", lambda _: json_data)]
-    #             ),
-    #         )
-    #
-    #    return generator
-
-    @pytest.mark.parametrize(
-        "example",
-        ["example_trace", ],#"example_list_json_trace"],
-    )
-    @pytest.mark.smoke
-    def test_loads_sorted_rows_and_keeps_token_columns_aligned(
-        self, tmp_path: Path, deserializer, example, request
-    ):
-        trace_factory = request.getfixturevalue(example)
-        trace = trace_factory(tmp_path, 10)
+            ),
+        )
         ds = self.deserialize(deserializer, trace)
         assert isinstance(ds, IterableDataset)
         proc = mock_processor()
@@ -209,28 +178,6 @@ class TestTraceDatasetDeserializer:
             assert row["prompt_tokens_count"] == i + 1
             assert row["output_tokens_count"] == (i + 1) * 10
             assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
-
-    # @pytest.mark.sanity
-    # def test_loads_requests_column_stored_as_json_string(
-    #     self, tmp_path: Path, deserializer
-    # ):
-    #     """Unwrap when the wrapper column is a JSON string of a list, not a native list.
-
-    #     ## WRITTEN BY AI ##
-    #     """
-    #     trace = write_trace(
-    #         tmp_path,
-    #         '{"requests": "[{\\"timestamp\\": 0, \\"input_length\\": 10,'
-    #         ' \\"output_length\\": 5}, {\\"timestamp\\": 1, \\"input_length\\": 20,'
-    #         ' \\"output_length\\": 10}]"}\n',
-    #     )
-    #     ds = self.deserialize(deserializer, trace)
-    #     rows = list(ds)
-    #     assert len(rows) == 2
-    #     assert rows[0]["prompt_tokens_count"] == 10
-    #     assert rows[0]["output_tokens_count"] == 5
-    #     assert rows[1]["prompt_tokens_count"] == 20
-    #     assert rows[1]["output_tokens_count"] == 10
 
     @pytest.mark.smoke
     def test_emits_relative_timestamp_column_sorted_from_trace(
@@ -317,16 +264,6 @@ class TestTraceDatasetDeserializer:
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
             self.deserialize(deserializer, trace, **kwargs)
-
-    # @pytest.mark.sanity
-    # def test_malformed_json_columns_raises(
-    #     self, tmp_path: Path, deserializer, example_list_json_trace
-    # ):
-    #     trace = example_list_json_trace(tmp_path, 2)
-    #     data = trace.read_text().replace("timestamp", "ts")
-    #     trace.write_text(data)
-    #     with pytest.raises(DataNotSupportedError, match="lists of JSON objects"):
-    #         self.deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):

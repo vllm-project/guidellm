@@ -95,12 +95,12 @@ class MooncakeTraceFormat(TraceFormatBase):
 
     def required_columns(self, config: MooncakeTraceFormatArgs) -> Features:
         return Features({config.hash_ids_column: List(Value("int32"))})
-    
+
     def find_required_columns(
         self,
         config: MooncakeTraceFormatArgs,  # noqa: ARG002
         columns: list[str],
-        dataset: Dataset
+        dataset: Dataset,
     ) -> list[str]:
         return get_missing_columns(columns, dataset.column_names)
 
@@ -114,8 +114,8 @@ class MooncakeTraceFormat(TraceFormatBase):
 
     def get_conversation_iter(
         self,
-        config: MooncakeTraceFormat,  # noqa: ARG002
-        dataset: Dataset
+        config: MooncakeTraceFormatArgs,  # noqa: ARG002
+        dataset: Dataset,
     ) -> Iterable[Dataset]:
         yield dataset.sort(config.timestamp_column)
 

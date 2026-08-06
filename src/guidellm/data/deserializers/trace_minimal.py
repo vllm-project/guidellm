@@ -10,7 +10,7 @@ line with a synthetic prompt matching the requested input_length for replay benc
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Literal
 
 from datasets import Dataset, Features
 from faker import Faker
@@ -56,7 +56,7 @@ class MinimalTraceFormat(TraceFormatBase):
         self,
         config: MinimalTraceFormatArgs,  # noqa: ARG002
         columns: list[str],
-        dataset: Dataset
+        dataset: Dataset,
     ) -> list[str]:
         return get_missing_columns(columns, dataset.column_names)
 
@@ -67,11 +67,11 @@ class MinimalTraceFormat(TraceFormatBase):
         dataset: Dataset,  # noqa: ARG002
     ) -> list[str] | None:
         return None
-    
+
     def get_conversation_iter(
         self,
-        config: MinimalTraceFormat,  # noqa: ARG002
-        dataset: Dataset
+        config: MinimalTraceFormatArgs,  # noqa: ARG002
+        dataset: Dataset,
     ) -> Iterable[Dataset]:
         yield dataset.sort(config.timestamp_column)
 
