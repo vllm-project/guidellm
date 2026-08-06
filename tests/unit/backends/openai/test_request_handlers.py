@@ -847,6 +847,19 @@ class TestTextCompletionsRequestHandler:
         assert output_metrics.text_words == (len(text.split()) if text else 0)
         assert output_metrics.text_characters == len(text)
 
+    @pytest.mark.smoke
+    def test_extract_metrics_cached_tokens(self, valid_instances):
+        """Test extract_metrics captures prompt_tokens_details.cached_tokens."""
+        usage = {
+            "prompt_tokens": 10,
+            "prompt_tokens_details": {"cached_tokens": 8},
+            "completion_tokens": 5,
+        }
+        input_metrics, _ = valid_instances.extract_metrics(usage, "Test response")
+
+        assert input_metrics.text_tokens == 10
+        assert input_metrics.cached_tokens == 8
+
 
 class TestChatCompletionsRequestHandler:
     """Test cases for ChatCompletionsRequestHandler.
