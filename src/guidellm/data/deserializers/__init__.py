@@ -39,6 +39,7 @@ from .synthetic_video import (
     SyntheticVideoDatasetDeserializer,
 )
 from .trace_common import (
+    MissingColumnsLocation,
     TraceDataArgs,
     TraceDatasetDeserializer,
     TraceFormatBase,
@@ -47,6 +48,7 @@ from .trace_common import (
     create_prompt_from_hash_ids,
     decode_prompt,
     generate_token_ids,
+    get_missing_columns,
 )
 from .trace_minimal import MinimalTraceFormatArgs
 from .trace_mooncake import MooncakeTraceFormatArgs
@@ -71,6 +73,7 @@ __all__ = [
     "InMemoryItemListDatasetDeserializer",
     "JSONFileDatasetDeserializer",
     "MinimalTraceFormatArgs",
+    "MissingColumnsLocation",
     "MooncakeTraceFormatArgs",
     "ParquetFileDatasetDeserializer",
     "SyntheticImageDataArgs",
@@ -93,4 +96,5 @@ __all__ = [
     "create_prompt_from_hash_ids",
     "decode_prompt",
     "generate_token_ids",
+    "get_missing_columns",
 ]

@@ -17,9 +17,10 @@ The results from datasets including these features will be unreliable.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from typing import Any, Literal
 
-from datasets import Features, List, Value
+from datasets import Dataset, Features, List, Value
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -37,10 +38,19 @@ from guidellm.data.deserializers.trace_common import (
     create_prompt_from_hash_ids,
     decode_prompt,
     generate_token_ids,
+    get_missing_columns,
 )
 from guidellm.data.schemas import DataArgs
 
 __all__ = ["WEKATraceFormatArgs"]
+
+
+def _find_requests_column(dataset: Dataset) -> str | None:
+    for name, val in dataset.features.items():
+        if isinstance(val, List):
+            if len(dataset[name][0]) > 0 and isinstance(dataset[name][0][0], dict):
+                return name
+    return None
 
 
 def _generate_remaining_prompt(
@@ -106,9 +116,16 @@ class WEKATraceFormat(TraceFormatBase):
 
     Generated prompts match the prompt token count of the row."""
 
-    def __init__(self) -> None:
+    def __init__(self, dataset: Dataset) -> None:
+        self.conversation_locations = [[loc] for loc in list(range(len(dataset)))]
+
         self.hash_id_table: dict[int, tuple[int, ...]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+        self.requests_col = _find_requests_column(dataset)
+        if self.requests_col is None:
+            raise DataNotSupportedError(
+                "WEKA format: Failed to find requests column or requests was empty"
+            )
 
     def reset(self) -> None:
         self.hash_id_table = {}
@@ -121,6 +138,40 @@ class WEKATraceFormat(TraceFormatBase):
                 config.hash_ids_column: List(Value("int32")),
             }
         )
+
+    def find_required_columns(
+        self, config: WEKATraceFormatArgs, columns: list[str], dataset: Dataset
+    ) -> list[str]:
+        """TODO: Handle edge cases"""
+        conv_col = config.conversation_id_column
+        if conv_col not in dataset.column_names:
+            return [config.conversation_id_column]
+        columns.remove(conv_col)
+        return get_missing_columns(columns, dataset[self.requests_col][0][0].keys())
+
+    def get_conversation_id_trace(
+        self,
+        config: WEKATraceFormatArgs,
+        conversation_location: list[int],
+        dataset: Dataset,
+    ) -> list[str] | None:
+        return [dataset[conversation_location[0]][config.conversation_id_column]]
+
+    def get_conversation_iter(
+        self, config: WEKATraceFormatArgs, dataset: Dataset
+    ) -> Iterable[Dataset]:
+        curr_conv = 0
+        while True:
+            try:
+                trace_rows = dataset[self.requests_col][
+                    self.conversation_locations[curr_conv][0]
+                ]
+                trace_rows = Dataset.from_list(trace_rows)
+                trace_rows.sort(config.timestamp_column)
+            except IndexError:
+                break
+            curr_conv += 1
+            yield trace_rows
 
     def validate_row(self, config: WEKATraceFormatArgs, row: dict) -> None:
         """WEKA format drops what would be the partially filled hash ID at the end of

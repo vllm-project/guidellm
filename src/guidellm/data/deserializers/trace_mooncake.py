@@ -10,9 +10,10 @@ same previous hash ID.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from typing import Any, Literal
 
-from datasets import Features, List, Value
+from datasets import Dataset, Features, List, Value
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -28,6 +29,7 @@ from guidellm.data.deserializers.trace_common import (
     TraceFormatRegistry,
     create_distinct_token_block,
     create_prompt_from_hash_ids,
+    get_missing_columns,
 )
 from guidellm.data.schemas import DataArgs
 
@@ -82,12 +84,40 @@ class MooncakeTraceFormat(TraceFormatBase):
 
     Generated prompts match the prompt token count of the row."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        dataset: Dataset,  # noqa: ARG002
+    ) -> None:
+        self.conversation_locations = [[0]]
+
         self.hash_id_table: dict[int, tuple[int, ...]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
 
     def required_columns(self, config: MooncakeTraceFormatArgs) -> Features:
         return Features({config.hash_ids_column: List(Value("int32"))})
+    
+    def find_required_columns(
+        self,
+        config: MooncakeTraceFormatArgs,  # noqa: ARG002
+        columns: list[str],
+        dataset: Dataset
+    ) -> list[str]:
+        return get_missing_columns(columns, dataset.column_names)
+
+    def get_conversation_id_trace(
+        self,
+        config: MooncakeTraceFormatArgs,  # noqa: ARG002
+        conversation_location: list[int],  # noqa: ARG002
+        dataset: Dataset,  # noqa: ARG002
+    ) -> list[str] | None:
+        return None
+
+    def get_conversation_iter(
+        self,
+        config: MooncakeTraceFormat,  # noqa: ARG002
+        dataset: Dataset
+    ) -> Iterable[Dataset]:
+        yield dataset.sort(config.timestamp_column)
 
     def validate_row(self, config: MooncakeTraceFormatArgs, row: dict) -> None:
         n_in = row[config.prompt_tokens_column]

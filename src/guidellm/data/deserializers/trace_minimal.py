@@ -9,9 +9,10 @@ line with a synthetic prompt matching the requested input_length for replay benc
 
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Iterable
+from typing import Any, Literal
 
-from datasets import Features
+from datasets import Dataset, Features
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -22,6 +23,7 @@ from guidellm.data.deserializers.trace_common import (
     TraceFormatRegistry,
     decode_prompt,
     generate_token_ids,
+    get_missing_columns,
 )
 from guidellm.data.schemas import DataArgs
 
@@ -38,14 +40,40 @@ class MinimalTraceFormatArgs(TraceDataArgs):
 
 @TraceFormatRegistry.register("trace_synthetic")
 class MinimalTraceFormat(TraceFormatBase):
-    def __init__(self) -> None:
-        pass
+    def __init__(
+        self,
+        dataset: Dataset,  # noqa: ARG002
+    ) -> None:
+        self.conversation_locations = [[0]]
 
     def required_columns(
         self,
         config: MinimalTraceFormatArgs,  # noqa: ARG002
     ) -> Features:
         return []
+
+    def find_required_columns(
+        self,
+        config: MinimalTraceFormatArgs,  # noqa: ARG002
+        columns: list[str],
+        dataset: Dataset
+    ) -> list[str]:
+        return get_missing_columns(columns, dataset.column_names)
+
+    def get_conversation_id_trace(
+        self,
+        config: MinimalTraceFormatArgs,  # noqa: ARG002
+        conversation_location: list[int],  # noqa: ARG002
+        dataset: Dataset,  # noqa: ARG002
+    ) -> list[str] | None:
+        return None
+    
+    def get_conversation_iter(
+        self,
+        config: MinimalTraceFormat,  # noqa: ARG002
+        dataset: Dataset
+    ) -> Iterable[Dataset]:
+        yield dataset.sort(config.timestamp_column)
 
     def validate_row(
         self,
