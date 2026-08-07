@@ -36,6 +36,30 @@ def _set_logger_and_handler_levels(
         handler.setLevel(level)
 
 
+def _try_reconfigure_vllm_root_logger() -> None:
+    """Re-apply vLLM's own root-logger configuration if the module is loaded.
+
+    Calls ``vllm.logger._configure_vllm_root_logger()`` so that vLLM's
+    internal Rich handler (which controls worker-process output) picks up
+    the updated ``VLLM_LOGGING_LEVEL`` env var.  This is a **private API**
+    that may change or be removed in future vLLM versions without notice;
+    failures are swallowed so callers are never broken by vLLM API drift.
+    """
+    vllm_logger_module = sys.modules.get("vllm.logger")
+    if vllm_logger_module is None:
+        return
+    if not hasattr(vllm_logger_module, "_configure_vllm_root_logger"):
+        return
+    try:
+        vllm_logger_module._configure_vllm_root_logger()  # noqa: SLF001
+    except _VLLM_ROOT_LOGGER_RECONFIGURE_ERRORS as exc:
+        logger.debug(
+            "Could not re-apply vLLM root logger config "
+            "(vLLM API may have changed): {}",
+            exc,
+        )
+
+
 def is_scheduler_worker_process() -> bool:
     """Return True when running inside a GuideLLM scheduler worker process."""
     return mp.parent_process() is not None
@@ -46,22 +70,27 @@ def prepare_vllm_benchmark_logging(
 ) -> None:
     """Reduce vLLM log noise during in-process benchmarks.
 
-    Sets environment variables that vLLM and its dependencies read at import
-    time. Call this before the first access to any vLLM attribute so that
-    child processes (EngineCore, scheduler workers) inherit the quieter
-    settings. ``setdefault`` preserves any explicit user override.
+    Three layers of silencing are applied in order:
 
-    The function also reconfigures the in-process ``vllm`` logger and its
-    handlers directly. This is needed as a safety net for cases where vLLM
-    was imported before this function runs — for example in a worker
-    subprocess that forked after ``import vllm``, or when a third-party
-    library triggered the import earlier. In those scenarios the env-var
-    path has no effect because vLLM's logging is already initialised, so
-    we lower the live logger and handler levels explicitly, including any
-    already-registered ``vllm.*`` child loggers in ``logging.root.manager``.
-    If ``vllm.logger`` is already in ``sys.modules`` we also call its private
-    ``_configure_vllm_root_logger`` to re-apply vLLM's own configuration
-    with the updated level.
+    1. **Environment variables** (``VLLM_LOGGING_LEVEL``, ``TQDM_DISABLE``,
+       etc.) — read by vLLM and its dependencies at import time and
+       inherited by child processes (EngineCore, scheduler workers).
+       ``setdefault`` preserves any explicit user override.
+
+    2. **Live logger + handler levels** — needed when vLLM was already
+       imported before this function ran (e.g. a worker subprocess forked
+       after ``import vllm``, or a third-party library imported it first).
+       In that case the env-var path has no effect because vLLM's logging
+       is already initialised.  We lower the ``vllm`` root logger, all of
+       its already-registered ``vllm.*`` child loggers, and each logger's
+       attached handlers.  This also prevents Rich progress bars from
+       corrupting the terminal during vLLM worker engine initialisation.
+
+    3. **vLLM private reconfigure** (``_configure_vllm_root_logger``) —
+       re-applies vLLM's own logging setup so its internal Rich handler
+       picks up the updated ``VLLM_LOGGING_LEVEL``.  Isolated in
+       ``_try_reconfigure_vllm_root_logger()`` with defensive error
+       handling because this is a private API subject to vLLM API drift.
 
     :param level: Logging level string (e.g. ``"ERROR"``). Defaults to
         ``"ERROR"``.
@@ -80,24 +109,12 @@ def prepare_vllm_benchmark_logging(
         ):
             _set_logger_and_handler_levels(candidate, level_upper)
 
-    # Re-apply vLLM's own root-logger config when the module is already loaded.
-    # Wrapped defensively: _configure_vllm_root_logger is a private API that
-    # may change or be removed in future vLLM versions without notice.
-    vllm_logger_module = sys.modules.get("vllm.logger")
-    if vllm_logger_module is not None and hasattr(
-        vllm_logger_module, "_configure_vllm_root_logger"
-    ):
-        try:
-            vllm_logger_module._configure_vllm_root_logger()  # noqa: SLF001
-        except _VLLM_ROOT_LOGGER_RECONFIGURE_ERRORS as exc:
-            logger.debug(
-                "Could not re-apply vLLM root logger config "
-                "(vLLM API may have changed): {}",
-                exc,
-            )
+    _try_reconfigure_vllm_root_logger()
 
 
-def vllm_benchmark_engine_config(vllm_config: dict[str, Any]) -> dict[str, Any]:
+def vllm_benchmark_engine_config(
+    vllm_config: dict[str, Any],
+) -> dict[str, Any]:
     """Return a copy of ``vllm_config`` with benchmark-friendly defaults."""
     config = dict(vllm_config)
     config.setdefault("disable_log_stats", True)

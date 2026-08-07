@@ -871,7 +871,11 @@ class TestWireVllmMetrics:
 
     @pytest.mark.smoke
     def test_timing_from_request_state_stats(self):
-        """Wall-clock timings derived from RequestStateStats. ## WRITTEN BY AI ##"""
+        """Wall-clock timings derived from RequestStateStats. ## WRITTEN BY AI ##
+
+        mono_base = queued_ts (99) because arrival_time is vLLM's queue-arrival
+        wall-clock time, so queued_ts is the correct monotonic anchor.
+        """
         request_info = RequestInfo()
         metrics = _mock_metrics(
             num_generation_tokens=10,
@@ -884,11 +888,12 @@ class TestWireVllmMetrics:
         output = _mock_request_output(metrics=metrics)
         VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.first_request_iteration == 1000.0
+        # mono_base = queued_ts = 99; offsets relative to queue-arrival
         assert request_info.timings.first_token_iteration == pytest.approx(
-            1000.0 + (102.0 - 100.0)
+            1000.0 + (102.0 - 99.0)
         )
         assert request_info.timings.last_token_iteration == pytest.approx(
-            1000.0 + (110.0 - 100.0)
+            1000.0 + (110.0 - 99.0)
         )
         assert (
             request_info.timings.last_request_iteration
@@ -932,3 +937,177 @@ class TestWireVllmMetrics:
         assert request_info.timings.first_token_iteration == pytest.approx(
             1000.0 + (52.0 - 50.0)
         )
+
+    @pytest.mark.smoke
+    def test_scheduled_at_populated_when_both_timestamps_available(self):
+        """scheduled_at is set when both queued_ts and scheduled_ts exist.
+
+        ## WRITTEN BY AI ##
+        """
+        request_info = RequestInfo()
+        metrics = _mock_metrics(
+            num_generation_tokens=5,
+            arrival_time=1000.0,
+            scheduled_ts=101.0,
+            queued_ts=99.0,
+            first_token_ts=103.0,
+            last_token_ts=110.0,
+        )
+        output = _mock_request_output(metrics=metrics)
+        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        # scheduled_at = arrival + (scheduled_ts - queued_ts) = 1000 + 2 = 1002
+        assert request_info.timings.scheduled_at == pytest.approx(
+            1000.0 + (101.0 - 99.0)
+        )
+
+    @pytest.mark.sanity
+    def test_scheduled_at_skipped_when_scheduled_ts_missing(self):
+        """scheduled_at is not set when scheduled_ts is zero.
+
+        ## WRITTEN BY AI ##
+        """
+        request_info = RequestInfo()
+        metrics = _mock_metrics(
+            num_generation_tokens=5,
+            arrival_time=1000.0,
+            scheduled_ts=0.0,
+            queued_ts=50.0,
+            first_token_ts=52.0,
+            last_token_ts=60.0,
+        )
+        output = _mock_request_output(metrics=metrics)
+        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        assert request_info.timings.scheduled_at is None
+
+    @pytest.mark.sanity
+    def test_scheduled_at_skipped_when_queued_ts_missing(self):
+        """scheduled_at is not set when queued_ts is zero.
+
+        ## WRITTEN BY AI ##
+        """
+        request_info = RequestInfo()
+        metrics = _mock_metrics(
+            num_generation_tokens=5,
+            arrival_time=1000.0,
+            scheduled_ts=100.0,
+            queued_ts=0.0,
+            first_token_ts=102.0,
+            last_token_ts=110.0,
+        )
+        output = _mock_request_output(metrics=metrics)
+        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        assert request_info.timings.scheduled_at is None
+
+    @pytest.mark.sanity
+    def test_partial_metrics_no_crash(self):
+        """Partial metrics object with missing fields does not crash.
+
+        ## WRITTEN BY AI ##
+        """
+        request_info = RequestInfo()
+        # Metrics object with only some fields — simulates vLLM API variation
+        partial = SimpleNamespace(
+            num_generation_tokens=3,
+            arrival_time=0.0,
+            scheduled_ts=0.0,
+            queued_ts=0.0,
+            first_token_ts=0.0,
+            last_token_ts=0.0,
+        )
+        output = _mock_request_output(metrics=partial)
+        # Should not raise; timing fields stay None when timestamps are zero
+        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        assert request_info.timings.token_iterations == 3
+        assert request_info.timings.first_token_iteration is None
+        assert request_info.timings.scheduled_at is None
+
+
+# ------------------------------------------------------------------
+# Validate process started / require LLM (Nit 1)
+# ------------------------------------------------------------------
+
+
+class TestValidateProcessStartedAndRequireLlm:
+    @pytest.mark.smoke
+    def test_validate_process_started_raises_before_startup(self, offline_backend):
+        """_validate_process_started raises when not started.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(RuntimeError, match="not started"):
+            offline_backend._validate_process_started()
+
+    @pytest.mark.smoke
+    def test_validate_process_started_passes_after_startup(self, started_backend):
+        """_validate_process_started passes when in-process.
+
+        ## WRITTEN BY AI ##
+        """
+        started_backend._validate_process_started()  # must not raise
+
+    @pytest.mark.smoke
+    def test_require_llm_raises_before_startup(self, offline_backend):
+        """_require_llm raises RuntimeError before process_startup.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(RuntimeError, match="not started"):
+            offline_backend._require_llm()
+
+    @pytest.mark.sanity
+    def test_require_llm_raises_when_llm_none(self, offline_backend):
+        """_require_llm raises RuntimeError when engine not created.
+
+        ## WRITTEN BY AI ##
+        """
+        offline_backend._in_process = True
+        offline_backend._llm = None
+        with pytest.raises(RuntimeError, match="_ensure_engine"):
+            offline_backend._require_llm()
+
+    @pytest.mark.smoke
+    def test_require_llm_returns_engine_when_ready(self, started_backend):
+        """_require_llm returns the LLM instance when started and engine set.
+
+        ## WRITTEN BY AI ##
+        """
+        result = started_backend._require_llm()
+        assert result is started_backend._llm
+
+
+# ------------------------------------------------------------------
+# Deferred-flush single-task guard (Nit 3)
+# ------------------------------------------------------------------
+
+
+class TestDeferredFlushLockGuard:
+    @pytest.mark.asyncio
+    @pytest.mark.smoke
+    @async_timeout(5.0)
+    async def test_concurrent_schedule_creates_only_one_task(self, started_backend):
+        """Concurrent _schedule_deferred_flush calls yield a single task.
+
+        ## WRITTEN BY AI ##
+        """
+        req = _BatchedRequest(
+            resolved_prompt="p",
+            multi_modal_data=None,
+            max_tokens=10,
+        )
+        started_backend._pending_batch.append(req)
+        started_backend._llm.generate.return_value = [_mock_request_output()]
+
+        # Fire many concurrent schedule calls
+        await asyncio.gather(
+            started_backend._schedule_deferred_flush(),
+            started_backend._schedule_deferred_flush(),
+            started_backend._schedule_deferred_flush(),
+            started_backend._schedule_deferred_flush(),
+        )
+        task = started_backend._processing_task
+        assert task is not None
+
+        # Wait for the single task to drain the batch
+        await task
+        # generate() must have been called exactly once
+        started_backend._llm.generate.assert_called_once()
