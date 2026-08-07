@@ -18,7 +18,7 @@ from collections import defaultdict
 from copy import deepcopy
 from math import ceil
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar
 
 from loguru import logger
 from pydantic import BaseModel, Field, computed_field
@@ -32,6 +32,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarksReport,
 )
 from guidellm.schemas import DistributionSummary, Percentiles
+from guidellm.schemas.benchmark.outputs import HTMLBenchmarkOutputArgs
 from guidellm.settings import settings
 from guidellm.utils.dict import recursive_key_update
 from guidellm.utils.text import camelize_str, load_text
@@ -40,20 +41,6 @@ __all__ = [
     "GenerativeBenchmarkerHTML",
     "HTMLBenchmarkOutputArgs",
 ]
-
-
-@BenchmarkOutputArgs.register("html")
-class HTMLBenchmarkOutputArgs(BenchmarkOutputArgs):
-    """Model for HTML benchmark output arguments."""
-
-    kind: Literal["html"] = Field(
-        default="html",
-        description="The kind of output.",
-    )
-    path: Path = Field(
-        default_factory=lambda: settings.default_results_dir / "benchmarks.html",
-        description="The file to save the output to.",
-    )
 
 
 @GenerativeBenchmarkerOutput.register("html")

@@ -20,6 +20,7 @@ from pydantic import Field
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import BenchmarkOutputArgs, GenerativeBenchmarksReport
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
+from guidellm.schemas.benchmark.outputs import ConsoleBenchmarkOutputArgs
 from guidellm.utils.console import Console
 from guidellm.utils.functions import safe_format_number, safe_format_timestamp
 
@@ -27,16 +28,6 @@ __all__ = [
     "ConsoleBenchmarkOutputArgs",
     "GenerativeBenchmarkerConsole",
 ]
-
-
-@BenchmarkOutputArgs.register("console")
-class ConsoleBenchmarkOutputArgs(BenchmarkOutputArgs):
-    """Base class for console benchmark output arguments."""
-
-    kind: Literal["console"] = Field(
-        default="console",
-        description="The kind of output.",
-    )
 
 
 StatTypesAlias = Literal["mean", "median", "p95"]

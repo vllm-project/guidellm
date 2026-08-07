@@ -3,35 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from pydantic import Field, PositiveInt
-
-from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
     ConstraintInitializer,
     SchedulingStrategy,
     ThroughputStrategy,
 )
+from guidellm.schemas.benchmark.profiles import ThroughputProfileArgs
 
 from .profile import Profile, ProfileFactory
 
+__all__ = ["ThroughputProfile", "ThroughputProfileArgs"]
+
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
-
-
-@ProfileArgs.register("throughput")
-class ThroughputProfileArgs(ProfileArgs):
-    """Pydantic model for throughput profile creation arguments."""
-
-    kind: Literal["throughput"] = Field(
-        default="throughput",
-        description="Profile type discriminator for throughput scheduling",
-    )
-    max_concurrency: PositiveInt | None = Field(
-        description="Maximum concurrent requests to schedule",
-        examples=[10],
-    )
 
 
 @ProfileFactory.register("throughput")

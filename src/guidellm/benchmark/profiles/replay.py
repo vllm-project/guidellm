@@ -3,36 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from pydantic import Field
-
-from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
     ConstraintInitializer,
     SchedulingStrategy,
     TraceReplayStrategy,
 )
+from guidellm.schemas.benchmark.profiles import ReplayProfileArgs
 
 from .profile import Profile, ProfileFactory
 
+__all__ = ["ReplayProfile", "ReplayProfileArgs"]
+
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
-
-
-@ProfileArgs.register("replay")
-class ReplayProfileArgs(ProfileArgs):
-    """Pydantic model for trace replay profile creation arguments."""
-
-    kind: Literal["replay"] = Field(
-        default="replay",
-        description="Profile type discriminator for trace replay scheduling",
-    )
-    time_scale: float = Field(
-        default=1.0,
-        gt=0,
-        description="Scale factor applied to relative timestamps",
-    )
 
 
 @ProfileFactory.register("replay")
