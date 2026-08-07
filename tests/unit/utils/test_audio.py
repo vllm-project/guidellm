@@ -103,6 +103,77 @@ def test_encode_audio_with_real_file_path(real_wav_file):
     assert result["audio_seconds"] <= 1.0
 
 
+@pytest.mark.regression
+@patch("guidellm.utils.audio._encode_audio")
+@patch("guidellm.utils.audio._decode_audio")
+def test_encode_audio_explicit_file_name_overrides_path(
+    mock_decoder: MagicMock,
+    mock_encode: MagicMock,
+    real_wav_file: Path,
+) -> None:
+    """Use an explicit filename instead of the source path basename.
+
+    ## WRITTEN BY AI ##
+    """
+    mock_audio_result = MagicMock(sample_rate=16000, duration_seconds=1.0)
+    mock_decoder.return_value = (mock_audio_result, "pcm_s16le")
+    mock_encode.return_value = b"encoded_data"
+
+    result = _audio_mod.encode_audio(
+        audio=real_wav_file,
+        file_name="upload-name.wav",
+    )
+
+    assert result["file_name"] == "upload-name.wav"
+
+
+@pytest.mark.regression
+@patch("guidellm.utils.audio._encode_audio")
+@patch("guidellm.utils.audio._decode_audio")
+def test_encode_audio_path_defaults_to_basename(
+    mock_decoder: MagicMock,
+    mock_encode: MagicMock,
+    real_wav_file: Path,
+) -> None:
+    """Use the source basename when a path has no explicit filename.
+
+    ## WRITTEN BY AI ##
+    """
+    mock_audio_result = MagicMock(sample_rate=16000, duration_seconds=1.0)
+    mock_decoder.return_value = (mock_audio_result, "pcm_s16le")
+    mock_encode.return_value = b"encoded_data"
+
+    result = _audio_mod.encode_audio(audio=real_wav_file)
+
+    assert result["file_name"] == real_wav_file.name
+
+
+@pytest.mark.regression
+@patch("guidellm.utils.audio._encode_audio")
+@patch("guidellm.utils.audio._decode_audio")
+def test_encode_audio_in_memory_defaults_to_resolved_format(
+    mock_decoder: MagicMock,
+    mock_encode: MagicMock,
+    sample_audio_tensor: torch.Tensor,
+) -> None:
+    """Derive an in-memory filename from the resolved output format.
+
+    ## WRITTEN BY AI ##
+    """
+    mock_audio_result = MagicMock(sample_rate=16000, duration_seconds=1.0)
+    mock_decoder.return_value = (mock_audio_result, None)
+    mock_encode.return_value = b"encoded_data"
+
+    result = _audio_mod.encode_audio(
+        audio=sample_audio_tensor,
+        sample_rate=16000,
+        audio_format="FLAC",
+    )
+
+    assert result["file_name"] == "audio.flac"
+    assert result["format"] == "FLAC"
+
+
 def test_encode_audio_with_dict_input_complete():
     """
     Dict with raw 'data' key (float tensor) has no codec, falls back to WAV.
