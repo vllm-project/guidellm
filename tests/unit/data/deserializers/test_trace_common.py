@@ -149,9 +149,9 @@ class TestTraceDatasetDeserializer:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         for i, turn in enumerate(conv):
-            assert turn.columns["relative_timestamp"] == i
-            assert turn.columns["prompt_tokens_count"] == (i + 1) * 10
-            assert turn.columns["output_tokens_count"] == i + 1
+            assert turn.columns["relative_timestamp_column"][0] == i
+            assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
+            assert turn.columns["output_tokens_count_column"][0] == i + 1
 
     @pytest.mark.sanity
     def test_loads_csv(self, tmp_path: Path, deserializer):
@@ -163,9 +163,9 @@ class TestTraceDatasetDeserializer:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         for i, turn in enumerate(conv):
-            assert turn.columns["relative_timestamp"] == i
-            assert turn.columns["prompt_tokens_count"] == (i + 1) * 10
-            assert turn.columns["output_tokens_count"] == i + 1
+            assert turn.columns["relative_timestamp_column"][0] == i
+            assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
+            assert turn.columns["output_tokens_count_column"][0] == i + 1
 
     @pytest.mark.smoke
     def test_loads_sorted_rows_and_keeps_token_columns_aligned(
@@ -188,13 +188,13 @@ class TestTraceDatasetDeserializer:
         conv = load_graph_turns(next(iter(ds)))
         proc = mock_processor()
         for i, turn in enumerate(conv):
-            n_in = turn.columns["prompt_tokens_count"]
+            n_in = turn.columns["prompt_tokens_count_column"][0]
             assert n_in == i + 1
-            assert turn.columns["output_tokens_count"] == (i + 1) * 10
-            assert len(proc.encode(turn.columns["prompt"])) == n_in
+            assert turn.columns["output_tokens_count_column"][0] == (i + 1) * 10
+            assert len(proc.encode(turn.columns["text_column"][0])) == n_in
 
     @pytest.mark.smoke
-    def test_emits_relative_timestamp_column_sorted_from_trace(
+    def test_emits_relative_timestamp_column_column_sorted_from_trace(
         self, tmp_path: Path, deserializer
     ):
         n_rows = 5
@@ -212,7 +212,7 @@ class TestTraceDatasetDeserializer:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         for i, turn in enumerate(conv):
-            assert turn.columns["relative_timestamp"] == i
+            assert turn.columns["relative_timestamp_column"][0] == i
 
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):

@@ -237,13 +237,13 @@ class TestWEKATraceFormat:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         for i, turn in enumerate(conv):
-            n_in = turn.columns["prompt_tokens_count"]
+            n_in = turn.columns["prompt_tokens_count_column"][0]
             assert n_in == prompt_lengths[i]
-            assert turn.columns["output_tokens_count"] == output_lengths[i]
+            assert turn.columns["output_tokens_count_column"][0] == output_lengths[i]
 
-            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
-            if actual_prompt_length != n_in:
-                pytest.fail(f"{actual_prompt_length} != {n_in}")
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != n_in:
+                pytest.fail(f"{actual_length} != {n_in}")
 
     @pytest.mark.smoke
     def test_prompt_matching_or_bordering_block_size(
@@ -271,10 +271,10 @@ class TestWEKATraceFormat:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         for turn in conv:
-            in_cnt = turn.columns["prompt_tokens_count"]
-            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
-            if actual_prompt_length != in_cnt:
-                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
+            in_cnt = turn.columns["prompt_tokens_count_column"][0]
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != in_cnt:
+                pytest.fail(f"{actual_length} != {in_cnt}")
 
     @pytest.mark.sanity
     def test_removes_partially_filled_hash_ids(
@@ -302,10 +302,10 @@ class TestWEKATraceFormat:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         for turn in conv:
-            in_cnt = turn.columns["prompt_tokens_count"]
-            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
-            if actual_prompt_length != in_cnt:
-                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
+            in_cnt = turn.columns["prompt_tokens_count_column"][0]
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != in_cnt:
+                pytest.fail(f"{actual_length} != {in_cnt}")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -391,8 +391,8 @@ class TestWEKATraceFormat:
         root_blocks, sibling_blocks = zip(
             *[
                 (
-                    turn.columns["prompt"][: n_in // 2],
-                    turn.columns["prompt"][n_in // 2 :],
+                    turn.columns["text_column"][0][: n_in // 2],
+                    turn.columns["text_column"][0][n_in // 2 :],
                 )
                 for turn in conv
             ],
@@ -425,8 +425,8 @@ class TestWEKATraceFormat:
         ds_iter = iter(ds)
         conv1 = load_graph_turns(next(ds_iter))
         conv2 = load_graph_turns(next(ds_iter))
-        timestamps1 = [turn.columns["relative_timestamp"] for turn in conv1]
-        timestamps2 = [turn.columns["relative_timestamp"] for turn in conv2]
+        timestamps1 = [turn.columns["relative_timestamp_column"][0] for turn in conv1]
+        timestamps2 = [turn.columns["relative_timestamp_column"][0] for turn in conv2]
         assert timestamps1[0] == 0.0
         assert timestamps1[1] != 0.0
         assert timestamps2[0] == 0.0
@@ -460,8 +460,8 @@ class TestWEKATraceFormat:
         ds_iter = iter(ds)
         conv1 = load_graph_turns(next(ds_iter))
         conv2 = load_graph_turns(next(ds_iter))
-        prompts1 = [turn.columns["prompt"] for turn in conv1]
-        prompts2 = [turn.columns["prompt"] for turn in conv2]
+        prompts1 = [turn.columns["text_column"][0] for turn in conv1]
+        prompts2 = [turn.columns["text_column"][0] for turn in conv2]
         assert prompts1[0] != prompts2[0]
 
     @pytest.mark.sanity
@@ -483,5 +483,5 @@ class TestWEKATraceFormat:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         turns = list(conv)
-        assert turns[0].columns["prompt_tokens_count"] == 0
-        assert turns[0].columns["output_tokens_count"] == 5
+        assert turns[0].columns["prompt_tokens_count_column"][0] == 0
+        assert turns[0].columns["output_tokens_count_column"][0] == 5

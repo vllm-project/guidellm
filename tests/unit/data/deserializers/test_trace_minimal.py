@@ -110,11 +110,11 @@ class TestMinimalTraceFormat:
         )
         conv = load_graph_turns(next(iter(ds)))
 
-        expected_prompt_count = [2, 4]
-        expected_output_count = [20, 40]
+        prompt_counts = [2, 4]
+        output_counts = [20, 40]
         for i, turn in enumerate(conv):
-            assert turn.columns["prompt_tokens_count"] == expected_prompt_count[i]
-            assert turn.columns["output_tokens_count"] == expected_output_count[i]
+            assert turn.columns["prompt_tokens_count_column"][0] == prompt_counts[i]
+            assert turn.columns["output_tokens_count_column"][0] == output_counts[i]
 
     @pytest.mark.smoke
     def test_generates_large_trace_prompts_from_reusable_base(
@@ -148,10 +148,10 @@ class TestMinimalTraceFormat:
 
         assert processor.encode.call_count <= len(prompt_lengths) + 4
         for i, turn in enumerate(conv):
-            n_in = turn.columns["prompt_tokens_count"]
+            n_in = turn.columns["prompt_tokens_count_column"][0]
             assert n_in == prompt_lengths[i]
-            assert turn.columns["output_tokens_count"] == output_lengths[i]
+            assert turn.columns["output_tokens_count_column"][0] == output_lengths[i]
 
-            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
-            if actual_prompt_length != n_in:
-                pytest.fail(f"{actual_prompt_length} != {n_in}")
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != n_in:
+                pytest.fail(f"{actual_length} != {n_in}")

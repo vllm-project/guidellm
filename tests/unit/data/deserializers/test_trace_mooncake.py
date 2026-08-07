@@ -58,7 +58,7 @@ def write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
 def make_valid_hash_ids(prompt_lengths: list[int], block_size: int) -> list[list[int]]:
     """The final token block of every row may be less than the hash id block
     size due to the prompt length not being divisible by it. Use this
-    when testing large trace prompts to avoid including token blocks with
+    when testing large trace prompt to avoid including token blocks with
     less than the block size in the middle of later rows."""
     tail_hash_ids = []
     n_rows = len(prompt_lengths)
@@ -222,13 +222,13 @@ class TestMooncakeTraceFormat:
         ds = self.deserialize(deserializer, trace)
         conv = load_graph_turns(next(iter(ds)))
         for i, turn in enumerate(conv):
-            n_in = turn.columns["prompt_tokens_count"]
+            n_in = turn.columns["prompt_tokens_count_column"][0]
             assert n_in == prompt_lengths[i]
-            assert turn.columns["output_tokens_count"] == output_lengths[i]
+            assert turn.columns["output_tokens_count_column"][0] == output_lengths[i]
 
-            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
-            if actual_prompt_length != n_in:
-                pytest.fail(f"{actual_prompt_length} != {n_in}")
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != n_in:
+                pytest.fail(f"{actual_length} != {n_in}")
 
     @pytest.mark.smoke
     def test_prompt_matching_or_bordering_block_size(
@@ -257,10 +257,10 @@ class TestMooncakeTraceFormat:
         )
         conv = load_graph_turns(next(iter(ds)))
         for turn in conv:
-            in_cnt = turn.columns["prompt_tokens_count"]
-            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
-            if actual_prompt_length != in_cnt:
-                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
+            in_cnt = turn.columns["prompt_tokens_count_column"][0]
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != in_cnt:
+                pytest.fail(f"{actual_length} != {in_cnt}")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -339,8 +339,8 @@ class TestMooncakeTraceFormat:
         root_blocks, sibling_blocks = zip(
             *[
                 (
-                    turn.columns["prompt"][: n_in // 2],
-                    turn.columns["prompt"][n_in // 2 :],
+                    turn.columns["text_column"][0][: n_in // 2],
+                    turn.columns["text_column"][0][n_in // 2 :],
                 )
                 for turn in conv
             ],
