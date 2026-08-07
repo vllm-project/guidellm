@@ -1325,7 +1325,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
         arguments.files = {
             "file": (
-                audio_columns[0].get("file_name", "audio_input"),
+                audio_columns[0].get("file_name") or "audio_input",
                 audio_columns[0].get("audio"),
                 audio_columns[0].get("mimetype"),
             )

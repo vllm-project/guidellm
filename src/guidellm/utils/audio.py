@@ -118,12 +118,16 @@ def encode_audio(
         mono=mono,
     )
 
+    resolved_file_name = file_name
+    if not resolved_file_name and isinstance(audio, str | Path):
+        resolved_file_name = get_file_name(audio)
+    if not resolved_file_name:
+        resolved_file_name = f"audio.{format_val}"
+
     return {
         "type": "audio_file",
         "audio": encoded_audio,
-        "file_name": get_file_name(audio)
-        if isinstance(audio, str | Path)
-        else file_name,
+        "file_name": resolved_file_name,
         "format": audio_format,
         "mimetype": f"audio/{format_val}",
         "audio_samples": samples.sample_rate,
