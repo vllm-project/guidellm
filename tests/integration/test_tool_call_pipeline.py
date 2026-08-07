@@ -18,8 +18,8 @@ from guidellm.data.preprocessors.mappers import (
     GenerativeColumnMapper,
     GenerativeColumnMapperArgs,
 )
+from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import GenerationRequest
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 
 
 def _ordered_requests(graph: GenerativeConversationGraph) -> list[GenerationRequest]:

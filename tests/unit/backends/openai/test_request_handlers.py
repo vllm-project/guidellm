@@ -29,14 +29,15 @@ from guidellm.data.finalizers.generative import (
     GenerativeRequestFinalizer,
     GenerativeRequestFinalizerArgs,
 )
+from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
     GenerationResponse,
+    ToolCall,
+    ToolCallFunction,
     UsageMetrics,
 )
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
-from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
 from guidellm.settings import settings
 from guidellm.utils.registry import RegistryMixin
 

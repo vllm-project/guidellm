@@ -18,8 +18,8 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationParentRef,
     ConversationTurnData,
 )
+from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import GenerationRequest, RequestSettings
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 
 
 def _ordered_requests(

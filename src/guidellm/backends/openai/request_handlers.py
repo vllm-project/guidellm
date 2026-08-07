@@ -20,9 +20,14 @@ from more_itertools import roundrobin
 
 from guidellm.backends.openai.common import format_ws_error
 from guidellm.scheduler import HistoryT
-from guidellm.schemas import GenerationRequest, GenerationResponse, UsageMetrics
-from guidellm.schemas.request import GenerationRequestArguments
-from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationRequestArguments,
+    GenerationResponse,
+    ToolCall,
+    ToolCallFunction,
+    UsageMetrics,
+)
 from guidellm.settings import settings
 from guidellm.utils.audio import pcm16_append_b64_chunks
 from guidellm.utils.imports import json

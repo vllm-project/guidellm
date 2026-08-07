@@ -20,11 +20,11 @@ from guidellm.data.finalizers.generative import (
 from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
 from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import HistoryContext
-from guidellm.schemas import GenerationRequest, RequestSettings
-from guidellm.schemas.conversation_graph import (
+from guidellm.scheduler.schemas.conversation_graph import (
     GenerativeConversationGraph,
     GenerativeConversationNode,
 )
+from guidellm.schemas import GenerationRequest, RequestSettings
 from guidellm.utils.imports import json
 
 

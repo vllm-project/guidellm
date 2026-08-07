@@ -36,8 +36,8 @@ from guidellm.scheduler import (
     WorkerProcessGroup,
 )
 from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
+from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import GenerationRequest, RequestSettings
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 from tests.unit.testing_utils import async_timeout
 
 TIME_SCALE = 2.0

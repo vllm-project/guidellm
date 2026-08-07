@@ -25,8 +25,6 @@ from guidellm.schemas import (
     GenerationResponse,
     RequestInfo,
     RequestTimings,
-)
-from guidellm.schemas.tool_call import (
     ToolCall,
     ToolCallFunction,
 )

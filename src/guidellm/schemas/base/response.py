@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from guidellm.schemas.base import StandardBaseModel
-from guidellm.schemas.info import RequestInfo
-from guidellm.schemas.request import GenerationRequest, UsageMetrics
-from guidellm.schemas.request_stats import GenerativeRequestStats
-from guidellm.schemas.tool_call import ToolCall, ToolCallFunction
+from guidellm.schemas.base.base import StandardBaseModel
+from guidellm.schemas.base.info import RequestInfo
+from guidellm.schemas.base.request import GenerationRequest, UsageMetrics
+from guidellm.schemas.base.request_stats import GenerativeRequestStats
+from guidellm.schemas.base.tool_call import ToolCall, ToolCallFunction
 
 __all__ = [
     "GenerationResponse",

@@ -17,7 +17,7 @@ from typing import Literal, TypeVar
 import numpy as np
 from pydantic import Field
 
-from guidellm.schemas.base import StandardBaseModel, StatusBreakdown
+from guidellm.schemas.base.base import StandardBaseModel, StatusBreakdown
 
 __all__ = [
     "DistributionSummary",

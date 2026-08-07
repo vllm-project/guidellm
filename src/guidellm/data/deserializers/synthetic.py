@@ -22,8 +22,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationParentRef,
     ConversationTurnData,
 )
-from guidellm.schemas.base import StandardBaseModel
-from guidellm.schemas.info import RequestSettings
+from guidellm.schemas import RequestSettings, StandardBaseModel
 from guidellm.settings import settings
 from guidellm.utils.imports import json
 from guidellm.utils.random import FloatRangeSampler, IntegerRangeSampler

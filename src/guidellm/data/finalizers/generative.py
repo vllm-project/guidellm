@@ -11,15 +11,15 @@ from guidellm.data.finalizers.conversation_graph import (
 from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
 from guidellm.data.schemas import DataFinalizerArgs
 from guidellm.scheduler.schemas import HistoryContext
+from guidellm.scheduler.schemas.conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
+)
 from guidellm.schemas import (
     GenerationRequest,
     RequestSettings,
     TurnType,
     UsageMetrics,
-)
-from guidellm.schemas.conversation_graph import (
-    GenerativeConversationGraph,
-    GenerativeConversationNode,
 )
 
 __all__ = [
