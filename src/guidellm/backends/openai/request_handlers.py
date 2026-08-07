@@ -1332,6 +1332,48 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
         return arguments
 
+    def compile_non_streaming(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: dict,
+    ) -> GenerationResponse:
+        """
+        Process a complete audio transcription or translation response.
+
+        :param request: Original generation request
+        :param arguments: The request arguments that were sent
+        :param response: Complete API response containing top-level text and usage
+        :return: Standardized GenerationResponse with extracted text and metrics
+        """
+        text = response.get("text")
+        input_metrics, output_metrics = self.extract_metrics(
+            response.get("usage"), text
+        )
+
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=arguments.model_dump_json(),
+            response_id=response.get("id"),
+            text=text,
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )
+
+    def post_validation(self, response: GenerationResponse) -> None:
+        """Reject audio responses that omit the transcription text field.
+
+        An empty string is a valid transcription for silent or VAD-filtered audio.
+
+        :param response: The compiled audio response to validate.
+        :raises ValueError: If the response has no transcription text field.
+        """
+        if response.text is None:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] backend resolved with empty response "
+                "payload"
+            )
+
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
