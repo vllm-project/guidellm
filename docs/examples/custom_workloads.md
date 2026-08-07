@@ -86,12 +86,12 @@ guidellm run \
 
 Run all four shapes on the same server and compare the results side by side.
 
-| Workload | Tokens (in/out) | Throughput (tok/s) | TTFT p50 (ms) | ITL p50 (ms) | Bottleneck |
-|----------|-----------------|-------------------|---------------|-------------|------------|
-| Chat | 256 / 512 | 1850 | 35 | 12 | Mixed |
-| Summarization | 2048 / 128 | 920 | 180 | 9 | Prefill (TTFT) |
-| Code gen | 128 / 1024 | 2100 | 18 | 14 | Decode (ITL) |
-| Balanced | 1000 / 1000 | 1350 | 95 | 13 | Mixed |
+| Workload      | Tokens (in/out) | Throughput (tok/s) | TTFT p50 (ms) | ITL p50 (ms) | Bottleneck     |
+| ------------- | --------------- | ------------------ | ------------- | ------------ | -------------- |
+| Chat          | 256 / 512       | 1850               | 35            | 12           | Mixed          |
+| Summarization | 2048 / 128      | 920                | 180           | 9            | Prefill (TTFT) |
+| Code gen      | 128 / 1024      | 2100               | 18            | 14           | Decode (ITL)   |
+| Balanced      | 1000 / 1000     | 1350               | 95            | 13           | Mixed          |
 
 Key observations:
 
@@ -104,12 +104,12 @@ Key observations:
 
 If you know your workload:
 
-| Your application | Recommended config | Primary metric |
-|-----------------|-------------------|----------------|
-| Chatbot, Q&A | `prompt_tokens=256,output_tokens=512` | TTFT p99 and ITL p50 |
-| RAG, summarization, search | `prompt_tokens=2048,output_tokens=128` | TTFT p99 |
-| Code gen, writing, translation | `prompt_tokens=128,output_tokens=1024` | ITL p50 and throughput |
-| Unknown or mixed | `prompt_tokens=1000,output_tokens=1000` | All metrics |
+| Your application               | Recommended config                      | Primary metric         |
+| ------------------------------ | --------------------------------------- | ---------------------- |
+| Chatbot, Q&A                   | `prompt_tokens=256,output_tokens=512`   | TTFT p99 and ITL p50   |
+| RAG, summarization, search     | `prompt_tokens=2048,output_tokens=128`  | TTFT p99               |
+| Code gen, writing, translation | `prompt_tokens=128,output_tokens=1024`  | ITL p50 and throughput |
+| Unknown or mixed               | `prompt_tokens=1000,output_tokens=1000` | All metrics            |
 
 If you have real production data, use it instead of synthetic. GuideLLM supports custom datasets via JSONL files or HuggingFace datasets — see the [Datasets guide](../guides/datasets.md) for details.
 
@@ -118,11 +118,13 @@ If you have real production data, use it instead of synthetic. GuideLLM supports
 The benchmark results can guide server configuration:
 
 **Prefill-bound (high TTFT):**
+
 - Enable chunked prefill (`--enable-chunked-prefill`) to overlap prefill with decode
 - Increase tensor parallelism to spread the prefill computation across GPUs
 - Consider a shorter `--max-model-len` if your prompts don't need the full context window
 
 **Decode-bound (high ITL):**
+
 - Check if you are memory-bandwidth limited — larger batch sizes help divide memory reads
 - Try quantized models (FP8, W4A16) to reduce memory bandwidth pressure
 - Consider speculative decoding for latency-sensitive workloads
