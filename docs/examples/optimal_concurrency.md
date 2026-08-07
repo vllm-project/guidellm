@@ -30,13 +30,13 @@ Adjust `prompt_tokens` and `output_tokens` to match your actual workload. A chat
 
 Open the console output or JSON report. For each strategy, look at these metrics:
 
-| Metric | What it tells you |
-|--------|-------------------|
-| `output_tokens_per_second` (mean) | Server throughput — how much work is getting done |
-| `time_to_first_token_ms` (p50) | Typical user-perceived wait before they receive a response |
-| `time_to_first_token_ms` (p99) | Worst-case wait — important for tail latency SLOs |
-| `inter_token_latency_ms` (p50) | How smooth the streaming experience feels |
-| `request_latency` (p50) | Total end-to-end time per request |
+| Metric                            | What it tells you                                          |
+| --------------------------------- | ---------------------------------------------------------- |
+| `output_tokens_per_second` (mean) | Server throughput — how much work is getting done          |
+| `time_to_first_token_ms` (p50)    | Typical user-perceived wait before they receive a response |
+| `time_to_first_token_ms` (p99)    | Worst-case wait — important for tail latency SLOs          |
+| `inter_token_latency_ms` (p50)    | How smooth the streaming experience feels                  |
+| `request_latency` (p50)           | Total end-to-end time per request                          |
 
 ## Step 3: Identify the Three Zones
 
@@ -98,18 +98,18 @@ Here is what a real sweep looks like.
 
 Results collected using **meta-llama/Llama-3.1-8B-Instruct** on a single **NVIDIA A100 80GB** GPU, served by vLLM with chunked prefill enabled. Workload: 1000 input tokens, 1000 output tokens.
 
-| Strategy | Concurrency (mean) | Req/s (mean) | Output Tokens/s | TTFT p50 (ms) | TTFT p95 (ms) | ITL p50 (ms) | ITL p95 (ms) | Zone |
-|----------|-------------------|-------------|----------------|---------------|---------------|-------------|-------------|------|
-| synchronous | 1.0 | 0.1 | 90.2 | 79.5 | 115.2 | 11.0 | 11.1 | Under-utilized |
-| constant | 3.8 | 0.3 | 327.7 | 95.0 | 100.1 | 11.5 | 11.6 | Under-utilized |
-| constant | 7.1 | 0.5 | 569.7 | 97.7 | 102.8 | 12.3 | 12.4 | Under-utilized |
-| constant | 10.8 | 0.8 | 809.4 | 100.4 | 105.8 | 13.3 | 13.4 | Under-utilized |
-| constant | 14.7 | 1.0 | 1047.9 | 100.4 | 108.4 | 14.0 | 14.1 | Sweet spot |
-| constant | 21.0 | 1.2 | 1274.9 | 107.8 | 115.9 | 16.6 | 16.7 | Sweet spot |
-| constant | 27.8 | 1.4 | 1496.5 | 117.7 | 126.6 | 19.2 | 19.3 | Sweet spot |
-| constant | 33.7 | 1.6 | 1728.6 | 123.5 | 133.9 | 19.8 | 19.9 | Sweet spot |
-| constant | 46.0 | 1.7 | 1911.7 | 132.6 | 146.6 | 25.0 | 25.5 | Over-saturated |
-| throughput | 509.8 | 2.1 | 3217.6 | 9947.7 | 21961.3 | 84.1 | 106.8 | Over-saturated |
+| Strategy    | Concurrency (mean) | Req/s (mean) | Output Tokens/s | TTFT p50 (ms) | TTFT p95 (ms) | ITL p50 (ms) | ITL p95 (ms) | Zone           |
+| ----------- | ------------------ | ------------ | --------------- | ------------- | ------------- | ------------ | ------------ | -------------- |
+| synchronous | 1.0                | 0.1          | 90.2            | 79.5          | 115.2         | 11.0         | 11.1         | Under-utilized |
+| constant    | 3.8                | 0.3          | 327.7           | 95.0          | 100.1         | 11.5         | 11.6         | Under-utilized |
+| constant    | 7.1                | 0.5          | 569.7           | 97.7          | 102.8         | 12.3         | 12.4         | Under-utilized |
+| constant    | 10.8               | 0.8          | 809.4           | 100.4         | 105.8         | 13.3         | 13.4         | Under-utilized |
+| constant    | 14.7               | 1.0          | 1047.9          | 100.4         | 108.4         | 14.0         | 14.1         | Sweet spot     |
+| constant    | 21.0               | 1.2          | 1274.9          | 107.8         | 115.9         | 16.6         | 16.7         | Sweet spot     |
+| constant    | 27.8               | 1.4          | 1496.5          | 117.7         | 126.6         | 19.2         | 19.3         | Sweet spot     |
+| constant    | 33.7               | 1.6          | 1728.6          | 123.5         | 133.9         | 19.8         | 19.9         | Sweet spot     |
+| constant    | 46.0               | 1.7          | 1911.7          | 132.6         | 146.6         | 25.0         | 25.5         | Over-saturated |
+| throughput  | 509.8              | 2.1          | 3217.6          | 9947.7        | 21961.3       | 84.1         | 106.8        | Over-saturated |
 
 In this example, throughput scales linearly from concurrency 1 through ~11 (under-utilized). Between concurrency 15 and 34, throughput is still climbing but TTFT and ITL are creeping up (sweet spot). At concurrency 46, throughput gains flatten while latency continues rising — and the throughput strategy shows TTFT exploding to ~10 seconds, confirming over-saturation.
 

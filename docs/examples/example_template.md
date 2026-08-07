@@ -22,7 +22,7 @@ guidellm run \
   --output kind=json,path=___.json
 ```
 
-[Explain what each non-obvious flag does in the context of this example. Don't repeat what the getting-started docs already cover. **Focus on why these specific values were chosen** for this use case.]
+\[Explain what each non-obvious flag does in the context of this example. Don't repeat what the getting-started docs already cover. **Focus on why these specific values were chosen** for this use case.\]
 
 ## Step 2: [Run / Execute]
 
@@ -32,8 +32,8 @@ guidellm run \
 
 [Explain how to interpret the metrics/results, highlighting what to take away (good and the bad)]
 
-| Metric | What to look for |
-|--------|-----------------|
+| Metric        | What to look for                                |
+| ------------- | ----------------------------------------------- |
 | `metric_name` | [What a good/bad value means for this use case] |
 | `metric_name` | [What a good/bad value means for this use case] |
 
@@ -46,12 +46,14 @@ guidellm run \
 [A realistic (ideally real) table or snippet showing what the results look like, with annotations pointing out the key takeaway.]
 
 | Parameter | Value | Interpretation |
-|-----------|-------|----------------|
-| ... | ... | ... |
+| --------- | ----- | -------------- |
+| ...       | ...   | ...            |
 
 [One or two sentences summarizing the conclusion from this example data.]
 
 ## Next Steps
+
 [The user finds other helpful guides]
+
 - [Link to relevant guide](../guides/relevant_guide.md) for deeper coverage of a feature used here
 - [Link to another example](another_example.md) for a related workflow
