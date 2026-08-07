@@ -297,7 +297,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._generate_lock:
             if self._llm is not None:
-                if hasattr(self._llm, "shutdown"):
+                # vLLM < 0.6 does not expose LLM.shutdown(); safe to skip
+                with contextlib.suppress(AttributeError):
                     self._llm.shutdown()
                 del self._llm
                 self._llm = None
@@ -329,15 +330,31 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             logger.debug("Preloading vLLM offline engine in worker process")
             await self._ensure_engine()
 
-    def _validate_backend_initialized(self) -> Any:  # type: ignore[override]
-        """
-        Validate that the backend is initialised and return the LLM.
+    def _validate_process_started(self) -> None:
+        """Check that ``process_startup()`` was called.
 
-        :raises RuntimeError: If backend is not initialised
+        :raises RuntimeError: If the backend is not in-process.
+        """
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process.")
+
+    def _require_llm(self) -> Any:
+        """Return the live vLLM ``LLM`` engine, raising if not ready.
+
+        Checks both that ``process_startup()`` was called **and** that
+        ``_ensure_engine()`` has already created the engine.  Use this
+        in call sites that need the engine object directly (e.g. to
+        call ``get_tokenizer()``).  For call sites that only need to
+        assert the backend is active, prefer ``_validate_process_started()``.
+
+        :raises RuntimeError: If the backend is not started or the engine
+            has not been created yet.
         :return: The initialised ``vllm.LLM`` instance
         """
         if not self._in_process:
             raise RuntimeError("Backend not started up for process.")
+        if self._llm is None:
+            raise RuntimeError("Engine not yet created; call _ensure_engine() first.")
         return self._llm
 
     # ------------------------------------------------------------------
@@ -352,7 +369,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         Accesses the tokenizer through ``llm.get_tokenizer()``
         instead of ``engine.tokenizer`` used by the async parent.
         """
-        llm = self._validate_backend_initialized()
+        llm = self._require_llm()
         tokenizer = llm.get_tokenizer()
         if tokenizer is None:
             raise RuntimeError("Backend engine has no tokenizer.")
@@ -538,7 +555,7 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             generation fails
         :yields: Single tuple of (response, updated_request_info)
         """
-        self._validate_backend_initialized()
+        self._validate_process_started()
         await self._ensure_engine()
         self._validate_history(history)
 
@@ -622,9 +639,14 @@ class VLLMOfflineBackend(VLLMPythonBackend):
                     batch = self._take_pending_batch()
                 await self._run_generate(batch)
 
-        # Only schedule one deferred flush at a time
-        if self._processing_task is None or self._processing_task.done():
-            self._processing_task = asyncio.ensure_future(_deferred_flush())
+        # Only schedule one deferred flush at a time.  Guard the check+assign
+        # under _batch_lock so concurrent resolve() callers cannot each create
+        # their own deferred-flush task.
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._batch_lock:
+            if self._processing_task is None or self._processing_task.done():
+                self._processing_task = asyncio.ensure_future(_deferred_flush())
 
     @staticmethod
     def _wire_vllm_metrics(
@@ -634,9 +656,29 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         """Populate iteration counts and timing from vLLM metrics.
 
         Extracts token counts and, when available, maps vLLM's
-        monotonic-clock ``RequestStateStats`` timestamps to
-        wall-clock values anchored on the wall-clock
-        ``arrival_time`` that vLLM also provides.
+        monotonic-clock ``RequestStateStats`` timestamps to wall-clock
+        values anchored on the wall-clock ``arrival_time`` that vLLM
+        also provides.
+
+        **Clock reconciliation:** ``arrival_time`` is a Unix wall-clock
+        timestamp representing when the request entered vLLM's queue
+        (i.e. it is the wall-clock equivalent of ``queued_ts``).
+        ``queued_ts``, ``scheduled_ts``, ``first_token_ts``, and
+        ``last_token_ts`` are monotonic-clock values.  We use
+        ``mono_base = queued_ts or scheduled_ts`` — preferring
+        ``queued_ts`` because ``arrival_time`` is vLLM's queue-arrival
+        wall-clock time, so ``queued_ts`` is the correct monotonic
+        anchor.  When ``queued_ts`` is absent we fall back to
+        ``scheduled_ts`` (a slight over-estimate of actual queue wait).
+
+        **Fields not populated:**
+
+        * ``RequestTimings.queued`` — in this approximation queued_ts
+          corresponds to ``arrival_time``, so ``queued`` would equal
+          ``first_request_iteration`` and is omitted to avoid noise.
+        * ``RequestTimings.dequeued`` — vLLM's ``RequestStateStats``
+          does not expose a ``dequeued_ts`` field for the versions
+          GuideLLM targets; skipped.
         """
         metrics = request_output.metrics
         num_gen = metrics.num_generation_tokens if metrics is not None else 0
@@ -656,7 +698,9 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             return
 
         arrival = metrics.arrival_time
-        mono_base = metrics.scheduled_ts or metrics.queued_ts
+        queued_ts = metrics.queued_ts
+        scheduled_ts = metrics.scheduled_ts
+        mono_base = queued_ts or scheduled_ts
         first_tok = metrics.first_token_ts
         last_tok = metrics.last_token_ts
 
@@ -670,3 +714,9 @@ class VLLMOfflineBackend(VLLMPythonBackend):
             request_info.timings.last_request_iteration = arrival + (
                 last_tok - mono_base
             )
+
+        # scheduled_at: wall-clock time when vLLM scheduled the request.
+        # Use queued_ts as the per-field monotonic anchor so the offset
+        # (scheduled_ts - queued_ts) is always >= 0 (scheduled after queuing).
+        if scheduled_ts and queued_ts:
+            request_info.timings.scheduled_at = arrival + (scheduled_ts - queued_ts)
