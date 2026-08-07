@@ -19,6 +19,21 @@ __all__ = [
 ]
 
 _DEFAULT_VLLM_BENCHMARK_LOG_LEVEL = "ERROR"
+_VLLM_ROOT_LOGGER_RECONFIGURE_ERRORS = (
+    AttributeError,
+    ImportError,
+    RuntimeError,
+    TypeError,
+)
+
+
+def _set_logger_and_handler_levels(
+    target_logger: logging.Logger,
+    level: str,
+) -> None:
+    target_logger.setLevel(level)
+    for handler in target_logger.handlers:
+        handler.setLevel(level)
 
 
 def is_scheduler_worker_process() -> bool:
@@ -42,8 +57,9 @@ def prepare_vllm_benchmark_logging(
     subprocess that forked after ``import vllm``, or when a third-party
     library triggered the import earlier. In those scenarios the env-var
     path has no effect because vLLM's logging is already initialised, so
-    we lower the live logger and handler levels explicitly. If ``vllm.logger``
-    is already in ``sys.modules`` we also call its private
+    we lower the live logger and handler levels explicitly, including any
+    already-registered ``vllm.*`` child loggers in ``logging.root.manager``.
+    If ``vllm.logger`` is already in ``sys.modules`` we also call its private
     ``_configure_vllm_root_logger`` to re-apply vLLM's own configuration
     with the updated level.
 
@@ -57,10 +73,12 @@ def prepare_vllm_benchmark_logging(
     os.environ.setdefault("TQDM_DISABLE", "1")
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 
-    vllm_logger = logging.getLogger("vllm")
-    vllm_logger.setLevel(level_upper)
-    for handler in vllm_logger.handlers:
-        handler.setLevel(level_upper)
+    _set_logger_and_handler_levels(logging.getLogger("vllm"), level_upper)
+    for name, candidate in logging.root.manager.loggerDict.items():
+        if (name == "vllm" or name.startswith("vllm.")) and isinstance(
+            candidate, logging.Logger
+        ):
+            _set_logger_and_handler_levels(candidate, level_upper)
 
     # Re-apply vLLM's own root-logger config when the module is already loaded.
     # Wrapped defensively: _configure_vllm_root_logger is a private API that
@@ -71,10 +89,10 @@ def prepare_vllm_benchmark_logging(
     ):
         try:
             vllm_logger_module._configure_vllm_root_logger()  # noqa: SLF001
-        except Exception as exc:  # noqa: BLE001
+        except _VLLM_ROOT_LOGGER_RECONFIGURE_ERRORS as exc:
             logger.debug(
-                "Could not re-apply vLLM root logger config"
-                " (vLLM API may have changed): {}",
+                "Could not re-apply vLLM root logger config "
+                "(vLLM API may have changed): {}",
                 exc,
             )
 
