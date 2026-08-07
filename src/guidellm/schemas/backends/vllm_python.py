@@ -4,12 +4,14 @@ VLLM Python backend Args schema.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
-from guidellm.logger import logger
 from guidellm.schemas.backends.backend import BackendArgs
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["VLLMPythonAsyncBackendArgs"]
 
