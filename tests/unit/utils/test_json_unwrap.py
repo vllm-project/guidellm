@@ -3,47 +3,17 @@ import datetime
 import pytest
 from datasets import Dataset, IterableDataset
 
-from guidellm.utils.json_unwrap import (
-    VirtualColumnLocation,
-    construct_virtual_column_locations,
-    get_json_column_names,
-    try_json_load,
-    unzip_virtual_column_locations,
-)
-
-
-@pytest.mark.smoke
-@pytest.mark.parametrize(
-    ("wrapper_col", "virtual_cols", "expected"),
-    [
-        ("", [], []),
-        (
-            "wrapper",
-            ["field_1", "field_2"],
-            [
-                VirtualColumnLocation("wrapper", "field_1"),
-                VirtualColumnLocation("wrapper", "field_2"),
-            ],
-        ),
-        ("wrapper", [], []),
-    ],
-)
-def test_construct_virtual_column_locations(wrapper_col, virtual_cols, expected):
-    actual = construct_virtual_column_locations(wrapper_col, virtual_cols)
-    if not actual:
-        assert actual == expected
-    for location in actual:
-        assert isinstance(location, VirtualColumnLocation)
+from guidellm.utils.json_unwrap import get_json_column_names, try_json_load
 
 
 @pytest.mark.smoke
 @pytest.mark.parametrize(
     ("arg", "expected"),
     [
-        ("", None),
+        (r"", None),
         (r"{}", {}),
-        ("'string'", None),
-        ("'1'", None),
+        (r'"string"', "string"),
+        (r"1", 1),
         (
             r'{"field_1": 1, "field_2": "two", "field_3": [3, 4]}',
             {"field_1": 1, "field_2": "two", "field_3": [3, 4]},
@@ -102,27 +72,3 @@ def test_get_json_column_names(data, expected):
     )
     for ds in (dataset, iterable_dataset):
         assert get_json_column_names(ds) == expected
-
-
-@pytest.mark.smoke
-@pytest.mark.parametrize(
-    ("locations", "expected"),
-    [
-        ([], ((), ())),
-        (
-            [
-                VirtualColumnLocation("wrapper", "field_1"),
-                VirtualColumnLocation("wrapper_2", "field_1"),
-                VirtualColumnLocation("wrapper", "field_2"),
-            ],
-            (("wrapper", "wrapper_2", "wrapper"), ("field_1", "field_1", "field_2")),
-        ),
-        ([VirtualColumnLocation("wrapper", "field")], (("wrapper",), ("field",))),
-    ],
-)
-def test_unzip_virtual_column_locations(locations, expected):
-    actual = unzip_virtual_column_locations(locations)
-    assert isinstance(actual, tuple)
-    for idx in range(len(actual)):
-        assert isinstance(actual[idx], tuple)
-        assert actual[idx] == expected[idx]
