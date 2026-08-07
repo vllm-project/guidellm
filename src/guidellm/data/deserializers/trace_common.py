@@ -417,7 +417,11 @@ def _deserialize_nested_data(batch: dict[str, list]) -> dict[str, list]:
     for col, val in sample.items():
         if isinstance(val, str) and isinstance(try_json_load(val), (list, dict)):
             batch[col] = list(map(try_json_load, batch[col]))
-        if isinstance(val, (list, dict)):
+        if isinstance(val, dict) or (
+            isinstance(val, list)
+            and len(val) > 0
+            and isinstance(val[0], (str, list, dict))
+        ):
             batch[col] = list(map(_load_all_json_strings, batch[col]))
     return batch
 
