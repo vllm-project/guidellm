@@ -21,6 +21,11 @@ from more_itertools import roundrobin
 from pydantic import ConfigDict, Field, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.vllm_python.common import (
+    prepare_vllm_benchmark_logging,
+    reset_cpu_affinity,
+    vllm_benchmark_engine_config,
+)
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras import vllm
 from guidellm.logger import logger
@@ -186,7 +191,11 @@ class VLLMPythonBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
-        engine_args = vllm.AsyncEngineArgs(**self._args.vllm_config)
+        prepare_vllm_benchmark_logging()
+        reset_cpu_affinity()
+        engine_args = vllm.AsyncEngineArgs(
+            **vllm_benchmark_engine_config(self._args.vllm_config),
+        )
         self._engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self._in_process = True
 
@@ -497,11 +506,16 @@ class VLLMPythonBackend(Backend):
             # Safe to mutate: vLLM runs one model per engine and the resolved
             # template is constant across all requests for this backend instance.
             tokenizer.chat_template = resolved  # type: ignore[attr-defined]
-        prompt = tokenizer.apply_chat_template(
-            formatted_messages,  # type: ignore[arg-type]
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        try:
+            prompt = tokenizer.apply_chat_template(
+                formatted_messages,  # type: ignore[arg-type]
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except ValueError:
+            if self._args.request_format == "default-template":
+                return self._extract_prompt_chat_plain(formatted_messages)
+            raise
         if isinstance(prompt, str):
             return prompt
         raise RuntimeError("Backend received unexpected type from tokenizer.")
