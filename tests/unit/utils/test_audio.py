@@ -236,18 +236,64 @@ def test_encode_audio_different_formats(sample_audio_tensor):
         assert result["audio_bytes"] > 0
 
 
-def test_encode_audio_resampling(sample_audio_tensor):
-    original_rate = 16000
-    target_rate = 8000
+@pytest.mark.regression
+@patch("guidellm.utils.audio._encode_audio", return_value=b"encoded_audio")
+@patch("guidellm.utils.audio._decode_audio")
+def test_encode_audio_reports_sample_frames_for_non_one_second_audio(
+    mock_decode: MagicMock, mock_encode: MagicMock
+) -> None:
+    """Report encoded frames rather than the coincidentally equal sample rate.
+
+    ## WRITTEN BY AI ##
+    """
+    samples = MagicMock(sample_rate=16000, duration_seconds=2.0)
+    mock_decode.return_value = (samples, None)
 
     result = _audio_mod.encode_audio(
-        audio=sample_audio_tensor,
-        sample_rate=original_rate,
-        encode_sample_rate=target_rate,
+        audio=b"source_audio",
+        encode_sample_rate=16000,
         audio_format="wav",
     )
 
-    assert "audio_samples" in result
+    assert result["audio_seconds"] == 2.0
+    assert result["audio_samples"] == 32000
+    mock_encode.assert_called_once_with(
+        samples=samples,
+        resample_rate=16000,
+        bitrate=64000,
+        audio_format="wav",
+        mono=True,
+    )
+
+
+@pytest.mark.regression
+@patch("guidellm.utils.audio._encode_audio", return_value=b"encoded_audio")
+@patch("guidellm.utils.audio._decode_audio")
+def test_encode_audio_reports_resampled_output_frames(
+    mock_decode: MagicMock, mock_encode: MagicMock
+) -> None:
+    """Report frames at the encoded rate after resampling non-one-second audio.
+
+    ## WRITTEN BY AI ##
+    """
+    samples = MagicMock(sample_rate=24000, duration_seconds=1.5)
+    mock_decode.return_value = (samples, None)
+
+    result = _audio_mod.encode_audio(
+        audio=b"source_audio",
+        encode_sample_rate=16000,
+        audio_format="wav",
+    )
+
+    assert result["audio_seconds"] == 1.5
+    assert result["audio_samples"] == 24000
+    mock_encode.assert_called_once_with(
+        samples=samples,
+        resample_rate=16000,
+        bitrate=64000,
+        audio_format="wav",
+        mono=True,
+    )
 
 
 def test_encode_audio_error_handling():
@@ -273,6 +319,10 @@ def test_audio_quality_preservation(sample_audio_tensor):
 
 
 def test_end_to_end_audio_processing(sample_audio_tensor):
+    """Report frame count for the truncated encoded output.
+
+    ## WRITTEN BY AI ##
+    """
     original_samples = sample_audio_tensor.shape[1]
     original_duration = original_samples / 16000
 
@@ -287,7 +337,7 @@ def test_end_to_end_audio_processing(sample_audio_tensor):
     assert result["type"] == "audio_file"
     assert isinstance(result["audio"], bytes)
     assert result["format"] == "mp3"
-    assert result["audio_samples"] == 16000
+    assert result["audio_samples"] == 8000
     assert result["audio_seconds"] == min(original_duration, 0.5)
 
 
