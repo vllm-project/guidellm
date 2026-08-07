@@ -48,7 +48,7 @@ The Mooncake format expects an additional column for prefix-based cache hash IDs
 
 **NOTE:** :construction: While the format is accepted, some features such as subagent conversations, tool call events and non-linear histories are still in active development. The results from datasets including these features will be unreliable.
 
-The WEKA format expects a column with conversation UUIDs that is not wrapped within another column. The timestamp, input token length, output token length and hash IDs columns must either be top level columns, or must all be wrapped inside the same JSON column (ex. "requests").
+The WEKA format expects a column with conversation UUIDs that is not wrapped within another column. The timestamp, input token length, output token length and hash IDs columns must all be wrapped inside one JSON column (ex. "requests"), in the form a list of JSON objects.
 
 Similar to Mooncake, WEKA uses prefix-based cache hash IDs. The original [specification](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md) for the trace requires hash IDs to be 1 or greater, and for trailing hash IDs to be dropped if there are not enough input tokens to fill the hash ID block size. To accommodate for datasets which may not follow the specification exactly (ex. [semianalysisai/cc-traces-weka-no-subagents-051226](https://huggingface.co/datasets/semianalysisai/cc-traces-weka-no-subagents-051226)), GuideLLM will accept any non-negative integer as a valid hash ID, and will drop partially filled hash IDs if they exist.
 
