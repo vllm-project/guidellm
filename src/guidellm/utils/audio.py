@@ -81,6 +81,8 @@ def encode_audio(
     If ``audio_format`` is not provided, the format is detected from the
     source codec (via torchcodec metadata). When detection is not possible
     (e.g. raw float tensors), falls back to WAV with a one-time warning.
+    The returned ``audio_samples`` value is the number of frames represented
+    at the encoded output sample rate.
 
     :param audio: Audio input in any supported form.
     :param sample_rate: Sample rate hint for raw decoded audio.
@@ -117,16 +119,21 @@ def encode_audio(
         audio_format=format_val,
         mono=mono,
     )
+    encoded_sample_frames = round(samples.duration_seconds * encode_sample_rate)
+
+    resolved_file_name = file_name
+    if not resolved_file_name and isinstance(audio, str | Path):
+        resolved_file_name = get_file_name(audio)
+    if not resolved_file_name:
+        resolved_file_name = f"audio.{format_val}"
 
     return {
         "type": "audio_file",
         "audio": encoded_audio,
-        "file_name": get_file_name(audio)
-        if isinstance(audio, str | Path)
-        else file_name,
+        "file_name": resolved_file_name,
         "format": audio_format,
         "mimetype": f"audio/{format_val}",
-        "audio_samples": samples.sample_rate,
+        "audio_samples": encoded_sample_frames,
         "audio_seconds": samples.duration_seconds,
         "audio_bytes": len(encoded_audio),
     }
