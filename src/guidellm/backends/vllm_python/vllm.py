@@ -506,11 +506,16 @@ class VLLMPythonBackend(Backend):
             # Safe to mutate: vLLM runs one model per engine and the resolved
             # template is constant across all requests for this backend instance.
             tokenizer.chat_template = resolved  # type: ignore[attr-defined]
-        prompt = tokenizer.apply_chat_template(
-            formatted_messages,  # type: ignore[arg-type]
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        try:
+            prompt = tokenizer.apply_chat_template(
+                formatted_messages,  # type: ignore[arg-type]
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except ValueError:
+            if self._args.request_format == "default-template":
+                return self._extract_prompt_chat_plain(formatted_messages)
+            raise
         if isinstance(prompt, str):
             return prompt
         raise RuntimeError("Backend received unexpected type from tokenizer.")
