@@ -31,14 +31,10 @@ def prepare_vllm_benchmark_logging(
 ) -> None:
     """Reduce vLLM log noise during in-process benchmarks.
 
-    vLLM logs through the stdlib ``logging`` module and writes to stderr.
-    Scheduler workers and their EngineCore children are separate processes,
-    so Rich progress redirection in the main process cannot capture them.
-    Lower the log level here so engine startup does not corrupt the live UI.
-
-    ``VLLM_LOGGING_LEVEL`` is set with ``setdefault`` so an explicit user
-    setting is preserved. Child processes that import vLLM after this call
-    (for example EngineCore) inherit the quieter level.
+    Sets environment variables that vLLM and its dependencies read at import
+    time. Call this before the first access to any vLLM attribute so that
+    child processes (EngineCore, scheduler workers) inherit the quieter
+    settings. ``setdefault`` preserves any explicit user override.
     """
     level_upper = level.upper()
     os.environ.setdefault("VLLM_LOGGING_LEVEL", level_upper)
@@ -47,31 +43,7 @@ def prepare_vllm_benchmark_logging(
     os.environ.setdefault("TQDM_DISABLE", "1")
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 
-    vllm_logger = logging.getLogger("vllm")
-    vllm_logger.setLevel(level_upper)
-    for handler in vllm_logger.handlers:
-        handler.setLevel(level_upper)
-
-    for name, candidate in logging.root.manager.loggerDict.items():
-        if (name == "vllm" or name.startswith("vllm.")) and isinstance(
-            candidate, logging.Logger
-        ):
-            candidate.setLevel(level_upper)
-            for handler in candidate.handlers:
-                handler.setLevel(level_upper)
-
-    # vLLM configures its root logger at import time. Re-apply config when
-    # vLLM was imported before this call (for example via EngineArgs).
-    # _configure_vllm_root_logger is private; guard against renames on upgrade.
-    if "vllm.logger" in sys.modules:
-        try:
-            from vllm.logger import (  # noqa: PLC0415
-                _configure_vllm_root_logger,
-            )
-
-            _configure_vllm_root_logger()
-        except (ImportError, AttributeError):
-            pass
+    logging.getLogger("vllm").setLevel(level_upper)
 
 
 def vllm_benchmark_engine_config(vllm_config: dict[str, Any]) -> dict[str, Any]:
