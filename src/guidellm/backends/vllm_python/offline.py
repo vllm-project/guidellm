@@ -373,11 +373,16 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         if resolved is not None:
             tokenizer.chat_template = resolved
 
-        prompt = tokenizer.apply_chat_template(
-            formatted_messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        try:
+            prompt = tokenizer.apply_chat_template(
+                formatted_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except ValueError:
+            if self._args.request_format == "default-template":
+                return self._extract_prompt_chat_plain(formatted_messages)
+            raise
         if isinstance(prompt, str):
             return prompt
         raise RuntimeError("Backend received unexpected type from tokenizer.")
