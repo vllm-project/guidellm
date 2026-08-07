@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterator
-from typing import Any, Literal, TypeVar
+from typing import Any, TypeVar
 
 import torch
-from pydantic import Field
 from torch.utils.data.dataloader import DataLoader as PyTorchDataLoader
 from torch.utils.data.dataset import IterableDataset as TorchIterableDataset
 
@@ -15,11 +14,9 @@ from guidellm.data.preprocessors import (
     DataDependentPreprocessor,
     DatasetPreprocessor,
 )
-from guidellm.data.schemas import (
-    DataLoaderArgs,
-    DatasetType,
-)
+from guidellm.data.schemas import DatasetType
 from guidellm.logger import logger
+from guidellm.schemas.data.loaders import TorchDataLoaderArgs
 from guidellm.utils.mixins import InfoMixin
 
 __all__ = ["DatasetsIterator", "TorchDataLoader", "TorchDataLoaderArgs"]
@@ -27,27 +24,6 @@ __all__ = ["DatasetsIterator", "TorchDataLoader", "TorchDataLoaderArgs"]
 
 def _collate_first(batch: list) -> Any:
     return batch[0]
-
-
-@DataLoaderArgs.register("pytorch")
-class TorchDataLoaderArgs(DataLoaderArgs):
-    """Model for PyTorch data loader arguments."""
-
-    kind: Literal["pytorch"] = Field(  # type: ignore[assignment]
-        default="pytorch",
-        description="Type identifier for the generative data loader.",
-    )
-    shuffle: bool = Field(
-        default=False,
-        description="Shuffle data rows at every epoch.",
-    )
-    num_workers: int = Field(
-        default=1,
-        description=(
-            "Number of worker processes for data loading. If 0, data loading "
-            "will be performed in the main process."
-        ),
-    )
 
 
 DataT = TypeVar("DataT")

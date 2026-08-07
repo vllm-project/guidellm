@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Any, ClassVar, Literal, TypeAlias, cast
+from typing import Any, ClassVar, TypeAlias, cast
 
 from datasets import Dataset, IterableDataset
-from pydantic import Field
 
 from guidellm.data.preprocessors.preprocessor import (
     DataDependentPreprocessor,
     PreprocessorRegistry,
 )
 from guidellm.data.schemas import (
-    DataPreprocessorArgs,
     DatasetType,
     GenerativeDatasetColumnType,
 )
+from guidellm.schemas.data.preprocessors import GenerativeColumnMapperArgs
 
 __all__ = [
     "GenerativeColumnMapper",
@@ -27,37 +26,6 @@ __all__ = [
 DatasetColumnKey: TypeAlias = tuple[GenerativeDatasetColumnType, int]
 # dataset index and column_name
 DatasetColumnValue: TypeAlias = tuple[int, str]
-
-
-@DataPreprocessorArgs.register(
-    [
-        "generative_column_mapper",
-        "pooling_column_mapper",
-    ]
-)
-class GenerativeColumnMapperArgs(DataPreprocessorArgs):
-    """Model for generative column mapper preprocessor arguments."""
-
-    kind: Literal["generative_column_mapper", "pooling_column_mapper"] = Field(
-        default="generative_column_mapper",
-        description="Type identifier for the generative column mapper preprocessor.",
-    )
-    column_mappings: dict[str, str | list[str]] | None = Field(
-        default=None,
-        description="Mappings for the column names.",
-        examples=[
-            {
-                "prompt_tokens_count_column": [
-                    "prompt_tokens_count",
-                    "input_tokens_count",
-                ],
-                "output_tokens_count_column": [
-                    "output_tokens_count",
-                    "completion_tokens_count",
-                ],
-            }
-        ],
-    )
 
 
 @PreprocessorRegistry.register("generative_column_mapper")

@@ -1,26 +1,15 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Literal
-
-from pydantic import Field
+from typing import Any
 
 from guidellm.data.preprocessors.preprocessor import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
-from guidellm.data.schemas import DataPreprocessorArgs
+from guidellm.schemas.data.preprocessors import TurnPivotArgs
 
-__all__ = ["TurnPivot"]
-
-
-class TurnPivotArgs(DataPreprocessorArgs):
-    """Model for turn pivot preprocessor arguments."""
-
-    kind: Literal["turn_pivot"] = Field(
-        default="turn_pivot",
-        description="Type identifier for the turn pivot preprocessor.",
-    )
+__all__ = ["TurnPivot", "TurnPivotArgs"]
 
 
 @PreprocessorRegistry.register("turn_pivot")

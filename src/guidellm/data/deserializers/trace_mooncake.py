@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Any
 
 from datasets import Dataset, Features, List, Value
 from faker import Faker
-from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -23,7 +22,6 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
-    TraceDataArgs,
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
@@ -31,7 +29,7 @@ from guidellm.data.deserializers.trace_common import (
     create_prompt_from_hash_ids,
     get_missing_columns,
 )
-from guidellm.data.schemas import DataArgs
+from guidellm.schemas.data.deserializers import MooncakeTraceFormatArgs
 
 __all__ = ["MooncakeTraceFormatArgs"]
 
@@ -49,24 +47,6 @@ def _calculate_required_prompt_tokens(
 
 
 DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, "mooncake")
-
-
-@DataArgs.register("mooncake")
-class MooncakeTraceFormatArgs(TraceDataArgs):
-    kind: Literal["mooncake"] = Field(
-        default="mooncake",
-        description="Type identifier for the Mooncake trace format.",
-    )
-    hash_ids_column: str = Field(
-        default="hash_ids",
-        description="Column name for lists of hash IDs in the trace file.",
-    )
-    hash_id_block_size: int = Field(
-        gt=0,
-        # Default used in Mooncake's paper https://arxiv.org/pdf/2407.00079
-        default=512,
-        description="Amount of tokens represented by one hash ID.",
-    )
 
 
 @TraceFormatRegistry.register("mooncake")

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Literal
-
-from pydantic import Field
+from typing import Any
 
 from guidellm.data.finalizers.conversation_graph import (
     expand_client_tool_turns,
     turns_from_mapped_items,
 )
 from guidellm.data.finalizers.finalizer import DatasetFinalizer, FinalizerRegistry
-from guidellm.data.schemas import DataFinalizerArgs
 from guidellm.scheduler.schemas import HistoryContext
 from guidellm.scheduler.schemas.conversation_graph import (
     GenerativeConversationGraph,
@@ -21,28 +18,12 @@ from guidellm.schemas import (
     TurnType,
     UsageMetrics,
 )
+from guidellm.schemas.data.finalizers import GenerativeRequestFinalizerArgs
 
 __all__ = [
     "GenerativeRequestFinalizer",
     "GenerativeRequestFinalizerArgs",
 ]
-
-
-@DataFinalizerArgs.register("generative")
-class GenerativeRequestFinalizerArgs(DataFinalizerArgs):
-    """Model for generative request finalizer arguments."""
-
-    kind: Literal["generative"] = Field(
-        default="generative",
-        description="Type identifier for the generative request finalizer.",
-    )
-    tool_call_mode: Literal["client", "server"] = Field(
-        default="client",
-        description="How to handle turns with tool definitions. "
-        "'client' (default) creates client_tool_call + injection turns. "
-        "'server' creates server_tool_call turns (no injection, "
-        "tools are server-managed).",
-    )
 
 
 @FinalizerRegistry.register("generative")

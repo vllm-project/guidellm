@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Any
 
 from datasets import Dataset, Features, List, Value
 from faker import Faker
-from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -30,7 +29,6 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
-    TraceDataArgs,
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
@@ -40,7 +38,7 @@ from guidellm.data.deserializers.trace_common import (
     generate_token_ids,
     get_missing_columns,
 )
-from guidellm.data.schemas import DataArgs
+from guidellm.schemas.data.deserializers import WEKATraceFormatArgs
 
 __all__ = ["WEKATraceFormatArgs"]
 
@@ -66,40 +64,6 @@ def _generate_remaining_prompt(
 
 
 DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, "weka")
-
-
-@DataArgs.register("weka")
-class WEKATraceFormatArgs(TraceDataArgs):
-    kind: Literal["weka"] = Field(
-        default="weka",
-        description="Type identifier for the WEKA trace format.",
-    )
-    timestamp_column: str = Field(
-        default="t",
-        description="Column name for timestamps in the trace file.",
-    )
-    prompt_tokens_column: str = Field(
-        default="in",
-        description="Column name for prompt token counts in the trace file.",
-    )
-    output_tokens_column: str = Field(
-        default="out",
-        description="Column name for output token counts in the trace file.",
-    )
-    conversation_id_column: str = Field(
-        default="id",
-        description="Column name for conversation UUIDs in the trace file.",
-    )
-    hash_ids_column: str = Field(
-        default="hash_ids",
-        description="Column name for lists of hash IDs in the trace file.",
-    )
-    hash_id_block_size: int = Field(
-        gt=0,
-        # Recommended in original github repository callanjfox/agentic-coding-analysis
-        default=64,
-        description="Amount of tokens represented by one hash ID.",
-    )
 
 
 @TraceFormatRegistry.register("weka")

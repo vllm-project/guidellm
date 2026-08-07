@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
 
 from datasets import (
     Dataset,
@@ -17,7 +16,6 @@ from datasets.exceptions import (
     DatasetNotFoundError,
     FileNotFoundDatasetsError,
 )
-from pydantic import AliasChoices, Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -25,29 +23,9 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.schemas import DataArgs
+from guidellm.schemas.data.deserializers import HuggingFaceDataArgs
 
 __all__ = ["HuggingFaceDatasetDeserializer"]
-
-
-@DataArgs.register(["huggingface", "hf"])
-class HuggingFaceDataArgs(DataArgs):
-    """Model for Hugging Face dataset deserializer arguments."""
-
-    kind: Literal["huggingface", "hf"] = Field(
-        default="huggingface",
-        description="Type identifier for the Hugging Face dataset deserializer.",
-    )
-    source: str | Dataset | IterableDataset | DatasetDict | IterableDatasetDict = Field(
-        validation_alias=AliasChoices("source", "src", "from", "path", "name"),
-        description=(
-            "Data input for the Hugging Face dataset deserializer. This can be a "
-            "Dataset, IterableDataset, DatasetDict, IterableDatasetDict, a string or "
-            "Path to a local dataset directory or a local .py dataset script, or a "
-            "dataset identifier from the Hugging Face Hub."
-        ),
-        examples=["wikimedia/structured-wikipedia", "./dataset.json"],
-    )
 
 
 @DatasetDeserializerFactory.register(["huggingface", "hf"])

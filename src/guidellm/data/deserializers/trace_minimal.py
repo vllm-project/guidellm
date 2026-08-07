@@ -10,32 +10,21 @@ line with a synthetic prompt matching the requested input_length for replay benc
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Literal
 
 from datasets import Dataset, Features
 from faker import Faker
-from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.trace_common import (
-    TraceDataArgs,
     TraceFormatBase,
     TraceFormatRegistry,
     decode_prompt,
     generate_token_ids,
     get_missing_columns,
 )
-from guidellm.data.schemas import DataArgs
+from guidellm.schemas.data.deserializers import MinimalTraceFormatArgs
 
 __all__ = ["MinimalTraceFormatArgs"]
-
-
-@DataArgs.register("trace_synthetic")
-class MinimalTraceFormatArgs(TraceDataArgs):
-    kind: Literal["trace_synthetic"] = Field(
-        default="trace_synthetic",
-        description="Type identifier for the minimal trace format.",
-    )
 
 
 @TraceFormatRegistry.register("trace_synthetic")
