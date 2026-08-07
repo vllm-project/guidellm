@@ -45,9 +45,25 @@ class TestPrepareVllmBenchmarkLogging:
         assert handler.level == logging.ERROR
         vllm_logger.removeHandler(handler)
 
+    @pytest.mark.sanity
+    def test_lowers_configured_vllm_child_loggers(self, monkeypatch):
+        """vllm.* child loggers are quieted in-process. ## WRITTEN BY AI ##"""
+        monkeypatch.delenv("VLLM_LOGGING_LEVEL", raising=False)
+        child_logger = logging.getLogger("vllm.engine")
+        handler = logging.StreamHandler()
+        child_logger.addHandler(handler)
+        child_logger.setLevel(logging.INFO)
+        handler.setLevel(logging.INFO)
+
+        prepare_vllm_benchmark_logging("ERROR")
+
+        assert child_logger.level == logging.ERROR
+        assert handler.level == logging.ERROR
+        child_logger.removeHandler(handler)
+
     @pytest.mark.regression
     def test_configure_vllm_root_logger_exception_does_not_propagate(self, monkeypatch):
-        """_configure_vllm_root_logger errors are swallowed. ## WRITTEN BY AI ##"""
+        """Root logger reconfigure errors are swallowed. ## WRITTEN BY AI ##"""
         monkeypatch.delenv("VLLM_LOGGING_LEVEL", raising=False)
         fake_logger_module = type(sys)("vllm.logger")
 
