@@ -20,12 +20,7 @@ def suppress_worker_stdio() -> Iterator[None]:
     third-party libraries cannot corrupt the main-process Rich live display.
     Python-level ``sys.stdout``/``sys.stderr`` are also replaced so that any
     higher-level writes (HF Hub progress bars, tqdm) are silenced too.
-    POSIX only; a no-op on Windows.
     """
-    if sys.platform == "win32":
-        yield
-        return
-
     devnull_fd = os.open(os.devnull, os.O_WRONLY)
     saved_out_fd = os.dup(1)
     saved_err_fd = os.dup(2)
