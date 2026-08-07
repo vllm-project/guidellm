@@ -8,58 +8,18 @@ provide a standard interface for distributed execution across worker processes.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any, ClassVar
-
-from pydantic import Field
+from abc import abstractmethod
+from typing import Any
 
 from guidellm.scheduler import BackendInterface
-from guidellm.schemas import (
-    GenerationRequest,
-    GenerationResponse,
-    PydanticClassRegistryMixin,
-    standard_model_config,
-)
+from guidellm.schemas import GenerationRequest, GenerationResponse
+from guidellm.schemas.backends import BackendArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "Backend",
     "BackendArgs",
 ]
-
-
-class BackendArgs(PydanticClassRegistryMixin["BackendArgs"], ABC):
-    """
-    Base class for backend creation arguments.
-
-    This class serves as a base for defining argument models used in the creation
-    of backend instances. It inherits from PydanticClassRegistryMixin to enable
-    automatic registration of subclasses, allowing for flexible and extensible
-    backend configurations.
-
-    :cvar schema_discriminator: Field name for polymorphic deserialization
-    """
-
-    model_config = standard_model_config()
-
-    schema_discriminator: ClassVar[str] = "kind"
-
-    @classmethod
-    def __pydantic_schema_base_type__(cls) -> type[BackendArgs]:
-        """
-        Return base type for polymorphic validation hierarchy.
-
-        :return: Base BackendArgs class for schema validation
-        """
-        if cls.__name__ == "BackendArgs":
-            return cls
-
-        return BackendArgs
-
-    kind: str = Field(
-        description="Identify the desired backend implementation.",
-        examples=["openai_http"],
-    )
 
 
 class Backend(
