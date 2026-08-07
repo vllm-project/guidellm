@@ -1,4 +1,5 @@
 import dataclasses
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,10 @@ from guidellm.data.deserializers.trace_common import (
     generate_token_ids,
 )
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationTurnData,
+)
 from guidellm.utils.hf_datasets import load_dataset_from_file
 
 
@@ -99,6 +104,11 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
     )
 
 
+def load_graph_turns(row: dict) -> list[ConversationTurnData]:
+    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    return graph.turns
+
+
 def get_from_kwargs(keys, kwargs) -> dict:
     return {k: v for k, v in kwargs.items() if k in keys}
 
@@ -137,10 +147,11 @@ class TestTraceDatasetDeserializer:
             suffix=suffix,
         )
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == i
-            assert row["prompt_tokens_count"] == (i + 1) * 10
-            assert row["output_tokens_count"] == i + 1
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            assert turn.columns["relative_timestamp"] == i
+            assert turn.columns["prompt_tokens_count"] == (i + 1) * 10
+            assert turn.columns["output_tokens_count"] == i + 1
 
     @pytest.mark.sanity
     def test_loads_csv(self, tmp_path: Path, deserializer):
@@ -150,10 +161,11 @@ class TestTraceDatasetDeserializer:
             suffix=".csv",
         )
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == i
-            assert row["prompt_tokens_count"] == (i + 1) * 10
-            assert row["output_tokens_count"] == i + 1
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            assert turn.columns["relative_timestamp"] == i
+            assert turn.columns["prompt_tokens_count"] == (i + 1) * 10
+            assert turn.columns["output_tokens_count"] == i + 1
 
     @pytest.mark.smoke
     def test_loads_sorted_rows_and_keeps_token_columns_aligned(
@@ -173,11 +185,13 @@ class TestTraceDatasetDeserializer:
         )
         ds = self.deserialize(deserializer, trace)
         assert isinstance(ds, IterableDataset)
+        conv = load_graph_turns(next(iter(ds)))
         proc = mock_processor()
-        for i, row in enumerate(ds):
-            assert row["prompt_tokens_count"] == i + 1
-            assert row["output_tokens_count"] == (i + 1) * 10
-            assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
+        for i, turn in enumerate(conv):
+            n_in = turn.columns["prompt_tokens_count"]
+            assert n_in == i + 1
+            assert turn.columns["output_tokens_count"] == (i + 1) * 10
+            assert len(proc.encode(turn.columns["prompt"])) == n_in
 
     @pytest.mark.smoke
     def test_emits_relative_timestamp_column_sorted_from_trace(
@@ -196,8 +210,9 @@ class TestTraceDatasetDeserializer:
             ),
         )
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == i
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            assert turn.columns["relative_timestamp"] == i
 
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):

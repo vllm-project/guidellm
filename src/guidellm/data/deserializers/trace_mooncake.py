@@ -91,7 +91,7 @@ class MooncakeTraceFormat(TraceFormatBase):
 
         self.hash_id_table: dict[int, tuple[int, ...]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
-    
+
     def __iter__(self) -> Iterable[Dataset]:
         yield self.dataset.sort(self.config.timestamp_column)
 

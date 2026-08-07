@@ -35,6 +35,7 @@ from guidellm.scheduler import (
     TraceReplayStrategy,
     WorkerProcessGroup,
 )
+from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.schemas import GenerationRequest, RequestSettings
 from guidellm.schemas.conversation_graph import GenerativeConversationGraph
 from tests.unit.testing_utils import async_timeout
@@ -62,7 +63,7 @@ def _write_trace(path: Path, lines: list[str]) -> Path:
 
 def _requests_from_trace(
     trace_path: Path,
-) -> tuple[list[GenerativeConversationGraph], list[float]]:
+) -> tuple[list[ConversationGraph[GenerationRequest]], list[float]]:
     deserializer = TraceDatasetDeserializer()
     dataset = deserializer(
         config=MinimalTraceFormatArgs(path=trace_path),
@@ -74,21 +75,35 @@ def _requests_from_trace(
     mapper.setup_data([dataset])
     finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
-    conversations: list[GenerativeConversationGraph] = []
     relative_timestamps: list[float] = []
-    for idx, row in enumerate(dataset):
-        mapped = mapper([{"dataset": row}])
-        graph = finalizer(mapped)
-        assert isinstance(graph, GenerativeConversationGraph)
-        assert len(graph.nodes) == 1
-        node = next(iter(graph.nodes.values()))
+    conv = next(iter(dataset))
+    mapped = mapper([{"dataset": conv}])
+    graph = finalizer(mapped)
+    assert isinstance(graph, GenerativeConversationGraph)
+    assert len(graph.nodes) == 10
+
+    graphs: list[ConversationGraph[GenerationRequest]] = []
+    for idx, node in enumerate(graph.nodes.values()):
         node.request.request_id = f"req_{idx}"
-        conversations.append(graph)
         offset = node.settings.relative_timestamp
         assert offset is not None
         relative_timestamps.append(offset)
+        graphs.append(
+            ConversationGraph(
+                graph_id=f"graph_req_{idx}",
+                nodes={
+                    node.node_id: ConversationNode(
+                        node_id=node.node_id,
+                        agent_id=node.agent_id,
+                        request=node.request,
+                        settings=node.settings,
+                    )
+                },
+                edges=[],
+            )
+        )
 
-    return conversations, relative_timestamps
+    return graphs, relative_timestamps
 
 
 class FastMockBackend(BackendInterface):
@@ -117,14 +132,21 @@ class FastMockBackend(BackendInterface):
     async def process_shutdown(self):
         pass
 
-    async def resolve(self, request, request_info, request_history):
-        _ = request_history
+    async def resolve(self, request, request_info, history=None):
         await asyncio.sleep(self._resolve_delay)
-        yield f"ok_{request.request_id}", request_info
+        rid = (
+            request.request_id
+            if hasattr(request, "request_id")
+            else request["request_id"]
+        )
+        yield f"ok_{rid}", request_info
 
 
-def _request_index(request: GenerationRequest) -> int:
-    return int(request.request_id.removeprefix("req_"))
+def _request_index(request) -> int:
+    rid = (
+        request.request_id if hasattr(request, "request_id") else request["request_id"]
+    )
+    return int(rid.removeprefix("req_"))
 
 
 @pytest.mark.smoke

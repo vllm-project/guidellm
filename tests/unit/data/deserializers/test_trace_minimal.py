@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import random
 from collections.abc import Callable
 from pathlib import Path
@@ -12,6 +13,10 @@ import pytest
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationTurnData,
+)
 
 
 def mock_processor() -> Mock:
@@ -44,6 +49,11 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
         + "}"
         for idx in range(num_rows)
     )
+
+
+def load_graph_turns(row: dict) -> list[ConversationTurnData]:
+    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    return graph.turns
 
 
 def get_from_kwargs(keys, kwargs) -> dict:
@@ -98,12 +108,13 @@ class TestMinimalTraceFormat:
             prompt_tokens_column="input_tokens",
             output_tokens_column="generated_tokens",
         )
+        conv = load_graph_turns(next(iter(ds)))
 
         expected_prompt_count = [2, 4]
         expected_output_count = [20, 40]
-        for i, row in enumerate(ds):
-            assert row["prompt_tokens_count"] == expected_prompt_count[i]
-            assert row["output_tokens_count"] == expected_output_count[i]
+        for i, turn in enumerate(conv):
+            assert turn.columns["prompt_tokens_count"] == expected_prompt_count[i]
+            assert turn.columns["output_tokens_count"] == expected_output_count[i]
 
     @pytest.mark.smoke
     def test_generates_large_trace_prompts_from_reusable_base(
@@ -133,13 +144,14 @@ class TestMinimalTraceFormat:
             processor_factory=lambda: processor,
             random_seed=42,
         )
+        conv = load_graph_turns(next(iter(ds)))
 
         assert processor.encode.call_count <= len(prompt_lengths) + 4
-        for i, row in enumerate(ds):
-            in_cnt = row["prompt_tokens_count"]
-            assert in_cnt == prompt_lengths[i]
-            assert row["output_tokens_count"] == output_lengths[i]
+        for i, turn in enumerate(conv):
+            n_in = turn.columns["prompt_tokens_count"]
+            assert n_in == prompt_lengths[i]
+            assert turn.columns["output_tokens_count"] == output_lengths[i]
 
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != in_cnt:
-                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
+            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
+            if actual_prompt_length != n_in:
+                pytest.fail(f"{actual_prompt_length} != {n_in}")

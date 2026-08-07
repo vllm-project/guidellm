@@ -1,5 +1,6 @@
 import copy
 import dataclasses
+import json
 import math
 import random
 from collections.abc import Callable
@@ -13,6 +14,10 @@ from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationTurnData,
+)
 
 
 def ascending_processor() -> Mock:
@@ -95,6 +100,11 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
         + "}"
         for idx in range(num_rows)
     )
+
+
+def load_graph_turns(row: dict) -> list[ConversationTurnData]:
+    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    return graph.turns
 
 
 def get_from_kwargs(keys, kwargs) -> dict:
@@ -210,14 +220,15 @@ class TestMooncakeTraceFormat:
         )
         processor = ascending_processor()
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            in_cnt = row["prompt_tokens_count"]
-            assert in_cnt == prompt_lengths[i]
-            assert row["output_tokens_count"] == output_lengths[i]
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            n_in = turn.columns["prompt_tokens_count"]
+            assert n_in == prompt_lengths[i]
+            assert turn.columns["output_tokens_count"] == output_lengths[i]
 
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != in_cnt:
-                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
+            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
+            if actual_prompt_length != n_in:
+                pytest.fail(f"{actual_prompt_length} != {n_in}")
 
     @pytest.mark.smoke
     def test_prompt_matching_or_bordering_block_size(
@@ -244,10 +255,12 @@ class TestMooncakeTraceFormat:
             processor_factory=lambda: processor,
             random_seed=42,
         )
-        for row in ds:
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != row["prompt_tokens_count"]:
-                pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
+        conv = load_graph_turns(next(iter(ds)))
+        for turn in conv:
+            in_cnt = turn.columns["prompt_tokens_count"]
+            actual_prompt_length = len(processor.encode(turn.columns["prompt"]))
+            if actual_prompt_length != in_cnt:
+                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
@@ -299,8 +312,7 @@ class TestMooncakeTraceFormat:
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
-            for _ in ds:
-                ...
+            load_graph_turns(next(iter(ds)))
 
     @pytest.mark.smoke
     def test_token_block_distinctness(self, tmp_path: Path, deserializer):
@@ -323,8 +335,15 @@ class TestMooncakeTraceFormat:
             processor_factory=compatible_processor,
             random_seed=42,
         )
+        conv = load_graph_turns(next(iter(ds)))
         root_blocks, sibling_blocks = zip(
-            *[(row["prompt"][: n_in // 2], row["prompt"][n_in // 2 :]) for row in ds],
+            *[
+                (
+                    turn.columns["prompt"][: n_in // 2],
+                    turn.columns["prompt"][n_in // 2 :],
+                )
+                for turn in conv
+            ],
             strict=False,
         )
         assert all_equal(root_blocks)

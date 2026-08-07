@@ -7,6 +7,7 @@ requested input_length for replay benchmarks."""
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Protocol
@@ -30,6 +31,11 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import DataArgs
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationParentRef,
+    ConversationTurnData,
+)
 from guidellm.utils.hf_datasets import load_dataset_from_file
 from guidellm.utils.json_unwrap import try_json_load
 from guidellm.utils.registry import RegistryMixin
@@ -213,21 +219,51 @@ class TraceExamplesIterable(_BaseExamplesIterable):
 
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
-        for conv in self.format:
+        samples_count = 0
+        for conv in self.format:  # type: ignore[attr-defined]
             start_ts = conv[0][self.config.timestamp_column]
-            for row_idx, row in enumerate(conv):
-                prompt = self.format.create_prompt(row, self.processor, self.faker)
-                relative_timestamp = row[self.config.timestamp_column] - start_ts
-                yield (
-                    row_idx,
-                    {
-                        "prompt": prompt,
-                        "prompt_tokens_count": row[self.config.prompt_tokens_column],
-                        "output_tokens_count": row[self.config.output_tokens_column],
-                        "relative_timestamp": relative_timestamp,
-                    },
-                )
+            row = self._create_conversation_row(conv, start_ts)
+            samples_count += len(conv)
+            yield samples_count, row
             self.format.reset()
+
+    def _create_conversation_row(
+        self, conversation: Dataset, start_ts: float
+    ) -> dict[str, Any]:
+        """Build a ``conversation_turns`` payload for linear or branched graphs."""
+        turns = []
+        for turn_idx, turn in enumerate(conversation):
+            parents = []
+            if turn_idx > 0:
+                parents.append(
+                    ConversationParentRef(parent_node_id=f"main_{turn_idx - 1}")
+                )
+
+            # TODO: Branches & subagents
+
+            prompt = self.format.create_prompt(turn, self.processor, self.faker)
+            relative_timestamp = turn[self.config.timestamp_column] - start_ts
+            columns = {
+                "text_column": [prompt],
+                "prompt_tokens_count_column": [turn[self.config.prompt_tokens_column]],
+                "output_tokens_count_column": [turn[self.config.output_tokens_column]],
+                "relative_timestamp_column": [relative_timestamp],
+            }
+            turns.append(
+                ConversationTurnData(
+                    node_id=f"main_{turn_idx}",
+                    agent_id="default",
+                    parents=parents,
+                    columns=columns,
+                )
+            )
+        graph_data = ConversationGraphData(turns=turns)
+        payload = json.dumps(graph_data.model_dump(mode="json"))
+        return {
+            "conversation_turns": (
+                payload.decode() if isinstance(payload, bytes) else payload
+            )
+        }
 
     @property
     def is_typed(self) -> bool:
@@ -235,14 +271,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
 
     @property
     def features(self) -> Features:
-        return Features(
-            {
-                "prompt": Value("string"),
-                "prompt_tokens_count": Value("int32"),
-                "output_tokens_count": Value("int32"),
-                "relative_timestamp": Value("float"),
-            }
-        )
+        return Features({"conversation_turns": Value("large_string")})
 
     @property
     def num_shards(self) -> int:
@@ -346,7 +375,7 @@ def _validate_dataset(config: TraceDataArgs, trace_format: TraceFormatBase) -> N
             **dict(trace_format.required_columns()),
         }
     )
-    for conv in trace_format:
+    for conv in trace_format:  # type: ignore[attr-defined]
         if config.conversation_id_column in features:
             features.pop(config.conversation_id_column)
         _raise_if_nonetype_found(conv)
