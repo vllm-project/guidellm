@@ -309,28 +309,35 @@ class TestWEKATraceFormat:
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        ("content", "kwargs", "match"),
+        ("content", "match"),
         [
             (
                 '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
                 '"out": 5, "hash_ids": [-1]}]}\n',
-                {},
                 "non-negative",
             ),
             (
                 '{"id": "conv0", "requests": [{"t": 0, "in": 1024,'
                 '"out": 5, "hash_ids": [1]}]}\n',
-                {},
                 "given 1 blocks",
+            ),
+            (
+                '{"id": "conv0", "requests": [[{"t": 0, "in": 10,'
+                '"out": 5, "hash_ids": []}]]}\n',
+                "Failed to find requests",
+            ),
+            (
+                '{"id": "conv0", "requests": []}\n',
+                "requests was empty",
             ),
         ],
     )
     def test_trace_validation_raises(
-        self, tmp_path: Path, deserializer, content, kwargs, match
+        self, tmp_path: Path, deserializer, content, match
     ):
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
-            self.deserialize(deserializer, trace, **kwargs)
+            self.deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(

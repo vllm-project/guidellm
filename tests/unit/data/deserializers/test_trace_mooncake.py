@@ -264,28 +264,26 @@ class TestMooncakeTraceFormat:
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        ("content", "kwargs", "match"),
+        ("content", "match"),
         [
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": 5, '
                 '"hash_ids": [-1]}\n',
-                {},
                 "non-negative",
             ),
             (
                 '{"timestamp": 0, "input_length": 1024, "output_length": 5, '
                 '"hash_ids": [0]}\n',
-                {},
                 "given 1 blocks",
             ),
         ],
     )
     def test_trace_validation_raises(
-        self, tmp_path: Path, deserializer, content, kwargs, match
+        self, tmp_path: Path, deserializer, content, match
     ):
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
-            self.deserialize(deserializer, trace, **kwargs)
+            self.deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(

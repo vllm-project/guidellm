@@ -104,9 +104,12 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
     )
 
 
+def load_graph(row: dict) -> ConversationGraphData:
+    return ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+
+
 def load_graph_turns(row: dict) -> list[ConversationTurnData]:
-    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
-    return graph.turns
+    return load_graph(row).turns
 
 
 def get_from_kwargs(keys, kwargs) -> dict:
@@ -185,9 +188,13 @@ class TestTraceDatasetDeserializer:
         )
         ds = self.deserialize(deserializer, trace)
         assert isinstance(ds, IterableDataset)
-        conv = load_graph_turns(next(iter(ds)))
+        conv = load_graph(next(iter(ds)))
         proc = mock_processor()
-        for i, turn in enumerate(conv):
+        assert len(conv.turns) == n_rows
+        for i, turn in enumerate(conv.turns):
+            assert turn.node_id == f"main_{i}"
+            if i > 0:
+                assert turn.parents[0].parent_node_id == f"main_{i - 1}"
             n_in = turn.columns["prompt_tokens_count_column"][0]
             assert n_in == i + 1
             assert turn.columns["output_tokens_count_column"][0] == (i + 1) * 10
