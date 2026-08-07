@@ -45,6 +45,21 @@ class TestPrepareVllmBenchmarkLogging:
         assert handler.level == logging.ERROR
         vllm_logger.removeHandler(handler)
 
+    @pytest.mark.regression
+    def test_configure_vllm_root_logger_exception_does_not_propagate(self, monkeypatch):
+        """_configure_vllm_root_logger errors are swallowed gracefully. ## WRITTEN BY AI ##"""
+        monkeypatch.delenv("VLLM_LOGGING_LEVEL", raising=False)
+        fake_logger_module = type(sys)("vllm.logger")
+
+        def _raise():
+            raise RuntimeError("vLLM API changed")
+
+        fake_logger_module._configure_vllm_root_logger = _raise
+        monkeypatch.setitem(sys.modules, "vllm.logger", fake_logger_module)
+
+        # Should not raise even though _configure_vllm_root_logger blows up.
+        prepare_vllm_benchmark_logging("ERROR")
+
     @pytest.mark.sanity
     def test_reconfigures_vllm_root_logger_when_already_imported(self, monkeypatch):
         """Late prepare re-applies vLLM logging after import. ## WRITTEN BY AI ##"""
