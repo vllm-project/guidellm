@@ -70,10 +70,11 @@ def prepare_vllm_benchmark_logging(
         vllm_logger_module, "_configure_vllm_root_logger"
     ):
         try:
-            vllm_logger_module._configure_vllm_root_logger()
+            vllm_logger_module._configure_vllm_root_logger()  # noqa: SLF001
         except Exception as exc:  # noqa: BLE001
             logger.debug(
-                "Could not re-apply vLLM root logger config (vLLM API may have changed): {}",
+                "Could not re-apply vLLM root logger config"
+                " (vLLM API may have changed): {}",
                 exc,
             )
 

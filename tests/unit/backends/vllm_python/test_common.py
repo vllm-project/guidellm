@@ -47,7 +47,7 @@ class TestPrepareVllmBenchmarkLogging:
 
     @pytest.mark.regression
     def test_configure_vllm_root_logger_exception_does_not_propagate(self, monkeypatch):
-        """_configure_vllm_root_logger errors are swallowed gracefully. ## WRITTEN BY AI ##"""
+        """_configure_vllm_root_logger errors are swallowed. ## WRITTEN BY AI ##"""
         monkeypatch.delenv("VLLM_LOGGING_LEVEL", raising=False)
         fake_logger_module = type(sys)("vllm.logger")
 
