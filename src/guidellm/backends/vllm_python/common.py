@@ -35,6 +35,20 @@ def prepare_vllm_benchmark_logging(
     time. Call this before the first access to any vLLM attribute so that
     child processes (EngineCore, scheduler workers) inherit the quieter
     settings. ``setdefault`` preserves any explicit user override.
+
+    The function also reconfigures the in-process ``vllm`` logger and its
+    handlers directly. This is needed as a safety net for cases where vLLM
+    was imported before this function runs — for example in a worker
+    subprocess that forked after ``import vllm``, or when a third-party
+    library triggered the import earlier. In those scenarios the env-var
+    path has no effect because vLLM's logging is already initialised, so
+    we lower the live logger and handler levels explicitly. If ``vllm.logger``
+    is already in ``sys.modules`` we also call its private
+    ``_configure_vllm_root_logger`` to re-apply vLLM's own configuration
+    with the updated level.
+
+    :param level: Logging level string (e.g. ``"ERROR"``). Defaults to
+        ``"ERROR"``.
     """
     level_upper = level.upper()
     os.environ.setdefault("VLLM_LOGGING_LEVEL", level_upper)
@@ -43,7 +57,25 @@ def prepare_vllm_benchmark_logging(
     os.environ.setdefault("TQDM_DISABLE", "1")
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 
-    logging.getLogger("vllm").setLevel(level_upper)
+    vllm_logger = logging.getLogger("vllm")
+    vllm_logger.setLevel(level_upper)
+    for handler in vllm_logger.handlers:
+        handler.setLevel(level_upper)
+
+    # Re-apply vLLM's own root-logger config when the module is already loaded.
+    # Wrapped defensively: _configure_vllm_root_logger is a private API that
+    # may change or be removed in future vLLM versions without notice.
+    vllm_logger_module = sys.modules.get("vllm.logger")
+    if vllm_logger_module is not None and hasattr(
+        vllm_logger_module, "_configure_vllm_root_logger"
+    ):
+        try:
+            vllm_logger_module._configure_vllm_root_logger()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "Could not re-apply vLLM root logger config (vLLM API may have changed): {}",
+                exc,
+            )
 
 
 def vllm_benchmark_engine_config(vllm_config: dict[str, Any]) -> dict[str, Any]:
