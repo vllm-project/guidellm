@@ -14,7 +14,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from datasets import Dataset, DatasetDict
+from datasets import Dataset
 from pyarrow import ipc
 
 from guidellm.data.deserializers.deserializer import DataNotSupportedError
@@ -137,10 +137,10 @@ def test_parquet_file_deserializer_success(tmp_path):
         config=config, processor_factory=processor_factory(), random_seed=42
     )
 
-    assert isinstance(dataset, DatasetDict)
-    assert dataset["train"].column_names == ["text"]
-    assert dataset["train"]["text"] == ["hello", "world"]
-    assert len(dataset["train"]["text"]) == 2
+    assert isinstance(dataset, Dataset)
+    assert dataset.column_names == ["text"]
+    assert dataset["text"] == ["hello", "world"]
+    assert len(dataset["text"]) == 2
 
 
 @pytest.mark.sanity
@@ -188,9 +188,9 @@ def test_csv_file_deserializer_success(tmp_path):
         config=config, processor_factory=processor_factory(), random_seed=43
     )
 
-    assert isinstance(dataset, DatasetDict)
-    assert dataset["train"]["text"] == ["hello world"]
-    assert len(["train"]) == 1
+    assert isinstance(dataset, Dataset)
+    assert dataset["text"] == ["hello world"]
+    assert len(dataset) == 1
 
 
 ###################
@@ -215,9 +215,41 @@ def test_json_file_deserializer_success(tmp_path):
         config=config, processor_factory=processor_factory(), random_seed=123
     )
 
-    assert isinstance(dataset, DatasetDict)
-    assert dataset["train"]["text"] == ["hello world"]
+    assert isinstance(dataset, Dataset)
+    assert dataset["text"] == ["hello world"]
     assert len(dataset) == 1
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("kind", "suffix", "content"),
+    [
+        ("json_file", ".json", '{"text": "hello world"}\n'),
+        ("csv_file", ".csv", "text\nhello world\n"),
+    ],
+)
+def test_file_deserializers_return_dataset_with_info(tmp_path, kind, suffix, content):
+    """File deserializers return a Dataset exposing ``.info`` (regression for the
+    'DatasetDict' object has no attribute 'info' error during column mapping).
+
+    ### WRITTEN BY AI ###
+    """
+    file_path = tmp_path / f"sample{suffix}"
+    file_path.write_text(content)
+
+    deserializer_cls = {
+        "json_file": JSONFileDatasetDeserializer,
+        "csv_file": CSVFileDatasetDeserializer,
+    }[kind]
+    config = FileDataArgs(kind=kind, path=file_path)
+
+    dataset = deserializer_cls()(
+        config=config, processor_factory=processor_factory(), random_seed=7
+    )
+
+    assert isinstance(dataset, Dataset)
+    # The column mapper accesses dataset.info.dataset_name; DatasetDict lacks .info.
+    assert dataset.info is not None
 
 
 ###################
@@ -247,10 +279,8 @@ def test_arrow_file_deserializer_success(monkeypatch, tmp_path):
         config=config, processor_factory=processor_factory(), random_seed=42
     )
 
-    assert isinstance(dataset, DatasetDict)
-    assert "train" in dataset
-    assert isinstance(dataset["train"], Dataset)
-    assert dataset["train"].num_rows == 2
+    assert isinstance(dataset, Dataset)
+    assert dataset.num_rows == 2
 
 
 ###################
@@ -362,7 +392,5 @@ def test_tar_file_deserializer_success(tmp_path):
         config=config, processor_factory=processor_factory(), random_seed=43
     )
 
-    assert isinstance(dataset, DatasetDict)
-    assert "train" in dataset
-    assert isinstance(dataset["train"], Dataset)
-    assert dataset["train"].num_rows == 1
+    assert isinstance(dataset, Dataset)
+    assert dataset.num_rows == 1
