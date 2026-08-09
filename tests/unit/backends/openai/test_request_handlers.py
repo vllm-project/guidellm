@@ -3501,6 +3501,19 @@ class TestResponsesRequestHandler:
         assert output_metrics.text_characters == len(text)
 
     @pytest.mark.smoke
+    def test_extract_metrics_cached_tokens(self, valid_instances):
+        """Test extract_metrics captures input_tokens_details.cached_tokens."""
+        usage = {
+            "input_tokens": 10,
+            "input_tokens_details": {"cached_tokens": 8},
+            "output_tokens": 5,
+        }
+        input_metrics, _ = valid_instances.extract_metrics(usage, "Test response")
+
+        assert input_metrics.text_tokens == 10
+        assert input_metrics.cached_tokens == 8
+
+    @pytest.mark.smoke
     @pytest.mark.parametrize(
         ("line", "expected_output"),
         [
