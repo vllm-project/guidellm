@@ -126,9 +126,7 @@ class UsageMetrics(StandardBaseDict):
     cached_tokens: int | None = Field(
         default=None,
         description=(
-            "Number of input tokens served from the prefix cache"
-            " (KV cache hit). Populated from the server's"
-            " prompt_tokens_details.cached_tokens field."
+            "Number of input tokens served from the prefix cache (KV cache hit)."
         ),
     )
     text_words: int | None = Field(
