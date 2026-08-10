@@ -16,11 +16,9 @@ from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.openai.websocket import (
-    OpenAIWebSocketBackend,
-    OpenAIWebSocketBackendArgs,
-)
+from guidellm.backends.openai.websocket import OpenAIWebSocketBackend
 from guidellm.schemas import GenerationRequest, RequestInfo, RequestTimings
+from guidellm.schemas.backends import OpenAIWebSocketBackendArgs
 
 
 @pytest.fixture(autouse=True)

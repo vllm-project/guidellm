@@ -7,13 +7,13 @@ import yaml
 from trio import Path
 
 from guidellm.benchmark import reimport_benchmarks_report
-from guidellm.benchmark.outputs.serialized import (
+from guidellm.benchmark.schemas import (
+    GenerativeBenchmarksReport,
+)
+from guidellm.schemas.benchmark import (
+    BenchmarkScenario,
     JSONBenchmarkOutputArgs,
     YAMLBenchmarkOutputArgs,
-)
-from guidellm.benchmark.schemas import (
-    BenchmarkScenario,
-    GenerativeBenchmarksReport,
 )
 
 

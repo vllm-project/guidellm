@@ -17,12 +17,12 @@ import pytest
 
 from guidellm.backends.vllm_python.batch import (
     VLLMPythonBatchBackend,
-    VLLMPythonBatchBackendArgs,
     _BatchedRequest,
     _BatchResolvedRequest,
 )
 from guidellm.backends.vllm_python.common import is_scheduler_worker_process
 from guidellm.schemas import GenerationRequest, RequestInfo
+from guidellm.schemas.backends import VLLMPythonBatchBackendArgs
 from tests.unit.testing_utils import async_timeout
 
 

@@ -18,11 +18,11 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
 )
 from guidellm.scheduler.constraints.saturation import (
-    OverSaturationConstraintArgs,
     SlopeChecker,
     approx_t_ppf,
 )
 from guidellm.schemas import RequestInfo, RequestTimings
+from guidellm.schemas.scheduler import OverSaturationConstraintArgs
 
 
 class TestSlopeCheckerStatisticalAccuracy:

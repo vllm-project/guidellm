@@ -9,8 +9,9 @@ from __future__ import annotations
 import pytest
 
 import guidellm.data.tokenizers  # noqa: F401 — ensures tokenizers are registered
-from guidellm.data.tokenizers import HuggingFaceTokenizerArgs, TokenizerRegistry
+from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.data.tokenizers.huggingface import HuggingFaceTokenizer
+from guidellm.schemas.data import HuggingFaceTokenizerArgs
 
 
 class TestTokenizerRegistry:

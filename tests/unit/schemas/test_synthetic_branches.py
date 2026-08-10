@@ -8,15 +8,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from guidellm.data.deserializers.synthetic import (
-    BranchSpec,
-    SyntheticTextDataArgs,
-    _SyntheticTextExamplesIterable,
-)
-from guidellm.data.finalizers.generative import (
-    GenerativeRequestFinalizer,
-    GenerativeRequestFinalizerArgs,
-)
+from guidellm.data.deserializers.synthetic import _SyntheticTextExamplesIterable
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
 from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
 from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import HistoryContext
@@ -25,6 +18,11 @@ from guidellm.scheduler.schemas.conversation_graph import (
     GenerativeConversationNode,
 )
 from guidellm.schemas import GenerationRequest, RequestSettings
+from guidellm.schemas.data import (
+    BranchSpec,
+    GenerativeRequestFinalizerArgs,
+    SyntheticTextDataArgs,
+)
 from guidellm.utils.imports import json
 
 

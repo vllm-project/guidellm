@@ -21,9 +21,9 @@ from guidellm.scheduler import (
     SchedulingStrategy,
     SynchronousStrategy,
 )
-from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
 from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas.scheduler import MaxRequestsConstraintArgs
 
 
 def async_timeout(delay: float):

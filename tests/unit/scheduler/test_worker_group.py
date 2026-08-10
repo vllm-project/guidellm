@@ -24,12 +24,12 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     WorkerProcessGroup,
 )
-from guidellm.scheduler.constraints import (
+from guidellm.scheduler.worker_group import WorkerGroupState
+from guidellm.schemas import RequestInfo, RequestTimings
+from guidellm.schemas.scheduler import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
 )
-from guidellm.scheduler.worker_group import WorkerGroupState
-from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.utils.messaging import InterProcessMessaging
 from tests.unit.testing_utils import async_timeout
 

@@ -25,10 +25,7 @@ from guidellm.backends.openai.request_handlers import (
     TextCompletionsRequestHandler,
     WSEventResult,
 )
-from guidellm.data.finalizers.generative import (
-    GenerativeRequestFinalizer,
-    GenerativeRequestFinalizerArgs,
-)
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
 from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import (
     GenerationRequest,
@@ -38,6 +35,7 @@ from guidellm.schemas import (
     ToolCallFunction,
     UsageMetrics,
 )
+from guidellm.schemas.data import GenerativeRequestFinalizerArgs
 from guidellm.settings import settings
 from guidellm.utils.registry import RegistryMixin
 

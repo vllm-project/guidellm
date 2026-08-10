@@ -12,7 +12,6 @@ from guidellm.data.finalizers import (
     FinalizerRegistry,
     GenerativeRequestFinalizer,
 )
-from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationParentRef,
@@ -20,6 +19,7 @@ from guidellm.data.schemas.conversation_graph_data import (
 )
 from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import GenerationRequest, RequestSettings
+from guidellm.schemas.data import GenerativeRequestFinalizerArgs
 
 
 def _ordered_requests(

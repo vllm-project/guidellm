@@ -11,12 +11,12 @@ import pytest
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
-from guidellm.data.deserializers.trace_weka import WEKATraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
+from guidellm.schemas.data import WEKATraceFormatArgs
 
 
 def ascending_processor() -> Mock:

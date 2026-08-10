@@ -17,12 +17,6 @@ from guidellm.benchmark.entrypoints import (
     resolve_constraints,
     resolve_to_single_benchmark,
 )
-from guidellm.benchmark.schemas import BenchmarkArgs
-from guidellm.scheduler.constraints import (
-    MaxDurationConstraintArgs,
-    MaxRequestsConstraintArgs,
-    OverSaturationConstraintArgs,
-)
 from guidellm.scheduler.constraints.error import (
     MaxErrorRateConstraint,
     MaxErrorsConstraint,
@@ -33,6 +27,12 @@ from guidellm.scheduler.constraints.request import (
 )
 from guidellm.scheduler.schemas import SchedulerState
 from guidellm.schemas import RequestInfo
+from guidellm.schemas.benchmark import BenchmarkArgs
+from guidellm.schemas.scheduler import (
+    MaxDurationConstraintArgs,
+    MaxRequestsConstraintArgs,
+    OverSaturationConstraintArgs,
+)
 from guidellm.utils.arg_string import ArgStringParser
 
 _PIPELINE_DEFAULTS: dict[str, Any] = {

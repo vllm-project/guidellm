@@ -13,13 +13,13 @@ import pytest
 from datasets import Dataset
 
 from guidellm.data.finalizers import GenerativeRequestFinalizer
-from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
-from guidellm.data.preprocessors.mappers import (
-    GenerativeColumnMapper,
-    GenerativeColumnMapperArgs,
-)
+from guidellm.data.preprocessors.mappers import GenerativeColumnMapper
 from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import GenerationRequest
+from guidellm.schemas.data import (
+    GenerativeColumnMapperArgs,
+    GenerativeRequestFinalizerArgs,
+)
 
 
 def _ordered_requests(graph: GenerativeConversationGraph) -> list[GenerationRequest]:

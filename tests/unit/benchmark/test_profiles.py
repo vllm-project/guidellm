@@ -18,12 +18,9 @@ import pytest
 
 from guidellm.benchmark.profiles import (
     AsyncProfile,
-    AsyncProfileArgs,
     ConcurrentProfile,
-    ConcurrentProfileArgs,
     Profile,
     SweepProfile,
-    SweepProfileArgs,
 )
 from guidellm.scheduler import (
     AsyncConstantStrategy,
@@ -32,6 +29,11 @@ from guidellm.scheduler import (
     SchedulerState,
     SchedulerUpdateAction,
     SynchronousStrategy,
+)
+from guidellm.schemas.benchmark import (
+    AsyncProfileArgs,
+    ConcurrentProfileArgs,
+    SweepProfileArgs,
 )
 
 MULTI_PROFILE_FACTORIES = (
