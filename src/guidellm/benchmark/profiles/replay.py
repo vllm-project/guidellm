@@ -14,7 +14,7 @@ from guidellm.schemas.benchmark.profiles import ReplayProfileArgs
 
 from .profile import Profile, ProfileFactory
 
-__all__ = ["ReplayProfile", "ReplayProfileArgs"]
+__all__ = ["ReplayProfile"]
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

@@ -32,9 +32,7 @@ from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
     "MaxDurationConstraint",
-    "MaxDurationConstraintArgs",
     "MaxNumberConstraint",
-    "MaxRequestsConstraintArgs",
     "RequestsExhaustedConstraint",
 ]
 

@@ -8,7 +8,7 @@ from pydantic import ValidationError
 import guidellm.utils.cli as cli_tools
 from guidellm.cli.preprocess.args import PreprocessDatasetArgs
 from guidellm.data import process_dataset
-from guidellm.data.schemas import DataArgs
+from guidellm.schemas.data import DataArgs
 from guidellm.utils.click_pydantic import (
     RegistryAwareCommand,
     format_validation_errors,

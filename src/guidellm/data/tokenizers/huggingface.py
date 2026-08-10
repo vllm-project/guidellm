@@ -5,7 +5,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from guidellm.data.tokenizers.tokenizer import DataTokenizer, TokenizerRegistry
 from guidellm.schemas.data.tokenizers import HuggingFaceTokenizerArgs
 
-__all__ = ["HuggingFaceTokenizer", "HuggingFaceTokenizerArgs"]
+__all__ = ["HuggingFaceTokenizer"]
 
 
 @TokenizerRegistry.register(["huggingface_auto", "hf_auto"])

@@ -19,7 +19,7 @@ from guidellm.logger import logger
 from guidellm.schemas.data.loaders import TorchDataLoaderArgs
 from guidellm.utils.mixins import InfoMixin
 
-__all__ = ["DatasetsIterator", "TorchDataLoader", "TorchDataLoaderArgs"]
+__all__ = ["DatasetsIterator", "TorchDataLoader"]
 
 
 def _collate_first(batch: list) -> Any:

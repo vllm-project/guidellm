@@ -8,16 +8,6 @@ continue or stop based on predefined limits. The constraint system enables
 sophisticated benchmark stopping criteria through composable constraint types.
 """
 
-from guidellm.schemas.scheduler.constraints import (
-    ConstraintArgs,
-    MaxDurationConstraintArgs,
-    MaxErrorRateConstraintArgs,
-    MaxErrorsConstraintArgs,
-    MaxGlobalErrorRateConstraintArgs,
-    MaxRequestsConstraintArgs,
-    OverSaturationConstraintArgs,
-)
-
 from .constraint import (
     Constraint,
     ConstraintInitializer,
@@ -43,21 +33,14 @@ from .saturation import (
 
 __all__ = [
     "Constraint",
-    "ConstraintArgs",
     "ConstraintInitializer",
     "ConstraintsInitializerFactory",
     "MaxDurationConstraint",
-    "MaxDurationConstraintArgs",
     "MaxErrorRateConstraint",
-    "MaxErrorRateConstraintArgs",
     "MaxErrorsConstraint",
-    "MaxErrorsConstraintArgs",
     "MaxGlobalErrorRateConstraint",
-    "MaxGlobalErrorRateConstraintArgs",
     "MaxNumberConstraint",
-    "MaxRequestsConstraintArgs",
     "OverSaturationConstraint",
-    "OverSaturationConstraintArgs",
     "OverSaturationConstraintInitializer",
     "PydanticConstraintInitializer",
     "RequestsExhaustedConstraint",

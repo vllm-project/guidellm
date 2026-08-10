@@ -14,7 +14,7 @@ from guidellm.schemas.benchmark.profiles import ThroughputProfileArgs
 
 from .profile import Profile, ProfileFactory
 
-__all__ = ["ThroughputProfile", "ThroughputProfileArgs"]
+__all__ = ["ThroughputProfile"]
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

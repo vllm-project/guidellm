@@ -45,7 +45,6 @@ from guidellm.utils.imports import json
 
 __all__ = [
     "OpenAIWebSocketBackend",
-    "OpenAIWebSocketBackendArgs",
 ]
 
 _WS_API_ROUTES = {

@@ -19,7 +19,6 @@ from guidellm.utils.random import IntegerRangeSampler
 from guidellm.utils.vision import synthesize_video
 
 __all__ = [
-    "SyntheticVideoDataArgs",
     "SyntheticVideoDataset",
     "SyntheticVideoDatasetDeserializer",
 ]

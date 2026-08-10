@@ -19,7 +19,7 @@ from guidellm.schemas.benchmark.profiles import SweepProfileArgs
 
 from .profile import Profile, ProfileFactory
 
-__all__ = ["SweepProfile", "SweepProfileArgs"]
+__all__ = ["SweepProfile"]
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

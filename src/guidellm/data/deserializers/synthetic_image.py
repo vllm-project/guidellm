@@ -19,7 +19,6 @@ from guidellm.utils.random import IntegerRangeSampler
 from guidellm.utils.vision import synthesize_image
 
 __all__ = [
-    "SyntheticImageDataArgs",
     "SyntheticImageDataset",
     "SyntheticImageDatasetDeserializer",
 ]

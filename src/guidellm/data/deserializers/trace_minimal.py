@@ -24,7 +24,7 @@ from guidellm.data.deserializers.trace_common import (
 )
 from guidellm.schemas.data.deserializers import MinimalTraceFormatArgs
 
-__all__ = ["MinimalTraceFormatArgs"]
+__all__ = ["MinimalTraceFormat"]
 
 
 @TraceFormatRegistry.register("trace_synthetic")

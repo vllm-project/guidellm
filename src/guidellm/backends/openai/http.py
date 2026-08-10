@@ -34,7 +34,6 @@ from guidellm.utils.dict import deep_filter
 
 __all__ = [
     "OpenAIHTTPBackend",
-    "OpenAIHTTPBackendArgs",
 ]
 
 

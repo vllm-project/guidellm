@@ -9,7 +9,7 @@ from guidellm.data.preprocessors.preprocessor import (
 )
 from guidellm.schemas.data.preprocessors import TurnPivotArgs
 
-__all__ = ["TurnPivot", "TurnPivotArgs"]
+__all__ = ["TurnPivot"]
 
 
 @PreprocessorRegistry.register("turn_pivot")

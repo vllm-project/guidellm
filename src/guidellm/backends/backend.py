@@ -18,7 +18,6 @@ from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "Backend",
-    "BackendArgs",
 ]
 
 

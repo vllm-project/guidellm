@@ -18,7 +18,6 @@ from guidellm.schemas.data.preprocessors import GenerativeColumnMapperArgs
 
 __all__ = [
     "GenerativeColumnMapper",
-    "GenerativeColumnMapperArgs",
     "PoolingColumnMapper",
 ]
 

@@ -22,7 +22,6 @@ from guidellm.schemas.data.finalizers import GenerativeRequestFinalizerArgs
 
 __all__ = [
     "GenerativeRequestFinalizer",
-    "GenerativeRequestFinalizerArgs",
 ]
 
 

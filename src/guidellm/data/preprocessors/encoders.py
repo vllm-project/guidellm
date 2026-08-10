@@ -10,7 +10,7 @@ from guidellm.schemas.data.preprocessors import MediaEncoderArgs
 from guidellm.utils import audio as guidellm_audio
 from guidellm.utils import vision as guidellm_vision
 
-__all__ = ["MediaEncoder", "MediaEncoderArgs"]
+__all__ = ["MediaEncoder"]
 
 
 def _is_encoded_image(item: Any) -> bool:

@@ -71,7 +71,6 @@ from guidellm.schemas.scheduler.constraints import OverSaturationConstraintArgs
 
 __all__ = [
     "OverSaturationConstraint",
-    "OverSaturationConstraintArgs",
     "OverSaturationConstraintInitializer",
     "SlopeChecker",
     "approx_t_ppf",
@@ -581,7 +580,7 @@ class OverSaturationConstraintInitializer(PydanticConstraintInitializer):
     Example:
     ::
 
-        from guidellm.scheduler.constraints import OverSaturationConstraintArgs
+        from guidellm.schemas.scheduler import OverSaturationConstraintArgs
 
         args = OverSaturationConstraintArgs(mode="enforce", min_seconds=60.0)
         initializer = OverSaturationConstraintInitializer(args=args)

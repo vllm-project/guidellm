@@ -31,7 +31,7 @@ from guidellm.data.deserializers.trace_common import (
 )
 from guidellm.schemas.data.deserializers import MooncakeTraceFormatArgs
 
-__all__ = ["MooncakeTraceFormatArgs"]
+__all__ = ["MooncakeTraceFormat"]
 
 
 def _calculate_required_prompt_tokens(

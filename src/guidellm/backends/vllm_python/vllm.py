@@ -20,7 +20,7 @@ import jinja2
 from more_itertools import roundrobin
 from pydantic import ConfigDict, Field
 
-from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.common import (
     reset_cpu_affinity,
     vllm_benchmark_engine_config,
@@ -34,12 +34,12 @@ from guidellm.schemas import (
     RequestInfo,
     StandardBaseModel,
 )
-from guidellm.schemas.backends import VLLMPythonAsyncBackendArgs
+from guidellm.schemas.backends import BackendArgs, VLLMPythonAsyncBackendArgs
 from guidellm.utils import audio, vision
 
 _CHAT_TEMPLATE_UNSET: object = object()
 
-__all__ = ["VLLMPythonAsyncBackend", "VLLMPythonAsyncBackendArgs"]
+__all__ = ["VLLMPythonAsyncBackend"]
 
 
 class _ResolvedRequest(StandardBaseModel):

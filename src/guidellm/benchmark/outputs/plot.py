@@ -17,17 +17,16 @@ from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
-    BenchmarkOutputArgs,
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
 from guidellm.extras import plot
 from guidellm.schemas import StatusBreakdown
+from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.outputs import PlotBenchmarkOutputArgs
 
 __all__ = [
     "GenerativeBenchmarkerPlot",
-    "PlotBenchmarkOutputArgs",
 ]
 
 

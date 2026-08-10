@@ -20,7 +20,6 @@ __all__ = [
     "ArrowFileDatasetDeserializer",
     "CSVFileDatasetDeserializer",
     "DBFileDatasetDeserializer",
-    "FileDataArgs",
     "HDF5FileDatasetDeserializer",
     "JSONFileDatasetDeserializer",
     "ParquetFileDatasetDeserializer",

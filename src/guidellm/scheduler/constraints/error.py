@@ -30,11 +30,8 @@ from .factory import ConstraintsInitializerFactory
 
 __all__ = [
     "MaxErrorRateConstraint",
-    "MaxErrorRateConstraintArgs",
     "MaxErrorsConstraint",
-    "MaxErrorsConstraintArgs",
     "MaxGlobalErrorRateConstraint",
-    "MaxGlobalErrorRateConstraintArgs",
 ]
 
 

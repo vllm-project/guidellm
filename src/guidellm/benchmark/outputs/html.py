@@ -25,13 +25,15 @@ from pydantic import BaseModel, Field, computed_field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
-    BenchmarkArgs,
-    BenchmarkOutputArgs,
-    BenchmarkScenario,
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
 from guidellm.schemas import DistributionSummary, Percentiles
+from guidellm.schemas.benchmark import (
+    BenchmarkArgs,
+    BenchmarkOutputArgs,
+    BenchmarkScenario,
+)
 from guidellm.schemas.benchmark.outputs import HTMLBenchmarkOutputArgs
 from guidellm.settings import settings
 from guidellm.utils.dict import recursive_key_update
@@ -39,7 +41,6 @@ from guidellm.utils.text import camelize_str, load_text
 
 __all__ = [
     "GenerativeBenchmarkerHTML",
-    "HTMLBenchmarkOutputArgs",
 ]
 
 

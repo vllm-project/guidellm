@@ -14,7 +14,7 @@ from guidellm.data.preprocessors.preprocessor import (
 )
 from guidellm.schemas.data.preprocessors import ToolCallingMessageExtractorArgs
 
-__all__ = ["ToolCallingMessageExtractor", "ToolCallingMessageExtractorArgs"]
+__all__ = ["ToolCallingMessageExtractor"]
 
 
 @PreprocessorRegistry.register("tool_calling_message_extractor")

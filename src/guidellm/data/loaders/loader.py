@@ -5,7 +5,8 @@ from typing import Any, Generic, Protocol, TypeVar
 
 from guidellm.data.finalizers import DatasetFinalizer
 from guidellm.data.preprocessors import DatasetPreprocessor
-from guidellm.data.schemas import DataLoaderArgs, DatasetType
+from guidellm.data.schemas import DatasetType
+from guidellm.schemas.data import DataLoaderArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["DataLoader", "DataLoaderRegistry"]

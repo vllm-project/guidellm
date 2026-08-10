@@ -24,14 +24,9 @@ from guidellm.benchmark.outputs import (
 from guidellm.benchmark.profiles import Profile, ProfileFactory
 from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
 from guidellm.benchmark.schemas import (
-    BenchmarkArgs,
-    BenchmarkOutputArgs,
-    BenchmarkScenario,
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
-    GenerativeMetricsArgs,
-    ProfileArgs,
 )
 from guidellm.data import (
     DataLoader,
@@ -47,6 +42,13 @@ from guidellm.schemas import (
     GenerationResponse,
 )
 from guidellm.schemas.backends import BackendArgs
+from guidellm.schemas.benchmark import (
+    BenchmarkArgs,
+    BenchmarkOutputArgs,
+    BenchmarkScenario,
+    GenerativeMetricsArgs,
+    ProfileArgs,
+)
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.registry import RegistryMixin

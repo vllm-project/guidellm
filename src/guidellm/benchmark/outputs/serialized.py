@@ -15,7 +15,8 @@ from typing import Literal
 from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
-from guidellm.benchmark.schemas import BenchmarkOutputArgs, GenerativeBenchmarksReport
+from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.outputs import (
     JSONBenchmarkOutputArgs,
     YAMLBenchmarkOutputArgs,
@@ -23,8 +24,6 @@ from guidellm.schemas.benchmark.outputs import (
 
 __all__ = [
     "GenerativeBenchmarkerSerialized",
-    "JSONBenchmarkOutputArgs",
-    "YAMLBenchmarkOutputArgs",
 ]
 
 

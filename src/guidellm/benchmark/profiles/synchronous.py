@@ -14,7 +14,7 @@ from guidellm.schemas.benchmark.profiles import SynchronousProfileArgs
 
 from .profile import Profile, ProfileFactory
 
-__all__ = ["SynchronousProfile", "SynchronousProfileArgs"]
+__all__ = ["SynchronousProfile"]
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

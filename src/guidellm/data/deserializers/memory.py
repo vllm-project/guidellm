@@ -17,11 +17,8 @@ from guidellm.schemas.data.deserializers import (
 )
 
 __all__ = [
-    "InMemoryDictDataArgs",
     "InMemoryDictDatasetDeserializer",
-    "InMemoryDictListDataArgs",
     "InMemoryDictListDatasetDeserializer",
-    "InMemoryItemListDataArgs",
     "InMemoryItemListDatasetDeserializer",
 ]
 

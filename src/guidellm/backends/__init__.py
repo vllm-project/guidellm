@@ -9,9 +9,7 @@ the abstract Backend base class, OpenAI-compatible HTTP backend, and response
 handlers for processing streaming and non-streaming API responses.
 """
 
-from guidellm.schemas.backends import OpenAIHTTPBackendArgs, VLLMPythonAsyncBackendArgs
-
-from .backend import Backend, BackendArgs
+from .backend import Backend
 from .openai import (
     AudioRequestHandler,
     ChatCompletionsRequestHandler,
@@ -19,7 +17,6 @@ from .openai import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
     OpenAIWebSocketBackend,
-    OpenAIWebSocketBackendArgs,
     TextCompletionsRequestHandler,
 )
 from .vllm_python import (
@@ -31,17 +28,13 @@ from .vllm_python import (
 __all__ = [
     "AudioRequestHandler",
     "Backend",
-    "BackendArgs",
     "ChatCompletionsRequestHandler",
     "OpenAIHTTPBackend",
-    "OpenAIHTTPBackendArgs",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
     "OpenAIWebSocketBackend",
-    "OpenAIWebSocketBackendArgs",
     "TextCompletionsRequestHandler",
     "VLLMPythonAsyncBackend",
-    "VLLMPythonAsyncBackendArgs",
     "VLLMPythonBatchBackend",
     "VLLMResponseHandler",
 ]

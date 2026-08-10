@@ -41,7 +41,6 @@ from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "MissingColumnsLocation",
-    "TraceDataArgs",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",

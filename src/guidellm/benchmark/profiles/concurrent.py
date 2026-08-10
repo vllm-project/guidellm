@@ -14,7 +14,7 @@ from guidellm.schemas.benchmark.profiles import ConcurrentProfileArgs
 
 from .profile import Profile, ProfileFactory
 
-__all__ = ["ConcurrentProfile", "ConcurrentProfileArgs"]
+__all__ = ["ConcurrentProfile"]
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

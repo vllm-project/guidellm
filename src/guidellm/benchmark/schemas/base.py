@@ -37,7 +37,6 @@ __all__ = [
     "BenchmarkAccumulatorT",
     "BenchmarkConfig",
     "BenchmarkT",
-    "TransientPhaseConfig",
 ]
 
 BenchmarkAccumulatorT = TypeVar(

@@ -15,7 +15,7 @@ from guidellm.schemas.benchmark.profiles import AsyncProfileArgs
 
 from .profile import Profile, ProfileFactory
 
-__all__ = ["AsyncProfile", "AsyncProfileArgs"]
+__all__ = ["AsyncProfile"]
 
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark

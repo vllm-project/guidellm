@@ -40,7 +40,7 @@ from guidellm.data.deserializers.trace_common import (
 )
 from guidellm.schemas.data.deserializers import WEKATraceFormatArgs
 
-__all__ = ["WEKATraceFormatArgs"]
+__all__ = ["WEKATraceFormat"]
 
 
 def _find_requests_column(dataset: Dataset) -> str | None:
