@@ -2232,6 +2232,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 or usage_metrics.get("input_tokens")
                 or 0
             ),
+            cached_tokens=input_details.get("cached_tokens"),
             image_tokens=input_details.get("image_tokens"),
             video_tokens=input_details.get("video_tokens"),
             audio_tokens=input_details.get("audio_tokens"),
