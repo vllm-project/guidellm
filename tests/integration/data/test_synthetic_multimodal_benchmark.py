@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import multiprocessing
+import os
 import socket
 import subprocess
 import sys
@@ -26,6 +27,7 @@ import pytest
 
 from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.server import MockServer
+from tests.fixtures.tokenizers import GPT2_TOKENIZER_DIR
 
 pytestmark = [pytest.mark.smoke]
 
@@ -108,15 +110,21 @@ def _run_benchmark(
         "--constraint",
         f"kind=max_duration,seconds={max_seconds}",
         "--tokenizer",
-        "kind=huggingface_auto,model=Xenova/gpt-4",
+        f"kind=huggingface_auto,model={GPT2_TOKENIZER_DIR}",
         "--output",
         f"kind=json,path={output_path}",
         "--disable-console",
     ]
     for item in data:
         cmd.extend(["--data", item])
+    env = {
+        **os.environ,
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "HF_DATASETS_OFFLINE": "1",
+    }
     return subprocess.run(  # noqa: S603
-        cmd, capture_output=True, text=True, timeout=180, check=False
+        cmd, capture_output=True, text=True, timeout=180, check=False, env=env
     )
 
 

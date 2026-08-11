@@ -12,6 +12,7 @@ from guidellm.data.tokenizers.huggingface import (
     HuggingFaceTokenizer,
     HuggingFaceTokenizerArgs,
 )
+from tests.fixtures.tokenizers import GPT2_TOKENIZER_DIR
 
 
 class TestHuggingFaceTokenizerArgs:
@@ -110,11 +111,14 @@ class TestHuggingFaceTokenizer:
     @pytest.mark.slow
     @pytest.mark.sanity
     def test_lazy_loading_on_call(self):
-        """Tokenizer is loaded on first call.
+        """Tokenizer is loaded on first call from the vendored fixture.
 
         ### WRITTEN BY AI ###
         """
-        config = HuggingFaceTokenizerArgs(model="gpt2")
+        config = HuggingFaceTokenizerArgs(
+            model=str(GPT2_TOKENIZER_DIR),
+            load_kwargs={"local_files_only": True},
+        )
         tokenizer = HuggingFaceTokenizer(config)
 
         # First call loads
@@ -129,7 +133,10 @@ class TestHuggingFaceTokenizer:
 
         ### WRITTEN BY AI ###
         """
-        config = HuggingFaceTokenizerArgs(model="gpt2")
+        config = HuggingFaceTokenizerArgs(
+            model=str(GPT2_TOKENIZER_DIR),
+            load_kwargs={"local_files_only": True},
+        )
         tokenizer = HuggingFaceTokenizer(config)
 
         first_call = tokenizer()
@@ -138,13 +145,29 @@ class TestHuggingFaceTokenizer:
 
     @pytest.mark.slow
     @pytest.mark.regression
-    def test_load_kwargs_passed_through(self):
+    def test_load_kwargs_passed_through(self, monkeypatch: pytest.MonkeyPatch):
         """load_kwargs are passed to AutoTokenizer.from_pretrained.
 
         ### WRITTEN BY AI ###
         """
-        config = HuggingFaceTokenizerArgs(model="gpt2", load_kwargs={"use_fast": False})
+        captured: dict = {}
+
+        def fake_from_pretrained(model, **kwargs):
+            captured["model"] = model
+            captured["kwargs"] = kwargs
+            return object()
+
+        monkeypatch.setattr(
+            "guidellm.data.tokenizers.huggingface.AutoTokenizer.from_pretrained",
+            fake_from_pretrained,
+        )
+        config = HuggingFaceTokenizerArgs(
+            model=str(GPT2_TOKENIZER_DIR),
+            load_kwargs={"local_files_only": True, "use_fast": False},
+        )
         tokenizer = HuggingFaceTokenizer(config)
         result = tokenizer()
-        # Verify class name indicates non-fast tokenizer
-        assert "Fast" not in result.__class__.__name__
+        assert result is not None
+        assert captured["model"] == str(GPT2_TOKENIZER_DIR)
+        assert captured["kwargs"]["local_files_only"] is True
+        assert captured["kwargs"]["use_fast"] is False
