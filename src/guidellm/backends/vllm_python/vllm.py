@@ -37,6 +37,7 @@ from guidellm.schemas import (
 from guidellm.schemas.backends import BackendArgs, VLLMPythonAsyncBackendArgs
 from guidellm.utils import audio, vision
 
+# Sentinel for "chat template not yet resolved" cache.
 _CHAT_TEMPLATE_UNSET: object = object()
 
 __all__ = ["VLLMPythonAsyncBackend"]

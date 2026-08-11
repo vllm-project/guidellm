@@ -57,6 +57,8 @@ from .schemas import (
     SchedulerMetricsAccumulator,
 )
 
+# Rebuild schemas one more time before
+# export to catch any nested field changes
 BenchmarkArgs.reload_schema()
 BenchmarkScenario.reload_schema()
 

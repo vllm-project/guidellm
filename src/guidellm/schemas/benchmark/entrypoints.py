@@ -63,6 +63,7 @@ def args_model_config() -> ConfigDict:
         validate_by_alias=True,
         validate_by_name=True,
         alias_generator=AliasGenerator(
+            # Support field names with hyphens
             validation_alias=lambda field_name: AliasChoices(
                 field_name, field_name.replace("_", "-")
             ),
@@ -238,6 +239,7 @@ class BenchmarkMetadata(StandardBaseModel):
     purposes but does not affect benchmark execution.
     """
 
+    # Allow arbitrary metadata fields
     model_config = args_model_config() | ConfigDict(extra="allow")
 
     labels: dict[str, str] = Field(
@@ -318,10 +320,16 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
                     raise ValueError(
                         f"Unsupported scenario file format: {scenario_path.suffix}"
                     )
+            # NOTE: If the scenario file is a report, it contains a "config" key with
+            # the benchmark configuration. This is a hack and should be replaced.
             if "config" in scenario_data:
+                # loading from a report file
                 scenario_data = scenario_data["config"]
             constructor_kwargs.update(scenario_data)
 
+        # NOTE In the future replace deep_update with a more intelligent merging
+        #      strategy that accounts for changes to `kind`.
+        # Apply overrides from kwargs
         deep_update(constructor_kwargs, kwargs)
 
         return cls.model_validate(constructor_kwargs)
@@ -341,6 +349,7 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
             if benchmark_override is None:
                 benchmarks.append(self.spec.model_copy(deep=True))
             else:
+                # Create a copy of the common args to apply overrides to
                 benchmark_args = self.spec.model_dump(mode="python")
                 for key, value in benchmark_override.items():
                     parser.set(benchmark_args, key, value)
@@ -397,13 +406,17 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
             return data
 
         if "benchmarks" not in data or not data["benchmarks"]:
+            # No benchmarks provided, insert a blank one
             data["benchmarks"] = [None]
 
         first_benchmark: dict[str, Any] | None = data["benchmarks"][0]
         if isinstance(first_benchmark, dict) and first_benchmark:
+            # Ensure "spec" field exists for the parser to insert into
             data["spec"] = data.get("spec", {})
             parser = ArgStringParser(allow_overwrite=True)
 
+            # Insert the first benchmark into the common args
+            # Create fields recursively.
             for key, value in first_benchmark.items():
                 parser.set(data["spec"], key, value)
 
