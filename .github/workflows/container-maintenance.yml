@@ -7,7 +7,7 @@ on:
 
 # Only run one at a time
 concurrency:
-    group: ${{ github.workflow }}
+  group: ${{ github.workflow }}
 
 permissions:
   packages: write
