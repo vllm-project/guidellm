@@ -3,9 +3,9 @@ repos:
   rev: v6.0.0
   hooks:
   - id: trailing-whitespace
-    exclude: ^tests/?.*/assets/.+
+    exclude: ^tests/?.*/(assets|fixtures)/.+
   - id: end-of-file-fixer
-    exclude: ^tests/?.*/assets/.+
+    exclude: ^tests/?.*/(assets|fixtures)/.+
 - repo: https://github.com/hukkin/mdformat
   rev: 1.0.0
   hooks:

@@ -186,6 +186,10 @@ cython_debug/
 !src/guidellm/benchmark/scenarios/*.json
 !src/guidellm/benchmark/scenarios/*.yaml
 
+# Vendored offline tokenizer fixtures for tests (no Hub downloads)
+!tests/fixtures/tokenizers/**/*.json
+!tests/fixtures/tokenizers/**/*.yaml
+
 ## AI
 # Ignore any AI memory files except for AGENTS.md and shared agent skills
 
