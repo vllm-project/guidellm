@@ -10,7 +10,9 @@ requiring actual model deployments.
 
 from __future__ import annotations
 
+import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from sanic import Sanic, response
@@ -59,10 +61,58 @@ class MockServer:
         self.completions_handler = CompletionsHandler(config)
         self.responses_handler = ResponsesHandler(config)
         self.tokenizer_handler = TokenizerHandler(config)
+        # Deterministic test controls: count accepted generation requests and
+        # optionally serialize them with a semaphore (lazy-created in the loop).
+        self._accepted_generation_requests = 0
+        self._concurrency_semaphore: asyncio.Semaphore | None = None
 
         self._setup_middleware()
         self._setup_routes()
         self._setup_error_handlers()
+
+    def _get_concurrency_semaphore(self) -> asyncio.Semaphore | None:
+        """Return the concurrency semaphore, creating it in the running loop."""
+        if self.config.max_concurrent_requests is None:
+            return None
+        if self._concurrency_semaphore is None:
+            self._concurrency_semaphore = asyncio.Semaphore(
+                self.config.max_concurrent_requests
+            )
+        return self._concurrency_semaphore
+
+    async def _run_generation(
+        self,
+        handler: Callable[[Request], Awaitable[HTTPResponse]],
+        request: Request,
+    ) -> HTTPResponse:
+        """
+        Run a generation handler with optional fail-after and concurrency limits.
+
+        :param handler: Async generation endpoint handler
+        :param request: Incoming Sanic request
+        :return: Handler response, or HTTP 500 when fail_after_requests is exceeded
+        """
+        fail_after = self.config.fail_after_requests
+        if fail_after is not None and self._accepted_generation_requests >= fail_after:
+            return response.json(
+                {
+                    "error": {
+                        "message": (
+                            f"Mock server fail_after_requests={fail_after} exceeded"
+                        ),
+                        "type": "server_error",
+                        "code": "fail_after_requests",
+                    }
+                },
+                status=500,
+            )
+
+        self._accepted_generation_requests += 1
+        semaphore = self._get_concurrency_semaphore()
+        if semaphore is None:
+            return await handler(request)
+        async with semaphore:
+            return await handler(request)
 
     def _setup_middleware(self):
         """Setup middleware for CORS, logging, etc."""
@@ -108,19 +158,19 @@ class MockServer:
         async def chat_completions(request: Request):
             if request.method == "OPTIONS":
                 return response.text("", status=204)
-            return await self.chat_handler.handle(request)
+            return await self._run_generation(self.chat_handler.handle, request)
 
         @self.app.route("/v1/completions", methods=["POST", "OPTIONS"])
         async def completions(request: Request):
             if request.method == "OPTIONS":
                 return response.text("", status=204)
-            return await self.completions_handler.handle(request)
+            return await self._run_generation(self.completions_handler.handle, request)
 
         @self.app.route("/v1/responses", methods=["POST", "OPTIONS"])
         async def responses(request: Request):
             if request.method == "OPTIONS":
                 return response.text("", status=204)
-            return await self.responses_handler.handle(request)
+            return await self._run_generation(self.responses_handler.handle, request)
 
         @self.app.route("/tokenize", methods=["POST", "OPTIONS"])
         async def tokenize(request: Request):
