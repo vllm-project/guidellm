@@ -312,4 +312,5 @@ markers = [
     "sanity: detailed tests to ensure major functions work correctly",
     "regression: tests to ensure that new changes do not break existing functionality",
     "slow: marks tests that are slow to run, e.g. those that download or load real models/tokenizers",
+    "e2e: end-to-end tests spanning multiple components",
 ]
