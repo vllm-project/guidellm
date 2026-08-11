@@ -123,16 +123,21 @@ class RegistryAwareCommand(click.Command):
     When Click's parser raises ``BadOptionUsage`` for a registry-backed option
     (e.g. bare ``--constraint`` with no value), this override catches it and
     re-raises a ``BadParameter`` with the expected format and valid kinds.
+
+    Also rejects duplicate occurrences of non-repeatable registry options
+    (e.g. two ``--backend`` flags) before Click's last-wins overwrite.
     """
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         """
-        Override to intercept missing-value errors for registry options.
+        Override to reject duplicate single registry options and enrich
+        missing-value errors.
 
         :param ctx: Click context
         :param args: Command-line arguments to parse
         :return: Remaining arguments after parsing
         """
+        self._reject_duplicate_single_registry_options(ctx, args)
         try:
             return super().parse_args(ctx, args)
         except click.BadOptionUsage as e:
@@ -150,6 +155,64 @@ class RegistryAwareCommand(click.Command):
                         param=param,
                     ) from e
             raise
+
+    def _reject_duplicate_single_registry_options(
+        self, ctx: click.Context, args: list[str]
+    ) -> None:
+        """
+        Fail if a non-``multiple`` registry option appears more than once.
+
+        Click silently keeps the last value for non-repeatable options; scanning
+        the raw argv catches duplicates before that overwrite.
+
+        :param ctx: Click context
+        :param args: Raw argument list passed to the command
+        :raises click.BadParameter: When a non-repeatable registry option repeats
+        """
+        single_opts = self._non_repeatable_registry_opt_map()
+        if not single_opts:
+            return
+
+        seen: set[str] = set()
+        for arg in args:
+            if arg == "--":
+                break
+            matched = self._match_single_registry_opt(arg, single_opts)
+            if matched is None:
+                continue
+            if matched in seen:
+                raise click.BadParameter(
+                    f"Option {matched} cannot be specified multiple times.",
+                    ctx=ctx,
+                    param=single_opts[matched],
+                )
+            seen.add(matched)
+
+    def _non_repeatable_registry_opt_map(self) -> dict[str, RegistryConfigOption]:
+        """Map CLI flags to non-repeatable registry options."""
+        mapping: dict[str, RegistryConfigOption] = {}
+        for param in self.params:
+            # Non-repeatable iff Click multiple=False (from non-list Pydantic fields).
+            if (
+                isinstance(param, RegistryConfigOption)
+                and not param.multiple
+                and param.registry_type is not None
+            ):
+                for opt in param.opts:
+                    mapping[opt] = param
+        return mapping
+
+    @staticmethod
+    def _match_single_registry_opt(
+        arg: str, single_opts: dict[str, RegistryConfigOption]
+    ) -> str | None:
+        """Return the matched option flag if ``arg`` is a known single registry opt."""
+        if arg.startswith("--") and "=" in arg:
+            flag = arg.split("=", 1)[0]
+            return flag if flag in single_opts else None
+        if arg in single_opts:
+            return arg
+        return None
 
 
 def _parse_and_check_kind_config(

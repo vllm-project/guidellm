@@ -366,6 +366,43 @@ class TestRegistryOptionErrors:
         assert "requires a value" in result.output
         assert "Expected format" in result.output
 
+    def test_duplicate_non_repeatable_option_rejected(self):
+        """Non-repeatable registry options cannot be specified twice.
+
+        ## WRITTEN BY AI ##
+        """
+        runner = CliRunner()
+        result = runner.invoke(
+            self._make_command(multiple=False),
+            [
+                "--cfg",
+                "kind=max_requests,count=1",
+                "--cfg",
+                "kind=max_duration,seconds=1",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "cannot be specified multiple times" in result.output
+
+    def test_repeatable_option_allows_multiple(self):
+        """Repeatable registry options still accept multiple values.
+
+        ## WRITTEN BY AI ##
+        """
+        runner = CliRunner()
+        result = runner.invoke(
+            self._make_command(multiple=True),
+            [
+                "--cfg",
+                "kind=max_requests,count=1",
+                "--cfg",
+                "kind=max_duration,seconds=1",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "max_requests" in result.output
+        assert "max_duration" in result.output
+
 
 @pytest.mark.sanity
 class TestFormatValidationErrorsRegistryHints:
