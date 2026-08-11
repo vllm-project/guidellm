@@ -20,3 +20,17 @@ jobs:
     uses: ./.github/workflows/quality.yml
     with:
       python: ${{ matrix.python }}
+
+  rust-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --component clippy,rustfmt
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - run: cargo check --workspace
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo fmt --all --check
