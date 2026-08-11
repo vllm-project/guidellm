@@ -1,0 +1,17 @@
+[package]
+name = "guidellm-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[lib]
+name = "guidellm_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true }
+
+[build-dependencies]
+vergen-gix = { version = "10", features = ["build", "cargo"] }
