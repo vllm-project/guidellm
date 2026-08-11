@@ -12,7 +12,7 @@ from guidellm.data.tokenizers.huggingface import (
     HuggingFaceTokenizer,
     HuggingFaceTokenizerArgs,
 )
-from tests.fixtures.tokenizers import GPT2_TOKENIZER_DIR
+from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 
 class TestHuggingFaceTokenizerArgs:
@@ -116,7 +116,7 @@ class TestHuggingFaceTokenizer:
         ### WRITTEN BY AI ###
         """
         config = HuggingFaceTokenizerArgs(
-            model=str(GPT2_TOKENIZER_DIR),
+            model=str(MINIMAL_TOKENIZER_DIR),
             load_kwargs={"local_files_only": True},
         )
         tokenizer = HuggingFaceTokenizer(config)
@@ -134,7 +134,7 @@ class TestHuggingFaceTokenizer:
         ### WRITTEN BY AI ###
         """
         config = HuggingFaceTokenizerArgs(
-            model=str(GPT2_TOKENIZER_DIR),
+            model=str(MINIMAL_TOKENIZER_DIR),
             load_kwargs={"local_files_only": True},
         )
         tokenizer = HuggingFaceTokenizer(config)
@@ -162,12 +162,12 @@ class TestHuggingFaceTokenizer:
             fake_from_pretrained,
         )
         config = HuggingFaceTokenizerArgs(
-            model=str(GPT2_TOKENIZER_DIR),
+            model=str(MINIMAL_TOKENIZER_DIR),
             load_kwargs={"local_files_only": True, "use_fast": False},
         )
         tokenizer = HuggingFaceTokenizer(config)
         result = tokenizer()
         assert result is not None
-        assert captured["model"] == str(GPT2_TOKENIZER_DIR)
+        assert captured["model"] == str(MINIMAL_TOKENIZER_DIR)
         assert captured["kwargs"]["local_files_only"] is True
         assert captured["kwargs"]["use_fast"] is False

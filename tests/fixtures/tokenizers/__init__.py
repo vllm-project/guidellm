@@ -6,31 +6,38 @@ import shutil
 from pathlib import Path
 
 __all__ = [
-    "GPT2_TOKENIZER_DIR",
+    "MINIMAL_TOKENIZER_DIR",
     "seed_hub_cache_for_model",
 ]
 
-# Vendored GPT-2 tokenizer files (no Hub download required).
-GPT2_TOKENIZER_DIR = Path(__file__).resolve().parent / "gpt2"
+# Small BPE tokenizer trained on Faker-style synthetic text (no Hub download).
+# Vocab size 1024; encode/decode matches GuideLLM synthetic_text prompt sizing
+# (Faker text -> encode -> truncate -> decode). Regenerated with the `tokenizers`
+# + `transformers` libraries from a Faker corpus when fixtures need updating.
+MINIMAL_TOKENIZER_DIR = Path(__file__).resolve().parent / "minimal"
 
 
 def seed_hub_cache_for_model(
     hf_home: Path,
-    model_id: str = "gpt2",
+    model_id: str = "guidellm-test-tokenizer",
     source: Path | None = None,
-    revision: str = "local-offline",
+    revision: str = "a" * 40,
 ) -> Path:
     """
     Populate a Hugging Face hub cache layout so ``from_pretrained(model_id)``
     resolves offline from ``HF_HOME``.
 
+    Uses a hex revision id so ``huggingface_hub`` accepts the snapshot layout.
+    The vendored fixture includes a minimal ``config.json`` (``model_type=gpt2``)
+    so ``AutoTokenizer`` can resolve a tokenizer class without Hub access.
+
     :param hf_home: Directory to use as ``HF_HOME``
-    :param model_id: Hub model id (e.g. ``gpt2``)
-    :param source: Local tokenizer directory to copy; defaults to vendored gpt2
-    :param revision: Snapshot / refs revision name
+    :param model_id: Hub model id used for the cache directory name
+    :param source: Local tokenizer directory to copy; defaults to the minimal fixture
+    :param revision: Snapshot / refs revision name (40-char hex preferred)
     :return: Path to the seeded snapshot directory
     """
-    source_dir = source or GPT2_TOKENIZER_DIR
+    source_dir = source or MINIMAL_TOKENIZER_DIR
     if not source_dir.is_dir():
         raise FileNotFoundError(f"Tokenizer fixture missing: {source_dir}")
 

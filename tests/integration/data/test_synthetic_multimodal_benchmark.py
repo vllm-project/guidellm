@@ -27,7 +27,7 @@ import pytest
 
 from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.server import MockServer
-from tests.fixtures.tokenizers import GPT2_TOKENIZER_DIR
+from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 pytestmark = [pytest.mark.smoke]
 
@@ -110,7 +110,7 @@ def _run_benchmark(
         "--constraint",
         f"kind=max_duration,seconds={max_seconds}",
         "--tokenizer",
-        f"kind=huggingface_auto,model={GPT2_TOKENIZER_DIR}",
+        f"kind=huggingface_auto,model={MINIMAL_TOKENIZER_DIR}",
         "--output",
         f"kind=json,path={output_path}",
         "--disable-console",

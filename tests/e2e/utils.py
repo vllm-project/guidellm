@@ -9,7 +9,7 @@ from typing import Any
 
 from loguru import logger
 
-from tests.fixtures.tokenizers import GPT2_TOKENIZER_DIR
+from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 
 def get_guidellm_executable() -> str:
@@ -67,7 +67,7 @@ class GuidellmClient:
         :param max_error_rate: Maximum error rate before stopping
         :param over_saturation: Over-saturation detection configuration (dict).
         :param data: Data configuration string (kind=<type>,key=val,...)
-        :param processor: Processor/tokenizer to use (defaults to vendored gpt2 path)
+        :param processor: Processor/tokenizer to use (defaults to vendored minimal path)
         :param backend: Full ``--backend`` config string. Defaults to openai_http
             targeting ``self.target``. Pass this to set request_format or other
             backend fields without emitting a second ``--backend`` flag.
@@ -80,7 +80,7 @@ class GuidellmClient:
         if processor is not None:
             tokenizer_model = processor
         else:
-            tokenizer_model = str(GPT2_TOKENIZER_DIR)
+            tokenizer_model = str(MINIMAL_TOKENIZER_DIR)
 
         # Force offline Hub access; accidental downloads must fail fast.
         offline_env = {

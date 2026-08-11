@@ -6,7 +6,7 @@ E2E benchmarks default to GuideLLM's built-in **MockServer** (`guidellm mock-ser
 tox -e test-e2e
 ```
 
-Tokenizer files are vendored under `tests/fixtures/tokenizers/gpt2/`. Tests run with `HF_HUB_OFFLINE=1` so accidental Hub downloads fail fast. One dedicated offline test seeds a local hub-style cache to validate hub-id (`gpt2`) resolution without network.
+A minimal tokenizer (trained for Faker-style synthetic text, ~60KB) is vendored under `tests/fixtures/tokenizers/minimal/`. Tests run with `HF_HUB_OFFLINE=1` so accidental Hub downloads fail fast. One dedicated offline test seeds a local hub-style cache to validate hub-id resolution without network.
 
 ## Optional: llm-d inference simulator
 
