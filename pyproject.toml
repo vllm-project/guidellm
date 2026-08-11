@@ -1,5 +1,9 @@
 [build-system]
-requires = ["setuptools >= 61.0", "setuptools-git-versioning>=2.0,<3"]
+requires = [
+    "setuptools >= 61.0",
+    "setuptools-git-versioning>=2.0,<3",
+    "setuptools-rust>=1.11.0",
+]
 build-backend = "setuptools.build_meta"
 
 
@@ -8,7 +12,8 @@ where = ["src"]
 include = ["*"]
 
 [tool.setuptools.package-data]
-guidellm = ["py.typed"]
+guidellm = ["py.typed", "_rust.pyi"]
+"guidellm.utils" = ["_rust.pyi"]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
 
@@ -111,6 +116,7 @@ build = [
     "build>=1.0.0",
     "setuptools>=61.0",
     "setuptools-git-versioning>=2.0,<3",
+    "setuptools-rust>=1.11.0",
 ]
 quality = [
     # code quality
@@ -195,6 +201,7 @@ module = [
     "transformers.*",
     "setuptools.*",
     "setuptools_git_versioning.*",
+    "setuptools_rust.*",
     "torchcodec.*",
     "vllm",
     "vllm.*"

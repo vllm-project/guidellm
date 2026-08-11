@@ -5,6 +5,7 @@ from pathlib import Path
 from packaging.version import Version
 from setuptools import setup
 from setuptools_git_versioning import count_since, get_branch, get_sha, get_tags
+from setuptools_rust import Binding, RustExtension
 
 LAST_RELEASE_VERSION = Version("0.4.0")
 TAG_VERSION_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+)$")
@@ -123,5 +124,18 @@ setup(
     setuptools_git_versioning={
         "enabled": True,
         "version_file": str(write_version_files()[0]),
-    }
+    },
+    rust_extensions=[
+        RustExtension(
+            target="guidellm._rust",
+            path="rust/core/Cargo.toml",
+            binding=Binding.PyO3,
+        ),
+        RustExtension(
+            target="guidellm.utils._rust",
+            path="rust/utils/Cargo.toml",
+            binding=Binding.PyO3,
+        ),
+    ],
+    zip_safe=False,
 )
