@@ -45,9 +45,7 @@ def test_huggingface_tokenizer_loads_hub_id_from_seeded_cache(
     monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
 
     # huggingface_hub reads cache roots at import time; force the seeded tmp cache.
-    monkeypatch.setattr(
-        "huggingface_hub.constants.HF_HUB_CACHE", str(tmp_path / "hub")
-    )
+    monkeypatch.setattr("huggingface_hub.constants.HF_HUB_CACHE", str(tmp_path / "hub"))
     monkeypatch.setattr("huggingface_hub.constants.HF_HOME", str(tmp_path))
 
     tokenizer = HuggingFaceTokenizer(
