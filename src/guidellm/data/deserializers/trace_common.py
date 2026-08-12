@@ -132,7 +132,7 @@ class TraceFormatBase(Protocol):
     def __init__(self, config, dataset: Dataset) -> None: ...
 
     def __iter__(self) -> Iterable[Dataset]:
-        """TODO"""
+        """Returns the next conversation as a `Dataset`."""
 
     def reset(self) -> None:
         pass
@@ -140,16 +140,18 @@ class TraceFormatBase(Protocol):
     def required_columns(self) -> Features: ...
 
     def find_required_columns(self, columns: list[str]) -> list[str]:
-        """TODO"""
+        """Checks if all required columns needed by the format exist
+        and are located in the expected place."""
 
     def get_conversation_id_trace(
         self, conversation_location: list[int]
     ) -> list[str] | None:
-        """TODO"""
+        """Returns a trace to a specified location within conversations. Returns
+        `None` if the location does not exist, or if not applicable."""
 
     def validate_row(self, row: dict) -> None:
-        """OUTDATED: Called within `trace_common.TraceExamplesIterable` on
-        initialization, immediately after doing its own checks on the row."""
+        """Called during initialization, immediately after doing
+        format-agnostic validation."""
 
     def create_prompt(
         self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
