@@ -445,7 +445,7 @@ class TraceDatasetDeserializer(DatasetDeserializer):
             raise DataNotSupportedError(str(e)) from e
         if not dataset:
             raise DataNotSupportedError(f"Trace file has no valid rows: {config.path}")
-        dataset.map(_deserialize_nested_data, batched=True)
+        dataset = dataset.map(_deserialize_nested_data, batched=True)
         trace_format = TraceFormatRegistry.dispatch(config, dataset)
         _handle_column_search(config, trace_format)
         _validate_dataset(config, trace_format)
