@@ -43,7 +43,6 @@ class MinimalTraceFormat(TraceFormatBase):
     def __init__(self, config: MinimalTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
-        self.conversation_locations = [[0]]
 
     def __iter__(self) -> Iterable[Dataset]:
         yield self.dataset.sort(self.config.timestamp_column)
@@ -53,12 +52,6 @@ class MinimalTraceFormat(TraceFormatBase):
 
     def find_required_columns(self, columns: list[str]) -> list[str]:
         return get_missing_columns(columns, self.dataset.column_names)
-
-    def get_conversation_id_trace(
-        self,
-        conversation_location: list[int],  # noqa: ARG002
-    ) -> list[str] | None:
-        return None
 
     def validate_row(
         self,

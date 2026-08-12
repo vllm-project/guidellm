@@ -122,7 +122,6 @@ class WEKATraceFormat(TraceFormatBase):
     def __init__(self, config: WEKATraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
-        self.conversation_locations = [[loc] for loc in list(range(len(dataset)))]
 
         self.hash_id_table: dict[int, tuple[int, ...]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
@@ -159,13 +158,6 @@ class WEKATraceFormat(TraceFormatBase):
         return get_missing_columns(
             columns, self.dataset[self.requests_col][0][0].keys()
         )
-
-    def get_conversation_id_trace(
-        self, conversation_location: list[int]
-    ) -> list[str] | None:
-        return [
-            self.dataset[conversation_location[0]][self.config.conversation_id_column]
-        ]
 
     def validate_row(self, row: dict) -> None:
         n_in = row[self.config.prompt_tokens_column]

@@ -87,7 +87,6 @@ class MooncakeTraceFormat(TraceFormatBase):
     def __init__(self, config: MooncakeTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
-        self.conversation_locations = [[0]]
 
         self.hash_id_table: dict[int, tuple[int, ...]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
@@ -100,12 +99,6 @@ class MooncakeTraceFormat(TraceFormatBase):
 
     def find_required_columns(self, columns: list[str]) -> list[str]:
         return get_missing_columns(columns, self.dataset.column_names)
-
-    def get_conversation_id_trace(
-        self,
-        conversation_location: list[int],  # noqa: ARG002
-    ) -> list[str] | None:
-        return None
 
     def validate_row(self, row: dict) -> None:
         n_in = row[self.config.prompt_tokens_column]

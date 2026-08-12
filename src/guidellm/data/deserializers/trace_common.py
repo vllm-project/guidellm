@@ -127,8 +127,6 @@ def create_distinct_token_block(
 
 
 class TraceFormatBase(Protocol):
-    conversation_locations: list[list[int]]
-
     def __init__(self, config, dataset: Dataset) -> None: ...
 
     def __iter__(self) -> Iterable[Dataset]:
@@ -142,12 +140,6 @@ class TraceFormatBase(Protocol):
     def find_required_columns(self, columns: list[str]) -> list[str]:
         """Checks if all required columns needed by the format exist
         and are located in the expected place."""
-
-    def get_conversation_id_trace(
-        self, conversation_location: list[int]
-    ) -> list[str] | None:
-        """Returns a trace to a specified location within conversations. Returns
-        `None` if the location does not exist, or if not applicable."""
 
     def validate_row(self, row: dict) -> None:
         """Called during initialization, immediately after doing
