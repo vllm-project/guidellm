@@ -71,6 +71,16 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: The average time taken to generate each output token, including the first token.
 - **Use Case**: Provides a detailed view of the model's token generation efficiency.
 
+### Time To Last Round Trip
+
+- **Definition**: For the realtime WebSocket backend (`openai_websocket`), the time from the last sent packet to the last received token.
+- **Use Case**: Measures tail latency of a streaming exchange (how long the final output lags the final input).
+
+### Average Round-Trip Time (Avg RTT)
+
+- **Definition**: For the WebSocket backend, the mean of received-token timestamps minus the mean of sent-packet timestamps.
+- **Use Case**: Estimates the average send-to-receive lag across a request. It is approximate, since it assumes sent packets and received tokens line up evenly in time.
+
 ## Statistical Summaries
 
 GuideLLM provides detailed statistical summaries for each of the above metrics using the `StatusDistributionSummary` and `DistributionSummary` models. These summaries include the following statistics:

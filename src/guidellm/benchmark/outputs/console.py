@@ -480,7 +480,6 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="TPOT",
                 name="ms",
             )
-
         headers, values = columns.get_table_data()
         self.console.print("\n")
         self.console.print_table(
