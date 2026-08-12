@@ -133,17 +133,9 @@ class WEKATraceFormat(TraceFormatBase):
             )
 
     def __iter__(self) -> Iterable[Dataset]:
-        curr_conv = 0
-        while True:
-            try:
-                trace_rows = self.dataset[self.requests_col][
-                    self.conversation_locations[curr_conv][0]
-                ]
-                trace_rows = Dataset.from_list(trace_rows)
-                trace_rows.sort(self.config.timestamp_column)
-            except IndexError:
-                break
-            curr_conv += 1
+        for row in self.dataset:
+            trace_rows = Dataset.from_list(row[self.requests_col])
+            trace_rows.sort(self.config.timestamp_column)
             yield trace_rows
 
     def reset(self) -> None:
