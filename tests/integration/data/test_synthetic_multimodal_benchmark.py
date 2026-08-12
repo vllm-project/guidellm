@@ -34,7 +34,8 @@ pytestmark = [pytest.mark.smoke]
 
 def _start_server_process(config: MockServerConfig) -> None:
     server = MockServer(config)
-    server.run()
+    # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
+    server.run(access_log=False)
 
 
 def _free_port() -> int:

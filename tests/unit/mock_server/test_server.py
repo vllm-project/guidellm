@@ -16,7 +16,8 @@ from guidellm.mock_server.server import MockServer
 # Start server in a separate process
 def _start_server_process(config: MockServerConfig):
     server = MockServer(config)
-    server.run()
+    # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
+    server.run(access_log=False)
 
 
 @pytest_asyncio.fixture(scope="class")

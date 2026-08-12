@@ -56,7 +56,8 @@ def free_port() -> int:
 
 def _start_mock_server_process(config: MockServerConfig) -> None:
     """Start the MockServer in a subprocess."""
-    MockServer(config).run()
+    # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
+    MockServer(config).run(access_log=False)
 
 
 def start_mock_server(

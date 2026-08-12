@@ -11,9 +11,6 @@
 !src/ui/**/*.json
 !tests/ui/**/*.json
 
-# Vendored offline tokenizer fixtures (do not reformat)
-tests/fixtures/
-
 # Root-level configs to format
 !/.eslint.config.js
 !/tsconfig*.json

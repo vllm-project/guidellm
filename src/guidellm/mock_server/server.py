@@ -279,18 +279,24 @@ class MockServer:
                 status=404,
             )
 
-    def run(self) -> None:
+    def run(self, *, access_log: bool = True) -> None:
         """
         Start the mock server with configured settings.
 
-        Runs the Sanic application in single-process mode with access logging enabled
-        for debugging and monitoring request patterns during testing.
+        Runs the Sanic application in single-process mode with access logging and
+        the Sanic startup MOTD enabled by default. Pass ``access_log=False`` in
+        shared-TTY test runners so Sanic's ANSI formatters do not clobber the
+        terminal.
+
+        :param access_log: Whether to enable Sanic per-request access logging and
+            the startup MOTD banner
         """
         self.app.run(
             host=self.config.host,
             port=self.config.port,
             debug=False,
             single_process=True,
-            access_log=True,
+            access_log=access_log,
+            motd=access_log,
             register_sys_signals=True,
         )
