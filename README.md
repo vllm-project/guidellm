@@ -103,6 +103,17 @@ podman run \
   ghcr.io/vllm-project/guidellm:latest
 ```
 
+Published images are multi-arch (`linux/amd64` and `linux/arm64`) for Docker, Podman, Kubernetes, and OpenShift. Prefer pinning a release tag in production:
+
+| Tag       | Meaning                                       |
+| --------- | --------------------------------------------- |
+| `vX.Y.Z`  | Immutable release (multi-arch from `v0.7.0+`) |
+| `stable`  | Newest full release (`vX.Y.Z`)                |
+| `latest`  | Newest release tag (may include pre-releases) |
+| `nightly` | Tip of `main`                                 |
+
+Architecture-specific tags such as `vX.Y.Z-amd64` / `vX.Y.Z-arm64` are build artifacts — do not use them as the image reference.
+
 ### Launch an Inference Server
 
 Start any OpenAI-compatible endpoint. For vLLM:
