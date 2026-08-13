@@ -11,6 +11,7 @@ requiring actual model deployments.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
@@ -18,6 +19,7 @@ from typing import Any, cast
 from sanic import Sanic, response
 from sanic.exceptions import NotFound
 from sanic.log import logger
+from sanic.logging.formatter import LegacyAccessFormatter, LegacyFormatter
 from sanic.request import File, Request
 from sanic.response import BaseHTTPResponse, HTTPResponse
 
@@ -30,6 +32,35 @@ from guidellm.mock_server.handlers import (
 )
 
 __all__ = ["MockServer"]
+
+
+def _configure_sanic_logging(*, access_log: bool) -> None:
+    """
+    Configure Sanic loggers for interactive or shared-TTY (test) use.
+
+    When ``access_log`` is false, switch handlers to legacy formatters so start,
+    stop, and error logs still print without ANSI cursor controls that overwrite
+    shared terminal lines. Access logging itself remains controlled by Sanic's
+    ``access_log`` flag on ``app.run``.
+    """
+    if access_log:
+        return
+
+    legacy = LegacyFormatter()
+    legacy_access = LegacyAccessFormatter()
+    for name in (
+        "sanic.root",
+        "sanic.error",
+        "sanic.access",
+        "sanic.server",
+        "sanic.websockets",
+    ):
+        sanic_logger = logging.getLogger(name)
+        for handler in sanic_logger.handlers:
+            if name == "sanic.access":
+                handler.setFormatter(legacy_access)
+            else:
+                handler.setFormatter(legacy)
 
 
 class MockServer:
@@ -285,12 +316,16 @@ class MockServer:
 
         Runs the Sanic application in single-process mode with access logging and
         the Sanic startup MOTD enabled by default. Pass ``access_log=False`` in
-        shared-TTY test runners so Sanic's ANSI formatters do not clobber the
-        terminal.
+        shared-TTY test runners to disable access logs and the MOTD, and to use
+        plain (non-ANSI) Sanic formatters so start/stop logs do not overwrite
+        the terminal.
 
         :param access_log: Whether to enable Sanic per-request access logging and
-            the startup MOTD banner
+            the startup MOTD banner. When false, start/stop logs still print but
+            without ANSI cursor controls.
         """
+        # Reconfigure after Sanic.__init__ so quiet mode applies before serve.
+        _configure_sanic_logging(access_log=access_log)
         self.app.run(
             host=self.config.host,
             port=self.config.port,
