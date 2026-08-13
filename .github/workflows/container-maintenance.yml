@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   packages: write
+  contents: read
 
 jobs:
   cleanup-container-tags:
@@ -31,6 +32,8 @@ jobs:
     needs: cleanup-container-tags
     if: always() # Run after cleanup even if it fails
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Log into ghcr.io
         uses: redhat-actions/podman-login@50c2d9a331bb67c8fdab99b86455fad05e2e3252 # v2.0
         with:
@@ -41,13 +44,44 @@ jobs:
         run: |
           set -euo pipefail  # Fail pipe if any command fails
           skopeo list-tags docker://ghcr.io/${{ github.repository }} | jq --raw-output '.Tags[]' > tags
-      - name: Get latest release and rc tags
+      - name: Select stable and latest release tags
         run: |
-          STABLE_TAG="$(grep -P '^v\d+\.\d+\.\d+$' tags | sort -rV | head -n1)"
-          echo "stable_tag=${STABLE_TAG:-v0.0.0}" >> $GITHUB_ENV
-          LATEST_TAG="$(grep -P '^v\d+\.\d+\.\d+' tags | sort -rV | head -n1)"
-          echo "latest_tag=${LATEST_TAG:-v0.0.0}" >> $GITHUB_ENV
+          set -euo pipefail
+          # shellcheck source=scripts/container_image_tags.sh
+          source ./scripts/container_image_tags.sh
+
+          STABLE_TAG="$(select_stable_tag tags)"
+          LATEST_TAG="$(select_latest_tag tags)"
+
+          if [[ -z "${STABLE_TAG}" || -z "${LATEST_TAG}" ]]; then
+            echo "ERROR: could not resolve stable/latest tags from registry tag list" >&2
+            echo "---- tags (head) ----" >&2
+            head -n 50 tags >&2 || true
+            exit 1
+          fi
+
+          # Never retag from a single-arch source (defends against broken publishes).
+          assert_multiarch_ref "docker://ghcr.io/${{ github.repository }}:${STABLE_TAG}"
+          assert_multiarch_ref "docker://ghcr.io/${{ github.repository }}:${LATEST_TAG}"
+
+          echo "stable_tag=${STABLE_TAG}" >> "${GITHUB_ENV}"
+          echo "latest_tag=${LATEST_TAG}" >> "${GITHUB_ENV}"
+          echo "Selected stable=${STABLE_TAG} latest=${LATEST_TAG}"
       - name: Update latest and stable tags
         run: |
-          skopeo copy docker://ghcr.io/${{ github.repository }}:${{ env.stable_tag }} docker://ghcr.io/${{ github.repository }}:stable
-          skopeo copy docker://ghcr.io/${{ github.repository }}:${{ env.latest_tag }} docker://ghcr.io/${{ github.repository }}:latest
+          set -euo pipefail
+          # --all preserves the full multi-arch index. Without it, skopeo copies
+          # only the runner architecture and flattens latest/stable to single-arch.
+          skopeo copy --all \
+            "docker://ghcr.io/${{ github.repository }}:${{ env.stable_tag }}" \
+            "docker://ghcr.io/${{ github.repository }}:stable"
+          skopeo copy --all \
+            "docker://ghcr.io/${{ github.repository }}:${{ env.latest_tag }}" \
+            "docker://ghcr.io/${{ github.repository }}:latest"
+      - name: Verify latest and stable are multi-arch
+        run: |
+          set -euo pipefail
+          # shellcheck source=scripts/container_image_tags.sh
+          source ./scripts/container_image_tags.sh
+          assert_multiarch_ref "docker://ghcr.io/${{ github.repository }}:stable"
+          assert_multiarch_ref "docker://ghcr.io/${{ github.repository }}:latest"
